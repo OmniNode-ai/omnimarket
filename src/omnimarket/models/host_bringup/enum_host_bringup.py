@@ -10,6 +10,17 @@ from __future__ import annotations
 from enum import StrEnum
 
 
+class EnumObservedState(StrEnum):
+    """What a target's read-only check observed on the host. Anything not observed is UNKNOWN.
+
+    Promoted here so the host overlay compute and the plan compute share one state set.
+    """
+
+    OK = "ok"
+    NOT_OK = "not_ok"
+    UNKNOWN = "unknown"
+
+
 class EnumBringupCheckKind(StrEnum):
     """The read-only already-satisfied probe a target row declares.
 

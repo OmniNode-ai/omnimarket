@@ -18,19 +18,15 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.models.host_bringup import EnumBringupAction, EnumBringupCheckKind
+from omnimarket.models.host_bringup import (
+    EnumBringupAction,
+    EnumBringupCheckKind,
+    EnumObservedState,
+)
 
 _IDENTIFIER = r"^[a-z][a-z0-9_]*$"
 _TARGET_NAME = r"^[a-z][a-z0-9]*([_-][a-z0-9]+)*$"
 _STAGE = r"^[A-Z]$"
-
-
-class EnumObservedState(StrEnum):
-    """What a check observed on the host. Anything not observed is UNKNOWN."""
-
-    OK = "ok"
-    NOT_OK = "not_ok"
-    UNKNOWN = "unknown"
 
 
 class EnumStepDecision(StrEnum):

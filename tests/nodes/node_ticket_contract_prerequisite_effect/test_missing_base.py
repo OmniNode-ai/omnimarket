@@ -191,3 +191,32 @@ def test_missing_local_base_is_not_guessed_into_a_remote(tmp_path: Path) -> None
     assert result.returncode == 1
     assert "'fetch'" not in result.stderr
     assert _git(worker, "branch", "-r") == "origin/worker"
+
+
+def test_check_helper_does_not_repair_remote_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded unreadable-base refusal must not fetch from the read helper.
+
+    The shipped adapter still repairs this clone in the tests above. Calling
+    the helper directly must retain the missing-contract refusal and leave the
+    absent tracking ref absent, even when a configured remote can supply it.
+    """
+    from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+        missing_contract_message,
+    )
+    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
+        handler_ticket_contract_prerequisite as push,
+    )
+
+    worker = _worker(tmp_path, contract=False)
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(worker)
+    before = _git(worker, "rev-parse", "HEAD")
+    assert push.check("HEAD", "origin/dev", f"fix({TICKET}): change") == (
+        missing_contract_message(TICKET),
+    )
+    assert _git(worker, "branch", "-r") == "origin/worker"
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""

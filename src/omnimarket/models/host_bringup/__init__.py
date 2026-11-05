@@ -5,6 +5,7 @@
 from omnimarket.models.host_bringup.enum_host_bringup import (
     EnumBringupAction,
     EnumBringupCheckKind,
+    EnumObservedState,
 )
 
-__all__ = ["EnumBringupAction", "EnumBringupCheckKind"]
+__all__ = ["EnumBringupAction", "EnumBringupCheckKind", "EnumObservedState"]
