@@ -4,7 +4,8 @@
 
 from pathlib import Path
 
-from .handlers.handler_install_superset import HandlerInstallSuperset
+from .handlers.handler_install_superset import HandlerInstallSuperset, SupersetError
+from .models.model_install_superset import ModelSupersetRequest
 
 
 class NodeInstallSupersetGuardEffect(HandlerInstallSuperset):
@@ -13,4 +14,9 @@ class NodeInstallSupersetGuardEffect(HandlerInstallSuperset):
     contract_path = Path(__file__).with_name("contract.yaml")
 
 
-__all__ = ["HandlerInstallSuperset", "NodeInstallSupersetGuardEffect"]
+__all__ = [
+    "HandlerInstallSuperset",
+    "ModelSupersetRequest",
+    "NodeInstallSupersetGuardEffect",
+    "SupersetError",
+]
