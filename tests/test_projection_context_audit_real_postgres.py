@@ -71,6 +71,70 @@ _RETIRED_COLUMNS = (
 )
 
 
+@pytest.mark.integration
+async def test_migration_reconciles_an_incomplete_table_without_losing_rows(
+    postgres: _pg._Postgres,
+) -> None:
+    admin = await asyncpg.connect(**postgres.connect_kwargs())
+    schema = f"context_audit_{uuid4().hex}"
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        await admin.execute(
+            f"CREATE TABLE {schema}.context_audit_events ("
+            "id BIGSERIAL PRIMARY KEY, task_id TEXT NOT NULL, "
+            "correlation_id TEXT NOT NULL, event_type TEXT NOT NULL, "
+            "enforcement_level TEXT NOT NULL)"
+        )
+        original_id = await admin.fetchval(
+            f"INSERT INTO {schema}.context_audit_events "
+            "(task_id, correlation_id, event_type, enforcement_level) "
+            "VALUES ('retained', 'c', 't', 'strict') RETURNING id"
+        )
+        migration = (
+            (NODE / "migrations/0000_add_context_audit_event_key.sql")
+            .read_text()
+            .replace("public.", f"{schema}.")
+        )
+        for _ in range(2):
+            await admin.execute(migration)
+        row = await admin.fetchrow(f"SELECT * FROM {schema}.context_audit_events")
+        assert row is not None
+        assert row["id"] == original_id
+        assert row["task_id"] == "retained"
+        assert set(_RETIRED_COLUMNS).issubset(row.keys())
+        assert row["event_key"] is None
+        assert row["created_at"] is not None
+    finally:
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
+
+
+@pytest.mark.integration
+async def test_migration_refuses_an_id_without_a_generating_default(
+    postgres: _pg._Postgres,
+) -> None:
+    admin = await asyncpg.connect(**postgres.connect_kwargs())
+    schema = f"context_audit_{uuid4().hex}"
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        await admin.execute(_INFRA_053_TABLE.replace("public.", f"{schema}."))
+        await admin.execute(
+            f"ALTER TABLE {schema}.context_audit_events ALTER COLUMN id DROP DEFAULT"
+        )
+        migration = (
+            (NODE / "migrations/0000_add_context_audit_event_key.sql")
+            .read_text()
+            .replace("public.", f"{schema}.")
+        )
+        with pytest.raises(
+            asyncpg.RaiseError, match="id must generate values from its owned sequence"
+        ):
+            await admin.execute(migration)
+    finally:
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
+
+
 def _events() -> list[tuple[str, dict[str, Any]]]:
     topics = writer_module.ContextAuditProjectionWriter().subscribe_topics
     return [(topic, _event(index)) for index, topic in enumerate(topics)]

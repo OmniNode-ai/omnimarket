@@ -100,7 +100,17 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |
-          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_context_audit/handlers/handler_context_audit_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ON CONFLICT (event_key) DO UPDATE" > /dev/null'
+          python3 - <<'PY'
+          from pathlib import Path
+          node = Path("src/omnimarket/nodes/node_projection_context_audit")
+          writer = (node / "handlers/handler_context_audit_writer.py").read_text()
+          migration = (node / "migrations/0000_add_context_audit_event_key.sql").read_text()
+          assert "ON CONFLICT (event_key) DO UPDATE" in writer
+          assert "CREATE TABLE IF NOT EXISTS public.context_audit_events" in migration
+          assert "id must generate values from its owned sequence" in migration
+          assert "SET lock_timeout = '5s'" in migration
+          assert "SET statement_timeout = '60s'" in migration
+          PY
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
   - id: "dod-omn21934-integration-proof"
