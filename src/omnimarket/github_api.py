@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
+from omnimarket.github_api_pr_graphql import (
+    PR_GRAPHQL_QUERY,
+    normalize_open_pr_rollup,
+    normalize_review_threads,
+)
 
 _GITHUB_REST = GITHUB_REST_URL
 _GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
@@ -30,74 +35,6 @@ _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
 _ASSET_DOWNLOAD_ATTEMPTS = 3
 _ASSET_RETRY_STATUSES = frozenset({502, 503, 504})
-
-_PR_GRAPHQL_QUERY = """
-query($owner: String!, $name: String!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(states: [OPEN], first: 100, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-      nodes {
-        id
-        number
-        title
-        isDraft
-        mergeable
-        mergeStateStatus
-        reviewDecision
-        headRefName
-        baseRefName
-        headRefOid
-        reviewThreads(first: 50) {
-          nodes {
-            isResolved
-            comments(first: 20) {
-              nodes {
-                id
-              }
-            }
-          }
-        }
-        files(first: 100) {
-          nodes {
-            path
-          }
-        }
-        labels(first: 20) {
-          nodes { name }
-        }
-        statusCheckRollup: commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                contexts(first: 100) {
-                  nodes {
-                    __typename
-                    ... on StatusContext {
-                      context
-                      state
-                      description
-                      targetUrl
-                    }
-                    ... on CheckRun {
-                      name
-                      status
-                      conclusion
-                      detailsUrl
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"""
 
 
 class GitHubApiError(RuntimeError):
@@ -120,55 +57,6 @@ def split_repo(repo: str) -> tuple[str, str]:
     if not owner or not sep or not repo_name:
         raise GitHubApiError(f"invalid repo slug: {repo!r}")
     return owner, repo_name
-
-
-def _normalize_open_pr_rollup(
-    rollup_nodes: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    normalized_rollup: list[dict[str, Any]] = []
-    for ctx in rollup_nodes:
-        typename = ctx.get("__typename", "")
-        if typename == "CheckRun":
-            normalized_rollup.append(
-                {
-                    "name": ctx.get("name", ""),
-                    "conclusion": (ctx.get("conclusion") or "").upper(),
-                    "status": ctx.get("status", ""),
-                    "detailsUrl": ctx.get("detailsUrl", ""),
-                }
-            )
-        elif typename == "StatusContext":
-            state = (ctx.get("state") or "").upper()
-            normalized_rollup.append(
-                {
-                    "context": ctx.get("context", ""),
-                    "conclusion": "SUCCESS" if state == "SUCCESS" else state,
-                    "state": ctx.get("state", ""),
-                    "detailsUrl": ctx.get("targetUrl", ""),
-                }
-            )
-    for ctx in normalized_rollup:
-        ctx["isRequired"] = True
-    return normalized_rollup
-
-
-def _normalize_review_threads(
-    raw_threads: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    normalized_threads: list[dict[str, Any]] = []
-    for thread in raw_threads:
-        comment_nodes = ((thread.get("comments") or {}).get("nodes")) or []
-        normalized_threads.append(
-            {
-                "isResolved": bool(thread.get("isResolved", False)),
-                "comments": [
-                    {"id": comment["id"]}
-                    for comment in comment_nodes
-                    if isinstance(comment, dict) and comment.get("id")
-                ],
-            }
-        )
-    return normalized_threads
 
 
 def _base_headers(token: str) -> dict[str, str]:
@@ -449,7 +337,7 @@ class GitHubHttpTransport:
             if cursor:
                 variables["after"] = cursor
 
-            data = self._graphql(_PR_GRAPHQL_QUERY, variables)
+            data = self._graphql(PR_GRAPHQL_QUERY, variables)
             repo_data = data.get("repository")
             if not repo_data:
                 break
@@ -471,10 +359,10 @@ class GitHubHttpTransport:
                         )
                         or {}
                     ).get("contexts", {}).get("nodes", []) or []
-                node["statusCheckRollup"] = _normalize_open_pr_rollup(rollup_nodes)
+                node["statusCheckRollup"] = normalize_open_pr_rollup(rollup_nodes)
 
                 raw_threads = (node.get("reviewThreads") or {}).get("nodes") or []
-                node["reviewThreads"] = _normalize_review_threads(raw_threads)
+                node["reviewThreads"] = normalize_review_threads(raw_threads)
 
                 raw_files = (node.get("files") or {}).get("nodes") or []
                 node["files"] = [
