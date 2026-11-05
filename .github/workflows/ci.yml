@@ -677,6 +677,9 @@ jobs:
       # spells the handler that decides the ladder, for the ruling audit.
       - name: Landing decision park ladder, decided by src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py (OMN-20890)
         run: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+      - name: Operator unanswered-message detector and arrival spool
+        run: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q -n 0 -p no:randomly
+
       # OMN-20905: operator decisions and asks are recorded from the bus by the capture nodes. Paired
       # with the operator-capture-nodes hook; OMN-17427: the name spells the two handlers, for the
       # ruling audit.

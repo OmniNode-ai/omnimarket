@@ -39,6 +39,12 @@ capture_watch_policy:
   renotify_after_seconds: 21600
   heartbeat_process_id: capture-silence-watch
 
+operator_message_spool:
+  source_id: operator_message_spool
+  policy_file: operator_message_arrivals.json
+  overlay_env: ONEX_OPERATOR_MESSAGE_OVERLAY
+  description: Host-wide durable arrival spool; share its bound and path with the hooks and the drain unit.
+
 reads_source:
   binding_ref: omninode_runtime_service
   dsn_env: OMNINODE_INTERNAL_DB_URL

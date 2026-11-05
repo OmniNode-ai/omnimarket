@@ -25,6 +25,7 @@ import json
 import re
 from typing import Any
 
+from omnimarket.enums.enum_machine_prompt import MACHINE_PREFIXES
 from omnimarket.models.operator_capture import (
     EnumClassifierSource,
     EnumPromptOrigin,
@@ -33,29 +34,6 @@ from omnimarket.models.operator_capture import (
     ModelUtteranceClassification,
     ModelUtteranceClassifyRequest,
     ModelUtteranceItem,
-)
-
-# Text a machine put in the prompt slot. Matched on the stripped start of the message.
-MACHINE_PREFIXES: tuple[str, ...] = (
-    "<task-notification",
-    "<command-name>",
-    "<command-message>",
-    "<local-command-stdout>",
-    "<local-command-stderr>",
-    "<local-command-caveat>",
-    "<system-reminder>",
-    "<wake",
-    "<webhook-payload",
-    "<child-session-event",
-    "<bash-input>",
-    "<bash-stdout>",
-    "<bash-stderr>",
-    "<user-prompt-submit-hook>",
-    "<scheduled-task",
-    "[workflow harness",
-    "[request interrupted",
-    "caveat: the messages below were generated",
-    "this session is being continued from a previous conversation",
 )
 
 RESPONSE_CONTRACT: dict[str, Any] = {

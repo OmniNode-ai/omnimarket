@@ -1,0 +1,16 @@
+{
+  "spool_root_env": "ONEX_OPERATOR_MESSAGE_SPOOL",
+  "state_root_env": "ONEX_STATE_DIR",
+  "state_subdir": ".onex_state",
+  "spool_subdir": "operator-message-spool",
+  "append_command_env": "ONEX_LEDGER_BUS_APPEND_COMMAND",
+  "append_timeout_seconds": 5,
+  "stale_after_seconds": 120,
+  "drain_interval_seconds": 30,
+  "lane": "operator-message-hook",
+  "source": "claude-code",
+  "fallback_state_root_env": "OMNI_ACCESS_MODE_STATE_DIR",
+  "drain_label": "ai.omninode.operator-message-spool-drain",
+  "max_appends_per_hook": 1,
+  "max_appends_per_drain": 64
+}

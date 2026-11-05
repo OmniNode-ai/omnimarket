@@ -128,6 +128,13 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+
+  - id: req-omn19998-unanswered-repository-slice
+    statement: Transcript structure and independently appended arrival rows expose unanswered operator messages even when content capture is absent.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: tool-only turns remain unanswered, one-line assistant text covers all preceding operator messages, machine prompts are excluded, arrival replay is idempotent, pending arrivals drain on any session hook and an independent drain invocation, stale spool depth and age reach the capture watch, and private handoff words or a flagged resend request remain available -- falsifier: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q'
+
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +516,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-unanswered-repository-slice
+    description: Focused structural, spool, installed-hook, ledger-host and in-memory runtime falsifiers for this repository slice. Live host-unit installation, the capture-stopped headless session and the real labelled sample of 60 remain separate required lab evidence.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q -n 0 -p no:randomly
         cwd: .

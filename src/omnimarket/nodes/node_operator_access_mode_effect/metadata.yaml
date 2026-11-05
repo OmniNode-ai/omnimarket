@@ -3,7 +3,7 @@
 ---
 name: node_operator_access_mode_effect
 version: 1.0.0
-description: "Decides how the operator reaches a Claude Code session and applies the supervision rules that depend on it: foreground Bash shape and wait guard, operator reply check, attention push gate, remote setup check, silent-turn guard and lab dispatch gate."
+description: "Decides how the operator reaches a Claude Code session and applies the supervision rules that depend on it: foreground Bash shape and wait guard, operator reply check, attention push gate, remote setup check, silent-turn guard, lab dispatch gate and durable operator-message arrivals, replies and private handoffs."
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: effect
@@ -14,11 +14,11 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: filesystem_write
+  side_effect_class: publish_event
 dependencies:
 - omnibase_core>=0.39.0
 license: MIT
