@@ -110,9 +110,6 @@ from omnimarket.models.scm import (
     ModelScmTerminal,
     ModelScmVerb,
 )
-from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_cached_job_log_command import (
-    cached_job_log_command,
-)
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
 )
@@ -974,6 +971,30 @@ def _refused_command(verb_name: str, handled_by: str) -> click.Command:
         )
         sys.exit(EXIT_USAGE)
 
+    return command
+
+
+def cached_job_log_command(
+    factory: Callable[[ModelScmVerb], click.Command],
+) -> click.Command:
+    command = factory(
+        ModelScmVerb(
+            verb="job-log-cached",
+            node=EnumScmNode.GATEWAY,
+            operation="job_log_tail",
+            replaces="host-shared completed job log",
+        )
+    )
+    callback = command.callback
+    assert callback is not None
+
+    def cached(**fields: object) -> object:
+        # Neither arguments nor environment can turn this verb into a live read.
+        fields["cache_only"] = True
+        return callback(**fields)
+
+    command.callback = cached
+    command.help = "A cached job's tail, window or step; a miss makes no GitHub call."
     return command
 
 

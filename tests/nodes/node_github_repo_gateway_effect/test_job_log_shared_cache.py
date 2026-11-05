@@ -28,7 +28,7 @@ def request(**fields):
 
 
 def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
 
@@ -61,7 +61,7 @@ def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
 
 
 def test_concurrent_lanes_download_one_job_once(tmp_path):
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
 
@@ -125,7 +125,7 @@ def test_cache_only_bus_command_reaches_the_ninth_window(tmp_path, monkeypatch):
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
         handler_github_repo_gateway as gateway,
     )
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
 
@@ -177,7 +177,7 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
     import os
     import time
 
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
@@ -201,7 +201,7 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
 
 
 def test_completed_step_metadata_is_reused_with_cached_bytes(tmp_path):
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
     from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
@@ -250,7 +250,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
     import json
 
     from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
@@ -298,7 +298,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
 
 
 def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
-    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_job_log_cache import (
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         HandlerJobLogCache,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
@@ -320,7 +320,7 @@ def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
 def test_stream_ceiling_never_publishes_an_incomplete_cache(tmp_path, monkeypatch):
     from omnimarket.github_landing import github_landing_transport
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
-        handler_job_log_cache,
+        handler_github_repo_gateway as handler_job_log_cache,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
@@ -341,3 +341,26 @@ def test_stream_ceiling_never_publishes_an_incomplete_cache(tmp_path, monkeypatc
             request(cache_only=True)
         )
     assert len(transport.sent) == 1
+
+
+def test_cache_policy_uses_declared_state_root(tmp_path, monkeypatch):
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
+        cache_policy,
+    )
+
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    assert cache_policy().root == tmp_path / "github-read-cache" / "job-logs"
+
+
+def test_cache_policy_refuses_an_unconfigured_state_root(tmp_path, monkeypatch):
+    from omnimarket.config.state_root import OnexStateRootUnconfiguredError
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
+        cache_policy,
+    )
+
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
+    with pytest.raises(OnexStateRootUnconfiguredError, match="GitHub job-log cache"):
+        cache_policy()
