@@ -17,6 +17,8 @@ from uuid import uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    GithubGatewayResult,
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
 )
@@ -27,6 +29,8 @@ from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     RealGitHubReadTransport,
 )
+
+from .handler_job_log_cache import HandlerJobLogCache, cache_policy
 
 _HANDLER_ID = "node_github_repo_gateway_effect"
 
@@ -41,10 +45,29 @@ class HandlerGithubRepoGatewayEffect:
         self, request: ModelGithubGatewayRequest
     ) -> ModelHandlerOutput[None]:
         """Resolve the token, dispatch the read, emit the typed result event."""
-        token = await resolve_github_token_async()
-        transport = RealGitHubReadTransport(token)
-        # dispatch drives synchronous urllib reads; run off the event loop.
-        result = await asyncio.to_thread(dispatch, request, transport)
+        if (
+            request.cache_only
+            and request.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL
+        ):
+            raise ValueError("cache_only is supported only for job_log_tail")
+        transport = (
+            None
+            if request.cache_only
+            else RealGitHubReadTransport(await resolve_github_token_async())
+        )
+        result: GithubGatewayResult
+        if request.operation is EnumGithubGatewayOperation.JOB_LOG_TAIL:
+            policy = cache_policy()
+            assert policy.root is not None
+            result = await asyncio.to_thread(
+                HandlerJobLogCache(
+                    policy.root, transport, ttl_seconds=policy.ttl_seconds
+                ).handle,
+                request,
+            )
+        else:
+            assert transport is not None
+            result = await asyncio.to_thread(dispatch, request, transport)
 
         response = ModelGithubGatewayResponse(
             correlation_id=request.correlation_id,
