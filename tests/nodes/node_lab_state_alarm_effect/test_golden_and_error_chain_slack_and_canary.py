@@ -304,7 +304,6 @@ CANARY = ModelCanaryPublishOverlay(
     remote="git@example.invalid:org/canary.git",
     branch="canary-status",
     file_name="status.json",
-    clone_relpath="canary-publish",
     floor_max_age_s=900,
     heartbeat_max_age_s=900,
     committer_name="floor-canary",

@@ -52,6 +52,10 @@ units:
       # The floor's Phoenix trace reading (node_factory_floor_effect runtime.phoenix_url_env). Not required: unset,
       # the floor draws the Phoenix row unread and says so.
       ONEX_FACTORY_FLOOR_PHOENIX_URL: phoenix_url
+      # The lab-state alarm's Slack credentials: the path of the operator's bootstrap env file, from which the alarm reads
+      # the two named keys its overlay refers to. Not required: unset, a Slack alarm is refused with a typed reason and
+      # goes to the second channel.
+      ONEX_ALERT_CHANNEL_ENV_FILE: alert_env_file
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would

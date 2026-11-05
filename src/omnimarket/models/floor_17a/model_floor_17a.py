@@ -532,7 +532,6 @@ class ModelCanaryPublishOverlay(_Frozen):
     remote: str = Field(min_length=1)
     branch: str = Field(min_length=1)
     file_name: str = Field(min_length=1)
-    clone_relpath: str = Field(min_length=1)
     floor_max_age_s: int = Field(gt=0)
     heartbeat_max_age_s: int = Field(gt=0)
     committer_name: str = Field(min_length=1)
