@@ -630,6 +630,9 @@ jobs:
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+      # OMN-19998: regression proof for the hosted receipt reader and PR-state producer.
+      - name: Public review receipt and runtime dispatch
+        run: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
       # OMN-20910: paired with the contract-prerequisite-verifier-host-tools hook.
       - name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
         run: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov

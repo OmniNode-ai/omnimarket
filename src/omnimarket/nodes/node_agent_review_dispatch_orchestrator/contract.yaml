@@ -34,10 +34,21 @@ handler_routing:
         name: HandlerAgentReviewDispatch
         module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch
     - operation: aggregate_quorum
+      topic: onex.cmd.omnimarket.agent-review-quorum-requested.v1
       input_model: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review.ModelAgentQuorumRequest
       handler:
         name: HandlerAgentReviewQuorum
         module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_quorum
+    - operation: request_pr_review
+      topic: onex.evt.github.pr-status.v1
+      message_category: event
+      event_model:
+        name: ModelPrReviewObservation
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_pr_review_trigger
+      handler:
+        name: HandlerPrReviewTrigger
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_pr_review_trigger
+
 descriptor:
   node_archetype: orchestrator
   purity: effectful
@@ -55,14 +66,21 @@ runtime_dispatch:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.agent-review-requested.v1
+    - onex.evt.github.pr-status.v1
+    - onex.cmd.omnimarket.agent-review-quorum-requested.v1
   publish_topics:
+    - onex.cmd.omnimarket.agent-review-requested.v1
     - onex.evt.omnimarket.agent-review-completed.v1
     - onex.evt.omnimarket.agent-review-refused.v1
     - onex.evt.omnimarket.agent-review-failed.v1
+    - onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+    - onex.evt.omnimarket.agent-review-quorum-decided.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.agent-review-completed.v1
   - onex.evt.omnimarket.agent-review-refused.v1
   - onex.evt.omnimarket.agent-review-failed.v1
+  - onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+  - onex.evt.omnimarket.agent-review-quorum-decided.v1
 published_events:
   - event_type: AgentReviewCompleted
     topic: onex.evt.omnimarket.agent-review-completed.v1
@@ -73,3 +91,22 @@ published_events:
   - event_type: AgentReviewFailed
     topic: onex.evt.omnimarket.agent-review-failed.v1
     description: A deadline, port error or exhausted post attempts ended the command.
+  - event_type: PrReviewTriggerResult
+    topic: onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+    description: A proactive command acknowledgement, never a review verdict.
+  - event_type: AgentQuorumResult
+    topic: onex.evt.omnimarket.agent-review-quorum-decided.v1
+    description: A quorum computation result, never a completed review command.
+
+# Deployment scope for proactive PR review; absent configuration refuses, never defaults.
+pr_review_trigger_overlay: agent_review_pr_trigger
+env_dependencies:
+  - name: ONEX_STATE_DIR
+    required: true
+    description: Durable per-head review command acknowledgements.
+  - name: OMNI_HOME
+    required: true
+    description: Registry root for canonical source-control and review bus resolution.
+  - name: ONEX_SKILL_OVERLAY_ROOTS
+    required: true
+    description: Deployment overlay roots for review scope and dispatch policy.
