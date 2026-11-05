@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_run_engine_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Holds the order of work and its waits outside any session. A run is a keyed, ordered list of steps: a plain command
+  (an argument vector run with no model provider, handed its idempotency key as <run_key>/<step name>) or a wait on a
+  named condition released by a keyed release. The node starts a run (accepted, duplicate, or unknown when the backend
+  is down), releases a wait (accepted, duplicate, stale, unknown_run, run_finished), cancels a run, and reads a run's
+  state. The backend is chosen by the overlay key run_engine_backend: in_memory (the default when there is no overlay;
+  not durable) or temporal_self_hosted (durable; its settings come from the overlay, none is packaged). The engine
+  delivers a step at least once, so the command owns making a second delivery of the same key a no-op. The node decides
+  nothing about what lands. The overlay is read from <root>/node_run_engine_effect/overlay.yaml under
+  ONEX_SKILL_OVERLAY_ROOTS.
+input_model:
+  name: ModelRunEngineRequest
+  module: omnimarket.nodes.node_run_engine_effect.models.model_run_engine
+output_model:
+  name: ModelRunEngineResult
+  module: omnimarket.nodes.node_run_engine_effect.models.model_run_engine
+handler:
+  module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+  class: HandlerRunEngine
+  input_model: omnimarket.nodes.node_run_engine_effect.models.model_run_engine.ModelRunEngineRequest
+  output_model: omnimarket.nodes.node_run_engine_effect.models.model_run_engine.ModelRunEngineResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine:HandlerRunEngine
+  handlers:
+    - operation: start_run
+      handler:
+        name: HandlerRunEngine
+        module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+    - operation: release_run
+      handler:
+        name: HandlerRunEngine
+        module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+    - operation: cancel_run
+      handler:
+        name: HandlerRunEngine
+        module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+    - operation: get_run_state
+      handler:
+        name: HandlerRunEngine
+        module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+    - operation: health
+      handler:
+        name: HandlerRunEngine
+        module: omnimarket.nodes.node_run_engine_effect.handlers.handler_run_engine
+descriptor:
+  node_archetype: effect
+  purity: effectful  # starts, releases and cancels runs in the selected backend
+  idempotent: true  # a repeated start, release or cancel returns duplicate and changes nothing
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+overlay:
+  id: node_run_engine_effect
+  model: omnimarket.nodes.node_run_engine_effect.models.model_run_engine.ModelRunEngineOverlay
+  key: run_engine_backend
+  default: in_memory
+  values: [in_memory, temporal_self_hosted]
+inputs:
+  operation: {type: str, required: true, description: "One of start_run, release_run, cancel_run, get_run_state, health."}
+  run: {type: object, required: false, description: The keyed run spec for start_run.}
+  run_key: {type: str, required: false, description: The run for release_run, cancel_run and get_run_state.}
+  condition: {type: str, required: false, description: The named wait a release answers.}
+  release_id: {type: str, required: false, description: The key of the release; a repeat of it is a duplicate.}
+outputs:
+  start_outcome: {type: str}
+  release_outcome: {type: str}
+  cancel_outcome: {type: str}
+  state: {type: object}
+  healthy: {type: bool}
+terminal_event: onex.evt.omnimarket.run-engine-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.run-engine-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.run-engine-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.run-engine-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.run-engine-completed.v1
+metadata:
+  transport_type: inmemory
+  description: ordered runs with waits, held outside any session, behind an in-memory or self-hosted Temporal backend
+  author: OmniNode Team
+  created: "2026-11-05"
+  related_tickets: [OMN-22478]

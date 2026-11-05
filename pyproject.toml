@@ -299,6 +299,9 @@ dep-health = [
 intelligence = [
     "adaptive-classifier>=0.1.2",
 ]
+temporal = [
+    "temporalio>=1.35.0,<2.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/OmniNode-ai/omnimarket"
@@ -894,6 +897,7 @@ node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
 node_claim_index_compute = "omnimarket.nodes.node_claim_index_compute"
 node_overlay_resolver_effect = "omnimarket.nodes.node_overlay_resolver_effect"
+node_run_engine_effect = "omnimarket.nodes.node_run_engine_effect"
 node_verified_dispatch_orchestrator = "omnimarket.nodes.node_verified_dispatch_orchestrator"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect"

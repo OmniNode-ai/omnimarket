@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_run_engine_effect
+version: "1.0.0"
+description: Holds the order of work and its waits outside any session, behind one backend seam with in-memory and self-hosted Temporal overlays
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_run_engine_effect: omnimarket.nodes.node_run_engine_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+  - omnibase-spi>=0.23.3,<0.24.0
+  - temporalio>=1.35.0,<2.0.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, run-engine, workflow]
+node_role: effect
+pack: "routing"
+display_name: "Run Engine Effect"
