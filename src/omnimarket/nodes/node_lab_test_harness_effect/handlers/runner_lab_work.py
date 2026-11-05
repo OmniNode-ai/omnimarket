@@ -28,7 +28,7 @@ _WORKSPACE_KW = next(
 )
 
 
-class HandlerLabWorkCaseRun:
+class LabWorkCaseSender:
     """Sends a case through ``LabWorkCaller``, the caller behind ``onex lab-work run``."""
 
     def __init__(self, caller: LabWorkCaller) -> None:
@@ -57,7 +57,7 @@ async def open_lab_work_runner(
     overlay: ModelLabTestHarnessOverlay,
     *,
     workspace_root: Path | None = None,
-) -> AsyncIterator[HandlerLabWorkCaseRun]:
+) -> AsyncIterator[LabWorkCaseSender]:
     """Open the overlay's bus and a started caller on it; close both on exit."""
     async with open_lab_run_bus(
         bus=overlay.bus_kind,
@@ -68,6 +68,6 @@ async def open_lab_work_runner(
         caller = LabWorkCaller(bus, wait_slack_seconds=overlay.receipt_slack_seconds)
         await caller.start()
         try:
-            yield HandlerLabWorkCaseRun(caller)
+            yield LabWorkCaseSender(caller)
         finally:
             await caller.stop()

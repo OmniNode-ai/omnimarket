@@ -21,7 +21,7 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.models.lab_test_harness import ModelLabTestHarnessOverlay
 from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
-    HandlerLabWorkCaseRun,
+    LabWorkCaseSender,
 )
 from omnimarket.nodes.node_lab_work_unit_effect import (
     HandlerHostCapacityAdvertiseEffect,
@@ -142,7 +142,7 @@ class LiveLabBus:
     @contextlib.asynccontextmanager
     async def opener(
         self, overlay: ModelLabTestHarnessOverlay
-    ) -> AsyncIterator[HandlerLabWorkCaseRun]:
+    ) -> AsyncIterator[LabWorkCaseSender]:
         bus = EventBusInmemory(environment="local", group="lab-test-harness-test")
         await bus.start()
         host: LabWorkHost | None = None
@@ -163,7 +163,7 @@ class LiveLabBus:
         caller = LabWorkCaller(bus, wait_slack_seconds=overlay.receipt_slack_seconds)
         await caller.start()
         try:
-            yield HandlerLabWorkCaseRun(caller)
+            yield LabWorkCaseSender(caller)
         finally:
             await caller.stop()
             if host is not None:
