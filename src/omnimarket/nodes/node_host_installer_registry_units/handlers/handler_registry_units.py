@@ -170,6 +170,21 @@ class HandlerRegistryUnits:
                     f"{name} names {left.group(0)}, which this request does not set"
                 )
             filled[str(name)] = request.path_overrides.get(str(name), text)
+        for name, field in (unit.get("environment_inputs") or {}).items():
+            if not NAME.fullmatch(str(name)):
+                raise ValueError(f"invalid unit environment name {name!r}")
+            supplied = (
+                str(getattr(request, str(field))).strip()
+                or os.environ.get(str(name), "").strip()
+            )
+            if supplied:
+                filled[str(name)] = supplied
+        if request.mode == "install":
+            for name in unit.get("required_environment_inputs") or []:
+                if not filled.get(str(name)):
+                    raise ValueError(
+                        f"{name} is unset: supply the unit's declared request input or export it before installing"
+                    )
         return filled
 
     def render(
@@ -210,6 +225,10 @@ class HandlerRegistryUnits:
             "<true/>" if unit["schedule"]["run_at_load"] else "<false/>",
         )
         text = text.replace("__ENVIRONMENT__", environment)
+        text = text.replace(
+            "__TICK_SYNC_ARGS__",
+            "<string>--no-sync</string>" if unit.get("tick_no_sync") else "",
+        )
         plistlib.loads(
             text.encode("utf-8")
         )  # a plist that does not parse is never written
