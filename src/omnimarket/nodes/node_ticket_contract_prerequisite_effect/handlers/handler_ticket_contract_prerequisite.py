@@ -130,10 +130,41 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(path for path in listing.split("\0") if path))
 
 
+def _contract_text(sha: str, ticket: str) -> str | None:
+    path = f"contracts/{ticket}.yaml"
+    exists = subprocess.run(
+        ["git", "cat-file", "-e", f"{sha}:{path}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    # Unreadable objects never count as a present contract.
+    return None if exists.returncode else _git("show", f"{sha}:{path}")
+
+
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
+    try:
+        base = _resolve_base(base)
+    except (OSError, subprocess.SubprocessError):
+        # An explicit title and the outgoing blobs can establish a contract
+        # refusal without a comparison base. An unreadable base cannot grant
+        # the release-cut exemption. Otherwise preserve the base read error:
+        # history and runtime-proof checks must never assume an empty diff.
+        if title is not None:
+            contract_failures = tuple(
+                failure
+                for ticket in cited_tickets(title)
+                if (
+                    failure := contract_prerequisite(
+                        ticket, _contract_text(sha, ticket)
+                    )
+                )
+            )
+            if contract_failures:
+                return contract_failures
+        raise
     if title is None:
         subjects = _git(
             "log",
@@ -155,15 +186,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     release_cut: bool | None = None
     changed: tuple[str, ...] | None = None
     for ticket in tickets:
-        path = f"contracts/{ticket}.yaml"
-        exists = subprocess.run(
-            ["git", "cat-file", "-e", f"{sha}:{path}"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # Unreadable objects never count as a present contract.
-        text = None if exists.returncode else _git("show", f"{sha}:{path}")
+        text = _contract_text(sha, ticket)
         failure = contract_prerequisite(ticket, text)
         if failure and text is None:
             if release_cut is None:

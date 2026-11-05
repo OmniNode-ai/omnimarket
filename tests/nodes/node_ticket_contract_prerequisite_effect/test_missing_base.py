@@ -145,10 +145,14 @@ def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> No
     assert _git(worker, "rev-parse", "origin/dev")
 
 
-def test_fetch_failure_refuses_instead_of_assuming_empty_diff(tmp_path: Path) -> None:
+@pytest.mark.parametrize("explicit_title", [False, True])
+def test_fetch_failure_refuses_instead_of_assuming_empty_diff(
+    tmp_path: Path, explicit_title: bool
+) -> None:
     worker = _worker(tmp_path)
     _git(worker, "remote", "set-url", "origin", str(tmp_path / "unreachable"))
-    result = _hook(worker)
+    title = ("--title", f"fix({TICKET}): change") if explicit_title else ()
+    result = _hook(worker, *title)
     assert result.returncode == 1
     assert "ticket contract preflight could not read" in result.stderr
     assert "'fetch'" in result.stderr
@@ -185,9 +189,13 @@ def test_explicit_remote_base_uses_its_exact_tracking_ref(
     )
 
 
-def test_missing_local_base_is_not_guessed_into_a_remote(tmp_path: Path) -> None:
+@pytest.mark.parametrize("explicit_title", [False, True])
+def test_missing_local_base_is_not_guessed_into_a_remote(
+    tmp_path: Path, explicit_title: bool
+) -> None:
     worker = _worker(tmp_path)
-    result = _hook(worker, "--base", "dev")
+    title = ("--title", f"fix({TICKET}): change") if explicit_title else ()
+    result = _hook(worker, "--base", "dev", *title)
     assert result.returncode == 1
     assert "'fetch'" not in result.stderr
     assert _git(worker, "branch", "-r") == "origin/worker"
