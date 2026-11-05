@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_memory_pilot_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Memory product pilot, stage one (Cognee), behind a backend protocol. A request
+  either ingests documents into a dataset or asks a question of one. The pilot
+  runs only when the overlay's frozen hash matches the pilot's FROZEN.sha256 and
+  every file it lists; otherwise the request fails pilot_not_frozen. Only lab
+  model endpoints on the overlay's allowed hosts are used; telemetry must be
+  disabled in the overlay. The default backend is in-memory lexical retrieval;
+  lexical_lab adds a lab chat model (the stage-one baseline) and cognee runs the
+  self-hosted package. Each request publishes a started event and exactly one
+  completed or failed event; a failure carries a typed error code, a failure row
+  is recorded, and the reading is NOT_WORKING. A lab model that is down fails
+  fast as lab_model_unavailable; no answer is invented.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  side_effects: [writes_pilot_store, calls_lab_models]
+  runtime_profiles: [effects]
+  timeout_ms: 3600000
+runtime_profiles: [effects]
+input_model: omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot.ModelMemoryPilotRequest
+output_model: omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot.ModelMemoryPilotResult
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: memory_pilot_requested
+      topic: onex.cmd.omnimarket.memory-pilot-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot.ModelMemoryPilotRequest
+      handler:
+        name: HandlerMemoryPilot
+        module: omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.memory-pilot-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.memory-pilot-completed.v1
+    failure: onex.evt.omnimarket.memory-pilot-failed.v1
+terminal_event: onex.evt.omnimarket.memory-pilot-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.memory-pilot-requested.v1]
+  publish_topics:
+    - onex.evt.omnimarket.memory-pilot-started.v1
+    - onex.evt.omnimarket.memory-pilot-completed.v1
+    - onex.evt.omnimarket.memory-pilot-failed.v1
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
