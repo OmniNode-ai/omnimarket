@@ -281,6 +281,7 @@ def test_standing_rules_effect_unbound_is_unread() -> None:
     )
     assert result.verdict == "UNREAD"
     assert "dependency bindings" in result.fix
+    assert result.terminal_failure_cause == "unread"
 
 
 @pytest.mark.parametrize("entry", ["agent", "workflow", "runner", "lab"])
@@ -335,8 +336,9 @@ def test_standing_rules_file_audit_is_atomic(tmp_path: Path) -> None:
         ),
     ],
 )
+@pytest.mark.parametrize("unread", [False, True])
 async def test_standing_rules_installed_runtime_bus_roundtrip(
-    tmp_path: Path, node: str, completed: str, failed: str
+    tmp_path: Path, node: str, completed: str, failed: str, unread: bool
 ) -> None:
     """Discover and wire the packaged handler; the event carries its typed verdict."""
     import asyncio
@@ -364,13 +366,17 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(
     answers: asyncio.Queue[dict[str, object]] = asyncio.Queue()
     await bus.start()
     effect_fixture(tmp_path, "inmemory")
+    if unread:
+        bind_overlay(None)
 
     async def collect(message: object) -> None:
         await answers.put(json.loads(message.value))
 
     try:
         await bus.subscribe(
-            completed, group_id="standing-rules-results", on_message=collect
+            failed if unread else completed,
+            group_id="standing-rules-results",
+            on_message=collect,
         )
         engine = MessageDispatchEngine()
         report = await wire_from_manifest(
@@ -385,8 +391,11 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(
         engine.freeze()
         for entry in ("agent", "workflow", "runner", "lab"):
             correlation_id = uuid4()
+            state = snapshot(dispatch_kind=entry)
+            if unread:
+                state = state.model_copy(update={"rulings": ()})
             request = (
-                snapshot(dispatch_kind=entry)
+                state
                 if node == "node_dispatch_standing_rules_compute"
                 else ModelStandingRulesRequest(
                     dispatch=snapshot(dispatch_kind=entry).dispatch, now=NOW
@@ -400,9 +409,14 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(
             await bus.publish(command, None, envelope.model_dump_json().encode(), None)
             answer = await asyncio.wait_for(answers.get(), timeout=5)
             assert answer["correlation_id"] == str(correlation_id)
-            assert answer["payload"] == HandlerDispatchStandingRules().handle(
-                snapshot(dispatch_kind=entry)
-            ).model_dump(mode="json")
+            payload = answer["payload"]
+            if unread:
+                assert payload["verdict"] == "UNREAD"
+                assert payload["terminal_failure_cause"] == "unread"
+            else:
+                assert payload == HandlerDispatchStandingRules().handle(
+                    state
+                ).model_dump(mode="json")
     finally:
         bind_overlay(None)
         await bus.close()

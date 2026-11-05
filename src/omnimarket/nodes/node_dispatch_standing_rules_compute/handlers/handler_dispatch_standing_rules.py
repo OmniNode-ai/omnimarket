@@ -29,6 +29,7 @@ class HandlerDispatchStandingRules:
                     "rule": rule.id,
                     "fix": fix,
                     "lapsed": tuple(lapsed),
+                    "terminal_failure_cause": "unread" if verdict == "UNREAD" else None,
                 }
             )
 

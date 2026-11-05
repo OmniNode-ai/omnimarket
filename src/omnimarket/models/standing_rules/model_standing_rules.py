@@ -96,6 +96,7 @@ class ModelStandingRulesResult(_Model):
     fix: str = ""
     route: ModelStandingRulesRoute | None = None
     lapsed: tuple[str, ...] = ()
+    terminal_failure_cause: Literal["unread"] | None = None
 
 
 class ModelStandingRulesRequest(_Model):

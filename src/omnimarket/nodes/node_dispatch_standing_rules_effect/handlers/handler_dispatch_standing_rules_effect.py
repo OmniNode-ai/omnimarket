@@ -120,4 +120,5 @@ class HandlerDispatchStandingRulesEffect:
                 request_id=request.dispatch.request_id,
                 verdict="UNREAD",
                 fix=f"UNREAD standing_rules ({type(exc).__name__}); FIX: {read}",
+                terminal_failure_cause="unread",
             )
