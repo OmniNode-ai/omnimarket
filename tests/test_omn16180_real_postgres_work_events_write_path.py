@@ -661,7 +661,11 @@ def test_handle_writes_a_redacted_session_started_row_to_real_jsonb() -> None:
     asyncio.run(_prepare())
 
     adapter = _RealPostgresUpsertAdapter(dsn)
-    payload: dict[str, object] = dict(_REDACTED_SESSION_STARTED)
+    payload: dict[str, object] = {
+        **_REDACTED_SESSION_STARTED,
+        "principal": "fixture-capture-principal",
+        "causation_id": "a062bb92-5894-4efa-b6ec-3415ceac61ac",
+    }
     payload["_db"] = adapter
     payload["_topic"] = TOPIC_SESSION_STARTED
     payload["_event_type"] = "session-started"
@@ -689,7 +693,14 @@ def test_handle_writes_a_redacted_session_started_row_to_real_jsonb() -> None:
         assert stored is not None, "handle() reported success but wrote no row"
         assert stored["event_kind"] == "session.started"
         assert stored["summary"] == "session started in a redacted directory (9 chars)"
-        assert json.loads(stored["payload"])["working_directory"] == {
+        stored_payload = json.loads(stored["payload"])
+        assert stored_payload["principal"] == "fixture-capture-principal"
+        assert stored_payload["causation_id"] == "a062bb92-5894-4efa-b6ec-3415ceac61ac"
+        assert (
+            stored_payload["correlation_id"]
+            == _REDACTED_SESSION_STARTED["correlation_id"]
+        )
+        assert stored_payload["working_directory"] == {
             "type": "str",
             "length": 9,
         }
