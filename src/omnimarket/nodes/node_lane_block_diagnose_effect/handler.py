@@ -4,12 +4,22 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
+import os
+import tempfile
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+from omnibase_core.cli.cli_run_node import publish_and_poll
+
+from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
+from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.models.model_lane_routing import (
     ModelFillBacklogCommand,
     ModelLaneBlockFacts,
@@ -17,8 +27,10 @@ from omnimarket.models.model_lane_routing import (
     ModelLaneRoutingRequest,
     ModelLaneRoutingResult,
     ModelOwnerDiagnosis,
+    ModelOwnerMap,
     ModelReadEvidence,
     ModelRoutingClaim,
+    ModelRoutingState,
     ModelTriageCommand,
 )
 from omnimarket.nodes.node_lane_block_diagnose_compute import (
@@ -26,7 +38,14 @@ from omnimarket.nodes.node_lane_block_diagnose_compute import (
 )
 from omnimarket.protocols.protocol_lane_routing import ProtocolLaneRoutingGateway
 
-from .adapters.adapter_routing_store import AdapterLaneRoutingStore
+from .models.model_routing_bindings import (
+    ModelRoutingAdmissionReply,
+    ModelRoutingBindings,
+    ModelRoutingBindReply,
+    ModelRoutingEndpoint,
+    ModelRoutingLaneReply,
+    ModelRoutingTicketReply,
+)
 
 
 def claim_key(class_key: str, owner: str, head: str) -> str:
@@ -48,12 +67,164 @@ def read_bounded(path: Path, roots: tuple[str, ...], limit: int) -> str:
     return content.decode("utf-8")
 
 
+class HandlerLaneRoutingStore:
+    """Persist claims for the effect handler; owned by the routing effect."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    @contextmanager
+    def locked(self) -> Iterator[None]:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.with_suffix(self.path.suffix + ".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def read(self) -> ModelRoutingState:
+        if not self.path.exists():
+            return ModelRoutingState()
+        return ModelRoutingState.model_validate_json(
+            self.path.read_text(encoding="utf-8")
+        )
+
+    def write(self, state: ModelRoutingState) -> None:
+        """Called with locked() held. Pending claims survive a lost downstream reply."""
+        descriptor, name = tempfile.mkstemp(
+            prefix=self.path.name + ".", dir=self.path.parent
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(state.model_dump_json())
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, self.path)
+            directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
+
+
+class HandlerLaneRoutingGateway:
+    """Implement the routing ports used by the contract-bound effect handler."""
+
+    def __init__(
+        self,
+        bindings: ModelRoutingBindings,
+        *,
+        publish: Callable[..., dict[str, Any] | None] = publish_and_poll,
+        broker: Callable[[str], ModelNodeBroker] = resolve_dialable_broker,
+    ) -> None:
+        self.bindings = bindings
+        self.publish = publish
+        self.broker = broker
+
+    def _call(
+        self, endpoint: ModelRoutingEndpoint, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        binding = self.broker(endpoint.node)
+        response = self.publish(
+            node_id=endpoint.node,
+            payload=payload,
+            timeout=self.bindings.timeout_seconds,
+            bootstrap_servers=binding.bootstrap_servers or "",
+            command_topic=endpoint.command_topic,
+            response_topic=endpoint.terminal_topic,
+            client_security=binding.client_security(),
+        )
+        if response is None:
+            raise TimeoutError(
+                f"{endpoint.node}: no terminal reply; pending claim retained"
+            )
+        result = response.get("payload", response)
+        if not isinstance(result, dict):
+            raise ValueError(f"{endpoint.node}: terminal payload is not an object")
+        return result
+
+    def diagnose(self, facts: ModelLaneBlockFacts) -> ModelOwnerDiagnosis:
+        return ModelOwnerDiagnosis.model_validate(
+            self._call(self.bindings.diagnosis, facts.model_dump(mode="json"))
+        )
+
+    def admit(
+        self, command: ModelFillBacklogCommand, owners: ModelOwnerMap
+    ) -> str | None:
+        reply = ModelRoutingAdmissionReply.model_validate(
+            self._call(
+                self.bindings.admission,
+                {
+                    "command": command.model_dump(mode="json"),
+                    "owner_map": owners.model_dump(mode="json"),
+                },
+            )
+        )
+        return None if reply.allowed else (reply.reason or "core admission refused")
+
+    def fill(self, command: ModelFillBacklogCommand) -> str:
+        return ModelRoutingLaneReply.model_validate(
+            self._call(self.bindings.fill, command.model_dump(mode="json"))
+        ).lane
+
+    def bind(self, key: str, lane: str, items: tuple[str, ...]) -> None:
+        reply = ModelRoutingBindReply.model_validate(
+            self._call(
+                self.bindings.bind,
+                {
+                    "key": key,
+                    "lane": lane,
+                    "item_ids": list(items),
+                },
+            )
+        )
+        if not set(items).issubset(reply.item_ids):
+            raise ValueError("item binding terminal omitted an originating item")
+
+    def exception(self, key: str, evidence: str, reason: str) -> None:
+        result = self._call(
+            self.bindings.exception,
+            {
+                "state_dir": self.bindings.exception_state_dir,
+                "now": datetime.now(UTC).isoformat(),
+                "idempotency_key": key,
+                "row": {
+                    "cls": "lane-owner-unresolved",
+                    "key": key,
+                    "source": "node_lane_block_diagnose_effect",
+                    "evidence": evidence,
+                    "tried": reason,
+                    "proposed_fix": "Supply the original finding and named owner evidence",
+                    "decision": False,
+                },
+            },
+        )
+        if result.get("status") not in ("appended", "repeat"):
+            raise ValueError(
+                "exception queue did not acknowledge the routing exception"
+            )
+
+    def ticket_repository(self, ticket: str) -> str | None:
+        return ModelRoutingTicketReply.model_validate(
+            self._call(self.bindings.ticket, {"ticket": ticket})
+        ).repository
+
+    def triage(self, request: ModelTriageCommand) -> str:
+        return ModelRoutingLaneReply.model_validate(
+            self._call(self.bindings.triage, request.model_dump(mode="json"))
+        ).lane
+
+
 class HandlerLaneBlockDiagnoseEffect:
     def __init__(
         self,
         overlay: ModelLaneRoutingOverlay | None = None,
         gateway: ProtocolLaneRoutingGateway | None = None,
-        store: AdapterLaneRoutingStore | None = None,
+        store: HandlerLaneRoutingStore | None = None,
     ) -> None:
         self._provided_overlay = overlay
         self._provided_gateway = gateway
@@ -85,11 +256,11 @@ class HandlerLaneBlockDiagnoseEffect:
         return self._dependencies[1]
 
     @cached_property
-    def store(self) -> AdapterLaneRoutingStore:
+    def store(self) -> HandlerLaneRoutingStore:
         return (
             self._provided_store
             if self._provided_store is not None
-            else AdapterLaneRoutingStore(Path(self.overlay.state_path))
+            else HandlerLaneRoutingStore(Path(self.overlay.state_path))
         )
 
     def _exception(
