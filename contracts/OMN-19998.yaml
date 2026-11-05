@@ -103,6 +103,11 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-ruling-failed-recovery
+    statement: A failed mechanism lane remains unfinished work for the existing ruling recovery dispatcher and its retry limit.
+    acceptance:
+      - id: AC11
+        statement: 'A recorded failed mechanism run is offered once after the two-hour grace period with its run and error retained; a second unfinished attempt becomes one durable orchestrator exception; later claims and finished terminals suppress recovery -- falsifier: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0'
   - id: req-omn19998-finished-clone-retention
     statement: Final remote run retention archives reports before removing a clean clone whose commits are reachable on remote refs.
     acceptance:
@@ -113,11 +118,21 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-phoenix-timer-env
+    statement: The installed floor timer persists the Phoenix URL the floor reads its trace count and newest span age from.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-ledger-detail-reference-retention
+    statement: Ledger detail retention preserves old units cited by declared local readers and refuses removal when readers cannot be checked or change during archival.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-inbox-spool-release-hold
     statement: The per-host inbox spool delivers a RELEASE or HOLD row addressed to a lane, as it does a MSG row, so a running lane receives a row appended after its launch.
     acceptance:
-      - id: AC11
-        statement: 'AC11: the spool reads the MSG, RELEASE and HOLD topics its contract declares with one stable group per host; a RELEASE published while the lane runs is spooled to that lane with row_type RELEASE and raises its unread marker; a RELEASE or HOLD with no to= is unaddressed and a MSG with no to= stays malformed -- falsifier: uv run --frozen pytest tests/nodes/node_agent_inbox_spool/test_agent_inbox_spool_release_hold.py -q --no-cov'
+      - id: AC13
+        statement: 'AC13: the spool reads the MSG, RELEASE and HOLD topics its contract declares with one stable group per host; a RELEASE published while the lane runs is spooled to that lane with row_type RELEASE and raises its unread marker; a RELEASE or HOLD with no to= is unaddressed and a MSG with no to= stays malformed -- falsifier: uv run --frozen pytest tests/nodes/node_agent_inbox_spool/test_agent_inbox_spool_release_hold.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -133,6 +148,38 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-ledger-detail-reference-retention
+    description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-ledger-detail-retention-wiring
+    description: Hosted wiring smoke passes a dry-run request through NodeRetentionCleanup and its shipped ledger-detail policy with temporary reader files. It reports a cited detail kept and an uncited detail eligible, with no files removed or archived. No host cleanup is run.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
+        cwd: .
+  - id: dod-omn19998-ruling-failed-recovery
+    description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-ruling-failed-recovery-deploy
+    description: Hosted wiring smoke exercises the same HandlerLabFill entry used by the throughput tick, recovers the original repository from a brief, dispatches through a local runner and observes one sent-key receipt on repeated ticks. It uses a structural projection of the recorded ledger case and no external services; live runtime adoption remains unmeasured.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual
@@ -460,11 +507,19 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
+  - id: dod-omn19998-floor-phoenix-timer-env
+    description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-inbox-spool-release-hold
     description: The new spool test publishes a HOLD at launch and a RELEASE addressed to the lane while it runs, and reads both back from the lane's spool. It fails at the merge base because the spool reads only the MSG topic and refuses every row that is not a MSG. The rows are synthetic in the landing controller's RELEASE shape; no lane-side hook shim or live broker is exercised.
     source: manual
     binds_ac:
-      - AC11
+      - AC13
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_agent_inbox_spool/test_agent_inbox_spool_release_hold.py -q --no-cov
