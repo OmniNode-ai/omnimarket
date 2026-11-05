@@ -42,6 +42,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegat
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
     run_process as run_process,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
+    HandlerProcessHealthPayload,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
     ModelDelegationReportRequest,
 )
@@ -55,6 +58,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelPublishHistory,
     ModelPublishStep,
     ModelPublishStepResult,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadRequest,
 )
 
 NODE_NAME = "node_factory_floor_publish_effect"
@@ -253,7 +259,12 @@ class HandlerFactoryFloorPublish:
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
             for name in rt.names.theme_css
         ]
-        health = self._read_process_health(home / rt.process_health_relpath)
+        health_payload = HandlerProcessHealthPayload().handle(
+            ModelProcessHealthPayloadRequest(
+                source_path=str(home / rt.process_health_relpath)
+            )
+        )
+        health = health_payload.summary
         if not request.skip_refresh or request.refresh_delegation:
             reading = HandlerDelegationReport(self._run).handle(
                 ModelDelegationReportRequest(probe=True), environ=env
@@ -267,6 +278,7 @@ class HandlerFactoryFloorPublish:
                 "published_at": now.astimezone(UTC).isoformat(),
                 "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
                 "process_health": "published" if health is not None else "absent",
+                "process_health_reason": health_payload.reason,
                 "delegation": "published" if delegation is not None else "absent",
                 "lines_declared": self._declared_lines(rt, env),
             },
@@ -281,6 +293,8 @@ class HandlerFactoryFloorPublish:
             (rt.names.status, status),
         ]
         if health is not None:
+            if health_payload.detail is not None:
+                files.append((health_payload.detail_file, health_payload.detail))
             files.append((rt.names.process_health, health))
         if delegation is not None:
             files.append((rt.names.delegation, delegation))
@@ -477,23 +491,6 @@ class HandlerFactoryFloorPublish:
             raise PublishRefusedError(
                 f"the factory floor record {path} lacks generated_at or lines; refusing to publish it"
             )
-        return data
-
-    @staticmethod
-    def _read_process_health(path: Path) -> bytes | None:
-        """The process-health series, or ``None`` when absent or not a series (the page then says unread)."""
-        try:
-            data = path.read_bytes()
-            record = json.loads(data)
-        except (OSError, ValueError):
-            return None
-        if (
-            not isinstance(record, dict)
-            or not isinstance(record.get("generated_at"), str)
-            or not isinstance(record.get("days"), list)
-            or not isinstance(record.get("summary"), dict)
-        ):
-            return None
         return data
 
     @staticmethod

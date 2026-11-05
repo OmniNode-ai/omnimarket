@@ -118,6 +118,16 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the read-only node snapshot exposes selected account fields from v2 state, supports a reachable host command, and keeps failures unread without publishing diagnostics; dependency release-note links do not stop unrelated tasks, a ticket-linked red PR still stops its task, and a failed gate names its recorded cause and date -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov'
+  - id: req-omn19998-floor-publish-interval
+    statement: The existing floor publisher keeps large process series off the shared floor payload, retains lossless report detail, and renders a prepared timer environment with its declared projection host.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-phoenix-timer-env
+    statement: The installed floor timer persists the Phoenix URL the floor reads its trace count and newest span age from.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -148,6 +158,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly -k missing_remote_base_is_fetched
+        cwd: .
+  - id: dod-omn19998-floor-publish-interval
+    description: Scoped regression over the measured large process-health series, report-reader boundary, missing timer environment, and independent report publication. Five cases failed before the change. This does not assert the original landing-controller criteria or a live installed timer tick.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-publish-wiring
+    description: Hosted wiring smoke renders the timer from its installer contract and passes that rendered environment through the projection report handler. Live installation and next-tick observation remain required on the publishing host.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly -k timer_persists
         cwd: .
   - id: dod-omn19998-publish-recovery
     description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
@@ -474,4 +500,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-phoenix-timer-env
+    description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
