@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-unreadable-local-base
+    statement: An unreadable local comparison base preserves the missing-contract refusal without granting a release-cut exemption or guessing a remote branch.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: a changelog-only commit with an unreadable local base returns the missing-contract refusal; configured remote bases still resolve through the CLI and fetch errors, missing local refs and missing runtime proof remain refusals -- falsifier: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -143,6 +148,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-unreadable-local-base
+    description: The existing release-cut regression reproduces the unreadable local base and asserts the exact missing-contract refusal, including source and pin-only negative controls.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-unreadable-local-base-deploy
+    description: Hosted smoke runs the release-cut regression and the shipped node CLI against real local repositories, covering missing local and remote bases, fetched tracking refs, unchanged outgoing commits and refusal controls. No credentials or host installation are required.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-ruling-failed-recovery
     description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
     source: manual

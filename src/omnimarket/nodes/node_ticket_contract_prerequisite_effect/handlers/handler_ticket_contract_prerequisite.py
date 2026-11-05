@@ -33,12 +33,14 @@ def _git(*args: str) -> str:
 
 
 def _resolve_base(base: str) -> str:
-    """Pin the base, fetching only an absent configured remote-tracking branch.
+    """Resolve the base, fetching only an absent configured remote-tracking branch.
 
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Fetch errors propagate to the failed typed verdict.
+    into remote branches. An absent local base stays unreadable so a missing
+    contract keeps its refusal rather than gaining a release-cut exemption.
+    Fetch errors propagate to the failed typed verdict.
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -47,7 +49,7 @@ def _resolve_base(base: str) -> str:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            raise
+            return base
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(
@@ -176,6 +178,9 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
+            # A present contract still needs a readable comparison base. Only
+            # the missing-contract refusal above is independent of that read.
+            base = _git("rev-parse", "--verify", f"{base}^{{commit}}")
             changed = _changed_paths(sha, base)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
