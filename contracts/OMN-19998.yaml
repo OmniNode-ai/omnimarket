@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-brief-frozen-destinations
+    statement: The pre-placement brief node refuses code and test write destinations in repositories frozen by its deployment overlay.
+    acceptance:
+      - id: AC132
+        statement: 'AC132: recorded source and test creations refuse with the move destination while data-only controls pass; edits, reads, removals, migration, fix-only repositories and unread policy are distinguished; the destination operation returns the same result through the declared runtime bus -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +514,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-brief-frozen-destinations
+    description: Replays the recorded source and test destination gap with data-only controls through the existing dispatch node. Original controller rules, locks and host timer criteria remain unproven by this slice.
+    source: manual
+    binds_ac: [AC132]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-brief-frozen-destinations-deploy
+    description: Hosted wiring smoke discovers the existing node contract and dispatches the typed destination request through its canonical in-memory bus route. It observes both frozen-code refusal and data-only admission. Live brief-check and runner caller migration and deployment overlay installation remain separate rollout work.
+    source: manual
+    binds_ac: [AC132]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly -k canonical_runtime_bus
         cwd: .
