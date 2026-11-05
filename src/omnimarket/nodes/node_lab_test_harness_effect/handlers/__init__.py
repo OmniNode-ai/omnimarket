@@ -13,7 +13,7 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.protocol_lab_test_ha
     ProtocolLabTestRunnerOpener,
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.runner_lab_work import (
-    LabWorkCallerRunner,
+    HandlerLabWorkCaseRun,
     open_lab_work_runner,
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.store_lab_test_harness import (
@@ -24,9 +24,9 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.store_lab_test_harne
 
 __all__: list[str] = [
     "HandlerLabTestHarnessEffect",
+    "HandlerLabWorkCaseRun",
     "InMemoryLabTestHarnessStore",
     "JsonFileLabTestHarnessStore",
-    "LabWorkCallerRunner",
     "ProtocolLabTestHarnessStore",
     "ProtocolLabTestRunner",
     "ProtocolLabTestRunnerOpener",
