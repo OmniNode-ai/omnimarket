@@ -30,6 +30,11 @@ class ModelRegistryUnitsRequest(BaseModel):
     project_path: str = ""
     expected_revision: str = ""
     path_overrides: dict[str, str] = Field(default_factory=dict)
+    # Persisted in units that declare this input; launchd does not inherit the
+    # installing shell's environment. An empty value defers to that shell.
+    runtime_ssh_host: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.@-]*)?$"
+    )
 
 
 class ModelRegistryUnitsResult(BaseModel):
