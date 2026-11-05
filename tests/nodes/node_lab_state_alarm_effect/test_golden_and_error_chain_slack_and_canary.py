@@ -207,9 +207,12 @@ def test_golden_and_error_the_web_api_checks_the_response_and_never_prints_a_sec
             if payload["text"].startswith("REFUSE"):
                 return 200, b'{"ok": false, "error": "invalid_auth"}'
             return 200, b'{"ok": true, "ts": "1730000000.000100"}'
-        if payload["message_ts"] == "1730000000.000100":
-            return 200, b'{"ok": true, "permalink": "https://x"}'
-        return 200, b'{"ok": false, "error": "message_not_found"}'
+        assert url.endswith("conversations.history")
+        if payload["latest"] == "1730000000.000100":
+            return 200, b'{"ok": true, "messages": [{"ts": "1730000000.000100"}]}'
+        if payload["latest"] == "1730000000.000777":
+            return 200, b'{"ok": false, "error": "missing_scope"}'
+        return 200, b'{"ok": true, "messages": []}'
 
     api = SlackWebApi(
         credentials=OperatorEnvCredentials(
@@ -223,6 +226,8 @@ def test_golden_and_error_the_web_api_checks_the_response_and_never_prints_a_sec
     assert api.post("hello") == "1730000000.000100"
     assert api.exists("1730000000.000100") is True
     assert api.exists("1730000000.999999") is False
+    # A channel that cannot be read is not "not delivered"; it is unknown, and the window decides.
+    assert api.exists("1730000000.000777") is None
     with pytest.raises(AlarmSendRefusedError) as refused:
         api.post("REFUSE this")
     assert "invalid_auth" in str(refused.value)

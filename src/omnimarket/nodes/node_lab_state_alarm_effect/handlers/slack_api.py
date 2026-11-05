@@ -7,8 +7,8 @@ secrets hold the bot token and the channel id is overlay data; the values are re
 and appear in no model, log line, exception text or receipt.
 
 A post is a ``chat.postMessage`` whose response is checked: HTTP 200 with ``"ok": false`` is a refusal, never a
-delivery. The read-back is ``chat.getPermalink`` on the returned timestamp, which answers only when the message is in
-the channel and needs no scope beyond the one the sender holds, so "delivered" means the channel has the message.
+delivery. The read-back is ``conversations.history`` on the returned timestamp (that one message, inclusive), so
+"delivered" means the channel itself returns the message.
 
 Credential resolution mirrors the shared alert-channel library's alarm class: the process environment first, then the
 one named key read (never sourced) from the operator's bootstrap env file whose path an environment variable names.
@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Protocol
 
 from omnimarket.config.service_endpoints import (
-    SLACK_CHAT_GET_PERMALINK_URL,
     SLACK_CHAT_POST_MESSAGE_URL,
+    SLACK_CONVERSATIONS_HISTORY_URL,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
     AlarmSendRefusedError,
@@ -100,7 +100,7 @@ def urllib_http(
 
 
 class SlackWebApi:
-    """``chat.postMessage`` and ``chat.getPermalink`` with the response read, over an injected HTTP function."""
+    """``chat.postMessage`` and ``conversations.history`` with the response read, over an injected HTTP function."""
 
     def __init__(
         self,
@@ -132,7 +132,7 @@ class SlackWebApi:
         return token, channel
 
     def _call(
-        self, url: str, payload: Mapping[str, str], token: str
+        self, url: str, payload: Mapping[str, object], token: str
     ) -> dict[str, object]:
         headers = {
             "Authorization": f"Bearer {token}",
@@ -176,15 +176,24 @@ class SlackWebApi:
         try:
             token, channel = self._resolve()
             body = self._call(
-                SLACK_CHAT_GET_PERMALINK_URL,
-                {"channel": channel, "message_ts": message_ts},
+                SLACK_CONVERSATIONS_HISTORY_URL,
+                {
+                    "channel": channel,
+                    "oldest": message_ts,
+                    "latest": message_ts,
+                    "inclusive": True,
+                    "limit": 1,
+                },
                 token,
             )
         except AlarmSendRefusedError:
             return None
-        if body.get("ok") is True:
-            return True
-        return False if body.get("error") == "message_not_found" else None
+        if body.get("ok") is not True:
+            return None
+        messages = body.get("messages")
+        if not isinstance(messages, list):
+            return None
+        return any(isinstance(m, dict) and m.get("ts") == message_ts for m in messages)
 
 
 def build_slack_api(

@@ -51,7 +51,7 @@ descriptor:
   idempotent: false
   timeout_ms: 30000
   side_effects:
-    - posts one message per raised alarm to the Slack alert channel and asks Slack whether the channel has it (chat.postMessage, chat.getPermalink)
+    - posts one message per raised alarm to the Slack alert channel and asks Slack whether the channel has it (chat.postMessage, conversations.history)
     - pushes the canary status to the repository branch the overlay names (git push, one replaced commit)
 
 input_model:

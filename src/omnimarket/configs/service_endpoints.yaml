@@ -28,9 +28,8 @@ slack:
   # interval, or the channel gets muted and the alerting is worth nothing.
   auth_test_url: "https://slack.com/api/auth.test"
   conversations_info_url: "https://slack.com/api/conversations.info"
-  # Read-only delivery read-back (OMN-19998): answers only when the message exists in the channel, and needs no scope
-  # beyond the one the sender already holds.
-  chat_get_permalink_url: "https://slack.com/api/chat.getPermalink"
+  # Read-only delivery read-back (OMN-19998): asks the channel for the one message by its timestamp.
+  conversations_history_url: "https://slack.com/api/conversations.history"
 
 dharma:
   # Dharma Evaluation Runs API origin (OMN-20088). The trajectory evaluation
