@@ -7,6 +7,10 @@ from .model_remote_lane_effect import (
     ModelRemoteLaneRefRequest,
     ModelRemoteLaneRefResult,
 )
+from .model_remote_lane_publish import (
+    ModelRemoteLanePublishRequest,
+    ModelRemoteLanePublishResult,
+)
 from .model_remote_lane_retention import (
     ModelRemoteLaneRetentionRequest,
     ModelRemoteLaneRetentionResult,
@@ -14,6 +18,8 @@ from .model_remote_lane_retention import (
 
 __all__ = [
     "SHA_RE",
+    "ModelRemoteLanePublishRequest",
+    "ModelRemoteLanePublishResult",
     "ModelRemoteLaneRefRequest",
     "ModelRemoteLaneRefResult",
     "ModelRemoteLaneRetentionRequest",

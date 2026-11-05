@@ -42,6 +42,13 @@ def parse_moment(text: str) -> datetime | None:
     return None
 
 
+def recorded_hold(entry: Mapping[str, Any], hold_stamp: str) -> bool:
+    """Keep deliberate/refusal holds, excluding the old rate-only inference."""
+    return entry.get("limited_source") == hold_stamp and not re.fullmatch(
+        r"[\w-]+ limit rejected", str(entry.get("limited_why") or "")
+    )
+
+
 def hash10(value: str) -> str:
     """The first 10 hex of the sha256 of ``value``: how an org id or an email is named in the registry."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:HASH_LEN]
@@ -227,9 +234,7 @@ def _merge_legacy(
         if isinstance(remaining, (int, float)) and remaining <= 0:
             out["exhausted_at"] = str(newest.get("read_at") or stamp_of(now))
     holds = [
-        e
-        for e in entries
-        if e.get("limited_source") == hold_stamp and e.get("limited_until")
+        e for e in entries if recorded_hold(e, hold_stamp) and e.get("limited_until")
     ]
     if holds:
         hold = max(holds, key=lambda e: str(e["limited_until"]))
