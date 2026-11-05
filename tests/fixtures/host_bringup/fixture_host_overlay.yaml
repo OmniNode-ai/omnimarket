@@ -1,0 +1,18 @@
+# Host overlay fixture for node_host_bringup_overlay_compute.
+# Per-host facts keyed by the symbolic check subject of the declared target rows.
+# Stage A is fully satisfied, B is satisfied up to the installed OS, and the
+# person-confirmed host key carries two readings that disagree.
+host: host_a
+facts:
+  - {subject: card, state: ok, evidence: "card row validates"}
+  - {subject: ssh_config, state: ok, evidence: "alias resolves"}
+  - {subject: declared, state: ok, evidence: "no drift against derived rows"}
+  - {subject: adopted, state: ok, evidence: "clone at merged revision"}
+  - {subject: reservations, state: ok, evidence: "reservation row confirmed"}
+  - {subject: ilo_access, state: ok, evidence: "management read answered"}
+  - {subject: firmware_settings, state: ok, evidence: "settings match the row"}
+  - {subject: volumes, state: ok, evidence: "layout matches the row"}
+  - {subject: os_installed, state: ok, evidence: "port answers"}
+  - {subject: host_key, state: ok, evidence: "key confirmed"}
+  - {subject: host_key, state: not_ok, evidence: "key changed on reinstall"}
+  - {subject: key_login, state: not_ok, evidence: "password prompt"}
