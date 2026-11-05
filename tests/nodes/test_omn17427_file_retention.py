@@ -133,6 +133,140 @@ def test_contract_history_items_archive_and_never_plain_delete() -> None:
         assert by_name[name].action == "archive", name
 
 
+def test_ledger_details_declare_reference_readers() -> None:
+    entry = next(
+        e for e in load_file_policy(_CONTRACT).entries if e.name == "ledger-detail"
+    )
+    assert entry.reference_paths
+    assert any("ROLLING_WORK_LEDGER.md" in path for path in entry.reference_paths)
+    assert any("projects" in path for path in entry.reference_paths)
+    assert any("sessions" in path for path in entry.reference_paths)
+
+
+def test_cited_old_detail_is_kept_but_uncited_detail_is_eligible(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ledger-detail"
+    cited = _file(root / "row-old.txt", b"own call output", days=30)
+    other = _file(root / "row-other.txt", b"other call output", days=30)
+    reader = tmp_path / "session.jsonl"
+    reader.write_text(f'{{"output": "detail={cited}"}}\n')
+    entry = _entry(root, reference_paths=[str(reader)])
+    res = _only(_run([entry], dry_run=True))
+    assert res.status == "dry_run"
+    assert res.units_referenced == 1
+    assert res.files_eligible == 1
+    assert res.bytes_eligible == other.stat().st_size
+    assert cited.exists()
+    assert other.exists()
+
+
+def test_reference_scan_streams_across_chunks_and_accepts_escaped_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "ledger-detail"
+    cited = _file(root / "row-boundary.txt", b"own output", days=30)
+    reader = tmp_path / "session.jsonl"
+    reader.write_text("x" * 30 + f" detail={cited}".replace("/", r"\/") + "\n")
+    entry = _entry(root, reference_paths=[str(reader)])
+    from omnimarket.nodes.node_retention_cleanup.handlers import (
+        handler_retention_references as references_mod,
+    )
+
+    monkeypatch.setattr(references_mod, "_CHUNK", 32)
+    res = _only(_run([entry], dry_run=True))
+    assert res.status == "dry_run"
+    assert res.units_referenced == 1
+    assert res.files_eligible == 0
+
+
+def test_unreadable_reference_source_keeps_all_details(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "ledger-detail"
+    cited = _file(root / "row-old.txt", b"own output", days=30)
+    reader = tmp_path / "session.jsonl"
+    reader.write_text(f"detail={cited}\n")
+    original = Path.open
+
+    def unreadable(path: Path, *args: object, **kwargs: object) -> object:
+        if path == reader:
+            raise PermissionError("reader unavailable")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", unreadable)
+    res = _only(_run([_entry(root, reference_paths=[str(reader)])], dry_run=True))
+    assert res.status == "error"
+    assert "reader unavailable" in res.error
+    assert res.files_eligible == 0
+    assert res.files_removed == 0
+    assert cited.exists()
+
+
+def test_reader_change_after_archival_prevents_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "ledger-detail"
+    cited = _file(root / "row-old.txt", b"own output", days=30)
+    reader = tmp_path / "session.jsonl"
+    reader.write_text("no references yet\n")
+    archive = tmp_path / "archive"
+    archive.mkdir()
+
+    def sync_marker(*_: object) -> bool:
+        reader.write_text(f"detail={cited}\n")
+        return True
+
+    monkeypatch.setattr(mod, "_has_marker", sync_marker)
+    entry = _entry(root, action="archive", reference_paths=[str(reader)])
+    res = _only(_run([entry], archive_root=archive, synced_marker="test.synced"))
+    assert res.status == "error"
+    assert "reference readers changed" in res.error
+    assert res.files_removed == 0
+    assert cited.read_bytes() == b"own output"
+
+
+def test_declared_reader_globs_run_through_the_cleanup_node(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    root = tmp_path / ".claude_scratch/ledger-detail"
+    cited = _file(root / "row-live.txt", b"call output", days=30)
+    other = _file(root / "row-uncited.txt", b"other output", days=30)
+    reader = tmp_path / ".claude/projects/active/session.jsonl"
+    reader.parent.mkdir(parents=True)
+    reader.write_text(f"detail={cited}\n")
+    result = NodeRetentionCleanup().handle(
+        RetentionCleanupRequest(
+            db_url="",
+            include_files=True,
+            file_only=("ledger-detail",),
+            file_now=NOW,
+            dry_run=True,
+        )
+    )
+    assert result.files is not None
+    res = _only(result.files)
+    assert res.status == "dry_run"
+    assert res.units_referenced == 1
+    assert res.files_eligible == 1
+    assert res.bytes_eligible == other.stat().st_size
+    assert res.files_removed == res.files_archived == 0
+    assert cited.exists()
+    assert other.exists()
+
+
+def test_longer_filename_does_not_protect_an_uncited_detail(tmp_path: Path) -> None:
+    root = tmp_path / "ledger-detail"
+    _file(root / "row-old.txt", b"own output", days=30)
+    reader = tmp_path / "session.jsonl"
+    reader.write_text("detail=/another/ledger-detail/prefix-row-old.txt\n")
+    res = _only(_run([_entry(root, reference_paths=[str(reader)])], dry_run=True))
+    assert res.units_referenced == 0
+    assert res.files_eligible == 1
+
+
 def test_window_under_the_floor_is_refused() -> None:
     with pytest.raises(ValueError, match="keep_days"):
         _entry(Path("/nonexistent"), keep_days=3)

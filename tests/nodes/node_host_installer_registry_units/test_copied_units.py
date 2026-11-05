@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import subprocess
@@ -11,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
@@ -213,9 +215,45 @@ async def test_copied_alarm_routes_through_canonical_runtime_bus(
         backend_overrides={"event_bus": "inmemory"},
         timeout=30,
     )
+    bus = EventBusInmemory(environment="local", group="copied-alarm-test")
+    monkeypatch.setattr(runtime, "_create_event_bus", lambda: bus)
     await runtime.run_async()
+    completed = await bus.get_event_history(
+        topic="onex.evt.omnimarket.host-registry-unit-completed.v1"
+    )
+    assert len(completed) == 1
+    payload = json.loads(completed[0].value)
+    assert payload["status"] == "success"
+    assert payload["unit"] == "floor-alarm"
     result = runtime.handler_result
     assert result is not None
     assert result.exit_code == 0, result.stderr
     assert len(result.bundle_sha256) == 64
+    assert payload["bundle_sha256"] == result.bundle_sha256
     assert any(call[-1] == "--help" for call in calls)
+
+
+def test_installer_contract_has_no_live_imperative_violations() -> None:
+    from omnibase_core.models.nodes.imperative_contract_guard.model_imperative_contract_guard_input import (
+        ModelImperativeContractGuardInput,
+    )
+    from omnibase_core.nodes.node_imperative_contract_guard_check_effect.handler_imperative_contract_guard import (
+        HandlerImperativeContractGuard,
+    )
+    from omnibase_core.nodes.node_imperative_contract_guard_check_effect.runtime_imperative_contract_guard_check import (
+        _read_node,
+    )
+
+    root = Path(__file__).resolve().parents[3]
+    report = HandlerImperativeContractGuard().handle(
+        ModelImperativeContractGuardInput(
+            repo="omnimarket",
+            nodes=[
+                _read_node(
+                    root,
+                    root / "src/omnimarket/nodes/node_host_installer_registry_units",
+                )
+            ],
+        )
+    )
+    assert report.new_violation_count == 0, report.model_dump_json(indent=2)
