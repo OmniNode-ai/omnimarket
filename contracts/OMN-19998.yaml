@@ -128,6 +128,13 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-runner-version-watch
+    statement: The existing runner node observes each declared pool and raises version and liveness findings before a listener becomes unusable.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the scheduled read-only node reads each expected listener, online state, image lock pin and stable release history; offline, off-pin and contract-bounded release lag alarm, and stale or unreadable inputs remain errors -- falsifier: uv run --frozen pytest tests/nodes/node_runner_orchestrator/test_version_watch.py -q --no-cov -n 0'
+      - id: AC14
+        statement: 'AC14: golden and error chains run on the in-memory bus through production dispatch; runtime ticks reach the existing exception queue with typed decision rows, release-source failure preserves an offline finding, and failed publication cannot emit a completed terminal -- falsifier: uv run --frozen pytest tests/nodes/node_runner_orchestrator/test_version_watch.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +516,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-runner-version-watch
+    description: Scoped runner monitoring proof over the recorded old listener version and recovery version. Golden and error cases fail before the handler is added. Every configured listener is measured without invoking the deploy adapter; no original controller criterion is asserted.
+    source: manual
+    binds_ac: [AC13, AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_runner_orchestrator/test_version_watch.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-runner-version-watch-runtime
+    description: Hosted wiring smoke boots the real runner and exception queue contracts on the in-memory bus, drives a platform runtime tick, executes listener argv and the HTTP release adapter against a local endpoint, and reads persisted operator attention rows for both HTTP success and failure. Live rollout and the exact upstream cutoff cause are not asserted.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_runner_orchestrator/test_version_watch.py -q --no-cov -n 0 -k runtime_tick_http_listener_and_attention_chain
         cwd: .

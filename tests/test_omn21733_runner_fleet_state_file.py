@@ -88,7 +88,7 @@ def test_an_older_or_equal_observation_never_replaces_a_newer_file(
     assert save_observation(_observation(), path) == SUPERSEDED
     assert save_observation(newer, path) == SUPERSEDED
     assert json.loads(path.read_text(encoding="utf-8"))["runners"] == [
-        {"host": "host-050", "status": "offline"}
+        {"runner_name": "runner-0", "host": "host-050", "status": "offline"}
     ]
     assert (
         save_observation(_observation(observed_at=_T0 + timedelta(minutes=6)), path)

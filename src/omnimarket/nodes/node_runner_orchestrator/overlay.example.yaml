@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Install as <root>/runner_version_watch/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+# Synthetic paths and identities: the deployment supplies its complete pool inventory.
+# The pin path names docker/runners/runner-image.lock.json in its infrastructure checkout.
+pin_path: /srv/infrastructure/docker/runners/runner-image.lock.json
+exception_state_dir: /srv/state/exception-queue
+releases_url: https://api.github.com/repos/actions/runner/releases?per_page=100
+request_timeout_seconds: 10
+pools:
+  - pool_id: example-ci
+    # Existing projection_runner_fleet output; snapshot must carry runner_name.
+    fleet_state_path: /srv/state/runner-fleet/runner-fleet.json
+    listeners:
+      - runner_name: example-ci-a
+        version_command: [docker, exec, example-ci-a, ./bin/Runner.Listener, --version]
+# Add every expected listener in every pool. Absent runners alarm; empty pools refuse.
+# The observer never deploys, updates, restarts or re-registers a runner.

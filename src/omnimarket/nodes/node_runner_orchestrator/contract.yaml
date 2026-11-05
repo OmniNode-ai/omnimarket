@@ -24,7 +24,12 @@ description: >
               health table and host-level disk/build-cache metrics.
 
   Bounded handler slice supports dry-run previews and adapter-gated live
-  deploy, update, and status operations.
+  deploy, update, and status operations. Read-only watch routes observe configured
+  pools and send version or liveness findings to the existing operator exception queue.
+
+entrypoint:
+  name: NodeRunnerOrchestrator
+  module: omnimarket.nodes.node_runner_orchestrator.node
 
 handler:
   module: omnimarket.nodes.node_runner_orchestrator.handlers.handler_runner_orchestrator
@@ -35,9 +40,26 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: runner
+      topic: onex.cmd.omnimarket.runner-action-start.v1
       handler:
         name: HandlerRunnerOrchestrator
         module: omnimarket.nodes.node_runner_orchestrator.handlers.handler_runner_orchestrator
+
+    - operation: runner_version_watch
+      topic: onex.cmd.omnimarket.runner-version-watch-requested.v1
+      handler:
+        name: HandlerRunnerVersionWatch
+        module: omnimarket.nodes.node_runner_orchestrator.handlers.handler_runner_version_watch
+      event_model: omnimarket.nodes.node_runner_orchestrator.models.model_runner_version_watch.ModelRunnerWatchRequest
+      output_model: omnimarket.nodes.node_runner_orchestrator.models.model_runner_version_watch.ModelRunnerWatchResult
+    - operation: runner_version_watch.scheduled_tick
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerRunnerVersionWatchTick
+        module: omnimarket.nodes.node_runner_orchestrator.handlers.handler_runner_version_watch_tick
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      output_model: omnimarket.nodes.node_runner_orchestrator.models.model_runner_version_watch.ModelRunnerWatchResult
 
 descriptor:
   node_archetype: orchestrator
@@ -52,8 +74,13 @@ terminal_event: onex.evt.omnimarket.runner-action-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.runner-action-start.v1
+    - onex.cmd.omnimarket.runner-version-watch-requested.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.runner-action-completed.v1
+    - onex.evt.omnimarket.runner-version-watch-completed.v1
+    - onex.evt.omnimarket.runner-version-watch-alarm.v1
+    - onex.cmd.omnimarket.exception-emit-requested.v1
   dlq_topics:
     - onex.dlq.omnimarket.runner-action.v1
 
@@ -72,3 +99,45 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.runner-action-completed.v1
+  - onex.evt.omnimarket.runner-version-watch-completed.v1
+  - onex.evt.omnimarket.runner-version-watch-alarm.v1
+
+# Read-only health observations share the runner node; no deploy adapter is invoked.
+runner_version_watch:
+  policy:
+    max_releases_behind: 1
+    observation_max_age_seconds: 600
+    max_future_skew_seconds: 30
+  schedule:
+    workflow: runner-version-watch
+    interval_seconds: 180
+    offset_seconds: 0
+  topics:
+    command: onex.cmd.omnimarket.runner-version-watch-requested.v1
+    completed: onex.evt.omnimarket.runner-version-watch-completed.v1
+    alarm: onex.evt.omnimarket.runner-version-watch-alarm.v1
+    attention: onex.cmd.omnimarket.exception-emit-requested.v1
+  overlay_id: runner_version_watch
+  source_contract:
+    pin: docker/runners/runner-image.lock.json in the deployment's infrastructure checkout
+    online_state: runner-fleet observation saved by projection_runner_fleet, including runner_name
+    listener_version: read-only argv invoking each expected runner's Runner.Listener --version
+    releases: actions/runner releases API, stable releases only, newest first
+    release_history: must contain more stable releases than max_releases_behind
+  delivery: >
+    An alarm event carries every finding. Each finding also enters the existing
+    exception queue as a decision row, coalesced by code, pool and runner.
+    Every publication is awaited; failures propagate for retry.
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: runner_version_watch.scheduled_tick
+externally_produced_topics:
+  - topic: onex.intent.platform.runtime-tick.v1
+    producer: platform runtime tick scheduler
+  - topic: onex.cmd.omnimarket.runner-version-watch-requested.v1
+    producer: operator or runtime requesting a read-only runner health observation
+# The exception queue is the existing operator attention sink; this node sends no chat messages.
+published_events:
+  - event_type: ModelRunnerWatchResult
+    topic: onex.evt.omnimarket.runner-version-watch-completed.v1
+    description: A watch evaluation, routed separately from runner action results.

@@ -55,7 +55,11 @@ def save_observation(observation: ModelRunnerFleetObservationWire, path: Path) -
         "observed_at": observation.observed_at.isoformat(),
         "observing_host": observation.host,
         "runners": [
-            {"host": runner.host, "status": runner.status.value}
+            {
+                "runner_name": runner.runner_name,
+                "host": runner.host,
+                "status": runner.status.value,
+            }
             for runner in observation.runners
         ],
     }

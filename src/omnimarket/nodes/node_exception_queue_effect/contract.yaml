@@ -42,8 +42,10 @@ handler_routing:
     - operation: emit
       topic: onex.cmd.omnimarket.exception-emit-requested.v1
       handler:
-        name: HandlerExceptionEmit
-        module: omnimarket.nodes.node_exception_queue_effect.handler
+        name: HandlerExceptionEmitWire
+        module: omnimarket.nodes.node_exception_queue_effect.handlers.handler_exception_emit_wire
+      event_model: omnimarket.models.model_exception_emit_wire.ModelExceptionEmitWire
+      output_model: omnimarket.models.model_exception_emit_wire.ModelExceptionEmitWireResult
     - operation: list
       topic: onex.cmd.omnimarket.exception-queue-requested.v1
       handler:

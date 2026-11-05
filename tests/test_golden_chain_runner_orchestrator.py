@@ -81,7 +81,9 @@ def test_contract_event_bus_topics_declared() -> None:
 def test_contract_handler_routing_strategy() -> None:
     raw = _load_contract()
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
-    handlers = raw["handler_routing"]["handlers"]
+    handlers = [
+        h for h in raw["handler_routing"]["handlers"] if h["operation"] == "runner"
+    ]
     assert len(handlers) == 1
     assert handlers[0]["handler"]["name"] == _HANDLER_CLASS
     assert handlers[0]["handler"]["module"] == _HANDLER_MODULE

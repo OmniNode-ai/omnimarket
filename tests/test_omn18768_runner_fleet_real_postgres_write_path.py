@@ -130,7 +130,9 @@ async def _upsert(
 
 
 @pytest.mark.integration
-async def test_real_postgres_accepts_the_writers_own_bound_types() -> None:
+async def test_real_postgres_accepts_the_writers_own_bound_types(
+    tmp_path: Path,
+) -> None:
     """The live row lands with correctly-typed columns, via the real statement."""
     conn = await _connect_or_skip()
     try:
@@ -151,6 +153,41 @@ async def test_real_postgres_accepts_the_writers_own_bound_types() -> None:
         assert json.loads(row["labels"])[0] == "self-hosted"
         # The database assigns the page cursor; nothing in Python supplies it.
         assert isinstance(row["projection_cursor"], int)
+        # The watch joins the same identities and states that reached Postgres.
+        # Preserve those identities in the existing side-file as well as SQL.
+        from omnimarket.nodes.node_projection_runner_fleet.handlers.fleet_state_file import (
+            save_observation,
+        )
+        from omnimarket.nodes.node_projection_runner_fleet.models import (
+            ModelRunnerFleetObservationWire,
+        )
+        from omnimarket.nodes.node_runner_orchestrator.models.model_runner_version_watch import (
+            ModelWatchFleetState,
+        )
+
+        observation = ModelRunnerFleetObservationWire.model_validate(
+            {
+                "schema_version": "1.0.0",
+                "event_type": "runner-fleet-observation",
+                "host": "test-observer",
+                "observed_at": _T0,
+                "runners": [
+                    {
+                        "runner_name": row["runner_name"],
+                        "label_class": row["label_class"],
+                        "host": row["host"],
+                        "status": row["status"],
+                        "observed_at": row["observed_at"],
+                    }
+                ],
+            }
+        )
+        snapshot = tmp_path / "runner-fleet.json"
+        save_observation(observation, snapshot)
+        saved = ModelWatchFleetState.model_validate_json(snapshot.read_bytes())
+        assert saved.runners[0].runner_name == row["runner_name"]
+        assert saved.runners[0].status == row["status"]
+        assert saved.observed_at == row["observed_at"]
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()

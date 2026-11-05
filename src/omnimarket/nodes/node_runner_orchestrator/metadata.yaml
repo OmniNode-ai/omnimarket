@@ -1,6 +1,6 @@
 name: node_runner_orchestrator
 version: "1.0.0"
-description: "Orchestrates GitHub Actions self-hosted runner deploy/update/status"
+description: "Orchestrates GitHub Actions self-hosted runner deploy/update/status and scheduled read-only version watch"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -11,9 +11,12 @@ capabilities:
   requires_network: true
 dependencies:
   - "omnibase_core>=0.40.0"
+  - "omnibase_infra>=0.38.0"
+  - "pydantic>=2.11"
+  - "PyYAML>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "runner", "github-actions", "ci", "deploy"]
+tags: ["orchestrator", "runner", "github-actions", "ci", "deploy", "version-watch", "fleet-health"]
 pack: "build"
 display_name: "Runner Orchestrator"
 node_role: "orchestrator"
