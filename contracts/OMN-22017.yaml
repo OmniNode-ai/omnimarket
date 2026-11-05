@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-22017
+title: Lab-fill stay-out sets come from the registry with their ruling ids
+summary: The omnimarket part of AC3 reads idle_slot_fill.lab_fill_stay_out, passes its typed entries to the ticket rule, and applies the same registry to readbacks and experiment designs. Missing configuration refuses by name. The plugin sites and family P gate are outside this repository's slice.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api]
+requirements:
+  - id: req-omn22017-registry-stay-out
+    statement: The lab-fill rule and idle-slot generator read stay-out declarations from the registry rather than spelling dashboard ticket, criterion or repository sets in product code.
+    acceptance:
+      - id: AC3
+        statement: 'AC3 (omnimarket slice): changing a registry stay-out set changes the dropped candidates without changing code, each ticket-rule stay-out drop names its ruling, and missing or invalid ruling configuration refuses. The real generator applies registry exclusions to ticket, readback and experiment candidates.'
+evidence_requirements:
+  - kind: tests
+    description: Registry variants, ruling validation, overlay refusal and the real overlay-to-generator path.
+    command: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_stay_out_registry.py tests/nodes/node_idle_slot_fill_effect/test_stay_out_runtime_readback.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22017-ac3-registry
+    description: AC3 two filesystem-backed registries produce different ticket-rule drops naming their rulings; missing ruling ids refuse and the configured ruling round-trips through YAML.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_stay_out_registry.py -q --no-cov
+        cwd: .
+  - id: dod-omn22017-ac3-generator
+    description: AC3 the real generator and in-process rule read two overlay roots, changing ticket and readback exclusions and excluding matching experiment repositories; an omitted stay-out key refuses by name. No rule or filesystem dependency is mocked.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_stay_out_runtime_readback.py -q --no-cov
+        cwd: .
+  - id: dod-omn22017-deploy-source-readback
+    description: 'Pre-merge deploy check: the source-control node reads the immutable checked-out revision and asserts the overlay accessor and its registry key, absent at the merge base. This hosted check needs no lab network and does not claim a service rollout.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'onex scm file-read OmniNode-ai/omnimarket --clone . --path src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py --ref "$(git rev-parse HEAD)" | python -c '\''import json, sys; r = json.load(sys.stdin); assert r["outcome"] == "completed"; s = r["result"]["content"]; assert "def stay_out(" in s and "lab_fill_stay_out" in s'\'''
+        cwd: .
+  - id: dod-omn22017-integration-proof
+    description: Re-run the registry and generator checks on a lab host with real overlay files and the package's real in-process rule. Hosted CI cannot place lab work, so this unbound check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22017 -- env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l26764-lab uv run --frozen pytest tests/unit/handlers/test_rules_lab_fill_tickets_stay_out_registry.py tests/nodes/node_idle_slot_fill_effect/test_stay_out_runtime_readback.py -q --no-cov
+        cwd: .
