@@ -133,16 +133,13 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-standing-rules-compute
-    statement: Standing dispatch rules evaluate caller-read facts and expire from a named fact or an absolute time.
+  - id: req-omn19998-automatic-fix-install
+    statement: A model-free lab tick installs the superset of released and exact-head proven fixes through deployment-bound existing installers.
     acceptance:
-      - id: AC8
-        statement: 'AC8: cloud-first refuses explicit lab placement for an eligible Claude request, routes auto in cloud-first order, excludes Codex and lab resources, refuses unread credit, resolves source rulings and allows lapsed rules -- falsifier: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov'
-  - id: req-omn19998-standing-rules-effect
-    statement: Overlay-bound effects read facts and append one lapse audit row per rule through a discoverable node contract.
-    acceptance:
-      - id: AC9
-        statement: 'AC9: in-memory and file-backed dependency overlays return the same answers, lapse appends are idempotent under repeated and concurrent calls, and installed runtime wiring returns the typed answer for each dispatch kind -- falsifier: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov'
+      - id: AC10
+        statement: 'AC10: a proven branch reaches both behind hosts before merge; installed fixes survive, a conflicting incoming fix is named and dropped alone, repeated ticks avoid reinstalling, and stale sources, moved heads, locks and failed readbacks refuse safely -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly'
+      - id: AC11
+        statement: 'AC11: installed discovery wires the declared command to a correlated terminal, and the host module runs the existing atomic tree installer, reads its recorded revision and observes the installed tree -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -158,6 +155,16 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-standing-rules-compute
+    statement: Standing dispatch rules evaluate caller-read facts and expire from a named fact or an absolute time.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: cloud-first refuses explicit lab placement for an eligible Claude request, routes auto in cloud-first order, excludes Codex and lab resources, refuses unread credit, resolves source rulings and allows lapsed rules -- falsifier: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov'
+  - id: req-omn19998-standing-rules-effect
+    statement: Overlay-bound effects read facts and append one lapse audit row per rule through a discoverable node contract.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: in-memory and file-backed dependency overlays return the same answers, lapse appends are idempotent under repeated and concurrent calls, and installed runtime wiring returns the typed answer for each dispatch kind -- falsifier: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -586,21 +593,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn19998-standing-rules
-    description: Controlled-clock rule and effect fixtures exercise required provenance, expiry, unread credit, route order and audit deduplication. These checks cover the omnimarket nodes and do not claim the external runner admission edit, core validator gate or recorded-dispatch replay.
+  - id: dod-omn19998-automatic-fix-install
+    description: Recorded branch-install regression and negative controls exercise released refs, proven heads, conflict isolation, containment, retry observation and independent host outcomes. This scope does not assert the original controller timer criteria.
     source: manual
-    binds_ac: [AC8, AC9]
+    binds_ac: [AC10]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
+        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn19998-standing-rules-deploy
-    description: Installed package discovery and the runtime dispatch engine carry each entry kind over an in-memory bus and publish the correlated typed verdict. This hosted wiring smoke asserts no live runner installation or Redpanda observation.
+  - id: dod-omn19998-automatic-fix-install-deploy
+    description: Hosted wiring smoke discovers the installed entry point and reads a correlated terminal over the real in-memory bus. The host module fixture uses the existing atomic tree installer on a disposable installation and verifies its revision and bytes. Persistent host service installation and deployment-specific routes remain separate live evidence.
     source: manual
-    binds_ac: [AC9]
+    binds_ac: [AC11]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov -k installed_runtime
+        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
@@ -624,4 +631,20 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-standing-rules
+    description: Controlled-clock rule and effect fixtures exercise required provenance, expiry, unread credit, route order and audit deduplication. These checks cover the omnimarket nodes and do not claim the external runner admission edit, core validator gate or recorded-dispatch replay.
+    source: manual
+    binds_ac: [AC8, AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-standing-rules-deploy
+    description: Installed package discovery and the runtime dispatch engine carry each entry kind over an in-memory bus and publish the correlated typed verdict. This hosted wiring smoke asserts no live runner installation or Redpanda observation.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov -k installed_runtime
         cwd: .
