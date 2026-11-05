@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# test-literal-ok: fixtures are the foreign local paths the scrub must reject
 """Regression shapes from the recorded scrub and publish failures."""
 
 import json
@@ -54,10 +53,10 @@ def test_copied_claim_path_token(token: str, encoding: str) -> None:
             worktrees=Path("/srv/workspace/omni_worktrees"),
         )
     ]
-    out = portabilize(source, roots, Path("/home/current"))
+    out = portabilize(source, roots, Path("/srv/current"))
     assert "worktree=omni_worktrees/OMN-19998/reports" in out
     assert "workspace/" not in out
-    assert portabilize(out, roots, Path("/home/current")) == out
+    assert portabilize(out, roots, Path("/srv/current")) == out
 
 
 HEAD = "e9e107baae" + "0" * 30
@@ -91,7 +90,7 @@ def request_at(tmp_path: Path) -> ModelWorktreeReportPublishRequest:
                 worktrees=Path("/srv/workspace/omni_worktrees"),
             ),
         ),
-        home=Path("/home/current"),
+        home=Path("/srv/current"),
         executed=True,
         summary="classified and verified",
         lab="Lab: host=fixture lane=daily-prune command=classifier observed=reports verified",
@@ -254,7 +253,7 @@ def test_unknown_paths_urls_and_sibling_roots_still_reach_the_scrub() -> None:
         )
     ]
     text = "/Users/other/private/file /srv/workspace-old/file https://example/workspace/file workspace-old/file /Users/other/workspace/private/file /etc/workspace/private/file"
-    assert portabilize(text, roots, Path("/home/current")) == text
+    assert portabilize(text, roots, Path("/srv/current")) == text
 
 
 def test_multiple_and_nested_roots_stay_distinct_and_idempotent() -> None:
