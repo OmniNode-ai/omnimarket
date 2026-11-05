@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-lab-host-toolchain
+    statement: The existing toolchain nodes declare build and script tools and reject masked missing-command results.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
   - id: req-omn19998-delegation-ledger-reason
     statement: Delegation terminal ledger rows retain the reported reason and its provenance without copying task content.
     acceptance:
@@ -184,6 +189,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
+        cwd: .
+  - id: dod-omn19998-lab-host-toolchain
+    description: Replay the recorded missing-tool and masked-zero shapes through the existing parity and provisioning handlers, including a real POSIX shell, overlay installer re-probes and working-version controls. Does not assert the unrelated controller timer criteria or live host installation.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-lab-host-toolchain-deploy
+    description: Hosted wiring smoke discovers and auto-wires the provisioning contract, then invokes its declared handler and typed request with the real host adapter. The recorded POSIX shell probe exits zero after pnpm is not found; it must name an operator step, while a working probe stays unchanged. The masked-failure case fails at the merge base. Live host installation remains separate evidence.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_golden_chain_lane_toolchain_provision_effect.py -q --no-cov -n 0
         cwd: .
   - id: dod-omn19998-ruling-failed-recovery
     description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
