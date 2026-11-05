@@ -21,12 +21,40 @@ from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.models.scm import ModelScmDispatchReceipt
 
 from ..models.model_lane_github_budget import ModelLaneGithubCall, ModelLaneGithubResult
+
+if TYPE_CHECKING:
+    from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+
+
+class HandlerLaneGithubDispatchBus:
+    """Mark a possible gateway call at the existing bus's publish boundary."""
+
+    def __init__(self, bus: ProtocolLabRunBus, receipt: Path) -> None:
+        from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
+            require_ungrouped,
+        )
+
+        self._bus = require_ungrouped(bus)
+        self._receipt = receipt
+        self.subscribe = self._bus.subscribe
+        self.subscribe_ungrouped = self._bus.subscribe_ungrouped
+
+    def __getattr__(self, name: str) -> Any:
+        # Keep diagnostics on the opened producer's config and binding resolver.
+        return getattr(self._bus, name)
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
+        HandlerLaneGithubBudget.mark_dispatch(self._receipt)
+        return await self._bus.publish(topic, key, value, headers)
+
 
 POLICY = json.loads(
     (Path(__file__).resolve().parents[1] / "contract.yaml").read_text()

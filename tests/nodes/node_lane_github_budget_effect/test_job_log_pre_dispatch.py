@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -212,3 +213,25 @@ def test_log_defaults_use_the_existing_cap_and_honor_explicit_windows(
     if size is not None:
         assert args[args.index(option) + 1] == size
     assert spent(lane) == 1
+
+
+def test_budget_boundary_imports_without_the_cli_core_dependency():
+    root = Path(__file__).resolve().parents[3]
+    program = (
+        "import importlib.abc, sys\n"
+        f"sys.path.insert(0, {str(root / 'src')!r})\n"
+        "class MissingCore(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, fullname, path=None, target=None):\n"
+        "        if fullname == 'omnibase_core' or fullname.startswith('omnibase_core.'):\n"
+        "            raise ModuleNotFoundError(\"No module named 'omnibase_core'\")\n"
+        "sys.meta_path.insert(0, MissingCore())\n"
+        "from omnimarket.nodes.node_lane_github_budget_effect import NodeLaneGithubBudgetEffect\n"
+        "assert callable(NodeLaneGithubBudgetEffect().handle)\n"
+        "assert 'omnibase_core' not in sys.modules\n"
+        "print('budget boundary imported without omnibase_core')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout == "budget boundary imported without omnibase_core\n"

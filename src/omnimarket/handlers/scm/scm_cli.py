@@ -118,7 +118,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteClaim,
     ModelRepoWriteRequest,
 )
-from omnimarket.nodes.node_lane_github_budget_effect import mark_gateway_dispatch
+from omnimarket.nodes.node_lane_github_budget_effect import track_gateway_dispatch
 
 EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
@@ -182,12 +182,9 @@ def _call_bus(
     async def main() -> ModelScmTerminal:
         async with _open_bus({**bus_opts, "scm_node": spec.node}) as opened:
             return await ScmBusCaller(
-                opened,
-                before_publish=(
-                    (lambda: mark_gateway_dispatch(dispatch_receipt))
-                    if dispatch_receipt is not None
-                    else None
-                ),
+                track_gateway_dispatch(opened, dispatch_receipt)
+                if dispatch_receipt is not None
+                else opened,
             ).call(
                 node=spec.node,
                 request=request,

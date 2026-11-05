@@ -2051,3 +2051,19 @@ def test_gateway_boundary_failure_is_reported_as_failed(
     assert answer["outcome"] == "failed"
     assert answer["result"]["status"] == "failed"
     assert answer["bus"]["terminal_envelope_id"]
+
+
+def test_node_owned_dispatch_tracking_refuses_before_publish_when_receipt_cannot_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_lane_github_budget_effect import track_gateway_dispatch
+
+    bus = FakeBus()
+    marker = tmp_path / "missing-parent" / "dispatch.json"
+    tracked = track_gateway_dispatch(bus, marker)
+    _install(monkeypatch, tracked)
+    with pytest.raises(FileNotFoundError):
+        _run(["job-log", REPO, "--job-id", "77"])
+
+    assert bus.published == []
+    assert not marker.exists()

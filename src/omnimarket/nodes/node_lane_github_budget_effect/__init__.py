@@ -2,16 +2,23 @@
 # SPDX-License-Identifier: MIT
 """The lane guard delegates GitHub reads to the existing bus gateway via onex scm."""
 
+from __future__ import annotations
+
 import json
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .handlers.handler_lane_github_budget import (
     HandlerLaneGithubBudget,
+    HandlerLaneGithubDispatchBus,
     host_call_snapshot,
 )
 from .models.model_lane_github_budget import ModelLaneGithubCall, ModelLaneGithubResult
+
+if TYPE_CHECKING:
+    from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 
 
 class NodeLaneGithubBudgetEffect:
@@ -21,9 +28,9 @@ class NodeLaneGithubBudgetEffect:
         return HandlerLaneGithubBudget().handle(request)
 
 
-def mark_gateway_dispatch(path: Path) -> None:
-    """Public SCM integration: mark its reservation before the bus publish attempt."""
-    HandlerLaneGithubBudget.mark_dispatch(path)
+def track_gateway_dispatch(bus: ProtocolLabRunBus, path: Path) -> ProtocolLabRunBus:
+    """Keep receipt tracking in this node at the existing bus publish boundary."""
+    return HandlerLaneGithubDispatchBus(bus, path)
 
 
 def main() -> int:
