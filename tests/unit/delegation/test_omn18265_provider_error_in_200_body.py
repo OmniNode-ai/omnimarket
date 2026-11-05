@@ -605,6 +605,39 @@ def test_the_customer_route_is_retried_rather_than_terminalised() -> None:
     assert handler.workflows[cid].escalation_count == 0
 
 
+def test_a_customer_daily_cap_is_not_retried_before_reset() -> None:
+    import json
+    from datetime import timedelta
+    from pathlib import Path
+
+    body = json.loads(
+        (
+            Path(__file__).parents[2] / "fixtures/delegation/openrouter_daily_cap.json"
+        ).read_text()
+    )
+    reset = datetime.now(UTC) + timedelta(hours=12)
+    body["error"]["metadata"]["headers"]["X-RateLimit-Reset"] = str(
+        int(reset.timestamp() * 1000)
+    )
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_customer_route(cid))
+    response = _provider_unavailable(cid).model_copy(
+        update={
+            "error_message": (
+                f"provider HTTP 429 Too Many Requests for {OPENROUTER_URL}; "
+                f"response_body={json.dumps(body)}"
+            )
+        }
+    )
+    events = list(handler.handle_inference_response(response))
+    assert handler.workflows[cid].current_attempt_observation is not None
+    assert handler.workflows[cid].customer_route_retry_count == 0
+    assert not any(isinstance(e, ModelRoutingIntent) for e in events)
+    assert any(isinstance(e, ModelDelegationResult) for e in events)
+
+
 def test_a_provider_error_on_a_platform_route_still_escalates(
     monkeypatch: pytest.MonkeyPatch, frontier_unconfigured_bifrost: None
 ) -> None:
