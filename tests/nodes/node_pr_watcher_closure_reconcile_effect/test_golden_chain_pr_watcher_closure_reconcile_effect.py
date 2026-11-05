@@ -116,7 +116,9 @@ def test_bus_handlers_are_available_from_the_node_entrypoint() -> None:
     assert callable(closure_node.HandlerPrWatcherClosureObservation().handle)
 
 
-@pytest.mark.parametrize("source", ["command", "observation", "missing-snapshot"])
+@pytest.mark.parametrize(
+    "source", ["command", "observation", "missing-snapshot", "read-failed"]
+)
 async def test_bus_observation_reconciles_record_once_per_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
 ) -> None:
@@ -146,6 +148,8 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
         assert "nodes(ids: $ids)" in query
         assert token == "test-token"
         calls.append(variables["ids"])
+        if source == "read-failed":
+            raise OSError("reader unavailable")
         return {
             "nodes": [
                 {
@@ -167,8 +171,10 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
         else contract["input_subscriptions"][0]["topic"]
     )
     missing_snapshot = source == "missing-snapshot"
-    terminal = contract["runtime_dispatch"]["terminal_events"][
-        "failure" if missing_snapshot else "success"
+    read_failed = source == "read-failed"
+    terminal_events = contract["runtime_dispatch"]["terminal_events"]
+    terminal = terminal_events[
+        "failure" if missing_snapshot or read_failed else "success"
     ]
     if missing_snapshot:
         path.unlink()
@@ -186,7 +192,10 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
         arrived.set()
 
     try:
-        await bus.subscribe(terminal, on_message=collect, group_id="closure-proof")
+        for declared_terminal in terminal_events.values():
+            await bus.subscribe(
+                declared_terminal, on_message=collect, group_id="closure-proof"
+            )
         engine = MessageDispatchEngine()
         report = await wire_from_manifest(
             ModelAutoWiringManifest(contracts=tuple(manifest.contracts)),
@@ -207,10 +216,23 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
             payload=payload, correlation_id=correlation
         )
         wire = envelope.model_dump_json().encode()
-        for _ in range(1 if missing_snapshot else 2):
+        for _ in range(1 if missing_snapshot or read_failed else 2):
             arrived.clear()
             await bus.publish(str(topic), None, wire, None)
             await asyncio.wait_for(arrived.wait(), timeout=5)
+        if read_failed:
+            assert topics == [terminal]
+            payload = seen[0]["payload"]
+            assert payload["status"] == "read-failed"
+            assert payload["terminal_failure_cause"] == "read-failed"
+            assert payload["reconciliation"]["read_failed"] is True
+            assert len(calls) == 1
+            assert json.loads(path.read_text())["prs"][KEY]["facts"]["state"] == "OPEN"
+            receipt = json.loads(
+                (path.parent / "closure_dispatch_receipt.json").read_text()
+            )
+            assert receipt["terminal_failure_cause"] == "read-failed"
+            return
         if missing_snapshot:
             assert topics == [
                 "onex.evt.omnimarket.pr-watcher-closure-reconcile-failed.v1"
@@ -319,6 +341,7 @@ def test_unread_batch_is_visible_bounded_and_retried_on_the_next_snapshot(
     monkeypatch.setattr(github_api, "graphql", graphql)
     failed = HandlerPrWatcherClosureTick().handle(request)
     assert failed.status == "read-failed"
+    assert failed.terminal_failure_cause == "read-failed"
     assert failed.reconciliation is not None
     assert failed.reconciliation.read_failed
     assert failed.reconciliation.read_keys == ()
@@ -332,6 +355,7 @@ def test_unread_batch_is_visible_bounded_and_retried_on_the_next_snapshot(
     monkeypatch.setattr(f"{TICK_MODULE}.utc_now", lambda: later)
     recovered = HandlerPrWatcherClosureTick().handle(request)
     assert recovered.status == "reconciled"
+    assert recovered.terminal_failure_cause is None
     record = json.loads(path.read_text())["prs"][KEY]
     assert record["facts"]["state"] == "CLOSED"
     assert record["cls"] == "closed"

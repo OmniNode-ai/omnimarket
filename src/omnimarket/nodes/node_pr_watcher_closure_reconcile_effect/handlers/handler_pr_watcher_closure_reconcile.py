@@ -338,6 +338,7 @@ class HandlerPrWatcherClosureTick:
                 source_tick=stamp,
                 status=status,
                 reconciliation=result,
+                terminal_failure_cause="read-failed" if result.read_failed else None,
             )
             _write_json(receipt_path, terminal.model_dump(mode="json"))
             return terminal

@@ -103,6 +103,10 @@ class ModelPrWatcherClosureTickResult(BaseModel):
     source_tick: str
     status: Literal["reconciled", "already-reconciled", "stale-state", "read-failed"]
     reconciliation: ModelPrWatcherClosureReconcileResult | None = None
+    terminal_failure_cause: Literal["read-failed"] | None = Field(
+        default=None,
+        description="A failed batch routes the result to the declared failure terminal.",
+    )
 
 
 __all__ = [
