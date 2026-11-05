@@ -59,10 +59,8 @@ event_bus:
     - onex.evt.omnimarket.floor-node-started.v1
     - onex.evt.omnimarket.floor-node-succeeded.v1
     - onex.evt.omnimarket.floor-node-failed.v1
+  # The three emission topics are published by the nodes that emit (the 17a cycle's sink); this node folds them.
   publish_topics:
-    - onex.evt.omnimarket.floor-node-started.v1
-    - onex.evt.omnimarket.floor-node-succeeded.v1
-    - onex.evt.omnimarket.floor-node-failed.v1
     - onex.evt.omnimarket.floor-receipts-computed.v1
 
 externally_consumed_topics:

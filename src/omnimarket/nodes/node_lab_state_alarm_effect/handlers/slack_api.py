@@ -155,11 +155,13 @@ class SlackWebApi:
     def post(self, text: str) -> str:
         # Imported where used: the endpoint authority pulls in the settings package, which the overlay check and the
         # hosted canary (pydantic and yaml only) neither need nor install.
-        from omnimarket.config.service_endpoints import SLACK_CHAT_POST_MESSAGE_URL
+        from omnimarket.config.service_endpoints import service_endpoint_url
 
         token, channel = self._resolve()
         body = self._call(
-            SLACK_CHAT_POST_MESSAGE_URL, {"channel": channel, "text": text}, token
+            service_endpoint_url("slack.chat_post_message_url"),
+            {"channel": channel, "text": text},
+            token,
         )
         if body.get("ok") is not True:
             raise AlarmSendRefusedError(
@@ -173,14 +175,12 @@ class SlackWebApi:
         return stamp
 
     def exists(self, message_ts: str) -> bool | None:
-        from omnimarket.config.service_endpoints import (
-            SLACK_CONVERSATIONS_HISTORY_URL,
-        )
+        from omnimarket.config.service_endpoints import service_endpoint_url
 
         try:
             token, channel = self._resolve()
             body = self._call(
-                SLACK_CONVERSATIONS_HISTORY_URL,
+                service_endpoint_url("slack.conversations_history_url"),
                 {
                     "channel": channel,
                     "oldest": message_ts,

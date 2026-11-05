@@ -63,6 +63,10 @@ event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.floor-simple-written.v1
+    # The emission contract: every node of the cycle emits a start and then a success or a typed failure through the sink.
+    - onex.evt.omnimarket.floor-node-started.v1
+    - onex.evt.omnimarket.floor-node-succeeded.v1
+    - onex.evt.omnimarket.floor-node-failed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.floor-simple-written.v1

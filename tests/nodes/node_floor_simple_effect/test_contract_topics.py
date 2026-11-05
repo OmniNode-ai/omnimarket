@@ -26,6 +26,10 @@ def _bus() -> dict[str, list[str]]:
 def test_simple_effect_publishes_its_declared_topics() -> None:
     published = _bus()["publish_topics"]
     assert "onex.evt.omnimarket.floor-simple-written.v1" in published
+    # The emitting node publishes the emission topics the receipt node folds.
+    assert "onex.evt.omnimarket.floor-node-started.v1" in published
+    assert "onex.evt.omnimarket.floor-node-succeeded.v1" in published
+    assert "onex.evt.omnimarket.floor-node-failed.v1" in published
 
 
 def test_simple_effect_terminal_event_is_published() -> None:

@@ -81,11 +81,6 @@ SLACK_AUTH_TEST_URL: str = _require(_cfg, "slack", "auth_test_url")
 #: Slack Web API conversations.info endpoint — read-only channel liveness.
 SLACK_CONVERSATIONS_INFO_URL: str = _require(_cfg, "slack", "conversations_info_url")
 
-#: Slack Web API conversations.history endpoint -- read-only delivery read-back (OMN-19998).
-SLACK_CONVERSATIONS_HISTORY_URL: str = _require(
-    _cfg, "slack", "conversations_history_url"
-)
-
 #: Dharma Evaluation Runs API origin (OMN-20088).
 DHARMA_API_URL: str = _require(_cfg, "dharma", "api_url")
 
@@ -96,7 +91,6 @@ __all__ = [
     "LINEAR_GRAPHQL_URL",
     "SLACK_AUTH_TEST_URL",
     "SLACK_CHAT_POST_MESSAGE_URL",
-    "SLACK_CONVERSATIONS_HISTORY_URL",
     "SLACK_CONVERSATIONS_INFO_URL",
     "service_endpoint_url",
 ]

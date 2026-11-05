@@ -23,12 +23,16 @@ def _bus() -> dict[str, list[str]]:
     return bus
 
 
-def test_emission_publishes_its_declared_topics() -> None:
-    published = _bus()["publish_topics"]
-    assert "onex.evt.omnimarket.floor-node-started.v1" in published
-    assert "onex.evt.omnimarket.floor-node-succeeded.v1" in published
-    assert "onex.evt.omnimarket.floor-node-failed.v1" in published
-    assert "onex.evt.omnimarket.floor-receipts-computed.v1" in published
+def test_emission_subscribes_to_the_emission_topics_and_publishes_its_result() -> None:
+    bus = _bus()
+    for topic in (
+        "onex.evt.omnimarket.floor-node-started.v1",
+        "onex.evt.omnimarket.floor-node-succeeded.v1",
+        "onex.evt.omnimarket.floor-node-failed.v1",
+    ):
+        assert topic in bus["subscribe_topics"]
+        assert topic not in bus["publish_topics"]
+    assert "onex.evt.omnimarket.floor-receipts-computed.v1" in bus["publish_topics"]
 
 
 def test_emission_terminal_event_is_published() -> None:
