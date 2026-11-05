@@ -81,6 +81,10 @@ class HandlerRegistryUnits:
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
         try:
+            if unit.get("kind") == "copied_tree":
+                from .handler_copied_units import HandlerCopiedUnits
+
+                return HandlerCopiedUnits(self.run, unit).handle(request)
             return self.dispatch(request, unit)
         except (OSError, ValueError) as exc:
             return self.result(request, 1, error=f"{exc}\n")
