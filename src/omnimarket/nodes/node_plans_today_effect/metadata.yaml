@@ -13,7 +13,7 @@ entry_points:
     node_plans_today_effect: omnimarket.nodes.node_plans_today_effect
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: true
   requires_secrets: false
