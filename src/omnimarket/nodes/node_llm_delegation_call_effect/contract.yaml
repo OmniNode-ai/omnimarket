@@ -56,6 +56,11 @@ description: |
   model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
   output, exit_cause, exit_code). The credential is never a field of either model.
 
+  The shared HandlerProviderQuotaReset reads typed reset requests through the
+  existing quota classifier on failed calls. Both this effect and the local
+  dispatch port use it; provider markers and reset modes stay in the delegation
+  policy overlay and the existing provider-quota observation topics are reused.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -384,6 +389,14 @@ handler_routing:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
       description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
+    - operation: "parse_provider_quota_reset"
+      event_model:
+        name: "ModelProviderQuotaResetRequest"
+        module: "omnimarket.models.delegation.model_provider_quota_reset"
+      handler:
+        name: "HandlerProviderQuotaReset"
+        module: "omnimarket.handlers.handler_provider_quota_reset"
+      description: "Read the policy-selected provider reset surface through the shared quota classifier."
   default_handler: "HandlerLlmDelegationCall"
 
 # Maps HandlerInferenceIntent's returned model to its publish topic so the
