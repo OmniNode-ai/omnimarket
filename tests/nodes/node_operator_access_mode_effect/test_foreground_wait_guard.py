@@ -277,4 +277,7 @@ def test_a_bare_id_refuses_both_modes_and_passes_once_named(
         code, said = _hook(
             "stop", {**payload, "last_assistant_message": named}, environ
         )
-        assert (code, said) == (0, ""), said
+        # The unanswered gate may add a systemMessage alarm with no bus; the
+        # wait guard's contract is only that the named turn is not blocked.
+        assert code == 0
+        assert "decision" not in json.loads(said or "{}"), said

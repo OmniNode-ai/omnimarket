@@ -705,12 +705,14 @@ def test_stop_hook_asks_for_one_rewrite_and_never_loops(tmp_path: Path) -> None:
     body = json.loads(blocked.stdout)
     assert body["decision"] == "block"
     assert "OMN-20892" in body["reason"]
-    assert _run("stop", {**stop, "stop_hook_active": True}, environ).stdout == ""
+    rewritten = _run("stop", {**stop, "stop_hook_active": True}, environ)
+    # An alarm systemMessage from the unanswered gate is not a block.
+    assert "decision" not in json.loads(rewritten.stdout or "{}")
     named = {
         **stop,
         "last_assistant_message": "The access-mode detector (OMN-20892) is merged.",
     }
-    assert _run("stop", named, environ).stdout == ""
+    assert "decision" not in json.loads(_run("stop", named, environ).stdout or "{}")
     headless = _environ("headless_sdk", tmp_path)
     assert _run("stop", stop, headless).stdout == ""
 

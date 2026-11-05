@@ -191,4 +191,3 @@ lifecycle: experimental
 
 metadata:
   tickets: [OMN-20892, OMN-20893, OMN-20894, OMN-20895, OMN-20896]
-  transport_type: local

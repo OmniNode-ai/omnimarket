@@ -132,6 +132,12 @@ def _assert_blocked(result: subprocess.CompletedProcess[str]) -> str:
     return str(body["reason"])
 
 
+def _assert_not_blocked(result: subprocess.CompletedProcess[str]) -> None:
+    # The unanswered gate may add a systemMessage alarm when it cannot reach a
+    # bus; the silence guard's contract is only that the turn is not blocked.
+    assert "decision" not in json.loads(result.stdout or "{}")
+
+
 def _transcript(tmp_path: Path, rows: list[dict[str, Any]]) -> Path:
     path = tmp_path / "turn.jsonl"
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -382,7 +388,7 @@ def test_new_non_tick_prompt_clears_the_turn_flag(tmp_path: Path) -> None:
     _prompt(payload, "Silence tick", environ)
     _prompt(payload, "Please give a progress update", environ)
     assert read_session(tmp_path, payload["session_id"])["silence_tick"] is False
-    assert _stop(payload, "Progress is healthy.", environ).stdout == ""
+    _assert_not_blocked(_stop(payload, "Progress is healthy.", environ))
 
 
 @pytest.mark.parametrize(
@@ -420,7 +426,7 @@ def test_silent_prompt_commands_set_show_and_clear_session_mode(
         if enabled:
             _assert_blocked(stopped)
         else:
-            assert stopped.stdout == ""
+            _assert_not_blocked(stopped)
     assert not read_global_silent(tmp_path)
 
 
@@ -465,7 +471,7 @@ def test_global_silent_cli_applies_to_any_operator_session_and_can_clear(
     assert len(disabled.stdout.splitlines()) == 1
     assert "off" in disabled.stdout.lower()
     assert not read_global_silent(tmp_path)
-    assert _stop(payload, "Done.", environ).stdout == ""
+    _assert_not_blocked(_stop(payload, "Done.", environ))
 
 
 def test_session_silent_cli_does_not_enable_other_sessions(tmp_path: Path) -> None:
@@ -481,12 +487,12 @@ def test_session_silent_cli_does_not_enable_other_sessions(tmp_path: Path) -> No
             is enabled
         )
         assert not read_global_silent(tmp_path)
-        assert _stop({**payload, "session_id": "other"}, "Done.", environ).stdout == ""
+        _assert_not_blocked(_stop({**payload, "session_id": "other"}, "Done.", environ))
         stopped = _stop(payload, "Done.", environ)
         if enabled:
             _assert_blocked(stopped)
         else:
-            assert stopped.stdout == ""
+            _assert_not_blocked(stopped)
 
 
 @pytest.mark.parametrize(
