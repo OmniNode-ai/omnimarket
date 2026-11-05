@@ -109,3 +109,38 @@ def test_a_send_still_inside_its_read_back_window_is_not_repeated() -> None:
     for seconds in (120, 240, 360, 480):
         state = handler.handle(at(state, seconds)).state
     assert len(primary.sent) == 1
+
+
+def test_an_alarm_only_the_banner_delivered_still_reaches_the_primary_once_it_has_a_sender() -> (
+    None
+):
+    # The state the six real alarms are in: the primary refused (no sender), the second channel delivered.
+    refusing = HandlerLabStateAlarm(
+        {
+            "primary": UnconfiguredAlarmChannel("primary"),
+            "second": InMemoryAlarmChannel(),
+        }
+    )
+    first = refusing.handle(request(ModelAlarmState(), BAD, at=0))
+    settled = refusing.handle(request(first.state, BAD, at=30))
+    assert settled.undelivered == ()
+    assert [s.delivery for s in settled.state.open["hosts"].sends] == [
+        "failed",
+        "delivered",
+    ]
+
+    primary, second = InMemoryAlarmChannel(), InMemoryAlarmChannel()
+    handler = HandlerLabStateAlarm({"primary": primary, "second": second})
+    early = handler.handle(request(settled.state, BAD, at=RENOTIFY - 1))
+    assert not primary.sent
+    due = handler.handle(request(early.state, BAD, at=RENOTIFY))
+    assert len(primary.sent) == 1
+    assert not second.sent  # the second channel delivered; only the primary is owed
+    read_back = handler.handle(request(due.state, BAD, at=RENOTIFY + 30))
+    assert {s.role: s.delivery for s in read_back.state.open["hosts"].sends} == {
+        "second": "delivered",
+        "primary": "delivered",
+    }
+    for tick in range(2, 6):
+        handler.handle(request(read_back.state, BAD, at=tick * RENOTIFY))
+    assert len(primary.sent) == 1
