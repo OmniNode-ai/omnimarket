@@ -44,6 +44,7 @@ from .context import ModelMorningToolContext
 from .effects import EFFECT_TOOLS
 from .linear_tools import LINEAR_TOOLS
 from .local_reads import READ_TOOLS
+from .runtime_probe import RUNTIME_PROBE_TOOL
 
 
 class ModelLedgerLaneRowsInput(BaseModel):
@@ -600,5 +601,6 @@ TOOLS: dict[str, MorningTool] = {
         *READ_TOOLS,
         *LINEAR_TOOLS,
         *EFFECT_TOOLS,
+        RUNTIME_PROBE_TOOL,
     )
 }

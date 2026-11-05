@@ -78,6 +78,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: selected ranges change counts; browser values match the typed compute for counts, shares, durations and medians; partial coverage and sub-bucket ranges remain unmeasured; custom times use Eastern across clock changes -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov'
+  - id: req-omn19998-source-row-runtime-probe
+    statement: The morning node contract binds the source-row HTTP runtime probe to its typed handler and models.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the packaged contract resolves the phase tool handler and its request/result models; real loopback HTTP readbacks preserve source binding, reject mismatches and refuse unsafe commands -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov'
   - id: req-omn19998-capture-provenance
     statement: The work-event projection retains supplied capture attribution and explicit causal edges alongside the governed directory shape.
     acceptance:
@@ -482,6 +487,46 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -q --no-cov
         cwd: .
+  - id: dod-omn19998-source-row-runtime-probe
+    description: The four recorded reconciliation failures now have a source-bound runtime probe through the phase tool server. A local HTTP runtime exercises version equality, mismatches, source changes and unsafe-probe refusals. This evidence covers the HTTP probe repair, not the ticket's controller timer criterion or unsupported non-HTTP probes.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-deploy
+    description: Hosted wiring smoke invokes the reconciliation phase tool server against a real loopback HTTP runtime and reads its source-bound output. HTTP failures, stale sources and unsupported commands remain unverified. This smoke requires no lab network or credential and is not a live installation readback.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -k "row_probe or readback or probe_refuses or probe_refuses_mutations"
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-contract
+    description: The installed node contract resolves the same handler and typed input model as the phase tool catalog and resolves the handler's actual return model. The binding regression fails before the contract includes the runtime probe operation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-transport
+    description: The unchanged compliance sweep scans the packaged morning handlers and refuses an HTTP import without a declared endpoint. The transport regression failed before the runtime Done-proof GET endpoint was declared and passes with it present.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov -k transport_is_declared
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-wiring
+    description: Strict infra auto-wiring constructs the packaged morning handlers without injecting a phase context into the runtime probe constructor. The recorded boot regression fails before trusted context moves into the typed command. The agent-facing tool input still accepts only the source row reference.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov -k auto_wires_without_injected_context
+        cwd: .
   - id: dod-omn19998-capture-provenance
     description: Focused handler and snapshot regression over the recorded shape-only session-started wire and each contract-declared hook route. Four cases failed with missing principal before the change. This scoped capture check does not assert host installation or the landing-controller timer criteria.
     source: manual
@@ -536,4 +581,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-import
+    description: The phase catalog imports the runtime probe adapter, which imports and invokes the typed handler. The unchanged unimported-handler gate refuses the previous same-module binding; the hosted loopback smoke exercises the adapter through the phase tool server.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -k row_probe_runs_through_the_phase_server_with_fresh_output
         cwd: .
