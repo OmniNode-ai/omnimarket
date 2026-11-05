@@ -59,6 +59,10 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.floor-simple-written.v1
 
+# The cycle has no command topic: it runs as a step of the factory floor publish, from the registry module tick.
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_simple_effect, and as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
 event_bus:
   subscribe_topics: []
   publish_topics:
