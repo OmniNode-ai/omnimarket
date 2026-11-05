@@ -123,6 +123,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-placement-wait-outcome
+    statement: The detached parent's placement read returns a typed outcome while preserving the existing human output and exit codes.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: a placing receipt at the 30-second wait budget returns placing with error=false and exit 3; placed, refused and crashed reads retain their exit codes; the public node adapter and typed handler emit one JSON result -- falsifier: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -488,4 +493,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-placement-wait-outcome
+    description: Replay the recorded placing receipt at a 30-second budget through the public node adapter and typed handler, including terminal outcomes and legacy exit codes. Collection fails at the merge base because the typed placement model is absent. This scoped placement proof does not assert the original controller rule, lock, acting gate or launchd timer criteria.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-placement-wait-deploy
+    description: Hosted wiring smoke exercises the detached host caller's public node adapter with a real receipt file and observes its typed JSON line. The clock and liveness ports are controlled. No live placement, production endpoint, broker or host unit is required or asserted.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly -k recorded_placing_after_30s
         cwd: .

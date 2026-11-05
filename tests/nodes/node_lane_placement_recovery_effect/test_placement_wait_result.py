@@ -142,3 +142,111 @@ def test_placement_wait_keeps_its_exit_code(tmp_path: Path) -> None:
     )
     assert code == 3
     assert _json_line(lines)["outcome"] == "placing"
+
+
+def test_recorded_wait_uses_canonical_typed_handler(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_placement_wait import (
+        HandlerPlacementWait,
+    )
+    from omnimarket.nodes.node_lane_placement_recovery_effect.models.model_placement_wait import (
+        ModelPlacementWaitRequest,
+    )
+
+    path = tmp_path / "recorded-placing.json"
+    path.write_text(json.dumps({"status": "placing"}), encoding="utf-8")
+    clock = _Clock()
+    lines: list[str] = []
+    result = HandlerPlacementWait(RUNTIME).handle(
+        ModelPlacementWaitRequest(
+            receipt=path,
+            max_s=30.0,
+            lane="lane-x",
+            alive=lambda: True,
+            echo=lines.append,
+            clock=clock,
+            sleep=clock.sleep,
+        )
+    )
+    assert result.outcome == "placing"
+    assert result.error is False
+    assert result.exit_code == 3
+    assert clock.t == 30.0
+    assert lines[0].startswith("PLACEMENT lane=lane-x status=placing after 30s;")
+    assert ModelPlacementWaitResult(**_json_line(lines)) == result
+
+
+def test_node_dispatches_typed_wait_request(tmp_path: Path) -> None:
+    from dataclasses import FrozenInstanceError
+    from typing import get_type_hints
+
+    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_placement_wait import (
+        HandlerPlacementWait,
+    )
+    from omnimarket.nodes.node_lane_placement_recovery_effect.models import (
+        ModelPlacementWaitRequest,
+    )
+
+    path = tmp_path / "dispatch.json"
+    path.write_text(json.dumps({"status": "running", "host": "h1"}), encoding="utf-8")
+    lines: list[str] = []
+    request = ModelPlacementWaitRequest(
+        path, 30.0, "lane-x", lambda: True, echo=lines.append
+    )
+    hints = get_type_hints(HandlerPlacementWait.handle)
+    assert hints["request"] is ModelPlacementWaitRequest
+    assert hints["return"] is ModelPlacementWaitResult
+    with pytest.raises(FrozenInstanceError):
+        request.lane = "changed"
+    result = NodeLanePlacementRecoveryEffect(RUNTIME).handle(request)
+    assert isinstance(result, ModelPlacementWaitResult)
+    assert result.outcome == "placed"
+    assert _json_line(lines)["host"] == "h1"
+
+
+@pytest.mark.parametrize("contents", ["{partial", "[]", "null", b"\xff"])
+def test_unreadable_receipt_is_still_placing(
+    tmp_path: Path, contents: str | bytes
+) -> None:
+    path = tmp_path / "rlane-x.json"
+    path.write_bytes(contents.encode() if isinstance(contents, str) else contents)
+    result, lines = _wait(tmp_path, None)
+    assert result.outcome == "placing"
+    assert result.error is False
+    assert _json_line(lines)["exit_code"] == 3
+
+
+@pytest.mark.parametrize("code", [None, 0, False, "9"])
+def test_failed_receipt_without_integer_error_uses_lane_error(
+    tmp_path: Path, code: Any
+) -> None:
+    result, lines = _wait(
+        tmp_path,
+        {
+            "status": "failed",
+            "final": True,
+            "exit_code": code,
+            "failure": {"reason": "line1\nline2"},
+        },
+    )
+    assert result.exit_code == RUNTIME["EXIT_LANE_ERROR"]
+    assert result.reason == "line1 line2"
+    assert _json_line(lines)["outcome"] == "crashed"
+
+
+def test_runner_final_receipt_is_reread_before_declaring_dead(tmp_path: Path) -> None:
+    path = tmp_path / "race.json"
+    path.write_text(json.dumps({"status": "placing"}), encoding="utf-8")
+    lines: list[str] = []
+
+    def exited() -> bool:
+        path.write_text(
+            json.dumps({"status": "done", "final": True, "host": "h1"}),
+            encoding="utf-8",
+        )
+        return False
+
+    code = NodeLanePlacementRecoveryEffect(RUNTIME).placement_wait(
+        path, 30.0, lane="lane-x", alive=exited, echo=lines.append
+    )
+    assert code == 0
+    assert _json_line(lines)["outcome"] == "placed"

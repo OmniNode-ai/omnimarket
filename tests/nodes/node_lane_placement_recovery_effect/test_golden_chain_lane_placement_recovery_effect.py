@@ -28,7 +28,13 @@ def test_contract_golden_chain(tmp_path: Path) -> None:
     )
     assert contract["name"] == "node_lane_placement_recovery_effect"
     assert contract["lifecycle"] == "experimental"
-    assert "handler_routing" not in contract
+    routing = contract["handler_routing"]
+    assert routing["default_handler"].endswith(":HandlerClaudeAccountLimit")
+    wait_binding = routing["handlers"][0]
+    assert wait_binding["operation"] == "placement_wait_result"
+    assert wait_binding["handler"]["name"] == "HandlerPlacementWait"
+    wait_module = importlib.import_module(wait_binding["handler"]["module"])
+    assert callable(wait_module.HandlerPlacementWait.handle)
     assert "transport_type" not in contract["metadata"]
     assert contract["metadata"]["related_tickets"] == ["OMN-21373"]
     assert (

@@ -14,7 +14,7 @@ from .model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
     ModelLaneEngineFailoverResult,
 )
-from .model_placement_wait import ModelPlacementWaitResult
+from .model_placement_wait import ModelPlacementWaitRequest, ModelPlacementWaitResult
 
 __all__ = [
     "ModelClaudeAccountLimitRequest",
@@ -23,5 +23,6 @@ __all__ = [
     "ModelCodexLaneLimitResult",
     "ModelLaneEngineFailoverRequest",
     "ModelLaneEngineFailoverResult",
+    "ModelPlacementWaitRequest",
     "ModelPlacementWaitResult",
 ]

@@ -16,6 +16,8 @@ description: 'A remote lane that has not been placed never reads ''placing'' for
   or a one-hour fallback, disable same-host retry, and count refused runs per host in tick facts.
   placement_wait_result returns the placement read as one typed outcome (placed, placing, refused or crashed)
   and prints it as a PLACEMENT_RESULT JSON line, so still placing is not read as an error.
+  HandlerPlacementWait.handle(ModelPlacementWaitRequest) returns ModelPlacementWaitResult;
+  the node dispatches this typed request and the placement_wait_result adapter through that handler.
   The placement recovery operations (placement_wait, placement_wait_result, until_placed, end_unplaced, without_queued_no_host,
   requeue_lost_placements, placement_refusals, execute_observed, codex_placement_facts, codex_tick_facts) are called in process through node.py.'
 input_model:
@@ -29,6 +31,16 @@ handler:
   class: HandlerClaudeAccountLimit
   input_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit.ModelClaudeAccountLimitRequest
   output_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit.ModelClaudeAccountLimitResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_claude_account_limit:HandlerClaudeAccountLimit
+  handlers:
+  - operation: placement_wait_result
+    handler:
+      name: HandlerPlacementWait
+      module: omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_placement_wait
+      input_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_placement_wait.ModelPlacementWaitRequest
+      output_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_placement_wait.ModelPlacementWaitResult
 runtime_dispatch:
   external_trigger: Direct Python invocation by the host placement caller with supplied runtime ports.
 descriptor:
