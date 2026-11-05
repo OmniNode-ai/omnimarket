@@ -68,7 +68,7 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command"]
+StepKind = Literal["module", "capture", "copy", "command", "runner_fleet"]
 
 
 class ModelPublishStep(BaseModel):
@@ -82,6 +82,8 @@ class ModelPublishStep(BaseModel):
     (OMN-21733: the run took 8.5 to 10 minutes against a 300 s tick, which left the heartbeat older than twice its
     interval half the time). A step with ``fresh_relpath`` and ``fresh_seconds`` is skipped, counted ok, while that file
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
+    ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
+    a failed read writes an unread cause so old counts cannot masquerade as a new read.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -111,6 +113,7 @@ class ModelPublishStep(BaseModel):
             "capture": bool(self.argv) and bool(self.output_relpath),
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
+            "runner_fleet": bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
