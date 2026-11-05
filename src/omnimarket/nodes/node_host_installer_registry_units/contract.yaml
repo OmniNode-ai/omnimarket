@@ -49,6 +49,9 @@ units:
     tick_no_sync: true
     environment_inputs:
       ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
+      # The floor's Phoenix trace reading (node_factory_floor_effect runtime.phoenix_url_env). Not required: unset,
+      # the floor draws the Phoenix row unread and says so.
+      ONEX_FACTORY_FLOOR_PHOENIX_URL: phoenix_url
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would

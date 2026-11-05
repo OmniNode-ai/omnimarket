@@ -7,6 +7,7 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
+from omnibase_core.container import ModelONEXContainer
 
 from omnimarket.models.error_rule_measurement import (
     ModelDailyMeasurementSnapshot,
@@ -14,9 +15,6 @@ from omnimarket.models.error_rule_measurement import (
 )
 from omnimarket.nodes.node_error_rule_measurement_effect import (
     NodeErrorRuleMeasurementEffect,
-)
-from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily import (
-    HandlerErrorRuleMeasurementDaily,
 )
 from tests.unit.nodes.node_error_rule_measurement_effect.test_promotion_measurement import (
     NOW,
@@ -47,22 +45,21 @@ def registered_node(lab):
             )
 
     return NodeErrorRuleMeasurementEffect(
-        HandlerErrorRuleMeasurementDaily(
-            overlay=lab.handler().overlay,
-            artifacts=lab,
-            replay=lab.replay,
-            labeller=lab.labels,
-            writer=lab,
-            source=Source(),
-        )
+        container=ModelONEXContainer(),
+        overlay=lab.handler().overlay,
+        artifacts=lab,
+        replay=lab.replay,
+        labeller=lab.labels,
+        writer=lab,
+        source=Source(),
     )
 
 
-def test_golden_chain_promotion_measurement_commits_then_proposes_demotion():
+async def test_golden_chain_promotion_measurement_commits_then_proposes_demotion():
     lab = live_lab()
     node = registered_node(lab)
-    first = node.handle(ModelMeasurementTick(now=NOW))
-    second = node.handle(ModelMeasurementTick(now=NOW))
+    first = await node.handle(ModelMeasurementTick(now=NOW))
+    second = await node.handle(ModelMeasurementTick(now=NOW))
     assert first == second
     assert len(first.measurements) == 1
     result = first.measurements[0]
@@ -77,11 +74,11 @@ def test_golden_chain_promotion_measurement_commits_then_proposes_demotion():
     assert demotion.measured == result.measured
 
 
-def test_golden_chain_promotion_measurement_error_leg_refuses_foreign_writer_before_demotion():
+async def test_golden_chain_promotion_measurement_error_leg_refuses_foreign_writer_before_demotion():
     lab = live_lab()
     lab.login = "another-login"
     node = registered_node(lab)
     with pytest.raises(ValueError, match="identity"):
-        node.handle(ModelMeasurementTick(now=NOW))
+        await node.handle(ModelMeasurementTick(now=NOW))
     assert len(lab.measurements) == 1
     assert lab.demotions == {}

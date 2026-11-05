@@ -1,18 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Declarative effect node; composition supplies its reviewed overlay and ports."""
+"""Declarative entry; the contract-selected daily handler owns the effect."""
 
-from omnimarket.models.error_rule_measurement import (
-    ModelDailyMeasurementResult,
-    ModelMeasurementTick,
-)
+from pathlib import Path
 
 from .handlers.handler_daily import HandlerErrorRuleMeasurementDaily
 
 
-class NodeErrorRuleMeasurementEffect:
-    def __init__(self, handler: HandlerErrorRuleMeasurementDaily) -> None:
-        self.handler = handler
+class NodeErrorRuleMeasurementEffect(HandlerErrorRuleMeasurementDaily):
+    """Daily error-rule measurements through the contract's injected handler."""
 
-    def handle(self, request: ModelMeasurementTick) -> ModelDailyMeasurementResult:
-        return self.handler.handle(request)
+    contract_path = Path(__file__).with_name("contract.yaml")

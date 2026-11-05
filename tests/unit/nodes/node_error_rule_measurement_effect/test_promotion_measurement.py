@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from omnibase_core.container import ModelONEXContainer
 
 from omnimarket.models.error_rule_measurement import (
     ModelCommittedMeasurement,
@@ -15,7 +16,7 @@ from omnimarket.models.error_rule_measurement import (
     ModelMeasurementOverlay,
     ModelRestatementLabel,
 )
-from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_measurement import (
+from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily import (
     HandlerErrorRuleMeasurement,
     artifact_digest,
 )
@@ -426,7 +427,9 @@ def test_promotion_evidence_crash_after_write_retries_same_measurement_pr():
 
 
 @pytest.mark.asyncio
-async def test_promotion_measurement_canonical_runtime_bus_profile():
+async def test_promotion_measurement_canonical_runtime_bus_profile(
+    tmp_path, monkeypatch
+):
     """Run the contract's handler through the canonical adapter on either overlay.
 
     Selecting Redpanda is a mandatory proof, with no skip or silent fallback.
@@ -514,21 +517,38 @@ async def test_promotion_measurement_canonical_runtime_bus_profile():
                 live_digest=command.live_digest,
             )
 
-    handler = handler_type(
-        source=Source(),
-        overlay=injected.overlay,
-        artifacts=lab,
-        replay=lab.replay,
-        labeller=lab.labels,
-        writer=lab,
+    from omnimarket.protocols.protocol_error_rule_measurement import (
+        ProtocolMeasurementArtifacts,
+        ProtocolMeasurementLabeller,
+        ProtocolMeasurementReplay,
+        ProtocolMeasurementSource,
+        ProtocolMeasurementWriter,
     )
+
+    overlay_dir = tmp_path / "node_error_rule_measurement_effect"
+    overlay_dir.mkdir()
+    (overlay_dir / "overlay.yaml").write_text(
+        yaml.safe_dump(injected.overlay.model_dump(mode="json"))
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    container = ModelONEXContainer()
+    for protocol, service in (
+        (ProtocolMeasurementSource, Source()),
+        (ProtocolMeasurementArtifacts, lab),
+        (ProtocolMeasurementReplay, lab.replay),
+        (ProtocolMeasurementLabeller, lab.labels),
+        (ProtocolMeasurementWriter, lab),
+    ):
+        await container.service_registry.register_instance(protocol, service)
+    handler = handler_type(container=container)
     request = ModelMeasurementTick(now=NOW)
-    expected = handler.handle(request)
+    expected = await handler.handle(request)
     suffix = uuid4().hex
     command_topic = (
         contract["runtime_dispatch"]["command_topic"].removesuffix(".v1")
         + f".{suffix}.v1"
     )
+    assert contract["terminal_event"] == "onex.evt.omnimarket.error-rule-measured.v1"
     output_topic = contract["terminal_event"].removesuffix(".v1") + f".{suffix}.v1"
     results = asyncio.Queue()
     errors = []
@@ -604,7 +624,7 @@ def test_promotion_evidence_label_artifact_altered_during_commit_is_refused():
         lab.handler().handle(lab.command())
 
 
-def test_promotion_measurement_daily_sweep_measures_every_current_row():
+async def test_promotion_measurement_daily_sweep_measures_every_current_row():
     from omnimarket.models.error_rule_measurement import (
         ModelDailyMeasurementSnapshot,
         ModelMeasurementTick,
@@ -631,6 +651,7 @@ def test_promotion_measurement_daily_sweep_measures_every_current_row():
 
     injected = lab.handler()
     daily = HandlerErrorRuleMeasurementDaily(
+        container=ModelONEXContainer(),
         overlay=injected.overlay,
         artifacts=lab,
         replay=lab.replay,
@@ -638,7 +659,7 @@ def test_promotion_measurement_daily_sweep_measures_every_current_row():
         writer=lab,
         source=Source(),
     )
-    result = daily.handle(ModelMeasurementTick(now=NOW))
+    result = await daily.handle(ModelMeasurementTick(now=NOW))
     assert len(result.measurements) == 2
     assert len(lab.measurements) == 2
     assert result.measured_at == NOW
@@ -664,4 +685,58 @@ def test_promotion_evidence_unconfirmed_or_unauthorized_confirmation_cannot_demo
     ]
     with pytest.raises(ValueError, match="confirmation provenance"):
         lab.handler().handle(lab.command())
+    assert lab.demotions == {}
+
+
+async def test_promotion_daily_handler_wires_through_runtime_container():
+    from pathlib import Path
+
+    from omnibase_core.container import ModelONEXContainer
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        discover_contracts_from_paths,
+    )
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+    from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
+    from omnibase_infra.runtime.auto_wiring.report import EnumWiringOutcome
+    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+
+    contract = (
+        Path(__file__).resolve().parents[4]
+        / "src/omnimarket/nodes/node_error_rule_measurement_effect/contract.yaml"
+    )
+    discovered = discover_contracts_from_paths([contract])
+    assert not discovered.errors
+    assert len(discovered.contracts) == 1
+    bus = EventBusInmemory()
+    try:
+        report = await wire_from_manifest(
+            ModelAutoWiringManifest(contracts=tuple(discovered.contracts)),
+            MessageDispatchEngine(),
+            event_bus=bus,
+            container=ModelONEXContainer(),
+            environment="local",
+        )
+    finally:
+        await bus.close()
+    assert report.total_wired == 1
+    assert not report.quarantined_handlers
+    assert all(result.outcome != EnumWiringOutcome.FAILED for result in report.results)
+
+
+async def test_promotion_daily_unbound_source_refuses_without_writing():
+    from omnibase_core.errors import ModelOnexError
+
+    from omnimarket.models.error_rule_measurement import ModelMeasurementTick
+    from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily import (
+        HandlerErrorRuleMeasurementDaily,
+    )
+
+    lab = Lab()
+    daily = HandlerErrorRuleMeasurementDaily(
+        container=ModelONEXContainer(), overlay=lab.handler().overlay
+    )
+    with pytest.raises(ModelOnexError, match="ProtocolMeasurementSource"):
+        await daily.handle(ModelMeasurementTick(now=NOW))
+    assert lab.measurements == {}
     assert lab.demotions == {}
