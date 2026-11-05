@@ -33,12 +33,24 @@ from omnimarket.nodes.node_worktree_report_publish_effect.models import (
     [
         "worktree=~/workspace/omni_worktrees/OMN-19998/reports",
         "worktree=workspace/omni_worktrees/OMN-19998/reports",
-        "worktree=/Users/other/workspace/omni_worktrees/OMN-19998/reports",
+        None,
         "worktree=/data/fleet/workspace/omni_worktrees/OMN-19998/reports",
     ],
 )
 @pytest.mark.parametrize("encoding", ["markdown", "json"])
-def test_copied_claim_path_token(token: str, encoding: str) -> None:
+def test_copied_claim_path_token(
+    token: str | None, encoding: str, tmp_path: Path
+) -> None:
+    if token is None:
+        foreign = (
+            tmp_path
+            / "foreign"
+            / "workspace"
+            / "omni_worktrees"
+            / "OMN-19998"
+            / "reports"
+        )
+        token = f"worktree={foreign}"
     # A report table's open_claim evidence embeds the ledger CLAIM, including worktree=.
     evidence = f"2026-10-27T13:46:10Z / CLAIM / lane=example / {token} / scope=report"
     source = (
@@ -132,7 +144,7 @@ class RecordingShell(Shell):
                     1,
                     "scrub_shared_doc: person-name scan SKIPPED for records\n"
                     + "\n".join(
-                        f"{p}: local-path violation /Users/other/private/file"
+                        f"{p}: local-path violation {self.request.home / 'private' / 'file'}"
                         for p in paths
                     ),
                 )
@@ -244,7 +256,9 @@ def test_failed_stage_remains_failed_and_reports_friction_and_page(
         assert "landing handoff refused" in result.detail
 
 
-def test_unknown_paths_urls_and_sibling_roots_still_reach_the_scrub() -> None:
+def test_unknown_paths_urls_and_sibling_roots_still_reach_the_scrub(
+    tmp_path: Path,
+) -> None:
     roots = [
         ModelReportRoot(
             label="registry",
@@ -252,7 +266,12 @@ def test_unknown_paths_urls_and_sibling_roots_still_reach_the_scrub() -> None:
             worktrees=Path("/srv/workspace/omni_worktrees"),
         )
     ]
-    text = "/Users/other/private/file /srv/workspace-old/file https://example/workspace/file workspace-old/file /Users/other/workspace/private/file /etc/workspace/private/file"
+    foreign = tmp_path / "foreign"
+    text = (
+        f"{foreign}/private/file /srv/workspace-old/file "
+        "https://example/workspace/file workspace-old/file "
+        f"{foreign}/workspace/private/file /etc/workspace/private/file"
+    )
     assert portabilize(text, roots, Path("/srv/current")) == text
 
 
