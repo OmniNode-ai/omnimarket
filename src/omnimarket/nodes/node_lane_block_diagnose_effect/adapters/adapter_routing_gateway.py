@@ -30,7 +30,9 @@ from ..models.model_routing_bindings import (
 )
 
 
-class HandlerLaneRoutingGateway:
+class AdapterLaneRoutingGateway:
+    """Implement the routing ports used by the contract-bound effect handler."""
+
     def __init__(
         self,
         bindings: ModelRoutingBindings,

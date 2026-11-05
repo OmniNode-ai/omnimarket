@@ -14,7 +14,9 @@ from pathlib import Path
 from omnimarket.models.model_lane_routing import ModelRoutingState
 
 
-class HandlerLaneRoutingStore:
+class AdapterLaneRoutingStore:
+    """Persist claims for the effect handler; this adapter is not a bus consumer."""
+
     def __init__(self, path: Path) -> None:
         self.path = path
 

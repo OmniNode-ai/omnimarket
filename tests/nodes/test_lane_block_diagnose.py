@@ -21,7 +21,7 @@ from omnimarket.nodes.node_lane_block_diagnose_compute.handler import (
     HandlerLaneBlockDiagnoseCompute,
 )
 from omnimarket.nodes.node_lane_block_diagnose_effect.adapters.adapter_routing_store import (
-    HandlerLaneRoutingStore,
+    AdapterLaneRoutingStore,
 )
 from omnimarket.nodes.node_lane_block_diagnose_effect.handler import (
     HandlerLaneBlockDiagnoseEffect,
@@ -107,7 +107,7 @@ def harness(tmp_path, owner_map):
         max_named_files=8,
     )
     gateway = Gateway()
-    store = HandlerLaneRoutingStore(Path(overlay.state_path))
+    store = AdapterLaneRoutingStore(Path(overlay.state_path))
     handler = HandlerLaneBlockDiagnoseEffect(overlay, gateway, store)
     return handler, gateway, store, report_root, overlay
 
@@ -194,7 +194,7 @@ def test_lane_block_diagnose_restarts_claim_store_and_recovers_lost_dispatch_rep
         handler.handle(request)
     assert len(store.read().claims) == 1
     restarted = HandlerLaneBlockDiagnoseEffect(
-        overlay, gateway, HandlerLaneRoutingStore(Path(overlay.state_path))
+        overlay, gateway, AdapterLaneRoutingStore(Path(overlay.state_path))
     )
     assert restarted.handle(request).status == "dispatched"
     assert len(gateway.commands) == 1
@@ -402,7 +402,7 @@ def test_lane_block_diagnose_concurrent_items_join_one_durable_claim(harness):
 
     handler, gateway, store, reports, overlay = harness
     other = HandlerLaneBlockDiagnoseEffect(
-        overlay, gateway, HandlerLaneRoutingStore(Path(overlay.state_path))
+        overlay, gateway, AdapterLaneRoutingStore(Path(overlay.state_path))
     )
     requests = [
         blocked(reports, 1, item="first", cls="same"),
@@ -505,7 +505,7 @@ def test_lane_block_diagnose_bus_gateway_preserves_typed_seams(harness):
     from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
     from omnimarket.models.exception_queue import ModelExceptionEmitRequest
     from omnimarket.nodes.node_lane_block_diagnose_effect.adapters.adapter_routing_gateway import (
-        HandlerLaneRoutingGateway,
+        AdapterLaneRoutingGateway,
     )
     from omnimarket.nodes.node_lane_block_diagnose_effect.models.model_routing_bindings import (
         ModelLaneRoutingDeployment,
@@ -549,7 +549,7 @@ def test_lane_block_diagnose_bus_gateway_preserves_typed_seams(harness):
             return {"payload": {"lane": "triage-lane"}}
         raise AssertionError(topic)
 
-    gateway = HandlerLaneRoutingGateway(
+    gateway = AdapterLaneRoutingGateway(
         ports, publish=publish, broker=lambda _: ModelNodeBroker(kind="inmemory")
     )
     handler = HandlerLaneBlockDiagnoseEffect(overlay, gateway)

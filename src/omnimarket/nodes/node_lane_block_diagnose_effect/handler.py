@@ -26,7 +26,7 @@ from omnimarket.nodes.node_lane_block_diagnose_compute import (
 )
 from omnimarket.protocols.protocol_lane_routing import ProtocolLaneRoutingGateway
 
-from .adapters.adapter_routing_store import HandlerLaneRoutingStore
+from .adapters.adapter_routing_store import AdapterLaneRoutingStore
 
 
 def claim_key(class_key: str, owner: str, head: str) -> str:
@@ -53,7 +53,7 @@ class HandlerLaneBlockDiagnoseEffect:
         self,
         overlay: ModelLaneRoutingOverlay | None = None,
         gateway: ProtocolLaneRoutingGateway | None = None,
-        store: HandlerLaneRoutingStore | None = None,
+        store: AdapterLaneRoutingStore | None = None,
     ) -> None:
         self._provided_overlay = overlay
         self._provided_gateway = gateway
@@ -85,11 +85,11 @@ class HandlerLaneBlockDiagnoseEffect:
         return self._dependencies[1]
 
     @cached_property
-    def store(self) -> HandlerLaneRoutingStore:
+    def store(self) -> AdapterLaneRoutingStore:
         return (
             self._provided_store
             if self._provided_store is not None
-            else HandlerLaneRoutingStore(Path(self.overlay.state_path))
+            else AdapterLaneRoutingStore(Path(self.overlay.state_path))
         )
 
     def _exception(

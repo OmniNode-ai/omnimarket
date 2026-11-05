@@ -589,3 +589,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -m "not kafka" -k installed_contracts_auto_wire
         cwd: .
+  - id: dod-omn19998-lane-owner-adapter-shape
+    description: The gateway and durable claim store are dependency adapters of the contract-bound routing effect. The pinned canonical shape check refuses unbound handler classes, and the focused routing suite exercises both adapters and installed contract wiring.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a' python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -m "not kafka"
+        cwd: .
