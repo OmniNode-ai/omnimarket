@@ -1,13 +1,27 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The silent-failure alarms' pure decisions as a compute node (OMN-17427)."""
+"""Public decision interface of the silent-failure alarm compute node."""
 
-from .handlers.handler_capture_health import (
-    HandlerCaptureHealth,
+from .handlers import (
+    HandlerDrainerAlarm as HandlerDrainerAlarm,
 )
-from .node import NodeSilentFailureAlarmCompute
-
-__all__ = [
-    "HandlerCaptureHealth",
-    "NodeSilentFailureAlarmCompute",
-]
+from .handlers import (
+    HandlerJobExitAlarm as HandlerJobExitAlarm,
+)
+from .handlers import (
+    HandlerPlacementShareAlarm as HandlerPlacementShareAlarm,
+)
+from .handlers import (
+    HandlerQuietHostAlarm as HandlerQuietHostAlarm,
+)
+from .handlers import (
+    HandlerThroughputResultsAlarm as HandlerThroughputResultsAlarm,
+)
+from .handlers import (
+    HandlerTickLivenessAlarm as HandlerTickLivenessAlarm,
+)
+from .handlers.handler_capture_health import (
+    HandlerCaptureHealth as HandlerCaptureHealth,
+)
+from .handlers.handler_quiet_host_alarm import host_id as host_id
+from .node import NodeSilentFailureAlarmCompute as NodeSilentFailureAlarmCompute

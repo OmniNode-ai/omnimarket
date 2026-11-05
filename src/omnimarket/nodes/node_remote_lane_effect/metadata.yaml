@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_remote_lane_effect
 version: "0.1.0"
-description: "Effect: the I/O of a remote lane - resolve worktree refs and archive final runs before host retention cleanup. Decisions are node_remote_lane_compute's. Hosted by a serve process on the dispatching host, never by a shared runtime."
+description: "Effect: resolve lane refs, archive final runs, and preserve and publish lane commits with clean replay onto moved PR heads and pinned pushes. Hosted by a serve process on the dispatching host, never by a shared runtime."
 pack: operator_tooling
 node_role: effect
 display_name: "Remote Lane Effect"

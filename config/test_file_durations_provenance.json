@@ -84,6 +84,13 @@
     "basis": "Summed per-test seconds from pytest --store-durations --no-cov for tests/unit/test_ci_duration_record_supplement.py",
     "runner": "lab host h053, lane ev-5031-0635"
   },
+  "supplement_omn22452": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Sum of measured pytest setup, call and teardown seconds for all 14 pre-push preflight handler tests; --store-durations --clean-durations --no-cov, Python 3.12.14. Existing entries are unchanged.",
+    "runner": "lab host h051, lane pr-5025-1208; the next CI refresh replaces this entry",
+    "base_sha": "48c7f214c3ba4a1f1eed3a937c269ce7df3c42c0"
+  },
   "supplement_omn22191": {
     "recorded_on": "2026-11-04",
     "files_added": 3,
@@ -104,5 +111,12 @@
     "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
     "runner": "lab host h106, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "3e6a5158ad972279a62813eb1fbee8875f000bb2"
+  },
+  "supplement_omn19998_publish_recovery": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Sum of measured pytest setup, call and teardown seconds for tests/nodes/node_remote_lane_effect/test_publish_recovery.py from one serial focused run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; 19 passed; existing entries unchanged",
+    "runner": "lab host h051, lane pr-5051-1745, Python 3.12; the next CI refresh replaces this entry",
+    "base_sha": "b23cbdc382f56ba50903c4c7f309731d624b8dee"
   }
 }
