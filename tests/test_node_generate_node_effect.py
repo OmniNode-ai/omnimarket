@@ -192,3 +192,50 @@ def test_command_without_a_contract_keeps_the_template(tmp_path: Path) -> None:
 
     contract = yaml.safe_load((output_dir / "contract.yaml").read_text())
     assert contract["metadata"]["generated_by"] == "node_generate_node_effect"
+
+
+def test_scaffold_writes_the_generated_chain_scenario_test(tmp_path: Path) -> None:
+    output_dir = tmp_path / "node_scenario_scaffold_compute"
+    cmd = ModelGenerateNodeCommand(
+        correlation_id=uuid4(),
+        node_name="node_scenario_scaffold_compute",
+        node_type=EnumNodeType.COMPUTE,
+        output_dir=str(output_dir),
+    )
+    result = HandlerGenerateNode().handle(cmd)
+
+    assert "tests/test_chain_scenarios.py" in result.created_files
+    generated = (output_dir / "tests" / "test_chain_scenarios.py").read_text()
+    assert "node_scenario_scaffold_compute" in generated
+    assert "chain_scenarios:" in (output_dir / "contract.yaml").read_text()
+
+
+@pytest.mark.unit
+def test_scaffold_refuses_a_supplied_contract_whose_scenarios_cannot_fail(
+    tmp_path: Path,
+) -> None:
+    contract = (
+        "name: node_cannot_fail_compute\n"
+        "event_bus:\n"
+        "  subscribe_topics: [onex.cmd.x.start.v1]\n"
+        "  publish_topics: [onex.evt.x.done.v1]\n"
+        "chain_scenarios:\n"
+        "  schema_version: 1\n"
+        "  success_topic: onex.evt.x.done.v1\n"
+        "  cases:\n"
+        "    - case_name: golden\n"
+        "      kind: GOLDEN\n"
+        "      input: {topic: onex.cmd.x.start.v1}\n"
+        "      expected_events: [{topic: onex.evt.x.done.v1}]\n"
+        "      oracle: {basis: STATED_BY_PERSON, statement: stated}\n"
+    )
+    cmd = ModelGenerateNodeCommand(
+        correlation_id=uuid4(),
+        node_name="node_cannot_fail_compute",
+        node_type=EnumNodeType.COMPUTE,
+        output_dir=str(tmp_path / "node_cannot_fail_compute"),
+        contract_yaml=contract,
+    )
+    with pytest.raises(ValueError, match="case_without_named_breaks"):
+        HandlerGenerateNode().handle(cmd)
+    assert not (tmp_path / "node_cannot_fail_compute").exists()
