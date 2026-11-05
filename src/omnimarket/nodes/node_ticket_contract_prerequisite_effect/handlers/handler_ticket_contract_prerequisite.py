@@ -145,26 +145,6 @@ def _contract_text(sha: str, ticket: str) -> str | None:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    try:
-        base = _resolve_base(base)
-    except (OSError, subprocess.SubprocessError):
-        # An explicit title and the outgoing blobs can establish a contract
-        # refusal without a comparison base. An unreadable base cannot grant
-        # the release-cut exemption. Otherwise preserve the base read error:
-        # history and runtime-proof checks must never assume an empty diff.
-        if title is not None:
-            contract_failures = tuple(
-                failure
-                for ticket in cited_tickets(title)
-                if (
-                    failure := contract_prerequisite(
-                        ticket, _contract_text(sha, ticket)
-                    )
-                )
-            )
-            if contract_failures:
-                return contract_failures
-        raise
     if title is None:
         subjects = _git(
             "log",
@@ -224,7 +204,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            failures = check(sha, request.base, request.title)
+            base = _resolve_base(request.base)
+            failures = check(sha, base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )
