@@ -6,61 +6,81 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn22478-harness-reading
-    statement: The harness has a current result that a floor can read, and a result that is stale, absent or wrong reads NOT WORKING or UNKNOWN and blocks admission.
-    acceptance:
-      - id: AC1
-        statement: "AC1: a run of a golden case that passes and an error case that goes red reads WORKING with probed_at, published_at and max_age; a broken input that passes, a failing golden case, a silent lab host, a result past its max age and a result never written each read NOT WORKING or UNKNOWN with a typed reason -- falsifier: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q passes, and each named injected break in it turns its reading red"
-  - id: req-omn22478-harness-settings
-    statement: Every setting of the harness is in the overlay and none is in a contract or a handler.
-    acceptance:
-      - id: AC2
-        statement: "AC2: the schedule node refuses to load without the overlay, the interval, cases, shas, hosts, bus lane, max age and result path are overlay keys, and no contract carries them -- falsifier: uv run pytest tests/test_golden_chain_lab_test_harness.py -q -k 'no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window' passes"
+- id: req-omn22478-harness-reading
+  statement: The harness has a current result that a floor can read, and a result that is stale, absent or wrong reads NOT WORKING or UNKNOWN and blocks admission.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a run of a golden case that passes and an error case that goes red reads WORKING with probed_at, published_at and max_age; a broken input that passes, a failing golden case, a silent lab host, a result past its max age and a result never written each read NOT WORKING or UNKNOWN with a typed reason -- falsifier: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q passes, and each named injected break in it turns its reading red'
+- id: req-omn22478-harness-settings
+  statement: Every setting of the harness is in the overlay and none is in a contract or a handler.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the schedule node refuses to load without the overlay, the interval, cases, shas, hosts, bus lane, max age and result path are overlay keys, and no contract carries them -- falsifier: uv run pytest tests/test_golden_chain_lab_test_harness.py -q -k ''no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window'' passes'
+- id: req-omn22478-market-review-holds-no-merge
+  statement: Automated code review holds no merge in omnimarket
+  acceptance:
+  - id: AC3
+    statement: 'AC3: CI Summary''s external layers pass with no reviewer row, and the reviewer starts no run. -- falsifier: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov passes'
 evidence_requirements:
-  - kind: tests
-    description: The harness node suites and chain event tests at the pushed head.
-    command: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov
+- kind: tests
+  description: The harness node suites and chain event tests at the pushed head.
+  command: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov
+- kind: tests
+  description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
+  command: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn22478-ac1-tests
-    description: The golden and error chain event tests and the reading rule tests pass; each injected break turns its reading red.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov --tb=line
-        cwd: .
-  - id: dod-omn22478-ac2-settings
-    description: The schedule refuses without the overlay, an off-window tick publishes nothing, a window tick publishes one request, and no contract holds a harness setting.
-    source: manual
-    binds_ac:
-      - AC2
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py -q --no-cov --tb=line -k "no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window"
-        cwd: .
-  - id: dod-omn22478-deploy-probe-contract
-    description: 'Hosted deploy artifact readback: fetch the harness handler at the checked-out commit and require that it opens the runner, builds the reading from the case outcomes and writes it to the store. Missing published content fails. This reads published source and does not claim a runtime rollout.'
-    source: manual
-    execution_scope: hosted_and_local
-    checks:
-      - check_type: command
-        check_value: |-
-          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_lab_test_harness_effect/handlers/handler_lab_test_harness_effect.py" | python3 -c '\''import sys
-          source = sys.stdin.read()
-          required = ["async with opener", "reading_from_result", "self.store().write"]
-          assert all(call in source for call in required), "Published harness handler is incomplete"
-          print("Published harness handler runs the cases, builds the reading and writes it")'\'''
-        cwd: .
-  - id: dod-omn22478-integration-proof-live
-    description: 'Integration proof on a lab host through the central test location: the harness suites run as a lab work unit at the pushed sha on the declared bus lane, so the same send, run and receipt path the harness uses carries its own tests.'
-    source: manual
-    execution_scope: local_done_gate
-    checks:
-      - check_type: command
-        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov"
-        cwd: .
+- id: dod-omn22478-ac1-tests
+  description: The golden and error chain event tests and the reading rule tests pass; each injected break turns its reading red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22478-ac2-settings
+  description: The schedule refuses without the overlay, an off-window tick publishes nothing, a window tick publishes one request, and no contract holds a harness setting.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py -q --no-cov --tb=line -k "no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window"
+    cwd: .
+- id: dod-omn22478-deploy-probe-contract
+  description: 'Hosted deploy artifact readback: fetch the harness handler at the checked-out commit and require that it opens the runner, builds the reading from the case outcomes and writes it to the store. Missing published content fails. This reads published source and does not claim a runtime rollout.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_lab_test_harness_effect/handlers/handler_lab_test_harness_effect.py" | python3 -c ''\''''import sys
+
+      source = sys.stdin.read()
+
+      required = ["async with opener", "reading_from_result", "self.store().write"]
+
+      assert all(call in source for call in required), "Published harness handler is incomplete"
+
+      print("Published harness handler runs the cases, builds the reading and writes it")''\'''''''
+    cwd: .
+- id: dod-omn22478-integration-proof-live
+  description: 'Integration proof on a lab host through the central test location: the harness suites run as a lab work unit at the pushed sha on the declared bus lane, so the same send, run and receipt path the harness uses carries its own tests.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/test_golden_chain_lab_test_harness.py tests/unit/nodes/node_lab_test_harness -q --no-cov
+    cwd: .
+- id: dod-omn22478-market-review-holds-no-merge
+  description: A head with no reviewer row passes CI Summary's external layers, and no pull request starts the reviewer.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
