@@ -1,0 +1,221 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shadow rows await core-owned replay measurement and mode authorization.
+source: lane
+producer: remote-lane-runner
+normalizer_facts:
+  configuration:
+    strip_stages:
+    - name: urls
+      kind: regex
+      pattern: https?://[^\s<>\"']+
+      replacement: <url>
+    - name: shas
+      kind: regex
+      pattern: (?<![\w-])[0-9a-fA-F]{7,40}(?![\w-])
+      replacement: <sha>
+    - name: request_ids
+      kind: regex
+      pattern: \b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b
+      replacement: <request>
+    - name: timestamps
+      kind: regex
+      pattern: \b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\b
+      replacement: <time>
+    - name: paths
+      kind: regex
+      pattern: (?<!\w)(?:[A-Za-z]:[\\/]|/|\./|\.\./|~/|(?=[^\s<>"']*/)(?![^\s<>"']*#)[\w.-]+/)[^\s<>"']+
+      replacement: <path>
+    - name: tickets
+      kind: regex
+      pattern: \b[A-Z]{2,8}-\d+\b
+      replacement: <ticket>
+    - name: prs
+      kind: regex
+      pattern: (?:[\w.-]+/)?[\w.-]+#\d+|(?i:\bPR\s*#?\d+)|(?<!\w)#\d+
+      replacement: <pr>
+    - name: hosts
+      kind: hosts
+      pattern: ''
+      replacement: <host>
+    - name: lanes
+      kind: lanes
+      pattern: ''
+      replacement: <lane>
+    - name: numbers
+      kind: regex
+      pattern: \b\d+(?:\.\d+)?\b
+      replacement: <number>
+    producer_adapters:
+    - source: lane
+      producer: remote-lane-runner
+      unique_codes: true
+    - source: tool
+      producer: '*'
+      unique_codes: false
+    - source: hook
+      producer: '*'
+      unique_codes: true
+    - source: gate
+      producer: '*'
+      unique_codes: true
+    - source: lane
+      producer: '*'
+      unique_codes: false
+    - source: ci
+      producer: '*'
+      unique_codes: false
+    - source: tick
+      producer: '*'
+      unique_codes: true
+    - source: prose
+      producer: '*'
+      unique_codes: false
+    lane_name_patterns:
+    - \b(?:[a-z0-9]+-)+\d{4}(?:-[a-f0-9]+)?\b
+    max_open_triage: 4
+  hosts: []
+normalizer_key_version: 251b1f8f901a5304118ce6416b4bb2b143a4287dd65f797c738817e4dd887d61
+rule_key_version: 1
+error_rule_document:
+  error_rules:
+  - id: lane-oom
+    class_keys:
+    - lane.remote-lane-runner.lane-oom.5ad4d7e59e
+    key_version: 1
+    trigger:
+      kind: state
+      state_check: lane-guard-oom-kill
+    break_class: B
+    sources:
+    - ledger:2026-11-04T17:10:13Z
+    applies_if: {}
+    action:
+      kind: fill-backlog-item
+      contract: fill-backlog-item
+      digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+    read_back:
+      state_check: lane-replacement-terminal
+      timeout_s: 86400
+    subject_kind: ticket
+    budget: 1
+    lease_s: 300
+    lane_kinds:
+    - ticket
+    mode: shadow
+    fixtures:
+      positive:
+      - b7-pfix-68-1316
+      - b7-lane-push-race-1316
+      negative:
+      - exit-137-without-oom
+    removal_ticket: OMN-19998
+  - id: lane-retention-import
+    class_keys:
+    - lane.remote-lane-runner.lane-retention-import.58493ea6e8
+    key_version: 1
+    trigger:
+      kind: text
+    break_class: B
+    sources:
+    - ledger:2026-11-04T17:10:13Z
+    applies_if: {}
+    action:
+      kind: fill-backlog-item
+      contract: fill-backlog-item
+      digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+    read_back:
+      state_check: lane-retention-import-absent
+      timeout_s: 86400
+    subject_kind: global
+    budget: 1
+    lease_s: 300
+    lane_kinds:
+    - ticket
+    mode: shadow
+    fixtures:
+      positive:
+      - b7-pfix-68-1316
+      - b7-lane-push-race-1316
+      negative:
+      - retention-argument-limit
+    removal_ticket: OMN-19998
+  - id: lane-retention-argument-limit
+    class_keys:
+    - lane.remote-lane-runner.lane-retention-argument-limit.04e5cc5899
+    key_version: 1
+    trigger:
+      kind: text
+    break_class: B
+    sources:
+    - ledger:2026-11-04T17:10:13Z
+    applies_if: {}
+    action:
+      kind: fill-backlog-item
+      contract: fill-backlog-item
+      digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+    read_back:
+      state_check: lane-retention-argument-limit-absent
+      timeout_s: 86400
+    subject_kind: global
+    budget: 1
+    lease_s: 300
+    lane_kinds:
+    - ticket
+    mode: shadow
+    fixtures:
+      positive:
+      - retention-argument-limit
+      negative:
+      - b7-pfix-68-1316
+    removal_ticket: OMN-19998
+selectors:
+- rule_id: lane-oom
+  signal: oom
+  scope_result: oom-kill
+  canonical_text: scope_result=oom-kill
+- rule_id: lane-retention-import
+  signal: retention
+  error_pattern: 'ModuleNotFoundError: No module named ''omnimarket'''
+  canonical_text: 'ModuleNotFoundError: No module named ''omnimarket'''
+- rule_id: lane-retention-argument-limit
+  signal: retention
+  error_pattern: Argument list too long
+  canonical_text: Argument list too long
+memory_steps:
+- mem_bytes: 17179869184
+  mem_max: 16G
+- mem_bytes: 34359738368
+  mem_max: 32G
+max_mem_bytes: 34359738368
+max_replacements: 1
+kept_workdir_disposition: kept
+owner_map:
+  rules:
+  - repository: runner_tools
+    paths:
+    - runner/remote_lane.py
+    packages:
+    - runner_tools
+runner_path: runner/remote_lane.py
+runner_report: Repair the runner retention step through its canonical runtime. Keep
+  the engine failure separate; attach the originating receipt and verify receipts
+  started after installation at one hour and twenty-four hours.
+bindings:
+  normalizer:
+    node: node_error_class_normalize_compute
+    command_topic: onex.cmd.omnimarket.error-class-normalize.v1
+    terminal_topic: onex.evt.omnimarket.error-class-normalized.v1
+  owner:
+    node: node_lane_block_diagnose_compute
+    command_topic: onex.cmd.omnimarket.lane-block-owner-requested.v1
+    terminal_topic: onex.evt.omnimarket.lane-block-owner-completed.v1
+  admission:
+    node: node_error_rule_admission_compute
+    command_topic: onex.cmd.omnimarket.error-rule-admission.v1
+    terminal_topic: onex.evt.omnimarket.error-rule-admitted.v1
+  recovery:
+    node: node_recovery_plan_effect
+    command_topic: onex.cmd.omnimarket.recovery-plan-requested.v1
+    terminal_topic: onex.evt.omnimarket.recovery-plan-completed.v1
+  timeout_seconds: 30
