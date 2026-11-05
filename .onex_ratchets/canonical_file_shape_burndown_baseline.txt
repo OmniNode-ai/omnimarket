@@ -211,7 +211,6 @@ src/omnimarket/nodes/node_quality_scoring_compute/handlers/handler_quality_scori
 src/omnimarket/nodes/node_release/__main__.py
 src/omnimarket/nodes/node_remote_lane_effect/run_retention.py
 src/omnimarket/nodes/node_rescue_patch_review_effect/__main__.py
-src/omnimarket/nodes/node_retention_cleanup/__main__.py
 src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py
 src/omnimarket/nodes/node_retired_model_reference_check_effect/__main__.py
 src/omnimarket/nodes/node_review_finding_veto_effect/__main__.py
