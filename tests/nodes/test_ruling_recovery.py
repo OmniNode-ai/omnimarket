@@ -34,7 +34,7 @@ def ledger(*extra: str, claim: str = "", outcome: str = "blocked") -> str:
     )
 
 
-@pytest.mark.parametrize("outcome", ["blocked", "partial"])
+@pytest.mark.parametrize("outcome", ["blocked", "failed", "partial"])
 def test_blocked_ruled_work_carries_staged_artifacts(outcome: str) -> None:
     items, exceptions = detect_relaunches(parse_rows(ledger(outcome=outcome)), NOW)
     assert not exceptions
@@ -175,6 +175,7 @@ def _tick(
     read_only: bool = False,
     live_reader=None,
     record=None,
+    now: str = "2026-10-26T14:00:00Z",
 ):
     from omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill import (
         HandlerLabFill,
@@ -201,7 +202,7 @@ def _tick(
     )
     return HandlerLabFill(monitor).handle(
         ModelLabFillRequest(
-            now="2026-10-26T14:00:00Z",
+            now=now,
             request={
                 "lab_headroom": {
                     "hosts": [
@@ -276,15 +277,16 @@ def test_live_reading_changes_are_read_each_tick_without_headroom(
     assert len(calls) == 4
 
 
+@pytest.mark.parametrize("outcome", ["blocked", "failed", "partial"])
 def test_tick_records_one_orchestrator_exception_and_no_third_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
 ) -> None:
     _tick(tmp_path, monkeypatch, ledger())
     saved = json.loads((tmp_path / "state/lab-fill.sent.json").read_text())
     lane = next(iter(saved.values()))["lane"]
     text = ledger(
         f"2026-10-26T10:00:00Z | CLAIM | lane={lane} | ticket=OMN-123",
-        f"2026-10-26T11:00:00Z | TERMINAL | lane={lane} | ticket=OMN-123 | outcome=blocked | blocker=still-refused",
+        f"2026-10-26T11:00:00Z | TERMINAL | lane={lane} | ticket=OMN-123 | outcome={outcome} | blocker=still-refused",
     )
     records = []
 
@@ -564,3 +566,77 @@ def test_owning_repository_is_read_from_the_original_brief() -> None:
         briefs={"fold": f"Repository: owner/example\nImplement RULING {RULING}"},
     )
     assert items[0]["repo"] == "example"
+
+
+def failed_mechanism_case() -> str:
+    """Structural projection of the failed mechanism run recorded on November 3.
+
+    Preserve the timestamps, link, lane, run, outcome and error from the ledger;
+    omit operator prose, attribution and workspace paths from this public fixture.
+    The original CLAIM had no repo: the effect must recover it from the brief.
+    """
+    return "\n".join(
+        [
+            "2026-10-20T11:32:32Z | RULING | lane=orchestrator-31d9 | kind=process",
+            "2026-10-21T20:27:53Z | CORRECTION | corrects=2026-10-20T11:32:32Z | mechanism-ticket=OMN-15756",
+            "2026-11-03T05:03:19Z | CLAIM | lane=rm-seam-15756-0445 | ticket=OMN-15756 | host=h053 | run=rlane-rm-seam-15756-0445-d7f4eb",
+            "2026-11-03T06:38:51Z | TERMINAL | lane=rm-seam-15756-0445 | ticket=OMN-15756 | outcome=failed | remote lane on h053 ended status=lane-error engine_rc=143",
+        ]
+    )
+
+
+def test_recorded_failed_mechanism_is_dispatched_once_through_the_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    briefs = tmp_path / "briefs"
+    briefs.mkdir()
+    (briefs / "rm-seam-15756-0445.brief.md").write_text(
+        "Repository: omnimarket\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_LANE_BRIEF_DIRS", str(briefs))
+    text = failed_mechanism_case()
+    before = _tick(tmp_path, monkeypatch, text, now="2026-11-03T08:38:50Z")
+    assert not any(f[1] == "ruling-relaunch:OMN-15756" for f in before.found)
+    for _ in range(2):
+        result = _tick(tmp_path, monkeypatch, text, now="2026-11-03T08:38:51Z")
+        assert not any(f[1] == "ruling-relaunch-scope:OMN-15756" for f in result.found)
+    saved = json.loads((tmp_path / "state/lab-fill.sent.json").read_text())
+    assert list(saved) == ["ruling-relaunch:OMN-15756:2026-11-03T06:38:51Z"]
+    generated = list((tmp_path / "state/lab-fill-briefs").glob("*.md"))
+    assert len(generated) == 1
+    brief = generated[0].read_text()
+    for evidence in (
+        "rm-seam-15756-0445",
+        "rlane-rm-seam-15756-0445-d7f4eb",
+        "engine_rc=143",
+        "2026-10-20T11:32:32Z",
+        "ROUTE: model=codex",
+    ):
+        assert evidence in brief
+
+
+@pytest.mark.parametrize("outcome", ["done", "handed-off", "cancelled"])
+def test_failed_mechanism_with_a_later_finish_is_not_relaunched(outcome: str) -> None:
+    text = failed_mechanism_case() + (
+        "\n2026-11-03T07:00:00Z | TERMINAL | lane=rm-seam-15756-0445"
+        f" | ticket=OMN-15756 | outcome={outcome}"
+    )
+    items, exceptions = detect_relaunches(
+        parse_rows(text), datetime(2026, 11, 3, 10, tzinfo=UTC)
+    )
+    assert not items
+    assert not exceptions
+
+
+def test_failed_first_attempt_counts_toward_the_retry_limit() -> None:
+    text = failed_mechanism_case() + (
+        "\n2026-11-03T09:00:00Z | CLAIM | lane=retry | ticket=OMN-15756"
+        "\n2026-11-03T10:00:00Z | TERMINAL | lane=retry | ticket=OMN-15756"
+        " | outcome=blocked | blocker=still-refused"
+    )
+    items, exceptions = detect_relaunches(
+        parse_rows(text), datetime(2026, 11, 3, 12, tzinfo=UTC)
+    )
+    assert not items
+    assert len(exceptions) == 1
+    assert exceptions[0]["blocker"] == "still-refused"
