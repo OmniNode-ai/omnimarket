@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: req-omn19998-grammar-document-parity
+    statement: Grammar parity preserves the ported rules and permits documentation of additional optional cells already admitted by the row validator.
+    acceptance:
+      - id: AC13
+        statement: 'Appended item-link documentation passes with real row admission for STATUS, CLAIM and MSG; removing, changing, reordering or duplicating original fields, changing rules or version, and removing a row type are refused by the parity comparison.'
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -153,6 +158,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-grammar-document-parity
+    description: The unchanged original snapshot remains the comparison floor. Three item-link examples exercise real row admission, and ten negative controls reject changes to the original grammar. Existing row, payload, state and in-memory bus parity checks remain enforced.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ledger_row_grammar_compute/test_golden_chain_ledger_row_grammar_compute.py -q --no-cov -p no:randomly
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual

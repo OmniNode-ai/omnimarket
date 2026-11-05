@@ -4,7 +4,8 @@
 
 ``tests/fixtures/ledger_row_grammar_parity.json`` holds synthetic rows beside the answers the
 original grammar gave for them (row refusals, the first refusal of a payload, the first refusal of a
-payload against written ledger text), and the grammar's own JSON. The node's answers must equal them.
+payload against written ledger text), and the grammar's own JSON. Refusals must equal the original;
+its documented rules remain exact while optional-cell documentation may be appended.
 Golden chain: a request through the registered contract on the in-memory bus. Error chain: a malformed
 request is refused with no result.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from copy import deepcopy
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
@@ -112,10 +114,96 @@ def test_the_parity_fixture_exercises_both_outcomes_of_every_operation() -> None
     assert any(not c["refusal"] for c in PARITY["state_cases"])
 
 
-def test_the_grammar_json_equals_the_original() -> None:
+def assert_grammar_preserves_original(actual: dict[str, Any]) -> None:
+    """Keep the original rules while allowing appended optional-cell documentation.
+
+    Row admission already accepts additional pipe cells. Documenting those cells
+    does not change the ported grammar's required fields, rules or refusals.
+    """
+    original = json.loads(PARITY["grammar_json"])
+    normalized = deepcopy(actual)
+    assert normalized["types"].keys() == original["types"].keys()
+    for kind, spec in original["types"].items():
+        optional = normalized["types"][kind]["optional"]
+        assert isinstance(optional, list)
+        assert all(isinstance(cell, str) and cell for cell in optional)
+        assert len(optional) == len(set(optional)), (kind, optional)
+        assert optional[: len(spec["optional"])] == spec["optional"], kind
+        normalized["types"][kind]["optional"] = spec["optional"]
+    assert normalized == original
+
+
+def test_the_grammar_json_preserves_the_original_rules() -> None:
     result = ask(operation="grammar")
-    assert result.grammar_json == PARITY["grammar_json"]
+    assert_grammar_preserves_original(json.loads(result.grammar_json or ""))
     assert json.loads(result.grammar_json or "")["version"] == result.grammar_version
+
+
+@pytest.mark.parametrize(
+    ("kind", "cells"),
+    [
+        ("STATUS", "lane=orch"),
+        (
+            "CLAIM",
+            "lane=builder | actor=codex | ticket=OMN-1 | worktree=none | "
+            "est ~1 lane-hours; displaces idle; (OMN-1)",
+        ),
+        ("MSG", "from=orch | to=operator | id=2026-11-04T12:00:00Z-orch"),
+    ],
+)
+def test_grammar_parity_accepts_documenting_already_admitted_item_cells(
+    kind: str, cells: str
+) -> None:
+    document = json.loads(PARITY["grammar_json"])
+    document["types"][kind]["optional"].extend(["for-item", "owner", "answers", "item"])
+    assert_grammar_preserves_original(document)
+    row = (
+        f"2026-11-04T12:00:00Z | {kind} | {cells} | for-item=ask-a | "
+        "owner=orch | answers=message-a | item=cap-a | recorded"
+    )
+    assert ask(operation="row_refusals", line=row).admitted
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "removed-optional",
+        "changed-optional",
+        "reordered-optional",
+        "duplicate-optional",
+        "non-string-optional",
+        "removed-required",
+        "changed-rule",
+        "removed-type",
+        "changed-version",
+        "changed-top-level-rule",
+    ],
+)
+def test_grammar_parity_refuses_changes_to_the_original(change: str) -> None:
+    document = json.loads(PARITY["grammar_json"])
+    spec = document["types"]["CLAIM"]
+    if change == "removed-optional":
+        spec["optional"].pop()
+    elif change == "changed-optional":
+        spec["optional"][0] = "replacement"
+    elif change == "reordered-optional":
+        spec["optional"].reverse()
+    elif change == "duplicate-optional":
+        spec["optional"].append(spec["optional"][0])
+    elif change == "non-string-optional":
+        spec["optional"].append(42)
+    elif change == "removed-required":
+        spec["required"].pop()
+    elif change == "changed-rule":
+        spec["rules"][0] = "replacement"
+    elif change == "removed-type":
+        del document["types"]["ACK"]
+    elif change == "changed-version":
+        document["version"] = "replacement"
+    else:
+        document["field_rule"] = "replacement"
+    with pytest.raises(AssertionError):
+        assert_grammar_preserves_original(document)
 
 
 def test_an_ungoverned_ledger_name_is_not_judged() -> None:
