@@ -238,6 +238,7 @@ class FleetLivenessProjectionWriter(BaseProjectionRunner):
     ) -> bool:
         """Standalone-runner entrypoint: project one message, report success."""
         await self._project_observation(data, meta)
+        self._save_state_file(data)
         return True
 
     async def _project_observation(
