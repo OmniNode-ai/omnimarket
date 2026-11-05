@@ -28,6 +28,10 @@ from omnimarket.models.lab_test_harness import (
     ModelLabTestHarnessResult,
     reading_from_result,
 )
+from omnimarket.models.model_lab_work_unit import (
+    EnumLabWorkUnitStatus,
+    ModelLabWorkUnitReceipt,
+)
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.protocol_lab_test_harness import (
     ProtocolLabTestHarnessStore,
     ProtocolLabTestRunner,
@@ -39,10 +43,6 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.runner_lab_work impo
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.store_lab_test_harness import (
     JsonFileLabTestHarnessStore,
     resolve_result_path,
-)
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
-    EnumLabWorkUnitStatus,
-    ModelLabWorkUnitReceipt,
 )
 
 OVERLAY_ID = "node_lab_test_harness_effect"

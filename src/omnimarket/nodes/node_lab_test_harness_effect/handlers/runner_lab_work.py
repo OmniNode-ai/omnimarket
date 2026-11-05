@@ -15,7 +15,7 @@ from omnimarket.models.lab_test_harness import (
     ModelLabTestHarnessCase,
     ModelLabTestHarnessOverlay,
 )
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
+from omnimarket.models.model_lab_work_unit import (
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )

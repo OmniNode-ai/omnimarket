@@ -12,7 +12,7 @@ from omnimarket.models.lab_test_harness import (
     ModelLabTestHarnessOverlay,
     ModelLabTestHarnessReading,
 )
-from omnimarket.nodes.node_lab_work_unit_effect.models import ModelLabWorkUnitReceipt
+from omnimarket.models.model_lab_work_unit import ModelLabWorkUnitReceipt
 
 
 class ProtocolLabTestRunner(Protocol):
