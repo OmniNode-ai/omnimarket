@@ -153,6 +153,7 @@ class ModelMemoryPilotOverlay(BaseModel):
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_completion_tokens: int = Field(default=1024, gt=0)
     top_k: int = Field(default=5, gt=0)
+    ingest_data_per_batch: int | None = Field(default=None, gt=0)
 
     @field_validator("telemetry_disabled")
     @classmethod
@@ -176,6 +177,10 @@ class ModelMemoryPilotOverlay(BaseModel):
             if self.embeddings is None or self.embedding_dimensions is None:
                 raise ValueError(
                     "cognee needs an embeddings endpoint and its dimensions"
+                )
+            if self.ingest_data_per_batch is None:
+                raise ValueError(
+                    "cognee needs ingest_data_per_batch (how many documents it extracts at once on the shared lab model)"
                 )
             if self.storage_root is None or not self.storage_root.is_absolute():
                 raise ValueError("cognee needs an absolute storage_root")

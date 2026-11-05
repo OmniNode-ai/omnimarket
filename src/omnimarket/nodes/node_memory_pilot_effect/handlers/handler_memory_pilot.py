@@ -17,10 +17,6 @@ from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_in_memory import (
     BackendInMemory,
 )
-from omnimarket.nodes.node_memory_pilot_effect.handlers.chat_answerer import (
-    LabChatAnswerer,
-    probe_endpoint,
-)
 from omnimarket.nodes.node_memory_pilot_effect.handlers.frozen_pilot import (
     PilotNotFrozenError,
     frozen_system_prompt,
@@ -39,6 +35,7 @@ from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import 
 )
 from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot import (
     LabModelUnavailableError,
+    ProtocolChatAnswerer,
     ProtocolEventPublisher,
     ProtocolFailureRecorder,
     ProtocolMemoryBackend,
@@ -61,6 +58,7 @@ class HandlerMemoryPilot:
         failure_recorder: ProtocolFailureRecorder,
         overlay: ModelMemoryPilotOverlay | None = None,
         backend: ProtocolMemoryBackend | None = None,
+        answerer: ProtocolChatAnswerer | None = None,
         contract_path: Path | None = None,
     ) -> None:
         topics = contract_publish_topics(contract_path or _CONTRACT)
@@ -71,6 +69,7 @@ class HandlerMemoryPilot:
         self._recorder = failure_recorder
         self._overlay = overlay
         self._backend = backend
+        self._answerer = answerer
 
     async def handle(self, request: ModelMemoryPilotRequest) -> ModelMemoryPilotResult:
         started = time.monotonic()
@@ -120,6 +119,14 @@ class HandlerMemoryPilot:
                 return fail(
                     Code.ENDPOINT_NOT_ALLOWED, endpoint.host, overlay.backend, frozen
                 )
+        if (
+            self._backend is None
+            and overlay.backend == "lexical_lab"
+            and self._answerer is None
+        ):
+            return fail(
+                Code.BACKEND_ERROR, "no lab answerer injected", overlay.backend, frozen
+            )
         if self._backend is None:
             self._backend = self._make_backend(overlay)
         backend = self._backend
@@ -177,11 +184,7 @@ class HandlerMemoryPilot:
         if overlay.backend == "lexical_lab":
             return BackendInMemory(
                 name="lexical_lab",
-                answerer=LabChatAnswerer(
-                    overlay.chat,
-                    temperature=overlay.temperature,
-                    max_completion_tokens=overlay.max_completion_tokens,
-                ),
+                answerer=self._answerer,
                 system_prompt=prompt,
             )
         from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
@@ -210,4 +213,4 @@ class HandlerMemoryPilot:
             _log.exception("memory pilot: failed to publish on %s", topic)
 
 
-__all__ = ["HandlerMemoryPilot", "probe_endpoint"]
+__all__ = ["HandlerMemoryPilot"]

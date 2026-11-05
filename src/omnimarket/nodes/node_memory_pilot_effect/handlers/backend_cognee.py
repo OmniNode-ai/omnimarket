@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from omnimarket.nodes.node_memory_pilot_effect.handlers.chat_answerer import (
+from omnimarket.nodes.node_memory_pilot_effect.handlers.lab_reachability import (
     probe_endpoint,
 )
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
@@ -112,7 +112,10 @@ class BackendCognee:
                 dataset_name=dataset,
                 node_set=None,
             )
-            runs = await cognee.cognify(datasets=[dataset])
+            runs = await cognee.cognify(
+                datasets=[dataset],
+                data_per_batch=self._overlay.ingest_data_per_batch,
+            )
         except Exception as exc:
             if _is_connection_failure(exc):
                 raise LabModelUnavailableError(type(exc).__name__) from None
