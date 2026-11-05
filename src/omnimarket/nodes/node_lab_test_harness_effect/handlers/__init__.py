@@ -19,6 +19,7 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.runner_lab_work impo
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.store_lab_test_harness import (
     InMemoryLabTestHarnessStore,
     JsonFileLabTestHarnessStore,
+    resolve_result_path,
 )
 
 __all__: list[str] = [
@@ -31,5 +32,6 @@ __all__: list[str] = [
     "ProtocolLabTestRunnerOpener",
     "open_lab_work_runner",
     "outcome_for",
+    "resolve_result_path",
     "work_unit_id_for",
 ]

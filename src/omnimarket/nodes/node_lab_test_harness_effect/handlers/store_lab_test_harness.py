@@ -5,11 +5,28 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from string import Template
 
 from pydantic import ValidationError
 
 from omnimarket.models.lab_test_harness import ModelLabTestHarnessReading
+
+
+def resolve_result_path(raw: str, environ: Mapping[str, str] | None = None) -> Path:
+    """The overlay's result path with each \\${NAME} read from the environment.
+
+    A name the environment does not hold refuses: a literal \\${NAME} directory would
+    otherwise be created and the floor would read an empty place.
+    """
+    env = os.environ if environ is None else environ
+    try:
+        return Path(Template(raw).substitute(env))
+    except (KeyError, ValueError) as exc:
+        raise ValueError(
+            f"current_result_path names {exc.args[0]!r}, which the environment does not supply"
+        ) from None
 
 
 class InMemoryLabTestHarnessStore:

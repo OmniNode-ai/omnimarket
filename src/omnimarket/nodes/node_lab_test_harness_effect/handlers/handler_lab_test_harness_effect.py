@@ -38,6 +38,7 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.runner_lab_work impo
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.store_lab_test_harness import (
     JsonFileLabTestHarnessStore,
+    resolve_result_path,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
@@ -109,10 +110,8 @@ class HandlerLabTestHarnessEffect:
 
     def store(self) -> ProtocolLabTestHarnessStore:
         if self._store is None:
-            from pathlib import Path
-
             self._store = JsonFileLabTestHarnessStore(
-                Path(self._settings().current_result_path)
+                resolve_result_path(self._settings().current_result_path)
             )
         return self._store
 

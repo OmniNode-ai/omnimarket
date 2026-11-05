@@ -188,3 +188,19 @@ def test_an_overlay_needs_a_golden_and_an_error_case_and_a_named_lane_for_kafka(
         ModelLabTestHarnessOverlay.model_validate({**document, "backend": "kafka"})
     with pytest.raises(ValidationError):
         ModelLabTestHarnessOverlay.model_validate({**document, "extra_key": 1})
+
+
+def test_the_result_path_reads_its_names_from_the_environment_and_refuses_a_missing_one() -> (
+    None
+):
+    from pathlib import Path
+
+    from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
+        resolve_result_path,
+    )
+
+    assert resolve_result_path(
+        "${STATE}/readings/x.json", {"STATE": "/var/state"}
+    ) == Path("/var/state/readings/x.json")
+    with pytest.raises(ValueError, match="does not supply"):
+        resolve_result_path("${STATE}/readings/x.json", {})

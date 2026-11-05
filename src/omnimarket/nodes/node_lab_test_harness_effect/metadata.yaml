@@ -18,6 +18,7 @@ dependencies:
   - "omnibase_infra"
   - "pydantic>=2.0.0"
   - "pyyaml>=6.0"
+  - "click>=8.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "lab-test-harness", "OMN-22478"]
