@@ -29,7 +29,7 @@ def request(**fields):
 
 def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
 
     # Recorded cache: this job is 601957 bytes, while a reply keeps <=65536.
@@ -40,7 +40,7 @@ def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
     transport = RecordedGatewayTransport(
         [BytesExchange(get(PATH), 200, body, 64 * 1024 * 1024, "window")]
     )
-    cache = HandlerJobLogCache(tmp_path, transport)
+    cache = JobLogCacheTransport(tmp_path, transport)
     first = cache.handle(request(offset_bytes=0, length_bytes=65536))
     assert first.next_offset == 65536
     for offset in range(65536, 8 * 65536, 65536):
@@ -50,7 +50,7 @@ def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
             ).text
             == "x" * 65536
         )
-    ninth = HandlerJobLogCache(tmp_path, None).handle(
+    ninth = JobLogCacheTransport(tmp_path, None).handle(
         request(offset_bytes=8 * 65536, length_bytes=65536, cache_only=True)
     )
     assert marker.decode() in ninth.text
@@ -62,7 +62,7 @@ def test_recorded_long_job_reaches_failure_after_eight_windows(tmp_path):
 
 def test_concurrent_lanes_download_one_job_once(tmp_path):
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
 
     body = b"failure\n" * 10000
@@ -72,7 +72,7 @@ def test_concurrent_lanes_download_one_job_once(tmp_path):
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(
             pool.map(
-                lambda _: HandlerJobLogCache(tmp_path, transport).handle(request()),
+                lambda _: JobLogCacheTransport(tmp_path, transport).handle(request()),
                 range(4),
             )
         )
@@ -126,7 +126,7 @@ def test_cache_only_bus_command_reaches_the_ninth_window(tmp_path, monkeypatch):
         handler_github_repo_gateway as gateway,
     )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
 
     root = tmp_path / "bytes"
@@ -138,7 +138,7 @@ def test_cache_only_bus_command_reaches_the_ninth_window(tmp_path, monkeypatch):
     transport = RecordedGatewayTransport(
         [BytesExchange(get(PATH), 200, body, 64 * 1024 * 1024, "window")]
     )
-    HandlerJobLogCache(root, transport).handle(request())
+    JobLogCacheTransport(root, transport).handle(request())
 
     async def forbidden():
         pytest.fail("cache-only request resolved a GitHub credential")
@@ -178,14 +178,14 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
     import time
 
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
     transport = RecordedGatewayTransport(
         [BytesExchange(get(PATH), 200, b"failure\n", 64 * 1024 * 1024, "window")]
     )
-    cache = HandlerJobLogCache(tmp_path, transport)
+    cache = JobLogCacheTransport(tmp_path, transport)
     cache.handle(request())
     if damage == "expired":
         os.utime(cache.meta, (time.time() - 90000,) * 2)
@@ -196,13 +196,13 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
     else:
         cache.meta.write_text("broken")
     with pytest.raises(GitHubTransportError, match="CACHE-MISS"):
-        HandlerJobLogCache(tmp_path, None).handle(request(cache_only=True))
+        JobLogCacheTransport(tmp_path, None).handle(request(cache_only=True))
     assert len(transport.sent) == 1
 
 
 def test_completed_step_metadata_is_reused_with_cached_bytes(tmp_path):
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
     from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
         JsonExchange,
@@ -237,8 +237,8 @@ def test_completed_step_metadata_is_reused_with_cached_bytes(tmp_path):
             BytesExchange(get(PATH), 200, body, 64 * 1024 * 1024, "window"),
         ]
     )
-    first = HandlerJobLogCache(tmp_path, transport).handle(request(step="Tests"))
-    second = HandlerJobLogCache(tmp_path, None).handle(
+    first = JobLogCacheTransport(tmp_path, transport).handle(request(step="Tests"))
+    second = JobLogCacheTransport(tmp_path, None).handle(
         request(step="Tests", cache_only=True)
     )
     assert second == first
@@ -251,7 +251,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
 
     from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
@@ -281,7 +281,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
             }
         )
     )
-    cache = HandlerJobLogCache(root, None)
+    cache = JobLogCacheTransport(root, None)
     result = cache.handle(
         request(cache_only=True, offset_bytes=101100, length_bytes=200)
     )
@@ -299,7 +299,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
 
 def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        HandlerJobLogCache,
+        JobLogCacheTransport,
     )
     from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
@@ -310,10 +310,12 @@ def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
         ]
     )
     with pytest.raises(GitHubTransportError, match="HTTP 503"):
-        HandlerJobLogCache(tmp_path, transport).handle(request())
+        JobLogCacheTransport(tmp_path, transport).handle(request())
     assert not list(tmp_path.glob("*.log"))
     assert not list(tmp_path.glob("*.tmp"))
-    assert HandlerJobLogCache(tmp_path, transport).handle(request()).text == "failure\n"
+    assert (
+        JobLogCacheTransport(tmp_path, transport).handle(request()).text == "failure\n"
+    )
     assert len(transport.sent) == 2
 
 
@@ -332,12 +334,14 @@ def test_stream_ceiling_never_publishes_an_incomplete_cache(tmp_path, monkeypatc
         ]
     )
     with pytest.raises(GitHubTransportError, match="read_ceiling_hit=True"):
-        handler_job_log_cache.HandlerJobLogCache(tmp_path, transport).handle(request())
+        handler_job_log_cache.JobLogCacheTransport(tmp_path, transport).handle(
+            request()
+        )
     assert not list(tmp_path.glob("*.log"))
     assert not list(tmp_path.glob("*.meta.json"))
     assert not list(tmp_path.glob("*.tmp"))
     with pytest.raises(GitHubTransportError, match="CACHE-MISS"):
-        handler_job_log_cache.HandlerJobLogCache(tmp_path, None).handle(
+        handler_job_log_cache.JobLogCacheTransport(tmp_path, None).handle(
             request(cache_only=True)
         )
     assert len(transport.sent) == 1

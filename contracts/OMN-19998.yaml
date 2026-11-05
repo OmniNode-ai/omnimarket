@@ -158,6 +158,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-job-log-cache-transport-role
+    description: The cache transport is an internal helper of the bound gateway handler. The unimported-handler gate refuses the prior HandlerJobLogCache declaration and accepts the transport declaration; the existing cache regression and runtime proofs exercise its gateway call path.
+    source: manual
+    binds_ac: [AC514001]
+    checks:
+      - check_type: command
+        check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
+        cwd: .
   - id: dod-omn19998-shared-job-log-cache
     description: Scoped cache regression and canonical SCM bus wiring smoke. A long job is downloaded once, its ninth window is read without HTTP, existing covered fragments are reused, and cache-only misses never resolve credentials. This evidence does not assert the landing controller timer or the unrelated controller criteria supplied with the lane.
     source: manual

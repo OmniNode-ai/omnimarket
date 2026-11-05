@@ -103,7 +103,7 @@ class _SpoolWindow(JobLogWindow):
         self.stream.flush()
 
 
-class HandlerJobLogCache:
+class JobLogCacheTransport:
     """Job-scoped transport inside the existing gateway handler and event contract."""
 
     def __init__(
@@ -341,7 +341,7 @@ class HandlerGithubRepoGatewayEffect:
             policy = cache_policy()
             assert policy.root is not None
             result = await asyncio.to_thread(
-                HandlerJobLogCache(
+                JobLogCacheTransport(
                     policy.root, transport, ttl_seconds=policy.ttl_seconds
                 ).handle,
                 request,
