@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .handlers.retention_tree_safety import _inside, _trees_keep_reason
+from omnimarket.handlers.lab_retention_tree_safety import _inside, _trees_keep_reason
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,160}\Z")
 # Beyond the ordinary ends, the guard stops, usage limits and setup refusals of a lane
@@ -256,10 +256,10 @@ def retention_script(
     # Inline the same safety module used by the typed handler: the host runs
     # stdlib Python and does not import a separately installed Market package.
     source = source.replace(
-        "from .handlers.retention_tree_safety import _inside, _trees_keep_reason\n",
+        "from omnimarket.handlers.lab_retention_tree_safety import _inside, _trees_keep_reason\n",
         Path(__file__)
-        .with_name("handlers")
-        .joinpath("retention_tree_safety.py")
+        .parents[2]
+        .joinpath("handlers/lab_retention_tree_safety.py")
         .read_text(),
     )
     return (

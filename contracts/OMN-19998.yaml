@@ -434,3 +434,19 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
+  - id: dod-omn19998-macos-disk-retention
+    description: Recorded Mac cases fail before the change because procfs is absent and Git-bearing lane directories are excluded. Focused tests cover lsof and ps references, missing evidence, recent activity including external worktree metadata, pushed and unpushed Git state, context archival readback and linked worktree removal. This scope does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lab_run_disk_retention.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-macos-disk-retention-deploy
+    description: Hosted deployment smoke resolves the typed Mac retention overlay through the registry installer command topic, observes its completed event and rendered launchd arguments, and exercises the retention module entry point with those arguments and a status receipt. Live branch installation and its next tick remain the publishing host's responsibility.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_retention_overlay.py -q --no-cov -n 0
+        cwd: .

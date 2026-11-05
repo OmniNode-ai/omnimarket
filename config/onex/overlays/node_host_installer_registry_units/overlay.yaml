@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Portable macOS host policy. Supply config/onex/overlays as an overlay root to
+# node_host_installer_registry_units, then install retention-cleanup. The installer
+# accepts project_path and expected_revision to run an inspected branch checkout.
+units:
+  retention-cleanup:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.retention-cleanup
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: hourly and at load
+    registry_project: omnimarket
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_retention_cleanup
+    entry_file: src/omnimarket/nodes/node_retention_cleanup/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    arguments: [--files, --only, lab-run-lane-dirs, lab-run-context-dirs]
+    evidence_file: .local/state/omni/retention-cleanup/last-run.json
+    state_directory: .onex_state/retention-cleanup

@@ -106,9 +106,10 @@ retention_policy:
   # and compares checksums, and removes the local unit only then. The archive
   # tree is the directory named by archive_root_env (the Google Drive folder on
   # the host that syncs it); with none, an archive entry removes nothing.
-  # Unit directories that hold a .git entry are git worktrees; onex-lane-closeout
-  # owns those and retention skips them. Memory directories, symlinks and the
-  # live ledger are never touched.
+  # Generic entries skip Git repositories. The lab_lane safety mode checks
+  # process references, clean status and remote reachability before removing
+  # an idle repository; linked worktrees are removed through Git. Contexts
+  # survive while their paired run exists. Memory, symlinks and ledgers stay.
   #
   # Sync check: Google Drive for desktop sets the com.google.drivefs.item-id
   # extended attribute on a file once Drive has registered it. An archive copy
@@ -171,15 +172,27 @@ retention_policy:
         action: archive
         readers: [onex-remote-lane output, operator lane history]
         consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
-      # Readers: the lane's own session while it runs; onex-lane-closeout
-      # archives and removes the worktree trees (skipped here by their .git).
+      # Code is recoverable from checked remote refs. Before removal, archive
+      # complete context outputs and a recovery manifest under lab-run/reports,
+      # and read them back. No external archive root is needed for these units.
+      # Process references, unreadable state and recent activity preserve them.
       - name: lab-run-lane-dirs
         path: ~/lab-run/runs
-        pattern: "*"
+        pattern: "rlane-*"
+        exclude: ["*.ctx"]
         keep_days: 7
         action: archive
-        readers: [onex-remote-lane receipt reads, the lane while it runs]
-        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
+        safety: lab_lane
+        archive_subdir: reports
+        readers: [the lane while it runs, remote copies of all commits]
+      - name: lab-run-context-dirs
+        path: ~/lab-run/runs
+        pattern: "*.ctx"
+        keep_days: 7
+        action: archive
+        safety: lab_lane
+        archive_subdir: reports
+        readers: [the paired lane while it runs]
       # Readers: node_merge_sweep_plan_compute reads the latest reports for its
       # brief; an orchestrator reads a lane report within days of its terminal.
       - name: lane-reports

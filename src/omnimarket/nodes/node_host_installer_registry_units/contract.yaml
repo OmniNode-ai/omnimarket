@@ -91,3 +91,37 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
     state_directory: .onex_state/silent-failure-alarm
+# Deployment additions and overrides are data, never host names in the handler.
+overlay:
+  id: node_host_installer_registry_units
+  file: overlay.yaml
+  model: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units_overlay.ModelRegistryUnitsOverlay
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  description: Optional typed units, including the macOS retention timer.
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerRegistryUnits
+        module: omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units
+      event_model:
+        name: ModelRegistryUnitsRequest
+        module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-installer-registry-units-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-installer-registry-units-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-installer-registry-units-requested.v1
+terminal_event: onex.evt.omnimarket.host-installer-registry-units-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-installer-registry-units-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: kafka

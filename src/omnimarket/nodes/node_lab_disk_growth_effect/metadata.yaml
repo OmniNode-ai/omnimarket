@@ -3,7 +3,7 @@
 name: node_lab_disk_growth_effect
 version: 0.1.0
 description: >
-  Evicts old plugin snapshot trees on a lab host while protecting snapshots a live process references, and colocates the uv cache with the worktrees so environments share hardlinked files.
+  Evicts old plugin snapshot trees on a lab host while protecting snapshots a live process references using procfs on Linux and lsof plus ps on macOS, and colocates the uv cache with the worktrees so environments share hardlinked files.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:

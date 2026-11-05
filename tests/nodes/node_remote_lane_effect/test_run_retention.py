@@ -222,7 +222,7 @@ def test_context_git_symlink_preserves_both_trees(clone):
 
 
 def test_unreadable_git_status_preserves_both_trees(clone, monkeypatch):
-    from omnimarket.nodes.node_remote_lane_effect.handlers import retention_tree_safety
+    from omnimarket.handlers import lab_retention_tree_safety as retention_tree_safety
 
     root, tree, ctx, receipt, ledger = clone
 

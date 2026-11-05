@@ -9,8 +9,14 @@ import re
 import shutil as shutil
 import stat
 from collections.abc import Callable
-from contextlib import suppress
 from pathlib import Path
+
+from omnimarket.handlers.lab_process_references import (
+    path_is_referenced,
+)
+from omnimarket.handlers.lab_process_references import (
+    read_process_references as read_process_references,
+)
 
 from ..models import (
     ModelLabPluginSnapshotEvictRequest,
@@ -19,34 +25,6 @@ from ..models import (
 
 SNAPSHOT = re.compile(r"^(?P<plugin>.+)-[0-9a-f]{12}$")
 EVICTING = re.compile(r"^.+-[0-9a-f]{12}\.evicting\.[0-9]+$")
-
-
-def read_process_references(proc_root: Path = Path("/proc")) -> list[str] | None:
-    """Unreadable items belong to other users; a missing process table blocks eviction."""
-    if not (proc_root / "self").is_dir():
-        return None
-    references: list[str] = []
-    try:
-        processes = list(proc_root.iterdir())
-    except OSError:
-        return None
-    for process in processes:
-        if not process.name.isdigit() or not process.is_dir():
-            continue
-        for name in ("cmdline", "environ"):
-            with suppress(OSError):
-                references.extend(
-                    item.decode(errors="replace")
-                    for item in (process / name).read_bytes().split(b"\0")
-                    if item
-                )
-        links = [process / name for name in ("cwd", "root", "exe")]
-        with suppress(OSError):
-            links.extend((process / "fd").iterdir())
-        for link in links:
-            with suppress(OSError):
-                references.append(os.readlink(link))
-    return references
 
 
 # (device, inode) -> (size, link count, links inside the tree)
@@ -81,18 +59,6 @@ def _freed_bytes(removed: list[_Files]) -> int:
     return sum(size for size, links, seen in total.values() if seen >= links)
 
 
-def _in_use(tree: Path, plugins_dir: Path, references: list[str]) -> bool:
-    for base in {str(plugins_dir), str(plugins_dir.resolve())}:
-        pattern = re.compile(
-            r"(?<![A-Za-z0-9_.\-/])"
-            + re.escape(f"{base}/{tree.name}")
-            + r"(?![A-Za-z0-9_.\-])"
-        )
-        if any(pattern.search(reference) for reference in references):
-            return True
-    return False
-
-
 class HandlerLabPluginSnapshotEvict:
     """Protect live references before reclaiming any old snapshot."""
 
@@ -116,6 +82,7 @@ class HandlerLabPluginSnapshotEvict:
             )
         groups: dict[str, list[Path]] = {}
         errors: list[str] = []
+        in_use: list[str] = []
         for tree in sorted(request.plugins_dir.iterdir()):
             if tree.is_symlink() or not tree.is_dir():
                 continue
@@ -124,11 +91,19 @@ class HandlerLabPluginSnapshotEvict:
                 groups.setdefault(match["plugin"], []).append(tree)
             elif EVICTING.fullmatch(tree.name) and not request.dry_run:
                 try:
+                    current = self.process_references()
+                    if current is None:
+                        errors.append(
+                            f"{tree.name}: process table unavailable; snapshot retained"
+                        )
+                        continue
+                    if path_is_referenced(tree, current):
+                        in_use.append(tree.name)
+                        continue
                     shutil.rmtree(tree)
                 except OSError as exc:
                     errors.append(f"{tree.name}: {exc}"[:300])
         kept: list[str] = []
-        in_use: list[str] = []
         evicted: list[str] = []
         removed: list[_Files] = []
         for plugin in sorted(groups):
@@ -138,9 +113,7 @@ class HandlerLabPluginSnapshotEvict:
             kept.extend(tree.name for tree in trees[: request.keep_newest])
             older = trees[request.keep_newest :]
             in_use.extend(
-                tree.name
-                for tree in older
-                if _in_use(tree, request.plugins_dir, references)
+                tree.name for tree in older if path_is_referenced(tree, references)
             )
             for tree in reversed(older):
                 if tree.name in in_use:
@@ -148,6 +121,15 @@ class HandlerLabPluginSnapshotEvict:
                 try:
                     files = _tree_files(tree)
                     if not request.dry_run:
+                        current = self.process_references()
+                        if current is None:
+                            errors.append(
+                                f"{tree.name}: process table unavailable; snapshot retained"
+                            )
+                            continue
+                        if path_is_referenced(tree, current):
+                            in_use.append(tree.name)
+                            continue
                         renamed = (
                             request.plugins_dir / f"{tree.name}.evicting.{os.getpid()}"
                         )

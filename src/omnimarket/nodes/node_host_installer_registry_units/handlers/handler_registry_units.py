@@ -27,10 +27,16 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import (
+    find_node_overlay,
+    load_structured_overlay,
+)
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelRegistryUnitsRequest,
     ModelRegistryUnitsResult,
 )
+
+from ..models.model_registry_units_overlay import ModelRegistryUnitsOverlay
 
 NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
@@ -60,9 +66,15 @@ def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
     document = yaml.safe_load(
         (contract_path or NODE_DIR / "contract.yaml").read_text(encoding="utf-8")
     )
-    return {
+    units = {
         str(name): dict(unit) for name, unit in (document.get("units") or {}).items()
     }
+    if find_node_overlay("node_host_installer_registry_units") is not None:
+        overlay = load_structured_overlay(
+            "node_host_installer_registry_units", ModelRegistryUnitsOverlay
+        )
+        units.update({name: unit.model_dump() for name, unit in overlay.units.items()})
+    return units
 
 
 class HandlerRegistryUnits:
@@ -210,6 +222,11 @@ class HandlerRegistryUnits:
             "<true/>" if unit["schedule"]["run_at_load"] else "<false/>",
         )
         text = text.replace("__ENVIRONMENT__", environment)
+        arguments = "".join(
+            f"\n    <string>{escape(str(arg))}</string>"
+            for arg in unit.get("arguments", ())
+        )
+        text = text.replace("__EXTRA_ARGUMENTS__", arguments)
         plistlib.loads(
             text.encode("utf-8")
         )  # a plist that does not parse is never written
