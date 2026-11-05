@@ -99,7 +99,7 @@ class BackendCognee:
     def _load(self) -> Any:
         if self._cognee is None:
             os.environ.update(cognee_environment(self._overlay))
-            import cognee  # type: ignore[import-not-found,unused-ignore]
+            import cognee  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
             self._cognee = cognee
         return self._cognee
