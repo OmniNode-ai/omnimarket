@@ -116,6 +116,8 @@ class ModelSourcePaths(BaseModel):
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
     readings_relpath: str
+    harness_result_relpath: str
+    harness_piece: int
     remote_lane_dir_env: str
     remote_lane_dir_fallback: str
     pool_receipt: str
@@ -542,7 +544,11 @@ class HandlerFloorSimpleTick:
             lanes=record_lanes(record) if record else (),
             lab=lab,
             receipts=receipts,
-            readings=self._readings(home / rt.sources.readings_relpath),
+            readings=self._readings(
+                home / rt.sources.readings_relpath,
+                home / rt.sources.harness_result_relpath,
+                rt.sources.harness_piece,
+            ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             sources_read={
                 "floor_record": record is not None,
@@ -777,13 +783,21 @@ class HandlerFloorSimpleTick:
         return tuple(lines)
 
     @staticmethod
-    def _readings(path: Path) -> dict[int, ModelReadingRow] | None:
+    def _readings(
+        path: Path, harness_path: Path, harness_piece: int
+    ) -> dict[int, ModelReadingRow] | None:
+        """The newest reading row per piece: the reading writer's rows, and the central test harness's stored result.
+
+        The harness result is one JSON document the harness node writes after each run; it is the reading of the piece
+        the contract names, kept apart from the reading writer's rows. A result that is missing or unreadable adds no
+        row, so the piece is drawn as having no reading, never as working.
+        """
+        newest: dict[int, ModelReadingRow] = {}
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError:
-            return None
-        newest: dict[int, ModelReadingRow] = {}
-        for line in lines:
+            lines = None
+        for line in lines or ():
             try:
                 row = ModelReadingRow.model_validate(json.loads(line))
             except ValueError:
@@ -793,7 +807,29 @@ class HandlerFloorSimpleTick:
                 or row.published_at > newest[row.piece].published_at
             ):
                 newest[row.piece] = row
+        harness = HandlerFloorSimpleTick._harness_row(harness_path, harness_piece)
+        if harness is not None and (
+            harness.piece not in newest
+            or harness.published_at > newest[harness.piece].published_at
+        ):
+            newest[harness.piece] = harness
+        if lines is None and not newest:
+            return None
         return newest
+
+    @staticmethod
+    def _harness_row(path: Path, piece: int) -> ModelReadingRow | None:
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+            return ModelReadingRow(
+                piece=piece,
+                state=body["state"],
+                probed_at=body["probed_at"],
+                published_at=body["published_at"],
+                max_age_s=body["max_age_seconds"],
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
 
     @staticmethod
     def _history(

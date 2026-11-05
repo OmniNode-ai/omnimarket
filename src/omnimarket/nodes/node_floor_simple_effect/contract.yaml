@@ -95,6 +95,10 @@ runtime:
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
     readings_relpath: .onex_state/readings/readings.jsonl
+    # The central test harness's stored result (node_lab_test_harness_effect writes it) is the reading of this piece,
+    # piece 8, CI, runners and the central test location.
+    harness_result_relpath: .onex_state/readings/central-test-harness.drill.json
+    harness_piece: 8
     remote_lane_dir_env: ONEX_REMOTE_LANE_DIR
     remote_lane_dir_fallback: .local/state/omni/remote-lanes
     pool_receipt: hosts-probe/latest.json
