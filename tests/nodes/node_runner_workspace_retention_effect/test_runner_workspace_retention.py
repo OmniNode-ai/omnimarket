@@ -22,6 +22,42 @@ RECORDED_CACHE_BYTES = {
 }
 
 
+def test_entrypoint_satisfies_handler_contract_guard() -> None:
+    from omnibase_core.models.nodes.handler_contract_compliance.model_compliance_node_source import (
+        ModelComplianceNodeSource,
+    )
+    from omnibase_core.models.nodes.handler_contract_compliance.model_handler_contract_compliance_input import (
+        ModelHandlerContractComplianceInput,
+    )
+    from omnibase_core.models.nodes.no_utcnow_check.model_source_file import (
+        ModelSourceFile,
+    )
+    from omnibase_core.nodes.node_imperative_contract_guard_check_effect.handler_arch_handler_contract_compliance import (
+        HandlerArchHandlerContractCompliance,
+    )
+
+    contract = NodeRunnerWorkspaceRetentionEffect.contract_path
+    node_dir = contract.parent
+    report = HandlerArchHandlerContractCompliance().handle(
+        ModelHandlerContractComplianceInput(
+            repo="omnimarket",
+            nodes=[
+                ModelComplianceNodeSource(
+                    node_dir=str(node_dir),
+                    contract_yaml=contract.read_text(),
+                    node_py=(node_dir / "node.py").read_text(),
+                    handlers=[
+                        ModelSourceFile(path=str(path), source=path.read_text())
+                        for path in (node_dir / "handlers").glob("handler_*.py")
+                    ],
+                )
+            ],
+        )
+    )
+    assert len(report.results) == 1
+    assert report.results[0].violations == []
+
+
 @pytest.fixture
 def replay(tmp_path: Path) -> ModelRunnerRetentionRequest:
     runner = tmp_path / "runner"
@@ -317,6 +353,9 @@ async def test_contract_bus_dispatch_reclaims_recorded_case(
     assert evidence.runtime_observation.status == "OBSERVED"
     assert evidence.adapter_dispatch_binding.node_contract.status == "RESOLVED"
     assert evidence.command_topic == raw["runtime_dispatch"]["command_topic"]
+    assert evidence.terminal_topic == (
+        "onex.evt.omnimarket.runner-workspace-retention-completed.v1"
+    )
     assert (
         evidence.terminal_topic == raw["runtime_dispatch"]["terminal_events"]["success"]
     )
