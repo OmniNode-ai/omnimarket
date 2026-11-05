@@ -20,7 +20,12 @@ from collections.abc import Sequence
 
 from omnimarket.config.service_endpoints import service_endpoint_url
 
-from ..models import SHA_RE, ModelRemoteLaneRefRequest, ModelRemoteLaneRefResult
+from ..models import (
+    SHA_RE,
+    EnumRemoteLaneRefRefusal,
+    ModelRemoteLaneRefRequest,
+    ModelRemoteLaneRefResult,
+)
 from ..protocols import ProtocolRemoteLaneGit, RemoteLanePortError
 
 SYMREF_RE = re.compile(r"^ref:\s*refs/heads/(\S+)\s+HEAD\s*$", re.MULTILINE)
@@ -81,37 +86,70 @@ class HandlerRemoteLaneRef:
         return done.stdout, remote
 
     def handle(self, request: ModelRemoteLaneRefRequest) -> ModelRemoteLaneRefResult:
+        """Check the default branch and the named branch before send (OMN-19998).
+
+        A named sha passes unread. Otherwise the remote's default branch is read
+        first, and then, in one read, the default branch and the named ref: a branch
+        not yet pushed cannot be resolved, so it is refused as BRANCH_NOT_PUSHED with
+        the default branch named, before any lane is sent from it.
+        """
         if request.sha:
             if SHA_RE.match(request.sha):
                 return ModelRemoteLaneRefResult(sha=request.sha)
             return ModelRemoteLaneRefResult(
-                sha=None, error="the named sha is not a 40-character hex sha"
+                sha=None,
+                error="the named sha is not a 40-character hex sha",
+                refusal=EnumRemoteLaneRefRefusal.SHA_MALFORMED,
             )
-        ref = request.ref
         landing: str | None = None
         remote = ""
         try:
-            if not ref:
-                out, remote = self._ls_remote(request, ["--symref"], ["HEAD"])
-                match = SYMREF_RE.search(out)
-                if not match:
-                    return ModelRemoteLaneRefResult(
-                        sha=None, remote=remote, error="the remote names no HEAD branch"
-                    )
-                landing = ref = match.group(1)
-            out, remote = self._ls_remote(
-                request,
-                [],
-                [f"refs/heads/{ref}", f"refs/tags/{ref}^{{}}", f"refs/tags/{ref}"],
-            )
+            out, remote = self._ls_remote(request, ["--symref"], ["HEAD"])
+            match = SYMREF_RE.search(out)
+            if not match:
+                return ModelRemoteLaneRefResult(
+                    sha=None,
+                    remote=remote,
+                    error="the remote names no HEAD branch",
+                    refusal=EnumRemoteLaneRefRefusal.NO_DEFAULT_BRANCH,
+                )
+            landing = match.group(1)
+            ref = request.ref or landing
+            patterns = [
+                f"refs/heads/{ref}",
+                f"refs/tags/{ref}^{{}}",
+                f"refs/tags/{ref}",
+            ]
+            if ref != landing:
+                patterns.append(f"refs/heads/{landing}")
+            out, remote = self._ls_remote(request, [], patterns)
         except _ReadFailedError as exc:
             return ModelRemoteLaneRefResult(
-                sha=None, landing_branch=landing, remote=remote, error=str(exc)
+                sha=None,
+                landing_branch=landing,
+                remote=remote,
+                error=str(exc),
+                refusal=EnumRemoteLaneRefRefusal.READ_FAILED,
             )
-        rows = [line.partition("\t") for line in out.splitlines()]
+        rows = [
+            (value, name)
+            for value, _, name in (line.partition("\t") for line in out.splitlines())
+            if SHA_RE.match(value)
+        ]
+        if ref != landing and f"refs/heads/{landing}" not in {n for _, n in rows}:
+            return ModelRemoteLaneRefResult(
+                sha=None,
+                landing_branch=landing,
+                remote=remote,
+                error=f"the remote has no default branch {landing}",
+                refusal=EnumRemoteLaneRefRefusal.DEFAULT_BRANCH_NOT_ON_REMOTE,
+            )
         for prefix in ("refs/heads/", "refs/tags/"):
-            for value, _, name in rows:
-                if SHA_RE.match(value) and name.startswith(prefix):
+            for value, name in rows:
+                if name.startswith(prefix) and name.removeprefix(prefix) in {
+                    ref,
+                    f"{ref}^{{}}",
+                }:
                     return ModelRemoteLaneRefResult(
                         sha=value, landing_branch=landing, remote=remote
                     )
@@ -120,4 +158,9 @@ class HandlerRemoteLaneRef:
             landing_branch=landing,
             remote=remote,
             error=f"the remote has no branch or tag {ref}",
+            refusal=(
+                EnumRemoteLaneRefRefusal.NO_DEFAULT_BRANCH
+                if ref == landing
+                else EnumRemoteLaneRefRefusal.BRANCH_NOT_PUSHED
+            ),
         )
