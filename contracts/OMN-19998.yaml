@@ -143,6 +143,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-shared-job-log-cache
+    description: Scoped cache regression and canonical SCM bus wiring smoke. A long job is downloaded once, its ninth window is read without HTTP, existing covered fragments are reused, and cache-only misses never resolve credentials. This evidence does not assert the landing controller timer or the unrelated controller criteria supplied with the lane.
+    source: manual
+    binds_ac: []
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn19998-shared-job-log-cache-deploy
+    description: Hosted wiring smoke discovers and dispatches the shipped gateway through the SCM adapter and in-memory event bus, returns a covered window on the completed topic, and terminalizes a cache miss without credential resolution. Shared-runtime deployment and a live quota reading remain unmeasured.
+    source: manual
+    binds_ac: []
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly -k bus_command
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual

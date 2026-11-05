@@ -110,6 +110,9 @@ from omnimarket.models.scm import (
     ModelScmTerminal,
     ModelScmVerb,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_cached_job_log_command import (
+    cached_job_log_command,
+)
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
 )
@@ -983,6 +986,7 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 
