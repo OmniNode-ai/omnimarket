@@ -479,6 +479,10 @@ def _evidence(
 def _gate(
     task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
 ) -> tuple[ItemState, str] | None:
+    subjects = {task.wave, task.id} - {""}
+    template = request.config.gate_wave_subject_template
+    if template and task.wave:
+        subjects.add(template.format(wave=task.wave))
     row = max(
         (
             row
@@ -486,13 +490,15 @@ def _gate(
             if row.kind == "STATUS"
             and row.state == request.config.gate_state
             and row.subject
-            and row.subject in {task.wave, task.id}
+            and row.subject in subjects
         ),
         key=_row_key,
         default=None,
     )
     if row and row.verdict in request.config.gate_fail_verdicts:
-        return "stop", f"gate failed {_stamp(row.ts)}"
+        reason = row.reason or row.text
+        detail = f": {reason}" if reason else ""
+        return "stop", f"gate failed {_stamp(row.ts)}{detail}"
     if row and row.verdict in request.config.gate_pass_verdicts:
         return "done", f"gate passed {_stamp(row.ts)}"
     return None
@@ -618,12 +624,13 @@ def _table_item(
 ) -> ModelFloorItem:
     state: ItemState
     kind: EvidenceKind = ""
+    prs = _table_prs(row, index)
     if row.state == "merged":
         kind = _table_built(row, request, index)
         if kind:
             state, note = _settle(
                 "Linear done" if kind == "linear_done" else "PRs merged",
-                _table_prs(row, index),
+                prs,
                 row.tickets,
                 "",
                 request,
@@ -636,7 +643,11 @@ def _table_item(
             )
         kind = kind or "recorded"
     elif row.state in {"open-green", "open-red"}:
-        state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
+        state, note = (
+            ("active", f"PR open, {row.state.removeprefix('open-')}")
+            if prs
+            else ("wait", "recorded open, no matching pull request read")
+        )
     elif row.state == "not-started":
         state, note = "prep", "not started"
     else:
@@ -654,7 +665,7 @@ def _table_item(
         state=state,
         note=note[: request.config.note_chars],
         tickets=row.tickets,
-        prs=row.prs,
+        prs=prs,
         evidence_kind=kind,
     )
 
@@ -1238,7 +1249,10 @@ def _line(
         )
     )
     hard += tuple(
-        _Cause(f"GATE {item.id} failed", (item.id,))
+        _Cause(
+            f"GATE {item.id} failed: {item.note.removeprefix('gate failed ')}",
+            (item.id,),
+        )
         for item in items
         if has_manifest and _is_gate(item, request) and item.state == "stop"
     )

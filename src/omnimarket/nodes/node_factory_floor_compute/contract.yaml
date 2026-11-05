@@ -59,6 +59,8 @@ config:
   andon_markers: [andon]
   gate_kind: gate
   gate_state: gate
+  # Gate runners also write subject=W0 (and W1a, etc.); these are the same wave's verdict, not a separate gate.
+  gate_wave_subject_template: "W{wave}"
   gate_fail_verdicts: [fail]
   gate_pass_verdicts: [pass]
   done_outcomes: [done, merged]
@@ -141,6 +143,9 @@ config:
   # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
   # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
   evidence_cells: [task, ticket, pr]
+  # Both manifest and fallback table items use the same PR ownership mapping. For a ticketed task, a watched title
+  # or branch must name its ticket; a dependency update with no ticket is unrelated even when a stale table lists it.
+  # An explicit link is retained when the watcher has not read the PR's identity. PR body mentions bind nothing.
   # The task-to-ticket map: a STATUS row whose state= cell is this value maps the task in its task= cell, of the plan
   # whose path contains its subject= cell (any plan when empty), to the ticket in its ticket= cell and the pull request
   # in its pr= cell. Both join the task's own; an outcome= in done_outcomes records that the mapped work merged.

@@ -89,6 +89,8 @@ def _write(path: Path, content: str | dict[str, Any] | list[Any]) -> Path:
 @pytest.fixture(autouse=True)
 def _own_lane_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The machine and lane sources are named by the environment; no test reads the real home's."""
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.delenv("ONEX_FACTORY_FLOOR_OVERLAY", raising=False)
     monkeypatch.setenv("ONEX_REMOTE_LANE_DIR", str(tmp_path / "remote-lanes"))
     monkeypatch.setenv("LANDING_PLACEMENT_DIR", str(tmp_path / "placement"))
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "no-such-hosts.yaml"))
@@ -250,7 +252,7 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert wave["andon"]["flag"] is True
     assert wave["andon"]["causes"] == [
         "HOLD 2026-10-31T11:41:00Z-lane-a: andon:gate:0:W0.2",
-        "GATE G0 failed",
+        "GATE G0 failed: 2026-10-31T11:50:00Z: Gate G0 FAIL.",
     ]
     # Every task of the plan is its own station, its wave kept as the station's group.
     stations = {st["id"]: st for st in wave["stations"]}
