@@ -170,7 +170,7 @@ def test_the_reading_node_gives_the_rule_reading() -> None:
     assert reading.state is EnumLabTestHarnessReadingState.NOT_WORKING
 
 
-def test_an_overlay_needs_a_golden_and_an_error_case_and_a_named_lane_for_kafka(
+def test_an_overlay_needs_a_golden_and_an_error_case_and_a_named_lane_means_the_broker(
     tmp_path: object,
 ) -> None:
     from pathlib import Path
@@ -184,8 +184,11 @@ def test_an_overlay_needs_a_golden_and_an_error_case_and_a_named_lane_for_kafka(
         ModelLabTestHarnessOverlay.model_validate(
             {**document, "cases": [cases[0], {**cases[0], "case_id": "second"}]}
         )
-    with pytest.raises(ValidationError, match="needs bus_lane"):
-        ModelLabTestHarnessOverlay.model_validate({**document, "backend": "kafka"})
+    assert ModelLabTestHarnessOverlay.model_validate(document).bus_kind == "inmemory"
+    named = ModelLabTestHarnessOverlay.model_validate(
+        {**document, "bus_lane": "x-lane"}
+    )
+    assert named.bus_kind == "kafka"
     with pytest.raises(ValidationError):
         ModelLabTestHarnessOverlay.model_validate({**document, "extra_key": 1})
 

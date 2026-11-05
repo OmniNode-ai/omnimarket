@@ -5,31 +5,19 @@ on the in-memory bus, and an overlay whose cases run real commands at a real com
 
 from __future__ import annotations
 
-import contextlib
 import os
 import subprocess
 import sys
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
-from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.models.lab_test_harness import ModelLabTestHarnessOverlay
-from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
-    LabWorkCallerRunner,
-)
-from omnimarket.nodes.node_lab_work_unit_effect import (
-    HandlerHostCapacityAdvertiseEffect,
-    HandlerLabWorkUnitEffect,
-)
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
     HostReading,
-    LocalShellLabWorkExecutor,
 )
 
 HOST = "h202"
@@ -84,7 +72,6 @@ def overlay_document(
         "overlay_revision": "test.1",
         "piece": "central-test-harness",
         "tag": "drill",
-        "backend": "inmemory",
         "lane": "harness-drill",
         "schedule": {"workflow": "lab-test-harness", "interval_seconds": 300},
         "max_age_seconds": max_age_seconds,
@@ -114,46 +101,21 @@ def overlay_document(
 
 
 def make_overlay(
-    sha: str, result_path: Path, **kwargs: object
+    sha: str,
+    result_path: Path,
+    *,
+    golden: str = "passes.py",
+    error: str = "fails.py",
+    receipt_slack_seconds: int = 5,
+    max_age_seconds: int = 900,
 ) -> ModelLabTestHarnessOverlay:
     return ModelLabTestHarnessOverlay.model_validate(
-        overlay_document(sha, result_path, **kwargs)  # type: ignore[arg-type]
+        overlay_document(
+            sha,
+            result_path,
+            golden=golden,
+            error=error,
+            receipt_slack_seconds=receipt_slack_seconds,
+            max_age_seconds=max_age_seconds,
+        )
     )
-
-
-class LiveLabBus:
-    """An in-memory bus with a lab host serving it (or, with serve=False, no host at all)."""
-
-    def __init__(self, url_base: str, work_root: Path, *, serve: bool = True) -> None:
-        self._url_base, self._work_root, self._serve = url_base, work_root, serve
-
-    @contextlib.asynccontextmanager
-    async def opener(
-        self, overlay: ModelLabTestHarnessOverlay
-    ) -> AsyncIterator[LabWorkCallerRunner]:
-        bus = EventBusInmemory(environment="local", group="lab-test-harness-test")
-        await bus.start()
-        host: LabWorkHost | None = None
-        if self._serve:
-            executor = LocalShellLabWorkExecutor(
-                self._work_root, url_base=self._url_base
-            )
-            host = LabWorkHost(
-                bus,
-                HandlerLabWorkUnitEffect(
-                    HOST,
-                    executor,
-                    allowed_executables=frozenset({Path(sys.executable).name}),
-                ),
-                HandlerHostCapacityAdvertiseEffect(_Reader()),
-            )
-            await host.start(advertise=False)
-        caller = LabWorkCaller(bus, wait_slack_seconds=overlay.receipt_slack_seconds)
-        await caller.start()
-        try:
-            yield LabWorkCallerRunner(caller)
-        finally:
-            await caller.stop()
-            if host is not None:
-                await host.stop()
-            await bus.close()

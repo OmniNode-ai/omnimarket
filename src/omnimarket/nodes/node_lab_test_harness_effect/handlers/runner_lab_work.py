@@ -60,7 +60,7 @@ async def open_lab_work_runner(
 ) -> AsyncIterator[LabWorkCallerRunner]:
     """Open the overlay's bus and a started caller on it; close both on exit."""
     async with open_lab_run_bus(
-        bus=overlay.backend,
+        bus=overlay.bus_kind,
         lane=overlay.bus_lane,
         kafka_bootstrap=None,
         **{_WORKSPACE_KW: workspace_root},

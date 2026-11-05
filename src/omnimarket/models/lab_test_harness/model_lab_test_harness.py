@@ -101,8 +101,8 @@ class ModelLabTestHarnessOverlay(BaseModel):
     piece: str
     #: ``drill`` or ``operational``: the two kinds of row are kept apart.
     tag: str
-    backend: Literal["kafka", "inmemory"]
-    #: The declared bus lane the work units travel on; required for ``kafka``.
+    #: The declared bus lane the work units travel on. Absent means the in-process bus,
+    #: which has no lab host, so only a test that supplies its own opener runs on it.
     bus_lane: str | None = None
     #: The lane name the work units carry for attribution.
     lane: str
@@ -130,11 +130,12 @@ class ModelLabTestHarnessOverlay(BaseModel):
         ids = [case.case_id for case in self.cases]
         if len(ids) != len(set(ids)):
             raise ValueError("case ids must be unique")
-        if self.backend == "kafka" and not self.bus_lane:
-            raise ValueError("backend kafka needs bus_lane")
-        if self.backend == "inmemory" and self.bus_lane:
-            raise ValueError("backend inmemory has no broker to name")
         return self
+
+    @property
+    def bus_kind(self) -> Literal["kafka", "inmemory"]:
+        """The bus the lane names: a declared lane is the broker, no lane the in-process bus."""
+        return "kafka" if self.bus_lane else "inmemory"
 
 
 class ModelLabTestHarnessRequested(BaseModel):
