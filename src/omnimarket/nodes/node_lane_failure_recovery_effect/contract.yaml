@@ -26,7 +26,7 @@ handler_routing:
         module: omnimarket.models.model_lane_failure
     - handler:
         name: HandlerLaneRetentionVerify
-        module: omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_retention_verify
+        module: omnimarket.nodes.node_lane_failure_recovery_effect.handlers
       event_model:
         name: ModelLaneRetentionVerifyRequest
         module: omnimarket.models.model_lane_failure

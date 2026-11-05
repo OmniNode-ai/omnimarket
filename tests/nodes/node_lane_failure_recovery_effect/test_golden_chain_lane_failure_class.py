@@ -43,7 +43,7 @@ async def test_lane_failure_runtime_constructs_before_overlay_is_available(
     monkeypatch, b7_receipts
 ) -> None:
     from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-    from omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_retention_verify import (
+    from omnimarket.nodes.node_lane_failure_recovery_effect.handlers import (
         HandlerLaneRetentionVerify,
     )
 
@@ -500,7 +500,7 @@ def test_lane_failure_class_retention_scan_uses_start_time_and_install_record(
         ModelLaneRetentionVerifyOverlay,
         ModelLaneRetentionVerifyRequest,
     )
-    from omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_retention_verify import (
+    from omnimarket.nodes.node_lane_failure_recovery_effect.handlers import (
         HandlerLaneRetentionVerify,
     )
 
