@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_merge_sweep_request_compute
 version: "0.1.0"
-description: "Build a typed merge-sweep run request from a scheduled fire and overlay-bound deployment configuration; the runtime publishes it to the existing orchestrator."
+description: "Build a typed merge-sweep run request from a scheduled fire and overlay-bound deployment configuration, including the diagnosis repository and sweep lease path; the runtime publishes it to the existing orchestrator."
 pack: operator_tooling
 node_role: compute
 display_name: "Scheduled Merge Sweep Request"

@@ -117,6 +117,8 @@ def run_request(
         "model": "sonnet",
         "runner_script": "/x/skills/remote-lane/scripts/onex_remote_lane.py",
         "brief_dir": "/tmp",
+        "diagnose_repo": "omnimarket",
+        "lease_path": str(root / "sweep.lease"),
     }
     fields.update(overrides)
     return ModelMergeSweepRunRequest(**fields)

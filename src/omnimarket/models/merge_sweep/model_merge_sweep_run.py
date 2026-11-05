@@ -70,6 +70,8 @@ class ModelMergeSweepRunRequest(BaseModel):
     model: str
     runner_script: str
     brief_dir: str
+    diagnose_repo: str = ""
+    lease_path: str = ""
     host: str | None = None
     max_lanes: int | None = None
     retries: int | None = None
@@ -106,6 +108,7 @@ class ModelMergeSweepLaneOutcome(BaseModel):
     prs: list[str]
     exit_code: int
     status: str
+    started: bool = False
     host: str | None
     retried_after: ModelMergeSweepRetriedAfter | None
     events: list[str]

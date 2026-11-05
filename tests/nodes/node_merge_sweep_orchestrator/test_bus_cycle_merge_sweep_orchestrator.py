@@ -106,6 +106,8 @@ async def test_scheduled_ticks_request_and_complete_one_sweep_per_window(
         "floors_path",
         "runner_script",
         "brief_dir",
+        "diagnose_repo",
+        "lease_path",
         "lane",
         "parent",
         "ticket",
@@ -200,6 +202,8 @@ async def test_scheduled_ticks_request_and_complete_one_sweep_per_window(
             assert {e["correlation_id"] for e in seen[topic]} == expected_correlations
         for event in seen[command_topic]:
             generated = ModelMergeSweepRunRequest.model_validate(event["payload"])
+            assert generated.diagnose_repo == request.diagnose_repo
+            assert generated.lease_path == request.lease_path
             assert generated.state_path == request.state_path
             assert generated.dispatch is False
             assert generated.now in {

@@ -80,12 +80,15 @@ def test_the_wiring_plan_names_only_operations_the_sibling_nodes_declare() -> No
     ]
     steps = {n["node_id"]: n for n in graph["nodes"]}
     assert list(steps) == [
+        "lease",
         "load_facts",
         "read_fleet",
         "plan_lanes",
+        "prepare_dispatch",
         "render_brief",
         "run_lane",
         "decide_retry",
+        "finalize_lease",
     ]
     planned: set[tuple[str, str]] = set()
     for step in steps.values():

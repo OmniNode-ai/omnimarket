@@ -177,6 +177,22 @@ class ModelMergeSweepPlanResult(BaseModel):
     deferred: int
 
 
+class ModelMergeSweepDispatchPlanRequest(BaseModel):
+    """Bind a recorded plan to the repository the diagnosis will read.
+
+    The repository is deployment configuration, even for a lane with no PR.
+    Keeping this separate from the historical rule table permits replaying a
+    recorded plan without treating its null repository as dispatchable.
+    """
+
+    model_config = _FROZEN
+
+    plan: ModelMergeSweepPlanResult
+    diagnose_repo: str = Field(
+        min_length=1, pattern=r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?$"
+    )
+
+
 DEFAULT_CLAIM_CHECK_COMMAND = (
     'python3 "${CLAUDE_PLUGIN_ROOT}/skills/merge-sweep/scripts/sweep_read.py" '
     "--claim-check <repo>#<n>"

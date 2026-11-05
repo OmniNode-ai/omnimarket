@@ -58,6 +58,12 @@ handler_routing:
         module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_lane_run"
       input_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLaneRunRequest"
       output_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLaneRunResult"
+    - operation: "manage_merge_sweep_lease"
+      handler:
+        name: "HandlerMergeSweepLease"
+        module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_lease"
+      input_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLeaseRequest"
+      output_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLeaseResult"
 descriptor:
   node_archetype: effect
   purity: effectful

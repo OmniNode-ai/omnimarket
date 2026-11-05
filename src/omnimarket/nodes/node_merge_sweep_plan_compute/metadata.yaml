@@ -3,7 +3,8 @@
 name: node_merge_sweep_plan_compute
 version: 0.1.0
 description: Decide a merge sweep from supplied facts - the lanes one sweep dispatches,
-  the retry of a lane whose runner exited without a host and each lane's brief.
+  the retry of a lane whose runner exited without a host, each lane's brief and
+  the configured repository bound to a diagnosis before dispatch.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:

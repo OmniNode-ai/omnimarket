@@ -81,6 +81,7 @@ def test_contract_declares_runtime_dispatch_and_no_shared_runtime_bus_block() ->
     assert {e["operation"] for e in routing["handlers"]} == {
         "load_merge_sweep_facts",
         "run_merge_sweep_lane",
+        "manage_merge_sweep_lease",
     }
 
 

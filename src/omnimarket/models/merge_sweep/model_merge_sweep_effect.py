@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +18,29 @@ _FROZEN = ConfigDict(frozen=True, extra="forbid")
 MAX_AGE_S = 480.0
 FULL_RESYNC_MAX_AGE_S = 90 * 60.0
 TICKS_READ = 20
+
+
+class ModelMergeSweepLeaseRequest(BaseModel):
+    """An owner-scoped lease operation, using the legacy lease file format."""
+
+    model_config = _FROZEN
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    action: Literal["acquire", "complete", "release"]
+    now: str
+    budget_s: int = Field(default=25000, ge=1)
+    hold_s: int = Field(default=3600, ge=3600)
+
+
+class ModelMergeSweepLeaseResult(BaseModel):
+    """Whether the operation applied; refusals name their cause and holder."""
+
+    model_config = _FROZEN
+
+    ok: bool
+    why: str = ""
+    holder: str | None = None
 
 
 class ModelMergeSweepLoadRequest(BaseModel):

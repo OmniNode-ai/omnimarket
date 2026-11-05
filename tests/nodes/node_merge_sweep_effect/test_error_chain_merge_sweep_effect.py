@@ -283,3 +283,12 @@ def test_the_receipt_exit_code_is_the_lane_result() -> None:
         "host-limited",
         "h201",
     )
+
+
+def test_a_wait_port_failure_preserves_the_observed_start() -> None:
+    """A detached receipt already exists: a wait failure cannot undo that start."""
+    runner = _ScriptedRunner([DETACHED, MergeSweepPortError("wait unavailable")])
+    result = HandlerMergeSweepLaneRun(runner=runner, files=_NoFiles()).handle(_lane())
+    assert result.started is True
+    assert result.status == "wait-failed"
+    assert result.receipt == "/r.json"

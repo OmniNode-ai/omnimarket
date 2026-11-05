@@ -19,12 +19,15 @@ from omnimarket.models.merge_sweep import (
 from omnimarket.models.merge_sweep.model_merge_sweep_effect import (
     ModelMergeSweepLaneRunRequest,
     ModelMergeSweepLaneRunResult,
+    ModelMergeSweepLeaseRequest,
+    ModelMergeSweepLeaseResult,
     ModelMergeSweepLoadRequest,
     ModelMergeSweepLoadResult,
 )
 from omnimarket.models.merge_sweep.model_merge_sweep_plan import (
     ModelMergeSweepBrief,
     ModelMergeSweepBriefRequest,
+    ModelMergeSweepDispatchPlanRequest,
     ModelMergeSweepPlanRequest,
     ModelMergeSweepPlanResult,
 )
@@ -56,3 +59,11 @@ class ProtocolMergeSweepStages(Protocol):
     def decide_retry(
         self, request: ModelMergeSweepRetryRequest
     ) -> ModelMergeSweepRetryResult: ...
+
+    def lease(
+        self, request: ModelMergeSweepLeaseRequest
+    ) -> ModelMergeSweepLeaseResult: ...
+
+    def prepare_dispatch(
+        self, request: ModelMergeSweepDispatchPlanRequest
+    ) -> ModelMergeSweepPlanResult: ...

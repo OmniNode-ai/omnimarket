@@ -13,15 +13,19 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from omnimarket.models.merge_sweep import ModelMergeSweepReadRequest
 from omnimarket.models.merge_sweep.model_merge_sweep_effect import (
     ModelMergeSweepLaneRunRequest,
     ModelMergeSweepLaneRunResult,
+    ModelMergeSweepLeaseRequest,
     ModelMergeSweepLoadRequest,
 )
 from omnimarket.models.merge_sweep.model_merge_sweep_plan import (
     ModelMergeSweepBriefRequest,
+    ModelMergeSweepDispatchPlanRequest,
     ModelMergeSweepLane,
     ModelMergeSweepPlanRequest,
     ModelMergeSweepReading,
@@ -41,7 +45,16 @@ from ..protocols import ProtocolMergeSweepStages
 from .handler_merge_sweep_stages_local import LocalMergeSweepStages
 
 _READ_FIELDS = ("state_path", "ledger_path", "floors_path", "fleet")
-_DISPATCH_FIELDS = ("lane", "parent", "ticket", "model", "runner_script", "brief_dir")
+_DISPATCH_FIELDS = (
+    "lane",
+    "parent",
+    "ticket",
+    "model",
+    "runner_script",
+    "brief_dir",
+    "diagnose_repo",
+    "lease_path",
+)
 
 
 def unset_fields(request: ModelMergeSweepRunRequest) -> list[str]:
@@ -106,6 +119,42 @@ class HandlerMergeSweepRun:
                 if len(unset) > 1
                 else f"request not configured: {unset[0]} is empty",
             )
+        if not request.dispatch:
+            return self._run(request)
+        run_id = f"{request.lane}-{uuid4()}"
+
+        def lease(action: str) -> bool:
+            operation = ModelMergeSweepLeaseRequest.model_validate(
+                {
+                    "path": request.lease_path,
+                    "run_id": run_id,
+                    "action": action,
+                    "now": datetime.now(UTC).isoformat(),
+                }
+            )
+            result = self._stages.lease(operation)
+            if not result.ok:
+                raise RuntimeError(
+                    f"sweep lease {action}: {result.why} holder={result.holder}"
+                )
+            return result.ok
+
+        try:
+            lease("acquire")
+        except RuntimeError as exc:
+            return ModelMergeSweepRunResult(ok=False, why=str(exc))
+        # An unexpected exception can follow an uncertain start. Keep the hour
+        # in that case; release only when every observed attempt did not start.
+        action = "complete"
+        try:
+            result = self._run(request)
+            if not result.ok:
+                action = "release"
+            return result
+        finally:
+            lease(action)
+
+    def _run(self, request: ModelMergeSweepRunRequest) -> ModelMergeSweepRunResult:
         loaded = self._stages.load_facts(
             ModelMergeSweepLoadRequest(
                 state_path=request.state_path,
@@ -131,6 +180,12 @@ class HandlerMergeSweepRun:
                 max_lanes=request.max_lanes,
             )
         )
+        if request.diagnose_repo:
+            plan = self._stages.prepare_dispatch(
+                ModelMergeSweepDispatchPlanRequest(
+                    plan=plan, diagnose_repo=request.diagnose_repo
+                )
+            )
         outcomes = (
             [
                 self._dispatch(request, lane, index)
@@ -139,8 +194,10 @@ class HandlerMergeSweepRun:
             if request.dispatch
             else []
         )
+        all_failed = bool(outcomes) and not any(outcome.started for outcome in outcomes)
         return ModelMergeSweepRunResult(
-            ok=True,
+            ok=not all_failed,
+            why="all lanes failed to start" if all_failed else "",
             complete=not reading.unread,
             unread=reading.unread,
             plan=plan,
@@ -194,6 +251,7 @@ class HandlerMergeSweepRun:
         name = f"{request.lane}-{lane.kind}-{index + 1}"
         events = ["start"]
         receipt = self._start(request, lane, name, name)
+        started = receipt.started
         waits, other_host_used = 0, False
         retried: ModelMergeSweepRetriedAfter | None = None
         while True:
@@ -212,6 +270,7 @@ class HandlerMergeSweepRun:
                 waits += 1
                 events.append("start")
                 receipt = self._start(request, lane, name, name)
+                started = started or receipt.started
             elif decision.action == "retry_other_host":
                 other_host_used = True
                 retried = ModelMergeSweepRetriedAfter(
@@ -219,6 +278,7 @@ class HandlerMergeSweepRun:
                 )
                 events.append("start-other-host")
                 receipt = self._start(request, lane, f"{name}-r2", name)
+                started = started or receipt.started
             else:
                 break
         return ModelMergeSweepLaneOutcome(
@@ -228,6 +288,7 @@ class HandlerMergeSweepRun:
             prs=[p.pr for p in lane.prs],
             exit_code=receipt.exit_code,
             status=receipt.status,
+            started=started,
             host=receipt.host,
             retried_after=retried,
             events=events,

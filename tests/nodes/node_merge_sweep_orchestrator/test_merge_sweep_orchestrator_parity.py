@@ -107,7 +107,26 @@ def test_the_recorded_sweeps_cover_every_branch() -> None:
 def test_the_sweep_matches_the_workflow(index: int, tmp_path: Path) -> None:
     case = CASES[index]
     got, _, _ = _sweep(case, tmp_path)
-    expected = case["expected"]
+    # Preserve the original recording. The intentional dispatch delta binds a
+    # repository to diagnosis in its brief, command and receipt, consistently.
+    expected = json.loads(json.dumps(case["expected"]))
+    for receipt in expected["receipts"]:
+        if receipt["kind"] == "diagnose":
+            receipt["repo"] = "omnimarket"
+            name = receipt["lane"]
+            for lane_name in (name, f"{name}-r2"):
+                if lane_name in expected["commands"]:
+                    expected["commands"][lane_name] = [
+                        cmd.replace(" --detach", " --repo omnimarket --detach")
+                        for cmd in expected["commands"][lane_name]
+                    ]
+                if lane_name in expected["briefs"]:
+                    expected["briefs"][lane_name] = [
+                        brief.replace(
+                            "diagnose lane (", "diagnose lane for omnimarket ("
+                        )
+                        for brief in expected["briefs"][lane_name]
+                    ]
     assert got["events"] == expected["events"]
     expected_commands = {
         name: [cmd.replace("--model opus", "--model sonnet") for cmd in commands]
@@ -127,7 +146,12 @@ def test_the_plan_is_the_old_plan_and_each_wait_is_slept(
     _, result, slept = _sweep(case, tmp_path)
     assert result.plan is not None
     got = result.plan.model_dump(exclude_unset=True)
-    expected = RECORDED["scenarios"][case["scenario"]]["expected"]["plan"]
+    expected = json.loads(
+        json.dumps(RECORDED["scenarios"][case["scenario"]]["expected"]["plan"])
+    )
+    for lane in expected["lanes"]:
+        if lane["kind"] == "diagnose":
+            lane["repo"] = "omnimarket"
     assert {k: got[k] for k in ("lab_only", "lanes", "skipped")} == {
         k: expected[k] for k in ("lab_only", "lanes", "skipped")
     }
@@ -151,7 +175,14 @@ def test_a_broken_brief_fails_the_cases(
         original.replace("Premise", "Premise."),
     )
     misses = sum(
-        _sweep(c, tmp_path / str(i))[0]["briefs"] != c["expected"]["briefs"]
+        _sweep(c, tmp_path / str(i))[0]["briefs"]
+        != {
+            name: [
+                text.replace("diagnose lane (", "diagnose lane for omnimarket (")
+                for text in texts
+            ]
+            for name, texts in c["expected"]["briefs"].items()
+        }
         for i, c in enumerate(CASES)
     )
     assert misses > 0

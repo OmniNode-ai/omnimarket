@@ -26,12 +26,15 @@ from omnimarket.models.merge_sweep import (
 from omnimarket.models.merge_sweep.model_merge_sweep_effect import (
     ModelMergeSweepLaneRunRequest,
     ModelMergeSweepLaneRunResult,
+    ModelMergeSweepLeaseRequest,
+    ModelMergeSweepLeaseResult,
     ModelMergeSweepLoadRequest,
     ModelMergeSweepLoadResult,
 )
 from omnimarket.models.merge_sweep.model_merge_sweep_plan import (
     ModelMergeSweepBrief,
     ModelMergeSweepBriefRequest,
+    ModelMergeSweepDispatchPlanRequest,
     ModelMergeSweepPlanRequest,
     ModelMergeSweepPlanResult,
 )
@@ -41,6 +44,11 @@ from omnimarket.models.merge_sweep.model_merge_sweep_retry import (
 )
 
 STAGE_OPERATIONS: dict[str, tuple[str, str]] = {
+    "lease": ("node_merge_sweep_effect", "manage_merge_sweep_lease"),
+    "prepare_dispatch": (
+        "node_merge_sweep_plan_compute",
+        "prepare_merge_sweep_dispatch",
+    ),
     "load_facts": ("node_merge_sweep_effect", "load_merge_sweep_facts"),
     "read": ("node_merge_sweep_reading_compute", "read_merge_sweep_state"),
     "plan": ("node_merge_sweep_plan_compute", "plan_merge_sweep_lanes"),
@@ -100,4 +108,14 @@ class LocalMergeSweepStages:
     ) -> ModelMergeSweepRetryResult:
         return cast(
             ModelMergeSweepRetryResult, self._stage("decide_retry").handle(request)
+        )
+
+    def lease(self, request: ModelMergeSweepLeaseRequest) -> ModelMergeSweepLeaseResult:
+        return cast(ModelMergeSweepLeaseResult, self._stage("lease").handle(request))
+
+    def prepare_dispatch(
+        self, request: ModelMergeSweepDispatchPlanRequest
+    ) -> ModelMergeSweepPlanResult:
+        return cast(
+            ModelMergeSweepPlanResult, self._stage("prepare_dispatch").handle(request)
         )

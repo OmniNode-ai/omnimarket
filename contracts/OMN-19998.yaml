@@ -113,6 +113,16 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-sweep-diagnose-repository
+    statement: A recorded diagnosis plan with no pull request names the configured repository in its brief and runner command.
+    acceptance:
+      - id: AC11
+        statement: 'A recorded diagnose lane with repo null and no PR is bound to the deployment repository before dispatch; missing settings refuse dispatch before any start.'
+  - id: req-omn19998-sweep-start-lease
+    statement: The sweep lease spans dispatch and is released when every planned lane failed to start.
+    acceptance:
+      - id: AC12
+        statement: 'All failed starts release the owned lease; a started lane retains the hourly hold even after work or wait failure, and another run cannot release its lease.'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -128,6 +138,30 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-sweep-repository
+    description: Recorded one-lane diagnosis regression runs through contract-resolved planning and runner adapters. This scoped sweep proof does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repository_and_lease.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-sweep-deploy
+    description: Hosted deployment smoke resolves the installed orchestrator contract on the canonical runtime and event bus, observes the bound repository in both brief and runner command, and reads back immediate lease release after all starts fail. Only the remote launcher is replaced; no live sweep installation is asserted.
+    source: manual
+    binds_ac: [AC11, AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repository_and_lease.py -q --no-cov -k canonical_runtime
+        cwd: .
+  - id: dod-omn19998-sweep-lease
+    description: Owned sweep lease regression distinguishes failed starts from started work, concurrent calls and failed waits. Live installation is unmeasured.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repository_and_lease.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual

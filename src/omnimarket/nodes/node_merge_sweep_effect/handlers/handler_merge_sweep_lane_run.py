@@ -83,14 +83,20 @@ class HandlerMergeSweepLaneRun:
         argv = start_argv(request)
 
         def failed(
-            exit_code: int, text: str, status: str
+            exit_code: int,
+            text: str,
+            status: str,
+            *,
+            started: bool = False,
+            receipt: str = "",
         ) -> ModelMergeSweepLaneRunResult:
             return ModelMergeSweepLaneRunResult(
-                started=False,
+                started=started,
                 argv=argv,
                 exit_code=exit_code,
                 status=status,
                 result=text[:600],
+                receipt=receipt,
             )
 
         decision = resolve_lane_model(
@@ -122,7 +128,7 @@ class HandlerMergeSweepLaneRun:
                 code = self._runner.run(wait_argv, request.wait_timeout_s).returncode
             data: dict[str, Any] | None = self._files.read_json(receipt)
         except MergeSweepPortError as exc:
-            return failed(1, str(exc), "wait-failed")
+            return failed(1, str(exc), "wait-failed", started=True, receipt=receipt)
         if code == EXIT_STILL_RUNNING:
             return ModelMergeSweepLaneRunResult(
                 started=True,

@@ -35,7 +35,9 @@ description: >
   (capped), then for each lane render its brief, start it through the remote-lane runner and
   retry it as the plan node decides (wait on no host, retry once on another host when the account
   is limited or its login expired). Returns the plan, what was skipped or deferred, the facts it
-  could not read, and each lane's final receipt.
+  could not read, and each lane's final receipt. A diagnosis names its repository from the
+  deployment overlay. The lease spans dispatch; a sweep whose every lane failed to start
+  releases it immediately, while a started lane retains the hourly hold even if its work failed.
 input_model:
   name: ModelMergeSweepRunRequest
   module: omnimarket.nodes.node_merge_sweep_orchestrator.models.model_merge_sweep_run
@@ -69,9 +71,16 @@ workflow_coordination:
       description: Load, read, plan, then brief, start and retry each planned lane.
     execution_graph:
       nodes:
+      - node_id: lease
+        node_type: EFFECT_GENERIC
+        description: Acquire the sweep lease before loading or dispatching; finalize after outcomes.
+        step_config:
+          node: node_merge_sweep_effect
+          operation: manage_merge_sweep_lease
       - node_id: load_facts
         node_type: EFFECT_GENERIC
         description: Gather the facts of one reading from the watcher state, the ledger and the tick log.
+        depends_on: [lease]
         step_config:
           node: node_merge_sweep_effect
           operation: load_merge_sweep_facts
@@ -89,10 +98,17 @@ workflow_coordination:
         step_config:
           node: node_merge_sweep_plan_compute
           operation: plan_merge_sweep_lanes
+      - node_id: prepare_dispatch
+        node_type: COMPUTE_GENERIC
+        description: Bind the diagnosis repository from deployment configuration before rendering or starting.
+        depends_on: [plan_lanes]
+        step_config:
+          node: node_merge_sweep_plan_compute
+          operation: prepare_merge_sweep_dispatch
       - node_id: render_brief
         node_type: COMPUTE_GENERIC
         description: Render the brief of one planned lane.
-        depends_on: [plan_lanes]
+        depends_on: [prepare_dispatch]
         step_config:
           node: node_merge_sweep_plan_compute
           operation: render_merge_sweep_lane_brief
@@ -114,6 +130,13 @@ workflow_coordination:
           operation: decide_merge_sweep_lane_retry
           for_each: dispatch
           loops_to: render_brief
+      - node_id: finalize_lease
+        node_type: EFFECT_GENERIC
+        description: Release on all failed starts; otherwise complete the owned lease with its hourly hold.
+        depends_on: [decide_retry]
+        step_config:
+          node: node_merge_sweep_effect
+          operation: manage_merge_sweep_lease
     coordination_rules:
       execution_mode: sequential
       parallel_execution_allowed: false

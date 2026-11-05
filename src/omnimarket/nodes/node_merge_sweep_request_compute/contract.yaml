@@ -55,6 +55,9 @@ config:
       ticket: "${env.MERGE_SWEEP_TICKET}"
       model: "${env.MERGE_SWEEP_MODEL}"
       runner_script: "${env.MERGE_SWEEP_RUNNER_SCRIPT}"
+      # Both are deployment facts, carried unchanged to the dispatch boundary.
+      diagnose_repo: "${env.MERGE_SWEEP_DIAGNOSE_REPO:}"
+      lease_path: "${env.MERGE_SWEEP_LEASE_PATH:}"
       brief_dir: "${env.MERGE_SWEEP_BRIEF_DIR}"
       # An unconfigured runtime answers with a refusal and never starts a lane.
       dispatch: "${env.MERGE_SWEEP_DISPATCH:false}"

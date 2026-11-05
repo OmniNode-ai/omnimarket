@@ -42,6 +42,13 @@ handler_routing:
       module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_brief
     input_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepBriefRequest
     output_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepBrief
+  - operation: prepare_merge_sweep_dispatch
+    topic: onex.cmd.omnimarket.merge-sweep-plan-requested.v1
+    handler:
+      name: HandlerMergeSweepDispatchPlan
+      module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_dispatch_plan
+    input_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepDispatchPlanRequest
+    output_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepPlanResult
   # OMN-20867: the schedule's entry. The tick that opens a config.merge_sweep_plan.schedule window
   # returns that window's fire (ModelScheduledFire) on the terminal topic; every other tick
   # returns nothing. Stateless, so the compute stays pure.
