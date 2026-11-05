@@ -10,6 +10,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadPolicy,
+)
+
 
 class ModelFactoryFloorPublishOverlay(BaseModel):
     """Deployment facts of the host that serves the page. There is no packaged default for any of them."""
@@ -228,6 +232,7 @@ class ModelReportData(BaseModel):
     relpath: str = Field(min_length=1)
     as_of_key: str | None = None
     publish: bool = True
+    projection: Literal["identity", "process_health_summary"] = "identity"
 
     @field_validator("remote")
     @classmethod
@@ -320,6 +325,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    process_health_payload: ModelProcessHealthPayloadPolicy
     delegation_relpath: str = Field(min_length=1)
     lines_overlay: ModelLinesOverlay
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
