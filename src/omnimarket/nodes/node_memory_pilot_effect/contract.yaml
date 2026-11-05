@@ -49,6 +49,10 @@ event_bus:
     - onex.evt.omnimarket.memory-pilot-started.v1
     - onex.evt.omnimarket.memory-pilot-completed.v1
     - onex.evt.omnimarket.memory-pilot-failed.v1
+# The started event is a sink: no node contract subscribes to it; the pilot's readers
+# (a person or a reading of the bus) consume it outside the node graph.
+externally_consumed_topics:
+  - onex.evt.omnimarket.memory-pilot-started.v1
 metadata:
   ticket: OMN-19998
   transport_type: kafka
