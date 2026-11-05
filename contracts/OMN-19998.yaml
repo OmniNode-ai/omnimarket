@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-plans-board-bus
+    statement: The existing plans board handler is reachable through the runtime bus and retains caller identity, stalled-plan notices and deduplication.
+    acceptance:
+      - id: AC11
+        statement: 'The installed plans node is discovered and wired to its declared command and completed topics; a reconstruction of the recorded 119-plan, 64-stalled, 54-unowned aggregate emits 54 notices once; an unread caller identity returns a correlated refusal without sending notices -- falsifier: uv run --frozen pytest tests/nodes/node_plans_today_effect/test_plans_board_bus.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -148,6 +153,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-plans-board-bus
+    description: Installed discovery and the real runtime adapter route a typed request through an in-memory event bus into the existing handler with real Git plan sources, watcher input and identity overlay. Only message delivery is replaced. The fixture reconstructs the supplied aggregate, not the unavailable original per-plan snapshot; historical causes and live scheduled execution remain unmeasured.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_plans_today_effect/test_plans_board_bus.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-plans-board-deploy
+    description: Hosted runtime wiring smoke discovers the packaged plans node, subscribes the declared command, and reads correlated typed completion and refusal events from the declared terminal topic. It checks aggregate counts, owner exclusion and a repeated tick without duplicate notices. This is an in-memory deployment smoke; it asserts neither a live scheduler installation nor the ticket's unrelated launchd controller criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_plans_today_effect/test_plans_board_bus.py -q --no-cov -n 0
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual

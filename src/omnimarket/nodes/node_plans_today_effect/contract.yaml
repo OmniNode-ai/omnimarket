@@ -3,7 +3,7 @@
 name: node_plans_today_effect
 lifecycle: experimental
 node_type: EFFECT_GENERIC
-runtime_profiles: []
+runtime_profiles: [effects]
 contract_version:
   major: 1
   minor: 0
@@ -31,14 +31,23 @@ handler_routing:
       name: HandlerPlansToday
       module: omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+  - onex.cmd.omnimarket.plans-today-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.plans-today-completed.v1
+terminal_event: onex.evt.omnimarket.plans-today-completed.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.plans-today-requested.v1
+  producer: External board callers publish the typed plans-today request with source paths and the caller identity sidecar.
+externally_consumed_topics:
+- onex.evt.omnimarket.plans-today-completed.v1
 runtime_dispatch:
-  external_trigger: Direct Python invocation, or python -m omnimarket.nodes.node_plans_today_effect from the session-start hook and the plans-today skill.
+  command_topic: onex.cmd.omnimarket.plans-today-requested.v1
+  external_trigger: A board caller can publish the typed request; the existing session-start hook and plans-today skill may also invoke the same handler directly.
 descriptor:
   node_archetype: effect
   purity: effectful
-  runtime_profiles: []
+  runtime_profiles: [effects]
   idempotent: false
   timeout_ms: 600000
   side_effects:
@@ -48,7 +57,7 @@ descriptor:
   - writes plans-today.json and detail.md under the output directory
   - sends one ledger MSG per stalled plan with no owner through the ledger-msg executor
 metadata:
-  transport_type: local
+  transport_type: kafka
   description: >-
     Bring up the plans of the day, ranked, with a next action each. The caller's role is resolved through the team identity declaration on every run: an authenticated operator reads every plan task and the pr-watcher state; a member's run reads only the member's tickets (assigned in Linear or named on the member's open claims), reads their pull requests with one gh pr view each under the member's own login (at most 30), and lists every other task as other member: state not read. Unknown identity never runs the operator's mode.
   author: OmniNode Team

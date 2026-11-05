@@ -77,7 +77,10 @@ def test_contract_golden_chain_in_a_members_session(tmp_path: Path) -> None:
     hints = get_type_hints(handler_class.handle)
     assert hints["request"] is request_class
     assert hints["return"] is result_class
-    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["event_bus"] == {
+        "subscribe_topics": [contract["runtime_dispatch"]["command_topic"]],
+        "publish_topics": [contract["terminal_event"]],
+    }
 
     roots = tmp_path / "roots"
     (roots / "team_identity").mkdir(parents=True)
