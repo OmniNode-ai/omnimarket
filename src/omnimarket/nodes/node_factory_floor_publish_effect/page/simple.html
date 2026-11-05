@@ -54,7 +54,8 @@ function draw(){
   else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p></section>`;
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
-  for (const a of doc.alarms) if (a.delivery !== "delivered") h += `<div class="row"><span class="dot red"></span><div><b>Alarm: ${esc(a.title)}</b><small>${a.delivery === "undelivered" ? "No delivery receipt on any channel; it needs you." : "Waiting for a delivery receipt."} Raised ${ago(Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))}.</small></div></div>`;
+  const open = doc.alarms.filter(a => a.delivery !== "delivered");
+  if (open.length) h += `<div class="row"><span class="dot red"></span><div><b>${open.length} lab alarms have no delivery receipt</b><small>${open.some(a => a.delivery === "undelivered") ? "No channel has proven delivery; it needs you." : "Waiting for a delivery receipt."} Oldest raised ${ago(Math.max(...open.map(a => Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))))}.</small></div></div>`;
   const listed = doc.causes.filter(c => c.listed);
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
