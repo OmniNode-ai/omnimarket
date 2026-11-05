@@ -134,11 +134,12 @@ def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    # Base resolution errors propagate from check(); the deployed typed handler
-    # turns them into a refusal before considering the release-cut exemption.
-    with pytest.raises(subprocess.CalledProcessError) as raised:
-        _check(monkeypatch, tmp_path, head, "no-such-base")
-    assert raised.value.cmd == ["git", "rev-parse", "--verify", "no-such-base^{commit}"]
+    # check() reads the base as given: an unreadable base fails closed to the
+    # refusal, and the deployed typed handler refuses before considering the
+    # release-cut exemption.
+    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
+        missing_contract_message(TICKET),
+    )
     result = push.HandlerTicketContractPrerequisite().handle(
         ModelTicketContractPrerequisiteRequest(
             head=head, base="no-such-base", title=TITLE
