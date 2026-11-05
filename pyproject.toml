@@ -154,7 +154,7 @@ dependencies = [
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
-    "omnibase-core>=0.47.60,<0.48.0",
+    "omnibase-core>=0.47.67,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -413,6 +413,7 @@ node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_comp
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
+node_error_class_normalize_compute = "omnimarket.nodes.node_error_class_normalize_compute"
 node_session_capability_digest_effect = "omnimarket.nodes.node_session_capability_digest_effect"
 node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity_effect"
 node_checkpoint_capture_effect = "omnimarket.nodes.node_checkpoint_capture_effect"
@@ -1214,6 +1215,10 @@ node_retrospective_run_projection_effect = "omnimarket.nodes.node_retrospective_
 node_retrospective_digest_render_compute = "omnimarket.nodes.node_retrospective_digest_render_compute"
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 
+node_error_rule_match_compute = "omnimarket.nodes.node_error_rule_match_compute"
+node_error_rule_nomatch_effect = "omnimarket.nodes.node_error_rule_nomatch_effect"
+node_error_rule_replay_compute = "omnimarket.nodes.node_error_rule_replay_compute"
+
 [project.scripts]
 onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm:main"
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
@@ -1241,6 +1246,7 @@ onex-branch-prune = "omnimarket.nodes.node_branch_prune_effect.runtime_branch_pr
 onex-handoff-check = "omnimarket.nodes.node_handoff_check_effect.runtime_handoff_check_cli:main"
 
 [project.entry-points."onex.cli"]
+error-rule-replay = "omnimarket.nodes.node_error_rule_replay_compute.cli:replay_command"
 market = "omnimarket.cli.market:market"
 # OMN-18697: the local metering and savings readout (`onex metering`).
 metering = "omnimarket.cli.cli_metering:metering_command"
@@ -1387,7 +1393,8 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261101203942-2080333acfaf" }
+# The merged error-rule row schema is required by match and replay nodes.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261104190638-98995a40a65d" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261103062530-3580a8d986fd" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
@@ -1534,7 +1541,7 @@ override-dependencies = [
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
-    "omnibase-core>=0.47.60,<0.48.0",
+    "omnibase-core>=0.47.67,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
