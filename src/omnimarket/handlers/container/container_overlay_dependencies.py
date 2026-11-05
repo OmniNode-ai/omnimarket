@@ -120,7 +120,69 @@ def file_overlay_documents(config: Mapping[str, str]) -> object:
     return _FileDocuments(config)
 
 
+def memory_host_check_facts(config: Mapping[str, str]) -> object:
+    from omnimarket.models.host_checks import ModelHostCheckSnapshot
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_facts import (
+        MemoryHostCheckFacts,
+    )
+
+    return MemoryHostCheckFacts(
+        ModelHostCheckSnapshot.model_validate_json(config["snapshot"])
+    )
+
+
+def host_check_facts(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_facts import (
+        HostCheckFacts,
+    )
+
+    return HostCheckFacts()
+
+
+def memory_host_check_journal(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_journal import (
+        MemoryHostCheckJournal,
+    )
+
+    return MemoryHostCheckJournal()
+
+
+def sqlite_host_check_journal(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_journal import (
+        SqliteHostCheckJournal,
+    )
+
+    return SqliteHostCheckJournal(config["path"], float(config["timeout_seconds"]))
+
+
+def memory_host_check_events(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_events import (
+        MemoryHostCheckEvents,
+    )
+
+    return MemoryHostCheckEvents(config["principal"])
+
+
+def kafka_host_check_events(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_host_account_install_claim_effect.handlers.host_check_events import (
+        KafkaHostCheckEvents,
+    )
+
+    values = dict(config)
+    for key in ("sasl.username", "sasl.password"):
+        env_key = values.pop(key + ".env", None)
+        if env_key is not None:
+            values[key] = os.environ[env_key]
+    return KafkaHostCheckEvents(values)
+
+
 FACTORIES: dict[str, Callable[[Mapping[str, str]], object]] = {
+    "memory_host_check_facts": memory_host_check_facts,
+    "host_check_facts": host_check_facts,
+    "memory_host_check_journal": memory_host_check_journal,
+    "sqlite_host_check_journal": sqlite_host_check_journal,
+    "memory_host_check_events": memory_host_check_events,
+    "kafka_host_check_events": kafka_host_check_events,
     "memory_process_environment": memory_process_environment,
     "host_process_environment": host_process_environment,
     "memory_overlay_documents": memory_overlay_documents,

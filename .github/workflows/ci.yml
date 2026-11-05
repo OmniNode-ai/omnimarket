@@ -369,6 +369,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
+      - name: Host account and installed claim state checks
+        run: uv run --frozen pytest tests/nodes/test_host_account_install_claim.py -q --no-cov -n 0 -p no:randomly
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
       - name: Ruff check

@@ -76,7 +76,15 @@ def _check(
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(repo)
-    return push.check(head, base, TITLE)
+    return (
+        push.HandlerTicketContractPrerequisite()
+        .handle(
+            push.ModelTicketContractPrerequisiteRequest(
+                head=head, base=base, title=TITLE
+            )
+        )
+        .failures
+    )
 
 
 def test_changelog_only_release_cut_needs_no_contract(
@@ -131,6 +139,10 @@ def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
-        missing_contract_message(TICKET),
+    # Base resolution failures are converted at the deployed handler boundary.
+    failures = _check(monkeypatch, tmp_path, head, "no-such-base")
+    assert len(failures) == 1
+    assert failures[0].startswith(
+        "ticket contract preflight could not read the pushed commit:"
     )
+    assert "no-such-base^{commit}" in failures[0]
