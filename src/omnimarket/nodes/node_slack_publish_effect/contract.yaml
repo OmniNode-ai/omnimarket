@@ -39,12 +39,6 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: emit_seam_count
-      handler:
-        name: HandlerSeamEmitter
-        module: omnimarket.nodes.node_slack_publish_effect.handlers.handler_seam_emitter
-      input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
-      output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
     - operation: slack_publish
       handler:
         name: HandlerSlackPublishEffect
@@ -52,6 +46,12 @@ handler_routing:
       event_model:
         name: ModelSlackPublish
         module: omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish
+    - operation: emit_seam_count
+      handler:
+        name: HandlerSeamEmitter
+        module: omnimarket.nodes.node_slack_publish_effect.handlers.handler_seam_emitter
+      input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+      output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 
 descriptor:
   node_archetype: effect

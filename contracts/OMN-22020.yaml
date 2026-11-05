@@ -71,3 +71,67 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22020 -- uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -k "seam_graph_declared or three_part_proof or seam_readings" -q --no-cov
+- id: dod-omn22020-deploy-seam-runtime
+  description: Hosted deployment-candidate smoke dispatches conservation through its contract-selected local bus entry and the installed reading reducer through the ONEX runtime, then reads their serialized VS-02 results. A missing close must be unreadable and an explicit idle sender close must be matched. The runner needs only the checkout, locked dependencies and an in-memory bus; this does not attest a live rollout or database materialization.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: |-
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv run --frozen python -c '
+      import asyncio
+      import json
+      import sys
+      from pathlib import Path
+      import yaml
+      from omnimarket.models.seam_reading import ModelSeamDeclaration
+      from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_run_local import run_local
+      from omnimarket.nodes.node_binding_parity_orchestrator.models.model_run_local import ModelRunLocalConfig
+      root = Path(sys.argv[1])
+      contract = yaml.safe_load(Path("src/omnimarket/nodes/node_seam_read_orchestrator/contract.yaml").read_text())
+      graph = contract["workflow_coordination"]["additional_workflows"]["view_seam_read"]
+      nodes = [n for n in graph["execution_graph"]["nodes"] if n["node_type"] == "COMPUTE_GENERIC"]
+      assert {n["step_config"]["seam_id"] for n in nodes} == {f"VS-{i:02}" for i in range(1, 18)}, nodes
+      declaration = ModelSeamDeclaration.from_graph_node(next(n for n in nodes if n["step_config"]["seam_id"] == "VS-02"))
+      window = {"start": "2026-11-02T12:00:00Z", "end": "2026-11-02T12:10:00Z"}
+      request = {"declaration": declaration.model_dump(mode="json"), "window": window,
+                 "tick_id": "deploy-seam-smoke", "read_at": window["end"]}
+      (root / "silent.json").write_text(json.dumps(request))
+      request["sender_close"] = {"seam_id": "VS-02", "side": "sender", "window": window,
+                                 "reported_through": window["end"], "crossing_ids": []}
+      (root / "idle.json").write_text(json.dumps(request))
+      conservation = yaml.safe_load(Path("src/omnimarket/nodes/node_seam_conservation_compute/contract.yaml").read_text())
+      config = ModelRunLocalConfig.model_validate(conservation["config"]["proof"]["run_local"])
+      async def dispatch():
+          for case, expected in (("silent", "unreadable"), ("idle", "matched")):
+              payload = json.loads((root / f"{case}.json").read_text())
+              result = await run_local("node_seam_conservation_compute", "reconcile_seam", payload, config)
+              assert result["state"] == expected, result
+              (root / f"{case}-fold.json").write_text(json.dumps({"event": {"kind": "reading", "reading": result["reading"]}}))
+              print(json.dumps({"case": case, "conservation": result}, sort_keys=True))
+      asyncio.run(dispatch())
+      ' "$probe_dir";
+      onex node node_view_seam_reading_reducer --input "$probe_dir/silent-fold.json" --state-root "$probe_dir/silent-state" --backend event_bus=inmemory --timeout 20 --output receipt --omnibase-path "$PWD" > "$probe_dir/silent-receipt.json";
+      onex node node_view_seam_reading_reducer --input "$probe_dir/idle-fold.json" --state-root "$probe_dir/idle-state" --backend event_bus=inmemory --timeout 20 --output receipt --omnibase-path "$PWD" > "$probe_dir/idle-receipt.json";
+      uv run --frozen python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for case, expected in (("silent", "unreadable"), ("idle", "matched")):
+          receipt = json.loads((root / f"{case}-receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state.ModelViewSeamFoldResult", receipt
+          result = receipt["result"]
+          reading = result["row"]
+          assert len(result["state"]["readings"]) == 1, result
+          assert reading["seam_id"] == "VS-02" and reading["state"] == expected, result
+          assert reading["unreadable"] == (1 if case == "silent" else 0), result
+          assert reading["mismatched"] == 0, result
+          print(json.dumps({"case": case, "result_model": receipt["result_model"], "result": result}, sort_keys=True))
+      ' "$probe_dir"

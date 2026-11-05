@@ -31,16 +31,16 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect:HandlerFactoryFloorEffect
   handlers:
+  - operation: handle
+    handler:
+      name: HandlerFactoryFloorEffect
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
   - operation: emit_seam_count
     handler:
       name: HandlerSeamEmitter
       module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_seam_emitter
     input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
     output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
-  - operation: handle
-    handler:
-      name: HandlerFactoryFloorEffect
-      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
 event_bus:
   subscribe_topics: []
   publish_topics: []
