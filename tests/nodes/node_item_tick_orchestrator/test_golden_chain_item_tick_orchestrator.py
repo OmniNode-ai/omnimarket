@@ -12,8 +12,8 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.nodes.node_item_tick_orchestrator.handlers import HandlerItemTick
 from omnimarket.nodes.node_item_tick_orchestrator.handlers.handler_item_tick import (
-    HandlerItemTick,
     liveness_overlay,
 )
 from omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick import (

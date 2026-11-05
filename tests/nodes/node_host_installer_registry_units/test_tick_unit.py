@@ -10,9 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
+from omnimarket.nodes.node_host_installer_registry_units.handlers import (
     HandlerRegistryUnits,
     HandlerSystemdRegistryTick,
+)
+from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     load_units,
 )
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (

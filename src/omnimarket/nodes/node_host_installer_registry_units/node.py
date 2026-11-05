@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
+from omnimarket.nodes.node_host_installer_registry_units.handlers import (
     HandlerRegistryUnits,
 )
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (

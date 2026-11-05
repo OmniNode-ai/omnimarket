@@ -24,7 +24,7 @@ output_model:
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
 handler:
   name: HandlerRegistryUnits
-  module: omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units
+  module: omnimarket.nodes.node_host_installer_registry_units.handlers
 entrypoint:
   name: NodeHostInstallerRegistryUnits
   module: omnimarket.nodes.node_host_installer_registry_units.node
