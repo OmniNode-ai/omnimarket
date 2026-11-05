@@ -98,6 +98,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
+  - id: req-omn19998-finished-clone-retention
+    statement: Final remote run retention archives reports before removing a clean clone whose commits are reachable on remote refs.
+    acceptance:
+      - id: AC8
+        statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -391,4 +396,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_events/test_redacted_working_directory_omn19513.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-finished-clone-retention
+    description: Scoped retention regression checks clean, dirty, staged, untracked, unpushed and unfinished runs, nested repositories, remote refs and peer worktree metadata. The clean-clone case fails before this change because every git-bearing tree is kept. Original controller timer criteria remain outside this slice.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-finished-clone-retention-deploy
+    description: Hosted wiring smoke resolves the packaged retention operation and typed handler against a real clean clone, and executes the generated standalone host payload against another clean clone. No live cleanup or host installer change is asserted.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
