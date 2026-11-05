@@ -191,3 +191,47 @@ def test_missing_local_base_is_not_guessed_into_a_remote(tmp_path: Path) -> None
     assert result.returncode == 1
     assert "'fetch'" not in result.stderr
     assert _git(worker, "branch", "-r") == "origin/worker"
+
+
+@pytest.mark.parametrize("explicit_title", [False, True])
+def test_direct_check_resolves_missing_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit_title: bool
+) -> None:
+    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
+        handler_ticket_contract_prerequisite as prerequisite,
+    )
+
+    worker = _worker(tmp_path)
+    before = _git(worker, "rev-parse", "HEAD")
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(worker)
+    title = f"fix({TICKET}): change" if explicit_title else None
+    assert prerequisite.check("HEAD", "origin/dev", title) == ()
+    assert _git(worker, "rev-parse", "origin/dev") == _git(
+        tmp_path / "origin", "rev-parse", "dev"
+    )
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""
+
+
+def test_direct_release_cut_resolves_missing_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
+        handler_ticket_contract_prerequisite as prerequisite,
+    )
+
+    worker = _worker(tmp_path, contract=False)
+    _git(worker, "mv", "docs/change.md", "CHANGELOG.md")
+    _git(worker, "commit", "-q", "-m", f"chore({TICKET}): release")
+    before = _git(worker, "rev-parse", "HEAD")
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(worker)
+    assert prerequisite.check("HEAD", "origin/dev", f"chore({TICKET}): release") == ()
+    assert _git(worker, "rev-parse", "origin/dev") == _git(
+        tmp_path / "origin", "rev-parse", "dev"
+    )
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""

@@ -583,7 +583,7 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-unreadable-base-refusal
-    description: A real Git release cut with an unreadable base retains the missing-contract refusal. Readable release cuts remain exempt, while source changes and missing runtime integration proof remain refusals. The existing hosted hook-adapter smoke covers configured remote-base recovery without credentials.
+    description: Direct prerequisite calls recover an absent configured remote base with an explicit title or inferred title, and a release cut remains exempt after that recovery. Three direct-call regressions fail at the merge base; each reads back the recovered tracking ref, unchanged head and clean worktree. An unreadable base retains the missing-contract refusal, and source changes and missing runtime integration proof remain refusals. All Git remotes are local and require no credentials.
     source: manual
     binds_ac: [AC10]
     checks:
