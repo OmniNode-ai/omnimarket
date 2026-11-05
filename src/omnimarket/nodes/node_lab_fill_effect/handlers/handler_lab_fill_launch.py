@@ -21,12 +21,18 @@ from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaun
 from omnimarket.models.model_internal_release_path_guard import (
     ModelInternalReleasePathGuardRequest,
 )
+from omnimarket.models.model_rule_premise import ModelBriefCheckRequest
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
     priority_class_args,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
+from omnimarket.nodes.node_rule_premise_effect import (
+    BoundPremiseGate,
+    receipt_allows,
+)
+from omnimarket.protocols.protocol_rule_premise import ProtocolRulePremiseGate
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -48,7 +54,9 @@ _RECEIPT = re.compile(r"receipt=(\S+)")
 # The runner's own check of the brief, before anything is placed: a lab lane that mints a
 # ticket, a time limit past the default with no reason line. The brief, not the host, is
 # what is wrong, so the same brief is refused again.
-_BRIEF_CHECK = re.compile(r"REMOTE-LANE-(?:MINT|TIMEOUT)-REFUSED\b.*")
+_BRIEF_CHECK = re.compile(
+    r"REMOTE-LANE-(?:(?:MINT|TIMEOUT)-REFUSED|BRIEF-UNCHECKED)\b.*"
+)
 _TIMED_OUT = 124
 
 
@@ -148,6 +156,7 @@ class HandlerLabFillLaunch:
         blocks: ProtocolLabFillBriefBlocks | None = None,
         runner: ProtocolLabFillLaneLauncher | None = None,
         clock: ProtocolLabFillClock | None = None,
+        premise_gate: ProtocolRulePremiseGate | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalApprovedWork,
@@ -161,6 +170,9 @@ class HandlerLabFillLaunch:
         self._blocks = blocks if blocks is not None else LocalBriefBlocks()
         self._runner = runner if runner is not None else LocalLaneLauncher()
         self._clock = default_clock(clock)
+        self._premise_gate = (
+            premise_gate if premise_gate is not None else BoundPremiseGate()
+        )
 
     def handle(self, request: ModelLabFillLaunchRequest) -> ModelLabFillLaunchResult:
         started = self._clock.now_epoch_s()
@@ -254,6 +266,36 @@ class HandlerLabFillLaunch:
         Path(brief_path).write_text(full, encoding="utf-8")
         has_delegation = _DELEGATION_MARK in full
 
+        checked = self._premise_gate.handle(
+            ModelBriefCheckRequest(
+                brief=full,
+                lane=launch.lane,
+                ticket=launch.ticket,
+                host=launch.host or launch.placement or "",
+                repository=launch.repo or "",
+                now=self._clock.now_epoch_s(),
+                batch=request.batch,
+            )
+        )
+        if not receipt_allows(full, checked, require_admission=True):
+            return result(
+                detached=False,
+                skipped="brief-check-refused",
+                detail=checked.reason or "missing brief-check receipt",
+                brief_has_delegation=has_delegation,
+            )
+        try:
+            unchanged = Path(brief_path).read_bytes() == full.encode("utf-8")
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            return result(
+                detached=False,
+                skipped="brief-check-refused",
+                detail="brief changed after its check",
+                brief_has_delegation=has_delegation,
+            )
+
         left = slice_s - (self._clock.now_epoch_s() - started)
         if left <= 0:
             return result(
@@ -264,7 +306,18 @@ class HandlerLabFillLaunch:
         try:
             outcome = self._runner.run(
                 runner_args(launch, brief_path, full),
-                env={"ONEX_LEDGER_PATH": request.ledger_path},
+                env={
+                    "ONEX_LEDGER_PATH": request.ledger_path,
+                    "ONEX_BRIEF_CHECK_RECEIPT": checked.receipt,
+                    **(
+                        {
+                            "ONEX_BATCH_SLOT": checked.slot,
+                            "ONEX_BATCH_ATTEMPT": str(checked.attempt),
+                        }
+                        if checked.slot
+                        else {}
+                    ),
+                },
                 timeout_s=left,
             )
         except LabFillPortError as exc:

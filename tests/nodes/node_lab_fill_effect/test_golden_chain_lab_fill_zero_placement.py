@@ -29,6 +29,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import (
     LabFillCommandOutcome,
     LabFillPortError,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     FakeApproved,
@@ -118,6 +119,7 @@ def _handler(
 ) -> HandlerLabFillTick:
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     launch = HandlerLabFillLaunch(
+        premise_gate=FakePremiseGate(),
         checks=FakeChecks(),
         approved=approved,
         blocks=FakeBlocks(),

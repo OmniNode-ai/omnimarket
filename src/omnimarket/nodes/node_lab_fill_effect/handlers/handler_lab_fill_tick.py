@@ -410,13 +410,21 @@ class HandlerLabFillTick:
         slots = _slots(request)
 
         def done(outcome: str, **kw: object) -> ModelLabFillTickResult:
-            return ModelLabFillTickResult.model_validate(
+            result = ModelLabFillTickResult.model_validate(
                 {
                     "run_key": request.run_key,
                     "fire_id": request.fire_id,
                     "outcome": outcome,
                     "free_slots": len(slots),
                     **kw,
+                }
+            )
+            tickets = tuple(
+                dict.fromkeys(refusal.ticket for refusal in result.refusals)
+            )
+            return result.model_copy(
+                update={
+                    "status_line": f"LAB-FILL placed={result.placed} refused={len(result.refusals)} tickets={','.join(tickets) or 'none'}"
                 }
             )
 
@@ -760,6 +768,7 @@ class HandlerLabFillTick:
                 operator_id=request.operator_id,
                 window_end_epoch_s=request.window_end_epoch_s,
                 lanes_left=max(1, lanes_left),
+                batch=request.batch,
             )
         )
 

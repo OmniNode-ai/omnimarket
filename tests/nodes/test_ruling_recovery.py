@@ -200,7 +200,12 @@ def _tick(
     monitor = HandlerRulingRecovery(
         live_reader or (lambda _check: RuntimeError("fixture unread"))
     )
-    return HandlerLabFill(monitor).handle(
+    from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
+    from tests.nodes.test_rule_premise import policy as premise_policy
+
+    return HandlerLabFill(
+        monitor, premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(
         ModelLabFillRequest(
             now=now,
             request={

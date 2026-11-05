@@ -17,6 +17,8 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
     ModelLabFillRequest,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
+from tests.nodes.test_rule_premise import policy as premise_policy
 
 NOW = "2026-10-26T19:30:00Z"
 RULING = "RULING 2026-10-26T17:22:56Z lane=orchestrator-31d9"
@@ -60,7 +62,9 @@ def test_tick_drops_held_repository_with_ruling(
         )
     )
     sent: list[list[str]] = []
-    monkeypatch.setattr(fill, "_send", lambda argv: (sent.append(argv) is None, "sent"))
+    monkeypatch.setattr(
+        fill, "_send", lambda argv, **_kwargs: (sent.append(argv) is None, "sent")
+    )
     request = ModelLabFillRequest(
         now=NOW,
         request={
@@ -79,7 +83,9 @@ def test_tick_drops_held_repository_with_ruling(
         out_of_scope={},
         lanes_dir=tmp_path / "lanes",
     )
-    result = fill.HandlerLabFill().handle(request)
+    result = fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(request)
     assert sent == [], (
         "the current fill dispatches a lane despite the ledger fixer HOLD"
     )
@@ -93,7 +99,9 @@ def test_tick_drops_held_repository_with_ruling(
     # Releasing this HOLD restores the candidate without changing any settings.
     with ledger.open("a") as stream:
         stream.write("2026-10-26T19:29:00Z | RELEASE | re=retire | lifted\n")
-    fill.HandlerLabFill().handle(request)
+    fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(request)
     assert len(sent) == 1
     assert sent[0][sent[0].index("--repo") + 1] == repo
 
@@ -179,7 +187,9 @@ def test_generated_tickets_readbacks_and_designs_cannot_bypass_holds(
         )
     )
     sent: list[list[str]] = []
-    monkeypatch.setattr(fill, "_send", lambda argv: (sent.append(argv) is None, "sent"))
+    monkeypatch.setattr(
+        fill, "_send", lambda argv, **_kwargs: (sent.append(argv) is None, "sent")
+    )
     request = ModelLabFillRequest(
         now=NOW,
         request={
@@ -197,7 +207,9 @@ def test_generated_tickets_readbacks_and_designs_cannot_bypass_holds(
         lanes_dir=tmp_path / "lanes",
         read_only=read_only,
     )
-    result = fill.HandlerLabFill().handle(request)
+    result = fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(request)
     assert sent == []
     note = next(row[2] for row in result.found if row[1] == "lab-fill-dropped")
     assert "n=3" in note
@@ -210,7 +222,9 @@ def test_generated_tickets_readbacks_and_designs_cannot_bypass_holds(
 
     # An unread ledger also blocks repository work, including repo-less tickets.
     ledger.unlink()
-    result = fill.HandlerLabFill().handle(request)
+    result = fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(request)
     assert sent == []
     assert any(row[1] == "lab-fill-fixer-holds" for row in result.found)
     assert "ledger unread" in next(

@@ -52,6 +52,7 @@ from omnimarket.nodes.node_lab_fill_plan_compute.models import (
     ModelLabFillPlanConfig,
     ModelLabFillStatusRequest,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     START,
@@ -226,6 +227,7 @@ def test_a_cycle_places_one_lane_and_writes_its_status_row(tmp_path: Path) -> No
     )
     runner = FakeRunner()
     launched = HandlerLabFillLaunch(
+        premise_gate=FakePremiseGate(),
         checks=FakeChecks(),
         approved=FakeApproved(),
         blocks=FakeBlocks(),

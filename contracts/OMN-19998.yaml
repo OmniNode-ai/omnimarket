@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-rule-premise-check
+    statement: Both fill paths require a content-bound brief-check receipt and a reserved batch slot before a brief is sent.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the rule premise check refuses a fill without a content-bound receipt, reserved slot and attempt fence, reserves batch slots atomically, and the packaged node routes brief-check and batch requests -- falsifier: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -159,6 +164,23 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
         cwd: .
+  - id: dod-omn19998-rule-premise-focused
+    description: Scoped R-B and BatchProbe revision-five fixtures exercise receipt refusal, target-host installation facts, threshold admission, stepped ramping, lease retries, durable two-process unique slot inserts and refusal parking. Core validation and Part A readers are injected ports. This does not assert the ticket's original controller criteria or the captured break corpus. The live Redpanda leg and the real Part A store proof remain unmeasured.
+    source: manual
+    binds_ac:
+      - AC13
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-rule-premise-runtime-smoke
+    description: Hosted wiring smoke loads the packaged contract, subscribes to the expected rule-premise-completed topic and observes correlated brief-check and batch results through the real in-memory dispatch engine. It does not assert a live installation or a core validator implementation.
+    source: manual
+    binds_ac:
+      - AC13
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov -k packaged_node_wires
   - id: dod-omn19998-ruling-failed-recovery
     description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
     source: manual

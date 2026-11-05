@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_rule_premise_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: '1.0.0'
+description: >
+  R-B reads every referenced PR, ticket and head before sending the exact brief.
+  Unmerged heads wait for Part A's target-host install read. Core validates the
+  read-back and mints the content-bound receipt. BatchProbe revision five reserves
+  unique slot claims under the same transaction as threshold, lease and hold reads.
+input_model:
+  name: ModelBriefCheckRequest
+  module: omnimarket.models.model_rule_premise
+output_model:
+  name: ModelBriefCheckResult
+  module: omnimarket.models.model_rule_premise
+handler:
+  module: omnimarket.nodes.node_rule_premise_effect.handlers.handler_rule_premise
+  class: HandlerRulePremise
+  input_model: omnimarket.models.model_rule_premise.ModelBriefCheckRequest
+  output_model: omnimarket.models.model_rule_premise.ModelBriefCheckResult
+handler_dependencies:
+  - omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  - omnimarket.protocols.protocol_rule_premise.ProtocolBatchClaimStore
+  - omnimarket.protocols.protocol_rule_premise.ProtocolPremiseReader
+  - omnimarket.protocols.protocol_rule_premise.ProtocolPremiseValidator
+handler_routing:
+  routing_strategy: payload_type_match
+  default_handler: omnimarket.nodes.node_rule_premise_effect.handlers.handler_rule_premise:HandlerRulePremise
+  handlers:
+    - operation: brief-check
+      event_model: omnimarket.models.model_rule_premise.ModelBriefCheckRequest
+      handler:
+        name: HandlerRulePremise
+        module: omnimarket.nodes.node_rule_premise_effect.handlers.handler_rule_premise
+      input_model: omnimarket.models.model_rule_premise.ModelBriefCheckRequest
+      output_model: omnimarket.models.model_rule_premise.ModelBriefCheckResult
+    - operation: batch
+      event_model: omnimarket.models.model_rule_premise.ModelBatchRequest
+      handler:
+        name: HandlerBatchProbe
+        module: omnimarket.nodes.node_rule_premise_effect.handlers.handler_batch_probe
+      input_model: omnimarket.models.model_rule_premise.ModelBatchRequest
+      output_model: omnimarket.models.model_rule_premise.ModelBatchResult
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.rule-premise-requested.v1]
+  publish_topics: [onex.evt.omnimarket.rule-premise-completed.v1]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.rule-premise-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.rule-premise-completed.v1
+terminal_event: onex.evt.omnimarket.rule-premise-completed.v1
+externally_consumed_topics: [onex.evt.omnimarket.rule-premise-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+runtime_profiles: [effects]
+rule:
+  id: R-B
+  source_ruling: {stamp: '2026-11-04T17:10:13Z', lane: orchestrator-31d9}
+  dispatch_kinds: [agent, workflow, runner, lab]
+  check: premise-installed
+  mode: route
+  fix: Route to the Part A install row, wait, read the installed revision again.
+metadata:
+  transport_type: kafka
+  description: Send-time premise read-back and atomic batch probe admission.
+  author: OmniNode Team
+  tags: [effect, dispatch, premise]

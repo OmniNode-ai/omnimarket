@@ -120,11 +120,33 @@ def file_overlay_documents(config: Mapping[str, str]) -> object:
     return _FileDocuments(config)
 
 
+def _premise_factory(name: str, config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_rule_premise_effect.handlers import premise_bindings
+
+    factory: Callable[[Mapping[str, str]], object] = getattr(premise_bindings, name)
+    return factory(config)
+
+
 FACTORIES: dict[str, Callable[[Mapping[str, str]], object]] = {
     "memory_process_environment": memory_process_environment,
     "host_process_environment": host_process_environment,
     "memory_overlay_documents": memory_overlay_documents,
     "file_overlay_documents": file_overlay_documents,
+    "rule_premise_bus_gate": lambda config: _premise_factory(
+        "rule_premise_bus_gate", config
+    ),
+    "memory_batch_claim_store": lambda config: _premise_factory(
+        "memory_batch_claim_store", config
+    ),
+    "part_a_batch_claim_store": lambda config: _premise_factory(
+        "part_a_batch_claim_store", config
+    ),
+    "part_a_premise_reader": lambda config: _premise_factory(
+        "part_a_premise_reader", config
+    ),
+    "core_premise_validator": lambda config: _premise_factory(
+        "core_premise_validator", config
+    ),
 }
 
 _installed: list[ModelOverlayBindings] = []

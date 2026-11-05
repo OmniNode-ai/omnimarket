@@ -15,6 +15,7 @@ from omnimarket.nodes.node_lab_fill_effect.models import (
     ModelLabFillTickRequest,
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillClaimFacts
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     FakeApproved,
@@ -65,6 +66,7 @@ def _handler(
         claims_facts=LabFillClaimFacts(index={}, open_claims=[], staleness_hours=12)
     )
     launch = HandlerLabFillLaunch(
+        premise_gate=FakePremiseGate(),
         checks=FakeChecks(),
         approved=approved,
         blocks=blocks or FakeBlocks(),

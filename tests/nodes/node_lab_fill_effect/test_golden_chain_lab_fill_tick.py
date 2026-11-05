@@ -32,6 +32,7 @@ from omnimarket.nodes.node_lab_fill_effect.models import (
     ModelLabFillTickResult,
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillClaimFacts
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     FakeApproved,
@@ -94,6 +95,7 @@ def _tick(
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     clock = FakeClock()
     launch = HandlerLabFillLaunch(
+        premise_gate=FakePremiseGate(),
         checks=checks,
         approved=approved,
         blocks=FakeBlocks(),

@@ -50,6 +50,8 @@ handler:
   module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_probe"
   class: "HandlerLabFillProbe"
   input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillProbeRequest"
+handler_dependencies:
+  - omnimarket.protocols.protocol_rule_premise.ProtocolRulePremiseGate
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_probe:HandlerLabFillProbe"
@@ -105,6 +107,10 @@ handler_routing:
 # when this node's route action does not refuse it, and reads the cloud credit left
 # through its credit action. The lane kinds come from the overlay, never this node.
 dependencies:
+  - name: omnimarket.nodes.node_rule_premise_effect
+    dependency_type: internal
+    description: R-B live premise check and content-bound receipt before every runner call.
+    required: true
   - name: omnimarket.nodes.node_cloud_session_placement_effect
     dependency_type: internal
     description: "route decides cloud eligibility; credit reads the account's recorded credit."
