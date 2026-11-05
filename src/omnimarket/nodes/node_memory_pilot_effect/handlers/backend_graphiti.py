@@ -64,6 +64,10 @@ def graphiti_environment(overlay: ModelMemoryPilotOverlay) -> dict[str, str]:
     }
 
 
+class IngestIncompleteError(Exception):
+    """Some chunks failed in the extraction model; every other chunk is stored and saved."""
+
+
 def _is_connection_failure(exc: BaseException) -> bool:
     seen: set[int] = set()
     cursor: BaseException | None = exc
@@ -211,32 +215,62 @@ class BackendGraphiti:
             raise
         return int(rows[0]["n"]) if rows else 0
 
+    async def _episode_exists(self, graphiti: Any, dataset: str, name: str) -> bool:
+        rows, _, _ = await graphiti.driver.execute_query(
+            "MATCH (e:Episodic {group_id: $dataset_group, name: $episode_name}) "
+            "RETURN count(e) AS n",
+            dataset_group=dataset,
+            episode_name=name,
+        )
+        return bool(rows) and int(rows[0]["n"]) > 0
+
     async def ingest(
         self, dataset: str, documents: tuple[ModelMemoryPilotDocument, ...]
     ) -> int:
+        """Add every chunk not already stored; a chunk the extraction model cannot do is recorded.
+
+        Re-running resumes: a stored chunk is skipped. Chunks that fail after the library's own
+        retries do not stop the others, and the call then raises IngestIncompleteError naming them.
+        """
         self._probe_models()
         graphiti = await self._open(dataset)
         chars = self._overlay.graphiti_chunk_chars
         assert chars is not None
         reference_time = datetime.now(UTC)
+        failed: list[str] = []
         try:
             if await self._episode_count(graphiti, dataset) == 0:
                 await graphiti.build_indices_and_constraints()
             for document in documents:
                 for number, chunk in enumerate(chunk_text(document.text, chars), 1):
+                    name = f"{document.doc_id}#{number}"
+                    if await self._episode_exists(graphiti, dataset, name):
+                        _log.info("graphiti episode %s already stored", name)
+                        continue
                     began = time.monotonic()
-                    await graphiti.add_episode(
-                        name=f"{document.doc_id}#{number}",
-                        episode_body=chunk,
-                        source=self._episode_source,
-                        source_description=document.doc_id,
-                        reference_time=reference_time,
-                        group_id=dataset,
-                    )
+                    try:
+                        await graphiti.add_episode(
+                            name=name,
+                            episode_body=chunk,
+                            source=self._episode_source,
+                            source_description=document.doc_id,
+                            reference_time=reference_time,
+                            group_id=dataset,
+                        )
+                    except Exception as exc:
+                        if _is_connection_failure(exc):
+                            raise
+                        failed.append(name)
+                        _log.error(
+                            "graphiti episode %s failed after %.1f s: %s",
+                            name,
+                            time.monotonic() - began,
+                            type(exc).__name__,
+                        )
+                        continue
                     _log.info(
-                        "graphiti episode %s#%d added in %.1f s",
-                        document.doc_id,
-                        number,
+                        "graphiti episode %s added in %.1f s",
+                        name,
                         time.monotonic() - began,
                     )
                 await self.save()
@@ -244,6 +278,8 @@ class BackendGraphiti:
             if _is_connection_failure(exc):
                 raise LabModelUnavailableError(type(exc).__name__) from None
             raise
+        if failed:
+            raise IngestIncompleteError(f"{len(failed)} chunks failed: {failed}")
         return len(documents)
 
     async def query(self, dataset: str, question: str) -> BackendAnswer:

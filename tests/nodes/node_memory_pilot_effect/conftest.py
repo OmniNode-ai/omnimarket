@@ -135,10 +135,15 @@ class FakeGraphiti:
     """Stands in for the Graphiti object: holds episodes in a list and returns canned facts."""
 
     def __init__(
-        self, facts: tuple[str, ...] = (), *, add_error: Exception | None = None
+        self,
+        facts: tuple[str, ...] = (),
+        *,
+        add_error: Exception | None = None,
+        fail_names: tuple[str, ...] = (),
     ) -> None:
         self.facts = facts
         self.add_error = add_error
+        self.fail_names = fail_names
         self.episodes: list[dict[str, Any]] = []
         self.searches: list[dict[str, Any]] = []
         self.index_builds = 0
@@ -149,7 +154,12 @@ class FakeGraphiti:
                 self, query: str, **params: Any
             ) -> tuple[list[dict[str, int]], None, None]:
                 group = params["dataset_group"]
-                held = sum(1 for e in outer.episodes if e["group_id"] == group)
+                name = params.get("episode_name")
+                held = sum(
+                    1
+                    for e in outer.episodes
+                    if e["group_id"] == group and (name is None or e["name"] == name)
+                )
                 return [{"n": held}], None, None
 
         self.driver = _Driver()
@@ -160,6 +170,8 @@ class FakeGraphiti:
     async def add_episode(self, **kwargs: Any) -> None:
         if self.add_error is not None:
             raise self.add_error
+        if kwargs["name"] in self.fail_names:
+            raise ValueError("the extraction model returned unusable JSON")
         self.episodes.append(kwargs)
 
     async def search(

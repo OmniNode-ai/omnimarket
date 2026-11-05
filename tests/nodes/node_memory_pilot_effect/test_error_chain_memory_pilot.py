@@ -393,7 +393,39 @@ async def test_graphiti_extraction_failure_that_is_not_a_connection_is_a_backend
     handler = _graphiti_handler(bus, recorder, tmp_path, lab_url, fake)
     result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
     _assert_typed_failure(result, bus, recorder, Code.BACKEND_ERROR)
-    assert result.error_detail == "ValueError"
+    assert result.error_detail == "IngestIncompleteError"
+
+
+async def test_graphiti_failed_chunk_is_named_the_others_are_stored_and_a_rerun_resumes(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path, lab_url: str
+) -> None:
+    fake = FakeGraphiti(fail_names=("a.md#2",))
+    handler = _graphiti_handler(bus, recorder, tmp_path, lab_url, fake)
+    long_text = "Paragraph one is here.\n\n" + "Paragraph two is here.\n\n" * 3
+    request = ModelMemoryPilotRequest(
+        correlation_id=CORR,
+        operation=EnumMemoryPilotOperation.INGEST,
+        dataset="d",
+        documents=(
+            ModelMemoryPilotDocument(doc_id="a.md", text=long_text),
+            ModelMemoryPilotDocument(doc_id="b.md", text="Second document."),
+        ),
+    )
+    result = await handler.handle(request)
+    _assert_typed_failure(result, bus, recorder, Code.BACKEND_ERROR)
+    assert result.error_detail == "IngestIncompleteError"
+    stored = [e["name"] for e in fake.episodes]
+    assert "a.md#2" not in stored
+    assert "a.md#1" in stored, "the other chunks are stored"
+    assert "b.md#1" in stored
+    fake.fail_names = ()
+    bus.events.clear()
+    recorder.rows.clear()
+    again = await handler.handle(request)
+    assert again.status is EnumMemoryPilotStatus.COMPLETED
+    names = [e["name"] for e in fake.episodes]
+    assert len(names) == len(set(names)), "a stored chunk is never added twice"
+    assert "a.md#2" in names
 
 
 async def test_graphiti_query_before_any_ingest_is_not_ingested(
