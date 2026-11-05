@@ -138,6 +138,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-lane-owner-routing
+    statement: Bounded lane diagnosis routes evidenced ownership, retains originating items in durable claims, and refuses unsupported dispatches.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: focused routing tests exercise report attachment, claim replay and joins, confined reads, ticket ownership, capped read-only triage and admission refusal; installed contracts auto-wire both nodes on an in-memory bus. Synthetic cases do not assert recorded B2 replay or live deployment acceptance.'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -557,4 +562,30 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-lane-owner-routing
+    description: Focused routing falsifiers cover named ownership, report attachment, claim replay and joins, read bounds, ticket routing, triage caps and core-refusal propagation. The nine generated cases are synthetic; this does not assert the recorded B2 replay or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC10
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -m "not kafka"
+        cwd: .
+  - id: dod-omn19998-lane-owner-redpanda
+    description: Run the same routing effect through the declared Redpanda test lane. Topic authorization and captured original B2 records remain prerequisites for live acceptance.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -k effect_runtime_profiles -m kafka
+        cwd: .
+  - id: dod-omn19998-lane-owner-routing-deploy
+    description: Hosted deployment smoke discovers the installed compute and effect contracts, auto-wires their declared command and terminal topics through infra, and checks correlated owner and dispatch results on an in-memory bus. It requires no lab broker or credentials and does not assert live installation or recorded B2 acceptance.
+    source: manual
+    binds_ac:
+      - AC10
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -m "not kafka" -k installed_contracts_auto_wire
         cwd: .

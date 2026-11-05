@@ -305,6 +305,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_lane_block_diagnose_compute = "omnimarket.nodes.node_lane_block_diagnose_compute"
+node_lane_block_diagnose_effect = "omnimarket.nodes.node_lane_block_diagnose_effect"
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"

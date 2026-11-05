@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_block_diagnose_compute
+version: "1.0.0"
+description: Evidence-only ownership diagnosis from named paths and packages.
+omnibase_core_compat: ">=0.47.60,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lane_block_diagnose_compute: omnimarket.nodes.node_lane_block_diagnose_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies: ["omnibase-core>=0.47.60,<0.48.0", "pydantic>=2.11.0"]
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ownership, routing]
+node_role: compute
+pack: routing
+display_name: Lane Block Owner Diagnosis

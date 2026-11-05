@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_block_diagnose_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Launching-host routing effect. Read a blocked or failed TERMINAL's report and named files,
+  diagnose ownership, then admit and submit the existing fill-backlog-item contract through
+  typed deployment bindings. Persist all originating items on a shared class/owner/head claim.
+  Initial items resolve their ticket repository or enter bounded read-only workerless triage.
+input_model:
+  name: ModelLaneRoutingRequest
+  module: omnimarket.models.model_lane_routing
+output_model:
+  name: ModelLaneRoutingResult
+  module: omnimarket.models.model_lane_routing
+entrypoint:
+  name: NodeLaneBlockDiagnoseEffect
+  module: omnimarket.nodes.node_lane_block_diagnose_effect.node
+handler:
+  module: omnimarket.nodes.node_lane_block_diagnose_effect.handler
+  class: HandlerLaneBlockDiagnoseEffect
+  input_model: omnimarket.models.model_lane_routing.ModelLaneRoutingRequest
+  output_model: omnimarket.models.model_lane_routing.ModelLaneRoutingResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_block_diagnose_effect.handler:HandlerLaneBlockDiagnoseEffect
+  handlers:
+    - operation: diagnose
+      topic: onex.cmd.omnimarket.lane-block-diagnose-requested.v1
+      handler:
+        name: HandlerLaneBlockDiagnoseEffect
+        module: omnimarket.nodes.node_lane_block_diagnose_effect.handler
+    - operation: initial
+      handler:
+        name: HandlerLaneBlockDiagnoseEffect
+        module: omnimarket.nodes.node_lane_block_diagnose_effect.handler
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-block-diagnose-requested.v1
+terminal_event: onex.evt.omnimarket.lane-block-diagnose-completed.v1
+# This effect is served on the launching host holding reports and the shared claim file.
+# Deployment bindings name the target nodes; every outgoing command is declared here.
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lane-block-diagnose-requested.v1]
+  publish_topics:
+    - onex.evt.omnimarket.lane-block-diagnose-completed.v1
+    - onex.cmd.omnimarket.lane-block-owner-requested.v1
+    - onex.cmd.omnimarket.fill-backlog-item-requested.v1
+    - onex.cmd.omnimarket.fill-backlog-admission-requested.v1
+    - onex.cmd.omnimarket.item-lane-bind-requested.v1
+    - onex.cmd.omnimarket.ticket-repository-requested.v1
+    - onex.cmd.omnimarket.item-owner-triage-requested.v1
+    - onex.cmd.omnimarket.exception-emit-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-block-diagnose-completed.v1
+  - onex.cmd.omnimarket.fill-backlog-item-requested.v1
+  - onex.cmd.omnimarket.fill-backlog-admission-requested.v1
+  - onex.cmd.omnimarket.item-lane-bind-requested.v1
+  - onex.cmd.omnimarket.ticket-repository-requested.v1
+  - onex.cmd.omnimarket.item-owner-triage-requested.v1
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  description: Report-backed owner dispatch with durable shared claims and bounded triage
