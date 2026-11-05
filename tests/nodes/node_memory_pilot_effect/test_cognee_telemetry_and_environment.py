@@ -181,6 +181,8 @@ async def test_graphiti_opens_on_embedded_kuzu_and_takes_the_overlays_in_flight_
     assert graphiti.max_coroutines == 3
     assert (tmp_path / "store" / "kuzu.db").exists()
     assert type(graphiti.driver).__name__ == "PilotKuzuDriver"
+    with pytest.raises(RuntimeError, match="no cross encoder"):
+        await graphiti.cross_encoder.rank("q", ["p"])
 
 
 async def test_graphiti_search_index_builds_and_a_group_scoped_add_resolves_on_kuzu(

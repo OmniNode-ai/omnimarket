@@ -11,6 +11,7 @@ can use this backend.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import time
@@ -75,6 +76,18 @@ def _is_connection_failure(exc: BaseException) -> bool:
     return False
 
 
+def _library(name: str) -> Any:
+    """Import the optional package lazily, after the environment is set."""
+    return importlib.import_module(name)
+
+
+async def _no_rank(
+    self: object, query: str, passages: list[str]
+) -> list[tuple[str, float]]:
+    """The pilot's search recipe never reranks with a model; a call would be a bug."""
+    raise RuntimeError("the pilot's search recipe has no cross encoder")
+
+
 def render_facts(facts: list[str]) -> str:
     """The context handed to the answerer: one retrieved fact per line."""
     return "\n".join(f"- {fact}" for fact in facts if fact.strip())
@@ -112,42 +125,28 @@ class BackendGraphiti:
         assert overlay.chat is not None
         os.environ.update(graphiti_environment(overlay))
         overlay.storage_root.mkdir(parents=True, exist_ok=True)
-        from graphiti_core import (
-            Graphiti,  # type: ignore[import-not-found,unused-ignore]
-        )
-        from graphiti_core.cross_encoder.client import (  # type: ignore[import-not-found,unused-ignore]
-            CrossEncoderClient,
-        )
-        from graphiti_core.driver.kuzu_driver import (  # type: ignore[import-not-found,unused-ignore]
-            KuzuDriver,
-        )
-        from graphiti_core.embedder.openai import (  # type: ignore[import-not-found,unused-ignore]
-            OpenAIEmbedder,
-            OpenAIEmbedderConfig,
-        )
-        from graphiti_core.llm_client.config import (  # type: ignore[import-not-found,unused-ignore]
-            LLMConfig,
-        )
-        from graphiti_core.llm_client.openai_generic_client import (  # type: ignore[import-not-found,unused-ignore]
-            OpenAIGenericClient,
-        )
-        from graphiti_core.nodes import (  # type: ignore[import-not-found,unused-ignore]
-            EpisodeType,
-        )
+        graphiti_class = _library("graphiti_core").Graphiti
+        kuzu_class = _library("graphiti_core.driver.kuzu_driver").KuzuDriver
+        embedder_module = _library("graphiti_core.embedder.openai")
+        llm_config_class = _library("graphiti_core.llm_client.config").LLMConfig
+        llm_client_class = _library(
+            "graphiti_core.llm_client.openai_generic_client"
+        ).OpenAIGenericClient
+        self._episode_source = _library("graphiti_core.nodes").EpisodeType.text
 
-        self._episode_source = EpisodeType.text
-
-        class NoCrossEncoder(CrossEncoderClient):  # type: ignore[misc,unused-ignore]
-            """The pilot's search recipe never reranks with a model; a call would be a bug."""
-
-            async def rank(
-                self, query: str, passages: list[str]
-            ) -> list[tuple[str, float]]:
-                raise RuntimeError("the pilot's search recipe has no cross encoder")
+        # graphiti-core 0.31.2: add_episode reads driver._database, which KuzuDriver never
+        # sets. An empty name makes every group_id take the clone path, and the base clone
+        # returns this same driver, so a one-database embedded store behaves as intended.
+        driver_class = type("PilotKuzuDriver", (kuzu_class,), {"_database": ""})
+        cross_encoder_class = type(
+            "NoCrossEncoder",
+            (_library("graphiti_core.cross_encoder.client").CrossEncoderClient,),
+            {"rank": _no_rank},
+        )
 
         extraction = overlay.chat_extraction or overlay.chat
-        llm = OpenAIGenericClient(
-            config=LLMConfig(
+        llm = llm_client_class(
+            config=llm_config_class(
                 api_key=overlay.api_key_placeholder,
                 model=extraction.model,
                 small_model=extraction.model,
@@ -157,32 +156,22 @@ class BackendGraphiti:
             ),
             max_tokens=overlay.max_completion_tokens,
         )
-        embedder = OpenAIEmbedder(
-            config=OpenAIEmbedderConfig(
+        embedder = embedder_module.OpenAIEmbedder(
+            config=embedder_module.OpenAIEmbedderConfig(
                 api_key=overlay.api_key_placeholder,
                 base_url=overlay.embeddings.base_url,
                 embedding_model=overlay.embeddings.model,
                 embedding_dim=overlay.embedding_dimensions,
             )
         )
-
-        class PilotKuzuDriver(KuzuDriver):  # type: ignore[misc,unused-ignore]
-            """graphiti-core 0.31.2: add_episode reads driver._database, which KuzuDriver never sets.
-
-            An empty name makes every group_id take the clone path, and the base clone returns
-            this same driver, so a one-database embedded store behaves as intended.
-            """
-
-            _database = ""
-
         # Kuzu allows one write transaction at a time, so the connection keeps its
         # default of one concurrent query; the model-call cap is max_coroutines below.
-        driver = PilotKuzuDriver(db=str(overlay.storage_root / "kuzu.db"))
-        self._graphiti = Graphiti(
+        driver = driver_class(db=str(overlay.storage_root / "kuzu.db"))
+        self._graphiti = graphiti_class(
             graph_driver=driver,
             llm_client=llm,
             embedder=embedder,
-            cross_encoder=NoCrossEncoder(),
+            cross_encoder=cross_encoder_class(),
             max_coroutines=overlay.lab_max_in_flight,
         )
         return self._graphiti
