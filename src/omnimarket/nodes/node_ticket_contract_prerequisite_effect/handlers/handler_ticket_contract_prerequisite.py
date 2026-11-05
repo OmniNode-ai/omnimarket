@@ -38,7 +38,9 @@ def _resolve_base(base: str) -> str:
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Fetch errors propagate to the failed typed verdict.
+    into remote branches. An unreadable local ref stays unreadable so downstream
+    probes refuse exemptions and return the contract refusal. Fetch errors
+    propagate to the failed typed verdict.
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -47,7 +49,7 @@ def _resolve_base(base: str) -> str:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            raise
+            return base
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(

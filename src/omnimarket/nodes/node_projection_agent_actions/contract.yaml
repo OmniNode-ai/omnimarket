@@ -2,11 +2,12 @@
 name: projection_agent_actions
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
-# The one runtime consumes this node's topics. The retired consumer runs on every
+# The tenant projection runtime consumes this node's topics and holds its database
+# credential. The retired consumer runs on every
 # lane until the deploy step retires it; see consumer_group_handover below for what
 # must be true of the runtime before this contract is wired there.
 runtime_profiles:
-  - main
+  - tenant-projection
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_agent_actions.models.model_agent_actions_delivery.ModelAgentActionsDelivery
 description: >
