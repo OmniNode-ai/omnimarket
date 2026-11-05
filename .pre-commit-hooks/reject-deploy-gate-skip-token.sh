@@ -169,7 +169,10 @@ if [[ "${1:-}" == "--commit-msg" ]]; then
         exit 2
     fi
 fi
-if [[ "$EXPLICIT_COMMIT_MSG" -eq 1 || "${GIT_HOOK_STAGE:-}" == "commit-msg" || "$#" -eq 1 && "${1:-}" == *COMMIT_EDITMSG* ]]; then
+# The legacy caller passes COMMIT_EDITMSG without an explicit stage flag.
+# Match its whole basename: a staged prose file with that substring must still
+# be read from the index, even if the working tree was cleaned after git add.
+if [[ "$EXPLICIT_COMMIT_MSG" -eq 1 || "${GIT_HOOK_STAGE:-}" == "commit-msg" || "$#" -eq 1 && ( "${1:-}" == COMMIT_EDITMSG || "${1:-}" == */COMMIT_EDITMSG ) ]]; then
     msg_file="${1:-}"
     if [[ -n "$msg_file" && -f "$msg_file" ]]; then
         if grep -qiE "$SKIP_PATTERN" "$msg_file"; then

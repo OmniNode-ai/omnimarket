@@ -98,6 +98,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
+  - id: req-omn19998-staged-hook-mode
+    statement: A staged prose filename resembling a commit message stays on the staged-content scan path.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the script and exported pre-commit stage reject blocked staged content after a clean working-tree edit, including docs/COMMIT_EDITMSG.md; the exported commit-msg stage rejects blocked messages; clean controls pass -- falsifier: uv run --frozen pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q --no-cov'
   - id: req-omn19998-prepush-missing-base
     statement: The ticket-contract hook resolves its comparison base before checking the outgoing commit, fetching only an absent configured remote branch.
     acceptance:
@@ -129,6 +134,9 @@ requirements:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
+  - kind: tests
+    description: The pinned vocabulary console retains its one-line refusal after dependency provisioning emits update diagnostics; the configured-vocabulary positive control still resolves its path.
+    command: uv run --frozen pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov -n 0 -p no:randomly
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
     command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
@@ -176,12 +184,15 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
         cwd: .
   - id: dod-omn19998-prepush-missing-base
-    description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
+    description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. An unreadable base retains the missing-contract refusal and cannot establish the release-cut exemption. This scoped hook proof does not assert the controller timer criteria.
     source: manual
     binds_ac: [AC10]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-prepush-missing-base-deploy
     description: Hosted hook-adapter smoke invokes the contract-backed node CLI as a subprocess in a real worker clone, observes the fetched tracking ref and unchanged head and worktree, and needs no credential. Host hook installation remains the publishing runner's responsibility.
@@ -269,6 +280,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov -k recorded_serving_hosts
+        cwd: .
+  - id: dod-omn19998-staged-hook-mode
+    description: The staged-index regression fails before this change for a message-like prose filename. Existing node parity, genuine commit-message scans and clean controls run in the same focused file. This does not assert the controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-staged-hook-mode-deploy
+    description: Hosted consumer smoke installs the exported script with pre-commit try-repo and exercises both declared hook stages, blocked staged content hidden by a clean working tree, and clean controls. No sibling checkout, credentials or lab endpoint is required.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q --no-cov -k try_repo
         cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.

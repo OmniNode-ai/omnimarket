@@ -242,12 +242,14 @@ def test_staged_file_script_parity(
 
 
 @pytest.mark.unit
-def test_script_reads_the_index_not_the_working_tree(repo: Path) -> None:
-    target = repo / "a.md"
+@pytest.mark.parametrize("path", ["a.md", "docs/COMMIT_EDITMSG.md"])
+def test_script_reads_the_index_not_the_working_tree(repo: Path, path: str) -> None:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(TOKEN + "\n", encoding="utf-8")
-    _git(repo, "add", "a.md")
+    _git(repo, "add", path)
     target.write_text("clean now\n", encoding="utf-8")
-    assert _run_script(repo, "a.md") != 0
+    assert _run_script(repo, path) != 0
 
 
 @pytest.mark.unit
@@ -334,7 +336,8 @@ def test_script_sources_nothing_and_imports_nothing() -> None:
 
 
 @pytest.mark.unit
-def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path) -> None:
+@pytest.mark.parametrize("path", ["notes.md", "docs/COMMIT_EDITMSG.md"])
+def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path, path: str) -> None:
     """The plan's step 5: a real pre-commit run of each exported id, not just the YAML."""
     pre_commit = shutil.which("pre-commit")
     assert pre_commit is not None, "pre-commit is a dev dependency of this repo"
@@ -354,9 +357,13 @@ def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path) -> None:
     _git(hook_repo, "add", "-A")
     _git(hook_repo, "commit", "-q", "-m", "hooks")
 
-    bad = consumer / "notes.md"
+    bad = consumer / path
+    bad.parent.mkdir(parents=True, exist_ok=True)
     bad.write_text(TOKEN + "\n", encoding="utf-8")
-    _git(consumer, "add", "notes.md")
+    _git(consumer, "add", path)
+    # The export must inspect the index even when the filename resembles a
+    # commit message and a later working-tree edit has removed the token.
+    bad.write_text("clean now\n", encoding="utf-8")
     staged = subprocess.run(
         [
             pre_commit,
@@ -364,7 +371,7 @@ def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path) -> None:
             str(hook_repo),
             "reject-skip-token",
             "--files",
-            "notes.md",
+            path,
         ],
         cwd=consumer,
         env=scrub_git_location_env(os.environ),
@@ -375,7 +382,7 @@ def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path) -> None:
     assert staged.returncode != 0, staged.stdout + staged.stderr
 
     bad.write_text("clean\n", encoding="utf-8")
-    _git(consumer, "add", "notes.md")
+    _git(consumer, "add", path)
     clean = subprocess.run(
         [
             pre_commit,
@@ -383,7 +390,7 @@ def test_pre_commit_try_repo_runs_both_stages(tmp_path: Path) -> None:
             str(hook_repo),
             "reject-skip-token",
             "--files",
-            "notes.md",
+            path,
         ],
         cwd=consumer,
         env=scrub_git_location_env(os.environ),
