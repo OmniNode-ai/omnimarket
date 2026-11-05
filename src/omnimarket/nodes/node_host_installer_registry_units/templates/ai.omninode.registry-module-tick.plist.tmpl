@@ -6,7 +6,8 @@
      runs the unit's module with the project's own environment, built on __PYTHON__ (the brew interpreter, which holds the
      macOS Local Network grant a uv-managed CPython never gets), so nothing is copied.
      `uv` is a literal path because launchd has a restricted PATH. The frozen flag keeps the run from rewriting
-     the project's lock. No PYTHONPATH: the module must import from the project's environment.
+     the project's lock. Units declaring tick_no_sync reuse the environment prepared by installation.
+     No PYTHONPATH: the module must import from the project's environment.
      Not KeepAlive: this is a periodic job, and a restart the instant it exits would rerun it. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -19,6 +20,7 @@
     <string>__UV__</string>
     <string>run</string>
     <string>--frozen</string>
+    __TICK_SYNC_ARGS__
     <string>--python</string>
     <string>__PYTHON__</string>
     <string>--project</string>
