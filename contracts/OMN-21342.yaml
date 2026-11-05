@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-21342
 title: The dashboard's cost and savings figures come from the API, and the frontend only displays them
-summary: The local dashboard API serves its money figures already computed. A run read carries run_manifest_costs, keyed by correlation_id, with the pricing manifest price times the run's recorded tokens for the model that served the final answer, beside the recorded tier or BYOK cost_usd, which is unchanged; a model with no manifest row reads null with a reason. GET /money/window serves the window totals from the metering day rows and, from the usage rows, measured spend per model, per route and per day and cost per run, as exact decimal strings, for the install's tenant held on the server (another tenant answers 422). The omnidash consumer that deletes the frontend sums is a separate PR.
+summary: The local dashboard API serves its money figures already computed. A run read carries run_manifest_costs, keyed by correlation_id, with the pricing manifest price times the run's recorded tokens for the model that served the final answer, beside the recorded tier or BYOK cost_usd, which is unchanged; a model with no manifest row reads null with a reason. GET /money/window serves the window totals from the metering day rows and, from the usage rows, measured spend per model, per route and per day and cost per run, as exact decimal strings, for the install's tenant held on the server (another tenant answers 422). The ticket is partial. AC1 is claimed here for its API half only, bound to the served-totals item, and the omnidash consumer that deletes the frontend sums, with the render tests and the unit test that the frontend pricing helper is gone, is a separate PR that completes it.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC2
     statement: 'AC2: the API''s cost for a run equals the pricing manifest price times the recorded tokens for that run''s served model, scoped to the tenant in the dashboard token -- falsifier: uv run pytest on an API test with a known run and manifest price asserting the returned cost'
+- id: req-omn21342-api-served-figures
+  statement: Every cost and savings figure the dashboard shows is returned by the API already computed, so the frontend multiplies nothing. The criterion below is labeled AC1 so the binding item can claim it through binds_ac; only its API half is claimed here.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every cost and savings figure on Overview, Runs and Usage is returned by the API already computed, and no frontend module multiplies tokens by a price -- falsifier: a grep-free test in omnidash that renders each page from a stubbed API response and asserts the displayed figure equals the API field, plus a unit test that the frontend pricing helper is gone'
 evidence_requirements:
 - kind: tests
   description: A real SQLite store read through the real onex dashboard app and the contract-declared topic map; the manifest-priced run cost, the window totals, per-model and per-route spend, cost per run and the tenant refusals.
@@ -36,6 +41,8 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k "window or spend or tenant"
     cwd: .
+  binds_ac:
+  - AC1
 - id: dod-omn21342-deploy-dashboard-money
   description: Start the dashboard serving handler on an ephemeral loopback port over seeded SQLite. Use curl to read the window totals and manifest-priced runs with the dashboard token, and assert that missing credentials and another tenant are refused. This hosted-runner probe requires no external service and does not claim a production rollout.
   source: manual
