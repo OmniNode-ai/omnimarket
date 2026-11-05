@@ -10,12 +10,14 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_process_health_effect.handlers.handler_process_health_run import (
+    load_config,
     load_runtime_io,
 )
 from omnimarket.nodes.node_process_health_effect.runtime_process_health import main
 
 _SOURCE_ENV = (
     "ONEX_PROCESS_HEALTH_OUTPUT",
+    "PROCESS_HEALTH_CONFIG_OVERLAY",
     "ONEX_REGISTRY_ROOTS",
     "LANDING_METRICS_HISTORY",
     "PROCESS_HEALTH_LINEAR_SNAPSHOT",
@@ -39,6 +41,9 @@ def test_cli_writes_json_to_the_contract_declared_path_and_reports_unread_source
     home.mkdir()
     for name in _SOURCE_ENV:
         monkeypatch.delenv(name, raising=False)
+    overlay = tmp_path / "process-health-overlay.yaml"
+    overlay.write_text("process_health:\n  graph_bucket_hours: 3\n")
+    monkeypatch.setenv("PROCESS_HEALTH_CONFIG_OVERLAY", str(overlay))
     monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
     monkeypatch.setenv("ONEX_STATE_DIR", str(state))
     monkeypatch.setenv("OMNI_HOME", str(home))
@@ -51,6 +56,7 @@ def test_cli_writes_json_to_the_contract_declared_path_and_reports_unread_source
     written = json.loads(
         (state / "process-health" / "process-health.json").read_text(encoding="utf-8")
     )
+    assert written["range_overlay"]["bucket_hours"] == 3
     sources = {s["name"]: s for s in written["sources"]}
     assert sources["ledger"]["status"] == "read"
     for unread in (
@@ -101,3 +107,21 @@ def test_a_clone_root_that_does_not_exist_makes_git_merges_unread(
     }
     assert sources["git_merges"]["status"] == "unread"
     assert "does not exist" in sources["git_merges"]["reason"]
+
+
+@pytest.mark.unit
+def test_range_policy_overlay_uses_the_typed_contract_config(tmp_path: Path) -> None:
+    overlay = tmp_path / "range-policy.yaml"
+    overlay.write_text(
+        "process_health:\n  range_history_days: 90\n  graph_bucket_hours: 3\n"
+    )
+    config = load_config(overlay_path=overlay)
+    assert config.range_history_days == 90
+    assert config.graph_bucket_hours == 3
+    assert config.reset_at == load_config().reset_at
+    overlay.write_text("process_health:\n  graph_bucket_hours: 0\n")
+    with pytest.raises(ValueError, match="graph_bucket_hours"):
+        load_config(overlay_path=overlay)
+    overlay.write_text("process_health:\n  unrecognised_setting: 1\n")
+    with pytest.raises(ValueError, match="unrecognised_setting"):
+        load_config(overlay_path=overlay)
