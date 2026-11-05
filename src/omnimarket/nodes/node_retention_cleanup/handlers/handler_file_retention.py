@@ -51,22 +51,21 @@ from ..models.model_file_retention import (
     MIN_KEEP_DAYS as MIN_KEEP_DAYS,
 )
 from ..models.model_file_retention import (
-    ModelFileRetentionEntry as FileRetentionEntry,
-)
-from ..models.model_file_retention import (
-    ModelFileRetentionItemResult as FileRetentionItemResult,
-)
-from ..models.model_file_retention import (
-    ModelFileRetentionPolicy as FileRetentionPolicy,
-)
-from ..models.model_file_retention import (
-    ModelFileRetentionRequest as FileRetentionRequest,
-)
-from ..models.model_file_retention import (
-    ModelFileRetentionResult as FileRetentionResult,
+    ModelFileRetentionEntry,
+    ModelFileRetentionItemResult,
+    ModelFileRetentionPolicy,
+    ModelFileRetentionRequest,
+    ModelFileRetentionResult,
 )
 from ..models.model_lab_lane_retention import ModelLabLaneRetentionRequest
 from .handler_lab_lane_retention import HandlerLabLaneRetention
+
+# Preserve the handler module's public model names after moving their definitions.
+FileRetentionEntry = ModelFileRetentionEntry
+FileRetentionItemResult = ModelFileRetentionItemResult
+FileRetentionPolicy = ModelFileRetentionPolicy
+FileRetentionRequest = ModelFileRetentionRequest
+FileRetentionResult = ModelFileRetentionResult
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _PROTECTED_NAMES: frozenset[str] = frozenset({"memory", "MEMORY.md"})
