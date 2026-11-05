@@ -15,6 +15,7 @@ import socket
 import stat
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
 )
 from omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention import (
     ModelRetentionBounds,
+    ModelRetentionPass,
     ModelRetentionWindows,
     ModelStoreCeiling,
     ModelTempRetentionHost,
@@ -89,7 +91,7 @@ def nothing_held() -> ProcessReferences:
     return ProcessReferences(directories=[], blobs=[])
 
 
-def used(percent: float):  # type: ignore[no-untyped-def]
+def used(percent: float) -> Callable[[Path], float]:
     return lambda _path: percent
 
 
@@ -97,10 +99,10 @@ def go(
     h: ModelTempRetentionHost,
     *,
     percent: float = 10.0,
-    refs=nothing_held,
+    refs: Callable[[], ProcessReferences | None] = nothing_held,
     dry_run: bool = False,
     uid: int = UID,
-):  # type: ignore[no-untyped-def]
+) -> ModelRetentionPass:
     return run_pass(
         h,
         bounds(),
@@ -259,7 +261,7 @@ def test_without_a_process_read_nothing_is_removed(tmp_path: Path) -> None:
     old = root / "old"
     old.mkdir()
     age(old, 72)
-    report = go(host(tmp_path), refs=lambda: None)  # type: ignore[arg-type,return-value]
+    report = go(host(tmp_path), refs=lambda: None)
     assert old.exists()
     assert report.errors
     assert "process" in report.errors[0]
