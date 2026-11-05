@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_host_reading_effect.cli import main
+from omnimarket.nodes.node_host_reading_effect.runtime_host_reading import main
 from tests.nodes.node_host_reading_effect.host_reading_support import (
     EXAMPLE,
     LEDGER_HOST,

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -65,13 +67,13 @@ async def _publish(
     seen: list[tuple[str, dict[str, object]]] = []
     done = asyncio.Event()
 
-    async def on_command(message: object) -> None:
-        for topic, body in answer_command(message.value, handler, TOPICS):  # type: ignore[attr-defined]
+    async def on_command(message: Any) -> None:
+        for topic, body in answer_command(message.value, handler, TOPICS):
             await bus.publish(topic, key=None, value=body)
 
-    def collector(topic: str):  # type: ignore[no-untyped-def]
-        async def collect(message: object) -> None:
-            seen.append((topic, json.loads(message.value)))  # type: ignore[attr-defined]
+    def collector(topic: str) -> Callable[[Any], Awaitable[None]]:
+        async def collect(message: Any) -> None:
+            seen.append((topic, json.loads(message.value)))
             if topic in (
                 TOPICS["host_reading_run_completed"],
                 TOPICS["host_reading_run_failed"],

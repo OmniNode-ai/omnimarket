@@ -4,12 +4,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
+    ModelHostProbeOutcome,
     ModelHostReadingCommand,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
@@ -36,7 +38,9 @@ def world(request: pytest.FixtureRequest, tmp_path: Path) -> World:
     return World(request.param, tmp_path)
 
 
-def _read(world: World, probe: EnumHostProbe, host: str = LEDGER_HOST):  # type: ignore[no-untyped-def]
+def _read(
+    world: World, probe: EnumHostProbe, host: str = LEDGER_HOST
+) -> ModelHostProbeOutcome:
     handler = HandlerHostReading(
         overlay=overlay(),
         host=host,
@@ -73,8 +77,8 @@ def test_healthy_old_names_read_working(world: World) -> None:
     ],
 )
 def test_named_break_fails_the_old_names_reading(
-    world: World, named_break, reason: str
-) -> None:  # type: ignore[no-untyped-def]
+    world: World, named_break: Callable[[World], None], reason: str
+) -> None:
     named_break(world)
     reading = _read(world, EnumHostProbe.LEDGER_OLD_NAMES)
     assert reading.verdict is EnumReadingVerdict.NOT_WORKING
@@ -122,8 +126,8 @@ def test_queued_row_inside_the_bound_reads_working(world: World) -> None:
     ],
 )
 def test_named_break_fails_the_outbox_reading(
-    world: World, named_break, reason: str
-) -> None:  # type: ignore[no-untyped-def]
+    world: World, named_break: Callable[[World], None], reason: str
+) -> None:
     named_break(world)
     reading = _read(world, EnumHostProbe.LEDGER_OUTBOX)
     assert reading.verdict is EnumReadingVerdict.NOT_WORKING
