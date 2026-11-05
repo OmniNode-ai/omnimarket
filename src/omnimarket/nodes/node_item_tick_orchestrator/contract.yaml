@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_item_tick_orchestrator
+node_type: ORCHESTRATOR_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  A host timer runs the item print and all bound goal checks independently of
+  operator sessions. Each correlated completion appends a durable cursor and
+  emits the existing automation run event; missing completions refresh nothing.
+input_model:
+  name: ModelItemTickRequest
+  module: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick
+output_model:
+  name: ModelItemTickResult
+  module: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick
+handler:
+  class: HandlerItemTick
+  module: omnimarket.nodes.node_item_tick_orchestrator.handlers.handler_item_tick
+  input_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickRequest
+  output_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickResult
+entrypoint:
+  name: NodeItemTickOrchestrator
+  module: omnimarket.nodes.node_item_tick_orchestrator.node
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: tick
+      topic: onex.cmd.omnimarket.item-tick-requested.v1
+      handler:
+        name: HandlerItemTick
+        module: omnimarket.nodes.node_item_tick_orchestrator.handlers.handler_item_tick
+      input_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickRequest
+      output_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickResult
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.item-tick-requested.v1
+terminal_event: onex.evt.omnimarket.item-tick-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.item-tick-requested.v1]
+  publish_topics:
+    - onex.evt.omnimarket.item-tick-completed.v1
+    - onex.evt.omnimarket.automation-run-observed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.item-tick-completed.v1
+  - onex.evt.omnimarket.automation-run-observed.v1
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 240000
+  runtime_profiles: [effects]
+config:
+  interval_seconds: 300
+  required_checks: [item-tick, S5, S6, S7, S8, S9, goal]
+  success_statuses: [success, ok, completed]
+  cursor_stale_intervals: 2
+  missing_start_intervals: 1
+  check_timeout_seconds: 30
+  runtime_timeout_seconds: 240
+  monitoring_entry:
+    owner_repo: omnimarket
+    trigger: {kind: systemd-timer, native_id: onex-item-tick.timer}
+    alarm_deadline_seconds: 1200
+    emitter: self
+    run_record: per-run
+    real_work: a correlated check result appended and fsynced in cursors.jsonl
+    demand: none
+    positive_control:
+      kind: replay_fixture
+      ref: tests/nodes/node_item_tick_orchestrator/test_golden_chain_item_tick_orchestrator.py::test_tick_unit_watchdog_reports_the_missing_start_and_a_stale_check_cursor
+caller_subscription:
+  mode: ungrouped
+  topics_from: each bound check's runtime_dispatch and terminal_event

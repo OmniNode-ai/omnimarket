@@ -1,0 +1,11 @@
+[Unit]
+Description=Durable __LABEL__ schedule
+
+[Timer]
+OnCalendar=__CALENDAR__
+Persistent=__PERSISTENT__
+AccuracySec=__ACCURACY__
+Unit=__LABEL__.service
+
+[Install]
+WantedBy=timers.target

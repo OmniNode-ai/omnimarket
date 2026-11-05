@@ -34,6 +34,40 @@ execution:
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
 # {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
 units:
+  item-tick:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-item-tick
+    template: templates/registry-module-tick.service.tmpl
+    timer_template: templates/registry-module-tick.timer.tmpl
+    unit_directory: .config/systemd/user
+    require_linger: true
+    status_intervals: 2
+    timeout_seconds: 240
+    schedule:
+      start_interval: 300
+      calendar: "*-*-* *:0/5:00 UTC"
+      persistent: true
+      accuracy_seconds: 1
+      run_at_load: true
+      description: every five minutes on every day, with a catch-up after downtime
+    registry_project: omnimarket
+    interpreter_candidates: [/usr/bin/python3.12, /usr/bin/python3.13]
+    module: omnimarket.nodes.node_item_tick_orchestrator.runtime_item_tick
+    entry_file: src/omnimarket/nodes/node_item_tick_orchestrator/runtime_item_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides: [ONEX_ITEM_TICK_OVERLAY]
+    environment:
+      ONEX_ITEM_TICK_OVERLAY: "{home}/.config/onex/overlays/item_tick/overlay.yaml"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      OMNI_HOME: "{registry_root}"
+      PYTHONUNBUFFERED: "1"
+      TZ: UTC
+    evidence_file: .local/state/omni/item-tick/last-run.json
+    state_directory: .onex_state/item-tick
   factory-floor-publish:
     platform: launchd
     kind: registry_module_tick

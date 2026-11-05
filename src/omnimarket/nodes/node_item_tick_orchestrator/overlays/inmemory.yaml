@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Bind the host, durable state and every installed check contract before use.
+schema_version: item-tick/v1
+bus: inmemory
+lane: null
+host: controller-host
+state_directory: /replace/with/durable/item-tick-state
+interval_seconds: 300
+check_timeout_seconds: 30
+checks: {}

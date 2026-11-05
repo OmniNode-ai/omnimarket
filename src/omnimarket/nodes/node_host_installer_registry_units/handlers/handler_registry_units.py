@@ -47,6 +47,7 @@ Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env.update(LC_ALL="C", TZ="UTC")
     try:
         return subprocess.run(
             argv, capture_output=True, text=True, env=env, check=False, timeout=600
@@ -239,6 +240,8 @@ class HandlerRegistryUnits:
     def dispatch(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
     ) -> ModelRegistryUnitsResult:
+        if unit.get("platform") == "systemd":
+            return HandlerSystemdRegistryTick(self).handle(request)
         label = str(unit["label"])
         home, root = Path(request.home), Path(request.registry_root)
         state = root / str(unit["state_directory"])
@@ -422,3 +425,213 @@ class HandlerRegistryUnits:
             project_is_canonical=canonical,
             record=record,
         )
+
+
+def _quoted(value: str) -> str:
+    """One systemd directive argument; escape specifiers as well as quotes."""
+    if "\n" in value or "\r" in value or "\x00" in value:
+        raise ValueError("systemd directive contains a control character")
+    return (
+        '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
+    )
+
+
+class HandlerSystemdRegistryTick:
+    def __init__(
+        self,
+        installer: HandlerRegistryUnits,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self.installer = installer
+        self.clock = clock
+
+    def lingering(self) -> bool:
+        user = self.installer.run(["id", "-un"])
+        if user.returncode or not user.stdout.strip():
+            return False
+        result = self.installer.run(
+            [
+                "loginctl",
+                "show-user",
+                user.stdout.strip(),
+                "--property=Linger",
+                "--value",
+            ]
+        )
+        return result.returncode == 0 and result.stdout.strip() == "yes"
+
+    def command(self, *args: str) -> str:
+        done = self.installer.run(["systemctl", "--user", *args])
+        if done.returncode:
+            raise ValueError(f"systemctl {' '.join(args)}: {done.stderr.strip()}")
+        return done.stdout
+
+    def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
+        unit = self.installer.units[request.unit]
+        label = str(unit["label"])
+        state = Path(request.registry_root) / str(unit["state_directory"])
+        directory = Path(request.home) / str(unit["unit_directory"])
+        timer, service = f"{label}.timer", f"{label}.service"
+        record = state / f"{request.unit}.installed.json"
+        if request.mode == "status":
+            return self.status(request, unit, timer, service, record)
+        if request.mode == "kickstart":
+            out = self.command("start", service)
+            return self.installer.result(request, 0, out=out)
+        if request.mode == "uninstall":
+            self.command("disable", "--now", timer)
+            self.command("stop", service)
+            for name in (timer, service):
+                (directory / name).unlink(missing_ok=True)
+            self.command("daemon-reload")
+            return self.installer.result(request, 0, out=f"removed {timer}\n")
+
+        project, canonical = self.installer.project_for(request, unit)
+        # A timer always records and runs a clean revision, including the canonical checkout.
+        revision = self.installer.checkout_revision(
+            project, unit, request.expected_revision
+        )
+        uv = shutil.which("uv")
+        if uv is None:
+            raise ValueError("uv is not on PATH")
+        python = self.installer.interpreter_for(unit)
+        environment = self.installer.environment(request, unit)
+        argv = [
+            uv,
+            "run",
+            "--frozen",
+            "--python",
+            python,
+            "--project",
+            str(project),
+            "python",
+            "-m",
+            str(unit["module"]),
+        ]
+        replacements = {
+            "LABEL": label,
+            "COMMAND": " ".join(_quoted(arg) for arg in argv),
+            "PROJECT": str(project).replace("%", "%%"),
+            "ENVIRONMENT": "\n".join(
+                f"Environment={_quoted(key + '=' + value)}"
+                for key, value in environment.items()
+            ),
+            "CALENDAR": str(unit["schedule"]["calendar"]),
+            "PERSISTENT": str(bool(unit["schedule"]["persistent"])).lower(),
+            "TIMEOUT": str(unit["timeout_seconds"]),
+            "ACCURACY": str(unit["schedule"]["accuracy_seconds"]),
+        }
+        rendered: dict[str, str] = {}
+        for name, template in (
+            (service, unit["template"]),
+            (timer, unit["timer_template"]),
+        ):
+            text = (NODE_DIR / str(template)).read_text(encoding="utf-8")
+            for key, value in replacements.items():
+                text = text.replace(f"__{key}__", value)
+            rendered[name] = text
+        combined = "\n".join(rendered.values())
+        if request.mode == "dry-run":
+            return self.installer.result(
+                request,
+                0,
+                out=combined,
+                rendered=combined,
+                project=project,
+                revision=revision,
+                canonical=canonical,
+            )
+
+        if unit["require_linger"] and not self.lingering():
+            raise ValueError(
+                "LINGER-REQUIRED: the user manager must survive logout; provision linger through the host installer"
+            )
+        proof = self.installer.run([*argv, "--check-config"])
+        if proof.returncode:
+            raise ValueError(
+                f"tick configuration refused before install: {proof.stdout}{proof.stderr}"
+            )
+        directory.mkdir(parents=True, exist_ok=True)
+        state.mkdir(parents=True, exist_ok=True)
+        for name, text in rendered.items():
+            path = directory / name
+            temporary = path.with_suffix(path.suffix + ".new")
+            temporary.write_text(text, encoding="utf-8")
+            temporary.chmod(0o600)
+            temporary.replace(path)
+        self.command("daemon-reload")
+        self.command("enable", "--now", timer)
+        self.command("restart", timer)
+        self.command("start", service)
+        record.write_text(
+            json.dumps(
+                {
+                    "revision": revision,
+                    "project": str(project),
+                    "installed_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return self.installer.result(
+            request,
+            0,
+            out=f"installed {timer} at {revision}; journalctl --user -u {service}\n",
+            rendered=combined,
+            project=project,
+            revision=revision,
+            canonical=canonical,
+            record=str(record),
+        )
+
+    def status(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        timer: str,
+        service: str,
+        record: Path,
+    ) -> ModelRegistryUnitsResult:
+        timer_state = self.command(
+            "show", timer, "--property=LoadState,ActiveState,UnitFileState"
+        )
+        properties = dict(
+            line.split("=", 1) for line in timer_state.splitlines() if "=" in line
+        )
+        failed = (
+            properties.get("LoadState") != "loaded"
+            or properties.get("ActiveState") != "active"
+            or properties.get("UnitFileState") != "enabled"
+        )
+        # A timer can be active while its service never ran. Read the service's actual start.
+        stamp = self.command(
+            "show", service, "--property=ExecMainStartTimestamp", "--value"
+        ).strip()
+        try:
+            started = datetime.strptime(stamp, "%a %Y-%m-%d %H:%M:%S %Z").replace(
+                tzinfo=UTC
+            )
+        except ValueError:
+            started = None
+        age = (self.clock() - started).total_seconds() if started else None
+        threshold = int(unit["schedule"]["start_interval"]) * int(
+            unit["status_intervals"]
+        )
+        failed |= age is None or age < 0 or age > threshold
+        exit_status = self.command(
+            "show", service, "--property=ExecMainStatus", "--value"
+        ).strip()
+        failed |= exit_status != "0"
+        out = f"{timer}\n{timer_state}last_start={stamp or 'NEVER'} age_seconds={age} exit={exit_status}\n"
+        if unit["require_linger"]:
+            linger = self.lingering()
+            failed |= not linger
+            out += f"linger={linger}\n"
+        try:
+            installed = json.loads(record.read_text(encoding="utf-8"))
+            out += f"installed revision {installed['revision']} of {installed['project']}\n"
+        except (OSError, ValueError, KeyError):
+            failed = True
+            out += "MISSING-INSTALL-RECORD\n"
+        return self.installer.result(request, int(failed), out=out)

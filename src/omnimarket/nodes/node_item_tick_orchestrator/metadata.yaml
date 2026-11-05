@@ -1,0 +1,24 @@
+name: node_item_tick_orchestrator
+version: "1.0.0"
+description: Durable bus-dispatched item and goal checks with per-check completion cursors
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_item_tick_orchestrator: omnimarket.nodes.node_item_tick_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  requires_repo: false
+  requires_docker: false
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.16.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+tags: [orchestrator, timer, liveness]
+pack: observability
+display_name: Item Tick
+node_role: orchestrator
