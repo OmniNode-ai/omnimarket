@@ -98,6 +98,15 @@ projection_api:
   cursor_column: "read_at"
   limit: 500
 
+db_io:
+  db_tables:
+    - name: view_seam_readings
+      database_ref: application
+      schema: public
+      migration: "0001_create_view_seam_readings.sql"
+      access: write
+      role: view_seam_readings
+
 metadata:
   ticket: OMN-22020
   transport_type: inmemory
