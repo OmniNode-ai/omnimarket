@@ -93,16 +93,6 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: registered plan_ticket_states requests for 30 and 120 days return every eligible plan and resolved ticket state across all pages from a committed Git listing larger than 4,000 characters, including October 2-8; future and invalid dates are excluded and command reports stay bounded -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov'
-  - id: req-omn19998-host-model-serving
-    statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
-    acceptance:
-      - id: AC8
-        statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
-  - id: req-omn19998-prepush-missing-base
-    statement: The ticket-contract hook resolves its comparison base before checking the outgoing commit, fetching only an absent configured remote branch.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-ruling-failed-recovery
     statement: A failed mechanism lane remains unfinished work for the existing ruling recovery dispatcher and its retry limit.
     acceptance:
@@ -138,6 +128,16 @@ requirements:
     acceptance:
       - id: AC9
         statement: 'AC9: in-memory and file-backed dependency overlays return the same answers, lapse appends are idempotent under repeated and concurrent calls, and installed runtime wiring returns the typed answer for each dispatch kind -- falsifier: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov'
+  - id: req-omn19998-host-model-serving
+    statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
+  - id: req-omn19998-prepush-missing-base
+    statement: The ticket-contract hook resolves its comparison base before checking the outgoing commit, fetching only an absent configured remote branch.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
