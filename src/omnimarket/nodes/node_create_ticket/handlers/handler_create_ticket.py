@@ -72,6 +72,9 @@ from omnimarket.models.model_ticket_io import (
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
 )
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import (
     HandlerTicketProject,
@@ -657,7 +660,7 @@ def linear_api_key() -> str:
     linear_ref = contract_secret_ref(_CONTRACT_PATH, "LINEAR_API_KEY")
     secret = resolve_api_key_loop_safe(linear_ref)
     if secret is None:
-        raise RuntimeError(
+        raise SecretResolutionError(
             f"api_key_ref {linear_ref!r} resolved to None — "
             "ensure LINEAR_API_KEY is set in the secret store "
             "(~/.omnibase/.env)."
