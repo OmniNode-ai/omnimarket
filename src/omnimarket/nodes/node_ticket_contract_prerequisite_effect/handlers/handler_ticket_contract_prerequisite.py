@@ -47,7 +47,9 @@ def _resolve_base(base: str) -> str:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            raise
+            # Nothing to repair: keep the name so the later reads fail closed
+            # (unreadable diff counts as runtime, unreadable log refuses).
+            return base
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(
