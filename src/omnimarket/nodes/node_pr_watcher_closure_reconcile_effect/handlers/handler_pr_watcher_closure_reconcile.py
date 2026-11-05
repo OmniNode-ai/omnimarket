@@ -66,11 +66,21 @@ def load_policy(contract_path: Path = CONTRACT_PATH) -> dict[str, Any]:
 class HandlerPrWatcherClosureReconcile:
     """The reader is resolved from the container (ProtocolPrNodeStateReader)."""
 
-    def __init__(self, container: ModelONEXContainer) -> None:
+    def __init__(
+        self,
+        container: ModelONEXContainer | None = None,
+        *,
+        reader: ProtocolPrNodeStateReader | None = None,
+    ) -> None:
         self._container = container
+        self._injected_reader = reader
         self._policy = load_policy()
 
     def _reader(self) -> ProtocolPrNodeStateReader:
+        if self._injected_reader is not None:
+            return self._injected_reader
+        if self._container is None:
+            raise ValueError("ProtocolPrNodeStateReader is not bound")
         key: Any = ProtocolPrNodeStateReader
         reader: ProtocolPrNodeStateReader = self._container.get_service(key)
         return reader
@@ -113,6 +123,7 @@ class HandlerPrWatcherClosureReconcile:
         answers: dict[str, ModelPrNodeState | None] = {}
         read_keys: list[str] = []
         calls = 0
+        read_failed = False
         for start in range(0, len(chosen), batch_size):
             batch = chosen[start : start + batch_size]
             calls += 1
@@ -121,6 +132,7 @@ class HandlerPrWatcherClosureReconcile:
             except Exception:
                 # A failed batch flips nothing and keeps its records at the
                 # head of the order for the next tick.
+                read_failed = True
                 break
             for key in batch:
                 answers[key] = got.get(candidates[key])
@@ -148,17 +160,31 @@ class HandlerPrWatcherClosureReconcile:
                 fresh = _read_json(state_path)
                 prs = _dict(fresh.get("prs"))
                 for flip in flips:
-                    facts = _dict(_dict(prs.get(flip.key)).get("facts"))
+                    record = _dict(prs.get(flip.key))
+                    facts = _dict(record.get("facts"))
                     if (
                         facts.get("state") != "OPEN"
                         or facts.get("node_id") != candidates[flip.key]
                     ):
                         continue
                     facts["state"] = flip.state
+                    facts["armed"] = False
                     if flip.merged_at is not None:
                         facts["merged_at"] = flip.merged_at
                     if flip.closed_at is not None:
                         facts["closed_at"] = flip.closed_at
+                    # Snapshot readers also group by class. A terminal fact
+                    # must not retain its green/queued eligibility, and the
+                    # watcher must emit the corrected state on its next tick.
+                    previous = str(record.get("cls", "unread"))
+                    record["cls"] = flip.state.lower()
+                    record["reason"] = (
+                        f"{flip.state.lower()} {flip.merged_at or flip.closed_at or ''}".strip()
+                        + f"; last open class {previous}"
+                    )
+                    record["queued"] = False
+                    record["blocked"] = False
+                    record["bus_closed_emitted"] = False
                     applied.append(flip)
                 if applied:
                     _write_json(state_path, fresh)
@@ -178,6 +204,7 @@ class HandlerPrWatcherClosureReconcile:
             no_node_id=tuple(sorted(no_node_id)),
             unanswered=tuple(unanswered),
             ticks_to_full_pass=math.ceil(len(candidates) / per_tick),
+            read_failed=read_failed,
         )
 
 

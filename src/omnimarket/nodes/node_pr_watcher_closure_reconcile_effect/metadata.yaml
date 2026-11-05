@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 name: node_pr_watcher_closure_reconcile_effect
 version: 1.0.0
-description: Move pull requests GitHub reports merged or closed out of the PR watcher's
-  open set within a bounded number of ticks, oldest read first, through one GraphQL
-  nodes(ids:) call per batch, writing the flip under the watcher's state lock.
+description: Reconcile merged or closed pull requests from bus observations on the
+  snapshot owner's host, using a deployment overlay and a persistent per-tick budget.
 pack: distributed_validation
 node_role: effect
 display_name: PR Watcher Closure Reconcile Effect
@@ -14,7 +13,7 @@ entry_points:
     node_pr_watcher_closure_reconcile_effect: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect
 capabilities:
   standalone: false
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: true
@@ -23,6 +22,7 @@ capabilities:
 dependencies:
 - pydantic>=2.0
 - pyyaml>=6.0
+- omnibase-core>=0.39.0
 authors:
 - OmniNode Platform Team
 license: MIT

@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Supply on the snapshot owner's host as <root>/<node name>/overlay.yaml,
+# with ONEX_SKILL_OVERLAY_ROOTS naming <root>. Paths here are synthetic.
+state_path: /srv/example/pr-watcher/state.json
+# Reference to the deployment's existing read-only identity, never its value.
+github_token_secret_ref: example-pr-reader-token
