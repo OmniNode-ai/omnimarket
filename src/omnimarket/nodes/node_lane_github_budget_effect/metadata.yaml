@@ -4,6 +4,7 @@ name: node_lane_github_budget_effect
 version: 1.0.0
 description: Enforce the remote runner's lane read budget, share successful CI reads
   across lanes on a host, and relay sanitized accounting to the landing controller.
+  Release failed pre-dispatch reservations and default log reads to the existing byte cap.
   This is the runner's process boundary; GitHub reads remain work of the existing
   node_github_repo_gateway_effect through onex scm, never a second REST client.
 pack: distributed_validation

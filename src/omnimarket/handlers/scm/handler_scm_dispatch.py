@@ -286,10 +286,16 @@ def contract_operations(node: EnumScmNode) -> tuple[str, ...]:
 class ScmBusCaller:
     """Publish one node command and await the terminal event naming it."""
 
-    def __init__(self, bus: ProtocolLabRunBus) -> None:
+    def __init__(
+        self,
+        bus: ProtocolLabRunBus,
+        *,
+        before_publish: Callable[[], None] | None = None,
+    ) -> None:
         # No consumer group (OMN-21818): every caller sees every terminal and picks out
         # its own, so it reads them from the log end and leaves nothing on the broker.
         self._bus = require_ungrouped(bus)
+        self._before_publish = before_publish
 
     async def call(
         self,
@@ -388,6 +394,8 @@ class ScmBusCaller:
                 unsubscribes.append(
                     await self._bus.subscribe_ungrouped(topic, on_terminal(topic))
                 )
+            if self._before_publish is not None:
+                self._before_publish()
             await self._bus.publish(
                 topics.command, str(correlation_id).encode("utf-8"), _bytes(envelope)
             )

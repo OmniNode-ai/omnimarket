@@ -1404,6 +1404,56 @@ def test_a_bus_refusal_exits_69_without_a_traceback(
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
+@pytest.mark.parametrize("stage", ["open", "subscribe", "publish", "timeout_then_open"])
+def test_job_log_dispatch_receipt_marks_only_possible_gateway_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    retry_pauses: list[float],
+    stage: str,
+) -> None:
+    marker = tmp_path / "dispatch.json"
+    marker.write_text('{"command_may_have_run":false}')
+
+    class FailingBus(FakeBus):
+        async def subscribe_ungrouped(self, topic, on_message):
+            if stage == "subscribe":
+                raise InfraConnectionError("subscription refused before publication")
+            return await super().subscribe_ungrouped(topic, on_message)
+
+        async def publish(self, *args, **kwargs):
+            # Publication is the first point where the gateway might run, including
+            # a broker failure whose acknowledgement leaves its outcome unknown.
+            assert json.loads(marker.read_text()) == {"command_may_have_run": True}
+            if stage == "publish":
+                raise InfraConnectionError("publish acknowledgement lost")
+            return await super().publish(*args, **kwargs)
+
+    unavailable = InfraConnectionError("bus unavailable")
+    if stage == "open":
+        attempts = [unavailable] * 3
+    elif stage == "timeout_then_open":
+        attempts = [FailingBus(answer=False), unavailable, unavailable]
+    else:
+        attempts = [FailingBus()] * 3
+    _install_bus_attempts(monkeypatch, attempts)
+    result = _run(
+        [
+            "job-log",
+            REPO,
+            "--job-id",
+            "77",
+            "--timeout-s",
+            "0.01",
+            "--dispatch-receipt",
+            str(marker),
+        ]
+    )
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert json.loads(marker.read_text()) == {
+        "command_may_have_run": stage in {"publish", "timeout_then_open"}
+    }
+
+
 def test_write_expected_head_comes_from_the_watcher(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -21,6 +21,11 @@ class NodeLaneGithubBudgetEffect:
         return HandlerLaneGithubBudget().handle(request)
 
 
+def mark_gateway_dispatch(path: Path) -> None:
+    """Public SCM integration: mark its reservation before the bus publish attempt."""
+    HandlerLaneGithubBudget.mark_dispatch(path)
+
+
 def main() -> int:
     try:
         if len(sys.argv) == 4 and sys.argv[1] == "--host-calls":
