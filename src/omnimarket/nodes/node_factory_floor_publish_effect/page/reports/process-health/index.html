@@ -446,14 +446,28 @@ el("custom-range").onsubmit=event=>{
 };
 let resizeTimer;
 if(typeof window!=="undefined") window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(health)render(health);},100);});
-async function load(){
-  const banner=el("banner");
-  try{
+async function readHealth(){
     const r=await fetch(DATA_FILE,{cache:"no-store"});
     if(r.status===404)throw new Error("the series is not published");
     if(!r.ok)throw new Error("HTTP "+r.status);
-    const h=await r.json();
+    let h=await r.json();
+    if(h?.detail_file){
+      if(!/^[a-z0-9-]+\.json\.gz$/.test(h.detail_file))throw new Error("invalid detail file");
+      if(health?.generated_at===h.generated_at && health?.range_overlay)return health;
+      const detail=await fetch("../../"+h.detail_file,{cache:"no-store"});
+      if(!detail.ok)throw new Error("detail HTTP "+detail.status);
+      if(typeof DecompressionStream!=="function")throw new Error("this browser cannot read compressed report data");
+      const full=await new Response(detail.body.pipeThrough(new DecompressionStream("gzip"))).json();
+      if(full.generated_at!==h.generated_at)throw new Error("the series changed during publication; waiting for the next read");
+      h=full;
+    }
     if(!h || typeof h.generated_at!=="string" || !Array.isArray(h.days) || !h.summary)throw new Error("not a process-health series");
+    return h;
+}
+async function load(){
+  const banner=el("banner");
+  try{
+    const h=await readHealth();
     banner.hidden=true;render(h);
   }catch(e){
     banner.hidden=false;
