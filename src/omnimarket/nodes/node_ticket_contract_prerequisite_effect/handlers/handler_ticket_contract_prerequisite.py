@@ -203,7 +203,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            failures = check(sha, request.base, request.title)
+            base = _resolve_base(request.base)
+            failures = check(sha, base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )
