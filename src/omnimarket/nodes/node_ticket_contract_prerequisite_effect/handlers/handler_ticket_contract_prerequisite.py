@@ -133,7 +133,6 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
     if title is None:
         subjects = _git(
             "log",
@@ -201,7 +200,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            failures = check(sha, request.base, request.title)
+            base = _resolve_base(request.base)
+            failures = check(sha, base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )

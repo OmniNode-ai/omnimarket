@@ -1297,6 +1297,8 @@ def load_runner_fleet(path: Path) -> ModelFloorRunnerFleet | None:
 
 def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and data.get("status") == "unread":
+        raise SourceRefusedError(str(data.get("reason") or "fleet producer unread"))
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(
