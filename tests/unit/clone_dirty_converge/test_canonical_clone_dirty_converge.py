@@ -521,7 +521,7 @@ def _report_diverged(
 @pytest.fixture
 def diverged_case(tmp_path: Path) -> Planted:
     """A clean canonical clone with one local commit while its upstream moved on."""
-    planted = Planted(tmp_path, "omni_home", {"a.txt": "one\n"})
+    planted = Planted(tmp_path, "workspace", {"a.txt": "one\n"})
     (planted.clone / "local.txt").write_text("local commit\n")
     _git("add", "local.txt", cwd=planted.clone)
     _git("commit", "--quiet", "-m", "local", cwd=planted.clone)
@@ -586,7 +586,7 @@ def test_a_clean_clone_only_ahead_of_its_upstream_is_left_alone(
     tmp_path: Path,
 ) -> None:
     """Positive control: unpushed commits on a clone its upstream never passed are not dropped."""
-    planted = Planted(tmp_path, "omni_home", {"a.txt": "one\n"})
+    planted = Planted(tmp_path, "workspace", {"a.txt": "one\n"})
     clone = planted.clone
     _git("fetch", "--quiet", "origin", cwd=clone)
     _git("reset", "--hard", "--quiet", "origin/dev", cwd=clone)
