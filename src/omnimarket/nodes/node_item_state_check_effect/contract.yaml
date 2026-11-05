@@ -3,7 +3,7 @@
 name: node_item_state_check_effect
 node_type: EFFECT_GENERIC
 runtime_profiles:
-- main
+- effects
 contract_version:
   major: 1
   minor: 0
@@ -51,6 +51,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles:
+  - effects
 metadata:
   author: OmniNode Team
   description: ItemStateCheckEffect
