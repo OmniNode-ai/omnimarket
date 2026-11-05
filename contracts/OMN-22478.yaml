@@ -35,6 +35,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The focused test files."
     command: "uv run pytest tests/nodes/node_reading_compute tests/nodes/node_reading_writer_effect -q --no-cov --refuse-skips"
+  - kind: "tests"
+    description: "CI Summary's external layers pass with no reviewer row, and the reviewer starts no run."
+    command: "uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -134,3 +137,11 @@ dod_evidence:
       - check_type: "command"
         check_value: 'docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/reading-venv -v "$PWD:/workspace:ro" -w /workspace ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_hourly_writes_one_row_per_piece_for_a_window_through_the_configured_routes tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_probe_writes_nothing -q --no-cov -p no:randomly -p no:cacheprovider'
         cwd: "."
+  - id: dod-omn22478-market-review-holds-no-merge
+    description: A head with no reviewer row passes CI Summary's external layers, and no pull request starts the reviewer.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
