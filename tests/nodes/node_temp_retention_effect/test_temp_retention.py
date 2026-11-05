@@ -63,7 +63,6 @@ def host(
     return ModelTempRetentionHost(
         name="pool-a",
         scheduler="systemd-user",
-        python="/srv/fixture/python",
         windows=WINDOWS,
         temp_roots=(
             ModelTempRoot(
@@ -274,7 +273,6 @@ def test_a_root_whose_leaf_name_the_contract_does_not_allow_is_refused(
     h = ModelTempRetentionHost(
         name="pool-a",
         scheduler="systemd-user",
-        python="/srv/fixture/python",
         windows=WINDOWS,
         temp_roots=(ModelTempRoot(path=str(unsafe)),),
     )
@@ -395,7 +393,6 @@ def test_a_store_whose_leaf_name_the_contract_does_not_allow_is_refused(
     h = ModelTempRetentionHost(
         name="pool-a",
         scheduler="systemd-user",
-        python="/srv/fixture/python",
         windows=WINDOWS,
         temp_roots=(ModelTempRoot(path=str(tmp_path / "runs" / ".tmp")),),
         store_ceilings=(

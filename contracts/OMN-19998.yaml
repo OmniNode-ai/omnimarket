@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-temp-retention
+    statement: Entries directly under a host's declared temp directories age out on the run directories' own windows when no live process holds them, and a package store stays under its declared ceiling.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: an old entry under a declared temp directory that no live process holds is removed, a held, recent, protected, other-user or socket-holding entry is kept, the long and the short window apply by filesystem pressure, files and symlinks are removed without following targets, and a package store over its ceiling past the pressure mark is emptied only while no process of its tool runs; the packaged overlay declares both pool hosts and the node names none -- falsifier: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -138,6 +143,9 @@ evidence_requirements:
   - kind: tests
     description: The additive-wire suite exercises model serialization, queued requests, and the bus caller against the pre-field host model.
     command: uv run pytest tests/unit/work_ledger_bus/test_request_additive_wire.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
+    description: The retention tests build old, held, recent, protected, foreign, socket-holding, file and symlink entries under fixture temp directories, and a fixture package store over and under its ceiling, and run the real process read where /proc exists.
+    command: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -509,4 +517,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-temp-retention
+    description: The retention tests fail at the merge base because the node does not exist; the recorded gap is that the run-directory upkeep skips every dot-prefixed name, so the lanes' TMPDIR and the package store beside the runs had no rule on either pool host. This proof does not assert the installed timer's effect on a live host.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-temp-retention-deploy
+    description: Hosted wiring smoke renders the node's systemd user units from the contract cadence and the packaged overlay row, installs them against a fake systemctl, and runs one pass through the typed handler. It asserts no live host installation.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly
         cwd: .

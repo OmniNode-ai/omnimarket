@@ -49,7 +49,6 @@ def row(name: str = "pool-a") -> ModelTempRetentionHost:
     return ModelTempRetentionHost(
         name=name,
         scheduler="systemd-user",
-        python="/srv/fixture/venv/bin/python",
         windows=ModelRetentionWindows(
             retain_hours=12, pressure_percent=80, pressure_retain_hours=2
         ),
@@ -92,13 +91,18 @@ def fixture_python(tmp_path: Path) -> Path:
 def install_args(tmp_path: Path) -> dict[str, Path]:
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text("hosts: []")
-    return {"source_root": tmp_path / "checkout", "overlay_file": overlay}
+    return {
+        "python": fixture_python(tmp_path),
+        "source_root": tmp_path / "checkout",
+        "overlay_file": overlay,
+    }
 
 
 def test_units_carry_the_contract_cadence_and_the_overlay_row(tmp_path: Path) -> None:
     service, timer = render_units(
         load_schedule(),
         row(),
+        python=Path("/srv/fixture/venv/bin/python"),
         source_root=Path("/srv/co"),
         overlay_file=Path("/srv/co/o.yaml"),
         home=Path("/home/x"),
@@ -114,14 +118,25 @@ def test_units_carry_the_contract_cadence_and_the_overlay_row(tmp_path: Path) ->
     assert f"Unit={SERVICE}" in timer
 
 
+def test_a_relative_path_cannot_be_rendered_into_a_unit() -> None:
+    with pytest.raises(ValueError, match="absolute"):
+        render_units(
+            load_schedule(),
+            row(),
+            python=Path("/srv/fixture/venv/bin/python"),
+            source_root=Path("checkout"),
+            overlay_file=Path("/srv/co/o.yaml"),
+            home=Path("/home/x"),
+        )
+
+
 def test_install_writes_both_units_then_enables_the_timer_and_a_second_install_changes_nothing(
     tmp_path: Path,
 ) -> None:
     runner = Systemctl()
-    python = fixture_python(tmp_path)
     sched = RetentionScheduler(
         schedule=load_schedule(),
-        rows=[row().model_copy(update={"python": str(python)})],
+        rows=[row()],
         home=tmp_path / "home",
         run=runner,
     )
@@ -143,10 +158,9 @@ def test_install_refuses_a_host_the_overlay_does_not_declare(tmp_path: Path) -> 
 
 
 def test_install_refuses_when_the_node_cannot_be_imported(tmp_path: Path) -> None:
-    python = fixture_python(tmp_path)
     sched = RetentionScheduler(
         schedule=load_schedule(),
-        rows=[row().model_copy(update={"python": str(python)})],
+        rows=[row()],
         home=tmp_path / "home",
         run=Systemctl(import_ok=False),
     )
@@ -157,10 +171,9 @@ def test_install_refuses_when_the_node_cannot_be_imported(tmp_path: Path) -> Non
 
 
 def test_install_fails_when_systemd_lists_no_schedule(tmp_path: Path) -> None:
-    python = fixture_python(tmp_path)
     sched = RetentionScheduler(
         schedule=load_schedule(),
-        rows=[row().model_copy(update={"python": str(python)})],
+        rows=[row()],
         home=tmp_path / "home",
         run=Systemctl(listed=False),
     )
@@ -181,10 +194,9 @@ def test_dry_run_installs_nothing(tmp_path: Path) -> None:
 
 def test_uninstall_removes_the_units(tmp_path: Path) -> None:
     runner = Systemctl()
-    python = fixture_python(tmp_path)
     sched = RetentionScheduler(
         schedule=load_schedule(),
-        rows=[row().model_copy(update={"python": str(python)})],
+        rows=[row()],
         home=tmp_path / "home",
         run=runner,
     )
@@ -256,7 +268,6 @@ def write_overlay(tmp_path: Path) -> tuple[Path, Path]:
                     {
                         "name": "pool-a",
                         "scheduler": "systemd-user",
-                        "python": "/srv/fixture/python",
                         "windows": {
                             "retain_hours": 12,
                             "pressure_percent": 80,
