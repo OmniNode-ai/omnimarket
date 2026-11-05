@@ -43,3 +43,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py -q --no-cov --tb=line -k "no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window"
         cwd: .
+  - id: dod-omn22478-integration-proof-live
+    description: 'Integration proof on the live bus lane, read live: the run verb sends the overlay''s golden and error cases to a lab host as lab work units and exits 0 only when the reading is WORKING, then the read verb reads the stored result back inside its max age. ONEX_SKILL_OVERLAY_ROOTS names the root holding the harness overlay.'
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'uv run python -m omnimarket.nodes.node_lab_test_harness_effect run && uv run python -m omnimarket.nodes.node_lab_test_harness_effect read'
+        cwd: .
