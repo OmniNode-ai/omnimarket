@@ -1,0 +1,113 @@
+schema_version: 1.0.0
+ticket_id: OMN-22147
+title: Rebuild the stored pillar backlog from live PR and ticket state on each tick
+summary: The existing idle-slot-fill effect refreshes stored work before selection, under the same lock held through dispatch. Live PR, ticket, CLAIM and readback sources replace the hand-kept items. An unread source offers no stored work and preserves the previous file. Install and recorded-fixture evidence remain separate requirements.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api]
+requirements:
+  - id: req-omn22147-live-backlog
+    statement: Rebuild the stored backlog from live sources before selection without changing admission or dispatch rules.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a tick rebuilds pillar-backlog.json from live state (open PRs from the PR watcher that fail checks or are stalled, open defect tickets, readbacks) and drops every item whose PR is merged, closed or gone -- falsifier: uv run pytest in omnimarket on a handler test that feeds a watcher snapshot with merged and open PRs and asserts only the open ones remain'
+      - id: AC2
+        statement: 'AC2: the refresh is a node with a contract and an overlay, runs the same under the in-memory and the Redpanda-backed profile, and the file is never hand-edited -- falsifier: uv run pytest of the two-profile test named in the PR'
+      - id: AC3
+        statement: 'AC3: after install on the dev lane, the file on the host is rewritten within one tick interval and the next lab-fill tick reports eligible greater than zero, or names the drop reason of each remaining item -- falsifier: ls -la of pillar-backlog.json shows a modification time after the install and the lab-fill STATUS row shows the stored tier count'
+      - id: AC4
+        statement: 'AC4: a regression test built from the recorded 2026-11-01 file (fixture path in the PR) fails on the broken code and passes on the fix -- falsifier: uv run pytest on the named test in omnimarket'
+evidence_requirements:
+  - kind: tests
+    description: Focused tick, live-source, locking, overlay, dispatch-identity and declared local/lab binding-fixture coverage. The binding fixture is not a live broker run.
+    command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_pillar_backlog_refresh.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22147-ac1
+    description: A tick drops merged, closed and missing PRs before selection; current-head red and stalled unowned PRs, open defects and readbacks enter the stored projection. Default ticket reads use the live API and require complete pagination; injected snapshots support replay. Atomic replacement holds the existing lock through dispatch. Existing dispatch keys and sent history are preserved.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_pillar_backlog_refresh.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22147-ac2
+    description: Uses the repository-declared local/lab factory_bindings fixture and its comparator, with a differing-row negative control. Contract is src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml; portable overlay policy is backlog_refresh.yaml there; deployment overrides are idle_slot_fill/overlay.yaml field backlog_refresh. No live Redpanda result is claimed.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_pillar_backlog_refresh.py -q --no-cov --tb=line -k 'two_profile or deployment_overlay'
+        cwd: .
+  - id: dod-omn22147-ac3a
+    description: >
+      Pending live evidence. Exact step: install the pushed PR branch revision on h051 through the declared installer;
+      run one lab-fill tick there (dry-run if supported) and capture the stored-tier count. After landing, install the
+      merged revision on the operator Mac through the declared installer; after its next launchd tick run
+      ls -la ~/.local/state/omni/throughput-tick/pillar-backlog.json and read the next lab-fill STATUS row.
+      Record the install time, installed revision, file mtime, tick time and stored-tier count in a receipt supplied
+      through ONEX_PILLAR_BACKLOG_INSTALL_RECEIPT. Its source digest must match the handler under verification.
+      The hosted runner can validate that receipt without reaching an operator machine. Missing evidence fails;
+      a synthetic test result is not an install receipt.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: |
+          uv run python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime
+          from pathlib import Path
+          receipt_path = os.environ.get("ONEX_PILLAR_BACKLOG_INSTALL_RECEIPT")
+          assert receipt_path, "pending: installed dev tick receipt ONEX_PILLAR_BACKLOG_INSTALL_RECEIPT"
+          receipt = json.loads(Path(receipt_path).read_text())
+          handler = Path("src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_pillar_backlog_refresh.py")
+          assert receipt["source_sha256"] == hashlib.sha256(handler.read_bytes()).hexdigest()
+          def at(value):
+              parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+              assert parsed.tzinfo is not None
+              return parsed
+          for profile in ("lab", "dev"):
+              proof = receipt[profile]
+              assert proof["host"] and len(proof["installed_revision"]) == 40
+              installed, modified, tick = map(at, (proof["installed_at"], proof["backlog_mtime"], proof["tick_at"]))
+              assert installed < modified <= tick
+              assert (tick - installed).total_seconds() <= proof["tick_interval_seconds"]
+              assert isinstance(proof["stored_count"], int) and proof["stored_count"] >= 0
+              assert f"stored={proof['stored_count']}" in proof["status_row"]
+          print("installed-backlog-mtime-and-status PASS")
+          PY
+        cwd: .
+  - id: dod-omn22147-ac4
+    description: >
+      Pending original recorded file. The existing regression is synthetic and is red on the baseline, green on the
+      change. It does not substitute for the recorded 2026-11-01 fixture. Once supplied, add the scrubbed fixture at
+      tests/nodes/node_idle_slot_fill_effect/fixtures/pillar_backlog_20261101.json and replay it through the named
+      regression. An absent recorded fixture fails this evidence check.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: file_exists
+        check_value: tests/nodes/node_idle_slot_fill_effect/fixtures/pillar_backlog_20261101.json
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_pillar_backlog_refresh.py::test_recorded_20261101_backlog_is_rebuilt -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22147-deploy-smoke
+    description: Hosted-runner tick smoke on a disposable state directory verifies stored-tier count and atomic refresh with the real handler. It does not claim an installed host revision or operator-Mac execution.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_pillar_backlog_refresh.py -q --no-cov --tb=line -k 'tick_rebuilds or write_is_atomic or tick_refresh_and_dispatch'
+        cwd: .
+  - id: dod-omn22147-integration-proof
+    description: The pushed head ran the idle-slot-fill node suite, the tick recording suite and the routing-sources inventory test on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane pillar-backlog-refresh-1102-land -- uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/test_ruling_recovery.py tests/test_routing_sources_omn20601.py -q --no-cov
+        cwd: .
