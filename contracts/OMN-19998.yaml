@@ -512,3 +512,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-unreadable-base-refusal
+    description: An unreadable base that names no remote returns no resolved base, so the release-cut exemption is not granted and the missing-contract refusal stands, while a failed fetch of a named remote still propagates. The unreadable-base test fails before this change with a CalledProcessError.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .

@@ -32,13 +32,15 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
-def _resolve_base(base: str) -> str:
+def _resolve_base(base: str) -> str | None:
     """Pin the base, fetching only an absent configured remote-tracking branch.
 
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Fetch errors propagate to the failed typed verdict.
+    into remote branches. Fetch errors propagate to the failed typed verdict. A
+    base that is unreadable and names no remote returns None, which callers treat
+    as an unreadable diff (the refusal stands).
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -47,7 +49,7 @@ def _resolve_base(base: str) -> str:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            raise
+            return None
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(
@@ -67,8 +69,10 @@ def _resolve_base(base: str) -> str:
 _RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
 
 
-def _is_release_cut(sha: str, base: str) -> bool:
+def _is_release_cut(sha: str, base: str | None) -> bool:
     """Whether the diff against the merge base is a root changelog plus optional pins."""
+    if base is None:
+        return False
     try:
         merge_base = _git("merge-base", base, sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
@@ -105,13 +109,15 @@ def _own_revisions(sha: str, base_sha: str) -> tuple[str, ...]:
     return (sha, "--not", base_sha, *merged)
 
 
-def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
+def _changed_paths(sha: str, base: str | None) -> tuple[str, ...]:
     """The paths this push's own commits change; unreadable fails closed.
 
     A merge commit contributes only what its resolution added beyond both
     parents (``--cc``), so a clean merge of dev adds nothing and a conflict
     resolved into new code still counts.
     """
+    if base is None:
+        return ("src/<unreadable diff>",)
     try:
         base_sha = _git("rev-parse", "--verify", f"{base}^{{commit}}")
         listing = _git(
@@ -133,14 +139,17 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
+    resolved = _resolve_base(base)
+    if resolved is None and title is None:
+        _git("rev-parse", "--verify", f"{base}^{{commit}}")
     if title is None:
+        assert resolved is not None
         subjects = _git(
             "log",
             "--first-parent",
             "--no-merges",
             "--format=%s",
-            *_own_revisions(sha, base),
+            *_own_revisions(sha, resolved),
         )
         branch = os.environ.get("PRE_COMMIT_LOCAL_BRANCH") or _git(
             "rev-parse", "--abbrev-ref", "HEAD"
@@ -167,7 +176,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         failure = contract_prerequisite(ticket, text)
         if failure and text is None:
             if release_cut is None:
-                release_cut = _is_release_cut(sha, base)
+                release_cut = _is_release_cut(sha, resolved)
             if release_cut:
                 continue
         if failure:
@@ -176,7 +185,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
-            changed = _changed_paths(sha, base)
+            changed = _changed_paths(sha, resolved)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
                 ticket_id=ticket, contract_text=text, changed_paths=changed
