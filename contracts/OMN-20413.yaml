@@ -16,6 +16,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: a cause is attempted at most its budget, then parked with one operator MSG per park episode, and a fixer HOLD row stops every dispatch and revokes the live leases in its scope -- falsifier: TLC on tla/landing_controller with P11, P12, P14 and their mutant configs, and uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -k "budget or fixer_hold"'
+  - id: req-lock-past-safety-advisories
+    statement: uv.lock resolves multidict and mako outside the affected ranges of SFTY-20261005-09094 (multidict >=6.7.0,<=6.9.0) and SFTY-20261005-32026 (mako <=1.4.1), so the Dependency Security Scan safety step passes.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: uv.lock pins multidict above 6.9.0 and mako above 1.4.1 -- falsifier: the lock check below fails at the merge base, where the lock holds multidict 6.8.0 and mako 1.4.1'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -23,6 +28,9 @@ evidence_requirements:
   - kind: tests
     description: A cause_not_shared verdict holds across a member set change on the same base head, the key is leased again when the base head moves, and the budget and fixer HOLD tests stay green.
     command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
+  - kind: manual
+    description: uv.lock names multidict above 6.9.0 and mako above 1.4.1.
+    command: python3 -c "import tomllib; p={x['name']:x['version'] for x in tomllib.load(open('uv.lock','rb'))['package']}; assert tuple(map(int,p['multidict'].split('.')))>(6,9,0) and tuple(map(int,p['mako'].split('.')))>(1,4,1), p"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -52,3 +60,12 @@ dod_evidence:
       - check_type: command
         check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
         cwd: .
+  - id: dod-omn20413-ac4-lock-past-safety-advisories
+    description: The lock file names multidict above 6.9.0 and mako above 1.4.1, outside the affected specs of the two safety advisories.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: python3 -c "import tomllib; p={x['name']:x['version'] for x in tomllib.load(open('uv.lock','rb'))['package']}; assert tuple(map(int,p['multidict'].split('.')))>(6,9,0) and tuple(map(int,p['mako'].split('.')))>(1,4,1), p"
+        cwd: .
+    binds_ac:
+      - AC4
