@@ -35,7 +35,7 @@ input_model:
 output_model:
   name: "ModelRemoteLaneRefResult"
   module: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect"
-  description: "The sha, the landing branch read, the remote used, or the error."
+  description: "The sha, the landing branch read, the remote used, or the error with its typed refusal (OMN-19998: the default branch and a named branch are both checked before send; a branch not yet pushed is BRANCH_NOT_PUSHED)."
 handler:
   module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_ref"
   class: "HandlerRemoteLaneRef"
