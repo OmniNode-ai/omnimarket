@@ -133,6 +133,12 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-idle-turn-guard-decision
+    statement: The idle-turn guard exposes its deterministic decision through the registered compute contract and returns the declared terminal result to its runtime caller.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: recorded Stop turns refuse idle headroom, honor an operator stop, discount lane-refusing hosts and count a background placement receipt; malformed facts fail without a result; installed node discovery and the in-memory bus execute the declared handler -- falsifier: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_golden_chain_idle_turn_guard.py -q --no-cov -n 0'
+
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -536,4 +542,29 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-idle-turn-guard-decision
+    description: Scoped rule regressions cover the recorded Stop-turn cases through the compute handler and the Stop hook adapter payload. These tests do not assert a host timer installation or the landing-controller criteria.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_idle_turn_guard_decision.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-idle-turn-guard-deploy
+    description: Hosted wiring smoke loads the installed entry point and invokes its packaged contract through RuntimeLocal on the in-memory bus. Recorded stop, refusing-host and background-placement cases return typed decisions; malformed facts fail without a result. The same contract declares its terminal reply for the runtime caller.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_golden_chain_idle_turn_guard.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-prepush-unreadable-base
+    description: The recorded unreadable local comparison base returns the missing-contract refusal instead of raising before the contract can be inspected. Existing release-cut positive controls still pass. This scoped source regression does not assert a host installation or resolve external API rate limits.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
         cwd: .

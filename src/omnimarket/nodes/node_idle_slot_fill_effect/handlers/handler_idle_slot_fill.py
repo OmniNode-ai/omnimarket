@@ -93,6 +93,7 @@ from typing import Any
 from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
     ModelFSMSubcontract,
 )
+from pydantic import ValidationError
 
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.handler_lab_fill_live_tickets import (
@@ -101,6 +102,10 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
     linear_post,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.rules_idle_turn_guard import (
+    decide_idle_turn,
+    load_idle_turn_guard_policy,
+)
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
 from omnimarket.handlers.rules_stop_gate import (
@@ -111,6 +116,12 @@ from omnimarket.handlers.rules_stop_gate import (
 from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
+from omnimarket.models.idle_turn_guard import (
+    EnumIdleTurnGuardVerdict,
+    ModelIdleTurnGuardDecisionRequest,
+    ModelIdleTurnGuardFacts,
+    ModelIdleTurnGuardPolicy,
+)
 from omnimarket.models.lab_fill import (
     EnumLabFillTicketDrop,
     ModelLabFillCriteriaReadRequest,
@@ -1148,6 +1159,11 @@ def dispatched(tool_uses: list[dict[str, Any]]) -> bool:
 
 
 class HandlerIdleTurnGuard:
+    """Sorts the turn's reader output into finding lines and asks the shared rule (OMN-19998) for the verdict."""
+
+    def __init__(self, policy: ModelIdleTurnGuardPolicy | None = None) -> None:
+        self._policy = policy or load_idle_turn_guard_policy()
+
     def handle(self, request: ModelIdleTurnGuardRequest) -> ModelIdleTurnGuardResult:
         headroom: list[str] = []
         unowned: list[str] = []
@@ -1175,15 +1191,32 @@ class HandlerIdleTurnGuard:
                     filled = m["idle"] == "0"
         if filled:
             headroom = []
-        shown = [*headroom, *unowned, *broken]
-        if not shown or dispatched(request.tool_uses):
-            return ModelIdleTurnGuardResult(False, "", shown)
+        decision = decide_idle_turn(
+            ModelIdleTurnGuardDecisionRequest(
+                headroom_lines=tuple(headroom),
+                unowned_lines=tuple(unowned),
+                broken_lines=tuple(broken),
+                tool_dispatched=dispatched(request.tool_uses),
+                facts=request.facts or ModelIdleTurnGuardFacts(),
+                now=request.now or datetime.now(UTC),
+            ),
+            self._policy,
+        )
+        shown = list(decision.shown)
+        if decision.verdict is not EnumIdleTurnGuardVerdict.REFUSE:
+            return ModelIdleTurnGuardResult(False, decision.reason, shown)
         what = " and ".join(
             part
             for part in (
-                f"{len(headroom)} free lab headroom line(s)" if headroom else "",
-                f"{len(unowned)} UNOWNED red(s)" if unowned else "",
-                f"{len(broken)} broken lab piece(s)" if broken else "",
+                f"{decision.headroom_count} free lab headroom line(s)"
+                if decision.headroom_count
+                else "",
+                f"{decision.unowned_count} UNOWNED red(s)"
+                if decision.unowned_count
+                else "",
+                f"{decision.broken_count} broken lab piece(s)"
+                if decision.broken_count
+                else "",
             )
             if part
         )
@@ -2489,6 +2522,33 @@ class IdleGuardError(Exception):
     """The guard could not check; the hook exits 2 with this on stderr."""
 
 
+def turn_start(transcript: Path) -> datetime | None:
+    """The stamp of the last operator prompt: the start of the window a runner receipt must fall in (OMN-19998)."""
+    start: datetime | None = None
+    for line in transcript.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") != "user":
+            continue
+        message = entry.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        prompt = isinstance(content, str) or (
+            isinstance(content, list)
+            and any(isinstance(b, dict) and b.get("type") == "text" for b in content)
+        )
+        if not prompt:
+            continue
+        try:
+            stamp = datetime.fromisoformat(str(entry.get("timestamp") or ""))
+        except ValueError:
+            start = None  # an unstamped prompt leaves no window: no receipt counts
+            continue
+        start = stamp if stamp.tzinfo is not None else None
+    return start
+
+
 def turn(transcript: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """The tool calls ({id, name, input}) and tool results ({id, text}) since the last operator prompt."""
     uses: list[dict[str, Any]] = []
@@ -2550,8 +2610,22 @@ def guard(raw: str) -> str:
         raise IdleGuardError(
             "idle-guard: the Stop payload carries no readable transcript_path; nothing was checked"
         )
+    raw_facts = payload.get("idle_guard_facts")
+    try:
+        facts = (
+            ModelIdleTurnGuardFacts()
+            if raw_facts is None
+            else ModelIdleTurnGuardFacts.model_validate(raw_facts)
+        )
+    except ValidationError as exc:
+        raise IdleGuardError(
+            f"idle-guard: the adapter's idle_guard_facts do not validate ({exc.error_count()} error(s): "
+            f"{exc.errors()[0]['loc']} {exc.errors()[0]['msg']}); nothing was checked"
+        ) from exc
+    if facts.window_start is None:
+        facts = facts.model_copy(update={"window_start": turn_start(Path(transcript))})
     verdict = HandlerIdleTurnGuard().handle(
-        ModelIdleTurnGuardRequest(*turn(Path(transcript)))
+        ModelIdleTurnGuardRequest(*turn(Path(transcript)), facts=facts)
     )
     return (
         json.dumps({"decision": "block", "reason": verdict.reason})

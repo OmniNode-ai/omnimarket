@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from omnimarket.models.idle_turn_guard import ModelIdleTurnGuardFacts
 
 # Preserve the existing idle-fill import paths for callers of the shared crossing.
 from omnimarket.models.model_backlog_item import (
@@ -112,6 +115,11 @@ class ModelIdleTurnGuardRequest:
 
     tool_uses: list[dict[str, Any]]
     tool_results: list[dict[str, Any]]
+    # OMN-19998: what the Stop hook's adapter read (holds and stops in force, hosts that refuse lanes, runner
+    # receipts). None is the guard's earlier behaviour: no hold, every host takes lanes, no receipt.
+    facts: ModelIdleTurnGuardFacts | None = None
+    # The decision time; None reads the clock when the guard decides.
+    now: datetime | None = None
 
 
 @dataclass(frozen=True)
