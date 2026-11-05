@@ -38,7 +38,7 @@ def _resolve_base(base: str) -> str:
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Fetch errors propagate to the failed typed verdict.
+    into remote branches. Callers retain their fail-closed Git error handling.
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -70,9 +70,11 @@ _RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
 def _is_release_cut(sha: str, base: str) -> bool:
     """Whether the diff against the merge base is a root changelog plus optional pins."""
     try:
+        base = _resolve_base(base)
         merge_base = _git("merge-base", base, sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
     except (OSError, subprocess.SubprocessError):
+        # An unreadable base cannot establish the release-cut exemption.
         return False
     paths = {path for path in listing.split("\0") if path}
     return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
@@ -133,8 +135,8 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
     if title is None:
+        base = _resolve_base(base)
         subjects = _git(
             "log",
             "--first-parent",
@@ -176,6 +178,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
+            base = _resolve_base(base)
             changed = _changed_paths(sha, base)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
