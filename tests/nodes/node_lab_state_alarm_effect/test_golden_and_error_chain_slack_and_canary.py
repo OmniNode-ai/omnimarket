@@ -168,10 +168,16 @@ def test_error_slack_refusing_the_post_sends_the_alarm_to_the_second_channel() -
     sends = result.state.open["runner_groups"].sends
     assert [(s.channel, s.delivery) for s in sends] == [
         ("slack_alerts", "failed"),
-        ("second", "delivered"),
+        ("second", "pending"),
     ]
     assert "channel_not_found" in sends[0].detail
     assert result.escalated == ("runner_groups",)
+    later = run_alarm(api, second, at=10, state=result.state)
+    settled = later.state.open["runner_groups"].sends
+    assert [(s.channel, s.delivery) for s in settled] == [
+        ("slack_alerts", "failed"),
+        ("second", "delivered"),
+    ]
 
 
 def test_error_a_message_the_channel_never_shows_goes_to_the_second_channel_after_the_window() -> (
