@@ -12,6 +12,7 @@ order, every start and every wait recorded). The expected answer in each case is
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,15 @@ CASES = json.loads(
 # scope falls back to the fleet, so parity replays it under this set. The live fleet has
 # since retired omnibase_compat (OMN-21284); the test below pins that difference.
 RECORDED_FLEET = FLEET_REPOS | {"omnibase_compat"}
+
+
+def _expected_plan(case: dict[str, Any]) -> dict[str, Any]:
+    """Keep the recording intact; diagnose now names the workflow's registry repo."""
+    expected: dict[str, Any] = deepcopy(case["expected"]["plan"])
+    for lane in expected["lanes"]:
+        if lane["kind"] == "diagnose":
+            lane["repo"] = "omnimarket"
+    return expected
 
 
 def _planned(case: dict[str, Any], *, recorded_fleet: bool = True) -> Any:
@@ -117,7 +127,7 @@ def test_plan_matches_the_sweep_rules_and_the_workflow_cap(index: int) -> None:
     result = _planned(case)
     got = result.model_dump(exclude_unset=True)
     expected = case["expected"]
-    assert {k: got[k] for k in expected["plan"]} == expected["plan"]
+    assert {k: got[k] for k in expected["plan"]} == _expected_plan(case)
     assert len(result.dispatch) == expected["dispatched"]
     assert result.deferred == expected["deferred"]
     assert result.dispatch == result.lanes[: expected["dispatched"]]
@@ -198,7 +208,5 @@ def test_a_broken_owner_gate_fails_the_cases(monkeypatch: pytest.MonkeyPatch) ->
     misses = 0
     for case in CASES["plan"]:
         got = _planned(case).model_dump(exclude_unset=True)
-        misses += {k: got[k] for k in case["expected"]["plan"]} != case["expected"][
-            "plan"
-        ]
+        misses += {k: got[k] for k in case["expected"]["plan"]} != _expected_plan(case)
     assert misses > 0

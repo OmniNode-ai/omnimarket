@@ -146,7 +146,8 @@ class HandlerMergeSweepPlan:
         if under_floor:
             why.append("under floor: " + ",".join(under_floor))
         if why:
-            lanes.append(_lane("diagnose", None, [], reasons=why))
+            # The workflow's home is also the registry repo for a fleet-wide diagnosis.
+            lanes.append(_lane("diagnose", "omnimarket", [], reasons=why))
 
         for e in reading.escalations or ():
             key = pr_key(e.pr)

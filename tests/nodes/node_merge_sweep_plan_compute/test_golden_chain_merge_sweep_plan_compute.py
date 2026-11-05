@@ -107,7 +107,7 @@ def test_golden_chain_plans_a_sweep_then_decides_a_lane_retry() -> None:
     assert planned.lab_only is True
     assert planned.load_per_core == 2.0
     assert [(lane.kind, lane.repo) for lane in planned.lanes] == [
-        ("diagnose", None),
+        ("diagnose", "omnimarket"),
         ("escalation", "omnimarket"),
         ("fix", "omnibase_infra"),
     ]
