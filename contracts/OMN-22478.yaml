@@ -43,6 +43,19 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/test_golden_chain_lab_test_harness.py -q --no-cov --tb=line -k "no_setting_is_in_a_contract or without_an_overlay or window_tick or off_window"
         cwd: .
+  - id: dod-omn22478-deploy-probe-contract
+    description: 'Hosted deploy artifact readback: fetch the harness handler at the checked-out commit and require that it opens the runner, builds the reading from the case outcomes and writes it to the store. Missing published content fails. This reads published source and does not claim a runtime rollout.'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_lab_test_harness_effect/handlers/handler_lab_test_harness_effect.py" | python3 -c '\''import sys
+          source = sys.stdin.read()
+          required = ["async with opener", "reading_from_result", "self.store().write"]
+          assert all(call in source for call in required), "Published harness handler is incomplete"
+          print("Published harness handler runs the cases, builds the reading and writes it")'\'''
+        cwd: .
   - id: dod-omn22478-integration-proof-live
     description: 'Integration proof on a lab host through the central test location: the harness suites run as a lab work unit at the pushed sha on the declared bus lane, so the same send, run and receipt path the harness uses carries its own tests.'
     source: manual
