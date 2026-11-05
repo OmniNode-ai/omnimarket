@@ -257,10 +257,17 @@ class BackendTemporalSelfHosted:
         return state
 
     async def health(self) -> bool:
+        from temporalio.service import RPCError
+
         try:
             client = await self._connect()
             await client.service_client.check_health()
-        except (RunEngineBackendUnavailableError, OSError, RuntimeError):
+        except (
+            RunEngineBackendUnavailableError,
+            RPCError,
+            OSError,
+            RuntimeError,
+        ):
             self._client = None
             return False
         return True

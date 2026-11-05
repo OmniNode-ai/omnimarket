@@ -472,3 +472,85 @@ if "temporal_self_hosted" in BACKENDS:
             assert health.healthy is False
 
         run(scenario())
+
+    def test_a_server_that_vanishes_after_connecting_answers_unknown_not_an_exception() -> (
+        None
+    ):
+        """A cached client whose server died raises an RPC error, not a connect error; every operation fails closed."""
+        import os
+
+        import yaml
+        from temporalio.service import RPCError, RPCStatusCode
+
+        from omnimarket.nodes.node_run_engine_effect.backends.backend_temporal_self_hosted import (
+            BackendTemporalSelfHosted,
+        )
+        from omnimarket.nodes.node_run_engine_effect.models.model_run_engine import (
+            ModelRunEngineOverlay,
+        )
+
+        document = yaml.safe_load(Path(os.environ[TEMPORAL_OVERLAY_ENV]).read_text())
+        settings = ModelRunEngineOverlay.model_validate(document).temporal_self_hosted
+        assert settings is not None
+
+        def gone(*_args: Any, **_kwargs: Any) -> Any:
+            raise RPCError("gone", RPCStatusCode.UNAVAILABLE, b"")
+
+        class Handle:
+            def fetch_history_events(self) -> Any:
+                raise RPCError("gone", RPCStatusCode.UNAVAILABLE, b"")
+
+            async def signal(self, *_a: Any, **_k: Any) -> None:
+                gone()
+
+            async def cancel(self, *_a: Any, **_k: Any) -> None:
+                gone()
+
+        class Service:
+            async def check_health(self) -> None:
+                gone()
+
+        class Client:
+            service_client = Service()
+
+            async def start_workflow(self, *_a: Any, **_k: Any) -> None:
+                gone()
+
+            def get_workflow_handle(self, _id: str) -> Handle:
+                return Handle()
+
+        async def scenario() -> None:
+            backend = BackendTemporalSelfHosted(settings)
+            backend._client = Client()
+            handler = HandlerRunEngine(backend)
+            spec = ModelRunSpec(
+                run_key="vanish-1",
+                steps=(
+                    ModelRunStepSpec(
+                        name="a", kind=EnumRunStepKind.COMMAND, argv=("true",)
+                    ),
+                ),
+            )
+            started = await handler.handle(
+                ModelRunEngineRequest(
+                    operation=EnumRunEngineOperation.START_RUN, run=spec
+                )
+            )
+            assert started.start_outcome is EnumStartOutcome.UNKNOWN
+            backend._client = Client()
+            released = await handler.handle(
+                ModelRunEngineRequest(
+                    operation=EnumRunEngineOperation.RELEASE_RUN,
+                    run_key="vanish-1",
+                    condition="c",
+                    release_id="r",
+                )
+            )
+            assert released.release_outcome is EnumReleaseOutcome.UNKNOWN
+            backend._client = Client()
+            health = await handler.handle(
+                ModelRunEngineRequest(operation=EnumRunEngineOperation.HEALTH)
+            )
+            assert health.healthy is False
+
+        run(scenario())
