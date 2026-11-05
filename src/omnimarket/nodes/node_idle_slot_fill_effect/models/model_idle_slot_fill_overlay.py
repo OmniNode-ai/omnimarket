@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelReposRoles(BaseModel):
@@ -53,3 +53,7 @@ class ModelIdleSlotFillOverlay(BaseModel):
     repo_required_kinds: list[str] | None = None
     cloud_backlog: ModelCloudBacklogOverlay | None = None
     experiment_designs: list[dict[str, Any]] | None = None
+
+    # The publisher carries ModelWorkLedgerQueryRequest/Result, without a shell.
+    ledger_read_command: str | None = None
+    ledger_read_timeout_s: float = Field(default=5.0, gt=0, allow_inf_nan=False)
