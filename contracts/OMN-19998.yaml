@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-ledger-guard-replay-identity
+    statement: Recovery of a refused ledger append preserves its original typed request when the guard cause is corrected.
+    acceptance:
+      - id: AC16
+        statement: 'AC16: the reconstructed recorded friction-refusal case reaches the real append host on the next bus replay, redelivery is duplicate with one append, conditional fields are preserved, and incomplete or unknown requests are refused before queueing -- falsifier: uv run --frozen pytest tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -536,4 +541,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-ledger-guard-replay-identity
+    description: The recorded friction-refusal recovery scenario failed before the change because the queued UUID differed from the row req cell. The focused suite exercises the next bus replay and preserves all original request fields. This evidence does not assert the unrelated landing-controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC16
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-ledger-guard-replay-deploy
+    description: Hosted wiring smoke recovers the request through the existing binding and guard ports, then delivers it using WorkLedgerAppendCaller, WorkLedgerAppendHost and local_serve_handler over the in-memory bus. It observes accepted then duplicate with one append. Host queue counts and live installation remain unmeasured.
+    source: manual
+    binds_ac:
+      - AC16
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py -q --no-cov -n 0 -p no:randomly -k recovered_terminal
         cwd: .

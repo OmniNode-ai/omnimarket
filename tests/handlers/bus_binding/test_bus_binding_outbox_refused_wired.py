@@ -12,6 +12,7 @@ recorded message is elided in the evidence); they are not recorded bodies.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,10 +33,18 @@ from omnimarket.nodes.node_exception_queue_effect.container.container_exception_
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionQueueRequest,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.local_serve import (
+    local_serve_handler,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
+    ModelAppendCommandResult,
+)
+from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller, WorkLedgerAppendHost
 from tests.unit.bus_binding.test_bus_binding_fallback import LANE, _Switch
 from tests.unit.bus_binding.test_bus_binding_fallback import (
     workspace as workspace,
 )
+from tests.unit.work_ledger_bus.test_work_ledger_append_bus import _Bus
 
 pytestmark = pytest.mark.unit
 
@@ -165,7 +174,7 @@ async def test_a_cause_that_stands_is_emitted_once_and_not_again(
 async def test_a_friction_row_that_landed_alone_requeues_the_terminal(
     workspace: Path, tmp_path: Path
 ) -> None:
-    """The cause is made good but the TERMINAL is still lost: it is queued again, as a new request."""
+    """The cause is made good but the TERMINAL is still lost: retry its original request."""
     state = tmp_path / "state"
     outbox.queue_request(state, _request(REQUESTS[0]))
     env = _ledger(tmp_path, [CLAIM])
@@ -175,8 +184,117 @@ async def test_a_friction_row_that_landed_alone_requeues_the_terminal(
     assert _open(state) == []
     queued = outbox.pending(state)
     assert [q.rows for _, q in queued] == [f"{TERMINAL} | req={REQUESTS[0]}"]
-    assert queued[0][1].request_id != REQUESTS[0]
-    assert queued[0][1].requested_by_lane == WRITER
+    assert queued[0][1] == _request(REQUESTS[0])
+
+
+async def test_recovered_terminal_reaches_the_append_host(
+    workspace: Path, tmp_path: Path
+) -> None:
+    """Extend the recorded friction-refusal case beyond enqueue to the next bus replay.
+
+    The request bodies remain reconstructed from the recorded case above. The real append host
+    checks the request UUID against every row's req cell; a queue-only test misses that check.
+    """
+    state = tmp_path / "state"
+    original = _request(REQUESTS[0])
+    outbox.queue_request(state, original)
+    env = _ledger(tmp_path, [CLAIM])
+    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    env = _ledger(tmp_path, [CLAIM, FRICTION])
+    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    queued = outbox.pending(state)
+    assert len(queued) == 1
+
+    ledger = Path(env["ONEX_LEDGER_PATH"])
+
+    class Runner:
+        calls = 0
+
+        def append(self, rows: str) -> ModelAppendCommandResult:
+            self.calls += 1
+            with ledger.open("a", encoding="utf-8") as stream:
+                stream.write(rows + "\n")
+            return ModelAppendCommandResult(exit_code=0)
+
+    runner = Runner()
+    bus = _Bus()
+    await bus.start()
+    handler = local_serve_handler(runner, ledger, "ledger-host", ["developer"], None)
+    host = WorkLedgerAppendHost(bus, handler, writer_principals=["developer"])
+    caller = WorkLedgerAppendCaller(bus, principal="developer")
+    await host.start()
+    try:
+        result = await outbox.drain(
+            state, lambda request: caller.append(request, timeout_s=5)
+        )
+        assert (result.replayed, result.refused, result.remaining) == (1, 0, 0)
+        # A replay after a lost acknowledgement must remain a duplicate, not append the TERMINAL twice.
+        outbox.queue_request(state, original)
+        again = await outbox.drain(
+            state, lambda request: caller.append(request, timeout_s=5)
+        )
+        assert (again.duplicates, again.refused, again.remaining) == (1, 0, 0)
+    finally:
+        await caller.stop()
+        await host.stop()
+        await bus.close()
+    assert runner.calls == 1
+    assert ledger.read_text(encoding="utf-8").count(f"req={original.request_id}") == 1
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_guard_retry_preserves_the_typed_request(
+    tmp_path: Path, conditional: bool
+) -> None:
+    original = _request(REQUESTS[0])
+    if conditional:
+        original = original.model_copy(update={"append_if_absent_row_id": "row-1"})
+    body = original.model_dump(mode="json") | {
+        "refusal": {"message": REFUSAL},
+        "reported_at": NOW.isoformat(),
+        "settled": "previous recovery attempt",
+    }
+    path = tmp_path / "refused.json"
+    path.write_text(json.dumps(body), encoding="utf-8")
+    ports = local_guard_ports(tmp_path, env=_ledger(tmp_path, [CLAIM, FRICTION]))
+    assert ports is not None
+    rows = ports.refused_rows(str(path))
+    assert rows == original.rows
+    appended = ports.append(rows)
+    assert appended
+    assert outbox.pending(tmp_path)[0][1] == original
+    # Recovery retried before delivery keeps one durable queue entry.
+    appended_again = ports.append(rows)
+    assert appended_again
+    assert len(outbox.pending(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    ("missing", "extra"),
+    [
+        ("request_id", {}),
+        ("requested_by_lane", {}),
+        ("requesting_host", {}),
+        (None, {"request_id": "invalid"}),
+        (None, {"future_operation": "must not silently disappear"}),
+    ],
+)
+def test_guard_retry_refuses_an_incomplete_or_unknown_request(
+    tmp_path: Path, missing: str | None, extra: dict[str, str]
+) -> None:
+    body = _request(REQUESTS[0]).model_dump(mode="json")
+    if missing is not None:
+        del body[missing]
+    body.update(extra)
+    path = tmp_path / "refused.json"
+    path.write_text(json.dumps(body), encoding="utf-8")
+    ports = local_guard_ports(tmp_path, env=_ledger(tmp_path, [CLAIM, FRICTION]))
+    assert ports is not None
+    rows = ports.refused_rows(str(path))
+    assert rows is not None
+    appended = ports.append(rows)
+    assert not appended
+    assert outbox.pending(tmp_path) == []
 
 
 def test_no_readable_ledger_binds_no_ports(tmp_path: Path) -> None:
