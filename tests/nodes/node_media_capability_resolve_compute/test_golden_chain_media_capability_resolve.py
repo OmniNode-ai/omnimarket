@@ -61,6 +61,13 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
         == contract["event_bus"]["subscribe_topics"][0]
     )
     assert contract["terminal_event"] == contract["event_bus"]["publish_topics"][0]
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.media-capability-resolved.v1"
+    )
+    assert (
+        contract["runtime_dispatch"]["command_topic"]
+        == "onex.cmd.omnimarket.media-capability-resolve-requested.v1"
+    )
 
 
 @pytest.mark.parametrize("capability", sorted(_BY_CAPABILITY))
