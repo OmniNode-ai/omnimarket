@@ -7,10 +7,22 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 4, patch: 0}
+contract_version: {major: 1, minor: 4, patch: 1}
 node_type: effect
 node_version: {major: 1, minor: 1, patch: 0}
 lifecycle: experimental
+
+# The bytes already streamed for the first view are shared by all subsequent
+# windows of this job id. Deployment may override via github_job_logs/overlay.yaml.
+job_log_cache:
+  root: null
+  ttl_seconds: 86400
+
+cli_aliases:
+  job-log-cached:
+    operation: job_log_tail
+    cache_only: true
+    description: "Read a cached tail, byte window or completed step through the existing gateway bus contract. A miss makes no HTTP request."
 
 description: >
   EFFECT (read-only): typed GitHub repo status reader. Selects one read
@@ -34,6 +46,21 @@ description: >
   is at most max_bytes (at most 512 KiB) and otherwise refuses with a typed
   reason. The GitHub token is resolved at the effect boundary from the
   contract-declared api_key_ref via the canonical secret-store resolver.
+  Completed job logs are retained in github-read-cache/job-logs under
+  the declared ONEX state root for the cache policy's TTL (ONEX_STATE_DIR,
+  else ONEX_STATE_ROOT; an explicit cache overlay root takes precedence).
+  job-log-cached uses
+  this same bus contract with cache_only=true and never resolves credentials
+  or falls back to HTTP. Use the first read's bus binding for gateway-shared
+  bytes; --bus inmemory uses the canonical adapter on the calling host and
+  can reuse covered byte ranges from its previous successful job-log cache.
+  Missing ranges and uncached step metadata remain misses; a partial cached
+  answer is never represented as a whole log. A github_job_logs/overlay.yaml
+  under ONEX_SKILL_OVERLAY_ROOTS can set root and ttl_seconds. Shared gateway
+  replicas require the same persistent root. Downloads are streamed to private
+  files under a per-job lock and atomically published only when complete;
+  length and SHA-256 are checked on reads. Quota headers are retained without
+  credentials or signed redirect URLs.
 
 # OMN-20912: the operation table slice 2 (`onex scm`) and slice 3 (the gh shim
 # coverage table) read. Names are stable; the gh verb each one replaces is on

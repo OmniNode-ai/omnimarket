@@ -241,6 +241,12 @@ class HandlerLaneGithubBudget:
         # Preserve the host shim's guards. This boundary records the invocation once;
         # the nested shim must not count it again in the host JSON/TSV logs.
         env = {**request.env, "ONEX_LANE": str(request.policy["lane"])}
+        if request.tool == "onex" and not (
+            env.get("ONEX_STATE_DIR") or env.get("ONEX_STATE_ROOT")
+        ):
+            # The shared job-log cache needs a writable state root and has no
+            # home-directory fallback (OMN-19654): use the lane's own cache root.
+            env["ONEX_STATE_DIR"] = str(request.policy["cache"])
         if request.tool == "gh":
             env.update(ONEX_GH_CALLS_LOG=os.devnull, ONEX_GH_USAGE_LOG="0")
         if request.tool in {"gh", "onex"}:
