@@ -23,6 +23,10 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
     NODE_NAME,
     ModelReadingOverlay,
 )
+from omnimarket.worktree_reconcile.unit_roots import (
+    UnitRootRefusedError,
+    refuse_worktree_roots,
+)
 
 NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -202,6 +206,18 @@ class ReadingScheduler:
             )
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
+        # A unit that runs from a worktree dies when the host reconcile removes the tree: refuse
+        # before anything is written, naming the path (OMN-22735).
+        try:
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
+        except UnitRootRefusedError as exc:
+            return ModelScheduleResult(
+                exit_code=1,
+                stderr=(
+                    f"{exc}; declare a venv and commands under the registry root's clone "
+                    f"in the {NODE_NAME} overlay and install again\n"
+                ),
+            )
         if dry_run:
             return ModelScheduleResult(exit_code=0, stdout=f"{service}\n{timer}")
         if not python.is_file():
