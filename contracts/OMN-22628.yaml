@@ -35,3 +35,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn22628-integration-proof
+  description: On h051, run the changed onex scm release-list from the branch against the dev bus. A dev gateway node older than the client answers with the plain sentence on stderr; a node that carries the client's fields completes the read. Either is the live reading; an opaque validation failure is neither.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: bash -c 'out=$(env PYTHONPATH=src onex scm release-list OmniNode-ai/omnimarket 2>&1); echo "$out" | grep -q -E "older than this client|\"outcome\":\"completed\""'
+    cwd: .
