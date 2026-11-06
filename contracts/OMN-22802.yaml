@@ -42,3 +42,13 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22802 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_ci_postgres_runner_image_omn22781.py -q --no-cov
     cwd: .
+- id: dod-omn22802-ci-shards
+  description: The Tests (Split n) checks at the pushed head ran the Postgres install to success on the 24.04 image, read from the check runs.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: onex scm commit-check-runs OmniNode-ai/omnimarket --head-sha "$(git rev-parse HEAD)" --check-name "Tests (Split 1/20)"
+    cwd: .
