@@ -51,10 +51,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.reading-window-completed.v1
 
 runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.reading-window-requested.v1
-  terminal_events:
-    success: onex.evt.omnimarket.reading-window-completed.v1
-    failure: onex.evt.omnimarket.reading-window-failed.v1
+  external_trigger: true
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:
@@ -65,8 +62,7 @@ topics:
   reading_window_failed: onex.evt.omnimarket.reading-window-failed.v1
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.reading-window-requested.v1
+  subscribe_topics: []
   publish_topics: []
 
 externally_consumed_topics:
