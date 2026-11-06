@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -132,7 +133,7 @@ def _typed_result(terminal: ModelScmTerminal) -> ModelOpenPrFactsResult:
             payload.get("reason")
             or payload.get("error")
             or payload.get("detail")
-            or "no reason given"
+            or f"its terminal event carried {json.dumps(payload, sort_keys=True)[:300]}"
         )
         raise OpenPrFactsUnreadableError(f"the gateway refused it: {reason}")
     result = payload.get("result", payload)
