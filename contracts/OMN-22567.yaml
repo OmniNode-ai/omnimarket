@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22567"
+title: "The runtime dogfood inventory test expects 36 skipped nodes after node_host_installer_registry_units gained handler_routing"
+summary: "omnimarket#5123 gave node_host_installer_registry_units a handler_routing, so the dogfood report no longer lists it among the experimental nodes with no handler_routing. The inventory test still asserted 37 skipped nodes and failed on dev, so Tests (Split 1/20) was red on every pull request merged with that dev tip. The test now asserts 36 and its comment chain records the node that left the bucket."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-skipped-count"
+    statement: "The inventory test asserts the skipped count dev's report produces and records the node that left the bucket."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the dogfood inventory test asserts 36 skipped nodes and its comment chain records the node that left the bucket, and it passes on dev -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the inventory test passes with the skipped count dev's report produces."
+    command: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22567-ac1-skipped-count"
+    description: "AC1: the inventory test asserts 36 skipped nodes; at the merge base it asserts 37 and fails against the report, which lists 36."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
