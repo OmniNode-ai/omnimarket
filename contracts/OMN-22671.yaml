@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-22671
+title: The install-confirm trigger takes its session reader as an optional contract dependency and records a typed skip event, so session-content applied events stop going to the dead-letter topic
+summary: The install-confirm trigger handler declared reader as a required keyword-only argument of handle(), the runtime calls handle(event) alone and ProtocolSessionCompactSource has no implementation, so every projection-session-content-applied event raised a TypeError and went to the events dead-letter topic. The reader is now an optional constructor dependency declared in the node contract with required false; with none injected the handler returns ModelInstallConfirmSkipped, which the contract routes to its own skipped topic and never to the completed topic the receipts projection folds.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22671-skip
+  statement: With no reader injected the recorded dead-letter record yields one typed skip event on its own topic and nothing on the completed topic, through the runtime's own wiring.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the recorded dead-letter envelope published to the real contract booted through wire_from_manifest on an in-memory bus yields exactly one InstallConfirmSkipped event on the skipped topic and nothing on the completed topic, and the same test sees no skip event on the handler before the change -- falsifier: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_unwired_reader_dead_letter_omn22478.py -q --no-cov'
+- id: req-omn22671-wired
+  statement: A wired reader keeps the confirmation path and a failing reader is never turned into a skip.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a wired reader still takes the confirmation path and a failing reader raises and is never converted into a skip -- falsifier: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov'
+- id: req-omn22671-dev
+  statement: After a dev roll carrying the change the dead-letter rate for the applied topic falls.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: after a dev roll carrying the fix, the events dead-letter rate for projection-session-content-applied falls from about 232 a minute to near zero -- falsifier: a read of onex.dlq.omnibase-infra.events.v1 on the dev broker after the roll, counting records whose original_topic is the applied topic over a ten minute window'
+evidence_requirements:
+- kind: tests
+  description: The trigger node's suites, the reader wiring and the recorded-record dispatch test
+  command: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22671-recorded-record-dispatch
+  description: Replays the recorded dead-letter payload through wire_from_manifest on an in-memory bus and reads one skip event on the skipped topic and none on the completed topic.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_unwired_reader_dead_letter_omn22478.py -q --no-cov
+    cwd: .
+- id: dod-omn22671-reader-wiring
+  description: Reader injection, the keyword override, a failing reader raising, and the contract's optional dependency declaration.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov
+    cwd: .
+- id: dod-omn22671-deploy-probe
+  description: Deploy probe. The node contract exists at the checked-out commit, which is what the deploy agent rolls onto the dev lane, and declares the skipped topic. The dev-lane readout after the roll is the events dead-letter count for the applied topic over ten minutes, posted in a pull request comment.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: grep -q context-install-confirm-skipped src/omnimarket/nodes/node_context_install_confirm_trigger_effect/contract.yaml
+    cwd: .
+- id: dod-omn22671-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22671 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov
+    cwd: .
