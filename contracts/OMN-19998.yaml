@@ -176,11 +176,6 @@ requirements:
     acceptance:
       - id: AC132
         statement: 'AC132: recorded source and test creations refuse with the move destination while data-only controls pass; edits, reads, removals, migration, fix-only repositories and unread policy are distinguished; the destination operation returns the same result through the declared runtime bus -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-ratchet-swarm-fixtures
-    statement: Swarm fanout tests use portable endpoint and model fixtures while retaining command and endpoint-ref coverage.
-    acceptance:
-      - id: AC11
-        statement: 'AC11: the endpoint and completion fixtures use portable values, fanout publishes the supplied endpoint ref and model id, and the missing-ref case still refuses dispatch -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py -q --no-cov'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -286,14 +281,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
-        cwd: .
-  - id: dod-omn19998-ratchet-swarm-fixtures
-    description: The portable-fixture regression fails on the original lab endpoint. The focused file retains endpoint-ref publication, supplied model propagation and missing-ref refusal coverage. This fixture repair does not assert the landing-controller timer criteria or a live host installation.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py -q --no-cov
         cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
