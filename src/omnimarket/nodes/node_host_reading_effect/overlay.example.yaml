@@ -30,6 +30,23 @@ old_names:
     - name: docs/old/archive
       ledger_relative: archive
   injected_fault: Replace an old name with a regular file in a sandbox copy
+# Piece 2's hourly canary: one lane per host the lab host table pools, through the route lanes
+# take. run_command_env names the variable holding the route's words; {host} is the host's name.
+canary:
+  run_command_env: EXAMPLE_CANARY_ROUTE
+  canary_interpreter: python3
+  run_timeout_seconds: 150
+  busy_exit_codes: [75]
+  result_marker: HOST-CANARY-RESULT
+  wrapper_end_marker: EXAMPLE-WRAPPER-END
+  pool_admitted_marker: "admitted ("
+  pool_unreadable_marker: unreadable
+  disk_paths: ["~", /tmp]
+  disk_floor_gb: 10
+  advertisements_command_env: EXAMPLE_ADVERTISEMENTS_COMMAND
+  advertisements_timeout_seconds: 60
+  advert_max_age_seconds: 900
+  injected_fault: Kill the canary's wrapper so its result is not typed
 hosts:
   - name: example-ledger-host
     scheduler: launchd
@@ -47,3 +64,11 @@ hosts:
       ONEX_LEDGER_PATH: /example/old/LEDGER.md
       ONEX_LEDGER_HOST_NAME: example-writing-host
       ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+  - name: example-canary-host
+    scheduler: launchd
+    probes: [host-canary]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_HOST_NAME: example-canary-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_CANARY_ROUTE: /example/route --lane host-canary --host {host} --

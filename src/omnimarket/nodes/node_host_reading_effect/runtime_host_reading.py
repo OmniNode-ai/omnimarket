@@ -28,6 +28,11 @@ from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
 )
+from omnimarket.nodes.node_host_reading_effect.adapters.canary_route import (
+    CommandAdvertisementSource,
+    HostTableInventory,
+    SubprocessCanaryRunner,
+)
 from omnimarket.nodes.node_host_reading_effect.adapters.host_files import LocalHostFiles
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
     HandlerHostReading,
@@ -36,11 +41,28 @@ from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (
     HostReadingScheduler,
     load_schedule,
 )
-from omnimarket.nodes.node_host_reading_effect.overlay import NODE_NAME, load_overlay
+from omnimarket.nodes.node_host_reading_effect.overlay import (
+    NODE_NAME,
+    ModelHostReadingOverlay,
+    load_overlay,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
 )
+
+
+def _adverts(overlay: ModelHostReadingOverlay) -> CommandAdvertisementSource | None:
+    """The advertisement source the overlay names, or None (not configured, or not set here)."""
+    canary = overlay.canary
+    if canary is None or canary.advertisements_command_env is None:
+        return None
+    command = os.environ.get(canary.advertisements_command_env, "").strip()
+    if not command:
+        return None
+    return CommandAdvertisementSource(
+        command, canary.advertisements_timeout_seconds, os.environ
+    )
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
@@ -59,6 +81,9 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         else None,
         clock=lambda: datetime.now(UTC),
         environ=os.environ,
+        inventory=HostTableInventory(os.environ),
+        canary_runner=SubprocessCanaryRunner(os.environ),
+        adverts=_adverts(overlay),
     )
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
@@ -75,7 +100,9 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         sys.stdout.write(
             f"READING host={probe.host} probe={probe.probe.value} verdict={probe.verdict.value} "
             f"outcome={probe.outcome.value} ledger={probe.ledger} key={probe.row_key} "
-            f"reason={','.join(probe.reasons)}\n"
+            f"reason={','.join(probe.reasons)}"
+            + "".join(f" {name}={value}" for name, value in sorted(probe.cells.items()))
+            + "\n"
         )
     failed = sum(probe.failed for probe in result.probes)
     sys.stdout.write(
