@@ -8,6 +8,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Literal
 
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
@@ -163,10 +164,11 @@ def build_lanes(
     lines: tuple[ModelFloorLine, ...],
     scopes: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[ModelFloorLane, ...]:
-    """Every lane with a CLAIM no TERMINAL has closed and a row inside the live window."""
+    """Unclosed claims, classified using completion and process evidence before counting occupants."""
     now, config = request.generated_at, request.config
     window = config.lane_live_window_minutes
     receipts = _newest_receipts(request)
+    processes = {p.lane: p for p in request.lane_processes or ()}
     titles = {issue.id: issue.title for issue in request.linear if issue.title}
     prs: dict[str, ModelFloorPr] = {pr.key: pr for pr in request.watcher.prs}
     declared = {m.host for m in request.machines}
@@ -187,6 +189,51 @@ def build_lanes(
         status_row = status or claim
         status_full = status_row.text or status_row.reason
         receipt = receipts.get(lane)
+        # A previous run must never close a new claim of the same lane. Remote claims carry the run id;
+        # without it, only a receipt started at or after this claim can be associated safely.
+        if receipt is not None and (
+            (claim.run_id and receipt.run_id != claim.run_id)
+            or (not claim.run_id and receipt.started_at < claim.ts)
+        ):
+            receipt = None
+        liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
+        detail = "no process reading was supplied"
+        if receipt is not None:
+            if (
+                receipt.final
+                or receipt.ended_at is not None
+                or receipt.status
+                in {
+                    "landing-failed",
+                    "lane-error",
+                    "done",
+                    "failed",
+                    "landed",
+                    "cloud-no-pr",
+                }
+            ):
+                liveness, detail = (
+                    "finished",
+                    f"runner receipt: {receipt.status or 'final'}",
+                )
+            elif receipt.runner_alive is not None:
+                liveness = "alive" if receipt.runner_alive else "dead"
+                detail = (
+                    "runner process is live"
+                    if receipt.runner_alive
+                    else "runner process exited without a final receipt"
+                )
+        process = processes.get(lane)
+        if (
+            liveness != "finished"
+            and process is not None
+            and process.started_at >= claim.ts
+            and process.observed_at <= now
+            and _minutes(now, process.observed_at) <= config.pool_stale_minutes
+            and process.alive is not None
+        ):
+            liveness = "alive" if process.alive else "dead"
+            detail = process.detail
         hosted = [r for r in rows if r.host and r.ts >= claim.ts]
         host = (
             receipt.host
@@ -262,12 +309,14 @@ def build_lanes(
                 pr_ci_note=watched.ci_note if watched else "",
                 station=_station(lane, tickets, pr, lines, scopes or {}),
                 claim_full=claim.text,
+                liveness=liveness,
+                liveness_detail=detail,
             )
         )
     ordered = sorted(
         lanes, key=lambda item: (item.stalled, item.silent_minutes, item.lane)
     )
-    return tuple(ordered[: config.lane_limit])
+    return tuple(ordered)
 
 
 def _runners(
@@ -503,7 +552,8 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     if request.cloud_accounts is None:
         return ModelFloorCloud(
             state="unread",
-            note="the cloud accounts file could not be read",
+            note=request.cloud_accounts_cause
+            or "the cloud accounts file could not be read",
             accounts=(),
             sessions=sessions,
             lamps=lamps,
@@ -512,12 +562,13 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     ready = [
         a
         for a in sorted(request.cloud_accounts, key=lambda a: a.name)
-        if a.name in declared and a.login in config.cloud_ready_logins
+        if a.identity == "account"
+        or (a.name in declared and a.login in config.cloud_ready_logins)
     ]
     accounts = tuple(
         ModelFloorCloudAccountOut(
             name=a.name,
-            ready=True,
+            ready=a.login in config.cloud_ready_logins,
             login=a.login,
             cap=a.cap,
             open_sessions=open_by_account[a.name]
@@ -536,12 +587,16 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     others = sum(
         1
         for a in request.cloud_accounts
-        if a.name in declared and a.login not in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name in declared
+        and a.login not in config.cloud_ready_logins
     )
     undeclared = sum(
         1
         for a in request.cloud_accounts
-        if a.name not in declared and a.login in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name not in declared
+        and a.login in config.cloud_ready_logins
     )
     notes = [
         text

@@ -126,6 +126,8 @@ sources:
 not_routing_resolution_sites:
   - site: "src/omnimarket/nodes/node_host_reading_effect/runtime_host_reading.py:find_node_overlay(NODE_NAME)"
     reason: finds the overlay file of the host readings to pin its root in the installed unit; the overlay holds probe thresholds and host environments and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"

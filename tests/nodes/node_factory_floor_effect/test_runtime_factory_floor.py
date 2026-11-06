@@ -5,6 +5,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -89,9 +92,13 @@ def _write(path: Path, content: str | dict[str, Any] | list[Any]) -> Path:
 @pytest.fixture(autouse=True)
 def _own_lane_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The machine and lane sources are named by the environment; no test reads the real home's."""
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.delenv("ONEX_FACTORY_FLOOR_OVERLAY", raising=False)
     monkeypatch.setenv("ONEX_REMOTE_LANE_DIR", str(tmp_path / "remote-lanes"))
     monkeypatch.setenv("LANDING_PLACEMENT_DIR", str(tmp_path / "placement"))
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "no-such-hosts.yaml"))
+    monkeypatch.setenv("LANDING_STATE_DIR", str(tmp_path / "landing"))
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
 
 
 @pytest.fixture
@@ -250,7 +257,7 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert wave["andon"]["flag"] is True
     assert wave["andon"]["causes"] == [
         "HOLD 2026-10-31T11:41:00Z-lane-a: andon:gate:0:W0.2",
-        "GATE G0 failed",
+        "GATE G0 failed (last recorded): gate failed 2026-10-31T11:50:00Z: Gate G0 FAIL.",
     ]
     # Every task of the plan is its own station, its wave kept as the station's group.
     stations = {st["id"]: st for st in wave["stations"]}
@@ -572,8 +579,12 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         },
     )
     _write(
-        tmp / "placement" / "cloud-accounts.json",
-        {"accounts": {"h201": {"login": "ok", "cap": 3}, "h999": {"login": "ok"}}},
+        tmp / "placement" / "cloud-accounts-v2.json",
+        {
+            "version": 2,
+            "accounts": {"account-a": {"cap": 3}, "account-unread": {}},
+            "logins": {"account-a": {"h201": {"cloud_ok": True}}},
+        },
     )
     ledger = tmp / "ledger-lanes.txt"
     ledger.write_text(
@@ -608,7 +619,12 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         "pushed the fix",
         "claude",
     )
-    assert [a["name"] for a in floor["cloud"]["accounts"]] == ["h201"]
+    assert floor["cloud"]["state"] == "read"
+    assert [a["name"] for a in floor["cloud"]["accounts"]] == [
+        "account-a",
+        "account-unread",
+    ]
+    assert [a["ready"] for a in floor["cloud"]["accounts"]] == [True, False]
     sources = document["sources"]
     assert (
         sources["host_table_read"],
@@ -619,6 +635,72 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         True,
         False,
     )
+
+
+def test_cli_removes_dead_and_finished_workers_but_keeps_a_live_quiet_worker(
+    world: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = world["tmp"]
+    overlay = _write(
+        tmp / "overlay.yaml",
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["wave-plan"],
+                "machines": [{"host": "h051", "label": "Bay one"}],
+            }
+        ),
+    )
+    monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait(timeout=10)
+    lanes = tmp / "remote-lanes"
+    for lane, pid, final in (
+        ("pfix-2062-r-1744", child.pid, False),
+        ("cx-5614-0410", os.getpid(), True),
+        ("quiet-live", os.getpid(), False),
+    ):
+        _write(
+            lanes / lane / f"rlane-{lane}-1.json",
+            {
+                "lane": lane,
+                "host": "h051",
+                "status": "landing-failed" if final else "running",
+                "pid": pid,
+                "final": final,
+                "started_at": "2026-10-31T11:00:00Z",
+            },
+        )
+    _write(
+        lanes / "hosts-probe/latest.json",
+        {
+            "started_at": "2026-10-31T11:58:00Z",
+            "readings": ["h051:cores=32,load1=1.0,free_gb=52.5,cap=32,slots=31"],
+        },
+    )
+    ledger = tmp / "ledger-workers.txt"
+    ledger.write_text(
+        "".join(
+            f"L{idx} 2026-10-31T11:00:00Z | CLAIM | lane={lane} | host=h051 | worker\n"
+            for idx, lane in enumerate(
+                ("pfix-2062-r-1744", "cx-5614-0410", "quiet-live"), start=1
+            )
+        ),
+        encoding="utf-8",
+    )
+    argv = _argv(world)
+    argv[argv.index("--ledger-rows-file") + 1] = str(ledger)
+    assert main(argv) == 0
+    result = json.loads(_output(world).read_text(encoding="utf-8"))["floor"]
+    assert [
+        (lane["lane"], lane["liveness"], lane["stalled"]) for lane in result["lanes"]
+    ] == [("quiet-live", "alive", True)]
+    assert {lane["lane"]: lane["liveness"] for lane in result["inactive_lanes"]} == {
+        "pfix-2062-r-1744": "dead",
+        "cx-5614-0410": "finished",
+    }
+    assert result["machines"][0]["lanes_placed"] == 1
+    assert result["bays"][0]["running"] == 1
 
 
 def test_machine_bays_without_a_host_table_name_leave_caps_to_the_pool_read_and_the_table_unread(
