@@ -24,3 +24,9 @@ seams:
     error_keys: [error, failure_code]
     deadline_seconds: 30
 injected_fault: A demanded command gets no result by its deadline
+schedule_hosts:
+  - name: example-lab-host
+    venv: example-venv
+    environment:
+      EXAMPLE_LEDGER_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_HOST_NAME: example-lab-host

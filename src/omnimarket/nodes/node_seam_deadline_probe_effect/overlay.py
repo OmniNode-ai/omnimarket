@@ -60,6 +60,19 @@ class ModelSeamDeadlinePublish(BaseModel):
     publish_max_age_seconds: int = Field(ge=1)
 
 
+class ModelSeamDeadlineHost(BaseModel):
+    """A lab host that runs the reading on its schedule (a systemd user timer)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or
+    #: absolute). A dedicated venv of a release or a kept worktree, never a dispatch venv.
+    venv: str = Field(min_length=1)
+    #: Environment the host's installed unit carries (the append route and its host name).
+    environment: dict[str, str]
+
+
 class ModelSeamDeadlineOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -70,13 +83,21 @@ class ModelSeamDeadlineOverlay(BaseModel):
     history_days: int = Field(ge=1)
     seams: tuple[ModelSeamSpec, ...] = Field(min_length=1)
     injected_fault: str = Field(min_length=1)
+    #: Hosts that install the schedule; empty means the reading runs only by hand.
+    schedule_hosts: tuple[ModelSeamDeadlineHost, ...]
 
     @model_validator(mode="after")
     def _shape(self) -> ModelSeamDeadlineOverlay:
         names = [seam.name for seam in self.seams]
         if len(names) != len(set(names)):
             raise ValueError("a seam is declared twice")
+        hosts = [host.name for host in self.schedule_hosts]
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("a schedule host is declared twice")
         return self
+
+    def host(self, name: str) -> ModelSeamDeadlineHost | None:
+        return next((host for host in self.schedule_hosts if host.name == name), None)
 
     def seam(self, name: str) -> ModelSeamSpec | None:
         return next((seam for seam in self.seams if seam.name == name), None)
@@ -101,6 +122,7 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelSeamDeadlineO
 __all__ = [
     "NODE_NAME",
     "ModelSeamBusSettings",
+    "ModelSeamDeadlineHost",
     "ModelSeamDeadlineOverlay",
     "ModelSeamDeadlinePublish",
     "ModelSeamSpec",
