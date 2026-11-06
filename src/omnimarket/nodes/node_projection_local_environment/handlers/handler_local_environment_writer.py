@@ -40,14 +40,14 @@ from typing import Any
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.handlers.delivery_cache import load_contract
-from omnimarket.handlers.handler_local_alert_fold import (
-    derive_local_alert_transitions,
-)
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
 from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
+)
+from omnimarket.handlers.local_alert_fold import (
+    derive_local_alert_transitions,
 )
 from omnimarket.models.model_local_alert_transitioned import (
     ModelLocalAlertTransitioned,

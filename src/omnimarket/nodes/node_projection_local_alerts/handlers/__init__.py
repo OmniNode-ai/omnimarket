@@ -7,7 +7,7 @@ environment writer that publishes transitions and this projection share one
 decision without importing each other.
 """
 
-from omnimarket.handlers.handler_local_alert_fold import (
+from omnimarket.handlers.local_alert_fold import (
     LOCAL_ALERTS_KEY,
     LOCAL_ALERTS_TABLE,
     plan_local_alert_fold,

@@ -7,7 +7,7 @@ local path and the Postgres writer cannot fold differently. It reads no clock
 and keeps no state.
 """
 
-from omnimarket.handlers.handler_local_alert_fold import plan_local_alert_fold
+from omnimarket.handlers.local_alert_fold import plan_local_alert_fold
 from omnimarket.nodes.node_projection_local_alerts.models.model_local_alerts_plan import (
     ModelLocalAlertsPlanRequest,
     ModelLocalAlertsPlanResponse,
