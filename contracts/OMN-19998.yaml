@@ -43,6 +43,11 @@ requirements:
         statement: 'AC8: recorded quiet-host incidents retain their alarm; each safe host repair preserves backlog, persists a cooldown and requires a newer post-attempt event for capture recovery; unknown reads, cycling broker failures, failed installs and stale or future readbacks never report recovery -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0'
       - id: AC9
         statement: 'AC9: the installed alarm node is discovered and routes its declared bus command to a correlated terminal event; the existing registry installer renders its clean branch checkout, configuration path and revision -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"'
+  - id: req-omn19998-workspace-lab-hosts
+    statement: Lab placement discovers the declared workspace config owner's host overlay without a manual overlay-root export.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: remote and developer workspace configurations supply lab_hosts after explicit sources; invalid selected sources still refuse, and host availability, load, memory and tool admission still apply -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-delegation-floor-read
     statement: The floor reads delegation projection events through the node's public runtime without circular handler imports.
     acceptance:
@@ -149,6 +154,16 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-floor-worker-occupancy
+    statement: A finished receipt or an absent worker process removes an unclosed claim from worker occupancy; silence alone does not.
+    acceptance:
+      - id: AC8
+        statement: 'Finished receipts and dead runner or controller process readings occupy no slots, while live quiet workers and unread process sources remain visible; older receipts cannot close a reclaimed lane and both pages label inactive workers separately.'
+  - id: req-omn19998-floor-cloud-source
+    statement: The floor reads current cloud account state through the existing cloud placement node and records the evidence behind stopped lines.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the read-only node snapshot exposes selected account fields from v2 state, supports a reachable host command, and keeps failures unread without publishing diagnostics; dependency release-note links do not stop unrelated tasks, a ticket-linked red PR still stops its task, and a failed gate names its recorded cause and date -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov'
   - id: req-omn19998-floor-publish-interval
     statement: The existing floor publisher keeps large process series off the shared floor payload, retains lossless report detail, and renders a prepared timer environment with its declared projection host.
     acceptance:
@@ -386,6 +401,27 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-workspace-lab-hosts
+    description: Recorded missing-overlay environment shapes resolve the declared config owner's host table; explicit-source precedence and refusals, environment isolation and placement admission have positive and negative controls.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_node_overlay_reader_structured.py tests/test_routing_sources_omn20601.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-workspace-lab-hosts-deploy
+    description: Hosted wiring smoke invokes the lab-work run command over an in-memory bus with capacity advertisements. Workspace discovery places the eligible host and refuses the unavailable host with exit 75. No live host install or current pool capacity is asserted.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly -k the_run_command_refuses_an_unavailable_host_that_advertises_and_places_the_other
         cwd: .
   - id: dod-omn19998-deploy-ledger-additive-wire
     description: Hosted serialization and deployment smoke uses the real bus caller and host with an in-memory transport and the pre-field host model, plus outbox replay and set-field refusal. The future optional-field test fails at the merge base because its null field is serialized. This is a hosted wiring smoke, not a live host installation readback.
@@ -655,6 +691,37 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
+        cwd: .
+  - id: dod-omn19998-floor-cloud-source
+    description: Focused tests exercise the existing cloud node handler, source command boundary and floor compute handler, including selected-field output, read-only state, malformed input, diagnostic suppression and positive controls for real red PRs. This evidence does not assert a live publisher installation or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy
+    description: Focused regressions start from the named missing-terminal workers, finished receipt, and hostless cause claims. They retain live and unread quiet workers and reject previous-run evidence. This slice does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_dead_worker_occupancy.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy-deploy
+    description: Hosted CLI smoke reads the declared lane sources and writes the floor record through the existing effect and compute handlers. Live controller-host installation remains a separate readback.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov
         cwd: .
   - id: dod-omn19998-floor-phoenix-timer-env
     description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
