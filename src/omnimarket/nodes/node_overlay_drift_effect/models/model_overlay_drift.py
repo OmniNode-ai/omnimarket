@@ -91,6 +91,11 @@ class ModelOverlayDriftCounts(BaseModel):
             self.rejected + self.model_missing + self.unreadable + self.overlay_missing
         )
 
+    @property
+    def drift(self) -> int:
+        """A model the runtime lacks is the runtime lagging the models, not drift."""
+        return self.rejected + self.unreadable + self.overlay_missing
+
 
 class ModelOverlayDriftResult(BaseModel):
     """The run: its verdict, counts, each failing overlay, and what happened on the ledger."""

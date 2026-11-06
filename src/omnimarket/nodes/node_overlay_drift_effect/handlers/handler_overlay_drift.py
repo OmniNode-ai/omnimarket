@@ -7,8 +7,11 @@ The overlay home's ci validates each overlay at the omnimarket revision its pin 
 validates the same overlays through the models the running runtime has installed, which is where
 an overlay key the runtime rejects shows (the rung_order case). It writes reading rows only,
 never a gate, a stop or an admission. A home or runtime that cannot be read gives an UNKNOWN row;
-a refused, absent or unloadable overlay gives NOT_WORKING; a run with every pinned overlay
-accepted gives WORKING. NOT_WORKING is a reading, not a failure of the run.
+a refused, absent or unloadable overlay gives NOT_WORKING. An overlay whose model the runtime
+lacks is the runtime lagging the models, not drift: it is counted as model_missing and does not by
+itself fail the reading. A run where every overlay the runtime could judge was accepted gives
+WORKING; a run where the runtime could judge none gives UNKNOWN. NOT_WORKING is a reading, not a
+failure of the run.
 """
 
 from __future__ import annotations
@@ -165,7 +168,7 @@ class HandlerOverlayDrift:
                 key=lambda c: c.overlay_id,
             )
         )
-        if counts.failing:
+        if counts.drift:
             verdict = EnumReadingVerdict.NOT_WORKING
             reasons = tuple(
                 f"{verdict_name}-{getattr(counts, verdict_name)}"
@@ -180,6 +183,19 @@ class HandlerOverlayDrift:
         elif counts.checked == 0:
             verdict = EnumReadingVerdict.UNKNOWN
             reasons = ("no-pinned-overlay-checked",)
+        elif counts.accepted == 0:
+            # Every overlay the runtime could read had a model it lacks: nothing was judged.
+            verdict = EnumReadingVerdict.UNKNOWN
+            reasons = (
+                f"model_missing-{counts.model_missing}",
+                "no-overlay-judged",
+            )
+        elif counts.model_missing:
+            verdict = EnumReadingVerdict.WORKING
+            reasons = (
+                f"all-{counts.accepted}-judged-overlays-accepted",
+                f"model_missing-{counts.model_missing}",
+            )
         else:
             verdict = EnumReadingVerdict.WORKING
             reasons = (f"all-{counts.checked}-pinned-overlays-accepted",)

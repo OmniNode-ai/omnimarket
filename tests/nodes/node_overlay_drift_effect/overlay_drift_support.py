@@ -99,6 +99,14 @@ class World:
         )
         self.texts["node_gone_effect"] = "key: value\n"
 
+    def break_pin_every_model_the_runtime_lacks(self) -> None:
+        """Every pin names a model the runtime does not have; every overlay is still held."""
+        self.pin_lines = [
+            f"{line.split()[0]} 0123456789abcdef "
+            f"omnimarket.nodes.node_gone_effect.models:ModelGone{number}"
+            for number, line in enumerate(self.pin_lines)
+        ]
+
     def break_pin_an_absent_overlay(self) -> None:
         self.pin_lines.append(
             "node_absent_effect 0123456789abcdef "
