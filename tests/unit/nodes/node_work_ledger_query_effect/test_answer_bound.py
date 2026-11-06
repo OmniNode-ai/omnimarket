@@ -55,7 +55,7 @@ BROKER_MAX_REQUEST_SIZE = 1_048_588
 RECORDED_ANSWER_BYTES = 73_000_000
 NOW = datetime(2026, 11, 6, 9, 30, tzinfo=UTC)
 LANES = 3_000
-ROW_BODY_CHARS = 11_000
+ROW_BODY_CHARS = 12_000
 
 
 def recorded_case_records() -> tuple[ModelWorkLedgerRowRecord, ...]:
