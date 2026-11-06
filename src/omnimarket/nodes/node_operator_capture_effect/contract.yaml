@@ -66,6 +66,7 @@ descriptor:
   idempotent: true
   timeout_ms: 600000
 runtime_dispatch:
+  command_topic: "onex.cmd.omniintelligence.content-captured.v1"
   subscribe_topic: "onex.cmd.omniintelligence.content-captured.v1"
   terminal_events:
     success: "onex.evt.omnimarket.operator-capture-recorded.v1"
