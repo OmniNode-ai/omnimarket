@@ -6,7 +6,9 @@ runtime_profiles: [effects]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Decides, for one Hostile Review attempt, whether a verified agent receipt replaces the
+  Reads a verified exact-head lab receipt for hosted Actions, waiting a bounded interval
+  without running voters or synthesizing a voter failure. The same verifier owns the
+  signature, publisher identity and quorum. Also decides, for one legacy Hostile Review attempt, whether a verified agent receipt replaces the
   CI voters. It reads this attempt's voter result file into a status per voter (succeeded,
   blocking finding, typed lost-voter cause credit_exhausted, unavailable or timeout),
   reads the pull request's reviews through the source-control port, asks the verifier port
@@ -38,20 +40,29 @@ handler_routing:
       handler:
         name: HandlerGateAccept
         module: omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_gate_accept
+    - operation: read_receipt_gate
+      topic: onex.cmd.omnimarket.agent-review-receipt-gate-requested.v1
+      input_model: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept.ModelReceiptGateRequest
+      handler:
+        name: HandlerReceiptGate
+        module: omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_receipt_gate
+
 descriptor:
   node_archetype: effect
   purity: side_effecting
   runtime_profiles:
   - effects
   idempotent: true
-  timeout_ms: 120000
+  timeout_ms: 3000000
 inputs:
   repository: {type: str, required: true, description: "owner/name of the repository under review."}
   pull_request: {type: int, required: true, description: "The pull request number."}
-  head_sha: {type: str, required: true, description: "The head commit this gate attempt runs on."}
-  voter_result_path: {type: str, required: true, description: "This attempt's voter result file."}
+  head_sha: {type: str, required: true, description: "The exact head commit this gate attempt runs on."}
+  voter_result_path: {type: str, required: false, description: "Required by the legacy decide_gate_accept operation only."}
   step_output_path: {type: str, required: true, description: "The step output file the decision is appended to."}
   step_summary_path: {type: str, required: true, description: "The step summary file the summary line is appended to."}
+  wait_seconds: {type: float, required: false, description: "Receipt-only wait, at most 3000 seconds; a missing receipt refuses."}
+  poll_seconds: {type: float, required: false, description: "Receipt-only read cadence, at most 60 seconds."}
 outputs:
   decision: {type: str, description: "unchanged, pass_agent or refuse."}
   reason: {type: str, description: "The typed reason of the decision."}
@@ -78,8 +89,12 @@ runtime_dispatch:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.agent-review-gate-accept-requested.v1
+    - onex.cmd.omnimarket.agent-review-receipt-gate-requested.v1
   publish_topics:
     - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.agent-review-receipt-gate-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
 published_events:
@@ -88,6 +103,6 @@ published_events:
     description: The gate-accept decision for one Hostile Review attempt.
 metadata:
   transport_type: inmemory
-  description: Lets a verified agent receipt replace lost CI voters on the Hostile Review job
+  description: Reads signed exact-head lab verdicts for hosted CI and accepts receipts for lost CI voters
   author: OmniNode Team
   created: "2026-11-02"

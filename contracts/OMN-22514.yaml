@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-22514
+title: Bundle floor alarm dependencies with copied scripts
+summary: The criteria of omnimarket#5123, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19998-floor-alarm-bundle
+  statement: The copied floor alarm uses scripts and matching packages from one plugin root instead of borrowing a registry clone revision.
+  acceptance:
+  - id: AC11
+    statement: 'AC11: The installer stages the declared scripts and src tree, runs the copied alarm help before activation, preserves its required state and ledger arguments, refuses incomplete bundles without changing the loaded agent, restores the previous bundle on bootstrap failure, and routes typed requests over the declared runtime bus. -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0'
+evidence_requirements:
+- kind: tests
+  description: Bundle floor alarm dependencies with copied scripts
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-floor-alarm-bundle
+  description: Hermetic replay of the recorded script and handler version skew, complete copied payload, source removal, missing dependencies and bootstrap rollback. This scope does not assert the landing controller timer criteria.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0
+    cwd: .
+- id: dod-omn19998-floor-alarm-bundle-deploy
+  description: Hosted deployment smoke routes the typed copied-alarm request through the canonical runtime bus, runs the staged script import and parses its rendered launchd plist. Live Mac activation and a fresh timer tick remain the publishing host's install-first obligation.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0 -k canonical_runtime_bus
+    cwd: .
+- id: dod-omn22514-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22514 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0
+    cwd: .

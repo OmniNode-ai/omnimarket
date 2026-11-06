@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22576
+title: A pure lane join node joins a lane's name to the agent that ran it and counts hook events per reporting host
+summary: node_hook_lane_join_compute is a pure compute handler that joins a lane name to its agent and counts hook events per reporting host, for the floor line that names the hosts reporting.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22576-lane-join-node
+  statement: The lane join is a node with a contract, typed models, a golden chain test and an error chain test; a lane that cannot be joined with certainty stays unjoined with the reason, and every reporting host is counted.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node golden and error chain tests pass -- falsifier: uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a lane no agent fits, two agents fitting one lane and two lanes fitting one agent each stay unjoined with a reason, and the host counts name every reporting host, shown by the error chain tests -- falsifier: uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov -k error_chain'
+evidence_requirements:
+- kind: tests
+  description: The lane join node tests pass
+  command: uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22576-node-tests
+  description: Runs the golden chain and error chain tests of node_hook_lane_join_compute.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov
+    cwd: .
+- id: dod-omn22576-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22576 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov
+    cwd: .

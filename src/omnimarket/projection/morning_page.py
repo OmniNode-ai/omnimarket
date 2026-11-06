@@ -54,6 +54,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.handlers.projection_ordering import sort_for_presentation
+from omnimarket.models.morning_page.model_flow_consumer import ModelFlowConsumer
+from omnimarket.models.morning_page.model_inventory_row import ModelInventoryRow
+from omnimarket.models.morning_page.model_savings_metric import ModelSavingsMetric
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.table_reader import ProtocolProjectionPageView
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
@@ -173,22 +176,6 @@ class ModelProjectionRead(BaseModel):
     served_tenant_id: str | None = None
 
 
-class ModelFlowConsumer(BaseModel):
-    """One (consumer_group, topic) seam at its most recent observed window."""
-
-    model_config = ConfigDict(frozen=True)
-
-    consumer_group: str
-    topic: str
-    flow_state: str
-    messages_in: int
-    messages_out: int
-    messages_dlq: int
-    handler_errors: int
-    upstream_evidence: str
-    window_end: str
-
-
 class ModelFlowPanel(BaseModel):
     """Event-flow panel: state census, DLQ depth, and the seams needing attention."""
 
@@ -201,16 +188,6 @@ class ModelFlowPanel(BaseModel):
     handler_error_total: int
     attention: tuple[ModelFlowConsumer, ...]
     idle_count: int
-
-
-class ModelSavingsMetric(BaseModel):
-    """One delegation-savings number, always carrying the exposure it came from."""
-
-    model_config = ConfigDict(frozen=True)
-
-    label: str
-    value: str
-    source_topic: str
 
 
 class ModelSavingsPanel(BaseModel):
@@ -230,19 +207,6 @@ class ModelSavingsPanel(BaseModel):
     @property
     def has_data(self) -> bool:
         return bool(self.metrics)
-
-
-class ModelInventoryRow(BaseModel):
-    """One line of the exposure census — what the serving path would answer."""
-
-    model_config = ConfigDict(frozen=True)
-
-    topic: str
-    backing: str
-    source_contract: str
-    cached_row_count: int
-    latest_event_at: str | None
-    tenant_scoped: bool
 
 
 class ModelMorningPage(BaseModel):
@@ -267,6 +231,7 @@ class ModelMorningPage(BaseModel):
     automation_liveness: ModelProjectionRead
     automation_liveness_runs: ModelProjectionRead
     automation_liveness_alarms: ModelProjectionRead
+    pr_state: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
 
@@ -793,6 +758,15 @@ def build_morning_page(
             limit=_LIST_ROW_CAP,
             tenant_id=tenant_id,
         ),
+        pr_state=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="pr_state",
+            route="/",
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
         inventory=build_inventory(topic_map, cache),
     )
 
@@ -1161,6 +1135,12 @@ def render_morning_page(page: ModelMorningPage) -> str:
             "automation liveness alarms",
             "every liveness alarm episode with its delivery and ledger "
             "recording receipts",
+        ),
+        _render_rows_panel(
+            page.pr_state,
+            "pull request state",
+            "the newest observed state of each pull request, with its CI "
+            "verdict, watcher class and the time it was observed",
         ),
         _render_inventory(page.inventory, page.bus_backed_count),
     ]

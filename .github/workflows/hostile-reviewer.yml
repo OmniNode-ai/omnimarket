@@ -910,13 +910,9 @@ jobs:
 
   hostile-review-gate:
     name: Hostile Review Gate
-    runs-on: >-
-      ${{
-        github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name != github.repository
-        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_REVIEW_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
-      }}
+    # GitHub-hosted (OMN-19998): this job reads the result of hostile-review and
+    # nothing else, so it has no reason to take a lab runner.
+    runs-on: ubuntu-latest
     needs: [hostile-review]
     if: always()
     steps:

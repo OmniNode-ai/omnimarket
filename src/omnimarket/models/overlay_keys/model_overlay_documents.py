@@ -141,6 +141,13 @@ class ModelLabHostRow(_ModelOverlayBase):
     tenant_id: str | None = None
     ledger_bus_lane: str | None = None
     ledger_bus_python: str | None = None
+    # The ledger a lane on this host is configured with: absolute or ``$OMNI_HOME/`` form, filled on the host.
+    ledger_path: (
+        Annotated[
+            str, StringConstraints(pattern=r"^(?:/|\$OMNI_HOME/)[A-Za-z0-9._/-]+$")
+        ]
+        | None
+    ) = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
