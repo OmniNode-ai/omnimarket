@@ -1,0 +1,3 @@
+# Planted note PN-2 (synthetic test fixture)
+
+Working note dated 2026-10-28. The spend-estimation pilot samples traces with a fixed random seed of 8123. The data role chose a fixed value so that two runs over the same trace agree to the cent. The sample size stayed at 400 traces. A different seed was tried once and moved the estimate by under one percent, so the choice of 8123 is for repeatability and not for accuracy.

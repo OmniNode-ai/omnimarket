@@ -96,6 +96,57 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     ),
 }
 
+
+@pytest.fixture
+def topic_scans(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Count the contract topic scans the wiring pass asks for, and run each distinct one once.
+
+    Auto-wiring builds one ``TopicProvisioner`` for each handler that takes the topic
+    migration executor's collaborators (11 of them at dev ``3e37ae668``), and the
+    provisioner's constructor scans every contract on the path and in every installed
+    package for topics through ``ContractTopicExtractor.extract_all``. Each scan parses
+    all contracts again with the pure-Python YAML loader: on 2026-11-06 a profile of this
+    test on a lab host spent 317 of 540 s in 11 such scans, the same scan answering the
+    same question each time. The scan is read-only, so the result of the first call is
+    returned to the later calls with the same arguments; the extractor still runs for
+    real once, against the same contracts, and the test asserts the same wiring outcome.
+    """
+    from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
+
+    real = ContractTopicExtractor.extract_all
+    memo: dict[tuple[Any, ...], list[Any]] = {}
+    scans = {"asked": 0, "run": 0}
+
+    def extract_all_once(
+        self: ContractTopicExtractor,
+        contracts_root: Path,
+        supplementary_sources: list[Path] | None = None,
+        skill_manifests_root: Path | None = None,
+        skill_manifests_roots: list[Path] | None = None,
+    ) -> list[Any]:
+        scans["asked"] += 1
+        key = (
+            self._include_installed_packages,
+            contracts_root,
+            tuple(supplementary_sources or ()),
+            skill_manifests_root,
+            tuple(skill_manifests_roots or ()),
+        )
+        if key not in memo:
+            scans["run"] += 1
+            memo[key] = real(
+                self,
+                contracts_root,
+                supplementary_sources,
+                skill_manifests_root,
+                skill_manifests_roots,
+            )
+        return list(memo[key])
+
+    monkeypatch.setattr(ContractTopicExtractor, "extract_all", extract_all_once)
+    return scans
+
+
 # Contracts per wiring batch; each batch stays under the per-test runtime budget.
 _WIRING_BATCH_SIZE = 32
 # The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
@@ -238,6 +289,8 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
+# Each batch parses its contracts under the shard's coverage tracing; the shard-wide
+# 300 s bound stays for every other test, and this one keeps its own budget (OMN-19998).
 def _wiring_batches() -> list[ModelAutoWiringManifest]:
     """Keep every discovered contract under the per-test runtime budget.
 
@@ -273,9 +326,11 @@ def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> No
     _wiring_batches(),
     ids=lambda manifest: manifest.contracts[0].name,
 )
+@pytest.mark.timeout(900, method="thread")
 async def test_every_node_auto_wires_in_process(
     monkeypatch: pytest.MonkeyPatch,
     manifest: ModelAutoWiringManifest,
+    topic_scans: dict[str, int],
 ) -> None:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
@@ -316,6 +371,8 @@ async def test_every_node_auto_wires_in_process(
                 f"{quarantined.handler_name}: {quarantined.detail[:400]}",
             )
     assert report.total_wired > 0
+    # Each distinct scan runs once however many handlers ask for it.
+    assert topic_scans["run"] <= 1
     _shrink_only(
         failing,
         {

@@ -28,6 +28,10 @@ class NodeOverlayError(ValueError):
     """The deployment overlay is invalid, or a required deployment fact is absent."""
 
 
+class NodeOverlayNotFoundError(NodeOverlayError):
+    """No overlay source was selected; a caller may discover another source."""
+
+
 def find_node_overlay(
     node_name: str, environ: Mapping[str, str] | None = None
 ) -> Path | None:
@@ -100,7 +104,7 @@ def load_structured_overlay[ModelT: BaseModel](
     ``ONEX_SKILL_OVERLAY_ROOTS``. ``environ`` defaults to the process environment.
     An explicit model or document takes precedence without reading either file.
 
-    No source raises :class:`NodeOverlayError` naming the id and model fields.
+    No source raises :class:`NodeOverlayNotFoundError` naming the id and model fields.
     ``missing_message`` lets a key reader name the requested field and its input variables.
     A broken selected source refuses without trying a lower-priority source.
     Errors name the source, exception type and invalid fields, never document
@@ -115,9 +119,9 @@ def load_structured_overlay[ModelT: BaseModel](
         path = Path(pinned) if pinned else find_node_overlay(overlay_id, env)
         if path is None:
             if missing_message is not None:
-                raise NodeOverlayError(missing_message)
+                raise NodeOverlayNotFoundError(missing_message)
             settings = ", ".join(f"{overlay_id}.{name}" for name in model.model_fields)
-            raise NodeOverlayError(
+            raise NodeOverlayNotFoundError(
                 not_configured_message(
                     overlay_id, settings or overlay_id, (file_env,) if file_env else ()
                 )

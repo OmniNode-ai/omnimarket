@@ -330,6 +330,8 @@ class ModelFloorLane(BaseModel):
     pr_ci_note: str
     station: ModelFloorStationRef | None
     claim_full: str
+    liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
+    liveness_detail: str = "no process reading was supplied"
 
 
 class ModelFloorLamp(BaseModel):
@@ -395,6 +397,7 @@ class ModelFloorSection(BaseModel):
     machines: tuple[ModelFloorMachine, ...]
     cloud: ModelFloorCloud
     lanes: tuple[ModelFloorLane, ...]
+    inactive_lanes: tuple[ModelFloorLane, ...] = ()
     stall_minutes: int
     lane_window_minutes: int
     bays: tuple[ModelFloorBay, ...]
@@ -421,6 +424,7 @@ class ModelFloorSources(BaseModel):
     host_table_read: bool
     placement_markers_read: bool
     receipts_read: bool
+    lane_processes_read: bool = False
     cloud_accounts_read: bool
     runner_fleet_read: bool
     # False when no reader supplied the running-on-dev records, so no merge could be shown running.
