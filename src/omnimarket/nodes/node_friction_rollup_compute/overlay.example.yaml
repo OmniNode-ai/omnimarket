@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The class rules recorded from the 63 FRICTION rows of 2026-11-05T01:07Z to 2026-11-06T01:07Z that carried no class cell
+# (OMN-22563). The overlay home holds the live copy; the caller passes it as the request's class_rules. The first rule that
+# matches a row's lane and text names its class; a name may use {1} for the first group of its pattern.
+class_rules:
+  - name: "lab-alarm:{1}"
+    owner: "the owner of the alarm source that raised it (omnibase_infra lab_alarm); the class is the source"
+    pattern: 'lab alarm raised (\w+) on '
+  - name: lab-stack-reaper-no-docker-daemon
+    owner: "the lab stack reaper unit in the host installer: it runs where no Docker daemon is running"
+    pattern: 'docker API at unix://\S+.{0,120}daemon is running'
+  - name: ledger-window-file-unreadable
+    owner: "the owner of the clone the reaper reads (a ledger archive file its checkout does not carry)"
+    pattern: 'sparse checkout whose pattern does not cover archive'
+  - name: lab-stack-reaper-pass-refused
+    owner: "the lab stack reaper unit in the host installer: a pass it refused on the host"
+    pattern: 'pass refused:'
+  - name: local-hooks-fail-one-per-attempt
+    owner: "the owners of the pre-commit and pre-push hook set of the repository that refused"
+    pattern: '(?:pre-push|pre-commit|hook round|commit attempts|failing hooks|release-identity hook|mixed-category hook)'
+  - name: installed-copy-behind-merged-code
+    owner: "the host installer (the declared installer and adopt-merged), not the lane that met it"
+    pattern: '(?:installed revision \w+ carries|record-clobber|dispatch venv|ImportError|clone moved beside)'
+# A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
+class_owners:
+  - class_name: tick-liveness
+    owner: "the queue-status tick unit of the host installer (onex-host-install queue-status-tick): a tick source stopped refreshing while the landing controller was live"
