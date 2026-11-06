@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorConfig,
     ModelFloorCloudAccount,
     ModelFloorHostRow,
+    ModelFloorLaneProcess,
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
     ModelFloorManifest,
@@ -58,6 +60,9 @@ from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets impor
     merge_task_links,
     prose_task_tickets,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    with_table_evidence as _with_table_evidence,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
     ModelFactoryFloorContainerSource,
@@ -74,7 +79,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to)$"
+    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -208,6 +213,7 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             model=fields.get("model", ""),
             actor=fields.get("actor", ""),
             to=fields.get("to", ""),
+            run_id=fields.get("run", ""),
         )
         core = row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}
         # Every ask to a recipient and every row that answers one: an ask stays open until an answer names it.
@@ -634,20 +640,6 @@ def is_section_heading(label: str, text: str) -> bool:
     )
 
 
-def _with_table_evidence(
-    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
-) -> ModelFloorManifestTask:
-    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
-    if row is None:
-        return task
-    return task.model_copy(
-        update={
-            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
-            "prs": tuple(sorted({*task.prs, *row.prs})),
-        }
-    )
-
-
 def _plan_input(
     *,
     relative: str,
@@ -968,6 +960,19 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _runner_alive(pid: int) -> bool | None:
+    """Only ESRCH proves an exited runner; permission and transport errors do not prove death."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, OverflowError):
+        return None
+    return True
+
+
 def load_placed(
     directory: Path, lane_min_id: int
 ) -> tuple[ModelFloorPlacedHost, ...] | None:
@@ -1003,6 +1008,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
         cloud = _mapping(data.get("cloud"))
         state = _mapping(cloud.get("session_state"))
         ended = data.get("ended_at")
+        pid = data.get("pid")
         return ModelFloorReceipt(
             lane=str(data["lane"]),
             run_id=str(data.get("run_id") or ""),
@@ -1011,6 +1017,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             final=bool(data.get("final")),
             started_at=_utc(data["started_at"]),
             ended_at=_utc(ended) if isinstance(ended, str) else None,
+            runner_alive=_runner_alive(pid) if type(pid) is int and pid > 0 else None,
             model=str(data.get("model") or ""),
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
@@ -1054,6 +1061,89 @@ def load_receipts(
         return tuple(sorted(found, key=lambda r: (r.started_at, r.lane)))
 
     return _optional(read)
+
+
+def load_lane_processes(
+    ledger: tuple[ModelFloorLedgerRow, ...],
+    *,
+    directory: Path,
+    plugin_root: Path | None,
+    now: datetime,
+    grace_seconds: int,
+    window_minutes: int = 180,
+) -> tuple[ModelFloorLaneProcess, ...] | None:
+    """Reuse the controller's group/tag probe; never signal workers or infer death from ledger silence.
+
+    These leases and the process table belong to the controller host, just like the placement markers.
+    An unread directory, lease or table stays unknown. A readable directory with no lease or worker tag
+    proves absence after the claim-before-spawn grace period.
+    """
+    claims: dict[str, ModelFloorLedgerRow] = {}
+    terminals: dict[str, datetime] = {}
+    newest: dict[str, datetime] = {}
+    for row in ledger:
+        newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
+        if row.kind == "TERMINAL":
+            terminals[row.lane] = max(terminals.get(row.lane, row.ts), row.ts)
+        if (
+            row.kind == "CLAIM"
+            and re.fullmatch(r"landing-(?:cause-)?L\d+", row.lane)
+            and (row.lane not in claims or row.ts > claims[row.lane].ts)
+        ):
+            claims[row.lane] = row
+    claims = {
+        lane: claim
+        for lane, claim in claims.items()
+        if (lane not in terminals or terminals[lane] < claim.ts)
+        and (now - newest[lane]).total_seconds() <= window_minutes * 60
+    }
+    if not claims:
+        return ()
+    if plugin_root is None:
+        return None
+    try:
+        # A readable worker directory is the positive control for a missing lease file.
+        worker_ids = {p.name for p in (directory / "workers").iterdir() if p.is_dir()}
+        workers = runpy.run_path(
+            str(plugin_root / "skills/merge-drain/scripts/landing_workers.py")
+        )
+        table = workers["read_process_table"]()
+        if table is None:
+            return None
+        found: list[ModelFloorLaneProcess] = []
+        for lane, claim in claims.items():
+            if (now - claim.ts).total_seconds() < grace_seconds:
+                continue
+            lease_id = int(lane.rsplit("L", 1)[1])
+            lease = workers["read_lease"](directory, lease_id)
+            if lease is None:
+                if f"{lease_id:06d}" in worker_ids:
+                    # A present but unreadable lease cannot be treated as a missing worker.
+                    continue
+                alive = any(
+                    tag.startswith(f"landing-lease-{lease_id}-")
+                    and not p.stat.startswith("Z")
+                    for p in table
+                    for tag in p.tags
+                )
+            else:
+                # The lane's lease number is unique; claim time identifies the observation's ownership.
+                group, tagged = workers["probe"](lease, table)
+                alive = bool(group or tagged)
+            found.append(
+                ModelFloorLaneProcess(
+                    lane=lane,
+                    started_at=claim.ts,
+                    observed_at=now,
+                    alive=alive,
+                    detail="controller worker group or tag is live"
+                    if alive
+                    else "controller worker group and tag are absent",
+                )
+            )
+        return tuple(found)
+    except (OSError, ValueError, KeyError, TypeError, ImportError):
+        return None
 
 
 def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None:
