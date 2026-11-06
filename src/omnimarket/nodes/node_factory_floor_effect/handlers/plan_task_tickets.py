@@ -6,6 +6,11 @@ from __future__ import annotations
 
 import re
 
+from omnimarket.models.model_factory_floor_input import (
+    ModelFloorManifestTask,
+    ModelFloorTableTask,
+)
+
 TASK_ID = r"[A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?"
 TICKET = r"OMN-\d+"
 # A task id, then (optionally ``+ K2``) a ticket straight after it, then more tickets joined by a comma, "and" or "to".
@@ -15,6 +20,21 @@ PAIR_RE = re.compile(
 )
 LIST_SPLIT_RE = re.compile(r"(\s*,\s*|\s+and\s+|\s+to\s+)")
 MAX_RANGE = 20
+
+
+def with_table_evidence(
+    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
+) -> ModelFloorManifestTask:
+    """Join written task links without promoting inferred release-note links to explicit ones."""
+    if row is None:
+        return task
+    inferred = "watcher-open-pr" in row.state_basis.split(",")
+    return task.model_copy(
+        update={
+            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
+            "prs": task.prs if inferred else tuple(sorted({*task.prs, *row.prs})),
+        }
+    )
 
 
 def _expand(joined: str) -> tuple[str, ...]:
