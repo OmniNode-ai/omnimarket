@@ -258,6 +258,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly -k recorded-dependency-update
+        cwd: .
   - id: dod-omn19998-remote-ref-before-send
     description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
     source: manual
