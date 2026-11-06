@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Disposable cache policy for a memory-charged workspace. Boundaries evict caches
+# entirely when over budget; no host, runner count or memory ceiling is encoded.
+work_directory: _work
+cache_budgets:
+  .uv-cache: 0
+  _tool: 0
+  .pnpm-store: 0
+protected_directories: [_actions, _temp, _PipelineMapping]
