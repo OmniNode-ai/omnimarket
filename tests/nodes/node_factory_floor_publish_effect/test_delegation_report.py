@@ -198,7 +198,7 @@ def test_terminal_outcome_without_history_does_not_invent_attempts() -> None:
 def test_page_renders_zero_local_missing_history_and_escaped_model_names() -> None:
     page = (
         Path(__file__).resolve().parents[3]
-        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html"
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/detail.html"
     ).read_text()
     start = page.index("function delegationCard(")
     function = page[start : page.index("\nfunction ", start + 1)]
@@ -381,7 +381,7 @@ def test_page_freshness_accepts_legacy_counts_but_keeps_unread_reports(
 ) -> None:
     page = (
         Path(__file__).resolve().parents[3]
-        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html"
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/detail.html"
     ).read_text()
     start = page.index("function freshRows(")
     function = page[start : page.index("\nfunction ", start + 1)]

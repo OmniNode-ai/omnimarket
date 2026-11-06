@@ -277,7 +277,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
     assert line.andon.reason == "HOLD hold-andon-1: andon:gate:0:W0.2 (+1 more)"
     assert line.andon.causes == (
         "HOLD hold-andon-1: andon:gate:0:W0.2",
-        "GATE G0 failed",
+        "GATE G0 failed (last recorded): gate failed 2026-10-31T10:20:00Z: no cause recorded; gate needs a fresh read",
     )
     states = _states(line)
     assert states["W0.2"] == "stop"

@@ -4,7 +4,7 @@
 name: node_pr_claim_registry_effect
 version: 1.0.0
 description: The cross-run mutual-exclusion lock for PR mutations, one claim
-  file per PR.
+  file per PR; its public closeout adapter selects exact lane, run and session and revalidates replacements.
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: effect

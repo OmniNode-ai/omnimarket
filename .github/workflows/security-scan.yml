@@ -57,14 +57,29 @@ jobs:
 
       - name: Run Safety Check
         run: |
-          pip install safety
+          # OMN-17427: pinned. An unpinned scanner resolves at runtime and can
+          # change behaviour overnight with no commit.
+          pip install safety==3.8.1
           # JSON capture is diagnostic-only (feeds the uploaded artifact below);
           # `|| true` here only prevents a non-zero exit from skipping the
-          # artifact write. The PLAIN invocation below is the enforcing gate —
-          # no `|| true`: `|| true` on an enforcing step is not a valid
-          # exemption form (doctrine). A real finding now fails this job.
+          # artifact write. The enforcing gate is the retry loop below.
           safety check --file requirements.txt --output json > safety-report.json || true
-          safety check --file requirements.txt
+          # ENFORCING GATE: no `|| true`: `|| true` on an enforcing step is not
+          # a valid exemption form (doctrine). A real finding (safety exits 64)
+          # fails immediately. safety 3.8.1 intermittently crashes with
+          # `Unhandled exception happened: 'multidict'` (exit 1) when the free
+          # vulnerability database's index and full files disagree about a
+          # package (KeyError in safety.get_vulnerabilities); that crash judged
+          # nothing, so only an exit-1 crash is retried, up to 3 attempts, and
+          # a crash on every attempt still fails the job.
+          for attempt in 1 2 3; do
+            rc=0
+            safety check --file requirements.txt || rc=$?
+            if [ "$rc" -ne 1 ]; then exit "$rc"; fi
+            echo "::warning::safety crashed (exit 1) on attempt $attempt of 3"
+            sleep 20
+          done
+          exit 1
 
       - name: Upload Safety report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7

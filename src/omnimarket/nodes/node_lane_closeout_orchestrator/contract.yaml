@@ -6,7 +6,10 @@ node_type: orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Lane end: inventory the trees under a lane directory, then guard and close out each one, through the sibling effect nodes' own contracts.
+  Lane end: optionally release exact lane/run/session PR claims after the caller observes engine exit,
+  then inventory the trees and guard and close out each one, through sibling effect contracts.
+  Claim cleanup also runs when the lane has no trees. remove=false leaves claims unchanged.
+  claims_dir requires explicit claim_run_id and session_id; transport/WIP run_id does not select claims.
 input_model:
   name: ModelLaneCloseoutRunRequest
   module: omnimarket.models.lane_closeout.model_lane_closeout_run_request
@@ -40,6 +43,12 @@ workflow_coordination:
       description: Inventory the lane's trees, then guard and close out each tree.
     execution_graph:
       nodes:
+        - node_id: release_ended_claims
+          node_type: EFFECT_GENERIC
+          description: When claims_dir is supplied and engine_ended is true, release exact lane/run/session claims and read back replacements; dry run when remove is false.
+          step_config:
+            node: node_pr_claim_registry_effect
+            operation: release_ended_own_claims
         - node_id: inventory_trees
           node_type: EFFECT_GENERIC
           description: One line per tree under the lane directory.

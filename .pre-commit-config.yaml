@@ -128,6 +128,15 @@ repos:
       - id: exposed-identifier-gate
         require_serial: true
         args: [--mode, blocking, --denylist, scripts/validation/exposed_identifiers_denylist.json]
+  # OMN-19998: a public workflow selects no lab runner. No baseline: a job still on the
+  # lab has a typed route packaged with this core, and the routes only shrink. CI twin:
+  # the last steps of job public-runner-placement in .github/workflows/ci.yml read this rev.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261105190003-87a6f5ddcbcc
+    hooks:
+      - id: check-public-lab-selection
+        args: [--repo, omnimarket, --visibility, public]
+        require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
@@ -1690,6 +1699,15 @@ repos:
       # overlay. Refuses any vars.*MODEL* reference and any model id literal in
       # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
       # comes from the overlay (OMN-20910)".
+      # OMN-19998: same focused proof as the required CI lint job.
+      - id: public-review-receipt
+        name: Public review receipt and runtime dispatch
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/(node_agent_review_dispatch_orchestrator|node_agent_review_gate_accept_effect)/.*|tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt\.py|\.github/workflows/hostile-reviewer\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: review-voter-model-from-overlay
         name: Review voter model comes from the overlay (OMN-20910)
         language: system
@@ -2748,6 +2766,16 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/omnimarket/nodes/node_code_edit_scope_compute/|tests/nodes/test_code_edit_scope_node\.py$)
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: dispatch-standing-rules
+        name: Standing dispatch rules and runtime wiring
+        entry: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(nodes/node_dispatch_standing_rules_|models/standing_rules/|protocols/protocol_standing_rules_io\.py$|handlers/container/container_overlay_dependencies\.py$)|tests/nodes/test_dispatch_standing_rules\.py$)
         stages: [pre-commit]
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]

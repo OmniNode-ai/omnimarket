@@ -21,4 +21,4 @@ capabilities:
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "work-ledger"]
+tags: ["effect", "work-ledger", "relay-admission"]

@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overlay Drift Effect (OMN-22660, piece 4 of the base-first rebuild, OMN-22478)
+#
+# Reads every pinned overlay of the overlay home and validates it through the model its pin names,
+# inside a declared runtime interpreter on this host (the omnimarket that runtime has installed, not
+# the revision the pin names), then appends one reading row. It writes reading rows and nothing
+# else: a reading is never a gate, a stop or an admission.
+name: node_overlay_drift_effect
+contract_name: node_overlay_drift_effect
+node_name: node_overlay_drift_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The daily drift read of loaded overlays against the runtime. Each pinned overlay is accepted,
+  rejected (the installed model refuses a field: the rung_order case), model_missing (the runtime
+  lacks the pinned model), unreadable or overlay_missing. Any but accepted reads NOT WORKING; an
+  unreadable home or runtime reads UNKNOWN; every pinned overlay accepted reads WORKING. A row names
+  failing overlays by id and field, never by value.
+
+handler:
+  module: omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift
+  class: HandlerOverlayDrift
+  input_model: omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift.ModelOverlayDriftCommand
+
+# HandlerOverlayDrift takes the overlay, host, home, validator, appender and clock as constructor
+# parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelOverlayDriftCommand
+  module: omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelOverlayDriftResult
+  module: omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift
+  description: The verdict, counts per overlay verdict, the failing overlays and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.overlay-drift-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  overlay_drift_requested: onex.cmd.omnimarket.overlay-drift-requested.v1
+  overlay_drift_written: onex.evt.omnimarket.overlay-drift-written.v1
+  overlay_drift_failed: onex.evt.omnimarket.overlay-drift-failed.v1
+  overlay_drift_run_completed: onex.evt.omnimarket.overlay-drift-run-completed.v1
+  overlay_drift_run_failed: onex.evt.omnimarket.overlay-drift-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-drift-written.v1
+  - onex.evt.omnimarket.overlay-drift-failed.v1
+  - onex.evt.omnimarket.overlay-drift-run-completed.v1
+  - onex.evt.omnimarket.overlay-drift-run-failed.v1
+
+# The node's own daily schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on each host the overlay's schedule_hosts names, removed by `schedule uninstall`.
+schedule:
+  unit_name: onex-overlay-drift-daily
+  state_directory: .onex_state/overlay-drift
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* 06:40:00"
+    randomized_delay: 60s
+    persistent: true
+    description: daily at 06:40 UTC, before the 05:30 Eastern daily line reads the floor
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+
+overlay:
+  node: node_overlay_drift_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_overlay_drift_effect.overlay.ModelOverlayDriftOverlay
+
+metadata:
+  ticket: OMN-22660
+  transport_type: inmemory

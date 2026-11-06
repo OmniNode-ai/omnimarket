@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stop_only_on_withdrawal_compute
+version: 1.0.0
+description: S8 stop authorization scoped by task, revision, lane and current CLAIM run.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_stop_only_on_withdrawal_compute: omnimarket.nodes.node_stop_only_on_withdrawal_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.11.0
+  - PyYAML>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger, dispatch]
+node_role: compute
+pack: operator_tooling
+display_name: Stop Only On Withdrawal

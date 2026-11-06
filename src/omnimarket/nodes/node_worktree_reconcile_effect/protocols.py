@@ -29,6 +29,10 @@ class ProtocolWorktreeDecider(Protocol):
     ) -> tuple[ModelWorktreeDecisionRecord, ...]: ...
 
 
+class ProtocolMergedPrReader(Protocol):
+    def merged_heads(self, argv: list[str], slug: str) -> frozenset[str]: ...
+
+
 class ProtocolWorktreePinner(Protocol):
     def pin(self, argv: list[str], facts: ModelWorktreeFacts) -> bool: ...
 
