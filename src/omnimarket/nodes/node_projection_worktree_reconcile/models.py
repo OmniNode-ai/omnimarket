@@ -23,6 +23,9 @@ class ModelWorktreeReconcileHostRow(BaseModel):
     failures: int
     freed_bytes: int
     needs_human_paths: tuple[str, ...]
+    # Carried from the event; the table has no column for them yet, so the writer does not store them.
+    deferred: int = 0
+    deferred_paths: tuple[str, ...] = ()
     finished_at: datetime
 
 

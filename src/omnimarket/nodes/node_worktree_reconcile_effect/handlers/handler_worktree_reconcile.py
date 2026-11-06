@@ -154,7 +154,9 @@ class HandlerWorktreeReconcile:
                 e.decision.decision == Decision.NEEDS_HUMAN for e in events
             ),
             failures=len(errors)
-            + sum(e.error is not None or bool(e.facts.probe_errors) for e in events),
+            + sum(
+                e.error is not None or e.facts.probe_class == "failed" for e in events
+            ),
             freed_bytes=sum(
                 e.facts.size_bytes or 0
                 for e in events
@@ -164,6 +166,10 @@ class HandlerWorktreeReconcile:
                 e.facts.path
                 for e in events
                 if e.decision.decision == Decision.NEEDS_HUMAN
+            ),
+            deferred=sum(e.facts.probe_class == "deferred" for e in events),
+            deferred_paths=tuple(
+                e.facts.path for e in events if e.facts.probe_class == "deferred"
             ),
         )
         self._publisher.publish(self._completed_topic, completed)

@@ -13,6 +13,9 @@ from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
 )
 
+PROBE_DEFERRED_PREFIX = "probe_deferred:"
+PROBE_NEEDS_HUMAN_PREFIX = "probe_needs_human:"
+
 
 class EnumWorktreeKind(StrEnum):
     LINKED_WORKTREE = "linked_worktree"
@@ -81,6 +84,28 @@ class ModelWorktreeFacts(BaseModel):
     @property
     def facts_complete(self) -> bool:
         return not self.probe_errors
+
+    @property
+    def probe_class(self) -> Literal["failed", "needs_human", "deferred"] | None:
+        """How the run reports this tree's probe errors; None when it has none.
+
+        Every error keeps the tree. A ``probe_deferred:`` error (a timeout under load) is
+        retried next tick and a ``probe_needs_human:`` error (a state no tick resolves) goes
+        to a person; both are named in the receipt and neither is a failure. Any other error,
+        alone or beside these, is a failure.
+        """
+        if not self.probe_errors:
+            return None
+        if any(
+            not error.startswith((PROBE_DEFERRED_PREFIX, PROBE_NEEDS_HUMAN_PREFIX))
+            for error in self.probe_errors
+        ):
+            return "failed"
+        if any(
+            error.startswith(PROBE_NEEDS_HUMAN_PREFIX) for error in self.probe_errors
+        ):
+            return "needs_human"
+        return "deferred"
 
     @property
     def dirty(self) -> bool:
@@ -164,6 +189,9 @@ class ModelWorktreeReconcileRunCompletedEvent(BaseModel):
     failures: int = Field(ge=0)
     freed_bytes: int = Field(ge=0)
     needs_human_paths: tuple[str, ...]
+    # Trees whose probe timed out: kept, not failures, read again next tick.
+    deferred: int = Field(default=0, ge=0)
+    deferred_paths: tuple[str, ...] = ()
 
 
 class ModelWorktreeReconcileRunResult(BaseModel):

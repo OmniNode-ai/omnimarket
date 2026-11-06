@@ -3,6 +3,7 @@
 """Shared pure rules used by the compute entry and the effect orchestration."""
 
 from omnimarket.events.worktree_reconcile import (
+    PROBE_NEEDS_HUMAN_PREFIX,
     EnumDecidedBy,
     ModelWorktreeDecisionRecord,
     ModelWorktreeFacts,
@@ -43,6 +44,22 @@ def classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
+        # A state no later tick resolves (a nested repository, no merge evidence source on
+        # this host) goes to a person; it is never a removal, and a tree something holds
+        # stays a keep.
+        if facts.probe_class == "needs_human" and not (
+            facts.live_process
+            or facts.live_claim
+            or facts.live_unit
+            or facts.git_locked
+            or facts.in_progress_operation
+        ):
+            reason = next(
+                error.removeprefix(PROBE_NEEDS_HUMAN_PREFIX)
+                for error in facts.probe_errors
+                if error.startswith(PROBE_NEEDS_HUMAN_PREFIX)
+            )
+            return Decision.NEEDS_HUMAN, reason
         return Decision.KEEP, "facts_unreadable"
     live = live_reason(facts, policy)
     if live:
