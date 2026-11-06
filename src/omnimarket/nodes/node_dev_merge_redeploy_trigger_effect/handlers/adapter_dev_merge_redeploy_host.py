@@ -36,6 +36,10 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 )
 from omnimarket.events.runtime_deployment import ModelRedeployCompletedEvent
 from omnimarket.lab_work.bus import _bytes, _subscribe
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    EnumDevMergeMode,
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_trigger import (
     HandlerDevMergeRedeployTrigger,
@@ -51,9 +55,7 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     ModelDevMergeVerdict,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
-    EnumDevMergeMode,
     EnumDevMergeOutcome,
-    ModelDevMergeRedeployPolicy,
     ModelDevMergeRedeployReceipt,
     ModelDevMergeRedeployTopics,
 )

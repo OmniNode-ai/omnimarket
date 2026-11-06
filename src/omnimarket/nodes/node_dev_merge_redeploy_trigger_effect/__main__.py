@@ -29,6 +29,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    EnumDevMergeMode,
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_git import (
     DeployPathClassifier,
     GitBuildContextRef,
@@ -44,10 +48,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_de
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_verify import (
     HandlerDevMergeRedeployVerify,
-)
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
-    EnumDevMergeMode,
-    ModelDevMergeRedeployPolicy,
 )
 
 

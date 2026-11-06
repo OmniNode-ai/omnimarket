@@ -20,6 +20,9 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.lab_work.bus import _bytes
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers import (
     DevMergeRedeployHost,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_d
     ClassifierUnavailableError,
     LaneUnreadableError,
     MergeFilesUnreadableError,
-)
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models import (
-    ModelDevMergeRedeployPolicy,
 )
 
 MERGE_SHA = "a" * 40

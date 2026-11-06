@@ -21,6 +21,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_git import (
     DeployPathClassifier,
     GitBuildContextRef,
@@ -33,9 +36,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_d
     ClassifierUnavailableError,
     LaneUnreadableError,
     MergeFilesUnreadableError,
-)
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models import (
-    ModelDevMergeRedeployPolicy,
 )
 
 pytestmark = pytest.mark.unit

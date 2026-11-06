@@ -25,6 +25,9 @@ from omnimarket.events.runtime_deployment import (
     EnumRedeployScope,
     EnumRuntimeLane,
 )
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_dev_merge_redeploy import (
     BuildContextRefUnreadableError,
@@ -39,7 +42,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
     EnumDevMergeOutcome,
-    ModelDevMergeRedeployPolicy,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_start_command import (
     ModelDevMergeStartCommand,

@@ -19,6 +19,9 @@ from omnimarket.events.runtime_deployment import (
     EnumRedeployPhase,
     ModelRedeployCompletedEvent,
 )
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    ModelDevMergeRedeployPolicy,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_dev_merge_redeploy import (
     LaneUnreadableError,
     ProtocolLaneRevision,
@@ -29,7 +32,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
     EnumDevMergeOutcome,
-    ModelDevMergeRedeployPolicy,
 )
 
 #: The ``final_phase`` of a receipt written in observe mode: no redeploy phase was seen.

@@ -13,11 +13,13 @@ import asyncio
 
 import pytest
 
+from omnimarket.models.dev_merge_redeploy_overlay import (
+    EnumDevMergeMode,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_verify import (
     OBSERVED_PHASE,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models import (
-    EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,
 )
