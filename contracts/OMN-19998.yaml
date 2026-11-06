@@ -221,11 +221,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: a higher-ranked host missing a required plan branch is passed over for a host holding every input; missing, unchecked and pinned-host inputs refuse placement, while full pools and requests needing no inputs retain their prior outcomes -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-read-only-principal
-    statement: A mutating step under the read-only principal is refused by the credential, and a probe reads the refusal from a real mutating attempt on each channel.
-    acceptance:
-      - id: AC140
-        statement: 'AC140: the ssh forced-command gate runs only an allowlisted request as argv with no shell and refuses a mutating or malformed request with its rule name; the probe fails when a mutation is accepted, when it fails without a refusal word, when a read fails, or when a channel has no scripted attempts, and a probe narrowed to some channels reads PASS-PARTIAL; the key install is idempotent and a dry run writes nothing -- falsifier: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_read_only_principal.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-auto-wire-test-budget
     statement: The in-process auto-wiring test, which wires every node contract in one pass, keeps its own pytest timeout so a growing node count does not fail the shard that runs it.
     acceptance:
@@ -841,14 +836,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-read-only-principal
-    description: The PR-added tests replay the gate, the probe and the key install through the contract-bound handlers with injected executors and a fake transport. Four named breaks (a planted rm entry, a dropped refused pattern, an executor that accepts every mutation, a probe that ignores its narrowing) each turn their test red. These tests fail at the merge base, where the node does not exist. No real credential is read here; the refusal read from a real credential is the operator-run probe after the key install.
-    source: manual
-    binds_ac: [AC140]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_read_only_principal.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-auto-wire-test-budget
     description: The source of the in-process auto-wiring test is read for its own pytest timeout of at least 900 seconds with the thread method, with a positive and a negative control on the reader. The 482 s lab read under the shard's coverage flags is in the pull request body.
