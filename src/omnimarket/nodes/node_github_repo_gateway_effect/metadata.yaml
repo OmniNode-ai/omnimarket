@@ -18,9 +18,10 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "github", "read-only", "status"]
+tags: ["effect", "github", "read-only", "status", "shared-job-log-cache"]
 pack: "pr-lifecycle"
 display_name: "GitHub Repo Gateway (read)"
 node_role: "effect"

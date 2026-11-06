@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_contract_merge_compute
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Three-way merge of a ticket contract by entry. A top-level list merges by entry id, or by value
+  when its entries carry none; any other field merges whole. The result keeps the current side's
+  bytes and gains only the incoming side's changes. A duplicate id within a side, one thing changed
+  differently on both sides, or text that does not parse back to the merged structure is refused.
+input_model: omnimarket.nodes.node_ticket_contract_merge_compute.models.model_ticket_contract_merge.ModelTicketContractMergeRequest
+output_model: omnimarket.nodes.node_ticket_contract_merge_compute.models.model_ticket_contract_merge.ModelTicketContractMergeResult
+handler:
+  module: omnimarket.nodes.node_ticket_contract_merge_compute.handlers.handler_ticket_contract_merge
+  class: HandlerTicketContractMerge
+  input_model: omnimarket.nodes.node_ticket_contract_merge_compute.models.model_ticket_contract_merge.ModelTicketContractMergeRequest
+  output_model: omnimarket.nodes.node_ticket_contract_merge_compute.models.model_ticket_contract_merge.ModelTicketContractMergeResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerTicketContractMerge
+        module: omnimarket.nodes.node_ticket_contract_merge_compute.handlers.handler_ticket_contract_merge
+      event_model:
+        name: ModelTicketContractMergeRequest
+        module: omnimarket.nodes.node_ticket_contract_merge_compute.models.model_ticket_contract_merge
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.ticket-contract-merged.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ticket-contract-merge.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ticket-contract-merge.v1]
+  publish_topics: [onex.evt.omnimarket.ticket-contract-merged.v1]
+externally_consumed_topics: [onex.evt.omnimarket.ticket-contract-merged.v1]
+inputs:
+  base_text: {type: string, required: true, description: The common ancestor text; empty when there is none}
+  current_text: {type: string, required: true, description: The side whose bytes the result keeps}
+  incoming_text: {type: string, required: true, description: The side whose changes are laid over it}
+  source: {type: string, required: false, description: The path named in refusal text}
+outputs:
+  outcome: {type: string, description: merged or refused}
+  merged_text: {type: string, description: The merged contract; empty when refused}
+  entries_from_incoming: {type: list, description: Sections and entries the incoming side changed}
+  refusals: {type: list, description: Every reason the merge was refused}
+metadata:
+  transport_type: kafka
