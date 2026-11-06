@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21896"
+title: "Paired on/off benchmark of CLAUDE.md and AGENTS.md for headless Claude, Codex, Jev and Qwen lanes, outcome and tokens"
+summary: "A benchmark node runs each task twice on copies of one source tree, with CLAUDE.md and AGENTS.md present and with both removed, for headless Claude, headless Codex, delegation-route models and Jev (typed decisions only), and reports one row per model and condition with the paired on-off difference and an underpowered flag."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21896-paired-context-benchmark"
+    statement: |-
+      Whether CLAUDE.md and AGENTS.md help a headless lane is measured by paired runs with and without them, comparing the task's own check result and token use.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a benchmark node in omnimarket runs each task in two arms on the same worktree sha, one with CLAUDE.md and AGENTS.md present and one with both removed, for a headless Claude lane and a headless Codex lane, and records per run the outcome (the task's own check result) and input, output and cache tokens -- falsifier: uv run pytest tests -q -k context_benchmark_arms"
+      - id: "AC2"
+        statement: "AC2: the Jev arm resolves its key by secret_ref llm.typesafe.api_key from the delegation credential store and never through the MCP server, and no receipt or log holds the key value; a task Jev cannot answer is recorded as not-applicable with the reason, never as a failed run -- falsifier: uv run pytest tests -q -k context_benchmark_jev_secret_ref"
+      - id: "AC3"
+        statement: "AC3: the Qwen arm and at least one further model arm run the same tasks through the delegation route with the same two conditions -- falsifier: uv run pytest tests -q -k context_benchmark_models"
+      - id: "AC4"
+        statement: "AC4: a report is published with one row per model and condition: tasks run, pass count, mean tokens and the paired difference on and off, and a model with fewer than 10 paired tasks is marked underpowered and carries no verdict -- falsifier: uv run pytest tests -q -k context_benchmark_report"
+evidence_requirements:
+  - kind: "tests"
+    description: "The context benchmark node tests pass."
+    command: "uv run pytest tests/unit/nodes/node_context_benchmark_orchestrator -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21896-arms"
+    description: "Both arms run on copies of one tree; the off arm has every CLAUDE.md and AGENTS.md removed; outcome and the four token counts are recorded, absent counts as UNKNOWN."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_context_benchmark_orchestrator -k context_benchmark_arms -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21896-jev-secret-ref"
+    description: "The Jev arm names llm.typesafe.api_key, starts the typed-decision node with a credential-free environment, and records a task it cannot answer as not-applicable."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_context_benchmark_orchestrator -k context_benchmark_jev_secret_ref -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21896-models"
+    description: "Qwen and a further delegation-route model run the same tasks in both conditions."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_context_benchmark_orchestrator -k context_benchmark_models -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21896-report"
+    description: "One row per model and condition with the paired difference; fewer than 10 paired tasks is underpowered with no verdict."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_context_benchmark_orchestrator -k context_benchmark_report -q --no-cov"
+        cwd: "."
