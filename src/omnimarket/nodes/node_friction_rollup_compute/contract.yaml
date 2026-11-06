@@ -42,6 +42,8 @@ inputs:
   bucket_hours: {type: int, required: true, description: Positive trend bucket width in hours.}
   umbrella_tickets: {type: list, required: true, description: Caller-supplied umbrella tickets excluded from owning tickets.}
   aliases: {type: list, required: true, description: Raw class alias strings in raw=canonical form.}
+  class_rules: {type: list, required: false, description: "Rules (name, owner, pattern) that name the class of a FRICTION row written with no class= cell and say who ends it; the first match wins; a row no rule matches stays unclassified. The shipped set is overlay.example.yaml."}
+  class_owners: {type: list, required: false, description: "Pairs (class_name, owner) naming who ends a class that a writer already names but no ticket or lane owns, for example tick-liveness; the class JSON carries the owner."}
 outputs:
   report: {type: object}
   markdown: {type: str}
