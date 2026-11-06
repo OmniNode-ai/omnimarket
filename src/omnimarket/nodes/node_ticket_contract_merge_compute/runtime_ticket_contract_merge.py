@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Git merge driver entry: ``python -m omnimarket.nodes.node_ticket_contract_merge_compute %O %A %B %P``.
+"""Git merge driver entry: ``python -m omnimarket.nodes.node_ticket_contract_merge_compute.runtime_ticket_contract_merge %O %A %B %P``.
 
 Writes the merge to ``%A`` and exits 0, or leaves it alone, prints every refusal and exits 1, which
 git reads as a conflict.

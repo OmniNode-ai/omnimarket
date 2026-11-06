@@ -186,7 +186,11 @@ def umbrella_appends(sha: str, base: str, body: str | None) -> tuple[str, ...]:
     2026-11-05. The comparison is against the merge base, so taking the base branch adds nothing.
     """
     base_sha = _resolve_base(base)
-    fork = _git("merge-base", sha, base_sha)
+    try:
+        fork = _git("merge-base", sha, base_sha)
+    except subprocess.CalledProcessError:
+        # A shallow base shares no history with the head: the base tip stands in.
+        fork = base_sha
     messages = _git("log", "--format=%B", f"{base_sha}..{sha}")
     text = f"{body or ''}\n{messages}"
     failures = []
@@ -258,7 +262,8 @@ def check(
         )
         if proof.failure:
             failures.append(proof.failure)
-    failures.extend(umbrella_appends(sha, base, body))
+    if not failures:
+        failures.extend(umbrella_appends(sha, base, body))
     return tuple(failures)
 
 

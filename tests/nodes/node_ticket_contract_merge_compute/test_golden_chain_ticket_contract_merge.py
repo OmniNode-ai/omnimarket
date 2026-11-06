@@ -28,7 +28,9 @@ from omnimarket.nodes.contract_topics import (
 from omnimarket.nodes.node_ticket_contract_merge_compute import (
     NodeTicketContractMergeCompute,
 )
-from omnimarket.nodes.node_ticket_contract_merge_compute import __main__ as driver
+from omnimarket.nodes.node_ticket_contract_merge_compute import (
+    runtime_ticket_contract_merge as driver,
+)
 from omnimarket.nodes.node_ticket_contract_merge_compute.handlers.handler_ticket_contract_merge import (
     HandlerTicketContractMerge,
 )
@@ -274,7 +276,7 @@ def _repository(tmp_path: Path, current: str, incoming: str) -> Path:
         repo,
         "config",
         "merge.ticket-contract.driver",
-        f"{sys.executable} -m omnimarket.nodes.node_ticket_contract_merge_compute %O %A %B %P",
+        f"{sys.executable} -m omnimarket.nodes.node_ticket_contract_merge_compute.runtime_ticket_contract_merge %O %A %B %P",
     )
     contract.write_text(HEAD)
     _git(repo, "add", ".")
@@ -328,6 +330,7 @@ def test_golden_chain_event_over_the_declared_topics() -> None:
         queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
         command = contract_subscribe_topics(CONTRACT)[0]
         terminal = contract_publish_topics(CONTRACT)[0]
+        assert terminal == "onex.evt.omnimarket.ticket-contract-merged.v1"
 
         async def observe(message: object) -> None:
             await queue.put(json.loads(message.value))  # type: ignore[attr-defined]

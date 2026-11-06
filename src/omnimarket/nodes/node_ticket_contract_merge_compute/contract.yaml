@@ -37,6 +37,7 @@ runtime_dispatch:
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.ticket-contract-merge.v1]
   publish_topics: [onex.evt.omnimarket.ticket-contract-merged.v1]
+externally_consumed_topics: [onex.evt.omnimarket.ticket-contract-merged.v1]
 inputs:
   base_text: {type: string, required: true, description: The common ancestor text; empty when there is none}
   current_text: {type: string, required: true, description: The side whose bytes the result keeps}

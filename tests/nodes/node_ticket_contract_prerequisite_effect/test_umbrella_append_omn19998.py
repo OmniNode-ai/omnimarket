@@ -125,6 +125,18 @@ def test_a_placeholder_evidence_line_does_not_admit_it(repo: Path) -> None:
     assert umbrella_appends("HEAD", "dev", "Umbrella evidence: <reason>\n")
 
 
+def test_a_base_with_no_shared_history_compares_with_its_tip(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit(repo, f"contracts/{UMBRELLA}.yaml", _contract("dod-old", "dod-new"), "fix")
+    head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "--orphan", "shallow")
+    _commit(repo, f"contracts/{UMBRELLA}.yaml", _contract("dod-old"), "alone")
+    _git(repo, "checkout", "-q", head)
+
+    assert umbrella_appends("HEAD", "shallow", "Body")
+
+
 def test_the_set_names_the_shared_tickets_and_the_variable_wins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
