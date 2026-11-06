@@ -96,6 +96,13 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     ),
 }
 
+# Contracts per wiring batch; each batch stays under the per-test runtime budget.
+_WIRING_BATCH_SIZE = 32
+# The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
+_RELAY_NODES = frozenset(
+    {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
+)
+
 # The ModelDispatchRoute field each derived identifier is stored in.
 _DERIVED_FIELDS = ("route_id", "handler_id", "topic_pattern")
 
@@ -243,11 +250,22 @@ def _wiring_batches() -> list[ModelAutoWiringManifest]:
     assert len(names) == len(contracts), "duplicate canonical contract names"
     removed = set(_CANNOT_WIRE_IN_PROCESS) - names
     assert not removed, f"listed contracts no longer discovered; remove them: {removed}"
-    batch_size = 32
     return [
-        ModelAutoWiringManifest(contracts=contracts[start : start + batch_size])
-        for start in range(0, len(contracts), batch_size)
+        ModelAutoWiringManifest(contracts=contracts[start : start + _WIRING_BATCH_SIZE])
+        for start in range(0, len(contracts), _WIRING_BATCH_SIZE)
     ]
+
+
+def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> None:
+    """AC14: the batches cover the catalogue once each, relay nodes included."""
+    batches = _wiring_batches()
+    batched = [contract.name for batch in batches for contract in batch.contracts]
+    discovered = [contract.name for contract in _manifest().contracts]
+    assert sorted(batched) == sorted(discovered)
+    assert len(set(batched)) == len(batched), "a contract is wired in two batches"
+    assert all(len(batch.contracts) <= _WIRING_BATCH_SIZE for batch in batches)
+    missing = _RELAY_NODES - set(batched)
+    assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
 
 
 @pytest.mark.parametrize(

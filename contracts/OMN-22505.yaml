@@ -31,13 +31,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn19998-relay-dependency-security
-  description: Read every Mako and multidict lock entry and refuse pins in the affected ranges from SFTY-20261005-32026 and SFTY-20261005-09094. Missing lock entries also fail.
+  description: Read every Mako and multidict lock entry and refuse pins in the affected ranges from SFTY-20261005-32026 and SFTY-20261005-09094. Missing lock entries also fail. The same run dispatches the packaged relay compute contracts through RuntimeLocal, so the check fails on a tree without the relay nodes.
   source: manual
   binds_ac:
   - AC13
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_omn19998_lock_dependency_floors.py -q --no-cov
+    check_value: uv run --frozen pytest tests/test_omn19998_lock_dependency_floors.py tests/test_golden_chain_relay_effect.py -k "lock_pins_package_above_advisory_floor or packaged_node_runtime" -q --no-cov
     cwd: .
 - id: dod-omn19998-relay-dependency-security-deploy
   description: Hosted runtime smoke dispatches the packaged relay compute contracts through RuntimeLocal with the updated dependency lock. It needs no broker or live lane.
@@ -76,7 +76,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_golden_chain_relay_effect.py -k packaged_node_runtime -q --no-cov
     cwd: .
 - id: dod-omn19998-node-wiring-budget
-  description: Run every discovered contract through real infra wiring in bounded batches under the unchanged 300-second per-test timeout. Preserve resolution failure, quarantine and shrink-only baseline assertions. This check-only change makes no deployment claim.
+  description: Run every discovered contract through real infra wiring in bounded batches under the unchanged 300-second per-test timeout. Preserve resolution failure, quarantine and shrink-only baseline assertions. A batching test requires every discovered contract in exactly one batch, including the two relay nodes of this change, so it fails on a tree without them. This makes no deployment claim.
   source: manual
   binds_ac:
   - AC14
