@@ -12,6 +12,9 @@ evidence_requirements:
   - kind: tests
     description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
     command: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+  - kind: tests
+    description: An event-bus-only node overlay loads through its model the way the overlay home loads it.
+    command: uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -25,3 +28,18 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-event-bus-overlay-model
+    description: An event-bus-only node overlay loads through its model the way the overlay home loads it, a wrong document refuses, and the model imports with pydantic and pyyaml alone.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-event-bus-overlay-integration-proof
+    description: The pushed head ran the model's suite on a lab host through the lab-work surface and exited 0.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-event-bus -- uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py -q --no-cov
+        cwd: .
