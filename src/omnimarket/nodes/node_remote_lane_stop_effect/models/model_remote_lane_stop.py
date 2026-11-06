@@ -55,6 +55,10 @@ class ModelRemoteLaneStopRequest(BaseModel):
     model: str = Field(min_length=1)
     hosts: list[ModelStopHost] = Field(default_factory=list)
     placement_dir: str | None = None
+    claims_dir: str | None = Field(
+        default=None,
+        description="Dispatch host's PR claim registry; cleanup uses the receipt's session.",
+    )
     cloud_command: list[str] = Field(default_factory=list)
     polite_wait_s: float = Field(default=10.0, gt=0)
     kill_wait_s: float = Field(default=10.0, gt=0)
@@ -74,3 +78,4 @@ class ModelRemoteLaneStopResult(BaseModel):
     terminal_ts: str | None = None
     survivor: str | None = None
     signals: list[str] = Field(default_factory=list)
+    released_claims: tuple[str, ...] = Field(default=())
