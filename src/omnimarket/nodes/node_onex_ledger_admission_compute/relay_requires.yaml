@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+rule_id: relay_requires
+row_type: MSG
+trigger_cell: verbatim
+effect_cell: effect
+effects: [withdraws, amends, informs, answers]
+target_cell: to
+forbidden_targets: ['', all, '*', none, unknown, tbd, n/a, '-']
+target_pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]*$'
+fix: 'FIX: give a relayed operator MSG effect=<withdraws|amends|informs|answers> and to=<target lane or task>; a MSG is never operator consent.'
+evaluator_module: omnibase_core.validation.relay_requires
+evaluator_function: evaluate_relay_requires

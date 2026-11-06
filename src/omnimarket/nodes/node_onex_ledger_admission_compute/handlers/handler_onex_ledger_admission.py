@@ -15,10 +15,18 @@ from __future__ import annotations
 import math
 import re
 
+from omnimarket.handlers.relay_admission import (
+    CoreRelayAdmission,
+    load_relay_requires_rule,
+    relay_admission_refusals,
+    relay_argv_rows,
+)
+from omnimarket.models.model_relay_admission import ModelRelayRequiresRule
 from omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission import (
     ModelOnexLedgerAdmissionRequest,
     ModelOnexLedgerAdmissionResult,
 )
+from omnimarket.protocols.protocol_relay_admission import ProtocolRelayAdmission
 
 PROJECT_NAME = "omnibase-internal"
 PATH_ENV = "OMNIBASE_INTERNAL_PATH"
@@ -177,6 +185,14 @@ def _budget(raw: str) -> float | None:
 class HandlerOnexLedgerAdmission:
     """Stateless compute: what the onex-ledger wrapper does with an argv and the facts read."""
 
+    def __init__(
+        self,
+        relay_admission: ProtocolRelayAdmission | None = None,
+        relay_rule: ModelRelayRequiresRule | None = None,
+    ) -> None:
+        self._relay_admission = relay_admission or CoreRelayAdmission()
+        self._relay_rule = relay_rule or load_relay_requires_rule()
+
     def handle(
         self, request: ModelOnexLedgerAdmissionRequest
     ) -> ModelOnexLedgerAdmissionResult:
@@ -189,6 +205,20 @@ class HandlerOnexLedgerAdmission:
                 stderr_lines=[
                     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, "
                     f"got {request.budget_raw}"
+                ],
+            )
+        relay_refusals = relay_admission_refusals(
+            relay_argv_rows(request.argv, request.append_rows_text),
+            self._relay_admission,
+            self._relay_rule,
+        )
+        if relay_refusals:
+            return ModelOnexLedgerAdmissionResult(
+                action="refuse",
+                exit_code=EXIT_REFUSED,
+                stdout_lines=[
+                    *(f"REFUSED {EXIT_REFUSED} {why}" for why in relay_refusals),
+                    self._relay_rule.fix,
                 ],
             )
         refusals = terminal_refusals(request.argv, request.append_rows_text)
