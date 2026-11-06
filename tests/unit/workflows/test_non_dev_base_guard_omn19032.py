@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -201,3 +202,81 @@ def test_regression_is_wired_in_required_ci_and_precommit() -> None:
     )
     assert hook["entry"] == command
     assert hook["pass_filenames"] is False
+
+
+_RECORDED_CHECK_SUITE_RUNS = json.loads(
+    (ROOT / "tests/fixtures/auto_merge_check_suite_runs.json").read_text()
+)["runs"]
+
+
+@pytest.mark.parametrize(
+    "recorded", _RECORDED_CHECK_SUITE_RUNS, ids=lambda run: str(run["id"])
+)
+def test_recorded_pr_automation_does_not_run_on_default_branch_head(
+    recorded: dict,
+) -> None:
+    # These are workflow-run records, not the associated PR's head. For example,
+    # run 41925092641 checked out dev 18ec771 while trying to arm draft PR #5094.
+    assert recorded["head_branch"] == "dev"
+    assert recorded["event"] == "check_suite"
+    assert recorded["conclusion"] == "failure"
+    workflow = _workflow("auto-merge.yml")
+    triggers = workflow.get("on", workflow.get(True))
+    assert recorded["event"] not in triggers, (
+        f"run {recorded['id']} attaches PR automation to unrelated dev commit "
+        f"{recorded['head_sha']}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("event", "action"),
+    [
+        ("pull_request", "opened"),
+        ("pull_request", "ready_for_review"),
+        ("pull_request_review", "submitted"),
+        ("pull_request_review", "dismissed"),
+        ("workflow_dispatch", None),
+    ],
+)
+def test_pr_scoped_arming_triggers_remain(event: str, action: str | None) -> None:
+    workflow = _workflow("auto-merge.yml")
+    triggers = workflow.get("on", workflow.get(True))
+    assert event in triggers
+    if action is not None:
+        assert action in triggers[event]["types"]
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    json.loads((ROOT / "tests/fixtures/auto_merge_check_suite_runs.json").read_text())[
+        "recorded_red_checks"
+    ],
+    ids=lambda check: check["name"],
+)
+def test_tag_oracle_still_rejects_recorded_red_checks(recorded: dict) -> None:
+    from omnimarket.nodes.node_dev_tag_pin_mover_compute.train_sources import (
+        check_runs_verdict,
+    )
+
+    assert check_runs_verdict([(recorded["status"], recorded["conclusion"])]) is False
+    assert check_runs_verdict([("completed", "success")]) is True
+
+
+def test_recorded_failure_passed_the_feature_base_guard(tmp_path: Path) -> None:
+    recorded = json.loads(
+        (ROOT / "tests/fixtures/auto_merge_check_suite_runs.json").read_text()
+    )["recorded_failure"]
+    steps = _workflow("auto-merge.yml")["jobs"]["auto-merge"]["steps"]
+    guard = next(
+        step for step in steps if step.get("name") == "Refuse feature-base auto-merge"
+    )
+    result = _run_step(
+        tmp_path,
+        guard["run"],
+        recorded["baseRefName"],
+        PR=str(recorded["pr_number"]),
+        REPO="OmniNode-ai/omnimarket",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == recorded["guard_stdout"]
+    assert "Pull request is a draft" in recorded["enable_stdout"]
