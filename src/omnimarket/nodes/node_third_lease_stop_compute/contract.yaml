@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeThirdLeaseStopCompute
+#
+# A cause leased a third time stops further leases until a go-and-see record exists. The
+# detector half of the andon stop (node_andon_stop_reducer, OMN-21443): it reads cause-lease
+# rows (the landing controller's leases, OMN-20414) and decides, per cause, whether the next
+# lease is admitted. Report-only first: the mode is the third_lease_stop overlay (overlay.py),
+# and in report-only the node emits one would-stop record per refused lease and blocks nothing.
+# The stop class it will feed the reducer's registry is config.third_lease_stop.stop_class_id;
+# the registry entry lands with the flip to enforce, not before (a report-only detector opens
+# no stop).
+#
+#   handle(ModelThirdLeaseStopRequest) -> ModelThirdLeaseStopResult
+name: "node_third_lease_stop_compute"
+contract_name: "node_third_lease_stop_compute"
+node_name: "node_third_lease_stop_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure detector over cause-lease ledger rows. Returns stop for a cause whose next lease would
+  reach the configured lease count with no go-and-see record dated after its last lease, and
+  admit once the record exists. The lease count, the mode and the row source are the
+  third_lease_stop overlay and are all required; an absent key refuses naming it.
+input_model:
+  name: "ModelThirdLeaseStopRequest"
+  module: "omnimarket.nodes.node_third_lease_stop_compute.models.model_third_lease_stop"
+  description: "Ledger rows as text, the clock, the configuration and optionally the one cause asking for a lease."
+output_model:
+  name: "ModelThirdLeaseStopResult"
+  module: "omnimarket.nodes.node_third_lease_stop_compute.models.model_third_lease_stop"
+  description: "The gate per cause, the leases the stop would have refused in the replay window, and the count line."
+handler:
+  module: "omnimarket.nodes.node_third_lease_stop_compute.handlers.handler_third_lease_stop"
+  class: "HandlerThirdLeaseStop"
+  input_model: "omnimarket.nodes.node_third_lease_stop_compute.models.model_third_lease_stop.ModelThirdLeaseStopRequest"
+  output_model: "omnimarket.nodes.node_third_lease_stop_compute.models.model_third_lease_stop.ModelThirdLeaseStopResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_third_lease_stop_compute.handlers.handler_third_lease_stop:HandlerThirdLeaseStop"
+  handlers:
+    - operation: "evaluate_third_lease_stop"
+      handler:
+        name: "HandlerThirdLeaseStop"
+        module: "omnimarket.nodes.node_third_lease_stop_compute.handlers.handler_third_lease_stop"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+terminal_event: onex.evt.omnimarket.third-lease-stop-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.third-lease-stop-evaluate-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.third-lease-stop-evaluate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.third-lease-stop-decided.v1
+    - onex.evt.omnimarket.third-lease-would-stop.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.third-lease-stop-decided.v1
+  - onex.evt.omnimarket.third-lease-would-stop.v1
+config:
+  third_lease_stop:
+    # The id the reducer's class registry will carry when the node flips to enforce.
+    stop_class_id: cause-leased-third-time
+    # What a cause lease and a go-and-see record look like on the ledger. A lease is a CLAIM that
+    # names a cause (the landing controller writes the pair landing-cause-L<n> and landing-L<n>);
+    # a go-and-see record is a STATUS row whose go-and-see cell names the cause it read.
+    lease_row:
+      row_type: CLAIM
+      cause_cell: cause
+      lane_cell: lane
+      lease_lane_prefixes: ["landing-cause-", "landing-"]
+    record_row:
+      row_type: STATUS
+      cause_cell: go-and-see
+    # Four days of recorded leases (RULING 2026-10-29T04:43:46Z lean practice replacement).
+    replay_window_hours: 96
+    # The sources the overlay's row_source key can select. memory: rows supplied with the request.
+    # bus: rows read from the topic; each message is a JSON object whose `row` field is one
+    # ledger row's text.
+    row_sources:
+      memory: {}
+      bus:
+        topic: onex.evt.omnimarket.ledger-row-recorded.v1
+        row_field: row
+    # The overlay (<root>/third_lease_stop/overlay.yaml) must carry every one of these.
+    overlay_keys: [lease_count, mode, row_source]
+metadata:
+  transport_type: kafka
+  description: "Decides whether a cause may be leased again, from the cause-lease rows."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-02"
+  tags:
+    - compute
+    - andon
+    - stop
+    - lease
+    - pure

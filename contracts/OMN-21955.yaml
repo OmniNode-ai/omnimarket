@@ -1,0 +1,92 @@
+schema_version: 1.0.0
+ticket_id: OMN-21955
+title: 'A cause leased a third time stops further leases until a go-and-see record exists: a contract-driven stop node, report-only first'
+summary: New COMPUTE node node_third_lease_stop_compute (contract with config.third_lease_stop, the third_lease_stop overlay model, a pure handler over cause-lease ledger rows, a row source with a memory
+  and a bus kind, and a count line in the result that the packaged runtime prints). It is the detector half of the andon stop of node_andon_stop_reducer; it opens no stop in report-only and edits no registry. Pure
+  local invocation; the hosted deploy smoke runs the packaged node through the ONEX command line with the in-memory backend.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-third-lease-stop
+  statement: A cause whose next lease would reach the configured lease count is stopped until a go-and-see record is dated after its last lease, and the decision, its count and its mode are data.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a node in omnimarket with its own contract.yaml reads cause-lease rows through a source declared in the contract and returns stop for a cause leased a third time with no go-and-see
+      record after the second lease, and admit once the record exists -- falsifier: uv run pytest -k third_lease_stop -q in omnimarket'
+  - id: AC2
+    statement: 'AC2: the lease count that stops, and the mode (report-only or enforce), are read from the contract and its overlay with no literal in the handler, and an absent overlay key refuses naming
+      the key -- falsifier: uv run pytest -k third_lease_stop_config -q run at a count of 2 and again at 3'
+  - id: AC3
+    statement: 'AC3: in report-only mode the node emits one would-stop record per stop and never blocks a lease, and a replay over the last four days of recorded cause-lease rows prints the would-stop
+      count -- falsifier: uv run pytest -k third_lease_stop_replay -q against the recorded fixture rows, plus the node''s printed count line'
+  - id: AC4
+    statement: 'AC4: the node gives identical decisions on the in-memory overlay and on the Redpanda overlay -- falsifier: uv run pytest -k third_lease_stop_parity -q with the bus overlay selected'
+  - id: AC5
+    statement: 'AC5: a draft knowledge base plan PR names the node or gate for each of the four failure classes and the per-host install measurement of the eight lean skills -- falsifier: a read of the
+      plan''s mechanism table and install table'
+evidence_requirements:
+- kind: tests
+  description: Third-lease stop tests.
+  command: uv run pytest tests/nodes/node_third_lease_stop_compute -q --no-cov --tb=line -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21955-ac1
+  description: AC1 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_third_lease_stop.py -q --no-cov -k third_lease_stop -m "not kafka"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21955-ac2
+  description: AC2 bound to its pytest cases (count 2 and count 3 are parametrized cases of one test).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_third_lease_stop.py -q --no-cov -k third_lease_stop_config
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21955-ac3
+  description: AC3 bound to its pytest cases over the recorded fixture rows.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_third_lease_stop.py -q --no-cov -k third_lease_stop_replay
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21955-ac4
+  description: AC4 in-memory leg bound to its pytest case. The Redpanda leg is marked kafka and is blocked on a topic write grant on the lab broker; the PR body and the plan record the refusal.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_third_lease_stop.py -q --no-cov -k third_lease_stop_parity_inmemory
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21955-ac5
+  description: AC5 is the draft plan pull request's mechanism table and install table. This check binds the half that is checkable from this repository - every node the table names as already existing resolves to a node directory with a contract.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_plan_names.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21955-deploy-local-runtime
+  description: Hosted deploy smoke dispatches the installed node through the ONEX CLI with an in-memory backend and checks a stop for a cause with two leases and no record, and an admit once a record is dated after the last lease. No broker, credentials, Docker or lab service is required; this is packaged local execution, not a production rollout.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_third_lease_stop_compute/test_runtime_local.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket

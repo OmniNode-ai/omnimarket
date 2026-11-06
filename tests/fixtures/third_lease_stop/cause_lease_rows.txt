@@ -1,0 +1,1316 @@
+2026-10-07T06:23:13Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-09T18:39:36Z | CLAIM | lane=landing-cause-L5318 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-09T18:55:38Z | CLAIM | lane=landing-cause-L5327 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-09T19:10:37Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-09T19:44:49Z | CLAIM | lane=landing-cause-L5354 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-09T19:44:52Z | CLAIM | lane=landing-cause-L5355 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-09T20:08:56Z | CLAIM | lane=landing-cause-L5359 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-09T23:04:36Z | CLAIM | lane=landing-cause-L5436 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-09T23:15:19Z | CLAIM | lane=landing-cause-L5438 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-10T03:35:23Z | CLAIM | lane=cause-omnibase_infra-ci-summary-0335 | cause=omnibase_infra:CI Summary
+2026-10-10T03:47:57Z | CLAIM | lane=landing-cause-L5523 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-10T03:56:39Z | CLAIM | lane=landing-cause-L5527 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-10T07:09:35Z | CLAIM | lane=landing-cause-L5586 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T07:50:53Z | CLAIM | lane=cause-omnibase_infra-ci-summary-n-5d21 | cause=omnibase_infra:CI Summary
+2026-10-10T08:55:41Z | CLAIM | lane=landing-cause-L5614 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T17:05:40Z | CLAIM | lane=landing-cause-L5782 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T17:16:51Z | CLAIM | lane=landing-cause-L5784 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T17:35:34Z | CLAIM | lane=landing-cause-L5797 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T17:45:20Z | CLAIM | lane=landing-L5797 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T18:17:48Z | CLAIM | lane=landing-cause-L5805 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T18:19:19Z | CLAIM | lane=landing-L5805 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T19:24:54Z | CLAIM | lane=landing-cause-L5840 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T19:31:25Z | CLAIM | lane=landing-L5840 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T21:18:21Z | CLAIM | lane=landing-cause-L5897 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-10T21:22:45Z | CLAIM | lane=landing-L5897 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-10T22:36:00Z | CLAIM | lane=landing-cause-L5945 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T22:44:18Z | CLAIM | lane=landing-L5945 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-10T23:06:59Z | CLAIM | lane=cause-omnibase_infra-ci-summary-9f8a | cause=omnibase_infra:CI Summary
+2026-10-10T23:07:59Z | CLAIM | lane=cause-omnibase_core-ci-summary-9f8a | cause=omnibase_core:CI Summary
+2026-10-10T23:24:50Z | CLAIM | lane=landing-cause-L5956 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T23:46:12Z | CLAIM | lane=landing-L5956 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-10T23:56:14Z | CLAIM | lane=landing-cause-L5970 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-10T23:57:32Z | CLAIM | lane=landing-L5970 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-11T00:19:21Z | CLAIM | lane=landing-cause-L5974 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T00:20:13Z | CLAIM | lane=landing-L5974 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T01:05:38Z | CLAIM | lane=landing-cause-L5998 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T01:08:35Z | CLAIM | lane=landing-L5998 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T01:25:15Z | CLAIM | lane=landing-cause-L5999 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T02:23:05Z | CLAIM | lane=landing-cause-L6019 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T02:33:23Z | CLAIM | lane=landing-cause-L6029 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T02:51:39Z | CLAIM | lane=landing-L6029 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T02:51:40Z | CLAIM | lane=landing-L6019 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T04:48:32Z | CLAIM | lane=landing-cause-L6074 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T05:25:45Z | CLAIM | lane=landing-cause-L6085 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T05:26:47Z | CLAIM | lane=landing-L6085 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T06:16:29Z | CLAIM | lane=landing-cause-L6116 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T06:17:16Z | CLAIM | lane=landing-L6116 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T07:07:04Z | CLAIM | lane=landing-cause-L6143 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T07:08:15Z | CLAIM | lane=landing-L6143 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T07:21:48Z | CLAIM | lane=landing-cause-L6145 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T07:22:42Z | CLAIM | lane=landing-L6145 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T07:55:23Z | CLAIM | lane=landing-cause-L6163 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T07:57:03Z | CLAIM | lane=landing-L6163 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T09:50:23Z | CLAIM | lane=landing-cause-L6207 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T09:51:07Z | CLAIM | lane=landing-L6207 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T10:02:50Z | CLAIM | lane=landing-cause-L6218 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T10:03:42Z | CLAIM | lane=landing-L6218 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T10:48:57Z | CLAIM | lane=landing-cause-L6245 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T10:50:05Z | CLAIM | lane=landing-L6245 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T12:16:54Z | CLAIM | lane=landing-cause-L6267 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T12:17:56Z | CLAIM | lane=landing-L6267 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T13:43:50Z | CLAIM | lane=landing-cause-L6310 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T13:45:04Z | CLAIM | lane=landing-L6310 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T14:09:56Z | CLAIM | lane=landing-cause-L6321 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T14:10:42Z | CLAIM | lane=landing-L6321 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T14:30:04Z | CLAIM | lane=landing-cause-L6333 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T14:31:22Z | CLAIM | lane=landing-L6333 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T15:22:04Z | CLAIM | lane=landing-cause-L6342 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-11T15:22:06Z | CLAIM | lane=landing-cause-L6343 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T15:24:20Z | CLAIM | lane=landing-L6342 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-11T15:24:42Z | CLAIM | lane=landing-L6343 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T16:06:18Z | CLAIM | lane=landing-cause-L6352 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T16:07:07Z | CLAIM | lane=landing-L6352 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T19:10:10Z | CLAIM | lane=landing-cause-L6390 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-11T19:10:59Z | CLAIM | lane=landing-L6390 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-11T19:47:21Z | CLAIM | lane=landing-cause-L6406 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T20:02:08Z | CLAIM | lane=landing-L6406 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T21:23:15Z | CLAIM | lane=landing-cause-L6421 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T21:37:37Z | CLAIM | lane=landing-L6421 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-11T22:20:30Z | CLAIM | lane=landing-cause-L6429 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-11T22:21:21Z | CLAIM | lane=landing-L6429 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-11T22:45:47Z | CLAIM | lane=landing-cause-L6449 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-11T22:47:59Z | CLAIM | lane=landing-L6449 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T00:06:33Z | CLAIM | lane=landing-cause-L6465 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T00:07:59Z | CLAIM | lane=landing-L6465 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T00:33:59Z | CLAIM | lane=landing-cause-L6492 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-12T00:34:49Z | CLAIM | lane=landing-L6492 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-12T04:47:27Z | CLAIM | lane=landing-cause-L6547 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-12T04:48:29Z | CLAIM | lane=landing-L6547 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-12T05:56:52Z | CLAIM | lane=cause-omnimarket-coverage-sweep | cause=omnimarket:Coverage Sweep Gate
+2026-10-12T07:38:46Z | CLAIM | lane=landing-cause-L6574 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T07:39:31Z | CLAIM | lane=landing-L6574 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T08:02:12Z | CLAIM | lane=landing-cause-L6582 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T08:03:32Z | CLAIM | lane=landing-L6582 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T08:11:45Z | CLAIM | lane=landing-cause-L6584 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T08:12:33Z | CLAIM | lane=landing-L6584 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T08:28:29Z | CLAIM | lane=landing-cause-L6592 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T08:29:18Z | CLAIM | lane=landing-L6592 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T08:54:37Z | CLAIM | lane=landing-cause-L6609 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T08:55:42Z | CLAIM | lane=landing-L6609 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T10:49:42Z | CLAIM | lane=landing-cause-L6639 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T10:50:35Z | CLAIM | lane=landing-L6639 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T13:08:08Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-12T13:08:15Z | CLAIM | lane=landing-cause-L6714 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-12T13:09:02Z | CLAIM | lane=landing-L6714 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-12T13:19:10Z | CLAIM | lane=landing-cause-L6722 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T13:19:11Z | CLAIM | lane=landing-cause-L6723 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T13:20:02Z | CLAIM | lane=landing-L6722 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T13:20:24Z | CLAIM | lane=landing-L6723 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T13:37:12Z | CLAIM | lane=landing-cause-L6733 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T13:37:25Z | CLAIM | lane=cause-infra-dodverify-1d5b | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-12T13:38:04Z | CLAIM | lane=landing-L6733 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T14:06:42Z | CLAIM | lane=landing-cause-L6749 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T14:06:44Z | CLAIM | lane=landing-cause-L6750 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-12T14:07:26Z | CLAIM | lane=landing-L6749 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T14:07:50Z | CLAIM | lane=landing-L6750 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-12T14:35:48Z | CLAIM | lane=landing-cause-L6772 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T14:35:50Z | CLAIM | lane=landing-cause-L6773 | cause=cause:OmniNode-ai/omnibase_infra:210ea1fdee00
+2026-10-12T14:35:53Z | CLAIM | lane=landing-cause-L6774 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T14:36:34Z | CLAIM | lane=landing-L6772 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T14:37:00Z | CLAIM | lane=landing-L6773 | cause=cause:OmniNode-ai/omnibase_infra:210ea1fdee00
+2026-10-12T14:37:21Z | CLAIM | lane=landing-L6774 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T15:04:02Z | CLAIM | lane=landing-cause-L6792 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T15:04:55Z | CLAIM | lane=landing-L6792 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T15:12:19Z | CLAIM | lane=landing-cause-L6797 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T15:12:20Z | CLAIM | lane=landing-cause-L6798 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T15:20:04Z | CLAIM | lane=landing-L6797 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T15:20:24Z | CLAIM | lane=landing-L6798 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T15:37:42Z | CLAIM | lane=censusbot-1d5b | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-12T16:07:21Z | CLAIM | lane=landing-cause-L6816 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T16:08:08Z | CLAIM | lane=landing-L6816 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-12T17:07:36Z | CLAIM | lane=censusbot-r-1d5b | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-12T17:28:01Z | CLAIM | lane=landing-cause-L6850 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T17:28:46Z | CLAIM | lane=landing-L6850 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-12T17:34:19Z | CLAIM | lane=claudedod-1d5b | cause=omniclaude:repo-evidence / dod-verify
+2026-10-12T20:05:47Z | CLAIM | lane=cause-infra-cisum2-1d5b | cause=omnibase_infra:CI Summary
+2026-10-12T21:32:12Z | CLAIM | lane=landing-cause-L6907 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T21:32:49Z | CLAIM | lane=landing-L6907 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T21:56:47Z | CLAIM | lane=landing-cause-L6911 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-12T21:57:24Z | CLAIM | lane=landing-L6911 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-13T02:14:29Z | CLAIM | lane=landing-cause-L6954 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-13T02:15:17Z | CLAIM | lane=landing-L6954 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-13T07:12:58Z | CLAIM | lane=landing-cause-L7018 | cause=cause:OmniNode-ai/omnibase_infra:210ea1fdee00
+2026-10-13T14:11:30Z | CLAIM | lane=landing-cause-L7116 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T15:42:01Z | CLAIM | lane=landing-cause-L7138 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T15:42:42Z | CLAIM | lane=landing-L7138 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T17:17:31Z | CLAIM | lane=landing-cause-L7164 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T17:18:21Z | CLAIM | lane=landing-L7164 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T17:42:10Z | CLAIM | lane=landing-cause-L7172 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T18:05:31Z | CLAIM | lane=landing-cause-L7185 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T20:07:14Z | CLAIM | lane=landing-cause-L7213 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-13T20:07:57Z | CLAIM | lane=landing-L7213 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-14T00:07:28Z | CLAIM | lane=cause-omnibase-infra-runtime-boot | cause=omnibase_infra:runtime-boot
+2026-10-14T07:17:19Z | CLAIM | lane=landing-cause-L7366 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-14T07:18:12Z | CLAIM | lane=landing-L7366 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-14T16:29:24Z | CLAIM | lane=landing-cause-L7571 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T16:30:07Z | CLAIM | lane=landing-L7571 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T16:54:54Z | CLAIM | lane=landing-cause-L7590 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T16:55:55Z | CLAIM | lane=landing-L7590 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T17:17:33Z | CLAIM | lane=landing-cause-L7602 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T17:19:15Z | CLAIM | lane=landing-L7602 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-14T20:38:30Z | CLAIM | lane=cause-repo-a-validate-plugin | cause=repo-a:validate-plugin
+2026-10-14T21:27:02Z | CLAIM | lane=landing-cause-L7804 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T21:49:54Z | CLAIM | lane=landing-cause-L7818 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T21:50:47Z | CLAIM | lane=landing-L7818 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T22:34:03Z | CLAIM | lane=landing-cause-L7846 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T22:34:32Z | CLAIM | lane=landing-L7846 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T23:49:54Z | CLAIM | lane=landing-cause-L7881 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-14T23:50:29Z | CLAIM | lane=landing-L7881 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-15T02:11:56Z | CLAIM | lane=landing-cause-L7947 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T02:12:39Z | CLAIM | lane=landing-L7947 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T02:35:05Z | CLAIM | lane=landing-cause-L7962 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T02:35:51Z | CLAIM | lane=landing-L7962 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T03:51:06Z | CLAIM | lane=landing-cause-L7999 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T03:52:02Z | CLAIM | lane=landing-L7999 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T04:05:12Z | CLAIM | lane=landing-cause-L8012 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T04:06:08Z | CLAIM | lane=landing-L8012 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T04:15:08Z | CLAIM | lane=cause-omnimarket-coverage-sweep-gate | cause=omnimarket:Coverage Sweep Gate
+2026-10-15T04:30:34Z | CLAIM | lane=landing-cause-L8023 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T04:31:53Z | CLAIM | lane=landing-L8023 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T04:46:03Z | CLAIM | lane=landing-cause-L8038 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T04:46:51Z | CLAIM | lane=landing-L8038 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T05:01:59Z | CLAIM | lane=landing-cause-L8049 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T05:02:59Z | CLAIM | lane=landing-L8049 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T07:41:36Z | CLAIM | lane=landing-cause-L8175 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-15T07:42:42Z | CLAIM | lane=landing-L8175 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-15T08:10:59Z | CLAIM | lane=landing-cause-L8200 | cause=cause:OmniNode-ai/omnibase_core:52c59723e1ad
+2026-10-15T08:11:01Z | CLAIM | lane=landing-cause-L8201 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T08:12:22Z | CLAIM | lane=landing-L8200 | cause=cause:OmniNode-ai/omnibase_core:52c59723e1ad
+2026-10-15T08:12:46Z | CLAIM | lane=landing-L8201 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T08:42:57Z | CLAIM | lane=landing-cause-L8226 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T08:43:37Z | CLAIM | lane=landing-L8226 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T09:09:14Z | CLAIM | lane=landing-cause-L8252 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T09:11:12Z | CLAIM | lane=landing-L8252 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T09:36:12Z | CLAIM | lane=landing-cause-L8272 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T09:37:08Z | CLAIM | lane=landing-L8272 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T09:40:45Z | CLAIM | lane=cause-repo-a-validate-plugin | cause=repo-a:validate-plugin
+2026-10-15T12:24:59Z | CLAIM | lane=landing-cause-L8359 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T12:26:44Z | CLAIM | lane=landing-L8359 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T13:12:01Z | CLAIM | lane=landing-cause-L8379 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T13:12:44Z | CLAIM | lane=landing-L8379 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T14:06:24Z | CLAIM | lane=landing-cause-L8417 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T14:07:29Z | CLAIM | lane=landing-L8417 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T15:15:31Z | CLAIM | lane=landing-cause-L8476 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T15:15:32Z | CLAIM | lane=landing-cause-L8477 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T15:17:05Z | CLAIM | lane=landing-L8476 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T15:17:21Z | CLAIM | lane=landing-L8477 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T15:39:24Z | CLAIM | lane=cause-omnibase_infra-dev-head | cause=omnibase_infra:CI Summary
+2026-10-15T15:39:38Z | CLAIM | lane=cause-omniclaude-repo-evidence-dod-verify | cause=omniclaude:repo-evidence / dod-verify
+2026-10-15T15:51:43Z | CLAIM | lane=landing-cause-L8505 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T15:52:37Z | CLAIM | lane=landing-L8505 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-15T15:59:44Z | CLAIM | lane=landing-cause-L8511 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T16:08:45Z | CLAIM | lane=landing-cause-L8516 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-15T16:08:46Z | CLAIM | lane=landing-cause-L8517 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T16:09:24Z | CLAIM | lane=landing-L8516 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-15T16:10:21Z | CLAIM | lane=landing-L8517 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-15T18:07:46Z | CLAIM | lane=cause-omnibase_infra-repo-evidence-dod-verify | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-15T23:49:36Z | CLAIM | lane=landing-cause-L8783 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-15T23:51:18Z | CLAIM | lane=landing-L8783 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-16T03:25:00Z | CLAIM | lane=landing-cause-L8859 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T03:25:42Z | CLAIM | lane=landing-L8859 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T04:10:03Z | CLAIM | lane=infra-dev-head-red | cause=omnibase_infra:CI Summary
+2026-10-16T06:02:25Z | CLAIM | lane=landing-cause-L8952 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-16T06:04:15Z | CLAIM | lane=landing-L8952 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-16T09:51:56Z | CLAIM | lane=landing-cause-L9085 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-16T09:52:36Z | CLAIM | lane=landing-L9085 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-16T10:53:21Z | CLAIM | lane=landing-cause-L9138 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T10:54:40Z | CLAIM | lane=landing-L9138 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T11:04:31Z | CLAIM | lane=landing-cause-L9145 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T11:07:03Z | CLAIM | lane=landing-L9145 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-16T13:32:58Z | CLAIM | lane=landing-cause-L9226 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-16T13:34:22Z | CLAIM | lane=landing-L9226 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-17T00:02:54Z | CLAIM | lane=landing-cause-L9543 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T00:05:15Z | CLAIM | lane=landing-L9543 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T01:03:57Z | CLAIM | lane=landing-cause-L9560 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T01:24:25Z | CLAIM | lane=landing-L9560 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T02:15:27Z | CLAIM | lane=landing-cause-L9608 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T02:17:56Z | CLAIM | lane=landing-L9608 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T02:25:41Z | CLAIM | lane=landing-cause-L9614 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T02:28:24Z | CLAIM | lane=landing-L9614 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T03:34:52Z | CLAIM | lane=landing-cause-L9665 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T03:44:10Z | CLAIM | lane=landing-L9665 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T04:46:32Z | CLAIM | lane=landing-cause-L9715 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T04:49:37Z | CLAIM | lane=landing-L9715 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T05:11:25Z | CLAIM | lane=landing-cause-L9742 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T05:13:58Z | CLAIM | lane=landing-L9742 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T06:02:06Z | CLAIM | lane=landing-cause-L9767 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-17T06:03:20Z | CLAIM | lane=landing-L9767 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-17T06:38:32Z | CLAIM | lane=cause-omnibase_infra-dod-verify | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-17T07:14:26Z | CLAIM | lane=landing-cause-L9797 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T07:34:21Z | CLAIM | lane=landing-cause-L9805 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-17T07:35:18Z | CLAIM | lane=landing-L9805 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-17T08:05:02Z | CLAIM | lane=landing-cause-L9817 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-17T08:06:21Z | CLAIM | lane=landing-L9817 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-17T08:37:05Z | CLAIM | lane=landing-cause-L9827 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T08:39:09Z | CLAIM | lane=landing-L9827 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-17T09:34:26Z | CLAIM | lane=landing-cause-L9852 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-17T11:38:40Z | CLAIM | lane=landing-cause-L9894 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T11:49:38Z | CLAIM | lane=landing-L9894 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T12:11:23Z | CLAIM | lane=landing-cause-L9925 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T12:14:18Z | CLAIM | lane=landing-L9925 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T13:24:24Z | CLAIM | lane=landing-cause-L9945 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T13:45:58Z | CLAIM | lane=landing-cause-L9951 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T13:47:24Z | CLAIM | lane=landing-L9951 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T17:35:43Z | CLAIM | lane=landing-cause-L10009 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T17:47:07Z | CLAIM | lane=landing-L10009 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T18:43:38Z | CLAIM | lane=core-dev-red-1838 | cause=omnibase_core:CI Summary
+2026-10-17T20:43:51Z | CLAIM | lane=landing-cause-L10093 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T21:57:23Z | CLAIM | lane=landing-cause-L10141 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T22:06:09Z | CLAIM | lane=landing-L10141 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T22:43:04Z | CLAIM | lane=landing-cause-L10177 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T22:47:55Z | CLAIM | lane=landing-L10177 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-17T23:50:56Z | CLAIM | lane=landing-cause-L10215 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T00:08:51Z | CLAIM | lane=landing-cause-L10230 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T00:14:35Z | CLAIM | lane=landing-L10230 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T00:16:30Z | CLAIM | lane=landing-cause-L10236 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T00:59:54Z | CLAIM | lane=landing-cause-L10263 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T01:10:10Z | CLAIM | lane=landing-cause-L10276 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T01:17:52Z | CLAIM | lane=landing-L10263 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T01:26:40Z | CLAIM | lane=landing-L10276 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T02:10:17Z | CLAIM | lane=landing-cause-L10314 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T02:24:41Z | CLAIM | lane=landing-L10314 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T02:29:54Z | CLAIM | lane=landing-cause-L10325 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T02:33:40Z | CLAIM | lane=landing-L10325 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T02:58:27Z | CLAIM | lane=landing-cause-L10345 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T03:00:56Z | CLAIM | lane=landing-L10345 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T03:10:30Z | CLAIM | lane=infra-dev-head-ci-summary-0350 | cause=omnibase_infra:CI Summary
+2026-10-18T04:18:43Z | CLAIM | lane=landing-cause-L10389 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T04:19:39Z | CLAIM | lane=landing-L10389 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T04:38:02Z | CLAIM | lane=landing-cause-L10390 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T04:38:02Z | CLAIM | lane=landing-cause-L10391 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T04:39:25Z | CLAIM | lane=landing-L10390 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T04:39:46Z | CLAIM | lane=landing-L10391 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T06:50:54Z | CLAIM | lane=landing-cause-L10482 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-18T07:03:05Z | CLAIM | lane=landing-cause-L10497 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T07:38:46Z | CLAIM | lane=infra-dev-head-ci-summary-0745 | cause=omnibase_infra:CI Summary
+2026-10-18T08:08:08Z | CLAIM | lane=infra-dev-head-ci-summary-0745 | cause=omnibase_infra:CI Summary
+2026-10-18T08:08:26Z | CLAIM | lane=landing-cause-L10526 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T08:12:39Z | CLAIM | lane=landing-L10526 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T08:49:20Z | CLAIM | lane=cause-omnibase_infra-ci-summary-0850 | cause=omnibase_infra:CI Summary
+2026-10-18T09:29:31Z | CLAIM | lane=landing-cause-L10579 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T10:26:17Z | CLAIM | lane=landing-cause-L10605 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T10:28:42Z | CLAIM | lane=landing-L10605 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T11:24:58Z | CLAIM | lane=cause-omnibase_core-ci-summary-r2 | cause=omnibase_core:CI Summary
+2026-10-18T11:58:25Z | CLAIM | lane=landing-cause-L10666 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-18T12:03:43Z | CLAIM | lane=landing-L10666 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-18T12:08:41Z | CLAIM | lane=landing-cause-L10675 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T14:13:35Z | CLAIM | lane=landing-cause-L10738 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T14:15:43Z | CLAIM | lane=landing-L10738 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-18T15:06:51Z | CLAIM | lane=cause-omnibase_infra-ci-summary-1505 | cause=omnibase_infra:CI Summary
+2026-10-18T15:41:14Z | CLAIM | lane=cause-omnibase_infra-dod-verify-1540 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-18T17:58:27Z | CLAIM | lane=landing-cause-L10819 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T18:25:20Z | CLAIM | lane=cause-omniclaude-dod-verify-1845 | cause=omniclaude:repo-evidence / dod-verify
+2026-10-18T19:15:39Z | CLAIM | lane=landing-cause-L10866 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T19:55:08Z | CLAIM | lane=cause-omnibase_infra-ci-summary-2040 | cause=omnibase_infra:CI Summary
+2026-10-18T23:08:52Z | CLAIM | lane=landing-cause-L10976 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T23:14:05Z | CLAIM | lane=landing-L10976 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-18T23:55:29Z | CLAIM | lane=cause-omnibase_infra-dod-verify-0100 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-18T23:57:26Z | CLAIM | lane=landing-cause-L10998 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-19T00:04:09Z | CLAIM | lane=landing-L10998 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-19T00:28:41Z | CLAIM | lane=landing-cause-L11017 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-19T01:10:58Z | CLAIM | lane=cause-omnibase-infra-ci-summary-0310 | cause=omnibase_infra:CI Summary
+2026-10-19T01:25:22Z | CLAIM | lane=landing-cause-L11045 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-19T01:29:39Z | CLAIM | lane=landing-cause-L11054 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T01:33:55Z | CLAIM | lane=cause-omnibase-infra-ci-summary-0310 | cause=omnibase_infra:CI Summary
+2026-10-19T02:17:43Z | CLAIM | lane=landing-cause-L11077 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T02:20:58Z | CLAIM | lane=landing-L11077 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T03:19:06Z | CLAIM | lane=landing-cause-L11097 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T03:31:38Z | CLAIM | lane=landing-L11097 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T04:14:32Z | CLAIM | lane=landing-cause-L11146 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T04:20:37Z | CLAIM | lane=landing-L11146 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T05:53:23Z | CLAIM | lane=landing-cause-L11200 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T06:15:47Z | CLAIM | lane=cause-omnibase-infra-dod-verify-1250 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-19T06:38:00Z | CLAIM | lane=landing-cause-L11222 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-19T06:38:01Z | CLAIM | lane=landing-cause-L11223 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T06:40:37Z | CLAIM | lane=landing-L11222 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-19T07:12:55Z | CLAIM | lane=landing-cause-L11243 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T07:14:56Z | CLAIM | lane=landing-L11243 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T07:15:12Z | CLAIM | lane=cause-omniintelligence-handler-shape-1450 | cause=omniintelligence:Canonical Handler-Shape Ratchet
+2026-10-19T08:28:55Z | CLAIM | lane=landing-cause-L11283 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T08:41:25Z | CLAIM | lane=landing-L11283 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T09:14:08Z | CLAIM | lane=landing-cause-L11308 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-19T09:18:47Z | CLAIM | lane=cause-omnibase-infra-ci-summary-0920 | cause=omnibase_infra:CI Summary
+2026-10-19T09:23:44Z | CLAIM | lane=landing-cause-L11311 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T09:27:59Z | CLAIM | lane=landing-L11311 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T10:00:35Z | CLAIM | lane=landing-cause-L11331 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T10:03:55Z | CLAIM | lane=landing-L11331 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T10:06:06Z | CLAIM | lane=cause-omnibase-infra-dod-verify-1015 | cause=omnibase_infra:CI Summary
+2026-10-19T11:00:56Z | CLAIM | lane=landing-cause-L11368 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T11:37:08Z | CLAIM | lane=landing-cause-L11385 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-19T12:34:45Z | CLAIM | lane=landing-cause-L11416 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T13:45:32Z | CLAIM | lane=landing-cause-L11453 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-19T13:47:51Z | CLAIM | lane=landing-L11453 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-19T14:10:57Z | CLAIM | lane=landing-cause-L11459 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T14:43:07Z | CLAIM | lane=landing-cause-L11481 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T14:49:58Z | CLAIM | lane=landing-L11481 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T15:45:06Z | CLAIM | lane=landing-cause-L11500 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T15:57:55Z | CLAIM | lane=landing-L11500 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T17:04:55Z | CLAIM | lane=landing-cause-L11540 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T17:56:42Z | CLAIM | lane=landing-cause-L11574 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T18:29:22Z | CLAIM | lane=landing-L11574 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T19:08:25Z | CLAIM | lane=landing-cause-L11615 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T19:12:44Z | CLAIM | lane=landing-L11615 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T20:03:52Z | CLAIM | lane=landing-cause-L11664 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T20:10:14Z | CLAIM | lane=landing-L11664 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T20:21:04Z | CLAIM | lane=landing-cause-L11687 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-19T20:31:12Z | CLAIM | lane=landing-cause-L11697 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-19T20:39:21Z | CLAIM | lane=landing-cause-L11698 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T20:42:01Z | CLAIM | lane=landing-L11697 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-19T21:29:06Z | CLAIM | lane=landing-cause-L11749 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T21:50:20Z | CLAIM | lane=landing-L11749 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-19T22:57:21Z | CLAIM | lane=cause-infra-queue-stall-2300 | cause=omnibase_infra:CI Summary
+2026-10-19T23:01:19Z | CLAIM | lane=landing-cause-L11793 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-19T23:01:20Z | CLAIM | lane=landing-cause-L11795 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T00:10:29Z | CLAIM | lane=cause-occ-internal-base-red-0020 | cause=repo-a:validate-plugin
+2026-10-20T00:11:59Z | CLAIM | lane=landing-cause-L11840 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T00:22:12Z | CLAIM | lane=landing-L11840 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T01:25:23Z | CLAIM | lane=landing-cause-L11885 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-20T01:25:26Z | CLAIM | lane=landing-cause-L11887 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T01:31:45Z | CLAIM | lane=landing-L11885 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-20T01:33:34Z | CLAIM | lane=landing-L11887 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T02:15:07Z | CLAIM | lane=landing-cause-L11925 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T02:22:32Z | CLAIM | lane=landing-L11925 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T03:34:14Z | CLAIM | lane=landing-cause-L11981 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T03:41:27Z | CLAIM | lane=landing-L11981 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T04:12:28Z | CLAIM | lane=landing-cause-L12010 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T04:33:09Z | CLAIM | lane=landing-L12010 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T06:19:57Z | CLAIM | lane=landing-cause-L12089 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T06:26:28Z | CLAIM | lane=landing-cause-L12093 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T06:39:38Z | CLAIM | lane=landing-L12089 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T06:48:34Z | CLAIM | lane=landing-L12093 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T07:29:26Z | CLAIM | lane=landing-cause-L12129 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T08:13:12Z | CLAIM | lane=landing-cause-L12162 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T08:37:40Z | CLAIM | lane=landing-L12162 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T08:48:16Z | CLAIM | lane=landing-cause-L12188 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-20T08:48:20Z | CLAIM | lane=landing-cause-L12190 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T09:59:16Z | CLAIM | lane=landing-cause-L12243 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T10:04:03Z | CLAIM | lane=landing-cause-L12258 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-20T10:33:34Z | CLAIM | lane=landing-L12243 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T10:39:13Z | CLAIM | lane=landing-L12258 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-20T10:58:48Z | CLAIM | lane=landing-cause-L12281 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T11:24:29Z | CLAIM | lane=landing-L12281 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T12:35:31Z | CLAIM | lane=landing-cause-L12349 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T14:07:45Z | CLAIM | lane=landing-cause-L12382 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-20T14:39:35Z | CLAIM | lane=landing-cause-L12418 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T14:40:30Z | CLAIM | lane=landing-L12382 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-20T15:17:20Z | CLAIM | lane=landing-L12418 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T15:56:16Z | CLAIM | lane=landing-cause-L12464 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T16:12:51Z | CLAIM | lane=landing-L12464 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T16:44:37Z | CLAIM | lane=landing-cause-L12509 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T17:02:21Z | CLAIM | lane=landing-L12509 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T17:36:45Z | CLAIM | lane=landing-cause-L12545 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T18:04:22Z | CLAIM | lane=landing-cause-L12576 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T18:15:31Z | CLAIM | lane=landing-L12576 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T18:58:05Z | CLAIM | lane=landing-cause-L12619 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T19:00:40Z | CLAIM | lane=landing-L12619 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T19:35:37Z | CLAIM | lane=landing-cause-L12656 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T19:44:49Z | CLAIM | lane=landing-cause-L12659 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T19:50:11Z | CLAIM | lane=landing-L12656 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T19:59:51Z | CLAIM | lane=landing-L12659 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-20T20:20:53Z | CLAIM | lane=landing-cause-L12677 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T20:20:56Z | CLAIM | lane=landing-cause-L12679 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-20T21:06:03Z | CLAIM | lane=landing-cause-L12728 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T22:09:37Z | CLAIM | lane=landing-cause-L12772 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T22:20:29Z | CLAIM | lane=landing-L12772 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T22:53:30Z | CLAIM | lane=landing-cause-L12812 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-20T23:00:59Z | CLAIM | lane=landing-L12812 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-20T23:06:27Z | CLAIM | lane=cause-repo-a-validate-plugin-2255 | cause=repo-a:validate-plugin
+2026-10-20T23:06:37Z | CLAIM | lane=cause-omnibase_infra-ci-summary-2255 | cause=omnibase_infra:CI Summary
+2026-10-20T23:08:55Z | CLAIM | lane=landing-cause-L12825 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-20T23:26:00Z | CLAIM | lane=cause-repo-a-validate-plugin-2320 | cause=repo-a:validate-plugin
+2026-10-20T23:35:41Z | CLAIM | lane=cause-omnibase_infra-ci-summary-2255 | cause=omnibase_infra:CI Summary
+2026-10-20T23:37:34Z | CLAIM | lane=landing-cause-L12856 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-20T23:50:52Z | CLAIM | lane=landing-cause-L12861 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-20T23:56:42Z | CLAIM | lane=cause-repo-a-validate-plugin-2255 | cause=repo-a:validate-plugin
+2026-10-21T00:03:31Z | CLAIM | lane=landing-L12856 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-21T00:22:20Z | CLAIM | lane=cause-repo-a-validate-plugin-2255 | cause=repo-a:validate-plugin
+2026-10-21T00:23:26Z | CLAIM | lane=landing-cause-L12885 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T01:08:23Z | CLAIM | lane=landing-cause-L12921 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-21T01:19:00Z | CLAIM | lane=landing-cause-L12924 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-21T01:55:43Z | CLAIM | lane=landing-cause-L12951 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T02:21:52Z | CLAIM | lane=landing-cause-L12978 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-21T03:05:34Z | CLAIM | lane=landing-cause-L13012 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T04:13:35Z | CLAIM | lane=landing-cause-L13065 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T04:29:19Z | CLAIM | lane=landing-cause-L13075 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-21T06:46:37Z | CLAIM | lane=landing-cause-L13188 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-21T07:05:24Z | CLAIM | lane=landing-cause-L13200 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T08:18:43Z | CLAIM | lane=landing-cause-L13251 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-21T08:24:23Z | CLAIM | lane=landing-cause-L13257 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T09:35:33Z | CLAIM | lane=landing-cause-L13302 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T09:51:01Z | CLAIM | lane=landing-cause-L13314 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T10:24:59Z | CLAIM | lane=landing-cause-L13334 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T11:09:36Z | CLAIM | lane=landing-cause-L13361 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T11:12:32Z | CLAIM | lane=landing-L13334 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T12:19:22Z | CLAIM | lane=landing-cause-L13386 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T12:19:23Z | CLAIM | lane=landing-cause-L13387 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T12:58:27Z | CLAIM | lane=cause-omnibase_infra-ci-summary-1300 | cause=omnibase_infra:CI Summary
+2026-10-21T13:18:46Z | CLAIM | lane=landing-cause-L13427 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T13:30:53Z | CLAIM | lane=landing-cause-L13442 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-21T14:17:04Z | CLAIM | lane=landing-cause-L13472 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T16:13:29Z | CLAIM | lane=landing-cause-L13517 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T16:57:43Z | CLAIM | lane=landing-cause-L13556 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T18:08:18Z | CLAIM | lane=landing-cause-L13619 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T18:20:38Z | CLAIM | lane=landing-L13619 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T18:44:47Z | CLAIM | lane=landing-cause-L13656 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-21T18:44:50Z | CLAIM | lane=landing-cause-L13657 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-21T18:45:05Z | CLAIM | lane=landing-cause-L13659 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T18:52:52Z | CLAIM | lane=landing-cause-L13661 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T18:58:30Z | CLAIM | lane=landing-L13659 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T19:11:03Z | CLAIM | lane=landing-L13657 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-21T19:17:20Z | CLAIM | lane=landing-L13656 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-21T19:25:14Z | CLAIM | lane=landing-cause-L13683 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-21T19:27:42Z | CLAIM | lane=landing-L13661 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T19:33:49Z | CLAIM | lane=landing-cause-L13690 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-21T19:55:02Z | CLAIM | lane=landing-cause-L13711 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T19:55:05Z | CLAIM | lane=landing-cause-L13713 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T19:58:22Z | CLAIM | lane=cause-stuck-omnibase_infra-20261021T1956Z | cause=omnibase_infra:CI Summary
+2026-10-21T20:12:02Z | CLAIM | lane=landing-cause-L13738 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-21T20:51:51Z | CLAIM | lane=landing-cause-L13783 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-21T22:37:52Z | CLAIM | lane=landing-cause-L13874 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T23:01:02Z | CLAIM | lane=landing-L13874 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-21T23:25:09Z | CLAIM | lane=cause-stuck-repo-a-20261021T2323Z | cause=repo-a:validate-plugin
+2026-10-21T23:25:59Z | CLAIM | lane=landing-cause-L13919 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T00:21:59Z | CLAIM | lane=landing-cause-L13970 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T00:29:19Z | CLAIM | lane=landing-cause-L13978 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-22T00:49:53Z | CLAIM | lane=landing-L13978 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-22T00:50:42Z | CLAIM | lane=landing-L13970 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T00:54:07Z | CLAIM | lane=cause-stuck-repo-a-20261022T0053Z | cause=repo-a:validate-plugin
+2026-10-22T01:11:59Z | CLAIM | lane=cause-omnibase_spi-public-repo-hygiene | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-22T01:39:34Z | CLAIM | lane=plugin-bump-land-0140 | cause=repo-a:validate-plugin
+2026-10-22T01:55:39Z | CLAIM | lane=cause-omnibase_core-dod-verify-0150 | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-22T02:05:40Z | CLAIM | lane=cause-omniclaude-dod-verify-0200 | cause=omniclaude:repo-evidence / dod-verify
+2026-10-22T02:54:10Z | CLAIM | lane=cause-omniclaude-dod-verify-0255 | cause=omniclaude:repo-evidence / dod-verify
+2026-10-22T03:30:00Z | CLAIM | lane=landing-cause-L14098 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T03:30:01Z | CLAIM | lane=landing-cause-L14099 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-22T03:31:17Z | CLAIM | lane=landing-L14099 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-10-22T03:34:19Z | CLAIM | lane=landing-L14098 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T03:44:39Z | CLAIM | lane=cause-omnibase_core-dod-verify-0345 | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-22T03:49:34Z | CLAIM | lane=cause-omniclaude-dod-verify-0400 | cause=omniclaude:repo-evidence / dod-verify
+2026-10-22T04:16:45Z | CLAIM | lane=landing-cause-L14133 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T04:23:12Z | CLAIM | lane=landing-L14133 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T06:00:51Z | CLAIM | lane=landing-cause-L14230 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T06:04:12Z | CLAIM | lane=landing-L14230 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T06:29:51Z | CLAIM | lane=cause-repo-a-validate-plugin-0630 | cause=repo-a:validate-plugin
+2026-10-22T06:34:26Z | CLAIM | lane=landing-cause-L14257 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T06:43:44Z | CLAIM | lane=landing-L14257 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T07:27:19Z | CLAIM | lane=landing-cause-L14291 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T07:29:48Z | CLAIM | lane=landing-L14291 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T08:31:39Z | CLAIM | lane=landing-cause-L14343 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-22T08:32:37Z | CLAIM | lane=landing-L14343 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-22T10:04:13Z | CLAIM | lane=landing-cause-L14423 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T11:50:36Z | CLAIM | lane=landing-cause-L14504 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T12:38:24Z | CLAIM | lane=landing-cause-L14553 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T13:41:06Z | CLAIM | lane=landing-cause-L14599 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T13:43:04Z | CLAIM | lane=landing-L14599 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T14:48:36Z | CLAIM | lane=landing-cause-L14641 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T14:51:59Z | CLAIM | lane=landing-L14641 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-22T18:01:04Z | CLAIM | lane=landing-cause-L14856 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-22T18:06:59Z | CLAIM | lane=landing-L14856 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-22T22:40:31Z | CLAIM | lane=overlay-dup-main-2240 | cause=repo-b:Automation liveness overlay completeness (OMN-20804)
+2026-10-23T01:27:11Z | CLAIM | lane=landing-cause-L15168 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T01:45:38Z | CLAIM | lane=landing-L15168 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T02:43:29Z | CLAIM | lane=landing-cause-L15218 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T02:46:28Z | CLAIM | lane=landing-L15218 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T02:50:06Z | CLAIM | lane=cause-repo-a-validate-plugin | cause=repo-a:validate-plugin
+2026-10-23T03:50:01Z | CLAIM | lane=cause-stuck-repo-a-20261023T0347Z | cause=repo-a:validate-plugin
+2026-10-23T07:12:16Z | CLAIM | lane=cause-omniclaude-quality-gate | cause=omniclaude:Quality Gate
+2026-10-23T07:23:14Z | CLAIM | lane=landing-cause-L15432 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-23T07:27:09Z | CLAIM | lane=landing-L15432 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-23T07:48:22Z | CLAIM | lane=queue-jump-noop-0730 | cause=repo-a:validate-plugin
+2026-10-23T08:29:31Z | CLAIM | lane=queue-jump-noop-0730 | cause=repo-a:validate-plugin
+2026-10-23T09:27:38Z | CLAIM | lane=cause-stuck-repo-a-20261023T0907Z | cause=repo-a:validate-plugin
+2026-10-23T09:27:39Z | CLAIM | lane=cause-stuck-repo-a-20261023T0858Z | cause=repo-a:validate-plugin
+2026-10-23T10:23:30Z | CLAIM | lane=cause-omnimarket-sibling-release-1020 | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-10-23T12:29:30Z | CLAIM | lane=landing-cause-L15632 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-23T12:44:23Z | CLAIM | lane=landing-L15632 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-23T14:43:32Z | CLAIM | lane=landing-cause-L15762 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-23T14:52:25Z | CLAIM | lane=landing-L15762 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-23T15:21:43Z | CLAIM | lane=landing-cause-L15803 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-23T15:30:36Z | CLAIM | lane=landing-cause-L15813 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T15:35:13Z | CLAIM | lane=landing-L15813 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T15:38:20Z | CLAIM | lane=landing-L15803 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-23T15:39:38Z | CLAIM | lane=landing-cause-L15821 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T15:46:17Z | CLAIM | lane=landing-L15821 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T15:48:26Z | CLAIM | lane=cause-omniclaude-dod-verify-1600 | cause=omniclaude:repo-evidence / dod-verify
+2026-10-23T15:59:36Z | CLAIM | lane=landing-cause-L15842 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T16:04:54Z | CLAIM | lane=landing-L15842 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T16:12:12Z | CLAIM | lane=landing-cause-L15853 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T16:13:24Z | CLAIM | lane=landing-L15853 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T16:57:51Z | CLAIM | lane=landing-cause-L15890 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T19:46:18Z | CLAIM | lane=landing-cause-L15975 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-23T19:47:52Z | CLAIM | lane=landing-L15975 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-23T20:18:35Z | CLAIM | lane=landing-cause-L15998 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T20:20:08Z | CLAIM | lane=landing-L15998 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T20:32:07Z | CLAIM | lane=landing-cause-L16010 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-23T21:00:39Z | CLAIM | lane=landing-cause-L16026 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T21:04:43Z | CLAIM | lane=landing-L16026 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-23T22:30:03Z | CLAIM | lane=cause-infra-thread-gate-2230 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-23T22:38:29Z | CLAIM | lane=landing-cause-L16081 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-23T22:38:51Z | CLAIM | lane=landing-cause-L16082 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T22:43:10Z | CLAIM | lane=landing-L16082 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T23:20:06Z | CLAIM | lane=landing-cause-L16100 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T23:23:57Z | CLAIM | lane=landing-L16100 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T23:37:34Z | CLAIM | lane=landing-cause-L16110 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-23T23:41:11Z | CLAIM | lane=landing-L16110 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-23T23:51:05Z | CLAIM | lane=cause-infra-threads-2315 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-23T23:51:57Z | CLAIM | lane=landing-cause-L16120 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-23T23:55:04Z | CLAIM | lane=landing-L16120 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-24T00:21:12Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-24T00:31:45Z | CLAIM | lane=cause-omniintelligence-precommit | cause=omniintelligence:Pre-commit Hooks
+2026-10-24T00:38:52Z | CLAIM | lane=landing-cause-L16153 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-24T00:44:08Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-24T00:56:38Z | CLAIM | lane=landing-cause-L16169 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-24T01:19:38Z | CLAIM | lane=infra-threads-r2-0010 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-24T01:33:05Z | CLAIM | lane=landing-cause-L16188 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-24T01:34:43Z | CLAIM | lane=landing-L16188 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-24T01:57:59Z | CLAIM | lane=landing-cause-L16200 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-24T02:00:40Z | CLAIM | lane=landing-L16200 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-24T02:19:54Z | CLAIM | lane=landing-cause-L16211 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-24T06:43:14Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-24T09:10:53Z | CLAIM | lane=cause-omnimarket-sibling-release-compatibility-gate-omn-20381 | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-10-24T09:30:06Z | CLAIM | lane=infra-5307-labproof-0930 | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-10-24T10:29:05Z | CLAIM | lane=core-dev-red-1025 | cause=omnibase_core:CI Summary
+2026-10-24T10:38:00Z | CLAIM | lane=core-dev-red-1026 | cause=omnibase_core:CI Summary
+2026-10-24T10:39:57Z | CLAIM | lane=cause-omnimarket-sibling-release-compatibility-gate-omn-20381 | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-10-24T10:49:16Z | CLAIM | lane=core-dev-red-1040 | cause=omnibase_core:CI Summary
+2026-10-24T11:01:59Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1059Z | cause=omnibase_core:CI Summary
+2026-10-24T11:25:56Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1107Z | cause=omnibase_core:CI Summary
+2026-10-24T11:25:57Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1117Z | cause=omnibase_core:CI Summary
+2026-10-24T11:49:35Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1137Z | cause=omnibase_core:CI Summary
+2026-10-24T11:49:35Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1148Z | cause=omnibase_core:CI Summary
+2026-10-24T13:48:46Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-24T13:58:55Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-24T18:34:27Z | CLAIM | lane=landing-cause-L16547 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-24T22:18:36Z | CLAIM | lane=landing-cause-L16603 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-24T22:40:47Z | CLAIM | lane=landing-cause-L16606 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T01:46:19Z | CLAIM | lane=landing-cause-L16650 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-25T02:10:30Z | CLAIM | lane=landing-cause-L16665 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-25T02:39:05Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T04:09:25Z | CLAIM | lane=cause-omnibase_infra-ci-summary | cause=omnibase_infra:CI Summary
+2026-10-25T06:09:14Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0620 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T07:59:56Z | CLAIM | lane=landing-cause-L16765 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-25T08:01:35Z | CLAIM | lane=landing-L16765 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-25T10:09:15Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-1010 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T10:39:04Z | CLAIM | lane=cause-omnibase_infra-repo-evidence-dod-verify-1040 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-25T12:11:29Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T12:20:43Z | CLAIM | lane=landing-cause-L16821 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-25T12:30:18Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T14:12:24Z | CLAIM | lane=cause-omnimarket-coverage-sweep-gate | cause=omnimarket:Coverage Sweep Gate
+2026-10-25T15:13:04Z | CLAIM | lane=cause-omnimarket-covsweep-4406-1515 | cause=omnimarket:Coverage Sweep Gate
+2026-10-25T15:30:47Z | CLAIM | lane=cause-infra-hrtg-1535 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T15:40:00Z | CLAIM | lane=infra-review-threads-1540 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T17:13:21Z | CLAIM | lane=infra-review-threads-1712 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T17:53:04Z | CLAIM | lane=cause-omnibase_infra-hrtg-1810 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T19:09:47Z | CLAIM | lane=cause-omnibase_infra-reds-1930 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T20:10:57Z | CLAIM | lane=cause-omnibase_infra-hrtg-2015 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T20:30:53Z | CLAIM | lane=cause-omnibase_infra-hrtg-2050 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T20:53:09Z | CLAIM | lane=landing-cause-L16915 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T20:53:19Z | CLAIM | lane=landing-cause-L16916 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-25T20:53:29Z | CLAIM | lane=landing-cause-L16917 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-25T20:54:42Z | CLAIM | lane=landing-L16916 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-25T21:19:43Z | CLAIM | lane=cause-omnibase_infra-hrtg-2115 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T21:34:20Z | CLAIM | lane=landing-cause-L16939 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T21:35:47Z | CLAIM | lane=landing-L16939 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T21:58:44Z | CLAIM | lane=landing-cause-L16951 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T22:18:37Z | CLAIM | lane=landing-cause-L16963 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T22:19:23Z | CLAIM | lane=landing-L16963 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T22:46:33Z | CLAIM | lane=landing-cause-L16980 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T22:47:02Z | CLAIM | lane=landing-L16980 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-25T22:59:25Z | CLAIM | lane=cause-omnibase_infra-hrtg-2300 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-25T23:41:23Z | CLAIM | lane=cause-stuck-omnibase_infra-20261025T2339Z | cause=omnibase_infra:CI Summary
+2026-10-25T23:41:36Z | CLAIM | lane=cause-omnibase_infra-hrtg-2342 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T00:00:53Z | CLAIM | lane=cause-infra-dev-red-0002 | cause=omnibase_infra:CI Summary
+2026-10-26T01:26:53Z | CLAIM | lane=landing-cause-L17027 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-26T02:10:35Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0210 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T03:38:52Z | CLAIM | lane=landing-cause-L17054 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-26T06:13:28Z | CLAIM | lane=landing-cause-L17082 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-26T06:14:29Z | CLAIM | lane=landing-L17082 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-26T07:06:28Z | CLAIM | lane=landing-cause-L17107 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-26T10:34:28Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-1035 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T13:28:19Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-1130 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T16:39:05Z | CLAIM | lane=cause-omnibase_infra-hrtg-1910 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T21:59:39Z | CLAIM | lane=cause-omnibase_infra-review-thread-gate-2140-r | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-26T22:41:01Z | CLAIM | lane=cause-omnibase_infra-review-thread-gate-2140-r2 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T01:59:57Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0140 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T02:53:58Z | CLAIM | lane=thread-gate-live-contact-0300 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T03:39:30Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0340 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T04:39:17Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0445 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T04:44:37Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0445-r | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T04:52:35Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0445-r | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T05:07:13Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate-0445-r | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T05:19:01Z | CLAIM | lane=landing-cause-L17556 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-27T06:26:41Z | CLAIM | lane=thread-gate-hooks-0620 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T06:44:36Z | CLAIM | lane=thread-gate-hooks-0620 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T07:24:01Z | CLAIM | lane=thread-gate-hooks-0620 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T08:33:43Z | CLAIM | lane=pf-drive-omnibase_infra-5397-0900 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T13:10:16Z | CLAIM | lane=cause-omnibase_infra-hostile-thread-1310 | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-27T17:27:27Z | CLAIM | lane=landing-cause-L17876 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-27T17:34:30Z | CLAIM | lane=landing-cause-L17879 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T17:35:33Z | CLAIM | lane=landing-L17879 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:07:05Z | CLAIM | lane=landing-cause-L17897 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:07:59Z | CLAIM | lane=landing-L17897 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:20:10Z | CLAIM | lane=landing-cause-L17903 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:33:56Z | CLAIM | lane=landing-cause-L17915 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:34:39Z | CLAIM | lane=landing-L17915 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:42:03Z | CLAIM | lane=landing-cause-L17921 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T18:42:39Z | CLAIM | lane=landing-L17921 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-27T19:16:27Z | CLAIM | lane=landing-cause-L17943 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-27T19:18:06Z | CLAIM | lane=landing-L17943 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-27T19:28:22Z | CLAIM | lane=landing-cause-L17953 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-27T19:30:27Z | CLAIM | lane=landing-L17953 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-27T19:55:20Z | CLAIM | lane=landing-cause-L17958 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-27T19:56:16Z | CLAIM | lane=landing-L17958 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-27T21:33:15Z | CLAIM | lane=landing-cause-L17967 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-27T21:38:53Z | CLAIM | lane=landing-L17967 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-27T22:27:12Z | CLAIM | lane=landing-cause-L17972 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-27T22:27:49Z | CLAIM | lane=landing-L17972 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-28T01:46:23Z | CLAIM | lane=landing-cause-L17993 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-28T01:46:55Z | CLAIM | lane=landing-L17993 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-28T02:20:13Z | CLAIM | lane=landing-cause-L18000 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-28T09:52:03Z | CLAIM | lane=landing-cause-L18044 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T09:52:31Z | CLAIM | lane=landing-L18044 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T10:12:10Z | CLAIM | lane=landing-cause-L18056 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T10:21:31Z | CLAIM | lane=landing-cause-L18061 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T10:27:24Z | CLAIM | lane=landing-cause-L18062 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T10:27:49Z | CLAIM | lane=landing-L18062 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T12:48:27Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-28T14:21:55Z | CLAIM | lane=landing-cause-L18092 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T14:23:48Z | CLAIM | lane=landing-L18092 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T16:30:10Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-28T16:38:35Z | CLAIM | lane=cause-omnibase_infra-repo-evidence-dod-verify | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-28T17:32:12Z | CLAIM | lane=landing-cause-L18117 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-28T17:54:49Z | CLAIM | lane=landing-cause-L18121 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-28T19:19:32Z | CLAIM | lane=landing-cause-L18131 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T19:20:15Z | CLAIM | lane=landing-L18131 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T19:53:24Z | CLAIM | lane=landing-cause-L18140 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T19:53:55Z | CLAIM | lane=landing-L18140 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-28T20:46:53Z | CLAIM | lane=landing-cause-L18157 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-28T23:47:09Z | CLAIM | lane=landing-cause-L18201 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-28T23:47:37Z | CLAIM | lane=landing-L18201 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T01:26:30Z | CLAIM | lane=landing-cause-L18218 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-10-29T04:38:07Z | CLAIM | lane=landing-cause-L18270 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T04:38:16Z | CLAIM | lane=landing-cause-L18271 | cause=cause:OmniNode-ai/omnibase_infra:2c6cada1b276
+2026-10-29T04:38:40Z | CLAIM | lane=landing-L18270 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T04:46:28Z | CLAIM | lane=landing-cause-L18274 | cause=cause:OmniNode-ai/omnibase_infra:2c6cada1b276
+2026-10-29T05:06:38Z | CLAIM | lane=landing-cause-L18288 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-29T05:07:34Z | CLAIM | lane=landing-L18288 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-29T05:27:12Z | CLAIM | lane=landing-cause-L18300 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T05:27:50Z | CLAIM | lane=landing-L18300 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T05:39:59Z | CLAIM | lane=landing-cause-L18307 | cause=cause:OmniNode-ai/omnibase_core:210ea1fdee00
+2026-10-29T05:40:44Z | CLAIM | lane=landing-L18307 | cause=cause:OmniNode-ai/omnibase_core:210ea1fdee00
+2026-10-29T06:52:45Z | CLAIM | lane=landing-cause-L18338 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-29T06:53:17Z | CLAIM | lane=landing-L18338 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-29T06:59:22Z | CLAIM | lane=landing-cause-L18341 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-29T07:27:01Z | CLAIM | lane=landing-cause-L18360 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-29T07:27:44Z | CLAIM | lane=landing-L18360 | cause=cause:OmniNode-ai/omnibase_infra:24a646df88e4
+2026-10-29T07:51:39Z | CLAIM | lane=landing-cause-L18370 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T09:06:27Z | CLAIM | lane=landing-cause-L18393 | cause=cause:OmniNode-ai/omnibase_core:4a3bcc1e48bd
+2026-10-29T09:26:56Z | CLAIM | lane=landing-cause-L18400 | cause=cause:OmniNode-ai/omniclaude:49a8f4a6037c
+2026-10-29T09:27:22Z | CLAIM | lane=landing-L18400 | cause=cause:OmniNode-ai/omniclaude:49a8f4a6037c
+2026-10-29T11:32:24Z | CLAIM | lane=landing-cause-L18422 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T11:47:18Z | CLAIM | lane=landing-cause-L18426 | cause=cause:OmniNode-ai/omnibase_infra:5badf300a472
+2026-10-29T12:01:01Z | CLAIM | lane=landing-cause-L18433 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T12:19:54Z | CLAIM | lane=landing-cause-L18439 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T12:33:24Z | CLAIM | lane=landing-cause-L18447 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T12:34:12Z | CLAIM | lane=landing-L18447 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T12:39:19Z | CLAIM | lane=s1-omn-21495-1245-dodbudget | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-29T12:39:33Z | CLAIM | lane=landing-cause-L18450 | cause=cause:OmniNode-ai/omnibase_infra:aaf42b578733
+2026-10-29T12:46:14Z | CLAIM | lane=landing-cause-L18452 | cause=cause:OmniNode-ai/omnibase_infra:aaf42b578733
+2026-10-29T12:46:24Z | CLAIM | lane=landing-cause-L18453 | cause=cause:OmniNode-ai/omnimarket:f0377363a33c
+2026-10-29T12:46:53Z | CLAIM | lane=landing-L18452 | cause=cause:OmniNode-ai/omnibase_infra:aaf42b578733
+2026-10-29T12:47:09Z | CLAIM | lane=landing-L18453 | cause=cause:OmniNode-ai/omnimarket:f0377363a33c
+2026-10-29T13:09:13Z | CLAIM | lane=landing-cause-L18462 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T13:10:09Z | CLAIM | lane=landing-L18462 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T13:20:27Z | CLAIM | lane=s1-omn-21515-1325-compl2135 | cause=omnibase_core:Contract Compliance
+2026-10-29T13:46:50Z | CLAIM | lane=landing-cause-L18474 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-29T13:47:15Z | CLAIM | lane=landing-L18474 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-29T14:34:46Z | CLAIM | lane=cause-infra-5426-1435 | cause=omnibase_infra:runtime-boot
+2026-10-29T14:40:54Z | CLAIM | lane=landing-cause-L18497 | cause=cause:OmniNode-ai/omnimarket:f0377363a33c
+2026-10-29T14:41:43Z | CLAIM | lane=landing-L18497 | cause=cause:OmniNode-ai/omnimarket:f0377363a33c
+2026-10-29T14:47:44Z | CLAIM | lane=landing-cause-L18499 | cause=cause:OmniNode-ai/omnimarket:f0377363a33c
+2026-10-29T15:00:35Z | CLAIM | lane=landing-cause-L18504 | cause=cause:OmniNode-ai/omnibase_core:bf85e739c96d
+2026-10-29T15:46:25Z | CLAIM | lane=landing-cause-L18521 | cause=cause:OmniNode-ai/omnibase_core:e51b2cb7cb13
+2026-10-29T15:46:51Z | CLAIM | lane=landing-L18521 | cause=cause:OmniNode-ai/omnibase_core:e51b2cb7cb13
+2026-10-29T15:56:16Z | CLAIM | lane=mq-5437-1600 | cause=omnibase_infra:merge_group
+2026-10-29T15:57:33Z | CLAIM | lane=mq-5437-1600-cause | cause=omnibase_infra:merge group
+2026-10-29T17:19:48Z | CLAIM | lane=cause-core-s1red-1720 | cause=omnibase_core:deploy-gate
+2026-10-29T17:27:53Z | CLAIM | lane=landing-cause-L18545 | cause=cause:OmniNode-ai/omnibase_core:52c59723e1ad
+2026-10-29T17:28:53Z | CLAIM | lane=landing-L18545 | cause=cause:OmniNode-ai/omnibase_core:52c59723e1ad
+2026-10-29T17:41:12Z | CLAIM | lane=landing-cause-L18550 | cause=cause:OmniNode-ai/omnibase_core:d9946f8e879f
+2026-10-29T17:42:17Z | CLAIM | lane=landing-L18550 | cause=cause:OmniNode-ai/omnibase_core:d9946f8e879f
+2026-10-29T17:54:19Z | CLAIM | lane=thread-replies-omnibase_infra-hostile-review-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-29T17:54:27Z | CLAIM | lane=landing-cause-L18556 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-29T17:59:36Z | CLAIM | lane=thread-replies-omnibase_infra-hostile-review-gate-b | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-29T18:37:06Z | CLAIM | lane=fix-omnimarket-coverage-sweep-gate | cause=omnimarket:Coverage Sweep Gate
+2026-10-29T19:24:33Z | CLAIM | lane=fix-omnibase_core-dod-verify-shared | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-29T19:49:54Z | CLAIM | lane=cause-omnibase_core-repo-evidence-dod-verify-2000 | cause=omnibase_core:repo-evidence/dod-verify
+2026-10-29T19:59:50Z | CLAIM | lane=fix-dev-red-omnibase_infra-2010 | cause=omnibase_infra:dev-red parent=orchestrator-31d9 Diagnose the omnibase_infra dev head red; check whether the omnibase_core#2135 module move is the cause, else fix forward by one PR.
+2026-10-29T20:01:47Z | CLAIM | lane=landing-cause-L18591 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-29T20:05:07Z | CLAIM | lane=landing-L18591 | cause=cause:OmniNode-ai/omnibase_spi:a2ca3fec4450
+2026-10-29T20:11:50Z | CLAIM | lane=cause-omnibase_infra-ci-summary-2010 | cause=omnibase_infra:CI Summary
+2026-10-29T20:32:45Z | CLAIM | lane=landing-cause-L18611 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-29T20:33:20Z | CLAIM | lane=landing-L18611 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-29T21:30:04Z | CLAIM | lane=controller-claim-traceback-2130 | cause=omnimarket:controller-claim-refused
+2026-10-29T21:33:06Z | CLAIM | lane=landing-cause-L18637 | cause=cause:OmniNode-ai/omnimarket:e5b40df79dc1
+2026-10-29T21:33:43Z | CLAIM | lane=landing-L18637 | cause=cause:OmniNode-ai/omnimarket:e5b40df79dc1
+2026-10-29T21:54:09Z | CLAIM | lane=landing-cause-L18643 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-29T22:20:20Z | CLAIM | lane=landing-cause-L18650 | cause=cause:OmniNode-ai/omnibase_core:acb35927fbd2
+2026-10-29T22:20:54Z | CLAIM | lane=landing-L18650 | cause=cause:OmniNode-ai/omnibase_core:acb35927fbd2
+2026-10-29T22:32:32Z | CLAIM | lane=landing-cause-L18653 | cause=cause:OmniNode-ai/omnibase_core:acb35927fbd2
+2026-10-29T23:03:41Z | CLAIM | lane=omn21498-revert-control-2305 | cause=omnibase_core:repo-evidence / dod-verify; fix omnibase_core#2157 red dod-verify, Binds-Merged-Fix control cannot revert merged fix 3f33be0d onto current dev; parent=orchestrator-31d9
+2026-10-29T23:28:46Z | CLAIM | lane=cause-core-2158-mint-0000 | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-30T00:00:47Z | CLAIM | lane=cause-omnibase_core-tests-gate-0000 | cause=omnibase_core:Tests Gate
+2026-10-30T00:01:11Z | CLAIM | lane=cause-omnimarket-canonical-file-shape-0000 | cause=omnimarket:Canonical File Shape (OMN-20304)
+2026-10-30T00:12:00Z | CLAIM | lane=cause-omnibase_core-pre-commit-suite-0010 | cause=omnibase_core:Pre-commit Suite (OMN-18899)
+2026-10-30T00:19:26Z | CLAIM | lane=cause-omnibase_core-repo-evidence-dod-verify-0020 | cause=omnibase_core:repo-evidence / dod-verify
+2026-10-30T00:41:40Z | CLAIM | lane=cause-core-dev-ci-summary-0045 | cause=omnibase_core:CI Summary
+2026-10-30T01:00:31Z | CLAIM | lane=cause-omnibase_infra-repo-evidence-dod-verify-0100 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-30T02:01:50Z | CLAIM | lane=landing-cause-L18695 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T02:58:36Z | CLAIM | lane=landing-cause-L18720 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T03:05:15Z | CLAIM | lane=landing-L18720 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T03:13:02Z | CLAIM | lane=landing-cause-L18729 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T03:13:11Z | CLAIM | lane=landing-cause-L18730 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T03:13:34Z | CLAIM | lane=landing-L18729 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T03:13:48Z | CLAIM | lane=landing-L18730 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T03:59:22Z | CLAIM | lane=landing-cause-L18749 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T04:00:51Z | CLAIM | lane=landing-L18749 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T04:38:46Z | CLAIM | lane=landing-cause-L18761 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T04:39:50Z | CLAIM | lane=landing-L18761 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T05:06:33Z | CLAIM | lane=landing-cause-L18776 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-30T05:06:35Z | CLAIM | lane=landing-cause-L18777 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-30T05:07:05Z | CLAIM | lane=landing-L18776 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-30T05:07:15Z | CLAIM | lane=landing-L18777 | cause=cause:OmniNode-ai/omniclaude:4813c0f06248
+2026-10-30T05:20:53Z | CLAIM | lane=landing-cause-L18783 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T06:52:36Z | CLAIM | lane=landing-cause-L18797 | cause=cause:OmniNode-ai/omnimarket:28e49fad5c84
+2026-10-30T06:52:56Z | CLAIM | lane=landing-L18797 | cause=cause:OmniNode-ai/omnimarket:28e49fad5c84
+2026-10-30T06:58:49Z | CLAIM | lane=landing-cause-L18799 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-30T07:00:49Z | CLAIM | lane=landing-cause-L18801 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-30T07:01:20Z | CLAIM | lane=landing-L18801 | cause=cause:OmniNode-ai/omnibase_infra:3e0c499ddc2e
+2026-10-30T07:58:52Z | CLAIM | lane=landing-cause-L18813 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T07:59:54Z | CLAIM | lane=landing-L18813 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T08:39:07Z | CLAIM | lane=landing-cause-L18826 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T08:39:29Z | CLAIM | lane=landing-L18826 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T09:47:10Z | CLAIM | lane=landing-cause-L18845 | cause=cause:OmniNode-ai/omniclaude:f891e934ce4e
+2026-10-30T11:28:16Z | CLAIM | lane=cause-infra-thread-gate-1130 | cause="omnibase_infra:Hostile Review Thread Gate" read failing runs on omnibase_infra#5237 #5315 #5368 #5371 #5372 #5373 #5375, decide shared cause vs per-PR threads
+2026-10-30T11:41:15Z | CLAIM | lane=landing-cause-L18889 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T11:41:50Z | CLAIM | lane=landing-L18889 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T11:54:00Z | CLAIM | lane=landing-cause-L18893 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T11:54:35Z | CLAIM | lane=landing-L18893 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T13:07:34Z | CLAIM | lane=infra-5375-finish-1310 | cause=omnibase_infra:repo-evidence/dod-verify
+2026-10-30T13:22:27Z | CLAIM | lane=infra-5375-bus-1345 | cause=omnibase_infra:repo-evidence/dod-verify
+2026-10-30T13:24:35Z | CLAIM | lane=cause-omnimarket-coverage-sweep-gate | cause=omnimarket:Coverage-Sweep-Gate
+2026-10-30T14:15:56Z | CLAIM | lane=landing-cause-L18939 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-30T14:17:27Z | CLAIM | lane=landing-L18939 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-30T14:22:10Z | CLAIM | lane=landing-cause-L18943 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T14:23:36Z | CLAIM | lane=landing-L18943 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-30T15:27:10Z | CLAIM | lane=landing-cause-L18969 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T15:28:34Z | CLAIM | lane=landing-L18969 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T15:33:24Z | CLAIM | lane=landing-cause-L18972 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T15:34:44Z | CLAIM | lane=landing-L18972 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T15:46:46Z | CLAIM | lane=landing-cause-L18981 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-30T15:48:57Z | CLAIM | lane=landing-L18981 | cause=cause:OmniNode-ai/omniclaude:52c59723e1ad
+2026-10-30T15:49:56Z | CLAIM | lane=cause-omnibase_infra-hostile-review-thread-gate | cause=omnibase_infra:Hostile Review Thread Gate
+2026-10-30T15:58:53Z | CLAIM | lane=landing-cause-L18994 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T15:59:33Z | CLAIM | lane=landing-L18994 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T16:19:38Z | CLAIM | lane=landing-cause-L19007 | cause=cause:OmniNode-ai/omnibase_infra:40cc0de12c9b
+2026-10-30T16:20:08Z | CLAIM | lane=landing-L19007 | cause=cause:OmniNode-ai/omnibase_infra:40cc0de12c9b
+2026-10-30T16:27:24Z | CLAIM | lane=landing-cause-L19012 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T16:28:06Z | CLAIM | lane=landing-L19012 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T17:18:13Z | CLAIM | lane=cause-repo-b-automation-liveness | cause=repo-b:Automation liveness overlay completeness (OMN-20804)
+2026-10-30T17:48:41Z | CLAIM | lane=cause-omnimarket-sibling-release-compat | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-10-30T18:07:49Z | CLAIM | lane=cause-omnimarket-dep-provenance | cause=omnimarket:Dep Provenance Gate
+2026-10-30T18:21:05Z | CLAIM | lane=landing-cause-L19066 | cause=cause:OmniNode-ai/omnimarket:b684daef32dc
+2026-10-30T18:22:20Z | CLAIM | lane=landing-L19066 | cause=cause:OmniNode-ai/omnimarket:b684daef32dc
+2026-10-30T18:39:46Z | CLAIM | lane=landing-cause-L19080 | cause=cause:OmniNode-ai/omnimarket:3acb580d2760
+2026-10-30T18:40:47Z | CLAIM | lane=landing-L19080 | cause=cause:OmniNode-ai/omnimarket:3acb580d2760
+2026-10-30T18:47:28Z | CLAIM | lane=landing-cause-L19088 | cause=cause:OmniNode-ai/repo-b:cc04aa1356f7
+2026-10-30T18:49:20Z | CLAIM | lane=landing-L19088 | cause=cause:OmniNode-ai/repo-b:cc04aa1356f7
+2026-10-30T18:53:31Z | CLAIM | lane=landing-cause-L19095 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T18:54:06Z | CLAIM | lane=landing-L19095 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T18:59:47Z | CLAIM | lane=landing-cause-L19097 | cause=cause:OmniNode-ai/repo-b:cc04aa1356f7
+2026-10-30T19:00:30Z | CLAIM | lane=landing-L19097 | cause=cause:OmniNode-ai/repo-b:cc04aa1356f7
+2026-10-30T20:38:39Z | CLAIM | lane=landing-cause-L19126 | cause=cause:OmniNode-ai/omnibase_infra:40cc0de12c9b
+2026-10-30T20:41:01Z | CLAIM | lane=landing-L19126 | cause=cause:OmniNode-ai/omnibase_infra:40cc0de12c9b
+2026-10-30T20:46:54Z | CLAIM | lane=landing-cause-L19134 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T20:47:05Z | CLAIM | lane=landing-cause-L19135 | cause=cause:OmniNode-ai/omnimarket:eb98b886ce82
+2026-10-30T20:47:52Z | CLAIM | lane=landing-L19134 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T20:48:01Z | CLAIM | lane=landing-L19135 | cause=cause:OmniNode-ai/omnimarket:eb98b886ce82
+2026-10-30T20:53:25Z | CLAIM | lane=landing-cause-L19140 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T20:53:35Z | CLAIM | lane=landing-cause-L19141 | cause=cause:OmniNode-ai/omnibase_core:cceb2341f7a4
+2026-10-30T20:54:01Z | CLAIM | lane=landing-L19140 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T20:59:42Z | CLAIM | lane=landing-cause-L19143 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-30T21:20:47Z | CLAIM | lane=landing-cause-L19161 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T21:21:25Z | CLAIM | lane=landing-L19161 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T21:26:44Z | CLAIM | lane=landing-cause-L19164 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-30T21:32:47Z | CLAIM | lane=landing-cause-L19169 | cause=cause:OmniNode-ai/omnimarket:1c9627ea3cc7
+2026-10-30T21:33:53Z | CLAIM | lane=landing-L19169 | cause=cause:OmniNode-ai/omnimarket:1c9627ea3cc7
+2026-10-30T22:13:22Z | CLAIM | lane=landing-cause-L19192 | cause=cause:OmniNode-ai/omnimarket:73aaffdd1d9c
+2026-10-30T22:14:41Z | CLAIM | lane=landing-L19192 | cause=cause:OmniNode-ai/omnimarket:73aaffdd1d9c
+2026-10-31T00:33:46Z | CLAIM | lane=landing-cause-L19284 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-31T00:40:57Z | CLAIM | lane=landing-cause-L19288 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T00:42:09Z | CLAIM | lane=landing-L19288 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T01:02:16Z | CLAIM | lane=landing-cause-L19307 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T01:03:19Z | CLAIM | lane=landing-L19307 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T01:08:23Z | CLAIM | lane=landing-cause-L19314 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T01:41:33Z | CLAIM | lane=landing-cause-L19332 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T01:42:06Z | CLAIM | lane=landing-L19332 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T01:55:28Z | CLAIM | lane=landing-cause-L19336 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T01:56:47Z | CLAIM | lane=landing-L19336 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T02:11:37Z | CLAIM | lane=landing-cause-L19344 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T02:13:19Z | CLAIM | lane=landing-L19344 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T02:19:29Z | CLAIM | lane=landing-cause-L19347 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T02:20:18Z | CLAIM | lane=landing-L19347 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T03:15:22Z | CLAIM | lane=landing-cause-L19370 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T03:16:12Z | CLAIM | lane=landing-L19370 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T03:22:22Z | CLAIM | lane=landing-cause-L19375 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T03:37:02Z | CLAIM | lane=landing-cause-L19382 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T03:37:48Z | CLAIM | lane=landing-L19382 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T03:41:29Z | CLAIM | lane=landing-cause-L19385 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T03:42:58Z | CLAIM | lane=landing-L19385 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T04:01:27Z | CLAIM | lane=landing-cause-L19396 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T04:21:25Z | CLAIM | lane=landing-cause-L19410 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T04:21:36Z | CLAIM | lane=landing-cause-L19411 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T04:22:24Z | CLAIM | lane=landing-L19411 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T04:41:30Z | CLAIM | lane=landing-cause-L19424 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T04:48:23Z | CLAIM | lane=landing-cause-L19427 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T04:49:41Z | CLAIM | lane=landing-L19427 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T05:01:57Z | CLAIM | lane=landing-cause-L19437 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T05:14:59Z | CLAIM | lane=landing-cause-L19446 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T05:22:11Z | CLAIM | lane=landing-cause-L19450 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T05:23:41Z | CLAIM | lane=landing-L19450 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T05:37:43Z | CLAIM | lane=landing-cause-L19455 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T05:39:13Z | CLAIM | lane=landing-L19455 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T05:41:17Z | CLAIM | lane=landing-cause-L19460 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T06:04:41Z | CLAIM | lane=landing-cause-L19475 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T06:05:16Z | CLAIM | lane=landing-L19475 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T06:17:36Z | CLAIM | lane=landing-cause-L19482 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T06:18:25Z | CLAIM | lane=landing-L19482 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T06:46:31Z | CLAIM | lane=landing-cause-L19500 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-31T06:47:29Z | CLAIM | lane=landing-L19500 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-10-31T06:53:03Z | CLAIM | lane=landing-cause-L19505 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T06:54:27Z | CLAIM | lane=landing-L19505 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T07:26:24Z | CLAIM | lane=landing-cause-L19526 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T07:28:56Z | CLAIM | lane=landing-L19526 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T08:14:45Z | CLAIM | lane=landing-cause-L19560 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T08:14:55Z | CLAIM | lane=landing-cause-L19561 | cause=cause:OmniNode-ai/omnibase_infra:7b04e1289c5a
+2026-10-31T08:16:55Z | CLAIM | lane=cause-repo-a-1336-1337-0910 | cause=repo-a:validate-plugin
+2026-10-31T08:25:33Z | CLAIM | lane=landing-cause-L19565 | cause=cause:OmniNode-ai/omniintelligence:d24fd94e1969
+2026-10-31T08:30:24Z | CLAIM | lane=landing-L19565 | cause=cause:OmniNode-ai/omniintelligence:d24fd94e1969
+2026-10-31T08:34:38Z | CLAIM | lane=landing-cause-L19572 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T08:42:06Z | CLAIM | lane=cause-omniintelligence-1162-0840 | cause=omniintelligence:Canonical Handler-Shape Ratchet
+2026-10-31T08:44:51Z | CLAIM | lane=landing-cause-L19578 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T08:48:30Z | CLAIM | lane=landing-L19578 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T08:52:06Z | CLAIM | lane=landing-cause-L19584 | cause=cause:OmniNode-ai/omniclaude:de92fcdf9cec
+2026-10-31T08:54:36Z | CLAIM | lane=landing-L19584 | cause=cause:OmniNode-ai/omniclaude:de92fcdf9cec
+2026-10-31T08:58:53Z | CLAIM | lane=landing-cause-L19593 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T08:59:03Z | CLAIM | lane=landing-cause-L19594 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T09:00:46Z | CLAIM | lane=landing-L19593 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T09:01:29Z | CLAIM | lane=landing-cause-L19601 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T09:16:01Z | CLAIM | lane=landing-cause-L19611 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T09:16:10Z | CLAIM | lane=landing-cause-L19612 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T09:18:14Z | CLAIM | lane=landing-L19611 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T09:28:28Z | CLAIM | lane=landing-cause-L19623 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T09:28:37Z | CLAIM | lane=landing-cause-L19624 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T09:28:46Z | CLAIM | lane=landing-cause-L19625 | cause=cause:OmniNode-ai/omniintelligence:d24fd94e1969
+2026-10-31T09:30:51Z | CLAIM | lane=landing-L19623 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T09:31:19Z | CLAIM | lane=landing-L19625 | cause=cause:OmniNode-ai/omniintelligence:d24fd94e1969
+2026-10-31T09:32:23Z | CLAIM | lane=landing-L19624 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T09:36:27Z | CLAIM | lane=landing-cause-L19633 | cause=cause:OmniNode-ai/omniclaude:7e88c1e5fbab
+2026-10-31T09:37:41Z | CLAIM | lane=landing-L19633 | cause=cause:OmniNode-ai/omniclaude:7e88c1e5fbab
+2026-10-31T09:42:44Z | CLAIM | lane=landing-cause-L19638 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T09:42:53Z | CLAIM | lane=landing-cause-L19639 | cause=cause:OmniNode-ai/omniintelligence:3f2ca9a4f066
+2026-10-31T09:44:32Z | CLAIM | lane=landing-L19639 | cause=cause:OmniNode-ai/omniintelligence:3f2ca9a4f066
+2026-10-31T09:56:33Z | CLAIM | lane=landing-cause-L19666 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T09:56:42Z | CLAIM | lane=landing-cause-L19667 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T09:59:53Z | CLAIM | lane=landing-L19666 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T10:00:03Z | CLAIM | lane=landing-L19667 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T10:01:54Z | CLAIM | lane=landing-cause-L19677 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T10:04:13Z | CLAIM | lane=cause-omnimarket-contract-reds-1010 | cause=omnimarket:Tests (Split 6/20)
+2026-10-31T10:04:14Z | CLAIM | lane=landing-L19677 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T10:21:45Z | CLAIM | lane=landing-cause-L19705 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T10:24:22Z | CLAIM | lane=landing-L19705 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T10:41:49Z | CLAIM | lane=landing-cause-L19740 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T10:42:39Z | CLAIM | lane=cause-infra-dod-verify-1045 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-31T10:55:31Z | CLAIM | lane=landing-cause-L19761 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-31T10:55:57Z | CLAIM | lane=dod-verify-linear-1100 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-10-31T10:56:49Z | CLAIM | lane=landing-L19761 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-31T11:01:51Z | CLAIM | lane=landing-cause-L19768 | cause=cause:OmniNode-ai/omniclaude:7e88c1e5fbab
+2026-10-31T11:05:01Z | CLAIM | lane=landing-L19768 | cause=cause:OmniNode-ai/omniclaude:7e88c1e5fbab
+2026-10-31T11:06:20Z | CLAIM | lane=criteria-trusted-1115 | cause=omnibase_infra:repo-evidence/dod-verify
+2026-10-31T11:17:03Z | CLAIM | lane=landing-cause-L19795 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T11:17:14Z | CLAIM | lane=landing-cause-L19796 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T11:21:40Z | CLAIM | lane=landing-L19796 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T11:42:48Z | CLAIM | lane=landing-cause-L19828 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T11:42:57Z | CLAIM | lane=landing-cause-L19829 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T11:47:53Z | CLAIM | lane=landing-L19829 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T11:49:26Z | CLAIM | lane=landing-L19828 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:00:05Z | CLAIM | lane=landing-cause-L19847 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T12:08:40Z | CLAIM | lane=landing-L19847 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T12:10:44Z | CLAIM | lane=landing-cause-L19860 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:16:48Z | CLAIM | lane=landing-L19860 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:20:22Z | CLAIM | lane=landing-cause-L19873 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T12:20:38Z | CLAIM | lane=landing-cause-L19874 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-31T12:23:20Z | CLAIM | lane=landing-cause-L19882 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T12:30:54Z | CLAIM | lane=landing-L19882 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T12:32:18Z | CLAIM | lane=landing-cause-L19890 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:39:34Z | CLAIM | lane=landing-L19890 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:53:30Z | CLAIM | lane=landing-L19874 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-10-31T12:56:20Z | CLAIM | lane=landing-cause-L19913 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T12:56:31Z | CLAIM | lane=landing-cause-L19914 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T13:01:50Z | CLAIM | lane=landing-L19913 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T13:02:26Z | CLAIM | lane=landing-L19914 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T13:21:42Z | CLAIM | lane=landing-cause-L19945 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T13:26:01Z | CLAIM | lane=landing-L19945 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T13:36:22Z | CLAIM | lane=landing-cause-L19948 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T13:38:41Z | CLAIM | lane=landing-L19948 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T13:41:47Z | CLAIM | lane=landing-cause-L19955 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T13:41:57Z | CLAIM | lane=landing-cause-L19956 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T13:44:14Z | CLAIM | lane=landing-L19955 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T13:44:46Z | CLAIM | lane=landing-L19956 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T14:00:01Z | CLAIM | lane=landing-cause-L19970 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T14:04:59Z | CLAIM | lane=landing-L19970 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T14:10:33Z | CLAIM | lane=landing-cause-L19989 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T14:22:48Z | CLAIM | lane=landing-cause-L19996 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T14:26:13Z | CLAIM | lane=landing-L19996 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T14:34:33Z | CLAIM | lane=landing-cause-L20008 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T14:34:43Z | CLAIM | lane=landing-cause-L20009 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T14:42:28Z | CLAIM | lane=landing-L20008 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T14:44:22Z | CLAIM | lane=landing-L20009 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T14:51:37Z | CLAIM | lane=landing-cause-L20032 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T14:51:47Z | CLAIM | lane=landing-cause-L20033 | cause=cause:OmniNode-ai/omnibase_infra:cffb4334ad9c
+2026-10-31T14:54:06Z | CLAIM | lane=landing-L20032 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T14:54:19Z | CLAIM | lane=landing-L20033 | cause=cause:OmniNode-ai/omnibase_infra:cffb4334ad9c
+2026-10-31T14:58:37Z | CLAIM | lane=landing-cause-L20046 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T14:59:33Z | CLAIM | lane=landing-L20046 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T15:03:05Z | CLAIM | lane=landing-cause-L20053 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T15:05:29Z | CLAIM | lane=landing-L20053 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T15:17:33Z | CLAIM | lane=landing-cause-L20070 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T15:17:43Z | CLAIM | lane=landing-cause-L20071 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T15:19:43Z | CLAIM | lane=landing-L20070 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T15:19:57Z | CLAIM | lane=landing-L20071 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T15:21:37Z | CLAIM | lane=landing-cause-L20080 | cause=cause:OmniNode-ai/omnibase_infra:6d5324c752c1
+2026-10-31T15:47:57Z | CLAIM | lane=landing-cause-L20144 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T15:51:21Z | CLAIM | lane=landing-L20144 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T16:18:23Z | CLAIM | lane=landing-cause-L20177 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T16:18:33Z | CLAIM | lane=landing-cause-L20178 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T16:21:33Z | CLAIM | lane=landing-L20177 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T16:22:03Z | CLAIM | lane=landing-L20178 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T16:31:55Z | CLAIM | lane=fix-omniintelligence-repo-evidence-dod-verify | cause=omniintelligence:repo-evidence / dod-verify
+2026-10-31T16:34:23Z | CLAIM | lane=landing-cause-L20203 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T16:37:11Z | CLAIM | lane=landing-L20203 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T16:40:49Z | CLAIM | lane=landing-cause-L20217 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T16:48:07Z | CLAIM | lane=landing-cause-L20223 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T16:52:59Z | CLAIM | lane=landing-L20223 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-10-31T16:54:55Z | CLAIM | lane=landing-cause-L20236 | cause=cause:OmniNode-ai/omnibase_infra:0374409053c8
+2026-10-31T16:57:33Z | CLAIM | lane=landing-L20236 | cause=cause:OmniNode-ai/omnibase_infra:0374409053c8
+2026-10-31T17:09:49Z | CLAIM | lane=landing-cause-L20258 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T17:11:03Z | CLAIM | lane=landing-L20258 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T17:59:58Z | CLAIM | lane=landing-cause-L20313 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T18:00:34Z | CLAIM | lane=landing-cause-L20314 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T18:07:55Z | CLAIM | lane=landing-L20313 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T18:21:44Z | CLAIM | lane=landing-cause-L20341 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T18:23:16Z | CLAIM | lane=landing-L20341 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T18:43:04Z | CLAIM | lane=landing-cause-L20366 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T18:50:18Z | CLAIM | lane=landing-cause-L20383 | cause=cause:OmniNode-ai/omnibase_infra:20feea3a4655
+2026-10-31T18:50:28Z | CLAIM | lane=landing-cause-L20384 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T18:54:17Z | CLAIM | lane=landing-L20383 | cause=cause:OmniNode-ai/omnibase_infra:20feea3a4655
+2026-10-31T18:54:42Z | CLAIM | lane=landing-L20384 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T19:00:20Z | CLAIM | lane=landing-cause-L20396 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T19:02:41Z | CLAIM | lane=landing-L20396 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T19:06:36Z | CLAIM | lane=landing-cause-L20404 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T19:10:26Z | CLAIM | lane=landing-L20404 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T19:18:49Z | CLAIM | lane=landing-cause-L20423 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T19:21:11Z | CLAIM | lane=landing-L20423 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T19:32:13Z | CLAIM | lane=landing-cause-L20439 | cause=cause:OmniNode-ai/omnibase_infra:f9652b1d2966
+2026-10-31T19:37:17Z | CLAIM | lane=landing-L20439 | cause=cause:OmniNode-ai/omnibase_infra:f9652b1d2966
+2026-10-31T19:43:38Z | CLAIM | lane=landing-cause-L20462 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-31T19:45:01Z | CLAIM | lane=landing-L20462 | cause=cause:OmniNode-ai/omnimarket:52c59723e1ad
+2026-10-31T19:50:45Z | CLAIM | lane=landing-cause-L20466 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T20:02:06Z | CLAIM | lane=landing-cause-L20488 | cause=cause:OmniNode-ai/omniclaude:dd1441ac78f3
+2026-10-31T20:03:19Z | CLAIM | lane=landing-L20488 | cause=cause:OmniNode-ai/omniclaude:dd1441ac78f3
+2026-10-31T20:22:40Z | CLAIM | lane=landing-cause-L20497 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T20:22:50Z | CLAIM | lane=landing-cause-L20498 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T20:42:39Z | CLAIM | lane=landing-cause-L20514 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T20:51:27Z | CLAIM | lane=landing-cause-L20515 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T20:58:06Z | CLAIM | lane=landing-cause-L20522 | cause=cause:OmniNode-ai/omnibase_infra:210ea1fdee00
+2026-10-31T21:02:46Z | CLAIM | lane=landing-L20522 | cause=cause:OmniNode-ai/omnibase_infra:210ea1fdee00
+2026-10-31T21:08:30Z | CLAIM | lane=landing-cause-L20536 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T21:18:08Z | CLAIM | lane=landing-cause-L20545 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T21:21:07Z | CLAIM | lane=landing-L20545 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T21:29:46Z | CLAIM | lane=landing-cause-L20555 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T21:31:36Z | CLAIM | lane=landing-L20555 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T21:58:21Z | CLAIM | lane=landing-cause-L20577 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T21:58:36Z | CLAIM | lane=landing-cause-L20578 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T22:05:05Z | CLAIM | lane=landing-L20577 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T22:16:28Z | CLAIM | lane=landing-cause-L20593 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T22:17:33Z | CLAIM | lane=landing-L20593 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T22:25:54Z | CLAIM | lane=landing-cause-L20595 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T22:26:05Z | CLAIM | lane=landing-cause-L20596 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T22:27:43Z | CLAIM | lane=landing-L20595 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T22:28:00Z | CLAIM | lane=landing-L20596 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T22:35:25Z | CLAIM | lane=landing-cause-L20626 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-10-31T22:57:41Z | CLAIM | lane=landing-cause-L20659 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:01:08Z | CLAIM | lane=landing-L20659 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:11:36Z | CLAIM | lane=landing-cause-L20669 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T23:12:48Z | CLAIM | lane=landing-L20669 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-10-31T23:21:54Z | CLAIM | lane=landing-cause-L20683 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T23:28:36Z | CLAIM | lane=landing-cause-L20686 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:35:58Z | CLAIM | lane=landing-cause-L20693 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:36:47Z | CLAIM | lane=landing-L20693 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:41:32Z | CLAIM | lane=landing-cause-L20697 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T23:42:54Z | CLAIM | lane=landing-L20697 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-10-31T23:56:54Z | CLAIM | lane=landing-cause-L20704 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-10-31T23:58:36Z | CLAIM | lane=landing-L20704 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T00:07:26Z | CLAIM | lane=landing-cause-L20712 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T00:07:37Z | CLAIM | lane=landing-cause-L20713 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T00:09:52Z | CLAIM | lane=landing-L20712 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T00:10:16Z | CLAIM | lane=landing-L20713 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T00:36:29Z | CLAIM | lane=landing-cause-L20752 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T00:36:38Z | CLAIM | lane=landing-cause-L20753 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T00:37:48Z | CLAIM | lane=landing-L20752 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T00:37:50Z | CLAIM | lane=landing-L20753 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T00:54:01Z | CLAIM | lane=landing-cause-L20774 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T00:55:07Z | CLAIM | lane=landing-L20774 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T01:00:04Z | CLAIM | lane=landing-cause-L20780 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-11-01T01:00:14Z | CLAIM | lane=landing-cause-L20781 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T01:00:23Z | CLAIM | lane=landing-cause-L20782 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T01:00:32Z | CLAIM | lane=landing-L20780 | cause=cause:OmniNode-ai/omnibase_infra:3a943280d9d6
+2026-11-01T01:01:16Z | CLAIM | lane=landing-L20782 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T01:01:18Z | CLAIM | lane=landing-L20781 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T01:26:59Z | CLAIM | lane=landing-cause-L20811 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T01:27:08Z | CLAIM | lane=landing-cause-L20812 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T01:27:18Z | CLAIM | lane=dod-caller-claude-b | cause=omniclaude:repo-evidence-dod-verify
+2026-11-01T01:31:16Z | CLAIM | lane=landing-L20811 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T01:31:31Z | CLAIM | lane=landing-L20812 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T01:41:30Z | CLAIM | lane=landing-cause-L20825 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-11-01T01:41:39Z | CLAIM | lane=landing-cause-L20826 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T01:42:42Z | CLAIM | lane=landing-L20825 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-11-01T01:46:53Z | CLAIM | lane=bus-groups-0150 | cause=dev-bus:consumer-group-churn
+2026-11-01T01:48:25Z | CLAIM | lane=landing-cause-L20832 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T01:55:36Z | CLAIM | lane=landing-cause-L20838 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-11-01T01:55:45Z | CLAIM | lane=landing-cause-L20839 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T02:01:41Z | CLAIM | lane=landing-cause-L20844 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T02:09:07Z | CLAIM | lane=landing-cause-L20851 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-11-01T02:22:09Z | CLAIM | lane=landing-cause-L20866 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T02:23:42Z | CLAIM | lane=landing-L20866 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T02:30:38Z | CLAIM | lane=landing-cause-L20874 | cause=cause:OmniNode-ai/omniui:75b9aadaefbb
+2026-11-01T02:42:18Z | CLAIM | lane=landing-cause-L20901 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T03:01:05Z | CLAIM | lane=lf-t-c1-0250 | cause=repo-a:validate-plugin
+2026-11-01T03:02:00Z | CLAIM | lane=landing-cause-L20929 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T03:02:04Z | CLAIM | lane=landing-cause-L20930 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T03:03:06Z | CLAIM | lane=landing-L20929 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T03:10:25Z | CLAIM | lane=landing-cause-L20935 | cause=cause:OmniNode-ai/omnibase_infra:e9e213a3e7cd
+2026-11-01T03:10:29Z | CLAIM | lane=landing-cause-L20936 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T03:29:05Z | CLAIM | lane=landing-cause-L20962 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T03:50:27Z | CLAIM | lane=landing-cause-L20993 | cause=cause:OmniNode-ai/omnibase_infra:19c94ee80f62
+2026-11-01T03:50:31Z | CLAIM | lane=landing-cause-L20994 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T03:52:28Z | CLAIM | lane=landing-L20994 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T03:57:36Z | CLAIM | lane=landing-cause-L20998 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T04:01:04Z | CLAIM | lane=fix-3095-dodverify-0400 | cause=omniclaude:repo-evidence / dod-verify
+2026-11-01T04:06:06Z | CLAIM | lane=fix-3095-dodverify-0405 | cause=omniclaude:repo-evidence / dod-verify
+2026-11-01T04:08:26Z | CLAIM | lane=landing-cause-L21017 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T04:09:41Z | CLAIM | lane=landing-L21017 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T04:15:15Z | CLAIM | lane=landing-cause-L21022 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T04:29:32Z | CLAIM | lane=landing-cause-L21044 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T04:32:10Z | CLAIM | lane=landing-L21044 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T04:35:44Z | CLAIM | lane=landing-cause-L21052 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T04:48:29Z | CLAIM | lane=landing-cause-L21085 | cause=cause:OmniNode-ai/omnibase_infra:20feea3a4655
+2026-11-01T04:48:32Z | CLAIM | lane=landing-cause-L21086 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T04:50:12Z | CLAIM | lane=landing-L21085 | cause=cause:OmniNode-ai/omnibase_infra:20feea3a4655
+2026-11-01T04:50:18Z | CLAIM | lane=landing-L21086 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T04:50:47Z | CLAIM | lane=fix-5539-0450 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-11-01T04:55:38Z | CLAIM | lane=landing-cause-L21091 | cause=cause:OmniNode-ai/omniclaude:9a67083fa44a
+2026-11-01T05:01:35Z | CLAIM | lane=landing-cause-L21101 | cause=cause:OmniNode-ai/omnibase_core:05cd24c8f582
+2026-11-01T05:01:38Z | CLAIM | lane=landing-cause-L21102 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T05:07:56Z | CLAIM | lane=landing-cause-L21114 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T05:14:13Z | CLAIM | lane=landing-cause-L21122 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T05:20:27Z | CLAIM | lane=landing-cause-L21134 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T05:22:11Z | CLAIM | lane=landing-L21134 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T05:55:02Z | CLAIM | lane=landing-cause-L21180 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T05:56:09Z | CLAIM | lane=landing-L21180 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T06:21:36Z | CLAIM | lane=landing-cause-L21227 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T06:22:09Z | CLAIM | lane=landing-L21227 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T06:23:06Z | CLAIM | lane=stall-ci-live-contact-0615 | cause=omnibase_infra:repo-evidence / dod-verify
+2026-11-01T06:34:02Z | CLAIM | lane=landing-cause-L21238 | cause=cause:OmniNode-ai/omnibase_infra:f6ad00422d15
+2026-11-01T06:34:06Z | CLAIM | lane=landing-cause-L21239 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T06:35:25Z | CLAIM | lane=landing-L21238 | cause=cause:OmniNode-ai/omnibase_infra:f6ad00422d15
+2026-11-01T06:35:43Z | CLAIM | lane=landing-L21239 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T06:53:47Z | CLAIM | lane=landing-cause-L21275 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T06:55:19Z | CLAIM | lane=landing-L21275 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:00:05Z | CLAIM | lane=landing-cause-L21286 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T07:03:47Z | CLAIM | lane=landing-L21286 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T07:13:45Z | CLAIM | lane=landing-cause-L21317 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-11-01T07:14:49Z | CLAIM | lane=landing-L21317 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-11-01T07:20:11Z | CLAIM | lane=landing-cause-L21324 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:21:51Z | CLAIM | lane=landing-L21324 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:28:34Z | CLAIM | lane=landing-cause-L21336 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:29:53Z | CLAIM | lane=landing-L21336 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:53:42Z | CLAIM | lane=landing-cause-L21375 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T07:55:20Z | CLAIM | lane=landing-L21375 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T08:10:35Z | CLAIM | lane=landing-cause-L21395 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T08:13:05Z | CLAIM | lane=landing-L21395 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T08:29:04Z | CLAIM | lane=landing-cause-L21415 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T08:35:11Z | CLAIM | lane=landing-cause-L21426 | cause=cause:OmniNode-ai/omnibase_core:4a3bcc1e48bd
+2026-11-01T08:42:12Z | CLAIM | lane=landing-cause-L21431 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T08:55:23Z | CLAIM | lane=landing-cause-L21452 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T08:55:26Z | CLAIM | lane=landing-cause-L21453 | cause=cause:OmniNode-ai/omnimarket:88f07e7d4553
+2026-11-01T08:56:16Z | CLAIM | lane=landing-L21452 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T08:56:33Z | CLAIM | lane=landing-L21453 | cause=cause:OmniNode-ai/omnimarket:88f07e7d4553
+2026-11-01T09:20:43Z | CLAIM | lane=landing-cause-L21486 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T09:21:34Z | CLAIM | lane=landing-L21486 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T09:29:22Z | CLAIM | lane=landing-cause-L21496 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T09:31:00Z | CLAIM | lane=landing-L21496 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T09:48:36Z | CLAIM | lane=landing-cause-L21530 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T09:49:52Z | CLAIM | lane=landing-L21530 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:10:01Z | CLAIM | lane=landing-cause-L21552 | cause=cause:OmniNode-ai/omnibase_core:05cd24c8f582
+2026-11-01T10:10:13Z | CLAIM | lane=landing-cause-L21553 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:12:08Z | CLAIM | lane=landing-L21553 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:16:43Z | CLAIM | lane=landing-cause-L21563 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T10:27:26Z | CLAIM | lane=landing-cause-L21580 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:30:15Z | CLAIM | lane=landing-L21580 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:39:37Z | CLAIM | lane=landing-cause-L21597 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T10:39:40Z | CLAIM | lane=landing-cause-L21598 | cause=cause:OmniNode-ai/omnimarket:88f07e7d4553
+2026-11-01T10:53:38Z | CLAIM | lane=landing-cause-L21620 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T10:56:03Z | CLAIM | lane=landing-L21620 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T11:07:28Z | CLAIM | lane=landing-cause-L21637 | cause=cause:OmniNode-ai/omniintelligence:650c9a03744a
+2026-11-01T11:07:35Z | CLAIM | lane=landing-cause-L21638 | cause=cause:OmniNode-ai/omnimarket:88f07e7d4553
+2026-11-01T11:10:34Z | CLAIM | lane=landing-L21638 | cause=cause:OmniNode-ai/omnimarket:88f07e7d4553
+2026-11-01T11:13:54Z | CLAIM | lane=landing-cause-L21649 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T11:20:01Z | CLAIM | lane=landing-cause-L21653 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T11:34:18Z | CLAIM | lane=landing-cause-L21666 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T11:36:40Z | CLAIM | lane=landing-L21666 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T11:41:06Z | CLAIM | lane=landing-cause-L21676 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T11:41:09Z | CLAIM | lane=landing-cause-L21677 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T11:42:15Z | CLAIM | lane=landing-L21676 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T11:42:32Z | CLAIM | lane=landing-L21677 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T11:47:22Z | CLAIM | lane=landing-cause-L21686 | cause=cause:OmniNode-ai/omnibase_core:05cd24c8f582
+2026-11-01T11:48:25Z | CLAIM | lane=landing-L21686 | cause=cause:OmniNode-ai/omnibase_core:05cd24c8f582
+2026-11-01T11:53:22Z | CLAIM | lane=landing-cause-L21690 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T11:59:20Z | CLAIM | lane=landing-cause-L21699 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T12:13:41Z | CLAIM | lane=landing-cause-L21712 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T12:14:58Z | CLAIM | lane=landing-L21712 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T12:15:03Z | CLAIM | lane=fill-dev-red-omnibase_infra-20261101T1206Z | cause=omnibase_infra:Build runtime stability-candidate
+2026-11-01T12:19:52Z | CLAIM | lane=landing-cause-L21715 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-01T12:21:56Z | CLAIM | lane=landing-L21715 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-01T12:44:00Z | CLAIM | lane=landing-cause-L21738 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T12:44:32Z | CLAIM | lane=landing-L21738 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T12:44:35Z | CLAIM | lane=fill-cause-red-omnibase_core-20261101T1245Z | cause=omnibase_core:repo-evidence/dod-verify
+2026-11-01T12:50:35Z | CLAIM | lane=landing-cause-L21742 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T13:09:59Z | CLAIM | lane=landing-cause-L21761 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-11-01T13:10:02Z | CLAIM | lane=landing-cause-L21762 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T13:12:53Z | CLAIM | lane=landing-L21761 | cause=cause:OmniNode-ai/omnibase_infra:3f61ca706815
+2026-11-01T13:24:06Z | CLAIM | lane=landing-cause-L21785 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T13:26:47Z | CLAIM | lane=landing-L21785 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T13:32:01Z | CLAIM | lane=landing-cause-L21801 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T13:32:03Z | CLAIM | lane=cf1101c-dod | cause=omniclaude:repo-evidence/dod-verify
+2026-11-01T13:33:15Z | CLAIM | lane=landing-L21801 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T13:41:34Z | CLAIM | lane=landing-cause-L21811 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T13:41:38Z | CLAIM | lane=landing-cause-L21812 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T13:42:40Z | CLAIM | lane=landing-L21812 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T13:54:18Z | CLAIM | lane=cf1101d-pc | cause=omniintelligence:Pre-commit Hooks
+2026-11-01T14:14:12Z | CLAIM | lane=cause-omnibase_core-repo-evidence-dod-verify | cause=omnibase_core:repo-evidence / dod-verify
+2026-11-01T14:14:15Z | CLAIM | lane=fill-cause-red-omnibase_core-20261101T1408Z | cause=omnibase_core:repo-evidence / dod-verify
+2026-11-01T14:14:54Z | CLAIM | lane=landing-cause-L21850 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T14:16:24Z | CLAIM | lane=landing-L21850 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T14:25:20Z | CLAIM | lane=landing-cause-L21853 | cause=cause:OmniNode-ai/omnibase_infra:cee61eddeb27
+2026-11-01T14:33:50Z | CLAIM | lane=landing-cause-L21869 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T14:53:32Z | CLAIM | lane=landing-cause-L21902 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T15:08:57Z | CLAIM | lane=landing-cause-L21914 | cause=cause:OmniNode-ai/omnibase_infra:79de76728bf3
+2026-11-01T15:24:46Z | CLAIM | lane=cause-omniclaude-tests-gate | cause=omniclaude:Tests Gate
+2026-11-01T15:30:28Z | CLAIM | lane=cause-omnimarket-sibling-release-compatibility-gate | cause=omnimarket:Sibling Release Compatibility Gate (OMN-20381)
+2026-11-01T15:43:07Z | CLAIM | lane=landing-cause-L21949 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T15:45:07Z | CLAIM | lane=landing-cause-L21950 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T15:46:06Z | CLAIM | lane=landing-cause-L21951 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-11-01T15:47:43Z | CLAIM | lane=landing-cause-L21956 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T15:51:15Z | CLAIM | lane=landing-L21956 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:09:08Z | CLAIM | lane=landing-cause-L21972 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:10:11Z | CLAIM | lane=landing-cause-L21973 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-11-01T16:10:21Z | CLAIM | lane=landing-cause-L21974 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T16:11:32Z | CLAIM | lane=landing-L21972 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:12:59Z | CLAIM | lane=landing-L21974 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T16:22:49Z | CLAIM | lane=landing-cause-L21995 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:30:16Z | CLAIM | lane=landing-cause-L22003 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T16:35:11Z | CLAIM | lane=landing-cause-L22010 | cause=cause:OmniNode-ai/repo-b:e7899899b5b8
+2026-11-01T16:41:46Z | CLAIM | lane=landing-cause-L22018 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:45:08Z | CLAIM | lane=landing-L22018 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T16:56:53Z | CLAIM | lane=landing-cause-L22036 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T16:58:28Z | CLAIM | lane=cont-omniclaude-tests-gate-1630 | cause=omniclaude:Tests Gate
+2026-11-01T17:10:51Z | CLAIM | lane=landing-cause-L22048 | cause=cause:OmniNode-ai/omniclaude:f891e934ce4e
+2026-11-01T17:11:54Z | CLAIM | lane=landing-L22048 | cause=cause:OmniNode-ai/omniclaude:f891e934ce4e
+2026-11-01T17:22:08Z | CLAIM | lane=landing-cause-L22062 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T17:22:32Z | CLAIM | lane=landing-cause-L22063 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T17:22:37Z | CLAIM | lane=landing-cause-L22064 | cause=cause:OmniNode-ai/omnibase_infra:a9b0c4400dce
+2026-11-01T17:25:39Z | CLAIM | lane=landing-L22064 | cause=cause:OmniNode-ai/omnibase_infra:a9b0c4400dce
+2026-11-01T17:29:12Z | CLAIM | lane=cause-omniclaude-quality-gate-1725 | cause=omniclaude:Quality Gate
+2026-11-01T17:30:49Z | CLAIM | lane=landing-L22063 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T17:36:43Z | CLAIM | lane=landing-cause-L22078 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T17:49:06Z | CLAIM | lane=landing-cause-L22093 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T17:49:34Z | CLAIM | lane=cause-core-dod-verify-1745 | cause=omnibase_core:repo-evidence / dod-verify
+2026-11-01T17:50:09Z | CLAIM | lane=landing-cause-L22094 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T17:51:24Z | CLAIM | lane=landing-L22093 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T17:52:16Z | CLAIM | lane=landing-L22094 | cause=cause:OmniNode-ai/omnimarket:ffc4b53899d9
+2026-11-01T17:57:19Z | CLAIM | lane=fill-cause-red-omnibase_core-20261101T1749Z | cause=omnibase_core:repo-evidence/dod-verify
+2026-11-01T18:17:21Z | CLAIM | lane=landing-cause-L22123 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T18:29:30Z | CLAIM | lane=cascade-tags-1845 | cause=omniclaude:Quality Gate
+2026-11-01T18:36:33Z | CLAIM | lane=landing-cause-L22137 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T18:36:36Z | CLAIM | lane=landing-cause-L22138 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T18:40:55Z | CLAIM | lane=landing-L22137 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T18:41:23Z | CLAIM | lane=landing-L22138 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T18:57:48Z | CLAIM | lane=landing-cause-L22168 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T19:28:33Z | CLAIM | lane=landing-cause-L22216 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T19:31:50Z | CLAIM | lane=landing-L22216 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T20:22:26Z | CLAIM | lane=landing-cause-L22310 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-11-01T20:32:01Z | CLAIM | lane=landing-cause-L22317 | cause=cause:OmniNode-ai/omnibase_infra:d986c05d7262
+2026-11-01T20:33:41Z | CLAIM | lane=landing-L22317 | cause=cause:OmniNode-ai/omnibase_infra:d986c05d7262
+2026-11-01T20:43:34Z | CLAIM | lane=landing-cause-L22331 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T20:43:38Z | CLAIM | lane=landing-cause-L22332 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T20:44:38Z | CLAIM | lane=landing-L22332 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T21:10:19Z | CLAIM | lane=landing-cause-L22351 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:10:49Z | CLAIM | lane=landing-L22351 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:22:44Z | CLAIM | lane=landing-cause-L22367 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T21:23:14Z | CLAIM | lane=landing-L22367 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-01T21:30:03Z | CLAIM | lane=landing-cause-L22370 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:30:39Z | CLAIM | lane=landing-L22370 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:50:43Z | CLAIM | lane=landing-cause-L22375 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:51:39Z | CLAIM | lane=landing-L22375 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T21:57:35Z | CLAIM | lane=landing-cause-L22382 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-11-01T21:58:08Z | CLAIM | lane=landing-L22382 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-11-01T22:14:18Z | CLAIM | lane=landing-cause-L22391 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-01T22:27:48Z | CLAIM | lane=cause-core-validators-1101 | cause=omnibase_infra:Core Validators
+2026-11-01T22:41:25Z | CLAIM | lane=fix-core-2211-1101 | cause=omnibase_core:repo-evidence/dod-verify
+2026-11-01T22:50:20Z | CLAIM | lane=cause-oci-validate-1101 | cause=repo-a:validate-plugin
+2026-11-01T22:53:32Z | CLAIM | lane=landing-cause-L22415 | cause=cause:OmniNode-ai/omnibase_infra:52c59723e1ad
+2026-11-01T23:49:31Z | CLAIM | lane=landing-cause-L22453 | cause=cause:OmniNode-ai/omniclaude:f891e934ce4e
+2026-11-01T23:49:45Z | CLAIM | lane=landing-cause-L22454 | cause=cause:OmniNode-ai/omnibase_infra:cee61eddeb27
+2026-11-01T23:51:37Z | CLAIM | lane=landing-L22453 | cause=cause:OmniNode-ai/omniclaude:f891e934ce4e
+2026-11-01T23:52:36Z | CLAIM | lane=landing-L22454 | cause=cause:OmniNode-ai/omnibase_infra:cee61eddeb27
+2026-11-02T00:19:26Z | CLAIM | lane=cause-omnimarket-tests-split-16-20 | cause=omnimarket:Tests (Split 16/20)
+2026-11-02T00:28:55Z | CLAIM | lane=landing-cause-L22472 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-11-02T00:30:51Z | CLAIM | lane=landing-L22472 | cause=cause:OmniNode-ai/omnibase_infra:2c116e90b829
+2026-11-02T00:48:14Z | CLAIM | lane=cont-hook-source-1101 | cause=omniclaude:commit hooks
+2026-11-02T00:52:09Z | CLAIM | lane=cause-omniclaude-quality-gate-1101 | cause=omniclaude:Quality Gate
+2026-11-02T00:53:39Z | CLAIM | lane=landing-cause-L22490 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-02T00:59:03Z | CLAIM | lane=landing-cause-L22501 | cause=cause:OmniNode-ai/omnibase_infra:4d403e6c0107
+2026-11-02T00:59:35Z | CLAIM | lane=landing-L22490 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-02T01:02:15Z | CLAIM | lane=landing-L22501 | cause=cause:OmniNode-ai/omnibase_infra:4d403e6c0107
+2026-11-02T01:10:44Z | CLAIM | lane=landing-cause-L22511 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-02T01:14:03Z | CLAIM | lane=landing-L22511 | cause=cause:OmniNode-ai/omnimarket:59e96c536e20
+2026-11-02T01:22:05Z | CLAIM | lane=landing-cause-L22526 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-02T01:52:56Z | CLAIM | lane=landing-cause-L22550 | cause=cause:OmniNode-ai/omnibase_infra:cb8b0b4bd68a
+2026-11-02T01:54:06Z | CLAIM | lane=landing-L22550 | cause=cause:OmniNode-ai/omnibase_infra:cb8b0b4bd68a
+2026-11-02T01:59:44Z | CLAIM | lane=landing-cause-L22555 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-02T01:59:48Z | CLAIM | lane=landing-cause-L22556 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-02T02:01:35Z | CLAIM | lane=landing-L22555 | cause=cause:OmniNode-ai/omnimarket:d17cc3829668
+2026-11-02T02:01:54Z | CLAIM | lane=landing-L22556 | cause=cause:OmniNode-ai/omnimarket:2242da9b836e
+2026-11-02T02:31:58Z | CLAIM | lane=cause-omniclaude-repo-evidence-dod-verify | cause=omniclaude:repo-evidence / dod-verify
