@@ -6,7 +6,7 @@
     "minor": 0,
     "patch": 0
   },
-  "description": "Refuse a remote lane before placement when its brief asks a lab lane to mint a ticket, pastes the standing rules block with no task of its own, or names a pf-drive driver lane with no PR target.",
+  "description": "Refuse a remote lane before placement for mint, rules-only, driver, umbrella and WIP problems, and for authored code destinations in repositories frozen by the deployment overlay. Destination policy is available independently to the brief checker over the same declared bus route.",
   "input_model": {
     "name": "ModelDispatchBriefShapeRequest",
     "module": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape"
@@ -25,6 +25,16 @@
           "name": "HandlerDispatchBriefShape",
           "module": "omnimarket.nodes.node_dispatch_brief_shape_compute.handlers.handler_dispatch_brief_shape"
         },
+        "topic": "onex.cmd.omnimarket.dispatch-brief-shape-requested.v1"
+      },
+      {
+        "operation": "check_destinations",
+        "handler": {
+          "name": "HandlerBriefDestinations",
+          "module": "omnimarket.nodes.node_dispatch_brief_shape_compute.handlers.handler_dispatch_brief_shape"
+        },
+        "input_model": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape.ModelBriefDestinationRequest",
+        "output_model": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape.ModelBriefDestinationResult",
         "topic": "onex.cmd.omnimarket.dispatch-brief-shape-requested.v1"
       }
     ]
@@ -88,5 +98,14 @@
   ],
   "runtime_profiles": [
     "main"
-  ]
+  ],
+  "config": {
+    "overlay_id": "brief_destinations",
+    "model": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape.ModelBriefDestinationPolicy",
+    "required_when": "An authored task names a write destination; missing or invalid policy refuses placement.",
+    "fields": {
+      "frozen_repositories": "Repositories whose code and tests move before editing.",
+      "migration_repository": "Repository receiving the canonical node or handler and its tests."
+    }
+  }
 }
