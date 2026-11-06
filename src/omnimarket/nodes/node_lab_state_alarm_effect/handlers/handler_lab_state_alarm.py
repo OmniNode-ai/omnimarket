@@ -36,6 +36,7 @@ from omnimarket.models.floor_17a import (
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
     AlarmSendRefusedError,
     ProtocolAlarmChannel,
+    build_channels,
 )
 
 
@@ -44,11 +45,21 @@ def _stamp(moment: datetime) -> str:
 
 
 class HandlerLabStateAlarm:
-    def __init__(self, channels: Mapping[str, ProtocolAlarmChannel]) -> None:
-        self._channels = dict(channels)
+    def __init__(
+        self, channels: Mapping[str, ProtocolAlarmChannel] | None = None
+    ) -> None:
+        """``channels`` is injected by a caller that holds real senders; the runtime constructs the handler with none, and
+        each call then builds the channels its request's overlay declares (in-memory, floor banner, or an unconfigured
+        channel that refuses with a typed reason)."""
+        self._channels = None if channels is None else dict(channels)
+        self._built: (
+            tuple[tuple[ModelAlarmChannelDef, ...], dict[str, ProtocolAlarmChannel]]
+            | None
+        ) = None
 
     def handle(self, request: ModelLabStateAlarmRequest) -> ModelLabStateAlarmResult:
         now, overlay = request.now, request.overlay
+        channels = self._channels_for(overlay.channels)
         by_role = {c.role: c for c in overlay.channels}
         primary, second = by_role["primary"], by_role["second"]
         verdicts = {v.id: v for v in request.verdicts}
@@ -66,7 +77,7 @@ class HandlerLabStateAlarm:
         for source_id, verdict in verdicts.items():
             if verdict.state != "WORKING" and source_id not in open_alarms:
                 alarm = self._alarm(verdict, now, request.is_test)
-                send = self._send(primary, alarm, now)
+                send = self._send(channels, primary, alarm, now)
                 open_alarms[source_id] = ModelOpenAlarm(
                     alarm=alarm, sends=(send,), last_notified_at=now
                 )
@@ -74,7 +85,13 @@ class HandlerLabStateAlarm:
 
         for source_id, current in list(open_alarms.items()):
             updated = self._settle(
-                current, primary, second, now, overlay.readback_s, overlay.renotify_s
+                channels,
+                current,
+                primary,
+                second,
+                now,
+                overlay.readback_s,
+                overlay.renotify_s,
             )
             if updated.escalated and not current.escalated:
                 escalated.append(source_id)
@@ -108,11 +125,29 @@ class HandlerLabStateAlarm:
             is_test=is_test,
         )
 
+    def _channels_for(
+        self, definitions: tuple[ModelAlarmChannelDef, ...]
+    ) -> Mapping[str, ProtocolAlarmChannel]:
+        """The injected channels, else the ones the overlay declares, built once per declaration so an in-memory channel
+        still holds what it was sent when a later call reads the receipt back."""
+        if self._channels is not None:
+            return self._channels
+        if self._built is None or self._built[0] != definitions:
+            self._built = (
+                definitions,
+                build_channels(definitions, served_alarm_ids=lambda: None),
+            )
+        return self._built[1]
+
+    @staticmethod
     def _send(
-        self, channel: ModelAlarmChannelDef, alarm: ModelAlarm, now: datetime
+        channels: Mapping[str, ProtocolAlarmChannel],
+        channel: ModelAlarmChannelDef,
+        alarm: ModelAlarm,
+        now: datetime,
     ) -> ModelAlarmSend:
         try:
-            receipt = self._channels[channel.id].send(alarm, now)
+            receipt = channels[channel.id].send(alarm, now)
         except AlarmSendRefusedError as refused:
             return ModelAlarmSend(
                 alarm_id=alarm.alarm_id,
@@ -134,6 +169,7 @@ class HandlerLabStateAlarm:
 
     def _settle(
         self,
+        channels: Mapping[str, ProtocolAlarmChannel],
         current: ModelOpenAlarm,
         primary: ModelAlarmChannelDef,
         second: ModelAlarmChannelDef,
@@ -144,7 +180,7 @@ class HandlerLabStateAlarm:
         sends: list[ModelAlarmSend] = []
         for send in current.sends:
             if send.delivery == "pending" and send.receipt_id is not None:
-                channel = self._channels[send.channel]
+                channel = channels[send.channel]
                 state = channel.read_receipt(send.receipt_id, now)
                 if state == "delivered":
                     send = send.model_copy(
@@ -167,7 +203,7 @@ class HandlerLabStateAlarm:
         )
         notified_at = current.last_notified_at
         if not escalated and not primary_ok and (primary_late or primary_failed):
-            sends.append(self._send(second, current.alarm, now))
+            sends.append(self._send(channels, second, current.alarm, now))
             escalated = True
         elif not primary_ok and self._quiet(
             sends, now, readback_s, renotify_s, notified_at
@@ -181,7 +217,7 @@ class HandlerLabStateAlarm:
                     for s in sends
                     if not (s.role == target.role and s.delivery != "delivered")
                 ]
-                sends.append(self._send(target, current.alarm, now))
+                sends.append(self._send(channels, target, current.alarm, now))
             notified_at = now
         return current.model_copy(
             update={

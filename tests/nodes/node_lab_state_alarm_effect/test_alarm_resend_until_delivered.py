@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from omnimarket.models.floor_17a import (
+    ModelAlarmChannelDef,
     ModelAlarmOverlay,
     ModelAlarmState,
     ModelLabStateAlarmRequest,
@@ -144,3 +145,46 @@ def test_an_alarm_only_the_banner_delivered_still_reaches_the_primary_once_it_ha
     for tick in range(2, 6):
         handler.handle(request(read_back.state, BAD, at=tick * RENOTIFY))
     assert len(primary.sent) == 1
+
+
+def test_the_runtime_constructs_the_handler_with_no_channels_and_the_overlay_names_them() -> (
+    None
+):
+    """The runtime builds a routed handler with no arguments (OMN-22478): the channels come from the request's overlay.
+
+    A handler that demands its channels at construction was quarantined at boot, so the alarm operation could not be
+    routed and the canonical-file-shape ratchet refused it as unbound. Built bare, with in-memory channels declared by
+    the overlay, it raises the alarm and a later tick reads it back as delivered.
+    """
+    handler = HandlerLabStateAlarm()
+    first = handler.handle(request(ModelAlarmState(), BAD, at=0))
+    assert first.raised == ("hosts",)
+    later = handler.handle(request(first.state, BAD, at=30))
+    assert later.undelivered == ()
+    assert any(s.delivery == "delivered" for s in later.state.open["hosts"].sends)
+
+
+def test_a_bare_handler_with_a_slack_overlay_and_no_sender_refuses_with_a_typed_reason() -> (
+    None
+):
+    """Error chain: the overlay names two slack channels and nothing supplies a sender, so both sends are refused."""
+    overlay = OVERLAY.model_copy(
+        update={
+            "channels": (
+                ModelAlarmChannelDef(
+                    id="primary",
+                    kind="slack",
+                    role="primary",
+                    token_ref="SLACK_BOT_TOKEN",
+                    channel_ref="SLACK_ALERT_CHANNEL",
+                ),
+                ModelAlarmChannelDef(id="second", kind="in_memory", role="second"),
+            )
+        }
+    )
+    req = request(ModelAlarmState(), BAD, at=0).model_copy(update={"overlay": overlay})
+    result = HandlerLabStateAlarm().handle(req)
+    sends = result.state.open["hosts"].sends
+    assert [s.delivery for s in sends if s.role == "primary"] == ["failed"]
+    assert result.state.open["hosts"].escalated
+    assert any(s.role == "second" for s in sends)

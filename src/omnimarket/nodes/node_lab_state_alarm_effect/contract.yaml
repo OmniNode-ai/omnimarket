@@ -33,6 +33,12 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm:HandlerLabStateAlarm
   handlers:
+    - operation: alarm_lab_state
+      handler:
+        name: HandlerLabStateAlarm
+        module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm
+      input_model: omnimarket.models.floor_17a.ModelLabStateAlarmRequest
+      output_model: omnimarket.models.floor_17a.ModelLabStateAlarmResult
     - operation: canary_verdict
       handler:
         name: HandlerFloorCanary
