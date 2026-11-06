@@ -305,6 +305,30 @@ def read_hosts(
     )
 
 
+def _fleet_rollup(data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The groups of a fleet document: its own class rollup, or one group per host from the runner rows it carries.
+
+    The floor's fleet source saves each runner as a host and a status. A runner that is not offline is up; a busy
+    one is up and working, so it counts online as well as busy, as the projection's own rollup counts it.
+    """
+    if "class_rollup" in data:
+        return [dict(g) for g in data["class_rollup"]]
+    groups: dict[str, dict[str, Any]] = {}
+    for row in data["runners"]:
+        name = str(row["host"])
+        group = groups.setdefault(
+            name, {"label_class": name, "online": 0, "busy": 0, "offline": 0}
+        )
+        status = str(row["status"])
+        if status == "offline":
+            group["offline"] += 1
+        else:
+            group["online"] += 1
+            if status == "busy":
+                group["busy"] += 1
+    return list(groups.values())
+
+
 def read_runner_groups(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
     source = _by_kind(overlay, "runner_groups")
     try:
@@ -321,11 +345,12 @@ def read_runner_groups(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSou
         )
     try:
         observed = parse_time(data["observed_at"])
-        rollup = data["class_rollup"]
+        rollup = _fleet_rollup(data)
         rows = data.get("runners", [])
     except (KeyError, ValueError, TypeError):
         return _unread(
-            source.id, "the runner fleet file has no observed_at or class_rollup"
+            source.id,
+            "the runner fleet file has no observed_at, runners or class_rollup",
         )
     versions: dict[str, set[str]] = {}
     for row in rows:

@@ -21,6 +21,9 @@ from omnimarket.models.model_merged_running_count import (
     ModelMrcLiveLane,
     ModelMrcPr,
 )
+from omnimarket.nodes.node_merged_running_count_effect.sources.source_deployed_provenance import (
+    SourceDeployedProvenance,
+)
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_lab_pass_receipts import (
     SourceLabPassReceipts,
 )
@@ -80,6 +83,8 @@ class SourceLocalFiles:
         now: datetime,
         lab_pass: SourceLabPassReceipts | None = None,
         lab_pass_cause: str = "no lab-pass receipt source is configured",
+        provenance: SourceDeployedProvenance | None = None,
+        provenance_cause: str = "no build provenance source is configured",
     ) -> None:
         self._watcher_state = watcher_state
         self._ledger = ledger
@@ -89,6 +94,8 @@ class SourceLocalFiles:
         self._now = now
         self._lab_pass = lab_pass
         self._lab_pass_cause = lab_pass_cause
+        self._provenance = provenance
+        self._provenance_cause = provenance_cause
 
     def _ledger_lines(self) -> Iterator[str]:
         """The archives rolled inside the window in date order, then the live file: rows come in time order."""
@@ -163,9 +170,27 @@ class SourceLocalFiles:
         return tuple(found)
 
     def read_deployed_evidence(self) -> ModelMrcEvidenceRead:
+        """The lab-pass receipt and the running build's provenance; a source that cannot be read adds its cause, never a guess."""
+        reads: list[ModelMrcEvidenceRead] = []
+        causes: list[str] = []
         if self._lab_pass is None:
-            return ModelMrcEvidenceRead(unread_cause=self._lab_pass_cause)
-        return self._lab_pass.read()
+            causes.append(self._lab_pass_cause)
+        else:
+            reads.append(self._lab_pass.read())
+        if self._provenance is None:
+            causes.append(self._provenance_cause)
+        else:
+            merged = (
+                (pr.repo, pr.number, pr.merge_sha)
+                for pr in self.read_prs()
+                if pr.state == self._labels.merged_state
+            )
+            reads.append(self._provenance.read(merged))
+        causes.extend(r.unread_cause for r in reads if r.unread_cause)
+        return ModelMrcEvidenceRead(
+            evidence=tuple(e for r in reads for e in r.evidence),
+            unread_cause="; ".join(causes),
+        )
 
     def read_hosts(self) -> tuple[ModelMrcHost, ...]:
         """Slots from the host's placement advertisement; the table cap only as a named fallback; neither: unread."""
