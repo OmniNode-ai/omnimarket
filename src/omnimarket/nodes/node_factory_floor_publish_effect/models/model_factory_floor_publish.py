@@ -139,7 +139,12 @@ class ModelPublishNames(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # The address of the site is the simple floor page (OMN-19998); the page with every line, machine and report is
+    # published beside it under ``page`` and is the one link the simple page carries.
     page: str = Field(min_length=1)
+    simple_page: str = Field(min_length=1)
+    simple_data: str = Field(min_length=1)
+    simple_reads: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -322,6 +327,10 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    simple_page_relpath: str = Field(min_length=1)
+    # What node_floor_simple_effect writes (relative to the registry home); both are published when they exist.
+    simple_data_relpath: str = Field(min_length=1)
+    simple_reads_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)
@@ -334,6 +343,11 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
     record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
+    # Steps run after the page and the record are served, in order, never concurrently. The canary status is published
+    # here, from the page as served, so its floor age is the age of the page a reader gets. A required step that fails
+    # raises after the page is served: a failed page upload stops the run before these steps, so the canary status
+    # then ages past its bound and reads as silent, and a failed canary publish is a failed run, never a hidden one.
+    after_publish_steps: tuple[ModelPublishStep, ...]
     names: ModelPublishNames
     transport: ModelPublishTransport
     history: ModelPublishHistory
@@ -372,6 +386,8 @@ class ModelFactoryFloorPublishResult(BaseModel):
     data_sha256: str
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
+    # The steps that ran after the page was served (the canary status), in order.
+    after_publish: tuple[ModelPublishStepResult, ...] = ()
     process_health_published: bool
     delegation_published: bool = False
     history_snapshot: str = ""

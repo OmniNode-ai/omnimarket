@@ -8,9 +8,6 @@ import asyncio
 import json
 from datetime import UTC, datetime
 
-from omnibase_infra.errors import InfraUnavailableError
-from omnibase_infra.gateway.client.gateway_transport_httpx import GatewayTransportHttpx
-
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 
 _QUERY = "{ projects { edges { node { name traceCount endTime } } } }"
@@ -27,6 +24,10 @@ def _unread(now: datetime, detail: str) -> ModelFloorPhoenixTraces:
 
 async def _post(url: str) -> str:
     """Read through the infrastructure transport, which owns the HTTP client lifecycle."""
+    from omnibase_infra.gateway.client.gateway_transport_httpx import (
+        GatewayTransportHttpx,
+    )
+
     transport = GatewayTransportHttpx(timeout_seconds=_TIMEOUT_SECONDS)
     response = await transport.post_json(
         f"{url.rstrip('/')}/graphql",
@@ -48,6 +49,10 @@ def load_phoenix_traces(url: str, now: datetime) -> ModelFloorPhoenixTraces | No
         return None
     if not url.startswith(("http://", "https://")):
         return _unread(now, "the Phoenix URL is not http or https")
+    # Imported here and not at the top: the infrastructure package costs 4.6 s to import in the foreground and 24 s in the
+    # Background class, and every cycle that has no Phoenix URL returned above and never needed it.
+    from omnibase_infra.errors import InfraUnavailableError
+
     try:
         document = json.loads(asyncio.run(_post(url)))
         edges = document["data"]["projects"]["edges"]

@@ -138,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(
             f"factory-floor-publish: published={','.join(result.published)} "
             f"record={result.generated_at} sha256={result.data_sha256[:12]} "
-            f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
+            f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'} "
+            f"after_publish={','.join(f'{s.name}:{s.status}' for s in result.after_publish) or 'none'}\n"
         )
     if a.skip_reports:
         return 2 if gate_refused or floor_refused else 0

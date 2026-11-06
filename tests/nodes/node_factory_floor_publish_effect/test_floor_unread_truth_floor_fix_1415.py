@@ -23,7 +23,7 @@ from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish im
     _shell_out,
 )
 
-SHELL_SRC = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+SHELL_SRC = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 
 
 def _unread_record() -> dict[str, Any]:
