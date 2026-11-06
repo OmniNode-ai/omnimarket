@@ -96,6 +96,13 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     ),
 }
 
+# Contracts per wiring batch; each batch stays under the per-test runtime budget.
+_WIRING_BATCH_SIZE = 32
+# The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
+_RELAY_NODES = frozenset(
+    {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
+)
+
 # The ModelDispatchRoute field each derived identifier is stored in.
 _DERIVED_FIELDS = ("route_id", "handler_id", "topic_pattern")
 
@@ -231,8 +238,44 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
+def _wiring_batches() -> list[ModelAutoWiringManifest]:
+    """Keep every discovered contract under the per-test runtime budget.
+
+    Wiring the growing catalogue in one pytest item exceeds CI's 300-second
+    timeout before its assertions run. Each batch uses the same real runtime,
+    topology, container and bus; no contract or refusal is exempted.
+    """
+    contracts = _manifest().contracts
+    names = {contract.name for contract in contracts}
+    assert len(names) == len(contracts), "duplicate canonical contract names"
+    removed = set(_CANNOT_WIRE_IN_PROCESS) - names
+    assert not removed, f"listed contracts no longer discovered; remove them: {removed}"
+    return [
+        ModelAutoWiringManifest(contracts=contracts[start : start + _WIRING_BATCH_SIZE])
+        for start in range(0, len(contracts), _WIRING_BATCH_SIZE)
+    ]
+
+
+def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> None:
+    """AC14: the batches cover the catalogue once each, relay nodes included."""
+    batches = _wiring_batches()
+    batched = [contract.name for batch in batches for contract in batch.contracts]
+    discovered = [contract.name for contract in _manifest().contracts]
+    assert sorted(batched) == sorted(discovered)
+    assert len(set(batched)) == len(batched), "a contract is wired in two batches"
+    assert all(len(batch.contracts) <= _WIRING_BATCH_SIZE for batch in batches)
+    missing = _RELAY_NODES - set(batched)
+    assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    _wiring_batches(),
+    ids=lambda manifest: manifest.contracts[0].name,
+)
 async def test_every_node_auto_wires_in_process(
     monkeypatch: pytest.MonkeyPatch,
+    manifest: ModelAutoWiringManifest,
 ) -> None:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
@@ -252,7 +295,7 @@ async def test_every_node_auto_wires_in_process(
     await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
-            _manifest(),
+            manifest,
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
@@ -275,7 +318,11 @@ async def test_every_node_auto_wires_in_process(
     assert report.total_wired > 0
     _shrink_only(
         failing,
-        _CANNOT_WIRE_IN_PROCESS,
+        {
+            name: reason
+            for name, reason in _CANNOT_WIRE_IN_PROCESS.items()
+            if name in {contract.name for contract in manifest.contracts}
+        },
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )
