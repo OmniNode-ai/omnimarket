@@ -124,7 +124,7 @@ def test_quiet_host_dedupe_recorded_state_names_the_host_no_row_named(
         "".join(
             f"{_stamp(HOST_NOW - timedelta(minutes=minutes))} | CLAIM | lane=recorded | host={host} | work\n"
             for host in hosts
-            for minutes in (400, 5)
+            for minutes in (300, 5)
         )
         + ROW.format(
             stamp=_stamp(HOST_NOW - timedelta(hours=3)), hosts="h051,h053,h106,h202"
