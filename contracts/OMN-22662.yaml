@@ -45,8 +45,10 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC1
+  - AC2
   - AC3
   - AC4
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_reading_effect -q --no-cov
@@ -55,9 +57,6 @@ dod_evidence:
   description: Read on the running system. The drill row (drill=yes, the accept-and-drop append route) reads NOT_WORKING no-durable-row-by-deadline against the real read node, and the h200 hourly unit's operational row reads back. Hosted CI cannot reach the lab read node, so only the local Done gate runs these reads.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
-  - AC5
   checks:
   - check_type: command
     check_value: onex ledger query --query rows --lane host-reading --term reason=no-durable-row-by-deadline --limit 20 | grep -q 'drill=yes'
