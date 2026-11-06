@@ -30,8 +30,12 @@ SIGNALS: tuple[re.Pattern[str], ...] = (
     re.compile(rf"(?:^|(?<=[\s|`]))(?:fix-)?repo={_OPT_OWNER}"),
     re.compile(rf"--(?:fix-)?repo(?:=|[ \t]+){_OPT_OWNER}"),
     re.compile(rf"omni_worktrees/[^/\s<>]+/(?P<name>{_NAME})"),
+    # The value is the whole of the line, or is followed by punctuation, a parenthesis or a dash:
+    # prose after it (``Repo: the omniclaude repo``) names no repository, and its first word is
+    # not read as one.
     re.compile(
-        rf"^\s*(?:[-*]\s*)?(?:target\s+repo|repo(?:sitory)?):\s*`?{_OPT_OWNER}",
+        rf"^\s*(?:[-*]\s*)?(?:target\s+repo|repo(?:sitory)?):\s*`?{_OPT_OWNER}"
+        r"(?=`?\s*(?:$|[(,;:\u2014\u2013]|-\s))",
         re.IGNORECASE,
     ),
     re.compile(rf"pr-create\s+{_REQ_OWNER}"),

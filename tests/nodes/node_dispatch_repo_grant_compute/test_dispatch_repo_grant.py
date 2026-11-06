@@ -81,6 +81,8 @@ def test_an_explicit_grant_is_kept_and_not_reported_ungranted():
         ("Repo: omniclaude", "OmniNode-ai/omniclaude"),
         ("- Target repo: omniclaude", "OmniNode-ai/omniclaude"),
         ("Repository: OmniNode-ai/omniclaude.", "OmniNode-ai/omniclaude"),
+        ("Repo: omniclaude (the fix lands here)", "OmniNode-ai/omniclaude"),
+        ("Repo: `omniclaude` - plan 5.2", "OmniNode-ai/omniclaude"),
         (
             "onex scm pr-create OmniNode-ai/omniclaude --head x",
             "OmniNode-ai/omniclaude",
@@ -102,6 +104,8 @@ def test_change_signals(line, repo):
         "$OMNI_HOME/../x/omni_worktrees/<ticket>/omniclaude/",
         "--repo <repo>",
         "Repo: <name>",
+        "Repo: the omniclaude repo",
+        "Repository: the shared one",
         "> | repo=omniclaude | (a quoted ticket text, not this lane's work)",
         "Gate: OmniNode-ai/omniclaude validate-plugin.yml",
         "read origin/dev of omniclaude with git -C",
