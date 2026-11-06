@@ -171,6 +171,11 @@ requirements:
         statement: 'AC10: a proven branch reaches both behind hosts before merge; installed fixes survive, a conflicting incoming fix is named and dropped alone, repeated ticks avoid reinstalling, and stale sources, moved heads, locks and failed readbacks refuse safely -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly'
       - id: AC11
         statement: 'AC11: installed discovery wires the declared command to a correlated terminal, and the host module runs the existing atomic tree installer, reads its recorded revision and observes the installed tree -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"'
+  - id: req-omn19998-brief-frozen-destinations
+    statement: The pre-placement brief node refuses code and test write destinations in repositories frozen by its deployment overlay.
+    acceptance:
+      - id: AC132
+        statement: 'AC132: recorded source and test creations refuse with the move destination while data-only controls pass; edits, reads, removals, migration, fix-only repositories and unread policy are distinguished; the destination operation returns the same result through the declared runtime bus -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-ratchet-swarm-fixtures
     statement: Swarm fanout tests use portable endpoint and model fixtures while retaining command and endpoint-ref coverage.
     acceptance:
@@ -686,6 +691,21 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
+  - id: dod-omn19998-brief-frozen-destinations
+    description: Replays the recorded source and test destination gap with data-only controls through the existing dispatch node. Original controller rules, locks and host timer criteria remain unproven by this slice.
+    source: manual
+    binds_ac: [AC132]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-brief-frozen-destinations-deploy
+    description: Hosted wiring smoke discovers the existing node contract and dispatches the typed destination request through its canonical in-memory bus route. It observes both frozen-code refusal and data-only admission. Live brief-check and runner caller migration and deployment overlay installation remain separate rollout work.
+    source: manual
+    binds_ac: [AC132]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly -k canonical_runtime_bus
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
