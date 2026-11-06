@@ -1,0 +1,152 @@
+schema_version: 1.0.0
+ticket_id: OMN-21492
+title: 'T-R1: release classifier and decision'
+summary: node_release_action_classify_compute (operation classify_release_action) decides admit, refuse
+  or blocked for a release action from facts, grant facts and the release_gate overlay policy. The train
+  and the tagger identity are admitted on the identity the run carries, a person in a grantor role list
+  of the overlay (and not an agent) may cut a version tag, a package publish or a GitHub release, every
+  other actor is refused naming the kind, and missing or unreadable facts are blocked.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21492-release-classify
+  statement: A release action is admitted only on the train's identity, a role holder's own release or
+    a grant bound to the change; an unreadable input blocks.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The train''s own release (the actor and branch the overlay names as the train) is
+      admitted unchanged, and a dev-merge tag written by the tagger identity is `dev_merge_tag` and admitted
+      -- falsifier: two pytest cases with the train''s and the tagger''s real shapes'
+  - id: AC2
+    statement: 'AC2: Each of the four release kinds from a non-train actor with no grant is refused naming
+      the kind -- falsifier: four pytest cases'
+  - id: AC3
+    statement: 'AC3: An action that touches a version file and matches no known shape is refused, not
+      passed -- falsifier: the pytest case with an unrecognised event that edits a version file'
+  - id: AC4
+    statement: 'AC4: A refused action never becomes admitted because the grant facts are missing: missing
+      or unreadable grant facts are `blocked` -- falsifier: the pytest case with no grant facts'
+  - id: AC5
+    statement: 'AC5: Configuration: the release shapes, the train identity and the agent identities are
+      the `release_gate` overlay; the node names no login, repository or branch -- falsifier: the same
+      action is refused under one overlay and admitted under an overlay that names its actor as the train'
+  - id: AC6
+    statement: 'AC6: Bindings: depends on no protocol (it takes facts) -- falsifier: byte-identical results
+      in process and through the local in-process entry of the parity harness (T-B2), and the conformance
+      check (T-B1) fails if a `protocol_dependencies` entry appears in its contract'
+evidence_requirements:
+- kind: tests
+  description: The classifier's focused test files and the binding conformance suite.
+  command: uv run pytest tests/nodes/node_release_action_classify_compute tests/nodes/node_binding_conformance_compute
+    -q --no-cov --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21492-ac1
+  description: Pytest cases for AC1. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_the_trains_own_release_is_admitted_without_grant_facts
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_dev_merge_tag_by_the_tagger_is_admitted_without_grant_facts
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-ac2
+  description: 'Pytest cases for AC2, and for the role-holder rule of the operator ruling that the collaborators
+    may cut their own releases: a person in a grantor role list passes, an agent, a bot and a non-role-holder
+    are still refused naming the kind. They fail at the merge base, which has neither node.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_each_release_kind_without_a_grant_is_refused_and_named
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_release_pull_request_from_an_agent_with_no_grant_is_not_admitted
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_collaborator_role_person_can_cut_their_own_release
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_role_holder_that_is_an_agent_or_bot_cannot_cut_releases
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_role_holders_release_pull_request_still_needs_a_grant
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-ac3
+  description: Pytest cases for AC3. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_unrecognised_actions_are_refused_only_when_touching_version_files
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_plain_pull_request_editing_only_a_version_file_requires_a_grant
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-ac4
+  description: Pytest cases for AC4. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_missing_or_unreadable_grant_facts_block_a_release_pull_request
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_no_grant_fact_ever_turns_a_refusal_into_an_admission
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_grant_bound_to_another_change_is_refused
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-ac5
+  description: Pytest cases for AC5. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_changing_the_train_policy_changes_the_same_actions_verdict
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_configured_version_files_and_labels_move_pull_request_verdicts
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_configured_tag_patterns_change_the_same_tags_classification
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_the_node_names_no_host_path_repository_or_organization
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_only_roles_in_the_overlays_grantor_roles_authorise_releases
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-ac6
+  description: Pytest cases for AC6. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_the_contract_declares_no_protocol_dependencies
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_results_are_byte_identical_in_process_through_the_node_and_json
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_the_binding_table_checks_the_node_with_no_protocols
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_results_are_byte_identical_through_the_parity_harness_local_entry
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-deploy-import
+  description: 'Hosted deploy check: the classifier package imports from the installed omnimarket and
+    resolves its onex.nodes entry point. Fails at the merge base, where the package and entry point are
+    absent.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'uv run --locked python -c "from importlib.metadata import entry_points; eps={e.name:
+      e for e in entry_points(group=''onex.nodes'')}; eps[''node_release_action_classify_compute''].load();
+      print(''entry point loads'')"'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21492-delegation-join
+  description: 'Delegation join, not bound to a criterion line (DS-6 and DS-7 of the delegation seam).
+    Four Codex draft runs of this pull request''s head (code drafts f5d492ce and dbbd6199, test drafts
+    a1bbbeea and 5126b14f; full ids in the check) each published a terminal that the delegation_events
+    projection holds as one row with the lane release-gate-r1r2-1945 and terminal_ok true. The check exits
+    0 only when exactly those four rows are present and exits 1 when one id is changed. It is a lab readback:
+    it reads the lab projection over ssh, so the hosted deploy check does not run it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" 'docker exec -i omnibase-infra-postgres psql -X -q -U postgres -d omnidash_analytics -tA' <<'SQL' | grep -Fx 4
+      SET default_transaction_read_only = on;
+      SELECT count(*) FROM delegation_events WHERE correlation_id::text IN ('f5d492ce-11f3-4c5a-9cc0-edacfdb7a0ef', 'dbbd6199-350d-4f5f-8518-2b2372d8247b', 'a1bbbeea-611f-428b-b5e4-6926bfabbca1', '5126b14f-6f1f-47d5-9815-20d2d514e581') AND caller_lane = 'release-gate-r1r2-1945' AND terminal_ok IS TRUE;
+      SQL

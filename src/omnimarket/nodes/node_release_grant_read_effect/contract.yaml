@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Release Grant Read Effect (OMN-21493, T-R2)
+#
+# Effect: reads the history of a change through the change source (CHG), decides whether the
+# grant label on it is a grant, and appends the decision as a ledger row (LED). A grant is a
+# label applied by a person in a role list of the `release_gate` overlay, after the current
+# head commit was pushed, and not removed since. An unreadable history is blocked.
+# Operations: read_release_grant, record_authorization_receipt, check_release_gate (the
+# required check, the merge step and the train's release step each call it fresh).
+# The overlay is loaded by overlay.py in the caller; a handler reads none.
+name: node_release_grant_read_effect
+contract_name: node_release_grant_read_effect
+node_name: node_release_grant_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Read the release grant of a change at its current head commit from the change's label
+  and push history, resolve the label's applier against the release_gate overlay's role
+  lists, and append the decision as a ledger row. Write the authorization receipt that
+  links the granted head to the merge commit. Run the classifier on the result for the
+  required release-gate check.
+
+handler:
+  module: omnimarket.nodes.node_release_grant_read_effect.handlers.handler_read_release_grant
+  class: HandlerReadReleaseGrant
+  input_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelReadReleaseGrantRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: read_release_grant
+      topic: onex.cmd.omnimarket.release-grant-read-requested.v1
+      handler:
+        name: HandlerReadReleaseGrant
+        module: omnimarket.nodes.node_release_grant_read_effect.handlers.handler_read_release_grant
+      input_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelReadReleaseGrantRequest
+      output_model: omnimarket.models.release_gate.model_release_grant_facts.ModelReleaseGrantFacts
+    - operation: record_authorization_receipt
+      handler:
+        name: HandlerRecordAuthorizationReceipt
+        module: omnimarket.nodes.node_release_grant_read_effect.handlers.handler_record_authorization_receipt
+      input_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelRecordAuthorizationReceiptRequest
+      output_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelRecordAuthorizationReceiptResult
+    - operation: check_release_gate
+      handler:
+        name: HandlerCheckReleaseGate
+        module: omnimarket.nodes.node_release_grant_read_effect.handlers.handler_check_release_gate
+      input_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelCheckReleaseGateRequest
+      output_model: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant.ModelCheckReleaseGateResult
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 30000
+
+input_model:
+  name: ModelReadReleaseGrantRequest
+  module: omnimarket.nodes.node_release_grant_read_effect.models.model_release_grant
+  description: A change, its current head commit, the boundary asking and the release_gate policy.
+output_model:
+  name: ModelReleaseGrantFacts
+  module: omnimarket.models.release_gate.model_release_grant_facts
+  description: granted, not_granted or blocked with a reason, bound to one repository, change and head.
+
+# Bindings: the event bus, the work ledger, the change source and the clock, chosen in the
+# factory_bindings overlay. The label and push events arrive as the command below, so the
+# check runs again on every label, unlabel and push.
+protocol_dependencies:
+  - name: BUS
+    protocol: omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus
+    bind_as: bus
+    required: true
+  - name: LED
+    protocol: omnimarket.protocols.protocol_work_ledger_store:ProtocolWorkLedgerStore
+    bind_as: ledger
+    required: true
+  - name: CHG
+    protocol: omnimarket.protocols.protocol_change_source:ProtocolChangeSource
+    bind_as: change_source
+    required: true
+  - name: CLK
+    protocol: omnimarket.protocols.protocol_clock:ProtocolClock
+    bind_as: clock
+    required: true
+
+terminal_event: onex.evt.omnimarket.release-grant-read.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.release-grant-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.release-grant-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.release-grant-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.release-grant-read.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.release-grant-read.v1
+
+metadata:
+  ticket: OMN-21493
+  transport_type: inmemory
