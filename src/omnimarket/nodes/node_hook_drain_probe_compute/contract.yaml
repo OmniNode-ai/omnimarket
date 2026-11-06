@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_drain_probe_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Choose which records behind a refused hook-emit journal head the drainer publishes to prove the broker is
+  reachable, without I/O. It asks up to a configured number of different event classes, one record per class and none
+  of a class the process already proved refused; when no different class is left, the record directly behind is the
+  probe. The drainer publishes the chosen records and keeps its stall-rather-than-dead-letter guard.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: choose_drain_probe
+    handler:
+      name: HandlerHookDrainProbe
+      module: omnimarket.nodes.node_hook_drain_probe_compute.handlers.handler_hook_drain_probe
+    input_model: omnimarket.nodes.node_hook_drain_probe_compute.models.model_hook_drain_probe.ModelHookDrainProbeRequest
+    output_model: omnimarket.nodes.node_hook_drain_probe_compute.models.model_hook_drain_probe.ModelHookDrainProbeResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.hook-drain-probe-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.hook-drain-probe-decided.v1
+terminal_event: onex.evt.omnimarket.hook-drain-probe-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-drain-probe-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.hook-drain-probe-decided.v1
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
+lifecycle: experimental
