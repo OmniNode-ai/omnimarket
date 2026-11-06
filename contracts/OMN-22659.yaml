@@ -48,8 +48,6 @@ dod_evidence:
 - id: dod-omn22659-integration-proof
   description: On h053 the branch read the Infisical dev store through the secret store effect and wrote an operational and a revoked-identity drill row, both read back from work_ledger_rows over the dev bus with onex ledger query --lane secret-reading.
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
