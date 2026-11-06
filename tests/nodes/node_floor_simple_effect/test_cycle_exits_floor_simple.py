@@ -66,7 +66,9 @@ def open_chains(sink: InMemoryEmissionSink, home: Path) -> list[str]:
         "node_floor_simple_compute", ModelFloorSimpleOverlay, env, file_env="X"
     )
     late = NOW + timedelta(hours=2)
-    receipts = HandlerFloorSimpleTick._receipts(sink, floor_ov, late, load_runtime())
+    receipts = HandlerFloorSimpleTick._receipts(
+        sink, floor_ov, late, load_runtime(), None, ()
+    )
     return [f.subject for f in receipts.findings if f.code == "start_without_terminal"]
 
 
