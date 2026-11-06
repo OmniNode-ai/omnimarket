@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.handlers.rules_unit_roots import (
     UnitRootRefusedError,
@@ -29,6 +30,7 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     load_schedule,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
+from omnimarket.nodes.node_reading_writer_effect.runtime_reading_writer import main
 from tests.nodes.node_reading_writer_effect.reading_support import overlay_document
 
 pytestmark = pytest.mark.unit
@@ -137,3 +139,50 @@ def test_with_the_guard_let_through_the_same_install_writes_a_worktree_unit(
     assert result.exit_code == 0
     service = (config / "systemd/user/onex-reading-hourly.service").read_text()
     assert "omni_worktrees/OMN-1/clone/.venv/bin/python" in service
+
+
+def _cli_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, venv: str) -> Path:
+    document = overlay_document()
+    document["schedule_hosts"] = [
+        {"name": "h-test", "scheduler": "systemd-user", "venv": venv}
+    ]
+    root = tmp_path / "overlays"
+    (root / "node_reading_writer_effect").mkdir(parents=True)
+    (root / "node_reading_writer_effect" / "overlay.yaml").write_text(
+        yaml.safe_dump(document), encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    registry = tmp_path / "registry"
+    registry.mkdir()
+    return registry
+
+
+def test_the_schedule_cli_exits_one_naming_the_path_for_a_worktree_venv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    registry = _cli_overlay(tmp_path, monkeypatch, "omni_worktrees/OMN-4/clone/.venv")
+    code = main(
+        ["schedule", "install", "--host", "h-test", "--workspace-root", str(registry)]
+    )
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "omni_worktrees/OMN-4/clone/.venv/bin/python" in err
+
+
+def test_the_schedule_cli_dry_run_passes_for_a_stable_venv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    registry = _cli_overlay(tmp_path, monkeypatch, "venv-readings")
+    code = main(
+        [
+            "schedule",
+            "install",
+            "--host",
+            "h-test",
+            "--workspace-root",
+            str(registry),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert "omni_worktrees" not in capsys.readouterr().out
