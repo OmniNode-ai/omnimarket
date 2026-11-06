@@ -16,9 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift import (
+    CONTRACT,
     answer_command,
     load_topics,
 )
@@ -126,6 +128,17 @@ def test_golden_chain_ends_in_success_and_writes_one_working_row(
     assert "checked=2" in row
     assert "accepted=2" in row
     assert "rejected=0" in row
+
+
+# The contract's terminal event, spelled out so a renamed topic turns this test red.
+TERMINAL_EVENT = "onex.evt.omnimarket.overlay-drift-run-completed.v1"
+
+
+def test_golden_chain_ends_in_the_contract_terminal_event(tmp_path: Path) -> None:
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    assert contract["terminal_event"] == TERMINAL_EVENT
+    events = asyncio.run(_publish(World("memory", tmp_path), InMemoryLedger(), PAYLOAD))
+    assert events[-1][0] == TERMINAL_EVENT
 
 
 def test_error_chain_unreadable_pins_gives_a_failure_event_and_unknown_row(
