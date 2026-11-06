@@ -83,6 +83,11 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # Not Background (OMN-22699). Measured 2026-11-06 on the launching Mac at load 19 to 21 on 24 cores: the factory floor
+    # step took 43 s run in the foreground (profiled) and more than 7 minutes as this unit's tick under the Background clamp,
+    # which made one cycle 7 to 10 minutes against a 300 s interval, so a tick was skipped and the page refreshed every 10
+    # to 12 minutes.
+    process_type: Standard
     # Installation prepares and checks this environment once. A timer tick must
     # not rebuild the editable package on every 300 s invocation.
     tick_no_sync: true
@@ -125,6 +130,37 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
+  # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
+  # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
+  # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  lab-test-harness:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lab-test-harness
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lab_test_harness_effect.runtime_lab_test_harness
+    entry_file: src/omnimarket/nodes/node_lab_test_harness_effect/runtime_lab_test_harness.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lab-test-harness/last-run.json
+    state_directory: .onex_state/lab-test-harness
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
