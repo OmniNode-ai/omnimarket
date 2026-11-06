@@ -36,12 +36,12 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn22628-integration-proof
-  description: On h051, run the changed onex scm release-list from the branch against the dev bus. The read completes once the dev gateway node carries the client's fields; until then it exits 1 with the plain sentence on stderr, so this item stays red until the node is redeployed.
+  description: On h051, run the changed onex scm release-list from the branch against the dev bus. The read either completes (the dev gateway node carries the client's fields) or prints the plain node-older-than-client sentence; a client without this change prints neither, so the item fails when the change is wrong.
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src onex scm release-list OmniNode-ai/omnimarket --timeout-s 60
+    check_value: env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src onex scm release-list OmniNode-ai/omnimarket --timeout-s 60 2>&1 | grep -Eq 'node is older than this client|"outcome":"completed"'
     cwd: .

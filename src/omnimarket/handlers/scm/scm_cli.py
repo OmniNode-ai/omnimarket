@@ -77,6 +77,10 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.handlers.scm.handler_gateway_read_client import (
+    plain_sentence,
+    refused_fields,
+)
 from omnimarket.handlers.scm.handler_scm_consumer_diagnostics import ScmNoTerminalError
 from omnimarket.handlers.scm.handler_scm_dispatch import (
     SCM_LOCAL_VERBS,
@@ -90,10 +94,6 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_claims_dir,
     default_clone_path,
     default_watcher_state_path,
-)
-from omnimarket.handlers.scm.handler_scm_node_skew import (
-    plain_sentence,
-    refused_fields,
 )
 from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,

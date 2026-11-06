@@ -14,7 +14,7 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from omnimarket.handlers.scm import handler_scm_node_skew as skew
+from omnimarket.handlers.scm import handler_gateway_read_client as skew
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_gateway_read_client import (
     GatewayNodeOlderError,
