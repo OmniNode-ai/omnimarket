@@ -367,18 +367,6 @@ class Settings(BaseSettings):
         default="",
         description="Pattern-B runtime address (used by codex adapter).",
     )
-    tenant_mirror_catchup_event_age_limit_seconds: float | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "OMN-22478. The write-time tenant resolver waits for the tenant "
-            "registry mirror only while an event is younger than this many "
-            "seconds; an older event whose tenant the mirror still lacks is "
-            "refused at once, with its cause, to the dead-letter topic. None "
-            "means the age limit is the catch-up window itself "
-            "(MIRROR_CATCHUP_DEADLINE_SECONDS). Zero waits for no event."
-        ),
-    )
     onex_tenant_id: str = Field(
         default="",
         description=(

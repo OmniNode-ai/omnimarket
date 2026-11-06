@@ -28,7 +28,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from omnimarket.config.settings import get_settings
+from omnimarket.projection import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection import tenant_registry_resolution as resolution
 from omnimarket.projection.tenant_registry_resolution import (
     TenantRegistryResolutionError,
@@ -63,13 +63,13 @@ class _FakeDb:
 
 @pytest.fixture(autouse=True)
 def _window(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setattr(resolution, "_utc_now", lambda: NOW)
+    monkeypatch.setattr(catchup_policy, "utc_now", lambda: NOW)
     monkeypatch.setattr(resolution, "MIRROR_CATCHUP_POLL_SECONDS", 0.001)
     monkeypatch.setattr(resolution, "MIRROR_CATCHUP_DEADLINE_SECONDS", 20.0)
     monkeypatch.delenv("TENANT_MIRROR_CATCHUP_EVENT_AGE_LIMIT_SECONDS", raising=False)
-    get_settings.cache_clear()
+    catchup_policy.get_catchup_settings.cache_clear()
     yield
-    get_settings.cache_clear()
+    catchup_policy.get_catchup_settings.cache_clear()
 
 
 async def _sleepless(monkeypatch: pytest.MonkeyPatch, db: _FakeDb) -> None:
@@ -151,7 +151,7 @@ async def test_the_age_limit_is_set_by_the_overlay_setting(
     await _sleepless(monkeypatch, db)
     # The overlay widens the limit past the event's age: the wait applies again.
     monkeypatch.setenv("TENANT_MIRROR_CATCHUP_EVENT_AGE_LIMIT_SECONDS", "120")
-    get_settings.cache_clear()
+    catchup_policy.get_catchup_settings.cache_clear()
 
     resolved = await async_resolve_write_tenant_uuid(
         db, str(tenant), event_timestamp=produced_at
@@ -174,7 +174,7 @@ async def test_a_zero_age_limit_waits_for_no_event(
     )
     await _sleepless(monkeypatch, db)
     monkeypatch.setenv("TENANT_MIRROR_CATCHUP_EVENT_AGE_LIMIT_SECONDS", "0")
-    get_settings.cache_clear()
+    catchup_policy.get_catchup_settings.cache_clear()
 
     with pytest.raises(TenantRegistryResolutionError):
         await async_resolve_write_tenant_uuid(

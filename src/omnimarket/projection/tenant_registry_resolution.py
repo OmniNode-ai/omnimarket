@@ -63,11 +63,12 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from omnimarket.config.settings import get_settings
+from omnimarket.projection import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection.tenant_isolation import (
     _LEGACY_TENANT_UUID_MAP,
     HOUSE_TENANT_SLUG,
@@ -143,25 +144,6 @@ _REGISTRY_WATERMARK_SQL = f"SELECT max(observed_at) FROM {TENANT_REGISTRY_MIRROR
 MIRROR_CATCHUP_DEADLINE_SECONDS: float = 20.0
 #: How often the mirror is re-read inside that window.
 MIRROR_CATCHUP_POLL_SECONDS: float = 0.5
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
-def _event_age_limit_seconds() -> float:
-    """How old an event may be and still be waited for (OMN-22478).
-
-    The race this window exists for (OMN-18198) is a mint in flight when the
-    event was produced. The mirror lands such a mint within its measured worst
-    case, so once an event is older than the window the mint has landed, and a
-    tenant the mirror still lacks is one nobody minted. Waiting for it is how a
-    quiet registry cost 20 s per event from a tenant in no registry (the
-    mirror's newest ``observed_at`` stays behind every event, so the watermark
-    test below never says "caught up"). Overlay-set; None means the window.
-    """
-    configured = get_settings().tenant_mirror_catchup_event_age_limit_seconds
-    return MIRROR_CATCHUP_DEADLINE_SECONDS if configured is None else configured
 
 
 def parse_tenant_uuid(tenant_identity: str | None) -> UUID | None:
@@ -508,52 +490,31 @@ async def async_resolve_write_tenant_uuid(
         and event_timestamp is not None
         and _legacy_tenant_uuid(tenant_identity) is None
     ):
-        event_age_seconds = (_utc_now() - event_timestamp).total_seconds()
-        waited = event_age_seconds < _event_age_limit_seconds()
-        if waited:
+        # OMN-22478: only an event still inside the window can be the mint race
+        # the wait exists for; an older one is refused at once, with its cause.
+        event_age = catchup_policy.assess_event_age(
+            event_timestamp, MIRROR_CATCHUP_DEADLINE_SECONDS
+        )
+        if event_age.waited:
             registry_uuid = await _await_mirror_catchup(
                 db, tenant_identity, event_timestamp
             )
         if registry_uuid is None:
             watermark = await async_registry_mirror_watermark(db)
-            if not waited and watermark is not None and watermark < event_timestamp:
-                # OMN-22478: the event is older than the catch-up window, so it
-                # was not waited for. The refusal and the dead-letter route are
-                # the ones a wait that ran out takes; only the cause differs.
+            if watermark is not None and watermark < event_timestamp:
+                # The mirror is STILL behind this event. Quarantine, because an
+                # unbounded wait is a wedged partition -- but say which of the
+                # two refusals this is, and carry the watermark, so the
+                # dead-letter census can tell "nobody minted this tenant" from
+                # "the mirror had not caught up".
                 raise TenantRegistryResolutionError(
-                    f"OMN-22478: {TENANT_REGISTRY_MIRROR_TABLE} holds no row "
-                    f"for {tenant_identity!r} and the event is "
-                    f"{event_age_seconds:.0f}s old, past the "
-                    f"{_event_age_limit_seconds():.0f}s catch-up window, so it "
-                    "was not waited for: a mint in flight when it was produced "
-                    "has landed by now. The mirror's watermark is "
-                    f"{watermark.isoformat()} while the event was produced at "
-                    f"{event_timestamp.isoformat()}; a quiet registry keeps the "
-                    "watermark behind every event, so this reads as lag but is "
-                    "an unknown tenant unless "
-                    f"{TENANT_REGISTRY_PROJECTION_NODE} is not consuming. No "
-                    "identity will be invented or defaulted for it."
-                )
-            if waited and watermark is not None and watermark < event_timestamp:
-                # The window closed with the mirror STILL behind this event.
-                # Quarantine, because an unbounded wait is a wedged partition
-                # -- but say which of the two refusals this is, and carry the
-                # watermark, so the dead-letter census can tell "nobody minted
-                # this tenant" from "the mirror had not caught up". Those read
-                # identically today and need different fixes.
-                raise TenantRegistryResolutionError(
-                    f"OMN-18198: {TENANT_REGISTRY_MIRROR_TABLE} holds no row "
-                    f"for {tenant_identity!r}, AND it is still behind this "
-                    f"event after waiting "
-                    f"{MIRROR_CATCHUP_DEADLINE_SECONDS:.0f}s: the mirror's "
-                    f"watermark is {watermark.isoformat()} while the event was "
-                    f"produced at {event_timestamp.isoformat()}. This is NOT "
-                    "the unknown-tenant refusal -- the tenant may well exist "
-                    f"and {TENANT_REGISTRY_PROJECTION_NODE} has not caught up. "
-                    "Measured steady-state latency of that node on onex-dev is "
-                    "1.06-8.78s, so a lag past this window is a defect in the "
-                    "feed rather than an ordinary race. No identity will be "
-                    "invented or defaulted for it."
+                    catchup_policy.lag_refusal_message(
+                        event_age,
+                        tenant_identity,
+                        watermark,
+                        TENANT_REGISTRY_MIRROR_TABLE,
+                        TENANT_REGISTRY_PROJECTION_NODE,
+                    )
                 )
     return resolve_registry_tenant_uuid_or_none(
         tenant_identity, registry_uuid=registry_uuid
