@@ -17,6 +17,10 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_agent_review_command import (
+    ModelAgentReviewRequest as ModelAgentReviewRequest,
+)
+
 _REPO = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 _SHA = r"^[0-9a-f]{40}$"
 
@@ -209,17 +213,6 @@ class ModelAgentReviewConfig(BaseModel):
                 f"order={sorted(self.rung_order)} roster={sorted(roster_rungs)}"
             )
         return self
-
-
-class ModelAgentReviewRequest(BaseModel):
-    """The command: one pull request head to review, delivered under one command id."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    command_id: str = Field(min_length=1)
-    repo: str = Field(pattern=_REPO)
-    pr: int = Field(gt=0)
-    head_sha: str = Field(pattern=_SHA)
 
 
 class ModelAgentFinding(BaseModel):

@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22177
 title: 'Agent review dispatch node and the review post: the orchestrator reviews one pull request head with lab models and publishes one signed receipt'
-summary: node_agent_review_dispatch_orchestrator takes one command (repo, pr, head_sha) on onex.cmd.omnimarket.agent-review-requested.v1, reads the head through injected ports, reuses the receipt stored under repo#pr#head or runs the lab review, signs a candidate, stores it by insert-if-absent and posts the stored receipt as a pull request review through the new source-control write operation pr_review_post; terminals are completed, refused and failed. Every voter, endpoint, threshold and deadline comes from the node overlay. The ports are injected and tested in memory and under the Redpanda overlay; the production adapters are not part of this change.
+summary: node_agent_review_trigger_effect consumes the existing ci-run-failed stream and publishes a stable repo/PR/head command when a required review has no voter verdict and no receipt; node_agent_review_dispatch_orchestrator takes one command (repo, pr, head_sha) on onex.cmd.omnimarket.agent-review-requested.v1, reads the head through injected ports, reuses the receipt stored under repo#pr#head or runs the lab review, signs a candidate, stores it by insert-if-absent and posts the stored receipt as a pull request review through the new source-control write operation pr_review_post; terminals are completed, refused and failed. Every voter, endpoint, threshold and deadline comes from the node overlay. The ports are injected and tested in memory and under the Redpanda overlay; the production adapters are not part of this change.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -225,4 +225,18 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_rung_chain.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+
+# Trigger regression evidence supplements the existing receipt-key requirements.
+# The acceptance statements above are unchanged.
+- id: dod-omn22177-review-trigger
+  description: Required exact-head review with no voter verdict emits one logical command and stores one receipt; a repeated head makes no read, command or review call. Stale or non-required evidence emits nothing. A failed acknowledgement retries the same command id.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_golden_chain_agent_review_trigger_effect.py -q -n 0 -p no:randomly --no-cov --tb=short
     cwd: .

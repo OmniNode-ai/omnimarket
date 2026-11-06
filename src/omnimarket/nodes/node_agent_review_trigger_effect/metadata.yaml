@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_trigger_effect
+version: "1.0.0"
+description: Starts the agent review chain from a required exact-head review with no voter verdict.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_agent_review_trigger_effect: omnimarket.nodes.node_agent_review_trigger_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: effectful
+dependencies:
+  - omnibase_infra
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, review, receipt]
+node_role: effect
+pack: review
+display_name: Agent Review Trigger Effect
