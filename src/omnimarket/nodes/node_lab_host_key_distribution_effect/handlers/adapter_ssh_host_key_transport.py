@@ -8,11 +8,10 @@ import re
 import shlex
 import subprocess
 
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState
 from omnimarket.models.overlay_keys import ModelLabHostRow
 
 from ..models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
 )
