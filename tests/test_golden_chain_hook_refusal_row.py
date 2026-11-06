@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Golden and error chains for the hook refusal row decision."""
 
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.error_normalizer import ModelErrorNormalizerFacts
 from omnimarket.nodes.node_hook_refusal_row_compute.handlers import (
     HandlerHookRefusalRowCompute,
 )
@@ -15,9 +19,19 @@ from omnimarket.nodes.node_hook_refusal_row_compute.models import (
 
 pytestmark = pytest.mark.unit
 
+FACTS = ModelErrorNormalizerFacts.model_validate(
+    json.loads(
+        (
+            Path(__file__).parent
+            / "unit/nodes/node_error_class_normalize_compute/fixtures/normalizer_facts.json"
+        ).read_text()
+    )
+)
+
 
 def test_golden_chain_refusal_to_ledger_row() -> None:
     command = ModelHookRefusalRowRequest(
+        normalizer_facts=FACTS,
         guard="pre_tool_use_shared_tree_git_guard.sh",
         reason="unauthorised shared-tree git mutation",
         detail="BLOCKED: this command moves the shared registry clone",
@@ -51,6 +65,7 @@ def test_error_chain_hostile_text_is_neutralised_not_raised() -> None:
     hostile = "| |\r\n" * 50 + "token=" + "x" * 5000
     result = HandlerHookRefusalRowCompute().handle(
         ModelHookRefusalRowRequest(
+            normalizer_facts=FACTS,
             guard=hostile,
             reason=hostile,
             detail=hostile,

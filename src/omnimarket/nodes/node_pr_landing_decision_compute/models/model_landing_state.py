@@ -25,6 +25,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingOutcomeReason,
     EnumLandingRebuildStatus,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
+    ModelLandingExhaustionOwner,
+)
 
 PR_KEY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*$"
 REPO_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
@@ -113,6 +116,7 @@ class ModelLandingPrRecord(BaseModel):
         default=None, description="Set while parked escalation_exhausted."
     )
     parked_fingerprint: str = ""
+    exhaustion_owner: ModelLandingExhaustionOwner | None = None
     rerun_heads: tuple[str, ...] = Field(
         default=(), description="Heads that already had their one whole-run rerun (R5)."
     )
@@ -216,6 +220,7 @@ class ModelLandingCauseRecord(BaseModel):
     pairs: tuple[ModelLandingCausePair, ...] = ()
     members: tuple[ModelLandingMemberRef, ...] = Field(..., min_length=1)
     attempts: int = Field(default=0, ge=0)
+    exhaustion_owner: ModelLandingExhaustionOwner | None = None
     spawn_failures: int = Field(default=0, ge=0)
     outcome: EnumLandingOutcome | None = None
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE

@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_standing_rules_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Standing-rule admission over typed dispatch facts.
+input_model:
+  name: ModelStandingRulesRequest
+  module: omnimarket.models.standing_rules.model_standing_rules
+output_model:
+  name: ModelStandingRulesResult
+  module: omnimarket.models.standing_rules.model_standing_rules
+handler:
+  module: omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.handler_dispatch_standing_rules_effect
+  class: HandlerDispatchStandingRulesEffect
+  input_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesRequest
+  output_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.handler_dispatch_standing_rules_effect:HandlerDispatchStandingRulesEffect
+  handlers:
+  - operation: evaluate_standing_rules
+    handler:
+      name: HandlerDispatchStandingRulesEffect
+      module: omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.handler_dispatch_standing_rules_effect
+    input_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesRequest
+    output_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesResult
+    topic: onex.cmd.omnimarket.dispatch-standing-rules-effect-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dispatch-standing-rules-effect-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1
+    failure: onex.evt.omnimarket.dispatch-standing-rules-effect-failed.v1
+published_events:
+- event_type: ModelStandingRulesResult
+  topic: onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1
+  description: Binding admission answer and remediation.
+externally_consumed_topics:
+- onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1
+- onex.evt.omnimarket.dispatch-standing-rules-effect-failed.v1
+metadata:
+  transport_type: kafka
+  description: Standing-rule admission
+  author: OmniNode Team
+  tags:
+  - effect
+  - dispatch
+dependencies:
+- name: omnimarket.nodes.node_dispatch_standing_rules_compute
+  dependency_type: internal
+  description: Pure standing-rule check table.
+  required: true
+handler_dependencies:
+- omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+- omnimarket.protocols.protocol_standing_rules_io.ProtocolStandingRulesIO
+terminal_event: onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.dispatch-standing-rules-effect-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1
+  - onex.evt.omnimarket.dispatch-standing-rules-effect-failed.v1
+entrypoint:
+  name: NodeDispatchStandingRulesEffect
+  module: omnimarket.nodes.node_dispatch_standing_rules_effect.node
