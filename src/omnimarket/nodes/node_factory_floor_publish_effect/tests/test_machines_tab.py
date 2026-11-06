@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import re
+from pathlib import Path
 from typing import Any
 
 from tests.nodes.node_factory_floor_compute.test_host_status import (
@@ -19,13 +20,13 @@ from tests.nodes.node_factory_floor_compute.test_host_status import (
     statuses,
 )
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
-    NODE_DIR,
     SHELL_FILES,
     SHELL_RECORD,
     _run_shell,
     _shell_out,
 )
 
+NODE_DIR = Path(__file__).resolve().parents[1]
 SHELL_SRC = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 
 

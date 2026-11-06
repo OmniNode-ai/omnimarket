@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -146,6 +146,7 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
             serve_url="u",
@@ -158,6 +159,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
             serve_url="u",
@@ -717,7 +719,7 @@ FLOOR_HARNESS = textwrap.dedent(
     """
 )
 
-FLOOR_RECORD = {
+FLOOR_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -878,7 +880,7 @@ def machine_cells(**cells: object) -> dict[str, object]:
     return {**base, **cells}
 
 
-BAYS_RECORD = {
+BAYS_RECORD: dict[str, Any] = {
     **FLOOR_RECORD,
     "floor": {
         **FLOOR_RECORD["floor"],
@@ -1157,7 +1159,7 @@ SHELL_HARNESS = textwrap.dedent(
 )
 
 SHELL_NOW = "2099-01-01T00:10:00Z"
-SHELL_RECORD = {
+SHELL_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [

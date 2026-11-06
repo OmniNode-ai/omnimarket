@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -18,6 +19,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorDriftHost,
     ModelFloorHostDrift,
     ModelFloorHostRow,
+    ModelFloorLedgerRow,
     ModelFloorMachineDecl,
     ModelFloorPlacedHost,
     ModelFloorPoolReading,
@@ -67,7 +69,7 @@ def recorded_pool(age_minutes: float = 2) -> tuple[ModelFloorPoolReading, ...]:
     return tuple(parse_pool_reading(line, ago(age_minutes)) for line in lines)
 
 
-def lane_rows() -> tuple:
+def lane_rows() -> tuple[ModelFloorLedgerRow, ...]:
     return (
         row(
             "CLAIM",
@@ -97,7 +99,7 @@ def advert(host: str, *tools: str, age_seconds: int = 60):  # type: ignore[no-un
     )
 
 
-def statuses(**extra: object) -> dict[str, ModelFloorHostStatus]:
+def statuses(**extra: Any) -> dict[str, ModelFloorHostStatus]:
     req = request(machines=MACHINES, ledger=lane_rows(), **extra)
     result = compute_factory_floor(req)
     return {s.host: s for s in result.floor.host_status}
@@ -312,7 +314,7 @@ def test_stale_a_reading_past_its_bound_is_stale_and_the_host_is_never_read() ->
 
 def assert_no_cell_reads_fresh_except_live(status: ModelFloorHostStatus) -> None:
     """Table and marker cells are read live each cycle; every cell of an aged source must not say read."""
-    aged = [
+    aged: list[ModelHostNumber | ModelHostFlag] = [
         status.slots_free,
         status.load_per_core,
         status.mem_free_gb,
