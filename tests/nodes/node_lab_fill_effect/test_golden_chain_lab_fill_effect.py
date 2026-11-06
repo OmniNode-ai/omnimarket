@@ -26,6 +26,7 @@ from omnimarket.nodes.node_lab_fill_effect.models import (
     ModelLabFillStatusWriteRequest,
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillClaimFacts
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     START,
@@ -173,6 +174,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
         ),
     )
     launched = by_op["launch_lab_fill_lane"][0](
+        premise_gate=FakePremiseGate(),
         checks=checks,
         approved=FakeApproved(
             rows={
@@ -231,7 +233,14 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
         "main",
         "--detach",
     ]
-    assert env == {"ONEX_LEDGER_PATH": "/l"}
+    from omnimarket.nodes.node_rule_premise_effect import brief_receipt
+
+    assert env == {
+        "ONEX_LEDGER_PATH": "/l",
+        "ONEX_BRIEF_CHECK_RECEIPT": brief_receipt(written),
+        "ONEX_BATCH_SLOT": "batch@fixture#1",
+        "ONEX_BATCH_ATTEMPT": "1",
+    }
     assert 0 < timeout <= 150  # half of the 300 s left: two lanes still to go
     assert checks.calls == [
         {"ticket": "OMN-7", "kind": "wiring", "pr": "", "operator_id": "op"}

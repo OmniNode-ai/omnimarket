@@ -108,6 +108,7 @@ class ModelLabFillLaunchRequest(BaseModel):
     lanes_left: int = Field(default=1, ge=1)
     min_lane_s: int = Field(default=15, ge=1)
     default_slice_s: int = Field(default=420, ge=1)
+    batch: str = ""
 
 
 class ModelLabFillLaunchResult(BaseModel):

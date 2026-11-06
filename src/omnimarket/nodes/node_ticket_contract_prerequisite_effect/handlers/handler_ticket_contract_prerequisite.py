@@ -177,6 +177,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
+            base = _resolve_base(base)
             changed = _changed_paths(sha, base)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(

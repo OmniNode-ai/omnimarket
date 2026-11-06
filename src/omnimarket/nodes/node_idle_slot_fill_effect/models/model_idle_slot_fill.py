@@ -150,6 +150,7 @@ class ModelLabFillRequest:
     queue_reserved: Mapping[str, int] = field(
         default_factory=dict
     )  # reserved against this tick's lab_headroom snapshot
+    batch: str = ""
 
 
 @dataclass(frozen=True)

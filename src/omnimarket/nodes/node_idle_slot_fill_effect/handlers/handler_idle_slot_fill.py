@@ -125,6 +125,10 @@ from omnimarket.models.model_backlog_item import (
     backlog_item_refusal,
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.model_rule_premise import (
+    ModelBatchPolicy,
+    ModelBriefCheckRequest,
+)
 from omnimarket.models.stop_gate import (
     REPOSITORY_SCOPE_KIND,
     EnumStopExemptionKind,
@@ -146,6 +150,13 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
     load_policy,
     resolve_lane_model,
 )
+from omnimarket.nodes.node_rule_premise_effect import (
+    BoundPremiseGate,
+    SendRefusalStore,
+    load_batch_policy,
+    receipt_allows,
+)
+from omnimarket.protocols.protocol_rule_premise import ProtocolRulePremiseGate
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 
@@ -1086,6 +1097,7 @@ class HandlerIdleSlotFill:
                     "risk_class": item.get("risk_class"),
                     "ticket": ticket,
                     "brief": brief(item, lane, model, request.parent, ticket, host=pin),
+                    **({"batch": str(item["batch"])} if item.get("batch") else {}),
                     **({"host": pin} if pin else {}),
                 }
             )
@@ -2043,12 +2055,28 @@ def _tail(text: str) -> str:
     return (lines[-1] if lines else "no output")[-200:]
 
 
-def _send(argv: list[str]) -> tuple[bool, str]:
+def _send(
+    argv: list[str],
+    *,
+    brief_check_receipt: str = "",
+    batch_slot: str = "",
+    batch_attempt: int = 0,
+) -> tuple[bool, str]:
     """Start the lane detached, without waiting for placement (OMN-17427: a placement wait cost the tick a minute per fill
     while the lab's accounts were limited); a lane the runner detached (exit 0, exit 3 still placing, or a DETACHED line before
     the timeout) is sent. A placement that later ends no-host is the tick's `MISSING dispatch:<lane>` re-placement, as for
     any other dispatch."""
     try:
+        if not brief_check_receipt:
+            return False, "brief-check receipt missing"
+        if not batch_slot or batch_attempt < 1:
+            return False, "brief-check batch admission missing"
+        brief_path = Path(argv[argv.index("--brief") + 1])
+        expected = (
+            "brief-check=pass:" + hashlib.sha256(brief_path.read_bytes()).hexdigest()
+        )
+        if brief_check_receipt != expected:
+            return False, "brief-check receipt does not match the sent bytes"
         ran = subprocess.run(
             argv,
             capture_output=True,
@@ -2056,6 +2084,18 @@ def _send(argv: list[str]) -> tuple[bool, str]:
             check=False,
             timeout=DISPATCH_TIMEOUT_S,
             stdin=subprocess.DEVNULL,
+            env={
+                **os.environ,
+                "ONEX_BRIEF_CHECK_RECEIPT": brief_check_receipt,
+                **(
+                    {
+                        "ONEX_BATCH_SLOT": batch_slot,
+                        "ONEX_BATCH_ATTEMPT": str(batch_attempt),
+                    }
+                    if batch_slot
+                    else {}
+                ),
+            },
         )
         return ran.returncode in (
             0,
@@ -2067,7 +2107,7 @@ def _send(argv: list[str]) -> tuple[bool, str]:
             for o in (exc.stdout, exc.stderr)
         )
         return "DETACHED lane=" in text, _tail(text or str(exc))
-    except OSError as exc:
+    except (OSError, ValueError, IndexError) as exc:
         return False, _tail(str(exc))
 
 
@@ -2132,8 +2172,17 @@ def tick_row_recorder(
 
 
 class HandlerLabFill:
-    def __init__(self, ruling_recovery: HandlerRulingRecovery | None = None) -> None:
+    def __init__(
+        self,
+        ruling_recovery: HandlerRulingRecovery | None = None,
+        premise_gate: ProtocolRulePremiseGate | None = None,
+        batch_policy: ModelBatchPolicy | None = None,
+    ) -> None:
         self._ruling_recovery = ruling_recovery or HandlerRulingRecovery()
+        self._premise_gate = (
+            premise_gate if premise_gate is not None else BoundPremiseGate()
+        )
+        self._batch_policy = batch_policy
 
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
@@ -2343,6 +2392,29 @@ class HandlerLabFill:
         if decision.claude_free + decision.codex_only_free + decision.glm_only_free < 1:
             return ModelLabFillResult(found)
         names: list[str] = []
+        refused_tickets: list[str] = []
+        refusal_memory: SendRefusalStore | None = None
+        try:
+            if decision.sends and not request.read_only:
+                refusal_memory = SendRefusalStore(
+                    state / "brief-refusals.json",
+                    self._batch_policy or load_batch_policy(),
+                )
+        except (OSError, ValueError, TypeError) as exc:
+            return ModelLabFillResult(
+                [
+                    *found,
+                    *[
+                        (
+                            "missing",
+                            f"dispatch-refused:{send['ticket']}",
+                            f"brief-check policy or refusal memory unread: {exc}",
+                            "bind rule_premise policy and restore refusal memory",
+                        )
+                        for send in decision.sends
+                    ],
+                ]
+            )
         counts = {"claude": 0, "codex": 0, "glm": 0}
         for send in decision.sends:
             if request.read_only:
@@ -2350,16 +2422,60 @@ class HandlerLabFill:
                     f"{send['lane']} would be sent ({send['kind']} {send['key']}, {send['model']})"
                 )
                 continue
+            if refusal_memory is None:
+                raise RuntimeError("send refusal memory was not bound")
+            ticket = send["ticket"]
+            now_epoch = (
+                _stamp(request.now) or datetime.min.replace(tzinfo=UTC)
+            ).timestamp()
+            if refusal_memory.parked(ticket, now_epoch):
+                refused_tickets.append(ticket)
+                found.append(
+                    (
+                        "missing",
+                        f"dispatch-refused:{ticket}",
+                        f"{ticket} parked after repeated brief-check refusals",
+                        "repair the brief before the park expires",
+                    )
+                )
+                continue
             brief_path = state / "lab-fill-briefs" / f"{send['lane']}.brief.md"
             try:
                 brief_path.parent.mkdir(parents=True, exist_ok=True)
                 brief_path.write_text(send["brief"], encoding="utf-8")
-                ok, detail = _send(
-                    fill_argv(request.runner, brief_path, send, request.parent)
+                checked = self._premise_gate.handle(
+                    ModelBriefCheckRequest(
+                        brief=send["brief"],
+                        lane=send["lane"],
+                        ticket=ticket,
+                        host=str(send.get("host") or ""),
+                        repository=send["repo"],
+                        now=now_epoch,
+                        batch=str(send.get("batch") or request.batch),
+                    )
                 )
+                if receipt_allows(send["brief"], checked, require_admission=True):
+                    ok, detail = _send(
+                        fill_argv(request.runner, brief_path, send, request.parent),
+                        brief_check_receipt=checked.receipt,
+                        batch_slot=checked.slot,
+                        batch_attempt=checked.attempt,
+                    )
+                    if not ok and re.search(
+                        r"brief-check|REMOTE-LANE-(?:BRIEF-UNCHECKED|(?:MINT|TIMEOUT)-REFUSED)",
+                        detail,
+                    ):
+                        refusal_memory.refuse(ticket, detail, now_epoch)
+                else:
+                    ok, detail = (
+                        False,
+                        checked.reason or "brief-check receipt missing or failed",
+                    )
+                    refusal_memory.refuse(ticket, detail, now_epoch)
             except OSError as exc:
                 ok, detail = False, _tail(str(exc))
             if ok:
+                refusal_memory.clear(ticket)
                 sent[send["key"]] = {
                     "lane": send["lane"],
                     "at": request.now,
@@ -2376,7 +2492,12 @@ class HandlerLabFill:
                         why := request.record(
                             "lab-fill",
                             send["lane"],
-                            f"{send['kind']} {send['key']}, {send['model']}",
+                            f"{checked.receipt} {send['kind']} {send['key']}, {send['model']}"
+                            + (
+                                f" slot={checked.slot} attempt={checked.attempt}"
+                                if checked.slot
+                                else ""
+                            ),
                         )
                     )
                     is not None
@@ -2390,12 +2511,13 @@ class HandlerLabFill:
                         )
                     )
             else:
+                refused_tickets.append(ticket)
                 found.append(
                     (
-                        "unknown",
-                        f"lab-fill-dispatch:{send['lane']}",
+                        "missing",
+                        f"dispatch-refused:{ticket}",
                         f"the runner refused {send['kind']} {send['key']}: {detail}",
-                        "the next tick sends it again; exit 75 is no lab host free",
+                        "repair the brief; two brief-check refusals park this ticket",
                     )
                 )
         n = sum(counts.values())
@@ -2435,6 +2557,7 @@ class HandlerLabFill:
                     )
                     + f" idle_after={idle}: "
                     f"{', '.join(names) or 'nothing to send'}"
+                    + f" refused={len(refused_tickets)} tickets={','.join(refused_tickets) or 'none'}"
                 ),
                 "",
             )
