@@ -179,7 +179,8 @@ def final_lane_withdrawn_by(final_message: str | None) -> str | None:
                 obj = json.loads(line, object_pairs_hook=_unique_object)
             except (ValueError, TypeError):
                 return None
-            citations.append(obj.get("withdrawn-by") if isinstance(obj, dict) else None)
+            cited = obj.get("withdrawn-by") if isinstance(obj, dict) else None
+            citations.append(cited if isinstance(cited, str) else None)
     distinct = set(citations)
     if len(distinct) != 1:
         return None
