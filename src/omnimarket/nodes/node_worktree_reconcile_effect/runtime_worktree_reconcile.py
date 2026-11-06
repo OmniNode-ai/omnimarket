@@ -19,6 +19,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.container.container_worktre
     create_handler_worktree_schedule,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
+    CommandMergedPrReader,
     CommandWorktreeDecider,
     CommandWorktreePinner,
     SystemClock,
@@ -67,7 +68,7 @@ def run_command(
 ) -> ModelWorktreeReconcileRunResult:
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
-        probe=GitWorktreeFactsProbe(),
+        probe=GitWorktreeFactsProbe(merged_pr_reader=CommandMergedPrReader()),
         decider=CommandWorktreeDecider(),
         pinner=CommandWorktreePinner(),
         remover=GitWorktreeRemover(),
