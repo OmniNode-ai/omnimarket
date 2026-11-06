@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scratch brokers and scratch ledgers only; no deployment address or credential.
+profiles:
+  inmemory:
+    transport: inmemory
+    timeout_seconds: 5
+  redpanda:
+    transport: kafka
+    broker: isolated-sasl-harness
+    timeout_seconds: 30

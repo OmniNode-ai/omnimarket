@@ -66,6 +66,8 @@ from omnibase_infra.runtime.auto_wiring.report import (
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.topology import load_topology_profile
 
+from tests.helpers.lab_test_harness_fakes import overlay_document
+
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -95,6 +97,16 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
 }
+
+# Contracts per wiring batch; each batch stays under the per-test runtime budget.
+_WIRING_BATCH_SIZE = 32
+# The harness schedule node refuses to construct without its overlay (OMN-22608).
+_HARNESS_SCHEDULE_NODE = "node_lab_test_harness_schedule_compute"
+_HARNESS_OVERLAY_ID = "node_lab_test_harness_effect"
+# The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
+_RELAY_NODES = frozenset(
+    {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
+)
 
 # The ModelDispatchRoute field each derived identifier is stored in.
 _DERIVED_FIELDS = ("route_id", "handler_id", "topic_pattern")
@@ -231,9 +243,53 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
-async def test_every_node_auto_wires_in_process(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _wiring_batches() -> list[ModelAutoWiringManifest]:
+    """Keep every discovered contract under the per-test runtime budget.
+
+    Wiring the growing catalogue in one pytest item exceeds CI's 300-second
+    timeout before its assertions run. Each batch uses the same real runtime,
+    topology, container and bus; no contract or refusal is exempted.
+    """
+    contracts = _manifest().contracts
+    names = {contract.name for contract in contracts}
+    assert len(names) == len(contracts), "duplicate canonical contract names"
+    removed = set(_CANNOT_WIRE_IN_PROCESS) - names
+    assert not removed, f"listed contracts no longer discovered; remove them: {removed}"
+    return [
+        ModelAutoWiringManifest(contracts=contracts[start : start + _WIRING_BATCH_SIZE])
+        for start in range(0, len(contracts), _WIRING_BATCH_SIZE)
+    ]
+
+
+def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> None:
+    """AC14: the batches cover the catalogue once each, relay nodes included."""
+    batches = _wiring_batches()
+    batched = [contract.name for batch in batches for contract in batch.contracts]
+    discovered = [contract.name for contract in _manifest().contracts]
+    assert sorted(batched) == sorted(discovered)
+    assert len(set(batched)) == len(batched), "a contract is wired in two batches"
+    assert all(len(batch.contracts) <= _WIRING_BATCH_SIZE for batch in batches)
+    missing = _RELAY_NODES - set(batched)
+    assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
+
+
+def _supply_harness_overlay(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
+    """Give the harness schedule node the overlay it refuses to construct without.
+
+    The schedule node reads its interval from the harness overlay and has no packaged
+    default (OMN-22608). The wiring check supplies the same document the harness tests
+    use, so the node wires for the reason it would on a runtime that has the overlay.
+    """
+    node_dir = root / _HARNESS_OVERLAY_ID
+    node_dir.mkdir(parents=True)
+    document = overlay_document("a" * 40, root / "result.json")
+    (node_dir / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+
+
+async def _wire_and_collect_failures(
+    monkeypatch: pytest.MonkeyPatch, manifest: ModelAutoWiringManifest
+) -> tuple[int, dict[str, str]]:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _UNREACHABLE_BROKER)
@@ -252,7 +308,7 @@ async def test_every_node_auto_wires_in_process(
     await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
-            _manifest(),
+            manifest,
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
@@ -272,10 +328,46 @@ async def test_every_node_auto_wires_in_process(
                 quarantined.contract_name,
                 f"{quarantined.handler_name}: {quarantined.detail[:400]}",
             )
-    assert report.total_wired > 0
+    return report.total_wired, failing
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    _wiring_batches(),
+    ids=lambda manifest: manifest.contracts[0].name,
+)
+async def test_every_node_auto_wires_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    manifest: ModelAutoWiringManifest,
+) -> None:
+    _supply_harness_overlay(monkeypatch, tmp_path / "overlays")
+    total_wired, failing = await _wire_and_collect_failures(monkeypatch, manifest)
+    assert total_wired > 0
     _shrink_only(
         failing,
-        _CANNOT_WIRE_IN_PROCESS,
+        {
+            name: reason
+            for name, reason in _CANNOT_WIRE_IN_PROCESS.items()
+            if name in {contract.name for contract in manifest.contracts}
+        },
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )
+
+
+async def test_the_harness_schedule_node_fails_to_wire_without_its_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The control for the overlay the wiring check supplies: withheld, the node fails."""
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    schedule = [
+        contract
+        for contract in _manifest().contracts
+        if contract.name == _HARNESS_SCHEDULE_NODE
+    ]
+    assert schedule, f"{_HARNESS_SCHEDULE_NODE} is not discovered"
+    _, failing = await _wire_and_collect_failures(
+        monkeypatch, ModelAutoWiringManifest(contracts=tuple(schedule))
+    )
+    assert _HARNESS_SCHEDULE_NODE in failing, failing
