@@ -132,6 +132,8 @@ class ModelPublishStepResult(BaseModel):
     status: Literal["ok", "failed"]
     detail: str = ""
     diagnostic: str = ""
+    # The wall-clock seconds the step took, measured by the handler (OMN-22699).
+    seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelPublishNames(BaseModel):
@@ -392,6 +394,9 @@ class ModelFactoryFloorPublishResult(BaseModel):
     delegation_published: bool = False
     history_snapshot: str = ""
     history_pruned: tuple[str, ...] = ()
+    # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
+    cycle_seconds: float = Field(default=0.0, ge=0)
+    phase_seconds: dict[str, float] = Field(default_factory=dict)
 
 
 class ModelReportsPublishRequest(BaseModel):

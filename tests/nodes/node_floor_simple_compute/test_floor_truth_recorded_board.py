@@ -85,6 +85,8 @@ def board(
             ),
             "lab": ModelLabStateOutput.model_validate(lab),
             "now": now,
+            # The recorded board is from before any go was read from the ledger: no piece had been given the go.
+            "go_given_through": 0,
         }
     )
     request = ModelFloorSimpleInput.model_validate(raw)

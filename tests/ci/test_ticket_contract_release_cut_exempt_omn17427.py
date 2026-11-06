@@ -137,12 +137,11 @@ def test_unreadable_base_keeps_the_refusal(
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)
-    # Base pinning fails before release-cut classification; the public handler
+    # With no explicit title the commit subjects need the base; an unreadable base
     # turns that git error into a typed refusal rather than granting an exemption.
+    # An explicit title keeps the contract refusal instead (test_missing_base.py).
     result = push.HandlerTicketContractPrerequisite().handle(
-        ModelTicketContractPrerequisiteRequest(
-            head=head, base="no-such-base", title=TITLE
-        )
+        ModelTicketContractPrerequisiteRequest(head=head, base="no-such-base")
     )
     assert not result.passed
     assert result.head_sha is None
