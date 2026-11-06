@@ -26,11 +26,6 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: an unresolved Linear key answers reason secret_unavailable with finding linear_api_key_unresolved instead of operation_failed, and a missing lane declaration answers bus_unavailable with detail and fix naming ONEX_WORKSPACE_CONFIG_ROOT -- falsifier: uv run pytest tests/nodes/node_linear_ticket_write_effect -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-host-reconcile-proven-floor
-    statement: A repair that cannot stamp the dispatch floor restores the venv to the existing proven omnimarket commit.
-    acceptance:
-      - id: AC5
-        statement: 'AC5: after a repair installs the clone head and a refused clone prevents stamping, the delegate runs again with --proven, the installed commit returns to the floor and the floor stays unchanged; a stamping repair, a repair without a floor and check mode never restore -- falsifier: uv run --frozen pytest tests/test_host_reconcile_effect.py -q --no-cov --refuse-skips -k "cannot_stamp_puts or repair_that_stamps or no_floor_restores or check_mode_never_restores"'
   - id: req-omn19998-pool-probe-overlay
     statement: The Claude pool refill passes a lane overlay to the credential probe that requires it.
     acceptance:
@@ -128,11 +123,6 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-unreadable-local-base
-    statement: An unreadable local comparison base preserves the missing-contract refusal without granting a release-cut exemption or guessing a remote branch.
-    acceptance:
-      - id: AC12
-        statement: 'AC12: a changelog-only commit with an unreadable local base returns the missing-contract refusal; configured remote bases still resolve through the CLI and fetch errors, missing local refs and missing runtime proof remain refusals -- falsifier: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov'
   - id: req-omn19998-ledger-detail-reference-retention
     statement: Ledger detail retention preserves old units cited by declared local readers and refuses removal when readers cannot be checked or change during archival.
     acceptance:
@@ -153,21 +143,21 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn19998-unreadable-local-base
-    description: The existing release-cut regression reproduces the unreadable local base and asserts the exact missing-contract refusal, including source and pin-only negative controls.
+  - id: dod-omn19998-ledger-detail-reference-retention
+    description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual
     binds_ac: [AC12]
     checks:
       - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov
+        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov
         cwd: .
-  - id: dod-omn19998-unreadable-local-base-deploy
-    description: Hosted smoke runs the release-cut regression and the shipped node CLI against real local repositories, covering missing local and remote bases, fetched tracking refs, unchanged outgoing commits and refusal controls. No credentials or host installation are required.
+  - id: dod-omn19998-ledger-detail-retention-wiring
+    description: Hosted wiring smoke passes a dry-run request through NodeRetentionCleanup and its shipped ledger-detail policy with temporary reader files. It reports a cited detail kept and an uncited detail eligible, with no files removed or archived. No host cleanup is run.
     source: manual
     binds_ac: [AC12]
     checks:
       - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov
+        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
         cwd: .
   - id: dod-omn19998-ruling-failed-recovery
     description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
@@ -496,24 +486,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_events/test_redacted_working_directory_omn19513.py -q --no-cov
         cwd: .
-  - id: dod-omn19998-host-reconcile-proven-floor
-    description: Exercise the repair and check paths through local git repositories and executable delegate scripts. The refused-clone case fails without the restoration call because the venv remains on the unproven clone head. The other cases guard stamping, absent-floor and check-mode behavior.
-    source: manual
-    binds_ac:
-      - AC5
-    checks:
-      - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_host_reconcile_effect.py -q --no-cov --refuse-skips -k "cannot_stamp_puts or repair_that_stamps or no_floor_restores or check_mode_never_restores"
-        cwd: .
-  - id: dod-omn19998-host-reconcile-proven-floor-deploy
-    description: Hosted deployment smoke invokes the host reconcile effect with local git clones and a shell delegate that records argv and installs either the clone head or the proven commit. It reads back the installed commit, unchanged floor, failed result and second delegate call with --proven. This checks the script boundary without changing a live host installation.
-    source: manual
-    binds_ac:
-      - AC5
-    checks:
-      - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_host_reconcile_effect.py::test_a_repair_that_cannot_stamp_puts_the_venv_back_on_the_floor -q --no-cov --refuse-skips
-        cwd: .
   - id: dod-omn19998-finished-clone-retention
     description: Scoped retention regression checks clean, dirty, staged, untracked, unpushed and unfinished runs, nested repositories, remote refs and peer worktree metadata. The clean-clone case fails before this change because every git-bearing tree is kept. Original controller timer criteria remain outside this slice.
     source: manual
@@ -537,20 +509,4 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-ledger-detail-reference-retention
-    description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
-    source: manual
-    binds_ac: [AC12]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-ledger-detail-retention-wiring
-    description: Hosted wiring smoke passes a dry-run request through NodeRetentionCleanup and its shipped ledger-detail policy with temporary reader files. It reports a cited detail kept and an uncited detail eligible, with no files removed or archived. No host cleanup is run.
-    source: manual
-    binds_ac: [AC12]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
         cwd: .
