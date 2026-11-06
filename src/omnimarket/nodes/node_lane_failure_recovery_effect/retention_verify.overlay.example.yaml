@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+check_after_seconds: [3600, 86400]
+error_pattern: "ModuleNotFoundError: No module named 'omnimarket'"
+receipt_glob: '**/*.json'
