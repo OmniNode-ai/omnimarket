@@ -268,23 +268,24 @@ def test_the_apply_models_are_closed() -> None:
 
 
 def _write(tmp_path: Path) -> Path:
-    path = tmp_path / ".pre-commit-config.yaml"
-    path.write_text(CONFIG)
-    return path
+    """A consumer tree: a pyproject pinning core at PIN and the config beside it."""
+    (tmp_path / ".pre-commit-config.yaml").write_text(CONFIG)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        f'[tool.uv.sources]\nomnibase-core = {{ git = "{CORE}.git", tag = "{PIN}" }}\n'
+    )
+    return pyproject
 
 
-def _argv(path: Path, *extra: str) -> list[str]:
+def _argv(pyproject: Path, *extra: str) -> list[str]:
+    verdicts = json.dumps([[NEWEST, True], [HOOK, True]])
     return [
-        "--precommit",
-        str(path),
-        "--repository-url",
-        f"{CORE}.git",
-        "--pin-tag",
-        PIN,
-        "--candidate",
-        f"{NEWEST}=green",
-        "--candidate",
-        f"{HOOK}=green",
+        "--pyproject",
+        str(pyproject),
+        "--distribution",
+        "omnibase-core",
+        "--candidates",
+        verdicts,
         *extra,
     ]
 
