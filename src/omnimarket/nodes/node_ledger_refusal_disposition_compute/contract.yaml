@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_refusal_disposition_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: COMPUTE_GENERIC
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Validate explicit operator-authorized dispositions against supplied immutable refusal and complete
+  canonical ledger snapshots; never enact or replay. Selected CLAIM, TERMINAL, legacy and unknown row
+  types fail closed before grammar calls that may read local state. Unrelated history remains available
+  for revocation checks. This package publishes validation only and does not switch any caller.
+input_model:
+  name: ModelRefusalDispositionRequest
+  module: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_request
+output_model:
+  name: ModelRefusalDispositionResult
+  module: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_result
+handler:
+  module: omnimarket.nodes.node_ledger_refusal_disposition_compute.handlers.handler_refusal_disposition
+  class: HandlerRefusalDisposition
+  input_model: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_request.ModelRefusalDispositionRequest
+  output_model: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_result.ModelRefusalDispositionResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate
+      handler:
+        name: HandlerRefusalDisposition
+        module: omnimarket.nodes.node_ledger_refusal_disposition_compute.handlers.handler_refusal_disposition
+      input_model: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_request.ModelRefusalDispositionRequest
+      output_model: omnimarket.nodes.node_ledger_refusal_disposition_compute.models.model_refusal_disposition_result.ModelRefusalDispositionResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  timeout_ms: 5000
+  idempotent: true
+  side_effects: []
+runtime_dispatch:
+  external_trigger: Explicit supplied snapshots; no host reader or caller is switched by this package.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+metadata:
+  ticket: OMN-21959
+  transport_type: local

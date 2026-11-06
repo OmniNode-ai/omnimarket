@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_refusal_disposition_compute
+version: "1.0.0"
+description: Validate scoped refusal dispositions against immutable supplied evidence; no adjudication or replay.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ledger_refusal_disposition_compute: omnimarket.nodes.node_ledger_refusal_disposition_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger, evidence]
+node_role: compute
+pack: core
+display_name: Ledger Refusal Disposition Compute
