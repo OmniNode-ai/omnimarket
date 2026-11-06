@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shadow rows await core-owned replay measurement and mode authorization.
+error_rules:
+- id: lane-oom
+  class_keys:
+  - lane.remote-lane-runner.lane-oom.5ad4d7e59e
+  key_version: 1
+  trigger:
+    kind: state
+    state_check: lane-guard-oom-kill
+  break_class: B
+  sources:
+  - ledger:2026-11-04T17:10:13Z
+  applies_if: {}
+  action:
+    kind: fill-backlog-item
+    contract: fill-backlog-item
+    digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+  read_back:
+    state_check: lane-replacement-terminal
+    timeout_s: 86400
+  subject_kind: ticket
+  budget: 1
+  lease_s: 300
+  lane_kinds:
+  - ticket
+  mode: shadow
+  fixtures:
+    positive:
+    - b7-pfix-68-1316
+    - b7-lane-push-race-1316
+    negative:
+    - exit-137-without-oom
+  removal_ticket: OMN-19998
+- id: lane-retention-import
+  class_keys:
+  - lane.remote-lane-runner.lane-retention-import.58493ea6e8
+  key_version: 1
+  trigger:
+    kind: text
+  break_class: B
+  sources:
+  - ledger:2026-11-04T17:10:13Z
+  applies_if: {}
+  action:
+    kind: fill-backlog-item
+    contract: fill-backlog-item
+    digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+  read_back:
+    state_check: lane-retention-import-absent
+    timeout_s: 86400
+  subject_kind: global
+  budget: 1
+  lease_s: 300
+  lane_kinds:
+  - ticket
+  mode: shadow
+  fixtures:
+    positive:
+    - b7-pfix-68-1316
+    - b7-lane-push-race-1316
+    negative:
+    - retention-argument-limit
+  removal_ticket: OMN-19998
+- id: lane-retention-argument-limit
+  class_keys:
+  - lane.remote-lane-runner.lane-retention-argument-limit.04e5cc5899
+  key_version: 1
+  trigger:
+    kind: text
+  break_class: B
+  sources:
+  - ledger:2026-11-04T17:10:13Z
+  applies_if: {}
+  action:
+    kind: fill-backlog-item
+    contract: fill-backlog-item
+    digest: 1de1198572f875e5204ab85829913021dca4e1e2d84aa147a75a60ba3f670058
+  read_back:
+    state_check: lane-retention-argument-limit-absent
+    timeout_s: 86400
+  subject_kind: global
+  budget: 1
+  lease_s: 300
+  lane_kinds:
+  - ticket
+  mode: shadow
+  fixtures:
+    positive:
+    - retention-argument-limit
+    negative:
+    - b7-pfix-68-1316
+  removal_ticket: OMN-19998

@@ -181,20 +181,6 @@
     ],
     "push_branches": []
   },
-  "Hostile Review Gate": {
-    "workflow": "hostile-reviewer.yml",
-    "events": [
-      "pull_request"
-    ],
-    "push_branches": []
-  },
-  "Hostile Reviewer (adversarial gate)": {
-    "workflow": "hostile-reviewer.yml",
-    "events": [
-      "pull_request"
-    ],
-    "push_branches": []
-  },
   "imperative-contract-guard / Imperative Contract Guard": {
     "workflow": "imperative-contract-guard.yml",
     "events": [

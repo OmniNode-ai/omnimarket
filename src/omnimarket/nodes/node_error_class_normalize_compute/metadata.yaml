@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_class_normalize_compute
+version: 1.0.0
+description: Pure reproducible error class keys from caller-supplied snapshots
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Error Class Normalize Compute
+entry_points:
+  onex.nodes:
+    node_error_class_normalize_compute: omnimarket.nodes.node_error_class_normalize_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies: [pydantic>=2.11.0, pyyaml>=6.0]
+license: MIT
+tags: [compute, errors, normalization, replay]
