@@ -1,0 +1,40 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22571"
+title: "The runtime dogfood inventory test derives the skipped node count from the contracts, so no pull request edits a pinned number"
+summary: "tests/test_market_node_runtime_dogfood.py asserted the skipped total as a literal, so every pull request that added or routed a node edited it and each merge turned the others red (37 pinned, 36 on dev at 96e5d74b54). The total is now the experimental nodes with no handler_routing, read from the contracts, plus the named non-addressable nodes. A node without handler_routing that a bus topic can reach fails the test, which keeps the check as strong as the pin was for a node that is unrouted by mistake."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-derived-skipped"
+    statement: "The skipped total is derived from the contracts and a routable node left without handler_routing still fails the inventory test."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the skipped count is derived from the contracts and no literal skipped total is pinned, and the inventory test passes on dev -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: a routable node that is turned experimental with its handler_routing removed, and an unrouted node given a subscribe topic, each fail the test, shown by named injected breaks against an unbroken control -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -k unrouted"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the inventory test passes on the unbroken tree and the two named injected breaks fail it."
+    command: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22571-ac1-derived-skipped"
+    description: "AC1: the inventory test passes without a pinned skipped total."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22571-ac2-unrouted-breaks"
+    description: "AC2: the two injected breaks of the unrouted-node check fail it and the unbroken contracts pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k unrouted"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

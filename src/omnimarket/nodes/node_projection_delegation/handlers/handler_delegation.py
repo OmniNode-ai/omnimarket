@@ -17,7 +17,6 @@ from types import MappingProxyType
 from typing import Any, Final
 from uuid import UUID, uuid4
 
-import yaml
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from pydantic import ValidationError
@@ -26,6 +25,7 @@ from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_modelled_terminal_savings import (
     apply_modelled_terminal_savings,
 )
@@ -314,8 +314,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     ) -> None:
         super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(_path) as f:
-            self._contract: dict[str, Any] = yaml.safe_load(f)
+        self._contract: dict[str, Any] = load_contract(_path)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         self._standalone_db_tables = tuple(_tables)

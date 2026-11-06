@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+contracts:
+  fill-backlog-item:
+    id: fill-backlog-item
+    node: node_recovery_plan_effect
+    capabilities:
+    - backlog-contribution
+    targets:
+    - dev
+    scope_marker:
+    - dev
+    - stability
+    receivers:
+    - shared-attempt-family
+    idempotent_by:
+    - attempt_family
+    - operation
+    calls: []
+state_checks:
+- lane-guard-oom-kill
+- lane-replacement-terminal
+- lane-retention-import-absent
+- lane-retention-argument-limit-absent
+retired_ids: []

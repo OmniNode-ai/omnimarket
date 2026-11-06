@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Simple Effect (OMN-19998, 17a)
+#
+# One 17a cycle, run as a step of the factory floor publish: read the floor record, the pull request watcher, the runner
+# fleet file, the pool receipt and the lab alarm's last run; judge every lab source; run the lab-state alarm; fold the
+# emission journal into golden and error receipts; build the simple floor; write it and the reads it was built from.
+# Every node of the cycle emits a start and then a success with counters or a typed failure (the emission contract).
+# Paths are relative to the registry home (OMNI_HOME). The pieces, joins, sources, limits and channels are overlays.
+name: node_floor_simple_effect
+contract_name: node_floor_simple_effect
+node_name: node_floor_simple_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the lab and the factory's own records, computes the simple floor from those readings and writes it with its
+  reads, so a checker can repeat every number. A source that cannot be read is drawn as unread and is never zero.
+
+handler:
+  module: omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick
+  class: HandlerFloorSimpleTick
+  input_model: omnimarket.models.floor_17a.ModelFloorSimpleTickRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_floor_simple_cycle
+      handler:
+        name: HandlerFloorSimpleTick
+        module: omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick
+      input_model: omnimarket.models.floor_17a.ModelFloorSimpleTickRequest
+      output_model: omnimarket.models.floor_17a.ModelFloorSimpleTickResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  side_effects:
+    - reads the floor record, the pull request watcher state, the runner fleet file, the pool receipt and the lab alarm run record under the registry home
+    - appends emission events to the journal under the state directory
+    - reads the served floor record over HTTP to read an alarm delivery back and to learn the age the hosted canary should see
+    - posts a lab alarm to the alert channel the overlay names, and reads the post back from that channel
+    - pushes the canary status (three times and two bounds, nothing else) to the branch the alarm overlay names
+    - writes the simple floor, its reads, the alarm state and the open-pull-request history
+
+input_model:
+  name: ModelFloorSimpleTickRequest
+  module: omnimarket.models.floor_17a
+  description: The flags of one cycle.
+output_model:
+  name: ModelFloorSimpleTickResult
+  module: omnimarket.models.floor_17a
+  description: Whether the cycle wrote the floor, and the colour rule's reading.
+
+terminal_event: onex.evt.omnimarket.floor-simple-written.v1
+
+# The cycle runs as a step of the factory floor publish, from the registry module tick; the command topic lets the runtime dispatch it too.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-simple-cycle-requested.v1
+  external_trigger: python -m omnimarket.nodes.node_floor_simple_effect, and as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.floor-simple-written.v1
+    # The emission contract: every node of the cycle emits a start and then a success or a typed failure through the sink.
+    - onex.evt.omnimarket.floor-node-started.v1
+    - onex.evt.omnimarket.floor-node-succeeded.v1
+    - onex.evt.omnimarket.floor-node-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-simple-written.v1
+
+# Where the cycle reads and writes. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS (or the file the env var names).
+runtime:
+  home_env: OMNI_HOME
+  floor_overlay: {overlay_id: node_floor_simple_compute, file_env: ONEX_FLOOR_SIMPLE_OVERLAY}
+  lab_overlay: {overlay_id: node_floor_simple_effect, file_env: ONEX_LAB_STATE_OVERLAY}
+  alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
+  # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
+  # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
+  # Read only to find where the floor answers, for the alarm's delivery read-back.
+  serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
+  served_record_name: floor-simple.json
+  served_fetch_timeout_seconds: 10
+  # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
+  # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
+  cycle_deadline_seconds: 100
+  sources:
+    record_relpath: .claude_scratch/factory-floor/factory-floor.json
+    watcher_relpath: .claude_scratch/pr-watcher/state.json
+    # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
+    friction_report_relpath: .claude_scratch/friction/friction-report.json
+    runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+    lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    overlay_store_relpath: .onex_state/overlay-store/fleet.json
+    # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
+    deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
+    # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
+    readings_relpath: .onex_state/readings/readings.jsonl
+    # The central test harness's stored result (node_lab_test_harness_effect writes it) is the reading of this piece,
+    # piece 8, CI, runners and the central test location.
+    harness_result_relpath: .onex_state/readings/central-test-harness.drill.json
+    harness_piece: 8
+    remote_lane_dir_env: ONEX_REMOTE_LANE_DIR
+    remote_lane_dir_fallback: .local/state/omni/remote-lanes
+    pool_receipt: hosts-probe/latest.json
+  output:
+    relpath: .claude_scratch/factory-floor/floor-simple.json
+    reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
+  state:
+    dir_relpath: .onex_state/floor-simple
+    emissions: emissions.jsonl
+    alarm_state: alarm-state.json
+    history: open-pr-history.json
+    history_keep_minutes: 180
+    emission_window_hours: 48
+    canary_clone: canary-publish

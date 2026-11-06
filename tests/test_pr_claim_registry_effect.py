@@ -125,7 +125,7 @@ def test_matches_the_registry_golden(case: dict[str, Any], tmp_path: Path) -> No
 
 def test_golden_covers_every_operation_and_both_outcomes() -> None:
     cases = GOLDEN["cases"]
-    assert len(cases) == 841
+    assert len(cases) == 843
     seen = {(c["request"]["operation"], c["expected"]["succeeded"]) for c in cases}
     for operation in EnumPrClaimOperation:
         assert (operation.value, True) in seen, operation

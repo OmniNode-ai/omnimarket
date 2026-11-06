@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# One plugin root supplies BOTH the scripts and their matching Python packages.
+# Copying only skills makes the scripts fall back to a different registry revision.
+copied_files:
+  - skills/merge-drain/scripts/floor_alarm.py
+  - skills/merge-drain/scripts/landing_scorecard.py
+  - skills/merge-drain/scripts/pr_state_local.py
+  - skills/merge-drain/landing_floors.json
+  - skills/queue-status/scripts/queue_status.py
+copied_trees: [src]
+arguments: [--state-dir, "{state}", --ledger, "{ledger}"]

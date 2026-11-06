@@ -1,0 +1,47 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22632
+title: "A pure-import model validates the runtime_lane_env overlay and its per-lane env"
+summary: >-
+  The runtime_lane_env overlay holds the environment of each runtime lane, so a deploy agent can read per-lane settings
+  from the overlay home instead of a private infrastructure repository. The overlay loads through one closed model that
+  imports pydantic alone, so the overlay home validates it without any other package. No lane, name or value lives in
+  the repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22632-runtime-lane-env-overlay-model
+    statement: A runtime_lane_env overlay loads whole through one typed model, closed to stray keys, with per-lane env whose names are environment names and whose values are not blank and on one line.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a document with a schema_version and a lane env of two settings loads the way the overlay home loads it and returns exactly that env -- falsifier: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov'
+      - id: AC2
+        statement: 'AC2: a stray key, an unknown schema_version, an empty lane id, an empty or multi-line value and a non-string value each refuse by field -- falsifier: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov'
+      - id: AC3
+        statement: 'AC3: the model imports with pydantic and the standard library alone, and the failing control that imports yaml first turns the same probe red -- falsifier: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The runtime_lane_env overlay model loads a golden document and refuses each malformed one.
+    command: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22632-lane-env-model
+    description: The model's tests pass, including the golden load, the refusals and the pydantic-alone import with its failing control.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov
+        cwd: .
+  - id: dod-omn22632-lane-env-integration-proof
+    description: The pushed head ran the model's suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22632 -- uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov'
+        cwd: .
