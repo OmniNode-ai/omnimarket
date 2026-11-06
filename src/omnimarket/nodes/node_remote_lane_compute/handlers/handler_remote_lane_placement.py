@@ -43,6 +43,12 @@ readings) has zero free lane slots, for either engine, until the alarm resolves 
 reads (``swap_alarm_open``). At 2026-10-30T01:25Z a lab host paged at load 30 to 58 and swap-in up to
 167 MB/s while the pool counted it 6 to 9 free Claude slots, so ``--placement auto`` never overflowed
 to a cloud session.
+
+Brief inputs (OMN-19998): a lane whose brief needs inputs on its host (a map entry, a clone, a
+patch or a plan branch, ``required_inputs``) takes only a host whose reading holds every one
+(``present_inputs``); a reading that did not check them keeps the host off. When a host would take
+the lane but for its inputs and none holding them does, the result is INPUT_ABSENT naming each
+absent input, so the dispatch refuses the send instead of starting a lane that cannot find its input.
 """
 
 from __future__ import annotations
@@ -152,6 +158,23 @@ def contributor_lane_refusal(
     return None
 
 
+def input_refusal(
+    request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
+) -> str | None:
+    """Why this host lacks an input the lane's brief needs, else None (a lane needing none is never judged)."""
+    if not request.required_inputs:
+        return None
+    if reading.present_inputs is None:
+        return "input-unread: the reader did not check " + ", ".join(
+            request.required_inputs
+        )
+    present = set(reading.present_inputs)
+    absent = [item for item in request.required_inputs if item not in present]
+    if absent:
+        return "input-absent: " + ", ".join(absent)
+    return None
+
+
 def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
     """The free lane slots the pool counts for this host: none while the host is swapping."""
     return 0 if swap_refusal(reading) is not None else reading.lane_slots
@@ -205,9 +228,14 @@ def _venv_reason(
 
 
 def _select(
-    request: ModelRemoteLanePlacementRequest, blocked: dict[str, str]
+    request: ModelRemoteLanePlacementRequest,
+    blocked: dict[str, str],
+    check_inputs: bool = True,
 ) -> tuple[ModelRemoteLaneHostReading | None, dict[str, str]]:
-    """The pick and every host's reason for not being it, with ``blocked`` hosts kept off."""
+    """The pick and every host's reason for not being it, with ``blocked`` hosts kept off.
+
+    ``check_inputs`` False judges the hosts as if the brief needed no input, to tell INPUT_ABSENT from NO_HOST.
+    """
     codex = request.engine == CODEX_ENGINE
     limited = set(request.codex_limited_hosts if codex else request.limited_hosts)
     expired = set() if codex else set(request.auth_expired_hosts)
@@ -228,6 +256,8 @@ def _select(
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
         elif request.pinned_host and reading.name != request.pinned_host:
             reasons[reading.name] = "not-pinned"
+        elif check_inputs and (absent := input_refusal(request, reading)) is not None:
+            reasons[reading.name] = absent
         else:
             admitted.append(reading)
 
@@ -481,8 +511,17 @@ class HandlerRemoteLanePlacement:
                 else:
                     outcome = EnumRemoteLaneOutcome.VENV_UNKNOWN
                 pick = None
+        input_line: str | None = None
         if pick is not None:
             outcome = EnumRemoteLaneOutcome.ADMITTED
+        elif outcome is EnumRemoteLaneOutcome.NO_HOST and request.required_inputs:
+            # The send is refused before it is made: a host would take the lane but for its inputs.
+            would_take, _ = _select(request, blocked, check_inputs=False)
+            if would_take is not None:
+                outcome = EnumRemoteLaneOutcome.INPUT_ABSENT
+                input_line = (
+                    f"{would_take.name} {reasons.get(would_take.name, 'input-absent')}"
+                )
 
         verdicts = []
         for reading in request.readings:
@@ -501,5 +540,6 @@ class HandlerRemoteLanePlacement:
             outcome=outcome,
             venv_drift=venv_drift,
             reconcile=reconcile,
+            refusal=input_line,
             stop_gate=gate,
         )
