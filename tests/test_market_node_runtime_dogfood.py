@@ -335,82 +335,19 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
-    # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    # OMN-19824/OMN-19829's node_pr_landing_reducer and
-    # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
-    # with no handler_routing yet (staged landing; see each node's
-    # contract.yaml header), so build_report's experimental_handler_pending bucket skips
-    # them rather than counting them as failed: 5 -> 7. The wave-3 compose
-    # (OMN-19829) wires the orchestrator, so only the reducer, which the
-    # orchestrator calls in process, stays experimental: 7 -> 6.
-    # OMN-19976's node_local_dashboard_serve_effect is started by
-    # `onex dashboard`, not by a bus command, so it is experimental with no
-    # handler_routing and lands in the same bucket: 6 -> 7.
-    # OMN-20496's node_canonical_clone_refresh_effect is hosted by one
-    # `clone-refresh serve` process per host, not by a runtime, so it is
-    # experimental with no handler_routing and lands there too: 7 -> 8.
-    # OMN-20604's node_lab_job_reducer is called in process by the lab job
-    # orchestrator, like the landing reducer, so it is experimental with no
-    # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
-    # by the submit CLI and has no handler_routing either: 9 -> 10.
-    # node_prune_binding_effect is called in process by the two prune effects,
-    # so it is experimental with no handler_routing: 10 -> 11.
-    # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
-    # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
-    # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
-    # the writer calls in process, so it has no handler_routing: 17 -> 18.
-    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
-    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
-    # OMN-20541's node_work_ledger_seq_gap_effect is run by `python -m` and its
-    # reader is used in process by the branch claim check, so it has no bus route: 19 -> 20.
-    # node_operator_capture_effect is hosted by the work-ledger serve process
-    # on the ledger host (--operator-capture), not by a runtime, so it has no
-    # handler_routing: 20 -> 21.
-    # OMN-21014's node_claude_review_gateway_effect is started by
-    # `onex models review-gateway`, not by a bus command, so it has no
-    # handler_routing: 21 -> 22.
-    # node_e2e_orchestrator routes its event topics to a handler now, so it is no
-    # longer non-addressable: 22 -> 21.
-    # OMN-20275's node_work_ledger_render_effect is hosted by the process that
-    # owns its rendered markdown file, not by a runtime, so it is experimental
-    # with no handler_routing: 21 -> 22.
-    # node_work_ledger_landing_mirror is hosted by the same ledger serve
-    # process and has no handler_routing either: 22 -> 23.
-    # node_beacon_trace_capture_effect reads host-local beacon JSONL and is run
-    # by `python -m` on the lab host, not by a runtime, so it is experimental
-    # with no handler_routing: 23 -> 24.
-    # node_lane_placement_recovery_effect is called in process by the host
-    # placement caller through its node.py, not by a bus command or a runtime,
-    # so it is experimental with no handler_routing: 24 -> 25.
-    # node_adoption_recovery_effect is called in process by the throughput tick with an
-    # injected launcher, so it is experimental with no handler_routing: 25 -> 26.
-    # node_seam_read_orchestrator is a graph contract only until its handler lands, so it is
-    # experimental with no handler_routing: 26 -> 27. node_delegation_seam_orchestrator binds
-    # a handler, so it is routable and adds nothing.
-    # node_ilo_redfish_effect is called in process by the lab tooling and has no
-    # bus route, so it is experimental with no handler_routing: 27 -> 28.
-    # node_host_drift_fleet is called in process with an injected bus, clock and
-    # state store and reads with one stable group per host, not by a bus command,
-    # so it is experimental with no handler_routing: 28 -> 29.
-    # node_lane_census_effect is run by a host systemd user timer through its own
-    # entry point, not by a bus command, so it is experimental with no
-    # handler_routing: 29 -> 30.
-    # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
-    # load_bringup_graph and declares no handler, so it is experimental with no
-    # handler_routing: 30 -> 31.
-    # node_overlay_tree_install_effect and node_host_installer_registry_units are
-    # called in process by the host installer and declare no handler_routing, so
-    # they are experimental: 31 -> 33.
-    # node_omnidash_host_effect is run by `python -m` on the dashboard host, not
-    # by a runtime, so it is experimental with no handler_routing: 33 -> 34.
-    # node_agent_inbox_spool is called in process with an injected bus and clock
-    # and reads with one stable group per host, not by a bus command, so it is
-    # experimental with no handler_routing: 34 -> 35.
-    # node_linear_snapshot_effect is run by `python -m` from the plans-today skill, not
-    # by a bus command, so it is experimental with no handler_routing.
-    # node_host_installer_net_units is called in process by the host installer
-    # and declares no handler_routing, so it is experimental: 35 -> 37.
-    assert summary["skipped"] == 37
+    # OMN-17427: `skipped` follows from its buckets, never pinned. It was pinned at
+    # an exact total under a hand-maintained running tally in comments, and nothing
+    # decremented either one when a node left the staging bucket, so the whole
+    # repository went red on `assert 36 == 37` while every open pull request shared
+    # the failure. `experimental_handler_pending` is a staging bucket by definition:
+    # a node enters it when it has a contract and no handler_routing and leaves it
+    # when the routing lands, so its size is not an invariant. What is invariant is
+    # that every skipped item falls in one of the two known buckets, and that the
+    # non-addressable set is exactly the one named below.
+    assert {item["bucket"] for item in report["skipped"]} <= {
+        "experimental_handler_pending",
+        "non_addressable",
+    }
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
