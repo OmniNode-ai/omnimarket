@@ -133,11 +133,6 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-runner-workspace-retention
-    statement: At a verified runner-local lifecycle boundary, reclaim disposable checkout trees and apply declared cache budgets without touching runner controls or active jobs.
-    acceptance:
-      - id: AC13
-        statement: 'AC13: the recorded retained-byte fixture is reclaimed through the node and its declared bus route; active jobs, missing lifecycle proof, unsafe roots and concurrent cleanup refuse mutation; runner controls and symlink targets survive -- falsifier: uv run --frozen pytest tests/nodes/node_runner_workspace_retention_effect/test_runner_workspace_retention.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -541,20 +536,4 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-runner-workspace-retention
-    description: Scoped sparse fixture replay and filesystem safety regression. The recorded checkout and shared cache lengths fail before runner-wide retention. This does not assert the unrelated controller criteria, runner image installation or a live lifecycle callback.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_runner_workspace_retention_effect/test_runner_workspace_retention.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-runner-workspace-retention-wiring
-    description: Hosted wiring smoke discovers the contract and routes its declared command through an isolated in-memory bus to a correlated terminal result with measured fixture bytes. A runner-local adapter and packaged runtime are still required for live lifecycle installation; this check claims neither.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_runner_workspace_retention_effect/test_runner_workspace_retention.py -q --no-cov -n 0 -p no:randomly -k contract_bus_dispatch
         cwd: .
