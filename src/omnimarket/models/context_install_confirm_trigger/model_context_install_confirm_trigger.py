@@ -62,15 +62,13 @@ class ModelInstallConfirmSkipped(BaseModel):
 
     Published on its own contract-declared topic, never on the completed topic the
     receipts projection folds, so a deployment without a source records the skip
-    instead of dead-lettering the applied event (OMN-22478). ``terminal_failure_cause``
-    states the typed cause the contract's failure terminal carries: the confirmation
-    was not produced because its source is unavailable.
+    instead of dead-lettering the applied event (OMN-22478).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: str = Field(min_length=1)
-    terminal_failure_cause: Literal["source_unavailable"] = "source_unavailable"
+    reason: Literal["source_unavailable"] = "source_unavailable"
     dependency: Literal["ProtocolSessionCompactSource"] = "ProtocolSessionCompactSource"
 
 

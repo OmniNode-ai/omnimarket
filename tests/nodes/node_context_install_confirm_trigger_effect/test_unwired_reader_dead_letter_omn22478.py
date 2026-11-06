@@ -107,7 +107,7 @@ async def test_golden_recorded_record_yields_one_skip_event_and_nothing_complete
     payload = json.loads(published[0][1])["payload"]
     assert payload == {
         "event_id": json.loads(RECORDED_PAYLOAD)["event_id"],
-        "terminal_failure_cause": "source_unavailable",
+        "reason": "source_unavailable",
         "dependency": "ProtocolSessionCompactSource",
     }
     assert completed not in [topic for topic, _ in published]
