@@ -68,7 +68,7 @@ from typing import Protocol
 from uuid import UUID
 
 from omnimarket.config.settings import get_settings
-from omnimarket.projection import tenant_mirror_catchup_policy as catchup_policy
+from omnimarket.models import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection.tenant_isolation import (
     _LEGACY_TENANT_UUID_MAP,
     HOUSE_TENANT_SLUG,

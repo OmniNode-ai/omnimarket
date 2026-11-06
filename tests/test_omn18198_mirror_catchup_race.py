@@ -35,7 +35,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from omnimarket.projection import tenant_mirror_catchup_policy as catchup_policy
+from omnimarket.models import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection import tenant_registry_resolution as resolution
 from omnimarket.projection.tenant_registry_resolution import (
     TenantRegistryResolutionError,
