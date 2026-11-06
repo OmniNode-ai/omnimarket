@@ -1,0 +1,32 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21984"
+title: "The lab host row model accepts the fallback route columns, so an off-LAN host can declare a second route"
+summary: "ModelLabHostRow carries ssh_user, proxy_jump and ssh_identity for the row's target but nothing for its fallback_targets, and the model forbids extra keys, so a host table that declares a fallback route is refused whole and the off-LAN host (h106) cannot be reached. The row now carries fallback_ssh_user, fallback_proxy_jump and fallback_ssh_identity with the same SshUser, SshJump and SshIdentity validators, so an option-looking value is still refused."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "A host row declaring the three fallback route columns validates, and an option-looking value in any of them is still refused. At the merge base the accept case fails with extra_forbidden on all three keys."
+    command: "uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21984-fallback-route-columns"
+    description: "The row model accepts fallback_ssh_user, fallback_proxy_jump and fallback_ssh_identity and applies the same value rules as the target columns; measured red-first at base 288dd1d47, where ModelLabHostRow raises extra_forbidden for each of the three keys."
+    source: "generated"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21984-integration-proof"
+    description: "The pushed head loads the fleet's real host table through the row model on a lab host and runs the fallback-route tests there, so the new columns are exercised on a live surface rather than only in unit scope. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21984 -- uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

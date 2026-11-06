@@ -28,7 +28,11 @@ description: >
   process tree (polite signal, bounded wait, forceful signal) over the runner's ssh transport,
   archives a cloud session, or signals a local pid; waits for the tree to exit; cleans the
   lane's slot marker; then writes the lane's TERMINAL outcome=stopped through the ledger writer.
-  An ended lane is a no-op and an unknown lane is refused, both with no signal. A survivor is
+  When claims_dir is supplied, release the ended engine's exact lane/run/session PR claims
+  through the registry contract after observed exit or a final receipt, and read back replacements.
+  The receipt's claim_run_id names the actual mutation run; its transport run_id is never a fallback.
+  Missing session identity or unreadable cleanup refuses closeout and retains claims.
+  An ended lane receives no signal and an unknown lane is refused. A survivor is
   a typed refusal that writes no row. Never runs git or gh and never touches the lane's branch,
   worktree or PR.
 input_model:

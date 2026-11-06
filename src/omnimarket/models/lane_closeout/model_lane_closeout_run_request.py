@@ -21,3 +21,16 @@ class ModelLaneCloseoutRunRequest(BaseModel):
         default="run", description="Joins the lane name into the WIP tag."
     )
     remove: bool = True
+    claims_dir: str | None = Field(
+        default=None, description="PR claim registry on the dispatch host."
+    )
+    session_id: str | None = Field(
+        default=None, description="Ended engine's exact session identity."
+    )
+    claim_run_id: str | None = Field(
+        default=None,
+        description="Exact PR claim run identity, distinct from the transport/WIP run_id.",
+    )
+    engine_ended: bool = Field(
+        default=False, description="Caller observed the engine exit before closeout."
+    )
