@@ -10,6 +10,15 @@ description: >
   append request. Hosted by the single ledger serve process, which serializes
   these requests with ordinary ledger commands through the existing append
   handler. No shared runtime subscription: only the ledger host can append.
+  Every row includes a percent-encoded reason and a reason_source cell.
+  Explicit terminal causes precede construction-failure reasons and timeout
+  status, then the shared terminal response's failure-evidence reduction for
+  failed runs. Reported gate refusals precede remaining status fallbacks.
+  An unexplained failure is unreported; a timeout without cause evidence is
+  attributed only to status. Failed runs with an attempt failure class retain
+  it as last_attempt_failure_class, separately from the terminal's disposition.
+  Completed runs do not inherit errors from earlier escalation attempts.
+  Prompt, response and raw error text are never copied into ledger cells.
 input_model:
   name: ModelDelegateSkillTerminalProjection
   module: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection

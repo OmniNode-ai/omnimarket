@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Registration template: the durable-tick deployment supplies its host and
+# changes state only after observing an installed S8 cursor write.
+schema_version: automation-liveness-overlay/v1
+processes:
+  - process_id: stop-only-on-withdrawal
+    owner_repo: omnimarket
+    host: durable-tick-host
+    trigger:
+      kind: routine
+      native_id: durable-tick:S8
+    expected_interval_seconds: 60
+    max_silence_seconds: 180
+    max_runtime_seconds: 60
+    alarm_deadline_seconds: 900
+    emitter: self
+    run_record: per-run
+    real_work: S8 cursor STATUS appended through the bus
+    demand: none
+    positive_control:
+      kind: replay_fixture
+      ref: tests/test_golden_chain_relay_effect.py
+    state: not_installed

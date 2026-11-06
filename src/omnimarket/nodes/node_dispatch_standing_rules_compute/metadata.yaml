@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_standing_rules_compute
+version: 1.0.0
+description: Standing-rule dispatch admission.
+pack: operator_tooling
+node_role: compute
+display_name: Dispatch Standing Rules Compute
+omnibase_core_compat: '>=0.47.60,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_dispatch_standing_rules_compute: omnimarket.nodes.node_dispatch_standing_rules_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- dispatch
