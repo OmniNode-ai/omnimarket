@@ -12,11 +12,12 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -25,6 +26,8 @@ from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
     ModelFloorCloudAccount,
+    ModelFloorDriftHost,
+    ModelFloorHostDrift,
     ModelFloorHostRow,
     ModelFloorLaneProcess,
     ModelFloorLedgerRow,
@@ -34,6 +37,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorMerge,
     ModelFloorPlacedHost,
     ModelFloorPlanInput,
+    ModelFloorPoolDisk,
     ModelFloorPoolReading,
     ModelFloorPr,
     ModelFloorReceipt,
@@ -127,7 +131,17 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+
+
 def _ledger_ts(value: str) -> datetime | None:
+    """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
+    read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if _TS_SHAPE.fullmatch(value):
+        try:
+            return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
+        except ValueError:
+            return None
     try:
         return datetime.strptime(value, TS_FMT).replace(tzinfo=UTC)
     except ValueError:
@@ -872,6 +886,45 @@ def _number(value: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+_SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?)i?B?\s*$", re.IGNORECASE)
+_TO_GB = {"": 1 / 1024**3, "K": 1 / 1024**2, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
+
+
+def _size_gb(text: str) -> float | None:
+    """``123.2G`` as 123.2; None for ``-`` or anything that is not a size."""
+    match = _SIZE.match(text)
+    return float(match.group(1)) * _TO_GB[match.group(2).upper()] if match else None
+
+
+def _disks(cells: dict[str, str]) -> tuple[ModelFloorPoolDisk, ...]:
+    """Every ``disk_<name>=free/total/pct`` cell whose free and total sizes read; a cell that does not read is left out."""
+    disks: list[ModelFloorPoolDisk] = []
+    for key, value in cells.items():
+        if not key.startswith("disk_"):
+            continue
+        free, _, rest = value.partition("/")
+        total = rest.partition("/")[0]
+        free_gb, total_gb = _size_gb(free), _size_gb(total)
+        if free_gb is not None and total_gb:
+            disks.append(
+                ModelFloorPoolDisk(
+                    name=key.removeprefix("disk_"), free_gb=free_gb, total_gb=total_gb
+                )
+            )
+    return tuple(disks)
+
+
+def _pressure(
+    cells: dict[str, str],
+) -> tuple[float | None, Literal["", "psi", "level"]]:
+    """The Linux ``mempsi`` figure when the reading has one, else the macOS ``pressure`` level."""
+    psi = _number(cells.get("mempsi", ""))
+    if psi is not None:
+        return psi, "psi"
+    level = _number(cells.get("pressure", ""))
+    return (level, "level") if level is not None else (None, "")
+
+
 def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
     """One ``host:key=value,...`` reading of the landing placement's pool read (``Reading`` as the runner prints it)."""
     host, _, rest = line.partition(":")
@@ -898,9 +951,13 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
         _number(cells.get("lane_slots", "")),
     )
+    pressure, pressure_kind = _pressure(cells)
     return ModelFloorPoolReading(
         host=host,
         read_at=read_at,
+        disks=_disks(cells),
+        mem_pressure=pressure,
+        mem_pressure_kind=pressure_kind,
         cores=int(cores) if cores is not None else None,
         load1=_number(cells.get("load1", "")),
         busy_cores=_number(cells.get("busy", "")),
@@ -928,6 +985,35 @@ def load_pool(path: Path) -> tuple[ModelFloorPoolReading, ...] | None:
         )
 
     return _optional(read)
+
+
+def load_host_drift(path: Path) -> ModelFloorHostDrift | None:
+    """The host-drift fleet projection (``fleet.json``): when it was folded, and per host its newest heartbeat and its open items."""
+
+    def read() -> ModelFloorHostDrift:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ModelFloorHostDrift(
+            folded_at=_utc(data["folded_at"]),
+            hosts=tuple(
+                ModelFloorDriftHost(
+                    host=str(row["host"]),
+                    last_heartbeat_at=_utc(row["last_heartbeat_at"])
+                    if row.get("last_heartbeat_at")
+                    else None,
+                    open_items=len(row.get("open") or ()),
+                )
+                for row in data["hosts"]
+            ),
+        )
+
+    return _optional(read)
+
+
+def host_drift_cause(path: Path) -> str:
+    """Why the fleet projection is unread, in words the Machines tab can show; empty when it reads."""
+    if not path.exists():
+        return f"the host-drift fleet projection {path.name} does not exist at the declared path"
+    return f"the host-drift fleet projection {path.name} exists but could not be parsed"
 
 
 def load_host_table(path: Path) -> tuple[ModelFloorHostRow, ...] | None:
@@ -1038,26 +1124,42 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
 
 
 def load_receipts(
-    directory: Path, *, now: datetime, window_hours: int, glob: str, result_chars: int
+    directory: Path,
+    *,
+    now: datetime,
+    window_hours: int,
+    glob: str,
+    result_chars: int,
+    scan_workers: int,
 ) -> tuple[ModelFloorReceipt, ...] | None:
-    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands)."""
+    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands).
+
+    Whether a directory was touched inside the window is one metadata read per directory, tens of thousands of them,
+    and each waits on the disk when the process runs in the Background class; they are read ``scan_workers`` at a time.
+    """
+
+    def touched(entry: os.DirEntry[str]) -> bool:
+        return entry.is_dir() and entry.stat().st_mtime >= since
+
+    def newest_receipt(entry: os.DirEntry[str]) -> ModelFloorReceipt | None:
+        files = [
+            p for p in Path(entry.path).glob(glob) if not p.name.endswith(".job.json")
+        ]
+        newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
+        return _receipt_of(newest, result_chars) if newest else None
+
+    since = now.timestamp() - window_hours * 3600
 
     def read() -> tuple[ModelFloorReceipt, ...]:
-        since = now.timestamp() - window_hours * 3600
-        found: list[ModelFloorReceipt] = []
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                if not entry.is_dir() or entry.stat().st_mtime < since:
-                    continue
-                files = [
-                    p
-                    for p in Path(entry.path).glob(glob)
-                    if not p.name.endswith(".job.json")
-                ]
-                newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
-                receipt = _receipt_of(newest, result_chars) if newest else None
-                if receipt is not None:
-                    found.append(receipt)
+        with os.scandir(directory) as scanned:
+            entries = list(scanned)
+        with ThreadPoolExecutor(max_workers=scan_workers) as pool:
+            recent = [
+                e
+                for e, keep in zip(entries, pool.map(touched, entries), strict=True)
+                if keep
+            ]
+            found = [r for r in pool.map(newest_receipt, recent) if r is not None]
         return tuple(sorted(found, key=lambda r: (r.started_at, r.lane)))
 
     return _optional(read)
@@ -1103,7 +1205,10 @@ def load_lane_processes(
         return None
     try:
         # A readable worker directory is the positive control for a missing lease file.
-        worker_ids = {p.name for p in (directory / "workers").iterdir() if p.is_dir()}
+        # One directory read, no stat per entry: the directory holds tens of thousands of lease directories, and a stat of
+        # each took more than 5 minutes as the publisher's tick (OMN-22699); a DirEntry knows its type from the read.
+        with os.scandir(directory / "workers") as scanned:
+            worker_ids = {e.name for e in scanned if e.is_dir()}
         workers = runpy.run_path(
             str(plugin_root / "skills/merge-drain/scripts/landing_workers.py")
         )
@@ -1302,7 +1407,13 @@ def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(
-            ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
+            ModelFloorRunner(
+                host_label=str(row["host"]),
+                status=row["status"],
+                runner_name=row.get("runner_name"),
+                label_class=row.get("label_class"),
+                labels=tuple(row.get("labels") or ()),
+            )
             for row in data["runners"]
         ),
     )

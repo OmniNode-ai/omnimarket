@@ -27,6 +27,8 @@ class ModelFactoryFloorSources(BaseModel):
     friction_report_relpath: str = Field(min_length=1)
     linear_titles_glob: str = Field(min_length=1)
     runner_fleet_relpath: str = Field(min_length=1)
+    # The host-drift fleet projection node_host_drift_fleet folds (OMN-21867); the Machines tab reads each host's heartbeat from it.
+    host_drift_relpath: str = Field(min_length=1)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):
@@ -43,6 +45,9 @@ class ModelFactoryFloorLaneSources(BaseModel):
     pool_receipt: str = Field(min_length=1)
     receipt_glob: str = Field(min_length=1)
     receipt_window_hours: int = Field(gt=0)
+    # How many lane directories are examined at once: the scan is one metadata read per directory and the directory
+    # holds tens of thousands, so one at a time is minutes under the Background clamp the module tick runs in.
+    receipt_scan_workers: int = Field(gt=0)
     result_chars: int = Field(gt=0)
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)

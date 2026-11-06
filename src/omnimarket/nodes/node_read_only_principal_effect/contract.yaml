@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_read_only_principal_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+description: The read-only principal of step 0. An ssh forced-command gate, a probe that
+  reads each channel and attempts one real mutation, and the key install.
+input_model:
+  name: ModelProbeRequest
+  module: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal
+  description: An optional explicit overlay; otherwise the overlay file is read.
+output_model:
+  name: ModelProbeResult
+  module: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal
+  description: One receipt per channel and a verdict that is PASS only when every channel
+    read and refused its mutation.
+handler:
+  module: omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_principal_probe
+  class: HandlerReadOnlyPrincipalProbe
+  input_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelProbeRequest
+  output_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelProbeResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_principal_probe:HandlerReadOnlyPrincipalProbe
+  handlers:
+  - operation: probe
+    handler:
+      name: HandlerReadOnlyPrincipalProbe
+      module: omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_principal_probe
+    input_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelProbeRequest
+    output_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelProbeResult
+  - operation: gate_decide
+    handler:
+      name: HandlerReadOnlyCommandGate
+      module: omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_command_gate
+    input_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelGateDecideRequest
+    output_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelGateDecision
+  - operation: install_key
+    handler:
+      name: HandlerReadOnlyPrincipalKeyInstall
+      module: omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_principal_key_install
+    input_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelKeyInstallRequest
+    output_model: omnimarket.nodes.node_read_only_principal_effect.models.model_read_only_principal.ModelKeyInstallResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The onex-read-only-principal console script (runtime_read_only_principal),
+    with gate as the ssh forced command, probe on a schedule and install-key by the operator.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 300000
+  side_effects:
+  - creates one ed25519 key pair at the overlay's key_path when none is there
+  - appends one forced-command line to ~/.ssh/authorized_keys of every available pool host over ssh
+  - runs each channel's probe attempts, a read and a mutation that the credential must refuse
+metadata:
+  transport_type: local
+  ticket: OMN-22478
+  description: The read-only principal of step 0 (plan section 11).
+  author: OmniNode Team
+  tags:
+  - effect
+  - ssh
+  - credentials
+  - read-only
+  related_tickets:
+  - OMN-22478

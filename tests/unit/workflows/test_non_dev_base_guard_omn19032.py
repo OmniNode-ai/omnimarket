@@ -254,12 +254,17 @@ def test_pr_scoped_arming_triggers_remain(event: str, action: str | None) -> Non
     ids=lambda check: check["name"],
 )
 def test_tag_oracle_still_rejects_recorded_red_checks(recorded: dict) -> None:
-    from omnimarket.nodes.node_dev_tag_pin_mover_compute.train_sources import (
-        check_runs_verdict,
+    from omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_green_verdict import (
+        required_checks_verdict,
     )
 
-    assert check_runs_verdict([(recorded["status"], recorded["conclusion"])]) is False
-    assert check_runs_verdict([("completed", "success")]) is True
+    # OMN-22497: the oracle judges the base branch's required checks, so a real
+    # red is a red required check; the recorded red still reads red when required.
+    required = frozenset({recorded["name"]})
+    red = [(recorded["name"], recorded["status"], recorded["conclusion"])]
+    assert required_checks_verdict(red, required) is False
+    green = [(recorded["name"], "completed", "success")]
+    assert required_checks_verdict(green, required) is True
 
 
 def test_recorded_failure_passed_the_feature_base_guard(tmp_path: Path) -> None:

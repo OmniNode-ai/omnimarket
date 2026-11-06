@@ -10,17 +10,15 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState, public_key_parts
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 
 from ..models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
     EnumPairStatus,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
     ModelLabHostKeyDistributionResult,
     ModelPairResult,
-    public_key_parts,
 )
 from ..protocols.protocol_host_key_transport import (
     HostTransportError,

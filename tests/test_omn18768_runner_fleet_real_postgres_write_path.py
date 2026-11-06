@@ -408,6 +408,16 @@ async def test_the_fleet_file_the_floor_reads_agrees_with_the_rows_the_database_
         assert [(r.host_label, r.status) for r in fleet.runners] == [
             (row["host"], row["status"]) for row in after
         ]
+        # The file names each runner as the table does, so an offline runner can be told from a parked one (OMN-22605).
+        named = await conn.fetch(
+            f"SELECT runner_name, label_class, labels FROM {_SCHEMA}.runner_fleet_liveness ORDER BY runner_name"
+        )
+        assert [
+            (r.runner_name, r.label_class, list(r.labels)) for r in fleet.runners
+        ] == [
+            (row["runner_name"], row["label_class"], json.loads(row["labels"]))
+            for row in named
+        ]
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()

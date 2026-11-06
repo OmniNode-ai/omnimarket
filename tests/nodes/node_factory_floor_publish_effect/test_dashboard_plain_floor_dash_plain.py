@@ -13,7 +13,7 @@ from .test_factory_floor_publish import (
     _shell_out,
 )
 
-SHELL = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+SHELL = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 CSS = SHELL.split("</style>")[0]
 
 

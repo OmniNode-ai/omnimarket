@@ -52,6 +52,7 @@ ALLOW = ModelWorktreeReconcilePolicy(allowed_remote_owners=("owner",))
         ),
         ({"live_process": True}, Decision.KEEP, "live_process"),
         ({"live_claim": True}, Decision.KEEP, "live_claim"),
+        ({"live_unit": "onex-reading-hourly.service"}, Decision.KEEP, "live_unit"),
         ({"git_locked": True}, Decision.KEEP, "git_locked"),
         ({"in_progress_operation": "rebase"}, Decision.KEEP, "in_progress_op"),
         ({"last_activity_age_hours": None}, Decision.KEEP, "recent_activity"),
