@@ -77,6 +77,15 @@ runtime:
       source_template: "{lane} lab-pass receipt"
       pass_result: PASS
       timeout_seconds: 10
+  # The running build's own provenance file, read from the runtime host over ssh: a merge in the history of the ref it
+  # records for its repository is in the running build (evidence kind deployed). Which container holds the file, the file's
+  # path and each repository's ref and clone are the overlay's (runtime_host_reads), not this contract's.
+  deployed_provenance:
+    overlay_id: runtime_host_reads
+    overlay_file_env: RUNTIME_HOST_READS_OVERLAY_PATH
+    kind: deployed
+    source_template: "build provenance {repo}@{ref}"
+    git_timeout_seconds: 60
   labels:
     adopt_lane: adopt-merged
     adopted_kind: adopted
