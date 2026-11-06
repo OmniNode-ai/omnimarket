@@ -15,11 +15,9 @@ from omnimarket.events.worktree_reconcile import (
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
 )
-from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
-from omnimarket.worktree_reconcile.removal_policy import (
-    cap_removals,
-    hold_unmerged,
-    refuses_model_removal,
+from omnimarket.handlers import rules_worktree_removal as removal
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
 )
 
 
@@ -98,7 +96,7 @@ def reconcile(
 ) -> ModelWorktreeReconcileDecisions:
     rows = []
     for facts in request.facts:
-        decision, reason = hold_unmerged(
+        decision, reason = removal.hold_unmerged(
             *classify(facts, request.policy), request.policy
         )
         rows.append(
@@ -106,7 +104,7 @@ def reconcile(
                 path=facts.path, decision=decision, reasons=(reason,)
             )
         )
-    return cap_removals(
+    return removal.cap_removals(
         ModelWorktreeReconcileDecisions(decisions=tuple(rows), policy=request.policy)
     )
 
@@ -128,7 +126,7 @@ def apply_model_verdicts(
         fact = by_path[row.path]
         refused = (
             verdict.decision == Decision.REMOVE
-            or refuses_model_removal(verdict.decision, decisions.policy)
+            or removal.refuses_model_removal(verdict.decision, decisions.policy)
             or (
                 verdict.decision == Decision.PIN_AND_REMOVE
                 and (
@@ -152,4 +150,4 @@ def apply_model_verdicts(
                 model_rationale=verdict.model_rationale,
             )
         )
-    return cap_removals(decisions.model_copy(update={"decisions": tuple(rows)}))
+    return removal.cap_removals(decisions.model_copy(update={"decisions": tuple(rows)}))

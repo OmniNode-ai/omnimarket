@@ -26,8 +26,10 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
     ModelWorktreeReconcileRunResult,
 )
-from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
 from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     CommandMergedPrReader,
 )

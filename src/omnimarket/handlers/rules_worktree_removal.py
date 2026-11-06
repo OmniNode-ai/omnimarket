@@ -8,7 +8,9 @@ from omnimarket.events.worktree_reconcile import (
 from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileDecisions,
 )
-from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
+)
 
 MERGED_REASONS = frozenset({"content_merged", "pr_merged_head"})
 REMOVING = (Decision.REMOVE, Decision.PIN_AND_REMOVE)

@@ -9,7 +9,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
+)
 
 
 class EnumWorktreeKind(StrEnum):
