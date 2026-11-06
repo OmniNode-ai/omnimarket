@@ -134,8 +134,16 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    if title is None:
+    base_error: OSError | subprocess.SubprocessError | None = None
+    try:
         base = _resolve_base(base)
+    except (OSError, subprocess.SubprocessError) as exc:
+        # A missing contract remains a refusal even without a readable base.
+        # Keep the error for checks that need the base; it grants no exemption.
+        base_error = exc
+    if title is None:
+        if base_error is not None:
+            raise base_error
         subjects = _git(
             "log",
             "--first-parent",
@@ -168,7 +176,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         failure = contract_prerequisite(ticket, text)
         if failure and text is None:
             if release_cut is None:
-                release_cut = _is_release_cut(sha, base)
+                release_cut = base_error is None and _is_release_cut(sha, base)
             if release_cut:
                 continue
         if failure:
@@ -176,6 +184,8 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
             continue
         if text is None:
             continue
+        if base_error is not None:
+            raise base_error
         if changed is None:
             changed = _changed_paths(sha, base)
         proof = check_integration_proof(
@@ -202,8 +212,7 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            base = _resolve_base(request.base)
-            failures = check(sha, base, request.title)
+            failures = check(sha, request.base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )
