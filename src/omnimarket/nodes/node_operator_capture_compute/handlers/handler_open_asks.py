@@ -20,6 +20,9 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from omnimarket.handlers.operator_ledger import (
+    parse_ledger_row as parse_ledger_row,
+)
 from omnimarket.models.operator_capture import (
     ModelOpenAsk,
     ModelOpenAsks,
@@ -44,15 +47,6 @@ def _cells(rest: str) -> dict[str, str]:
         if sep and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", key) and key not in cells:
             cells[key] = value.strip()
     return cells
-
-
-def parse_ledger_row(row: str) -> tuple[str, str, str, dict[str, str]] | None:
-    """One ledger row as (stamp, type, rest, cells); None for a line that opens no row."""
-    match = _ROW.match(row.rstrip("\n"))
-    if not match:
-        return None
-    stamp, row_kind, rest = match.groups()
-    return stamp, row_kind, rest, _cells(rest)
 
 
 def has_closing_evidence(evidence: str) -> bool:

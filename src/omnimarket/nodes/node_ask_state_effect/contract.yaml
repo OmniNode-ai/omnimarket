@@ -10,48 +10,64 @@
 #
 #   python -m omnimarket.nodes.node_ask_state_effect --since 2026-10-31T00:00:00Z
 #
-# Read-only: it appends no ledger row and writes no file but the optional --out JSON.
+# The carry-over mode proposes rows without writing; an apply requires an injected accepted-ledger port.
 name: "node_ask_state_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
-runtime_profiles: []
+runtime_profiles: [effects]
 contract_version:
   major: 0
   minor: 1
   patch: 0
 node_version: "0.1.0"
-description: "Read the operator prompts and the ledger, report each ask's state."
+description: "Read ask state and propose evidence-checked carry-over transitions."
 input_model:
-  name: "ModelAskStateReadRequest"
-  module: "omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read"
-  description: "The capture store directory, the ledger file, the window start and the judging time."
+  name: ModelCarryOverRequest
+  module: omnimarket.models.model_carry_over
 output_model:
-  name: "ModelAskStateReport"
-  module: "omnimarket.models.model_ask_state"
-  description: "Every tracked ask with its state, the parked queue, the dropped ids, counts and WIP."
+  name: ModelCarryOverResult
+  module: omnimarket.models.model_carry_over
 handler:
-  module: "omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report"
-  class: "HandlerAskStateReport"
-  input_model: "omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read.ModelAskStateReadRequest"
-  output_model: "omnimarket.models.model_ask_state.ModelAskStateReport"
+  module: omnimarket.nodes.node_ask_state_effect.handlers.handler_carry_over
+  class: HandlerCarryOver
+  input_model: omnimarket.models.model_carry_over.ModelCarryOverRequest
+  output_model: omnimarket.models.model_carry_over.ModelCarryOverResult
 handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report:HandlerAskStateReport"
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ask_state_effect.handlers.handler_terminal:HandlerCarryOver
   handlers:
-    - operation: "report_ask_state"
+    - operation: report_ask_state
       handler:
-        name: "HandlerAskStateReport"
-        module: "omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report"
+        name: HandlerAskStateReport
+        module: omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report
+      input_model: omnimarket.models.model_ask_state_read.ModelAskStateReadRequest
+      output_model: omnimarket.models.model_ask_state.ModelAskStateReport
+    - operation: carry_over
+      topic: onex.cmd.omnimarket.ask-carry-over-requested.v1
+      handler:
+        name: HandlerCarryOver
+        module: omnimarket.nodes.node_ask_state_effect.handlers.handler_terminal
+entrypoint:
+  name: NodeAskStateEffect
+  module: omnimarket.nodes.node_ask_state_effect.node
+terminal_event: onex.evt.omnimarket.ask-carry-over-completed.v1
 descriptor:
   node_archetype: effect
   purity: effectful
-  runtime_profiles: []
+  runtime_profiles: [effects]
   idempotent: true
   timeout_ms: 60000
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.ask-carry-over-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ask-carry-over-completed.v1
+    - onex.evt.omnimarket.ask-carry-over-failed.v1
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ask-carry-over-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.ask-carry-over-completed.v1
+    failure: onex.evt.omnimarket.ask-carry-over-failed.v1
   external_trigger: "python -m omnimarket.nodes.node_ask_state_effect --since <UTC stamp> (runtime_ask_state.py), which reads the sources, calls HandlerAskStateReport.handle and prints the report"
 env_dependencies:
   ONEX_LEDGER_PATH:
@@ -73,7 +89,7 @@ runtime:
   archive_dir: archive
   archive_glob: "*.md"
 metadata:
-  transport_type: local
+  transport_type: kafka
   description: "Operator ask state report"
   author: "OmniNode Team"
   created: "2026-10-31"
@@ -82,3 +98,10 @@ metadata:
     - "operator-capture"
     - "work-ledger"
   related_tickets: ["OMN-21713", "OMN-17427"]
+
+# Deployment overlays may replace these values through the handler's typed policy port.
+carry_over:
+  owner: orchestrator
+  lane: ask-carry-over
+  not_ask_label: not-an-ask
+  decision_limit: 10

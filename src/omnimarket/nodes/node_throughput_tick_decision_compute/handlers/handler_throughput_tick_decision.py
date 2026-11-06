@@ -69,8 +69,12 @@ from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
+from omnimarket.models.model_operator_item_render import ModelOperatorItemRenderRequest
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
+)
+from omnimarket.nodes.node_operator_item_render_compute import (
+    NodeOperatorItemRenderCompute,
 )
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelCodexHeadroom,
@@ -86,6 +90,7 @@ from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_through
     ModelTickAlarmVerdict,
     RepoStatusVerdict,
 )
+from omnimarket.protocols.protocol_operator_items import ProtocolOperatorItemRenderer
 
 CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
 CONTROLLER_LABEL = "ai.omninode.landing-controller"
@@ -1692,6 +1697,11 @@ def check_repo_status(
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
+    def __init__(self, renderer: ProtocolOperatorItemRenderer | None = None) -> None:
+        self._item_renderer = (
+            renderer if renderer is not None else NodeOperatorItemRenderCompute()
+        )
+
     def handle(self, request: ModelThroughputTickRequest) -> ModelThroughputTickResult:
         now = parse_stamp(request.now)
         ticks: list[dict[str, Any]] = [dict(t) for t in request.ticks]
@@ -1734,6 +1744,17 @@ class HandlerThroughputTickDecision:
             if request.repo_status is not None
             else []
         )
+        # Always print the block, including on an otherwise silent healthy tick. A caller
+        # that has not supplied the tracked fold is UNKNOWN rather than silently green.
+        item_request = (
+            request.operator_items.model_copy(update={"now": now})
+            if request.operator_items is not None
+            else ModelOperatorItemRenderRequest(now=now)
+        )
+        rendered = self._item_renderer.handle(item_request)
+        rep.lines.extend(rendered.lines)
+        if not rendered.known:
+            rep.unknown.append("open-items")
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),

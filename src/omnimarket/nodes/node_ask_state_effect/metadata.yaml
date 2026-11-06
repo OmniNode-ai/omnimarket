@@ -1,24 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
 name: node_ask_state_effect
-version: "0.1.0"
-description: "Read the operator capture store and the ledger and report each operator ask with its state"
+version: 0.1.0
+description: Report ask state and propose evidence-checked carry-over transitions
 pack: operator_capture
 node_role: effect
-display_name: "Operator Ask State Report"
-omnibase_core_compat: ">=0.39.0,<1.0.0"
+display_name: Operator Ask State Report
+omnibase_core_compat: '>=0.39.0,<1.0.0'
 entry_points:
   onex.nodes:
-    node_ask_state_effect: "omnimarket.nodes.node_ask_state_effect"
+    node_ask_state_effect: omnimarket.nodes.node_ask_state_effect
 capabilities:
   standalone: true
-  full_runtime: false
-  requires_network: false
+  full_runtime: true
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
+  side_effect_class: external_write
 dependencies:
-  - "omnibase_core>=0.39.0"
-  - "pyyaml>=6.0"
-authors: ["OmniNode Platform Team"]
-license: "MIT"
-tags: ["effect", "operator-capture", "work-ledger", "asks"]
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- operator-capture
+- work-ledger
+- asks
+- typed-failure-terminal

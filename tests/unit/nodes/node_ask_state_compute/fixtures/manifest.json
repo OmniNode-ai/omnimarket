@@ -1,0 +1,19 @@
+{
+  "scope": "synthetic regression corpus; not the operator gold corpus",
+  "complete": false,
+  "pending": [
+    "601 capture rows and their source operator prompts",
+    "26 messages to the operator",
+    "all rulings since 2026-11-01",
+    "2026-11-04T14:00Z report",
+    "section 17 B1-B7 records and confirmed gold labels",
+    "sample A and sample B: 60 reconciled labels each"
+  ],
+  "files": {
+    "tracked_items.json": {
+      "sha256": "7011163675b0a6f51f3b415a0a217584c194e59847531bd4811072f8d63ae9c3",
+      "rows": 6,
+      "prompts": 7
+    }
+  }
+}

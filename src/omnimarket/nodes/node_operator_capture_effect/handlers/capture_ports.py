@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
+from omnimarket.models.model_capture_health import ModelClassifierCall
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -63,6 +64,7 @@ class DelegateAnswer:
     response: str | None
     model: str | None
     error: str | None
+    call: ModelClassifierCall | None = None
 
 
 DelegateRunner = Callable[[str, Mapping[str, Any]], DelegateAnswer]
@@ -95,13 +97,32 @@ def onex_delegate_runner(
     """
     environ = dict(os.environ if env is None else env)
 
+    def answer(
+        outcome: str,
+        error: str | None,
+        response: str | None = None,
+        model: str | None = None,
+    ) -> DelegateAnswer:
+        call = ModelClassifierCall.model_validate(
+            {
+                "outcome": outcome,
+                "command": "onex delegate --task-type "
+                + DELEGATE_TASK_CLASS
+                + " --bus kafka --lane "
+                + str(lane)
+                + " --locus deployed-lane --json",
+                "observation": error or "receipt carried a response and a model",
+            }
+        )
+        return DelegateAnswer(response, model, error, call)
+
     def run(prompt: str, contract: Mapping[str, Any]) -> DelegateAnswer:
         if not lane:
-            return DelegateAnswer(None, None, "no delegation lane configured")
+            return answer("not-called", "no delegation lane configured")
         binary = environ.get(ONEX_BIN_ENV, "").strip() or shutil.which("onex")
         if not binary:
-            return DelegateAnswer(
-                None, None, f"no onex CLI ({ONEX_BIN_ENV} unset, none on PATH)"
+            return answer(
+                "not-called", f"no onex CLI ({ONEX_BIN_ENV} unset, none on PATH)"
             )
         with tempfile.TemporaryDirectory(prefix="operator-capture-") as tmp:
             prompt_file = Path(tmp) / "prompt.txt"
@@ -133,14 +154,13 @@ def onex_delegate_runner(
                     check=False,
                     env=environ,
                 )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                return DelegateAnswer(
-                    None, None, f"onex delegate did not finish: {exc}"
-                )
+            except subprocess.TimeoutExpired as exc:
+                return answer("timeout", f"onex delegate did not finish: {exc}")
+            except OSError as exc:
+                return answer("unreachable", f"onex delegate did not finish: {exc}")
         if done.returncode != 0:
-            return DelegateAnswer(
-                None,
-                None,
+            return answer(
+                "failed",
                 f"onex delegate exit {done.returncode}: {_one_line(done.stderr)}",
             )
         lines = [line for line in done.stdout.splitlines() if line.strip()]
@@ -149,17 +169,15 @@ def onex_delegate_runner(
         except ValueError:
             receipt = None
         if not isinstance(receipt, Mapping):
-            return DelegateAnswer(None, None, "onex delegate printed no JSON receipt")
+            return answer("invalid", "onex delegate printed no JSON receipt")
         payload = _terminal_payload(receipt)
         response = payload.get("response")
         model = payload.get("model_name") or payload.get("model")
         if not isinstance(response, str) or not response.strip():
-            return DelegateAnswer(
-                None, None, "the delegate receipt carries no response"
-            )
+            return answer("empty", "the delegate receipt carries no response")
         if not isinstance(model, str) or not model.strip():
-            return DelegateAnswer(None, None, "the delegate receipt names no model")
-        return DelegateAnswer(response, model, None)
+            return answer("invalid", "the delegate receipt names no model")
+        return answer("answered", None, response, model)
 
     return run
 

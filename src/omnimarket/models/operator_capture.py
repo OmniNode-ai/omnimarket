@@ -17,6 +17,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_capture_health import (
+    ModelCaptureHealthFinding,
+    ModelClassifierCall,
+)
+
 
 class EnumUtteranceKind(StrEnum):
     """What one item of an operator message is."""
@@ -27,6 +32,11 @@ class EnumUtteranceKind(StrEnum):
     PREFERENCE = "preference"
     STATUS_QUESTION = "status_question"
     CHAT = "chat"
+    RULING = "ruling"
+    PROMISE = "promise"
+    QUESTION = "question"
+    MESSAGE = "message"
+    UNCLASSIFIED = "unclassified"
 
 
 class EnumClassifierSource(StrEnum):
@@ -62,6 +72,7 @@ class ModelUtterance(BaseModel):
         min_length=1, description="claude-code:local, claude-code:remote, slack"
     )
     captured_at: datetime
+    lane: str | None = Field(default=None, min_length=1)
 
 
 class ModelUtteranceClassifyRequest(BaseModel):
@@ -87,6 +98,16 @@ class ModelUtteranceItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class ModelSentenceDisposition(BaseModel):
+    """One source sentence, retained even when it has no actionable item."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sentence: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    item_id: str | None = None
+
+
 class ModelUtteranceClassification(BaseModel):
     """Every item of one message, who classified it and why that classifier answered."""
 
@@ -96,8 +117,10 @@ class ModelUtteranceClassification(BaseModel):
     origin: EnumPromptOrigin
     classifier: EnumClassifierSource
     classifier_model: str | None = None
+    call: ModelClassifierCall | None = None
     reason: str
     items: tuple[ModelUtteranceItem, ...] = ()
+    dispositions: tuple[ModelSentenceDisposition, ...] = ()
     drops: tuple[str, ...] = Field(
         default=(), description="ask ids the operator dropped"
     )
@@ -160,6 +183,9 @@ class ModelCaptureRowsRequest(BaseModel):
     stamp: datetime
     lane: str = "operator-capture"
     max_quote_chars: int = Field(default=1500, ge=80)
+    existing_rows: tuple[str, ...] = ()
+    disposition_kind: str = "disposition"
+    chat_item: str = "chat"
 
 
 class ModelCaptureRows(BaseModel):
@@ -222,6 +248,8 @@ class ModelCaptureProcessRequest(BaseModel):
 
 class ModelCaptureProcessResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    findings: tuple[ModelCaptureHealthFinding, ...] = ()
 
     processed: int = 0
     rows_appended: int = 0
@@ -322,6 +350,7 @@ class ModelOperatorPromptRecord(BaseModel):
     said_at: str | None = None
     emitted_at: str | None = None
     actor: str | None = None
+    lane: str | None = Field(default=None, min_length=1)
 
     @property
     def is_operator_prompt(self) -> bool:
@@ -388,6 +417,7 @@ __all__ = [
     "ModelPriorRuling",
     "ModelRulingDrift",
     "ModelRulingDriftRequest",
+    "ModelSentenceDisposition",
     "ModelUtterance",
     "ModelUtteranceClassification",
     "ModelUtteranceClassifyRequest",

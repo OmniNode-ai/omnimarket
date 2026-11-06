@@ -22,9 +22,20 @@ first, for each prompt in the inbox:
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+import yaml
+
+from omnimarket.models.model_capture_health import (
+    ModelCaptureHealthFinding,
+    ModelCaptureHealthPolicy,
+    ModelCaptureHealthRequest,
+    ModelClassifierCall,
+    ModelClassifierObservation,
+)
 from omnimarket.models.operator_capture import (
     EnumUtteranceKind,
     ModelCaptureProcessRequest,
@@ -65,6 +76,19 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import
 from omnimarket.nodes.node_operator_capture_effect.handlers.ledger_read import (
     relevant_rows,
 )
+from omnimarket.nodes.node_silent_failure_alarm_compute import (
+    HandlerCaptureHealth,
+)
+
+
+def load_capture_health_policy() -> ModelCaptureHealthPolicy:
+    import omnimarket.nodes.node_silent_failure_alarm_compute as alarm_node
+
+    path = Path(alarm_node.__file__).with_name("contract.yaml")
+    return ModelCaptureHealthPolicy.model_validate(
+        yaml.safe_load(path.read_text())["capture_health"]
+    )
+
 
 _DRIFT_KINDS = frozenset({EnumUtteranceKind.DECISION, EnumUtteranceKind.PREFERENCE})
 
@@ -82,10 +106,12 @@ class HandlerCaptureProcess:
         delegate: DelegateRunner | None = None,
         append: LedgerAppender | None = None,
         now: datetime | None = None,
+        health_policy: ModelCaptureHealthPolicy | None = None,
     ) -> None:
         self._delegate = delegate or onex_delegate_runner(None)
         self._append = append or onex_ledger_appender()
         self._now = now
+        self._health_policy = health_policy or load_capture_health_policy()
 
     def handle(self, request: ModelCaptureProcessRequest) -> ModelCaptureProcessResult:
         root = request.store_dir
@@ -101,6 +127,7 @@ class HandlerCaptureProcess:
         root = request.store_dir
         processed = rows_appended = machine = 0
         errors: list[str] = []
+        findings: list[ModelCaptureHealthFinding] = []
         prior_cache: list[tuple[str, ...]] = []
         for path in capture_store.pending(root)[: request.max_captures]:
             try:
@@ -115,6 +142,7 @@ class HandlerCaptureProcess:
                 session_id=str(record.get("session_id") or "unknown"),
                 source=str(record.get("source") or "unknown"),
                 captured_at=datetime.fromisoformat(str(record["received_at"])),
+                lane=str(record.get("lane") or "") or None,
             )
             planned = record.get("rows_planned")
             if isinstance(planned, list):
@@ -134,6 +162,18 @@ class HandlerCaptureProcess:
                 continue
             else:
                 classification, rows = self._classify(request, utterance, prior_cache)
+                fresh = self._health_findings(root, classification)
+                record["classifier_findings"] = [
+                    f.model_dump(mode="json") for f in fresh
+                ]
+                policy = self._health_policy
+                stamp = (self._now or datetime.now(UTC)).strftime(STAMP_FORMAT)
+                rows += tuple(
+                    f"{stamp} | STATUS | lane={policy.finding_lane} | kind={policy.finding_kind}"
+                    f" | alarm={f.alarm} | episode={f.episode} | unanswered={f.unanswered}"
+                    f" | capture={utterance.capture_id} | {f.why}; {f.fix}"
+                    for f in fresh
+                )
             remaining = list(rows)
             failed = False
             if not isinstance(planned, list):
@@ -172,6 +212,10 @@ class HandlerCaptureProcess:
                 },
             )
             path.unlink(missing_ok=True)
+            findings.extend(
+                ModelCaptureHealthFinding.model_validate(f)
+                for f in record.get("classifier_findings", [])
+            )
             processed += 1
         return ModelCaptureProcessResult(
             processed=processed,
@@ -179,7 +223,47 @@ class HandlerCaptureProcess:
             machine=machine,
             pending=len(capture_store.pending(root)),
             errors=tuple(errors),
+            findings=tuple(findings),
         )
+
+    def _health_findings(
+        self, root: Path, classification: ModelUtteranceClassification
+    ) -> tuple[ModelCaptureHealthFinding, ...]:
+        history = root / "captures.jsonl"
+        observations = []
+        emitted: set[str] = set()
+        if history.exists():
+            for line in history.read_text(encoding="utf-8").splitlines():
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue  # an incomplete last journal row is not a classified prompt
+                summary = record.get("classification") or {}
+                if record.get("status") == "machine" or not summary:
+                    continue
+                observations.append(
+                    ModelClassifierObservation(
+                        capture_id=record["capture_id"],
+                        classifier=summary["classifier"],
+                        call=summary.get("call"),
+                    )
+                )
+                emitted.update(
+                    f["episode"] for f in record.get("classifier_findings", [])
+                )
+        observations.append(
+            ModelClassifierObservation(
+                capture_id=classification.capture_id,
+                classifier=classification.classifier.value,
+                call=classification.call,
+            )
+        )
+        result = HandlerCaptureHealth().handle(
+            ModelCaptureHealthRequest(
+                observations=tuple(observations), policy=self._health_policy
+            )
+        )
+        return tuple(f for f in result.findings if f.episode not in emitted)
 
     def _classify(
         self,
@@ -200,6 +284,26 @@ class HandlerCaptureProcess:
                 delegated_error=answer.error,
             )
         )
+        call = answer.call or ModelClassifierCall(
+            outcome="empty"
+            if request.delegate and not answer.response
+            else "answered"
+            if request.delegate
+            else "not-called",
+            command="injected delegate port"
+            if request.delegate
+            else "capture delegate=false",
+            observation=answer.error or "delegate port returned a response",
+        )
+        if (
+            answer.response
+            and classification.classifier.value
+            == self._health_policy.fallback_classifier
+        ):
+            call = call.model_copy(
+                update={"outcome": "invalid", "observation": classification.reason}
+            )
+        classification = classification.model_copy(update={"call": call})
         drift: dict[str, ModelRulingDrift] = {}
         if any(i.kind in _DRIFT_KINDS for i in classification.items):
             if not prior_cache:
@@ -266,6 +370,9 @@ def _summary(
         "classifier": classification.classifier.value,
         "classifier_model": classification.classifier_model,
         "reason": classification.reason,
+        "call": classification.call.model_dump(mode="json")
+        if classification.call
+        else None,
         "items": [i.model_dump(mode="json") for i in classification.items],
         "drops": list(classification.drops),
     }

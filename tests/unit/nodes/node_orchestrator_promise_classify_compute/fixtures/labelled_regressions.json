@@ -1,0 +1,387 @@
+{
+  "origin": "synthetic",
+  "corpus_id": "synthetic-wording-regressions-v1",
+  "labelled_by": "fixture-author",
+  "samples": [
+    {
+      "id": "synthetic-reply-00",
+      "text": "I will install branch 0.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-01",
+      "text": "I'll read back slot 1.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-02",
+      "text": "We will verify change 2.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-03",
+      "text": "I am going to check item 3.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-04",
+      "text": "We shall record result 4.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-05",
+      "text": "I will install branch 5.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-06",
+      "text": "I'll read back slot 6.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-07",
+      "text": "We will verify change 7.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-08",
+      "text": "I am going to check item 8.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-09",
+      "text": "We shall record result 9.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-10",
+      "text": "I will install branch 10.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-11",
+      "text": "I'll read back slot 11.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-12",
+      "text": "We will verify change 12.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-13",
+      "text": "I am going to check item 13.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-14",
+      "text": "We shall record result 14.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-15",
+      "text": "I will install branch 15.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-16",
+      "text": "I'll read back slot 16.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-17",
+      "text": "We will verify change 17.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-18",
+      "text": "I am going to check item 18.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-19",
+      "text": "We shall record result 19.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-20",
+      "text": "I might install change 20.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-21",
+      "text": "I plan to verify change 21.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-22",
+      "text": "I can try to check change 22.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-23",
+      "text": "Once the slot opens, I will test change 23.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-24",
+      "text": "I intend to record change 24.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-25",
+      "text": "I might install change 25.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-26",
+      "text": "I plan to verify change 26.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-27",
+      "text": "I can try to check change 27.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-28",
+      "text": "Once the slot opens, I will test change 28.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-29",
+      "text": "I intend to record change 29.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-30",
+      "text": "I might install change 30.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-31",
+      "text": "I plan to verify change 31.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-32",
+      "text": "I can try to check change 32.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-33",
+      "text": "Once the slot opens, I will test change 33.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-34",
+      "text": "I intend to record change 34.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-35",
+      "text": "I might install change 35.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-36",
+      "text": "I plan to verify change 36.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-37",
+      "text": "I can try to check change 37.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-38",
+      "text": "Once the slot opens, I will test change 38.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-39",
+      "text": "I intend to record change 39.",
+      "promise_sentences": [
+        1
+      ]
+    },
+    {
+      "id": "synthetic-reply-40",
+      "text": "Change 40 is installed.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-41",
+      "text": "The worker will retry task 41.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-42",
+      "text": "Thanks for update 42.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-43",
+      "text": "You said \"I will check 43\".",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-44",
+      "text": "The next tick is number 44.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-45",
+      "text": "Change 45 is installed.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-46",
+      "text": "The worker will retry task 46.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-47",
+      "text": "Thanks for update 47.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-48",
+      "text": "You said \"I will check 48\".",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-49",
+      "text": "The next tick is number 49.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-50",
+      "text": "Change 50 is installed.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-51",
+      "text": "The worker will retry task 51.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-52",
+      "text": "Thanks for update 52.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-53",
+      "text": "You said \"I will check 53\".",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-54",
+      "text": "The next tick is number 54.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-55",
+      "text": "Change 55 is installed.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-56",
+      "text": "The worker will retry task 56.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-57",
+      "text": "Thanks for update 57.",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-58",
+      "text": "You said \"I will check 58\".",
+      "promise_sentences": []
+    },
+    {
+      "id": "synthetic-reply-59",
+      "text": "The next tick is number 59.",
+      "promise_sentences": []
+    }
+  ]
+}

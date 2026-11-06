@@ -20,5 +20,8 @@ from .handlers import (
 from .handlers import (
     HandlerTickLivenessAlarm as HandlerTickLivenessAlarm,
 )
+from .handlers.handler_capture_health import (
+    HandlerCaptureHealth as HandlerCaptureHealth,
+)
 from .handlers.handler_quiet_host_alarm import host_id as host_id
 from .node import NodeSilentFailureAlarmCompute as NodeSilentFailureAlarmCompute

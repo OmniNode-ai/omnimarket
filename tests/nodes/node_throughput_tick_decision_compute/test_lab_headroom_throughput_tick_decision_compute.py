@@ -17,7 +17,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
+from omnimarket.nodes.node_operator_item_render_compute import (
+    NodeOperatorItemRenderCompute,
+)
 from omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision import (
     HandlerThroughputTickDecision,
 )
@@ -37,9 +41,25 @@ READING = "h201:cores=32,load1=4.0,free_gb=64.0,placed=1,cap=4,slots=3,login=cla
 HOST = {"name": "h201", "parses": {READING: {"parsed": True}}}
 
 
+def empty_items(now: str) -> dict[str, Any]:
+    return {
+        "now": now,
+        "config": yaml.safe_load(
+            NodeOperatorItemRenderCompute.contract_path.read_text()
+        )["config"],
+        "report": {
+            "schema_id": "omni.ask-state/1",
+            "generated_at": now,
+            "since": now,
+            "asks": [],
+        },
+    }
+
+
 def run(**overrides: Any) -> Any:
     payload: dict[str, Any] = {
         "now": NOW,
+        "operator_items": empty_items(NOW),
         "launchctl": "not_loaded",
         "lab_headroom": {"hosts": [HOST], "receipts": [_receipt()]},
         **overrides,
@@ -66,8 +86,21 @@ def lab_lines(result: Any) -> list[str]:
 
 @pytest.mark.parametrize("case", PARITY["cases"], ids=lambda c: str(c["name"]))
 def test_old_cli_parity(case: dict[str, Any]) -> None:
-    result = HANDLER.handle(ModelThroughputTickRequest.model_validate(case["request"]))
-    assert [*result.lines, result.status_line] == case["expected"]["output"]
+    stamp = case["request"]["now"]
+    result = HANDLER.handle(
+        ModelThroughputTickRequest.model_validate(
+            {
+                **case["request"],
+                "operator_items": empty_items(stamp),
+            }
+        )
+    )
+    recorded = case["expected"]["output"]
+    assert [*result.lines, result.status_line] == [
+        *recorded[:-1],
+        f"OPEN-ITEMS n=0 unowned=0 oldest=none as_of={stamp}",
+        recorded[-1],
+    ]
     assert result.exit_code == case["expected"]["exit_code"]
 
 

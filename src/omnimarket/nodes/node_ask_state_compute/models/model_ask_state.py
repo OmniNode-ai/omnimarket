@@ -16,6 +16,7 @@ from omnimarket.models.model_ask_state import (
     ModelAskWip,
     ModelKindCount,
     ModelParkedAsk,
+    ModelRulingMechanismAudit,
     ModelUnclassifiedPrompt,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "ModelAskWip",
     "ModelKindCount",
     "ModelParkedAsk",
+    "ModelRulingMechanismAudit",
     "ModelUnclassifiedPrompt",
 ]

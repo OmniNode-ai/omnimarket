@@ -124,7 +124,9 @@ def test_an_operator_prompt_becomes_rows_with_the_verbatim_words(
         "sess-op",
         "prompt-1",
     )
-    decision, ask = append.rows
+    decision, ask = append.rows[:2]
+    assert len(append.rows) == 4
+    assert all("kind=disposition" in row for row in append.rows[2:])
     assert decision.startswith("2026-10-10T23:00:00Z | STATUS | lane=operator-capture")
     assert '"We are not building capture hooks."' in decision
     assert "said=2026-10-10T22:59:00Z" in decision
@@ -139,7 +141,7 @@ def test_a_redelivered_prompt_is_recorded_once(tmp_path: Path) -> None:
     handler.handle(_record())
     again = handler.handle(_record())
     assert again.status is EnumOperatorCaptureStatus.DUPLICATE
-    assert len(append.rows) == 2
+    assert len(append.rows) == 4
 
 
 def test_a_record_that_is_not_an_operator_prompt_is_refused(tmp_path: Path) -> None:
@@ -228,8 +230,8 @@ def test_the_host_records_the_operator_prompt_and_nothing_a_lane_said(
             await _publish(bus, _record().model_dump(mode="json"))
             await _wait_for(lambda: len(receipts) == 1)
             assert receipts[0]["status"] == "recorded"
-            assert receipts[0]["result"]["rows_appended"] == 2
-            assert len(append.rows) == 2
+            assert receipts[0]["result"]["rows_appended"] == 4
+            assert len(append.rows) == 4
             assert all("session=sess-op" in r for r in append.rows)
             assert host.skipped == 2
             assert (host.topics.prompts, capture_group_id()) in bus.groups

@@ -30,6 +30,12 @@ from omnimarket.models.operator_capture import (
     ModelCaptureRows,
     ModelCaptureRowsRequest,
 )
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks import (
+    parse_ledger_row,
+)
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_utterance_classify import (
+    sentence_dispositions,
+)
 
 STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 _CELL_UNSAFE = re.compile(r"[|\n\r=]")
@@ -48,7 +54,7 @@ def _cell(value: str) -> str:
 
 
 class HandlerCaptureRows:
-    """Build the capture rows; a machine injection or an all-chat message yields none."""
+    """Build item and sentence disposition rows; machine injections yield none."""
 
     def handle(self, request: ModelCaptureRowsRequest) -> ModelCaptureRows:
         classification = request.classification
@@ -69,6 +75,8 @@ class HandlerCaptureRows:
             f"capture={utterance.capture_id}",
             f"said={utterance.captured_at.astimezone(UTC).strftime(STAMP_FORMAT)}",
         ]
+        if utterance.lane:
+            common.append(f"owner={_cell(utterance.lane)}")
         rows: list[str] = []
         for item in classification.items:
             if item.kind is EnumUtteranceKind.CHAT:
@@ -94,6 +102,24 @@ class HandlerCaptureRows:
                 cells.append("verbatim=normalized")
             cells.append(f'"{words}"')
             rows.append(" | ".join(cells))
+        dispositions = classification.dispositions or sentence_dispositions(
+            utterance, classification.items
+        )
+        for disposition in dispositions:
+            words, changed = ledger_words(disposition.quote)
+            cells = [
+                stamp,
+                "STATUS",
+                f"lane={request.lane}",
+                f"kind={request.disposition_kind}",
+                f"sentence={disposition.sentence}",
+                f"item={disposition.item_id or request.chat_item}",
+                *common,
+            ]
+            if changed:
+                cells.append("verbatim=normalized")
+            cells.append(f'"{words[: request.max_quote_chars]}"')
+            rows.append(" | ".join(cells))
         for ask in classification.drops:
             words, changed = ledger_words(utterance.text)
             cells = [
@@ -109,7 +135,15 @@ class HandlerCaptureRows:
                 cells.append("verbatim=normalized")
             cells.append(f'"{words[: request.max_quote_chars]}"')
             rows.append(" | ".join(cells))
-        return ModelCaptureRows(rows=tuple(rows))
+        # Restamping a retry does not change its identity. The caller supplies the scratch/live rows.
+        seen = {
+            parsed[2]
+            for raw in request.existing_rows
+            if (parsed := parse_ledger_row(raw)) is not None
+        }
+        return ModelCaptureRows(
+            rows=tuple(row for row in rows if row.split(" | ", 2)[2] not in seen)
+        )
 
 
 __all__ = ["STAMP_FORMAT", "HandlerCaptureRows", "ledger_words"]

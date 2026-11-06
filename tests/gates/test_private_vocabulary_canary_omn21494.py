@@ -63,6 +63,7 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
         [
             uv,
             "run",
+            "--quiet",
             "--no-project",
             "--isolated",
             "--with",

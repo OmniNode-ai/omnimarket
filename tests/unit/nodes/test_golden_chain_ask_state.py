@@ -4,7 +4,7 @@
 
 node_ask_state_effect reads a capture store and a ledger from disk and drives
 node_ask_state_compute in process: a chat-only ask is dropped, an ask that spawned a lane is owned,
-then done once the lane's TERMINAL lands, a parked ask enters the parked queue. The error leg: a
+then done once the lane's TERMINAL cites completion evidence, a parked ask enters the parked queue. The error leg: a
 machine-injected record is not an operator ask and yields nothing, and a missing source is refused.
 """
 
@@ -98,6 +98,17 @@ def test_golden_chain_chat_only_lane_owned_done_and_parked(tmp_path: Path) -> No
     ledger.write_text(
         ledger.read_text(encoding="utf-8")
         + "2026-10-31T10:00:00Z | TERMINAL | lane=lane-a | friction=none | closes-CLAIM=2026-10-31T08:05:00Z | outcome=done\n",
+        encoding="utf-8",
+    )
+    done = handler.handle(_request(tmp_path))
+    bare_terminal = next(e for e in done.asks if e.ask_id == "ask-0000000002")
+    assert bare_terminal.state is EnumAskState.OWNED
+    assert bare_terminal.owner_lane == "lane-a"
+    assert bare_terminal.running_lane is None
+
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8")
+        + "2026-10-31T10:01:00Z | STATUS | lane=lane-a | closes-ask=ask-0000000002 | evidence=receipt:child-ticket-created\n",
         encoding="utf-8",
     )
     done = handler.handle(_request(tmp_path))

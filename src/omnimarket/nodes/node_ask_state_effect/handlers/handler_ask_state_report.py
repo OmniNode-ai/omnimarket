@@ -97,6 +97,7 @@ def read_prompts(captures: Path, since: datetime) -> tuple[ModelAskPrompt, ...]:
             session_id=str(record.get("session_id", "")),
             said_at=said,
             text=str(record.get("text", "")),
+            lane=str(record.get("lane") or record.get("captured_lane") or "") or None,
             items=items,
         )
     return tuple(prompts.values())
@@ -137,27 +138,31 @@ class HandlerAskStateReport:
     """Read the sources named by the request and return the compute node's report."""
 
     def handle(self, request: ModelAskStateReadRequest) -> ModelAskStateReport:
+        return HandlerAskState().handle(self.snapshot(request))
+
+    def snapshot(self, request: ModelAskStateReadRequest) -> ModelAskStateRequest:
+        """Read once, so a sweep proposes and refolds the same source snapshot."""
         runtime = load_contract()["runtime"]
         config = load_config()
         # Restatements and dependency edges look back past the window; the compute node reports
         # only the asks stated at or after ``since``.
         floor = request.since - timedelta(days=config.restate_lookback_days)
-        return HandlerAskState().handle(
-            ModelAskStateRequest(
-                prompts=read_prompts(
-                    request.captures_dir / runtime["captures_file"], floor
-                ),
-                rows=read_ledger_rows(
-                    request.ledger_path,
-                    floor,
-                    archive_glob=runtime["archive_glob"],
-                    archive_dir=runtime["archive_dir"],
-                    archives=request.archives,
-                ),
-                now=request.now,
-                since=request.since,
-                config=config,
-            )
+        return ModelAskStateRequest(
+            prompts=read_prompts(
+                request.captures_dir / runtime["captures_file"], floor
+            ),
+            rows=read_ledger_rows(
+                request.ledger_path,
+                floor,
+                archive_glob=runtime["archive_glob"],
+                archive_dir=runtime["archive_dir"],
+                archives=request.archives,
+            ),
+            now=request.now,
+            since=request.since,
+            config=config,
+            ruling_mechanisms=request.ruling_mechanisms,
+            merged_prs=request.merged_prs,
         )
 
 
