@@ -1,0 +1,11 @@
+[Unit]
+Description=Durable __LABEL__ tick
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT__
+__ENVIRONMENT__
+ExecStart=__COMMAND__
+TimeoutStartSec=__TIMEOUT__
+StandardOutput=journal
+StandardError=journal

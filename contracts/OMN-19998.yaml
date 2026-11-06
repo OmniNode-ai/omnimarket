@@ -282,6 +282,22 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
         cwd: .
+  - id: dod-omn19998-durable-item-tick-unit
+    description: Scoped repository proof for the durable Linux item tick. The initial test fails because the installer has no item tick; the installer checks loaded and enabled timer state, recent starts on weekdays and across a weekend, exit status, linger, branch revision and configuration refusal. Live installation and the 24-hour observation remain separate and unproven by this check.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_tick_unit.py -k tick_unit -q --no-cov
+        cwd: .
+  - id: dod-omn19998-durable-item-tick-deploy
+    description: Hosted deployment smoke discovers and wires the actual item tick contract on the in-memory bus, dispatches correlated child commands, persists individual completion cursors and evaluates missing starts and stale checks through the existing automation watchdog. This does not assert a live Redpanda run, host installation or the original Mac controller criteria.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_item_tick_orchestrator/test_golden_chain_item_tick_orchestrator.py -k tick_unit -q --no-cov
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual

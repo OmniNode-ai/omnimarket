@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The timer publishes only; the declared effects runtime hosts the node.
+# Bind the host, durable state and every installed check contract before use.
+schema_version: item-tick/v1
+bus: kafka
+lane: dev
+host: controller-host
+state_directory: /replace/with/durable/item-tick-state
+interval_seconds: 300
+check_timeout_seconds: 30
+checks: {}
