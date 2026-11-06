@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22566
+title: The read-only principal's probe emits its golden and error chain through the floor's emission journal
+summary: 'The emission sink moves to a shared module, and the read-only principal''s probe runs under the floor''s emission contract: a start, then a success or a typed failure, under one correlation id, into the floor''s existing journal.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22566-probe-floor-emission
+  statement: The probe of the read-only principal emits its chain through the floor's journal so the floor's receipt fold counts a golden chain for a probe that reads and is refused, and an error chain for a defined fault or a probe that cannot run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a probe that reads and is refused emits a start and a success under one correlation id and the floor''s receipt fold counts a golden chain for the overlay''s piece -- falsifier: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_floor_emission.py -q -o addopts='''' -k golden'
+  - id: AC2
+    statement: 'AC2: the defined fault, a mutation that goes through, emits a typed failure naming it, the fold counts an error chain and no golden one, and a probe that cannot run is a typed failure too -- falsifier: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_floor_emission.py -q -o addopts='''' -k ''error or cannot_run'''
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_floor_emission.py -q -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22566-golden
+  description: The PR-added tests run the probe through the contract-bound handler with an injected executor and read the chain back through the floor's own receipt fold. They fail at the merge base, where the emission sink is not shared and the probe emits nothing.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_floor_emission.py -q -o addopts='' -k golden
+    cwd: .
+- id: dod-omn22566-error
+  description: The fault test plants a mutation that exits 0 and reads an error chain with no golden one from the fold; its control runs the same probe without the fault and reads golden. A raising executor and an unset journal home are the cannot-run cases.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_floor_emission.py -q -o addopts='' -k 'error or cannot_run'
+    cwd: .
