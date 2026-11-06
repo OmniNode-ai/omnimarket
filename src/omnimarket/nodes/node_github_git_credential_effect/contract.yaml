@@ -1,0 +1,129 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - GitHub git credential effect (OMN-22613)
+#
+# Lanes pushed with a person's stored login through `gh auth git-credential`.
+# This node issues the push credential instead: the writer App's installation
+# token, narrowed to one repository and one permission set, minted on request
+# where the App's key lives (the runtime), and sealed to the requester's
+# one-request X25519 key so the bus log never holds it in clear. The caller is
+# `onex scm git-credential`, a git credential helper.
+name: node_github_git_credential_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: one push credential for one repository. One ModelGitCredentialRequest
+  on onex.cmd.omnimarket.github-git-credential-requested.v1 is answered by one
+  ModelGitCredentialIssued on onex.evt.omnimarket.github-git-credential-issued.v1
+  or one ModelGitCredentialFailed on
+  onex.evt.omnimarket.github-git-credential-failed.v1. The repository must be
+  OWNER/NAME under an owner the overlay allows and not a denied repository, and
+  the request must carry a base64url X25519 public key; any of these failing is
+  refused before GitHub is asked. The token is the writer App's installation
+  token narrowed to that one repository and the overlay's permission set; a
+  token GitHub returns wider than asked is refused. The issued event carries the
+  token sealed to the requester's key (X25519, HKDF-SHA256, AES-256-GCM, bound to
+  the correlation id and repository), its expiry and its permissions, never the
+  token in clear. No person's token is read on any path.
+
+input_model:
+  name: ModelGitCredentialRequest
+  module: omnimarket.nodes.node_github_git_credential_effect.models.model_git_credential
+
+output_model:
+  name: ModelGitCredentialIssued
+  module: omnimarket.nodes.node_github_git_credential_effect.models.model_git_credential
+
+# Settings live in the overlay: allowed owners, denied repositories, the one
+# permission set and the App secret names. A deployment overlay under
+# ONEX_SKILL_OVERLAY_ROOTS replaces the packaged one.
+overlay:
+  file: overlay.yaml
+  model: omnimarket.nodes.node_github_git_credential_effect.models.model_git_credential.ModelGitCredentialPolicy
+
+# Any runtime that loads this node and resolves the App refs may answer it.
+placement:
+  mode: any
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+secrets:
+  ONEXBOT_OCC_APP_ID:
+    description: "Writer GitHub App id."
+    required: true
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "Writer App signing key; never logged."
+    required: true
+  ONEXBOT_OCC_INSTALLATION_ID:
+    description: "Optional writer installation id; absent means discover the installation on the repository's owner."
+    required: false
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.github-git-credential-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.github-git-credential-issued.v1
+    - onex.evt.omnimarket.github-git-credential-failed.v1
+
+published_events:
+  - event_type: "GitCredentialIssued"
+    topic: onex.evt.omnimarket.github-git-credential-issued.v1
+    description: "A repository-narrowed token, sealed to the requester's key, with its expiry and permissions."
+  - event_type: "GitCredentialFailed"
+    topic: onex.evt.omnimarket.github-git-credential-failed.v1
+    description: "No credential was issued, with a typed reason; no token is carried."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "github_git_credential.issue"
+      message_category: "command"
+      handler:
+        name: "HandlerGithubGitCredentialEffect"
+        module: "omnimarket.nodes.node_github_git_credential_effect.handlers.handler_github_git_credential"
+      event_model:
+        name: "ModelGitCredentialRequest"
+        module: "omnimarket.nodes.node_github_git_credential_effect.models.model_git_credential"
+      topic: onex.cmd.omnimarket.github-git-credential-requested.v1
+      description: "One git credential request from a lane's credential helper; answered by one issued or failed event."
+
+terminal_event: onex.evt.omnimarket.github-git-credential-issued.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.github-git-credential-requested.v1
+  # ModelGitCredentialFailed carries terminal_failure_cause, so the runtime's
+  # failure-terminal guard publishes it on the failure topic.
+  terminal_events:
+    success: onex.evt.omnimarket.github-git-credential-issued.v1
+    failure: onex.evt.omnimarket.github-git-credential-failed.v1
+
+# Both results leave the ONEX node graph here: the credential helper reads them.
+externally_consumed_topics:
+  - onex.evt.omnimarket.github-git-credential-issued.v1
+  - onex.evt.omnimarket.github-git-credential-failed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Per-repository push credentials for lanes, sealed to the requester"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "github"
+    - "credential"
