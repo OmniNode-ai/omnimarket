@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""What the floor reads from the ledger (OMN-22674): the go for rebuild pieces and the events of pieces that write rows.
+"""What the floor reads from the ledger (OMN-22674): the go for rebuild pieces, the events of pieces that write rows and
+(OMN-22478) the reading writer's reading rows.
 
 Two facts of the strip were values set by hand, and the floor drew them wrong: the highest piece the operator said go to,
 and whether a piece had started. Both are on the ledger already. The go is a RULING row, written when the operator
@@ -23,8 +24,10 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelGoRule,
+    ModelLedgerReadingRule,
     ModelNodeEmission,
     ModelPieceEventRule,
+    ModelReadingRow,
     ModelRowMatch,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
@@ -45,6 +48,9 @@ class ModelLedgerFacts(BaseModel):
     go_given_through: int
     go_rows: tuple[str, ...] = ()
     events: tuple[ModelNodeEmission, ...] = ()
+    # The newest reading row of each piece the reading writer wrote, and how many matching rows could not be read as one.
+    readings: tuple[ModelReadingRow, ...] = ()
+    readings_rejected: int = 0
 
 
 class ModelLedgerFloorRead(BaseModel):
@@ -153,6 +159,59 @@ def piece_events(
     return tuple(events)
 
 
+_READING_VERDICTS = {
+    "WORKING": "WORKING",
+    "NOT_WORKING": "NOT WORKING",
+    "UNKNOWN": "UNKNOWN",
+}
+
+
+def _reading_row(
+    row: ModelLedgerEvidenceRow, rule: ModelLedgerReadingRule
+) -> ModelReadingRow | None:
+    """One reading row of the reading writer as the floor's reading of a piece, or ``None`` when a cell is not usable."""
+    verdict = _READING_VERDICTS.get(row.cells.get(rule.verdict_cell, ""))
+    try:
+        piece = int(row.cells[rule.piece_cell])
+        probed = datetime.fromisoformat(row.cells[rule.probed_at_cell])
+        published = datetime.fromisoformat(row.cells[rule.published_at_cell])
+        max_age = int(row.cells[rule.max_age_cell])
+    except (KeyError, ValueError):
+        return None
+    if verdict is None or not 1 <= piece <= 18 or max_age <= 0:
+        return None
+    if probed.tzinfo is None or published.tzinfo is None:
+        return None
+    return ModelReadingRow(
+        piece=piece,
+        state=verdict,
+        probed_at=probed,
+        published_at=published,
+        max_age_s=max_age,
+    )
+
+
+def reading_rows(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelLedgerReadingRule
+) -> tuple[tuple[ModelReadingRow, ...], int]:
+    """The newest reading row of each piece, and the count of matching rows that could not be read as a reading."""
+    match = ModelRowMatch(row_type=rule.row_type, lane=rule.lane, cells=rule.cells)
+    newest: dict[int, ModelReadingRow] = {}
+    rejected = 0
+    for row in rows:
+        if not _row_matches(row, match):
+            continue
+        reading = _reading_row(row, rule)
+        if reading is None:
+            rejected += 1
+        elif (
+            reading.piece not in newest
+            or reading.published_at > newest[reading.piece].published_at
+        ):
+            newest[reading.piece] = reading
+    return tuple(newest[p] for p in sorted(newest)), rejected
+
+
 def read_ledger_facts(
     source: ProtocolLedgerRowSource, overlay: ModelFloorSimpleOverlay, now: datetime
 ) -> ModelLedgerFloorRead:
@@ -191,6 +250,23 @@ def read_ledger_facts(
             )
         for row in read.rows:
             event_rows[row.raw] = row
+    readings: tuple[ModelReadingRow, ...] = ()
+    rejected = 0
+    reading_rule = overlay.ledger_readings
+    if reading_rule is not None:
+        read = source.read(
+            ModelLedgerQuery(
+                since=now - timedelta(days=reading_rule.lookback_days),
+                until=until,
+                row_type=reading_rule.row_type,
+                lane=reading_rule.lane,
+            )
+        )
+        if read.error is not None:
+            return ModelLedgerFloorRead(
+                error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
+            )
+        readings, rejected = reading_rows(list(read.rows), reading_rule)
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(
@@ -203,5 +279,7 @@ def read_ledger_facts(
                 and re.search(go_rule.question_pattern, r.cells.get("question", ""))
             ),
             events=piece_events(list(event_rows.values()), overlay.piece_events),
+            readings=readings,
+            readings_rejected=rejected,
         )
     )

@@ -108,6 +108,19 @@ causes:
     - "alarm:undelivered"
   ignore_stoppages: []
 
+# The reading writer's rows: one STATUS row of its own lane per piece per window. The floor draws each piece's reading from
+# the newest one, so the strip, the colour and the staleness rule read what the writer wrote.
+ledger_readings:
+  row_type: STATUS
+  lane: reading-writer
+  cells: {src: reading}
+  piece_cell: piece
+  verdict_cell: verdict
+  probed_at_cell: probed_at
+  published_at_cell: published_at
+  max_age_cell: max_age
+  lookback_days: 3
+
 freshness_max_age_s: 900
 error_receipt_max_age_s: 86400
 error_drill_after_s: 21600
