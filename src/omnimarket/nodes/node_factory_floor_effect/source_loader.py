@@ -1130,7 +1130,10 @@ def load_lane_processes(
         return None
     try:
         # A readable worker directory is the positive control for a missing lease file.
-        worker_ids = {p.name for p in (directory / "workers").iterdir() if p.is_dir()}
+        # One directory read, no stat per entry: the directory holds tens of thousands of lease directories, and a stat of
+        # each took more than 5 minutes as the publisher's tick (OMN-22699); a DirEntry knows its type from the read.
+        with os.scandir(directory / "workers") as scanned:
+            worker_ids = {e.name for e in scanned if e.is_dir()}
         workers = runpy.run_path(
             str(plugin_root / "skills/merge-drain/scripts/landing_workers.py")
         )
