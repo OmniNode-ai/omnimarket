@@ -27,6 +27,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     workspace_config_root: str = ""
     plans_path: str = ""
     marketplace_root: str = ""
+    # A copied unit takes scripts and matching packages from this one plugin root.
+    source_root: str = ""
+    ledger_path: str = ""
     project_path: str = ""
     expected_revision: str = ""
     path_overrides: dict[str, str] = Field(default_factory=dict)
@@ -56,5 +59,16 @@ class ModelRegistryUnitsResult(BaseModel):
     rendered: str = ""
     project: str = ""
     revision: str = ""
+    bundle_sha256: str = ""
     project_is_canonical: bool = True
     record: str = ""
+
+
+class ModelCopiedUnitPayload(BaseModel):
+    """Source-relative payload and runtime arguments from a unit's overlay."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    copied_files: tuple[str, ...]
+    copied_trees: tuple[str, ...]
+    arguments: tuple[str, ...] = ()
