@@ -84,6 +84,8 @@ class ModelOverlayDriftCounts(BaseModel):
     unreadable: int = 0
     overlay_missing: int = 0
     unpinned: int = 0
+    #: Pins whose omnimarket revision is not on the merged branch (a squashed branch commit).
+    pin_unmerged: int = 0
 
     @property
     def failing(self) -> int:
@@ -112,6 +114,8 @@ class ModelOverlayDriftResult(BaseModel):
     counts: ModelOverlayDriftCounts = Field(default_factory=ModelOverlayDriftCounts)
     failing: tuple[ModelOverlayCheck, ...] = ()
     unpinned: tuple[str, ...] = ()
+    #: Overlays whose pin names a revision the merged branch does not hold.
+    unmerged_pins: tuple[str, ...] = ()
     runtime: ModelRuntimeIdentity | None = None
     home_revision: str = "unknown"
     row_key: str = ""

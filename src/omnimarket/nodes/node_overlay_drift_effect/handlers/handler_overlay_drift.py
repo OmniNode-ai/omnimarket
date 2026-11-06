@@ -40,7 +40,9 @@ from omnimarket.nodes.node_overlay_drift_effect.overlay import (
 )
 from omnimarket.nodes.node_overlay_drift_effect.protocols import (
     OverlayHomeError,
+    PinHistoryError,
     ProtocolOverlayHome,
+    ProtocolPinHistory,
     ProtocolRuntimeValidator,
     RuntimeValidatorError,
 )
@@ -87,7 +89,9 @@ class HandlerOverlayDrift:
         validator: ProtocolRuntimeValidator,
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
+        pin_history: ProtocolPinHistory | None = None,
     ) -> None:
+        self._pin_history = pin_history
         self._overlay = overlay
         self._host = host
         self._home = home
@@ -153,6 +157,7 @@ class HandlerOverlayDrift:
             return sum(check.verdict is verdict for check in checks)
 
         unpinned = tuple(sorted(held - pinned))
+        unmerged_pins, pin_reason = self._unmerged_pins(pins)
         counts = ModelOverlayDriftCounts(
             checked=len(answer.results),
             accepted=count(EnumOverlayVerdict.ACCEPTED),
@@ -161,6 +166,7 @@ class HandlerOverlayDrift:
             unreadable=count(EnumOverlayVerdict.UNREADABLE),
             overlay_missing=count(EnumOverlayVerdict.OVERLAY_MISSING),
             unpinned=len(unpinned),
+            pin_unmerged=len(unmerged_pins),
         )
         failing = tuple(
             sorted(
@@ -199,6 +205,11 @@ class HandlerOverlayDrift:
         else:
             verdict = EnumReadingVerdict.WORKING
             reasons = (f"all-{counts.checked}-pinned-overlays-accepted",)
+        # An unmerged pin is reported on its own count; it does not decide the verdict.
+        if counts.pin_unmerged:
+            reasons = (*reasons, f"pin_unmerged-{counts.pin_unmerged}")
+        if pin_reason:
+            reasons = (*reasons, pin_reason)
         return ModelOverlayDriftResult(
             correlation_id=correlation_id,
             status="completed",
@@ -209,9 +220,31 @@ class HandlerOverlayDrift:
             counts=counts,
             failing=failing,
             unpinned=unpinned,
+            unmerged_pins=unmerged_pins,
             runtime=answer.runtime,
             home_revision=self._home.revision(),
         )
+
+    def _unmerged_pins(
+        self, pins: tuple[ModelOverlayPin, ...]
+    ) -> tuple[tuple[str, ...], str]:
+        """Overlays whose pinned revision the merged branch does not hold, and a reason when unread."""
+        if self._pin_history is None:
+            return (), ""
+        try:
+            unmerged = self._pin_history.unmerged(tuple(pin.revision for pin in pins))
+        except PinHistoryError as exc:
+            return (), reason_token(f"pin-history-unreadable-{exc}")
+        return tuple(
+            sorted(pin.overlay_id for pin in pins if pin.revision in unmerged)
+        ), ""
+
+    def _named_pins(self, result: ModelOverlayDriftResult) -> str:
+        limit = self._overlay.publish.max_named
+        named = list(result.unmerged_pins[:limit])
+        if len(result.unmerged_pins) > limit:
+            named.append(f"and-{len(result.unmerged_pins) - limit}-more")
+        return ",".join(named) or "none"
 
     def _named(self, result: ModelOverlayDriftResult) -> str:
         limit = self._overlay.publish.max_named
@@ -251,7 +284,9 @@ class HandlerOverlayDrift:
             "unreadable": str(counts.unreadable),
             "overlay_missing": str(counts.overlay_missing),
             "unpinned": str(counts.unpinned),
+            "pin_unmerged": str(counts.pin_unmerged),
             "failing": self._named(result),
+            "unmerged_pins": self._named_pins(result),
         }
         content = _sha(
             json.dumps(
