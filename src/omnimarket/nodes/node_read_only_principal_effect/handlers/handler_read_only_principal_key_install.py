@@ -18,14 +18,10 @@ from pathlib import Path
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState, public_key_parts
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.adapter_ssh_host_key_transport import (
     SshHostKeyTransport,
-)
-from omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
-    public_key_parts,
 )
 from omnimarket.nodes.node_lab_host_key_distribution_effect.protocols.protocol_host_key_transport import (
     HostTransportError,

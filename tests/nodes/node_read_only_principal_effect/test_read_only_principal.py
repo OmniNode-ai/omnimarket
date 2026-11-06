@@ -16,11 +16,8 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
-from omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
-)
 from omnimarket.nodes.node_lab_host_key_distribution_effect.protocols.protocol_host_key_transport import (
     HostTransportError,
 )
