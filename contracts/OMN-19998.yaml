@@ -728,3 +728,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-dogfood-skipped-count
+    description: The runtime dogfood inventory test expects the skipped count that dev now produces after node_host_installer_registry_units gained handler_routing; the count was measured as 36 on dev. This scoped test correction does not assert the landing-controller timer criteria.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k classifies_all_entry_points
+        cwd: .
