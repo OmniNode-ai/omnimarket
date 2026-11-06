@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The real attempt runner: one process, no shell, only the environment variables the attempt names."""
+"""The real attempt executor: one process, no shell, only the environment variables the attempt names."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import subprocess
 from collections.abc import Mapping
 
 from ..models.model_read_only_principal import ModelProbeAttempt
-from ..protocols.protocol_attempt_runner import ModelAttemptRun
+from ..protocols.protocol_attempt_executor import ModelAttemptRun
 
 _TIMED_OUT = 124
 _NOT_STARTED = 127
 
 
-class SubprocessAttemptRunner:
+class SubprocessAttemptExecutor:
     """Run an attempt's argv directly. ``PATH`` is passed so a program name resolves; nothing else is."""
 
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:

@@ -23,8 +23,11 @@ from ..models.model_read_only_principal import (
     ModelProbeResult,
     ModelReadOnlyPrincipalOverlay,
 )
-from ..protocols.protocol_attempt_runner import ModelAttemptRun, ProtocolAttemptRunner
-from .adapter_subprocess_attempt_runner import SubprocessAttemptRunner
+from ..protocols.protocol_attempt_executor import (
+    ModelAttemptRun,
+    ProtocolAttemptExecutor,
+)
+from .adapter_subprocess_attempt_executor import SubprocessAttemptExecutor
 from .handler_read_only_command_gate import load_overlay
 
 
@@ -52,10 +55,12 @@ class HandlerReadOnlyPrincipalProbe:
 
     def __init__(
         self,
-        runner: ProtocolAttemptRunner | None = None,
+        executor: ProtocolAttemptExecutor | None = None,
         overlay_source: Callable[[], ModelReadOnlyPrincipalOverlay] | None = None,
     ) -> None:
-        self._runner = runner if runner is not None else SubprocessAttemptRunner()
+        self._executor = (
+            executor if executor is not None else SubprocessAttemptExecutor()
+        )
         self._overlay_source = overlay_source or load_overlay
 
     def handle(self, request: ModelProbeRequest) -> ModelProbeResult:
@@ -74,8 +79,8 @@ class HandlerReadOnlyPrincipalProbe:
         )
 
     def _channel(self, probe: ModelChannelProbe) -> ModelChannelReceipt:
-        read = read_outcome(self._runner.run(probe.read))
-        mutate = mutate_outcome(self._runner.run(probe.mutate), probe.refusal_markers)
+        read = read_outcome(self._executor.run(probe.read))
+        mutate = mutate_outcome(self._executor.run(probe.mutate), probe.refusal_markers)
         return ModelChannelReceipt(
             channel=probe.channel,
             read=read,

@@ -3,7 +3,7 @@
 """The read-only principal: the ssh gate, the three-channel probe and the key install (step 0).
 
 Every refusal test has a named injected break beside it: the same call against an overlay or a
-runner with the defect planted must read the other way, which shows the refusal test can fail.
+executor with the defect planted must read the other way, which shows the refusal test can fail.
 """
 
 from __future__ import annotations
@@ -24,11 +24,11 @@ from omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_hos
 from omnimarket.nodes.node_lab_host_key_distribution_effect.protocols.protocol_host_key_transport import (
     HostTransportError,
 )
-from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_memory_attempt_runner import (
-    MemoryAttemptRunner,
+from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_memory_attempt_executor import (
+    MemoryAttemptExecutor,
 )
-from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_subprocess_attempt_runner import (
-    SubprocessAttemptRunner,
+from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_subprocess_attempt_executor import (
+    SubprocessAttemptExecutor,
 )
 from omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only_command_gate import (
     HandlerReadOnlyCommandGate,
@@ -60,7 +60,7 @@ from omnimarket.nodes.node_read_only_principal_effect.models import (
 from omnimarket.nodes.node_read_only_principal_effect.node import (
     NodeReadOnlyPrincipalEffect,
 )
-from omnimarket.nodes.node_read_only_principal_effect.protocols.protocol_attempt_runner import (
+from omnimarket.nodes.node_read_only_principal_effect.protocols.protocol_attempt_executor import (
     ModelAttemptRun,
 )
 from omnimarket.nodes.node_read_only_principal_effect.runtime_read_only_principal import (
@@ -313,15 +313,15 @@ def test_the_overlay_file_loads_and_a_broken_one_is_refused(tmp_path: Path) -> N
 
 
 def test_golden_every_channel_reads_and_refuses_its_mutation() -> None:
-    runner = MemoryAttemptRunner(_answers())
-    result = HandlerReadOnlyPrincipalProbe(runner=runner).handle(
+    executor = MemoryAttemptExecutor(_answers())
+    result = HandlerReadOnlyPrincipalProbe(executor=executor).handle(
         ModelProbeRequest(overlay=_overlay())
     )
     assert result.passed
     assert {r.channel for r in result.receipts} == set(EnumChannel)
     assert all(r.read == EnumAttemptOutcome.READ_OK for r in result.receipts)
     assert all(r.mutate == EnumAttemptOutcome.MUTATION_REFUSED for r in result.receipts)
-    assert len(runner.calls) == 6
+    assert len(executor.calls) == 6
     assert result.complete
     assert result.lines()[-1] == "principal=ro-test verdict=PASS"
 
@@ -332,7 +332,9 @@ def test_error_a_mutation_the_credential_accepts_fails_the_verdict(
 ) -> None:
     accepted = ModelAttemptRun(exit_code=0, text="created")
     result = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(_answers(**{f"{channel}_probe__mutate": accepted}))
+        executor=MemoryAttemptExecutor(
+            _answers(**{f"{channel}_probe__mutate": accepted})
+        )
     ).handle(ModelProbeRequest(overlay=_overlay()))
     assert not result.passed
     hit = next(r for r in result.receipts if r.channel.value == channel)
@@ -343,7 +345,7 @@ def test_error_a_mutation_the_credential_accepts_fails_the_verdict(
 def test_error_a_mutation_that_fails_without_a_refusal_word_is_not_a_refusal() -> None:
     dead_network = ModelAttemptRun(exit_code=1, text="connection reset by peer")
     result = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(_answers(github_probe__mutate=dead_network))
+        executor=MemoryAttemptExecutor(_answers(github_probe__mutate=dead_network))
     ).handle(ModelProbeRequest(overlay=_overlay()))
     assert not result.passed
     hit = next(r for r in result.receipts if r.channel == EnumChannel.GITHUB)
@@ -354,7 +356,7 @@ def test_error_a_channel_that_cannot_read_fails_even_when_its_mutation_is_refuse
     None
 ):
     result = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(
+        executor=MemoryAttemptExecutor(
             _answers(ledger_probe__read=ModelAttemptRun(exit_code=1, text="down"))
         )
     ).handle(ModelProbeRequest(overlay=_overlay()))
@@ -367,33 +369,33 @@ def test_error_a_channel_that_cannot_read_fails_even_when_its_mutation_is_refuse
 def test_error_a_channel_whose_attempts_are_not_scripted_never_reads_as_a_pass() -> (
     None
 ):
-    result = HandlerReadOnlyPrincipalProbe(runner=MemoryAttemptRunner({})).handle(
+    result = HandlerReadOnlyPrincipalProbe(executor=MemoryAttemptExecutor({})).handle(
         ModelProbeRequest(overlay=_overlay())
     )
     assert not result.passed
 
 
 def test_the_mutation_is_attempted_even_when_the_read_failed() -> None:
-    runner = MemoryAttemptRunner(
+    executor = MemoryAttemptExecutor(
         _answers(ssh_probe__read=ModelAttemptRun(exit_code=255, text=""))
     )
-    HandlerReadOnlyPrincipalProbe(runner=runner).handle(
+    HandlerReadOnlyPrincipalProbe(executor=executor).handle(
         ModelProbeRequest(overlay=_overlay())
     )
-    assert ("ssh-probe", "mutate") in runner.calls
+    assert ("ssh-probe", "mutate") in executor.calls
 
 
 def test_the_receipt_holds_outcomes_and_never_output_text() -> None:
     leaky = ModelAttemptRun(exit_code=1, text="Permission denied token=SECRETVALUE123")
     result = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(_answers(github_probe__mutate=leaky))
+        executor=MemoryAttemptExecutor(_answers(github_probe__mutate=leaky))
     ).handle(ModelProbeRequest(overlay=_overlay()))
     assert result.passed
     assert "SECRETVALUE123" not in result.model_dump_json()
     assert "SECRETVALUE123" not in "\n".join(result.lines())
 
 
-def test_break_a_runner_that_accepts_every_mutation_turns_the_golden_probe_red() -> (
+def test_break_a_executor_that_accepts_every_mutation_turns_the_golden_probe_red() -> (
     None
 ):
     """The control for the golden test: a credential that is not read-only must read FAIL."""
@@ -401,9 +403,9 @@ def test_break_a_runner_that_accepts_every_mutation_turns_the_golden_probe_red()
         key: (READ_OK if key[1] == "read" else ModelAttemptRun(exit_code=0, text="ok"))
         for key in _answers()
     }
-    result = HandlerReadOnlyPrincipalProbe(runner=MemoryAttemptRunner(answers)).handle(
-        ModelProbeRequest(overlay=_overlay())
-    )
+    result = HandlerReadOnlyPrincipalProbe(
+        executor=MemoryAttemptExecutor(answers)
+    ).handle(ModelProbeRequest(overlay=_overlay()))
     assert not result.passed
     assert all(
         r.mutate == EnumAttemptOutcome.MUTATION_ACCEPTED for r in result.receipts
@@ -411,21 +413,21 @@ def test_break_a_runner_that_accepts_every_mutation_turns_the_golden_probe_red()
 
 
 def test_golden_a_narrowed_probe_runs_only_its_channel_and_reads_pass_partial() -> None:
-    runner = MemoryAttemptRunner(_answers())
-    result = HandlerReadOnlyPrincipalProbe(runner=runner).handle(
+    executor = MemoryAttemptExecutor(_answers())
+    result = HandlerReadOnlyPrincipalProbe(executor=executor).handle(
         ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,))
     )
     assert result.passed
     assert not result.complete
     assert [r.channel for r in result.receipts] == [EnumChannel.SSH]
-    assert runner.calls == [("ssh-probe", "read"), ("ssh-probe", "mutate")]
+    assert executor.calls == [("ssh-probe", "read"), ("ssh-probe", "mutate")]
     assert result.lines()[-1] == "principal=ro-test verdict=PASS-PARTIAL"
 
 
 def test_error_a_narrowed_probe_whose_channel_accepts_a_mutation_reads_fail() -> None:
     accepted = ModelAttemptRun(exit_code=0, text="created")
     result = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(_answers(ssh_probe__mutate=accepted))
+        executor=MemoryAttemptExecutor(_answers(ssh_probe__mutate=accepted))
     ).handle(ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,)))
     assert result.verdict == "FAIL"
 
@@ -438,16 +440,16 @@ def test_a_channel_named_twice_is_refused() -> None:
 def test_break_a_probe_that_ignores_the_narrowing_would_read_a_full_pass() -> None:
     """The control for PASS-PARTIAL: the partial verdict is not a full PASS, whatever passed."""
     partial = HandlerReadOnlyPrincipalProbe(
-        runner=MemoryAttemptRunner(_answers())
+        executor=MemoryAttemptExecutor(_answers())
     ).handle(ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,)))
-    full = HandlerReadOnlyPrincipalProbe(runner=MemoryAttemptRunner(_answers())).handle(
-        ModelProbeRequest(overlay=_overlay())
-    )
+    full = HandlerReadOnlyPrincipalProbe(
+        executor=MemoryAttemptExecutor(_answers())
+    ).handle(ModelProbeRequest(overlay=_overlay()))
     assert partial.verdict != full.verdict
 
 
 def test_the_node_class_probes_through_the_same_handler() -> None:
-    node = NodeReadOnlyPrincipalEffect(runner=MemoryAttemptRunner(_answers()))
+    node = NodeReadOnlyPrincipalEffect(executor=MemoryAttemptExecutor(_answers()))
     assert node.handle(ModelProbeRequest(overlay=_overlay())).passed
     assert node.contract_path.is_file()
 
@@ -470,24 +472,24 @@ def test_the_overlay_must_probe_each_channel_exactly_once() -> None:
         )
 
 
-def test_the_subprocess_runner_passes_only_the_named_variables() -> None:
+def test_the_subprocess_executor_passes_only_the_named_variables() -> None:
     environ = {"PATH": "/usr/bin:/bin", "NAMED": "yes", "UNNAMED": "leak"}
-    runner = SubprocessAttemptRunner(environ)
+    executor = SubprocessAttemptExecutor(environ)
     code = (
         "import os,sys;"
         "sys.exit(0 if os.environ.get('NAMED')=='yes' and 'UNNAMED' not in os.environ else 3)"
     )
-    run = runner.run(
+    run = executor.run(
         ModelProbeAttempt(argv=(sys.executable, "-c", code), pass_env=("NAMED",))
     )
     assert run.exit_code == 0
 
 
-def test_the_subprocess_runner_reports_a_missing_program_and_a_timeout() -> None:
-    runner = SubprocessAttemptRunner({"PATH": "/usr/bin:/bin"})
-    missing = runner.run(ModelProbeAttempt(argv=("no-such-program-for-the-probe",)))
+def test_the_subprocess_executor_reports_a_missing_program_and_a_timeout() -> None:
+    executor = SubprocessAttemptExecutor({"PATH": "/usr/bin:/bin"})
+    missing = executor.run(ModelProbeAttempt(argv=("no-such-program-for-the-probe",)))
     assert missing.exit_code == 127
-    slow = runner.run(
+    slow = executor.run(
         ModelProbeAttempt(
             argv=(sys.executable, "-c", "import time;time.sleep(5)"), timeout_s=1
         )

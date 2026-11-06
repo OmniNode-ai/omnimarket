@@ -20,7 +20,7 @@ class ModelAttemptRun(BaseModel):
     text: str = ""
 
 
-class ProtocolAttemptRunner(Protocol):
+class ProtocolAttemptExecutor(Protocol):
     """Run one attempt with only the environment variables it names."""
 
     def run(self, attempt: ModelProbeAttempt) -> ModelAttemptRun: ...
