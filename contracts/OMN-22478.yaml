@@ -31,6 +31,17 @@ requirements:
         statement: "AC7: Only the reading writer node builds reading rows, and a probe appends nothing."
       - id: "AC8"
         statement: "AC8: The hourly unit renders from the contract, survives a reboot (Persistent timer), installs only on a declared host and rolls back by uninstall."
+  - id: "req-omn22478-host-readings"
+    statement: >-
+      Read-only hourly probes read state that exists only on a writing host (its ledger outbox, its old ledger
+      names), one row per probe per run, in the same reading shape, each shown failing by a named injected break.
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: A stale queued request (over the bound), a refused file or an unreadable queued file reads the outbox NOT WORKING on both backends; a queue inside the bound reads WORKING."
+      - id: "AC10"
+        statement: "AC10: An old ledger name restored to a regular file, removed or pointed elsewhere reads NOT WORKING on both backends; a configured path that is itself an old name cannot pass."
+      - id: "AC11"
+        statement: "AC11: The golden chain ends in the success event under one correlation id; an unreadable source, an append that does not land, a bad payload and an undeclared host each end in a typed failure, and the schedule installs and rolls back on systemd and launchd."
 evidence_requirements:
   - kind: "tests"
     description: "The focused test files."
@@ -114,6 +125,33 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac9"
+    description: >-
+      A stale queued request, a refused file or an unreadable queued file reads the outbox NOT WORKING on both backends.
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov --refuse-skips -k outbox"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac10"
+    description: >-
+      An old ledger name restored to a regular file, removed or pointed elsewhere reads NOT WORKING on both backends.
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov --refuse-skips -k old_name"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac11"
+    description: >-
+      The chain tests, the CLI and the schedule on both schedulers.
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_reading_chain_events.py tests/nodes/node_host_reading_effect/test_host_reading_cli.py tests/nodes/node_host_reading_effect/test_host_reading_schedule.py -q --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22478-integration-proof"
     description: >-
