@@ -15,6 +15,7 @@ in infrastructure helpers).
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +28,8 @@ _GITHUB_REST = GITHUB_REST_URL
 _GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
+_ASSET_DOWNLOAD_ATTEMPTS = 3
+_ASSET_RETRY_STATUSES = frozenset({502, 503, 504})
 
 _PR_GRAPHQL_QUERY = """
 query($owner: String!, $name: String!, $after: String) {
@@ -197,6 +200,9 @@ def download_release_asset(url: str, to: Path) -> None:
     The caller is responsible for deciding whether the bytes are acceptable.
     Nothing here verifies them.
 
+    Transient gateway errors (502, 503, 504) get at most three attempts, with
+    one- and two-second delays. Other failures are reported immediately.
+
     Raises:
         GitHubApiError: On a non-https URL, or any HTTP or network failure.
     """
@@ -204,11 +210,42 @@ def download_release_asset(url: str, to: Path) -> None:
         raise GitHubApiError(f"refusing a non-https asset URL: {url}")
     to.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, method="GET")
+    for attempt in range(_ASSET_DOWNLOAD_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+                to.write_bytes(resp.read())
+            return
+        except (urllib.error.URLError, OSError) as exc:
+            code = exc.code if isinstance(exc, urllib.error.HTTPError) else None
+            if isinstance(exc, urllib.error.HTTPError):
+                exc.close()
+            if code in _ASSET_RETRY_STATUSES and attempt < _ASSET_DOWNLOAD_ATTEMPTS - 1:
+                time.sleep(float(attempt + 1))
+                continue
+            raise GitHubApiError(str(exc), status_code=code) from exc
+
+
+def _rest_raw(
+    method: str,
+    path: str,
+    *,
+    token: str,
+    body: dict[str, object] | None,
+) -> bytes:
+    """Send one REST request and return the raw response bytes."""
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = _base_headers(token)
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(
+        f"{_GITHUB_REST}{path}", data=data, headers=headers, method=method
+    )
     try:
         with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            to.write_bytes(resp.read())
+            return bytes(resp.read())
     except urllib.error.HTTPError as exc:
-        raise GitHubApiError(str(exc), status_code=exc.code) from exc
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise GitHubApiError(str(exc)) from exc
 
@@ -231,24 +268,7 @@ def rest_json(
     Raises:
         GitHubApiError: On HTTP, network, or JSON decode failures.
     """
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = _base_headers(token)
-    if data is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        f"{_GITHUB_REST}{path}",
-        data=data,
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    raw = _rest_raw(method, path, token=token, body=body)
 
     if not raw:
         return {}
@@ -289,24 +309,7 @@ def rest_json_array(
     Raises:
         GitHubApiError: On HTTP, network, or JSON decode failures.
     """
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = _base_headers(token)
-    if data is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        f"{_GITHUB_REST}{path}",
-        data=data,
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    raw = _rest_raw(method, path, token=token, body=body)
 
     if not raw:
         return []

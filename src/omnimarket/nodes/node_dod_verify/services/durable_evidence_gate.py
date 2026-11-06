@@ -34,6 +34,9 @@ from html import escape
 from typing import Protocol
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
     EnumDefectLabel,
     EnumDoneClassLabel,
@@ -333,9 +336,11 @@ def resolve_repo_contracts(
         if runs is None:
             return ModelRepoEvidenceVerdict(
                 outcome=EnumRepoEvidenceOutcome.REFUSED,
+                unresolved_cause=EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED,
                 detail=(
                     f"{_diagnostic_text(source)} at head {_diagnostic_text(pr.head_sha)}: check runs unreadable; "
-                    "restore GitHub check-run access."
+                    "retry the read; if it remains unreadable, repair the gateway "
+                    "configuration or check-run access. No check conclusion was read."
                 ),
             )
         kept = [
@@ -1048,11 +1053,17 @@ class DurableEvidenceGate:
                 "evidence fixed; no other source is read in its place."
             )
         )
+        if (
+            verdict.unresolved_cause
+            is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+        ):
+            message = f"CHECK_RUN_READ_FAILED: {verdict.detail} Closure stays blocked."
         checks.append(
             ModelDurableEvidenceCheckResult(
                 check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
                 passed=governed,
                 message=message,
+                unresolved_cause=verdict.unresolved_cause,
             )
         )
         # The merged repo contract is the one that governs, so repair-to-ratchet
