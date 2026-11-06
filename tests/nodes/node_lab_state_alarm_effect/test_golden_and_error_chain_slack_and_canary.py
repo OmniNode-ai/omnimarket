@@ -517,6 +517,84 @@ def test_error_an_unreadable_served_page_publishes_nothing_so_the_canary_goes_si
     assert published == []
 
 
+def test_golden_a_deferred_cycle_publishes_no_canary_and_says_so(
+    tmp_path: Path,
+) -> None:
+    published: list[ModelCanaryStatus] = []
+    home = build_home(tmp_path)
+    env = environ(home) | canary_overlay_roots(tmp_path)
+    result = HandlerFloorSimpleTick(
+        sink=InMemoryEmissionSink(),
+        served_alarm_ids=lambda: None,
+        slack_apis={"slack_alerts": FakeSlackApi()},
+        canary_publisher=published.append,
+        served_times=lambda: (NOW, NOW),
+    ).run(ModelFloorSimpleTickRequest(home=str(home), defer_canary=True), environ=env)
+    assert result.ok
+    assert result.canary == "deferred_to_publish"
+    assert published == []
+
+
+def canary_only(
+    tmp_path: Path,
+    *,
+    served: tuple[datetime | None, datetime | None] | None,
+    fail_publish: bool = False,
+) -> tuple[list[ModelCanaryStatus], ModelFloorSimpleTickResult, Path]:
+    published: list[ModelCanaryStatus] = []
+    home = build_home(tmp_path)
+    env = environ(home) | canary_overlay_roots(tmp_path)
+    before = (home / ".claude_scratch/factory-floor/floor-simple.json").exists()
+
+    def publish(status: ModelCanaryStatus) -> None:
+        if fail_publish:
+            raise CanaryPublishError("git push failed (exit 1): fatal: simulated")
+        published.append(status)
+
+    result = HandlerFloorSimpleTick(
+        sink=InMemoryEmissionSink(),
+        clock=lambda: NOW,
+        served_alarm_ids=lambda: None,
+        slack_apis={"slack_alerts": FakeSlackApi()},
+        canary_publisher=publish,
+        served_times=lambda: served,
+    ).run(ModelFloorSimpleTickRequest(home=str(home), canary_only=True), environ=env)
+    assert (home / ".claude_scratch/factory-floor/floor-simple.json").exists() == before
+    return published, result, home
+
+
+def test_golden_the_canary_only_run_publishes_the_page_as_it_is_served_now(
+    tmp_path: Path,
+) -> None:
+    served = (NOW - timedelta(seconds=4), NOW - timedelta(seconds=4))
+    published, result, _home = canary_only(tmp_path, served=served)
+    assert result.ok
+    assert result.canary == "published"
+    assert [s.floor_generated_at for s in published] == [served[0]]
+    age = (published[0].published_at - published[0].floor_generated_at).total_seconds()
+    assert age < 60  # the page's own age, not a cycle old
+
+
+def test_error_a_canary_only_run_that_cannot_publish_is_a_failed_run(
+    tmp_path: Path,
+) -> None:
+    published, result, _home = canary_only(
+        tmp_path, served=(NOW, NOW), fail_publish=True
+    )
+    assert not result.ok
+    assert result.failure_code == "canary_failed_unexpected_CanaryPublishError"
+    assert published == []
+
+
+def test_error_a_canary_only_run_with_an_unreadable_served_page_is_a_failed_run(
+    tmp_path: Path,
+) -> None:
+    published, result, _home = canary_only(tmp_path, served=None)
+    assert not result.ok
+    assert result.failure_code == "canary_unpublished_served_page_unread"
+    assert published == []
+
+
 def test_golden_a_planted_offline_source_alarms_in_slack_as_a_test_and_publishes_no_canary(
     tmp_path: Path,
 ) -> None:

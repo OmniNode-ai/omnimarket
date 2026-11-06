@@ -218,7 +218,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "factory-floor.json",
     )
     # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
-    assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+    assert [
+        c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
+    ] == [
         False,
         False,
         False,
@@ -342,6 +344,9 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
     calls = _program_calls(runner)
+    # The canary status is published after the page is served: the last call is the floor node's canary step.
+    assert calls[-1] == FLOOR_SIMPLE
+    calls = calls[:-1]
     assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE])
     assert calls[-2] == FACTORY
     # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
@@ -1776,3 +1781,68 @@ def test_page_headline_open_count_is_the_sum_of_the_drawn_accounts() -> None:
     )
     assert headline is not None
     assert (int(headline.group(1)), int(headline.group(2))) == (sum(per_account), 2)
+
+
+def _canary_calls(ssh: LocalSsh) -> list[int]:
+    return [
+        index
+        for index, (argv, _stdin) in enumerate(ssh.calls)
+        if argv[0] != "ssh" and "--publish-canary" in argv
+    ]
+
+
+def test_canary_is_published_after_the_last_file_of_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh()
+    result = HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert [(s.name, s.status) for s in result.after_publish] == [
+        ("floor_canary", "ok")
+    ]
+    canary = _canary_calls(ssh)
+    assert len(canary) == 1
+    served = [
+        index for index, (argv, _stdin) in enumerate(ssh.calls) if argv[0] == "ssh"
+    ]
+    assert served
+    assert max(served) < canary[0]
+    assert canary[0] == len(ssh.calls) - 1  # nothing follows it
+
+
+def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
+    steps = {step.name: step for step in load_runtime().steps}
+    assert "--defer-canary" in steps["floor_simple"].args
+    after = {step.name: step for step in load_runtime().after_publish_steps}
+    assert after["floor_canary"].required
+    assert "--publish-canary" in after["floor_canary"].args
+
+
+def test_a_failed_page_upload_publishes_no_canary_so_the_failure_stays_visible(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh(fail_name="factory-floor.json")
+    with pytest.raises(PublishRefusedError):
+        HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert _canary_calls(ssh) == []
+
+
+def test_a_canary_that_cannot_be_published_fails_the_run_after_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    class CanaryFails(LocalSsh):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] != "ssh" and "--publish-canary" in argv:
+                self.calls.append((list(argv), stdin))
+                return subprocess.CompletedProcess(list(argv), 2, b"", b"push refused")
+            return super().__call__(argv, stdin, timeout)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    with pytest.raises(PublishRefusedError, match="floor_canary"):
+        HandlerFactoryFloorPublish(CanaryFails()).handle(
+            _request(tmp_path, state_dir=str(state)), environ={}
+        )
+    assert (tmp_path / "site" / "factory-floor.json").is_file()  # the page is served
+    assert (state / load_runtime().evidence_file).is_file()  # and the run says so
