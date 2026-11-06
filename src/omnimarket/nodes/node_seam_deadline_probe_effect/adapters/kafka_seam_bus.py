@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
@@ -25,6 +26,9 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline
     ModelSeamAnswer,
     ModelSeamDemand,
 )
+
+if TYPE_CHECKING:
+    from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
 
 def _event_type(topic: str) -> str:
@@ -38,7 +42,7 @@ class KafkaSeamBus:
     def __init__(self, lane: str) -> None:
         self._lane = lane
 
-    def _config(self) -> object:
+    def _config(self) -> ModelKafkaEventBusConfig:
         # Imported here: the in-memory backend must not need a Kafka client.
         from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
         from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
@@ -79,7 +83,7 @@ class KafkaSeamBus:
             tenant_id=None,
         )
         transport = KafkaTransport(
-            config=config.model_copy(  # type: ignore[attr-defined]
+            config=config.model_copy(
                 update={"acks": EnumKafkaAcks.ALL, "enable_idempotence": False}
             ),
             group=demand.consumer_group_prefix + uuid4().hex,

@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -52,6 +52,11 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
 
+_SEAM_BUSES: dict[str, Callable[[str], ProtocolSeamBus]] = {
+    "inmemory": lambda _lane: InMemorySeamBus(),
+    "kafka": KafkaSeamBus,
+}
+
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
     overlay = load_overlay()
@@ -60,11 +65,7 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
-    bus: ProtocolSeamBus = (
-        KafkaSeamBus(overlay.bus.lane)
-        if overlay.bus.backend == "kafka"
-        else InMemorySeamBus()
-    )
+    bus: ProtocolSeamBus = _SEAM_BUSES[overlay.bus.backend](overlay.bus.lane)
     handler = HandlerSeamDeadline(
         overlay=overlay,
         host=host,

@@ -95,6 +95,7 @@ def test_golden_chain_a_seam_answered_in_time_reads_working() -> None:
         topics["seam_crossing_read"],
         topics["seam_deadline_run_completed"],
     ]
+    assert events[-1][0] == "onex.evt.omnimarket.seam-deadline-run-completed.v1"
     assert {body["correlation_id"] for _, body in events} == {"chain-1"}
     assert events[1][1]["crossing"] == "result"
     assert events[-1][1]["verdict"] == "WORKING"
