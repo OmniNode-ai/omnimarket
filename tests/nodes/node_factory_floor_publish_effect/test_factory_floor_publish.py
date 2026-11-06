@@ -38,9 +38,11 @@ from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_pu
 
 pytestmark = pytest.mark.unit
 
-# The only links the page may carry: the empty icon and the vendored theme files published beside it.
+# The only links the page may carry: the site's icons and the vendored theme files published beside it.
 _ICON_AND_THEME_LINKS = [
-    '<link rel="icon" href="data:,">',
+    '<link rel="icon" type="image/svg+xml" href="favicon.svg">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">',
+    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
     '<link rel="stylesheet" href="onex.theme.light.css">',
     '<link rel="stylesheet" href="onex.theme.dark.css">',
     '<link rel="stylesheet" href="onex.theme.warm.css">',
@@ -184,8 +186,11 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     site = tmp_path / "site"
     assert sorted(p.name for p in site.iterdir()) == [
+        "apple-touch-icon.png",
         "detail.html",
         "factory-floor.json",
+        "favicon-32.png",
+        "favicon.svg",
         "floor",
         "index.html",
         "onex.theme.dark.css",
@@ -194,6 +199,10 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
+    for icon in ("favicon.svg", "favicon-32.png", "apple-touch-icon.png"):
+        assert (site / icon).read_bytes() == (
+            NODE_DIR / "page/icons" / icon
+        ).read_bytes()
     assert (
         json.loads((site / "factory-floor.json").read_text())["generated_at"]
         == RECORD["generated_at"]
@@ -211,6 +220,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
         "detail.html",
         "index.html",
@@ -543,6 +555,9 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
         "detail.html",
         "index.html",
@@ -661,8 +676,11 @@ def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", PAGE, re.IGNORECASE
     )
-    assert PAGE.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in PAGE
+    assert re.findall(r"<link[^>]*>", PAGE) == [
+        '<link rel="icon" type="image/svg+xml" href="../favicon.svg">',
+        '<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">',
+        '<link rel="apple-touch-icon" href="../apple-touch-icon.png">',
+    ]
     assert "src=" not in PAGE
 
 
