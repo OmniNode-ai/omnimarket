@@ -409,11 +409,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_linear_snapshot_effect is run by `python -m` from the plans-today skill, not
     # by a bus command, so it is experimental with no handler_routing.
     # node_host_installer_net_units is called in process by the host installer
-    # and declares no handler_routing, so it is experimental: 35 -> 37.
+    # and declares no handler_routing, so it is experimental: 34 -> 36.
     # node_view_seam_reading_reducer folds seam events into a projection and has
-    # no command topic, so it is a non-addressable projection reducer: 37 -> 38.
+    # no command topic, so it is a non-addressable projection reducer: 36 -> 37.
     # The six view seam emitter scaffolds are local invocations, not skips.
-    assert summary["skipped"] == 38
+    assert summary["skipped"] == 37
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
