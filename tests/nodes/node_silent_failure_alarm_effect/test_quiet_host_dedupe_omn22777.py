@@ -43,6 +43,16 @@ ROW = (
 )
 
 
+def _ledger(options: ModelSilentFailureAlarmOptions) -> Path:
+    assert options.ledger is not None
+    return options.ledger
+
+
+def _events_command(options: ModelSilentFailureAlarmOptions) -> tuple[str, ...]:
+    assert options.hook_events_command is not None
+    return options.hook_events_command
+
+
 def _stamp(at) -> str:
     return at.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -67,26 +77,27 @@ def _tick(options: ModelSilentFailureAlarmOptions, at) -> tuple[str, ...]:
 
 
 def _events(options: ModelSilentFailureAlarmOptions, lines: list[str]) -> None:
-    events = Path(options.hook_events_command[-1])  # type: ignore[index]
+    events = Path(_events_command(options)[-1])
     events.write_text("".join(f"{line}\n" for line in lines))
 
 
 def _claim(options: ModelSilentFailureAlarmOptions, host: str, at) -> None:
-    with options.ledger.open("a") as handle:  # type: ignore[union-attr]
+    with _ledger(options).open("a") as handle:
         handle.write(
             f"{_stamp(at)} | CLAIM | lane=recorded | host={host} | more work\n"
         )
 
 
-def _open_alarm(options: ModelSilentFailureAlarmOptions) -> dict[str, object]:
-    return json.loads(options.delivery_state_file.read_text())["open"]["quiet-host"]
+def _open_alarm_hosts(options: ModelSilentFailureAlarmOptions) -> list[str]:
+    state = json.loads(options.delivery_state_file.read_text())
+    return list(state["open"]["quiet-host"]["hosts"])
 
 
 def test_same_quiet_hosts_on_the_next_tick_stay_deduped(tmp_path: Path) -> None:
     options = world(tmp_path)
     assert set(_tick(options, HOST_NOW)) == set(RECORDED)
     assert _tick(options, HOST_NOW + timedelta(minutes=10)) == ()
-    assert options.ledger.read_text().count("class=quiet-host") == 1  # type: ignore[union-attr]
+    assert _ledger(options).read_text().count("class=quiet-host") == 1
 
 
 def test_quiet_host_dedupe_host_that_recovered_and_went_quiet_again_raises(
@@ -99,7 +110,7 @@ def test_quiet_host_dedupe_host_that_recovered_and_went_quiet_again_raises(
     live = HOST_NOW + timedelta(minutes=9)
     _events(options, [f"h101|{_stamp(live)}"])
     assert _tick(options, HOST_NOW + timedelta(minutes=10)) == ()
-    assert "h101" not in _open_alarm(options)["hosts"]  # type: ignore[operator]
+    assert "h101" not in _open_alarm_hosts(options)
 
     # It runs lanes again after that event and sends none for half an hour: quiet again.
     _claim(options, "h101", HOST_NOW + timedelta(minutes=20))
@@ -108,7 +119,7 @@ def test_quiet_host_dedupe_host_that_recovered_and_went_quiet_again_raises(
     assert "h101" in again, (
         "a host quiet again after an alarm covered it must raise a row"
     )
-    assert options.ledger.read_text().count("class=quiet-host") == 2  # type: ignore[union-attr]
+    assert _ledger(options).read_text().count("class=quiet-host") == 2
     # The row is now the record: the next tick on the same hosts is deduped.
     assert _tick(options, HOST_NOW + timedelta(minutes=55)) == ()
 
@@ -120,7 +131,7 @@ def test_quiet_host_dedupe_recorded_state_names_the_host_no_row_named(
     base = world(tmp_path)
     hosts = ("h053", "h106", "h201", "h202")
     options = base.model_copy(update={"host_aliases": {h: h for h in hosts}})
-    options.ledger.write_text(  # type: ignore[union-attr]
+    _ledger(options).write_text(
         "".join(
             f"{_stamp(HOST_NOW - timedelta(minutes=minutes))} | CLAIM | lane=recorded | host={host} | work\n"
             for host in hosts
@@ -157,7 +168,7 @@ def test_quiet_host_dedupe_recorded_state_names_the_host_no_row_named(
     )
     raised = _tick(options, HOST_NOW)
     assert set(raised) == set(hosts), "h201 reads quiet and no row names it: raise one"
-    assert set(_open_alarm(options)["hosts"]) == set(hosts)  # type: ignore[arg-type]
+    assert set(_open_alarm_hosts(options)) == set(hosts)
     # Control: once a row names all four, the same tick is deduped.
     assert _tick(options, HOST_NOW + timedelta(minutes=10)) == ()
 
@@ -167,7 +178,7 @@ def test_quiet_host_dedupe_host_the_newest_row_names_stays_deduped(
 ) -> None:
     options = world(tmp_path)
     named = ",".join(sorted(RECORDED))
-    with options.ledger.open("a") as handle:  # type: ignore[union-attr]
+    with _ledger(options).open("a") as handle:
         handle.write(
             ROW.format(stamp=_stamp(HOST_NOW - timedelta(hours=3)), hosts=named) + "\n"
         )
@@ -187,4 +198,4 @@ def test_quiet_host_dedupe_host_the_newest_row_names_stays_deduped(
         )
     )
     assert _tick(options, HOST_NOW) == ()
-    assert options.ledger.read_text().count("class=quiet-host") == 1  # type: ignore[union-attr]
+    assert _ledger(options).read_text().count("class=quiet-host") == 1
