@@ -15,7 +15,9 @@ description: >-
   beside its state directory, so the installed unit records the revision it runs. A unit may also declare
   environment variables whose value is a path the request may override (the installed overlay tree, for the factory
   floor publisher); an override of any other variable is refused. Declared environment inputs are persisted in
-  the unit. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
+  the unit. A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
+  unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
+  replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -184,5 +186,44 @@ units:
     environment:
       ONEX_SILENT_FAILURE_ALARM_CONFIG: "{home}/.local/state/omni/silent-failure-alarm/config.json"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
+    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
+    # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's
+    # environment variable, else the value the last install recorded. The hosts' event names are not here: the alarm
+    # derives them from host_table (OMN-22755).
+    config_file:
+      environment: ONEX_SILENT_FAILURE_ALARM_CONFIG
+      mode: "0600"
+      inputs:
+        runtime_ssh_host: {field: runtime_ssh_host, env: ONEX_RUNTIME_SSH_HOST}
+        appender_root: {field: appender_root, env: ONEX_ALARM_APPENDER_ROOT}
+        host_table_path: {field: host_table_path, env: ONEX_ALARM_HOST_TABLE}
+      document:
+        registry_root: "{registry_root}"
+        ledger: "{ledger_path}"
+        # The appender that serialises ledger writes, run by the interpreter of the checkout the request names
+        # (appender_root), because launchd's PATH has none.
+        ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
+        python: "{appender_root}/.venv/bin/python"
+        # Prints <hostname>|<newest hook event UTC stamp> for each host that sent one in the last day.
+        hook_events_command:
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=10
+          - "{runtime_ssh_host}"
+          - >-
+            docker exec omnibase-infra-postgres psql -U postgres -d omnidash_analytics -Atc
+            "SELECT host || chr(124) || max(emitted_at) FROM omninode_internal.claude_hook_events
+            WHERE emitted_at > now() - make_interval(days => 1) GROUP BY host"
+        host_table: "{host_table_path}"
+        # The drainer this host watches and reinstalls (the launching Mac is h200).
+        drainer:
+          host: h200
+          state_dir: "{registry_root}/.onex_state"
+          installer: "{registry_root}/omniclaude/scripts/install-hook-emit-drainer.sh"
+          home: "{home}"
+          registry_root: "{registry_root}"
     evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
     state_directory: .onex_state/silent-failure-alarm
