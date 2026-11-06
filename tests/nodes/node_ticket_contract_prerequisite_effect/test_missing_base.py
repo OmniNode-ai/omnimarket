@@ -18,7 +18,7 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 pytestmark = pytest.mark.unit
-TICKET = "OMN-19998"
+TICKET = "OMN-20864"
 ROOT = Path(__file__).resolve().parents[3]
 MODULE = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
 

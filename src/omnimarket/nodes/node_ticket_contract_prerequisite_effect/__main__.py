@@ -21,10 +21,11 @@ def main() -> int:
     parser.add_argument("--head", default=os.environ.get("PRE_COMMIT_TO_REF") or "HEAD")
     parser.add_argument("--base", default="origin/dev")
     parser.add_argument("--title")
+    parser.add_argument("--body")
     args = parser.parse_args()
     result = create_handler_ticket_contract_prerequisite().handle(
         ModelTicketContractPrerequisiteRequest(
-            head=args.head, base=args.base, title=args.title
+            head=args.head, base=args.base, title=args.title, body=args.body
         )
     )
     for failure in result.failures:

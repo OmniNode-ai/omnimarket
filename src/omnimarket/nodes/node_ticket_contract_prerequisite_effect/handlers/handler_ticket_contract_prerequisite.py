@@ -7,7 +7,11 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from pathlib import Path
 
+import yaml
+
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
     cited_tickets,
     contract_prerequisite,
@@ -24,6 +28,14 @@ from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_tick
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_result import (
     ModelTicketContractPrerequisiteResult,
 )
+from omnimarket.nodes.node_umbrella_ticket_compute.handlers.handler_umbrella_ticket import (
+    PR_FIX,
+    umbrella_evidence,
+)
+
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+_UMBRELLA_ENV = "ONEX_UMBRELLA_TICKETS"
+_ENTRY_SECTIONS = ("requirements", "dod_evidence")
 
 
 def _git(*args: str) -> str:
@@ -131,7 +143,68 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(path for path in listing.split("\0") if path))
 
 
-def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
+def umbrella_ticket_set() -> tuple[str, ...]:
+    """The umbrella tickets: the deployment variable when set, else the contract's list."""
+    declared = os.environ.get(_UMBRELLA_ENV, "").strip()
+    if declared:
+        return tuple(ticket.strip() for ticket in declared.split(",") if ticket.strip())
+    listed = contract_section(_CONTRACT_PATH, "config", "umbrella_tickets")
+    if not isinstance(listed, list) or not listed:
+        raise ValueError(f"{_CONTRACT_PATH}: config.umbrella_tickets is empty")
+    return tuple(str(ticket) for ticket in listed)
+
+
+def _entry_ids(text: str) -> set[str]:
+    loaded = yaml.safe_load(text) if text else None
+    ids: set[str] = set()
+    if not isinstance(loaded, dict):
+        return ids
+    for section in _ENTRY_SECTIONS:
+        entries = loaded.get(section)
+        for entry in entries if isinstance(entries, list) else ():
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+                ids.add(entry["id"])
+    return ids
+
+
+def _blob(sha: str, path: str) -> str:
+    """A file at a commit; empty when the commit does not hold it."""
+    exists = subprocess.run(
+        ["git", "cat-file", "-e", f"{sha}:{path}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return "" if exists.returncode else _git("show", f"{sha}:{path}")
+
+
+def umbrella_appends(sha: str, base: str, body: str | None) -> tuple[str, ...]:
+    """A refusal per umbrella contract this head adds an entry to (OMN-21301).
+
+    Every pull request that appends to one contract conflicts every other at the same place, so
+    each landing re-conflicts the rest: 25 of 31 conflicted omnimarket pull requests on
+    2026-11-05. The comparison is against the merge base, so taking the base branch adds nothing.
+    """
+    base_sha = _resolve_base(base)
+    fork = _git("merge-base", sha, base_sha)
+    messages = _git("log", "--format=%B", f"{base_sha}..{sha}")
+    text = f"{body or ''}\n{messages}"
+    failures = []
+    for ticket in umbrella_ticket_set():
+        path = f"contracts/{ticket}.yaml"
+        added = sorted(_entry_ids(_blob(sha, path)) - _entry_ids(_blob(fork, path)))
+        if added and umbrella_evidence(text) is None:
+            failures.append(
+                f"{path}: this head adds {len(added)} entries ({', '.join(added[:3])}) to an "
+                "umbrella contract, which conflicts every other open pull request on it. "
+                + PR_FIX.format(umbrella=ticket)
+            )
+    return tuple(failures)
+
+
+def check(
+    head: str, base: str, title: str | None = None, body: str | None = None
+) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
     if title is None:
@@ -185,6 +258,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         )
         if proof.failure:
             failures.append(proof.failure)
+    failures.extend(umbrella_appends(sha, base, body))
     return tuple(failures)
 
 
@@ -203,7 +277,7 @@ class HandlerTicketContractPrerequisite:
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
             base = _resolve_base(request.base)
-            failures = check(sha, base, request.title)
+            failures = check(sha, base, request.title, request.body)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )
