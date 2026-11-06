@@ -83,7 +83,7 @@ def test_golden_recorded_record_with_no_reader_is_a_typed_skip_not_a_crash() -> 
     result = HandlerContextInstallConfirmTrigger().handle(event)
 
     assert result == ModelInstallConfirmSkipped(event_id=event.event_id)
-    assert result.reason == "source_unavailable"
+    assert result.terminal_failure_cause == "source_unavailable"
     assert result.dependency == "ProtocolSessionCompactSource"
 
 
@@ -205,3 +205,28 @@ def test_the_skip_topic_is_declared_externally_consumed() -> None:
     assert contract["externally_consumed_topics"] == [
         "onex.evt.omnimarket.context-install-confirm-skipped.v1"
     ]
+
+
+def test_the_skip_topic_is_the_contracts_failure_terminal_and_the_skip_reads_as_failed() -> (
+    None
+):
+    # The publish-parity gate exempts a declared failure terminal only when the node
+    # returns a typed terminal_failure_cause; the runtime reads the same field as the
+    # failure verdict, so the skip is a failure terminal in both readers.
+    from omnibase_infra.runtime.contract_terminal_events import (
+        resolve_terminal_verdict,
+    )
+
+    contract = yaml.safe_load(CONTRACT.read_text())
+    skipped = "onex.evt.omnimarket.context-install-confirm-skipped.v1"
+
+    assert contract["runtime_dispatch"]["terminal_events"]["failure"] == skipped
+    assert resolve_terminal_verdict(ModelInstallConfirmSkipped(event_id="e-1")) is False
+    assert (
+        resolve_terminal_verdict(
+            ModelInstallConfirmTriggerResult(
+                outcome=EnumInstallConfirmTriggerOutcome.NOT_APPLIED
+            )
+        )
+        is None
+    )

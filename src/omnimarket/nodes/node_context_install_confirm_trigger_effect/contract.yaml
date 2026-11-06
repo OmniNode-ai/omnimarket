@@ -16,8 +16,9 @@ description: >
   the completed topic the receipts projection folds; not_applied (rows_upserted of zero),
   session_unresolved, no_compact_records and all_packages_unreadable publish nothing.
   With no reader injected (ProtocolSessionCompactSource has no implementation yet,
-  OMN-21115) the handler returns ModelInstallConfirmSkipped, routed to the skipped
-  topic and never to the completed topic.
+  OMN-21115) the handler returns ModelInstallConfirmSkipped, which carries a
+  terminal_failure_cause and is routed to the skipped topic, the contract's failure
+  terminal, and never to the completed topic.
   Topics come from this contract.
 input_model:
   name: ModelSessionContentAppliedEvent
@@ -70,6 +71,7 @@ runtime_dispatch:
   command_topic: onex.evt.omnimarket.projection-session-content-applied.v1
   terminal_events:
     success: onex.evt.omnimarket.context-install-confirm-completed.v1
+    failure: onex.evt.omnimarket.context-install-confirm-skipped.v1
 terminal_event: onex.evt.omnimarket.context-install-confirm-completed.v1
 metadata:
   author: OmniNode Team
