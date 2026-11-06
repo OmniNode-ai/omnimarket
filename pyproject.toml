@@ -1331,6 +1331,9 @@ code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:Plugi
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
+[project.entry-points."onex.node_contract_overlay_resolvers"]
+omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:NodeContractOverlayResolver"
+
 [tool.uv.sources]
 # OMN-21296: infra#5240 vendors migration 099; its dev tag also carries the
 # current error sanitizer from infra#5216. Keep the dated sanitizer replay
