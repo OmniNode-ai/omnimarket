@@ -101,6 +101,7 @@ def test_a_replayed_merge_event_publishes_one_command_and_one_receipt() -> None:
             await rig.publish_merge(merged())
             await rig.publish_merge(merged())
             await wait_for(lambda: rig.host.duplicates == 1)
+            await wait_for(lambda: len(rig.commands()) == 1)
             await rig.publish_completed(CID)
             await wait_for(lambda: len(rig.receipts()) == 1)
             await asyncio.sleep(0.1)
