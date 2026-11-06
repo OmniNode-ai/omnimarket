@@ -1124,6 +1124,7 @@ function renderDashboard(p){
         <header><h2 id="baysH">Machines and their workers</h2><p>${floor.stall_minutes ? `Each machine, how many workers use it, and anything wrong. A worker has gone quiet after ${floor.stall_minutes} minutes without a log entry.` : "Each machine, how many workers use it, and anything wrong."}</p></header>
         <div class="key" aria-label="What the slot colours mean"><span><i class="slot used"></i>running</span><span><i class="slot codex"></i>on Codex</span><span><i class="slot stall"></i>gone quiet</span><span><i class="slot over"></i>over capacity</span><span><i class="slot"></i>free</span></div>
         <div class="mrows">${rowsM.join("")}</div>
+        ${(floor.inactive_lanes || []).length ? `<details class="more"><summary>Workers no longer occupying slots (${floor.inactive_lanes.length})</summary><ul>${floor.inactive_lanes.map(l => `<li><b>${esc(l.lane)}</b> · ${esc(l.liveness)} · ${esc(l.liveness_detail)}</li>`).join("")}</ul></details>` : ""}
       </section>
     </div>
     ${delegationCard(p.delegation)}
