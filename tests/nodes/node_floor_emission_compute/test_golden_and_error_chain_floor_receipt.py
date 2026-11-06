@@ -59,12 +59,16 @@ def ev(
     )
 
 
-def fold(*events: ModelNodeEmission, now_s: int = 60) -> ModelFloorReceipts:
+def fold(
+    *events: ModelNodeEmission,
+    now_s: int = 60,
+    pieces: tuple[ModelPieceDef, ...] = PIECES,
+) -> ModelFloorReceipts:
     return HandlerFloorReceipt().handle(
         ModelFloorReceiptInput(
             now=T0 + timedelta(seconds=now_s),
             emissions=events,
-            pieces=PIECES,
+            pieces=pieces,
             joins=JOINS,
             freshness_max_age_s=900,
             error_max_age_s=86400,
@@ -226,14 +230,43 @@ def test_error_a_golden_join_without_the_error_join_is_only_half_proven() -> Non
 
 
 def test_error_a_stale_golden_makes_the_piece_stale_not_fresh() -> None:
+    quarter_hour = tuple(
+        p.model_copy(update={"reading_max_age_s": 900}) if p.piece == 8 else p
+        for p in PIECES
+    )
     r = fold(
         ev(8, "start", 0),
         ev(8, "success", 1),
         ev(8, "start", 2, "c2"),
         ev(8, "failure", 3, "c2", code="x"),
         now_s=5000,
+        pieces=quarter_hour,
     )
     assert next(p for p in r.pieces if p.piece == 8).freshness == "stale"
+
+
+def test_golden_each_piece_is_fresh_by_its_own_reading_schedule_not_one_global_bound() -> (
+    None
+):
+    """A nightly piece two hours after its run is fresh, a 15 minute piece with the same ages is stale (OMN-22703)."""
+    events = tuple(
+        e
+        for piece in (1, 17)
+        for e in (
+            ev(piece, "start", 0, f"g{piece}"),
+            ev(piece, "success", 1, f"g{piece}"),
+            ev(piece, "start", 2, f"e{piece}"),
+            ev(piece, "failure", 3, f"e{piece}", code="x"),
+        )
+    )
+    schedules = tuple(
+        p.model_copy(update={"reading_max_age_s": 900 if p.piece == 17 else 86400})
+        for p in PIECES
+    )
+    r = fold(*events, now_s=7200, pieces=schedules)
+    by_piece = {p.piece: p.freshness for p in r.pieces}
+    assert by_piece[1] == "fresh"
+    assert by_piece[17] == "stale"
 
 
 def test_error_an_emission_model_refuses_a_failure_with_no_code_and_a_negative_counter() -> (
