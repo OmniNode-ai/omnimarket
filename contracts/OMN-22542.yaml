@@ -54,4 +54,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22542 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_pr_state_status_page_reader.py tests/projection/test_t17_projection_query_node_parity.py -q --no-cov -p no:randomly"
         cwd: "."
-    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
