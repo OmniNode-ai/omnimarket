@@ -24,8 +24,9 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeDecisionRecord,
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
-    ModelWorktreeReconcilePolicy,
+    ModelWorktreeReconcileRunResult,
 )
+from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
 from omnimarket.handlers.handler_ledger_claims import live_claims
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     CommandMergedPrReader,
@@ -888,7 +889,7 @@ def run_with(
     root: Path,
     monkeypatch: pytest.MonkeyPatch,
     **updates: object,
-) -> object:
+) -> ModelWorktreeReconcileRunResult:
     fake = Fakes(())
     monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
     decided, completed = publish_topics()
@@ -922,7 +923,7 @@ def test_a_tree_at_a_merged_pull_request_head_is_removed_though_content_is_not_p
     root, path, head = squash_merged_then_moved_on(tmp_path)
     reader = FakeMergedPrReader(frozenset({head}))
     result = run_with(probe_for(reader, monkeypatch), root, monkeypatch)
-    row = result.decided_events[0]  # type: ignore[attr-defined]
+    row = result.decided_events[0]
     assert row.facts.merged_pr_head
     assert not row.facts.content_merged
     assert not row.facts.head_on_remote
@@ -939,7 +940,7 @@ def test_without_the_pull_request_evidence_the_same_tree_is_kept(
     root, path, _ = squash_merged_then_moved_on(tmp_path)
     reader = FakeMergedPrReader(frozenset({"0" * 40}))
     result = run_with(probe_for(reader, monkeypatch), root, monkeypatch)
-    row = result.decided_events[0]  # type: ignore[attr-defined]
+    row = result.decided_events[0]
     assert not row.facts.merged_pr_head
     assert row.decision.reasons != ("pr_merged_head",)
     assert row.outcome != "removed"
@@ -953,10 +954,10 @@ def test_a_failed_reader_is_a_failure_and_keeps_the_tree(
     result = run_with(
         probe_for(FakeMergedPrReader(fails=True), monkeypatch), root, monkeypatch
     )
-    row = result.decided_events[0]  # type: ignore[attr-defined]
+    row = result.decided_events[0]
     assert row.facts.probe_errors == ("merged_pr_read_failed",)
     assert row.decision.reasons == ("facts_unreadable",)
-    assert result.completed_event.failures == 1  # type: ignore[attr-defined]
+    assert result.completed_event.failures == 1
     assert path.exists()
 
 

@@ -7,7 +7,6 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeDecisionRecord,
     ModelWorktreeFacts,
     ModelWorktreeReconcileDecisions,
-    ModelWorktreeReconcilePolicy,
     ModelWorktreeReconcileRequest,
 )
 from omnimarket.events.worktree_reconcile import (
@@ -15,6 +14,12 @@ from omnimarket.events.worktree_reconcile import (
 )
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
+)
+from omnimarket.events.worktree_reconcile_policy import ModelWorktreeReconcilePolicy
+from omnimarket.worktree_reconcile.removal_policy import (
+    cap_removals,
+    hold_unmerged,
+    refuses_model_removal,
 )
 
 
@@ -37,20 +42,7 @@ def live_reason(
     return None
 
 
-MERGED_REASONS = frozenset({"content_merged", "pr_merged_head"})
-REMOVING = (Decision.REMOVE, Decision.PIN_AND_REMOVE)
-
-
 def classify(
-    facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
-) -> tuple[Decision, str]:
-    decision, reason = _classify(facts, policy)
-    if policy.merged_only and decision in REMOVING and reason not in MERGED_REASONS:
-        return Decision.KEEP, f"merged_only:{reason}"
-    return decision, reason
-
-
-def _classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
@@ -101,28 +93,14 @@ def _classify(
     return Decision.KEEP, "not_stale"
 
 
-def cap_removals(
-    decisions: ModelWorktreeReconcileDecisions,
-) -> ModelWorktreeReconcileDecisions:
-    used = 0
-    rows = []
-    for row in decisions.decisions:
-        if row.decision in (Decision.REMOVE, Decision.PIN_AND_REMOVE):
-            used += 1
-            if used > decisions.policy.max_removals_per_run:
-                row = row.model_copy(
-                    update={"decision": Decision.KEEP, "reasons": ("removal_cap",)}
-                )
-        rows.append(row)
-    return decisions.model_copy(update={"decisions": tuple(rows)})
-
-
 def reconcile(
     request: ModelWorktreeReconcileRequest,
 ) -> ModelWorktreeReconcileDecisions:
     rows = []
     for facts in request.facts:
-        decision, reason = classify(facts, request.policy)
+        decision, reason = hold_unmerged(
+            *classify(facts, request.policy), request.policy
+        )
         rows.append(
             ModelWorktreeDecisionRecord(
                 path=facts.path, decision=decision, reasons=(reason,)
@@ -150,9 +128,7 @@ def apply_model_verdicts(
         fact = by_path[row.path]
         refused = (
             verdict.decision == Decision.REMOVE
-            # A merged-only host takes no model advice to remove: the model cannot
-            # produce merge evidence.
-            or (decisions.policy.merged_only and verdict.decision in REMOVING)
+            or refuses_model_removal(verdict.decision, decisions.policy)
             or (
                 verdict.decision == Decision.PIN_AND_REMOVE
                 and (
