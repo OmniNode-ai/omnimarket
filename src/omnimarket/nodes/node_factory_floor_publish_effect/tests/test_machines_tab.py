@@ -46,7 +46,12 @@ def _machines(record: dict[str, Any]) -> str:
 
 def _cards(html: str) -> dict[str, str]:
     parts = re.split(r'(?=<article class="hcard)', html)[1:]
-    return {re.search(r'aria-label="([^"]+)"', p).group(1): p for p in parts}  # type: ignore[union-attr]
+    found: dict[str, str] = {}
+    for part in parts:
+        match = re.search(r'aria-label="([^"]+)"', part)
+        assert match is not None
+        found[match.group(1)] = part
+    return found
 
 
 def test_the_machines_tab_is_declared_with_its_own_pane() -> None:

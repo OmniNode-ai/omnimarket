@@ -9,7 +9,7 @@ numbers are the ones the lab printed, not values imagined here.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,9 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorMachineDecl,
     ModelFloorPlacedHost,
     ModelFloorPoolReading,
+)
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers import floor_host_status
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
@@ -92,7 +95,9 @@ def lane_rows() -> tuple[ModelFloorLedgerRow, ...]:
     )
 
 
-def advert(host: str, *tools: str, age_seconds: int = 60):  # type: ignore[no-untyped-def]
+def advert(
+    host: str, *tools: str, age_seconds: int = 60
+) -> ModelHostCapacityAdvertisement:
     """The shared advertisement builder with the tools the host advertised."""
     return advertisement(host, running=0, slots=2, age_seconds=age_seconds).model_copy(
         update={"tools": list(tools)}
@@ -351,7 +356,9 @@ def test_failing_control_an_injected_break_that_never_judges_age_turns_the_stale
     h = statuses(**stale_facts())["h053"]
     assert_no_cell_reads_fresh_except_live(h)  # green on the real code
 
-    def never_stale(now, read_at, bound_seconds, source):  # type: ignore[no-untyped-def]
+    def never_stale(
+        now: datetime, read_at: datetime, bound_seconds: int, source: str
+    ) -> tuple[str, int, str]:
         return "read", int((now - read_at).total_seconds() // 60), ""
 
     monkeypatch.setattr(floor_host_status, "_judge", never_stale)
