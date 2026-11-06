@@ -504,7 +504,7 @@ class HandlerFloorSimpleTick:
             ]
             if any(s.kind == "overlay_store" for s in lab_ov.sources):
                 overlay_store = read_overlay_store(
-                    home / rt.sources.overlay_store_relpath, lab_ov
+                    home / rt.sources.overlay_store_relpath, lab_ov, now
                 )
                 reads.append(overlay_store)
                 for event in overlay_store_events(
