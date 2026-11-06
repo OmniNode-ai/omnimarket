@@ -70,7 +70,8 @@ _RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
 def _is_release_cut(sha: str, base: str) -> bool:
     """Whether the diff against the merge base is a root changelog plus optional pins."""
     try:
-        merge_base = _git("merge-base", base, sha)
+        base_sha = _resolve_base(base)
+        merge_base = _git("merge-base", base_sha, sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
     except (OSError, subprocess.SubprocessError):
         return False
@@ -113,7 +114,7 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
     resolved into new code still counts.
     """
     try:
-        base_sha = _git("rev-parse", "--verify", f"{base}^{{commit}}")
+        base_sha = _resolve_base(base)
         listing = _git(
             "log",
             "--cc",

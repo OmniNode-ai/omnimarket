@@ -76,7 +76,7 @@ dod_evidence:
   - AC10
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly -k unreadable_base_preserves_explicit_missing_contract_refusal
     cwd: .
 - id: dod-omn19998-unreadable-base-deploy
   description: Hosted CLI smoke uses real single-branch worker clones and local Git remotes to check missing-base repair and continued refusal of local-only missing refs and fetch failures. It requires no credential or live host installation.
