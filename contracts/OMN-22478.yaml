@@ -8,10 +8,19 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-omn22478-host-row-ledger-path
+    statement: The lab host row model takes the ledger_path column the lab host table carries, under the launcher's rule.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: a row declaring ledger_path loads with it and a relative one refuses -- falsifier: the table is refused whole at the base'
 evidence_requirements:
   - kind: tests
     description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
     command: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+  - kind: tests
+    description: The composed-runtime-boot job writes its own broker budget into the env file and reads the broker's start arguments back before it boots the stack.
+    command: uv run --frozen pytest tests/unit/docker/test_composed_boot_broker_budget_omn22478.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -25,3 +34,30 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-composed-boot-broker-budget
+    description: The composed-runtime-boot job's own broker starts on a fixed budget of at least 4G written into the env file by a sizing step that fails when the template drops the dial, and a read-back step fails when the broker started on any other budget. This is the CI harness's capacity, not a loosened check; every health step of the job is unchanged.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/docker/test_composed_boot_broker_budget_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-host-row-integration-proof
+    description: >-
+      The pushed head validates a host row that declares ledger_path on a lab host through the lab work runner,
+      and refuses a relative one. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov'
+        cwd: .
+  - id: dod-omn22478-host-row-ledger-path
+    description: A host row that declares ledger_path loads with it, and a relative one refuses as the launcher refuses it.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov
+        cwd: .
