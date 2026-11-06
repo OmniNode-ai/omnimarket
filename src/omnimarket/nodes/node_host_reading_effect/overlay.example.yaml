@@ -30,6 +30,24 @@ old_names:
     - name: docs/old/archive
       ledger_relative: archive
   injected_fault: Replace an old name with a regular file in a sandbox copy
+# The ledger-durability probe (OMN-22662): a host that lists it appends one probe row through `append`
+# and reads it back through `read` (the lab read node over the database projection) by the deadline.
+# The probe row has its own append route so a drill can break it alone; a drill overlay sets drill: true.
+durability:
+  append:
+    command_env: ONEX_LEDGER_PROBE_APPEND_COMMAND
+    host_env: ONEX_LEDGER_HOST_NAME
+    timeout_seconds: 90
+  read:
+    route: command
+    command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    timeout_seconds: 60
+    row_limit: 10
+  probe_lane: ledger-durability-probe
+  deadline_seconds: 180
+  poll_interval_seconds: 15
+  drill: false
+  injected_fault: An append route that answers accepted and publishes nothing
 hosts:
   - name: example-ledger-host
     scheduler: launchd

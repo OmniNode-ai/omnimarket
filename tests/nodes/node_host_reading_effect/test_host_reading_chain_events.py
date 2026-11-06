@@ -32,6 +32,13 @@ from tests.nodes.node_host_reading_effect.host_reading_support import (
     World,
     overlay,
 )
+from tests.nodes.node_host_reading_effect.test_ledger_durability_probe import (
+    AcceptAndDrop,
+    Clock,
+    DownReader,
+    LateStore,
+    durability_overlay,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -54,8 +61,9 @@ async def _publish(
     ledger: InMemoryLedger,
     payload: bytes,
     host: str = LEDGER_HOST,
+    handler: HandlerHostReading | None = None,
 ) -> list[tuple[str, dict[str, object]]]:
-    handler = HandlerHostReading(
+    handler = handler or HandlerHostReading(
         overlay=overlay(),
         host=host,
         files=world.files,
@@ -198,6 +206,78 @@ def test_a_named_break_reads_not_working_without_failing_the_run(
     assert_golden_chain(events)
     assert [body["verdict"] for _, body in events[:-1]] == ["NOT_WORKING"] * 2
     assert all("verdict=NOT_WORKING" in line for line in ledger.lines)
+
+
+# -- the ledger-durability probe (OMN-22662) ----------------------------------------------------
+
+DURABILITY_PAYLOAD = json.dumps(
+    {"correlation_id": CORRELATION, "probes": ["ledger-durability"], "write": True}
+)
+
+
+def _durability_events(
+    tmp_path: Path, probe_appender: object, reader: object, clock: Clock
+) -> tuple[list[tuple[str, dict[str, object]]], InMemoryLedger]:
+    world = World("memory", tmp_path)
+    readings = InMemoryLedger()
+    handler = HandlerHostReading(
+        overlay=durability_overlay(),
+        host=LEDGER_HOST,
+        files=world.files,
+        appender=readings,
+        clock=clock,
+        environ=world.environ,
+        probe_appender=probe_appender,  # type: ignore[arg-type]
+        durable_reader=reader,  # type: ignore[arg-type]
+        sleep=clock.sleep,
+    )
+    events = asyncio.run(
+        _publish(world, readings, DURABILITY_PAYLOAD.encode(), handler=handler)
+    )
+    return events, readings
+
+
+def test_durability_golden_chain_reads_the_probe_row_back(tmp_path: Path) -> None:
+    clock = Clock()
+    store = LateStore(clock, lag=3)
+    events, readings = _durability_events(tmp_path, store, store, clock)
+    topics = [topic for topic, _ in events]
+    assert topics == [
+        TOPICS["host_reading_written"],
+        TOPICS["host_reading_run_completed"],
+    ]
+    assert {body["correlation_id"] for _, body in events} == {CORRELATION}
+    assert events[0][1]["verdict"] == "WORKING"
+    assert events[-1][1]["failed"] == 0
+    (row,) = readings.lines
+    assert "probe=ledger-durability" in row
+    assert "durable=yes" in row
+
+
+def test_durability_error_chain_read_route_down_is_a_failure_event(
+    tmp_path: Path,
+) -> None:
+    clock = Clock()
+    events, readings = _durability_events(
+        tmp_path, LateStore(clock, 0), DownReader(), clock
+    )
+    assert_failed_chain(events, verdict="UNKNOWN", outcome="source-unreadable")
+    (row,) = readings.lines
+    assert "verdict=UNKNOWN" in row
+    assert "reason=durable-read-failed-read-command-exit-1" in row
+
+
+def test_durability_named_break_reads_not_working_on_the_row(tmp_path: Path) -> None:
+    """The plan's fault: an append that returns with no durable row. A reading, not a failed run."""
+    clock = Clock()
+    events, readings = _durability_events(
+        tmp_path, AcceptAndDrop(), InMemoryLedger(), clock
+    )
+    assert events[0][1]["verdict"] == "NOT_WORKING"
+    assert events[0][1]["reasons"] == ["no-durable-row-by-deadline"]
+    (row,) = readings.lines
+    assert "verdict=NOT_WORKING" in row
+    assert "durable=no" in row
 
 
 # -- each chain assertion can fail: the named breaks turn it red ------------------------------
