@@ -31,12 +31,6 @@ What counts:
   DECIDED: status ``verified`` or ``failed``. ``skipped`` (no contract to check),
   ``unresolved`` (the verifier faulted) and ``pending`` say nothing about the
   attempt, so they are not samples at all rather than silent failures.
-* A ``failed`` verdict whose failure is the contract lookup itself
-  (``CONTRACT_MISSING``: no definition of done was found for the ticket) is not a
-  sample either (OMN-22690). It judged the ticket's paperwork, not the attempt.
-  Until omnimarket#4535 (OMN-20074, 2026-10-28) the verifier recorded that
-  condition as ``skipped``; after it, as ``failed`` with one failed check, and
-  every tier on the dev lane read 0 percent pass from those alone.
 * A pass is outcome ``done``: the typed done predicate of OMN-18900 (zero failed
   checks and at least one behaviour-proving check). A ``verified`` status that
   proved no behaviour is a fail, as the predicate says.
@@ -86,7 +80,6 @@ from omnimarket.projection.tenant_isolation import (
     resolve_rls_read_tenant,
     resolve_tenant_uuid,
 )
-from omnimarket.routing.dod_verdict_decided import is_decided
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     ModelTierRoiSignal,
@@ -102,8 +95,20 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+#: Verdict statuses that decided the run. Every other status is not a sample.
+DOD_DECIDED_STATUSES: frozenset[str] = frozenset({"verified", "failed"})
+
 #: The only outcome that counts as a pass (``EnumDodEvalOutcome.DONE``).
 DOD_DONE_OUTCOME = "done"
+
+#: The verifier's code for "no DoD contract was found for the ticket"
+#: (``node_dod_verify`` evidence_collector and handler_dod_verify). A ``failed``
+#: verdict whose failure is that contract lookup is not a sample either
+#: (OMN-22690): it judged the ticket's paperwork, not the attempt. Until
+#: omnimarket#4535 (OMN-20074, 2026-10-28) the verifier recorded that condition
+#: as ``skipped``; after it, as ``failed`` with one failed check, and every tier
+#: on the dev lane read 0 percent pass from those alone.
+DOD_CONTRACT_MISSING_CODE = "CONTRACT_MISSING"
 
 #: Default relations the reader joins. Both are schema-qualified because the
 #: verdict table lives in ``omninode_internal``, not ``public``.
@@ -226,15 +231,20 @@ def _as_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+# True when the verdict judged the attempt: verified or failed, and not failed
+# on a missing contract (DOD_CONTRACT_MISSING_CODE).
+def _is_decided(row: dict[str, object]) -> bool:
+    missing = DOD_CONTRACT_MISSING_CODE in _as_text(row.get("verdict_error_message"))
+    return not missing and _as_text(row.get("verdict_status")) in DOD_DECIDED_STATUSES
+
+
 def _latest_decided_verdict_per_run(
     rows: list[dict[str, object]], *, task_type: str
 ) -> list[dict[str, object]]:
     """One row per delegation run: its latest DECIDED verdict for ``task_type``."""
     latest: dict[str, tuple[datetime, str, dict[str, object]]] = {}
     for row in rows:
-        if _as_text(row.get("task_type")) != task_type:
-            continue
-        if not is_decided(row):
+        if _as_text(row.get("task_type")) != task_type or not _is_decided(row):
             continue
         run_id = str(row.get("correlation_id") or "").strip()
         if not run_id:
@@ -332,7 +342,7 @@ def build_dod_overlay(
         )
 
     of_task = [r for r in rows if _as_text(r.get("task_type")) == task_type]
-    undecided = sum(1 for r in of_task if not is_decided(r))
+    undecided = sum(1 for r in of_task if not _is_decided(r))
     return ModelRoutingDodOverlay(
         task_type=task_type,
         tenant_id=tenant_id,
@@ -790,6 +800,7 @@ def dod_roi_overlay_reader(
 __all__ = [
     "DELEGATION_EVAL_RESULTS_RELATION",
     "DELEGATION_EVENTS_RELATION",
+    "DOD_DECIDED_STATUSES",
     "DOD_DONE_OUTCOME",
     "DOD_VERIFY_RUNS_RELATION",
     "EVAL_LINE_MET",
