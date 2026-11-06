@@ -14,7 +14,15 @@ from .model_remote_lane_receipt_usage import ModelRemoteLaneReceiptUsage
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 LANE_OUTCOMES = frozenset(
-    {"blocked", "partial", "handed-off", "done", "skipped-owned", "unknown"}
+    {
+        "blocked",
+        "partial",
+        "handed-off",
+        "done",
+        "skipped-owned",
+        "unknown",
+        "withdrawn",
+    }
 )
 REJECTED_OUTCOME = "rejected-no-delegation"
 FAILED_OUTCOME = "failed"
@@ -59,4 +67,5 @@ class ModelRemoteLaneResult(BaseModel):
     waiting_on_background: bool
     usage: ModelRemoteLaneReceiptUsage
     first_turn_context: ModelRemoteLaneFirstTurnContext
+    withdrawn_by: str | None = None
     ledger_cells: dict[str, str] = Field(default_factory=dict)

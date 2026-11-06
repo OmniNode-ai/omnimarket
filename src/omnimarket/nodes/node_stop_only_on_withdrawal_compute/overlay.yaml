@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+check_id: S8
+observer_lane: stop-only-on-withdrawal
+withdrawal_effect: withdraws
+withdrawn_outcome: withdrawn
+fallback_outcomes: [blocked, partial, unknown]
+operator_stop_phrases:
+  - operator message
+  - operator's message
+  - operator withdrew
+  - operator has withdrawn
+  - operator withdrawal
+  - operator asked me to stop
+  - operator told me to stop
+  - operator instructed me to stop
+  - task was withdrawn
+  - task is withdrawn
+repair_row_template: >-
+  {stamp} | STATUS | lane={lane} | id={action_id} | check={check} | task={task} | revision={revision} | stopped-lane={stopped_lane} | claim-run={run} | terminal-sequence={terminal} | repair-key={repair_key} | state=open | redispatch=once | S8 repair intent; apply through the idempotent task dispatcher
+cursor_row_template: >-
+  {stamp} | STATUS | lane={lane} | id={cursor_id} | check={check} | cursor={cursor} | cursor-state={encoded_cursor} | tick={tick} | S8 completed
+acknowledgement_row_template: >-
+  {stamp} | STATUS | lane={lane} | id={action_id}:ack | check={check} | task={task} | revision={revision} | repair-key={repair_key} | ack-for={action_id} | dispatcher={status} | S8 dispatcher acknowledgement

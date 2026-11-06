@@ -478,6 +478,9 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
+
+      - name: Standing dispatch rules and runtime wiring
+        run: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
       # OMN-14762 (F-18): keep the authoritative coverage-json invocation
       # (pytest-cov, config-driven) aligned with the shadow aggregator's
       # `coverage json -i` so a missing C-extension source can never red one gate
@@ -1835,6 +1838,13 @@ jobs:
       - name: Run integration-marked tests (Postgres provisioned)
         env:
           OMN20025_POSTGRES_BACKEND: ci
+          # OMN-22478: the omnidash release proofs (OMN-21469) read the publish
+          # workflow's runs from the GitHub REST API. With no token that read is
+          # unauthenticated and shares the 60-per-hour quota of the runner's
+          # address, which a night of reruns spends: HTTP 403 rate limit. The
+          # run's own token lifts it to the repository quota; the test already
+          # reads GH_TOKEN and sends it through rest_json.
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv run pytest -m "integration and not kafka" \
             -rs -v --tb=short \
