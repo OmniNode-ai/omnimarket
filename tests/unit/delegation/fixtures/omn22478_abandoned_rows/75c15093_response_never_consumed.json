@@ -73,10 +73,10 @@
    "quality_contract_mode": "extend_task_class",
    "requested_timeout_seconds": 100,
    "source_file_path": null,
-   "source_session_id": "scrubbed: recorded text removed",
+   "source_session_id": "b0887849-c74d-4469-828b-d60ed60f146e",
    "task_type": "summarization",
    "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
-   "trace_id": "scrubbed: recorded text removed"
+   "trace_id": "0259323b-7659-40e6-bf0d-56ef844b6db3"
   },
   "response_contract_evidence": null,
   "response_contract_instruction": "Respond with only the requested Markdown deliverable. Do not write scratch work, notes to yourself or a thinking process before the extraction marker. Any explanation, steps or reasoning the request asks for belongs inside the deliverable, after the marker. Put this exact extraction start marker on its own line immediately before the deliverable: ### ANSWER\nThe marker is transport metadata and is removed before the caller receives the deliverable. Include it even when the request asks for plain prose or no Markdown headers; those formatting constraints apply to the deliverable after the marker.",
