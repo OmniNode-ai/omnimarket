@@ -118,6 +118,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteClaim,
     ModelRepoWriteRequest,
 )
+from omnimarket.nodes.node_lane_github_budget_effect import track_gateway_dispatch
 
 EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
@@ -176,10 +177,15 @@ def _call_bus(
     correlation_id: uuid.UUID,
     bus_opts: dict[str, object],
     timeout_s: float,
+    dispatch_receipt: Path | None = None,
 ) -> int:
     async def main() -> ModelScmTerminal:
         async with _open_bus({**bus_opts, "scm_node": spec.node}) as opened:
-            return await ScmBusCaller(opened).call(
+            return await ScmBusCaller(
+                track_gateway_dispatch(opened, dispatch_receipt)
+                if dispatch_receipt is not None
+                else opened,
+            ).call(
                 node=spec.node,
                 request=request,
                 correlation_id=correlation_id,
@@ -508,12 +514,14 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
+    @click.option("--dispatch-receipt", type=click.Path(path_type=Path), hidden=True)
     def command(
         target: str,
         source: str,
         watcher_state: str | None,
         clone: str | None,
         timeout_s: float,
+        dispatch_receipt: Path | None,
         **fields: object,
     ) -> None:
         repo, number = _target(target, pr=pr_scoped)
@@ -567,7 +575,17 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        sys.exit(_call_bus(spec, repo, request, correlation_id, bus_opts, timeout_s))
+        sys.exit(
+            _call_bus(
+                spec,
+                repo,
+                request,
+                correlation_id,
+                bus_opts,
+                timeout_s,
+                dispatch_receipt,
+            )
+        )
 
     return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(command)
 
