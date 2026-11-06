@@ -1,0 +1,3 @@
+# A git merge driver a host declares reads a ticket contract by entry (node_ticket_contract_merge_compute).
+# An undeclared driver falls back to the ordinary text merge.
+contracts/OMN-*.yaml merge=ticket-contract
