@@ -216,3 +216,46 @@ def test_the_facts_carry_the_readings_and_the_count_of_rows_that_were_not_readin
     assert facts is not None
     assert [r.piece for r in facts.readings] == list(range(1, 19))
     assert facts.readings_rejected == 1
+
+
+def test_a_piece_the_go_does_not_cover_and_that_reads_unknown_is_not_started_and_no_cause(
+    tmp_path: Path,
+) -> None:
+    """At 20:24Z on 2026-11-06 the floor went from 30 to 46 red: pieces 7 to 18 each drew "is not working, reading UNKNOWN".
+
+    The go runs through piece 6. A piece beyond it whose reading is UNKNOWN (the writer has no producer for it) is not a
+    failure: it draws as not started and raises no cause. Only admitted pieces count.
+    """
+    ledger = InMemoryLedger([*lines(GO_RULINGS), *lines(READINGS)])
+    doc = run_tick(build_home(tmp_path), ledger)
+    assert doc.rebuild.go_given_through == 6
+    by_piece = {p.piece: p for p in doc.pieces}
+    unadmitted_unknown = [
+        n for n in range(7, 19) if by_piece[n].reading_state == "UNKNOWN" and n != 17
+    ]
+    assert len(unadmitted_unknown) >= 8
+    for n in unadmitted_unknown:
+        assert by_piece[n].status == "not_started", n
+        assert by_piece[n].draw == "grey", n
+    caused = {c.id for c in doc.causes}
+    assert not {f"piece:{n}" for n in unadmitted_unknown} & caused
+
+
+def test_a_piece_beyond_the_go_with_a_real_reading_still_draws_it(
+    tmp_path: Path,
+) -> None:
+    """Piece 15 reads WORKING in the recorded rows although the go stops at 6: a real reading is drawn as read."""
+    ledger = InMemoryLedger([*lines(GO_RULINGS), *lines(READINGS)])
+    doc = run_tick(build_home(tmp_path), ledger)
+    by_piece = {p.piece: p for p in doc.pieces}
+    assert by_piece[15].reading_state == "WORKING"
+    assert by_piece[15].status == "working"
+
+
+def test_an_admitted_piece_that_reads_unknown_is_still_a_cause(tmp_path: Path) -> None:
+    ledger = InMemoryLedger([*lines(GO_RULINGS), *lines(READINGS)])
+    doc = run_tick(build_home(tmp_path), ledger)
+    by_piece = {p.piece: p for p in doc.pieces}
+    assert by_piece[2].reading_state == "UNKNOWN"
+    assert by_piece[2].status == "unknown"
+    assert "piece:2" in {c.id for c in doc.causes}
