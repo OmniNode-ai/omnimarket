@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_block_diagnose_effect
+version: "1.0.0"
+description: Route blocked lanes and initial items using typed ownership evidence and shared claims.
+omnibase_core_compat: ">=0.47.60,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lane_block_diagnose_effect: omnimarket.nodes.node_lane_block_diagnose_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies: ["omnibase-core>=0.47.60,<0.48.0", "omnibase-infra>=0.38.18", "pydantic>=2.11.0", "pyyaml>=6.0"]
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, ownership, routing, triage]
+node_role: effect
+pack: routing
+display_name: Lane Block Owner Routing

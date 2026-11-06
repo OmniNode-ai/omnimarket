@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment data, never an automatic fallback. Copy to a declared overlay root,
+# resolve paths for the serving host, and bind consumer node names from its registry.
+# Private repository mappings belong in that deployment overlay, outside this package.
+owner_map:
+  rules:
+    - repository: omnibase_core
+      paths: [omnibase_core/]
+      packages: [omnibase_core, omnibase-core]
+    - repository: omnibase_infra
+      paths: [omnibase_infra/]
+      packages: [omnibase_infra, omnibase-infra]
+    - repository: omnimarket
+      paths: [omnimarket/]
+      packages: [omnimarket]
+report_roots: [reports]
+repository_roots: [repositories]
+state_path: state/lane-owner-claims.json
+max_open_triage: 2
+max_report_bytes: 262144
+max_file_bytes: 65536
+max_named_files: 32
+bindings:
+  timeout_seconds: 30
+  exception_state_dir: state/exceptions
+  diagnosis:
+    node: node_lane_block_diagnose_compute
+    command_topic: onex.cmd.omnimarket.lane-block-owner-requested.v1
+    terminal_topic: onex.evt.omnimarket.lane-block-owner-completed.v1
+  admission:
+    node: BIND_CORE_ADMISSION_CONSUMER
+    command_topic: onex.cmd.omnimarket.fill-backlog-admission-requested.v1
+    terminal_topic: onex.evt.omnimarket.fill-backlog-admission-completed.v1
+  fill:
+    node: BIND_EXISTING_FILL_CONSUMER
+    command_topic: onex.cmd.omnimarket.fill-backlog-item-requested.v1
+    terminal_topic: onex.evt.omnimarket.fill-backlog-item-completed.v1
+  bind:
+    node: BIND_ITEM_LANE_CONSUMER
+    command_topic: onex.cmd.omnimarket.item-lane-bind-requested.v1
+    terminal_topic: onex.evt.omnimarket.item-lane-bind-completed.v1
+  ticket:
+    node: BIND_TICKET_REPOSITORY_CONSUMER
+    command_topic: onex.cmd.omnimarket.ticket-repository-requested.v1
+    terminal_topic: onex.evt.omnimarket.ticket-repository-completed.v1
+  triage:
+    node: BIND_READ_ONLY_TRIAGE_CONSUMER
+    command_topic: onex.cmd.omnimarket.item-owner-triage-requested.v1
+    terminal_topic: onex.evt.omnimarket.item-owner-triage-completed.v1
+  exception:
+    node: node_exception_queue_effect
+    command_topic: onex.cmd.omnimarket.exception-emit-requested.v1
+    terminal_topic: onex.evt.omnimarket.exception-queued.v1

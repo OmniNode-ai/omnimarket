@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_block_diagnose_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: Pure ownership diagnosis from report, blocker, named file facts and an owner map.
+input_model:
+  name: ModelLaneBlockFacts
+  module: omnimarket.models.model_lane_routing
+output_model:
+  name: ModelOwnerDiagnosis
+  module: omnimarket.models.model_lane_routing
+entrypoint:
+  name: NodeLaneBlockDiagnoseCompute
+  module: omnimarket.nodes.node_lane_block_diagnose_compute.node
+handler:
+  module: omnimarket.nodes.node_lane_block_diagnose_compute.handler
+  class: HandlerLaneBlockDiagnoseCompute
+  input_model: omnimarket.models.model_lane_routing.ModelLaneBlockFacts
+  output_model: omnimarket.models.model_lane_routing.ModelOwnerDiagnosis
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_block_diagnose_compute.handler:HandlerLaneBlockDiagnoseCompute
+  handlers:
+    - operation: diagnose
+      topic: onex.cmd.omnimarket.lane-block-owner-requested.v1
+      handler:
+        name: HandlerLaneBlockDiagnoseCompute
+        module: omnimarket.nodes.node_lane_block_diagnose_compute.handler
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+terminal_event: onex.evt.omnimarket.lane-block-owner-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-block-owner-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lane-block-owner-requested.v1]
+  publish_topics: [onex.evt.omnimarket.lane-block-owner-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.lane-block-owner-completed.v1]
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  description: Evidence-only ownership diagnosis
