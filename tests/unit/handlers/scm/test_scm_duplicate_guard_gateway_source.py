@@ -328,15 +328,28 @@ def test_an_answer_that_is_cut_at_the_limit_leaves_the_guard_unchecked(
     assert "cut at 1 of 412 open pull requests" in reason
 
 
+class _UnopenableBus:
+    """An async context manager whose entry raises ``error``."""
+
+    def __init__(self, error: BaseException) -> None:
+        self._error = error
+
+    async def __aenter__(self) -> FakeBus:
+        raise self._error
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
 def test_a_bus_that_cannot_be_opened_leaves_the_guard_unchecked(
     lab_host: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lab_host.lane_branch("src/metrics.py", 15)
 
-    @contextlib.asynccontextmanager
-    async def refused(_: dict[str, object]) -> AsyncIterator[FakeBus]:
-        raise LabRunBusError("node_github_repo_gateway_effect declares no event_bus")
-        yield FakeBus()  # pragma: no cover
+    def refused(_: dict[str, object]) -> _UnopenableBus:
+        return _UnopenableBus(
+            LabRunBusError("node_github_repo_gateway_effect declares no event_bus")
+        )
 
     monkeypatch.setattr(scm_cli, "_open_bus", refused)
 
@@ -350,10 +363,8 @@ def test_a_bus_that_cannot_be_opened_leaves_the_guard_unchecked(
 
 
 def test_a_gateway_that_gives_no_answer_in_time_leaves_the_guard_unchecked() -> None:
-    @contextlib.asynccontextmanager
-    async def silent(_: dict[str, object]) -> AsyncIterator[FakeBus]:
-        raise TimeoutError
-        yield FakeBus()  # pragma: no cover
+    def silent(_: dict[str, object]) -> _UnopenableBus:
+        return _UnopenableBus(TimeoutError())
 
     source = GatewayOpenPrFactsSource(
         open_bus=silent, bus_opts={}, timeout_s=0.5, attempts=2, pause_s=0.0

@@ -146,12 +146,8 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="pr_review_threads",
         replaces="gh api graphql (pullRequest reviewThreads)",
     ),
-    # OMN-22654: the open pull requests the duplicate-fix guard reads on a host with no watcher state.
     ModelScmVerb(
-        verb="open-pr-facts",
-        node=_G,
-        operation="open_pr_facts",
-        replaces="gh pr list --json number,headRefName,headRefOid,baseRefName,title,isDraft,body",
+        verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
     ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
@@ -249,11 +245,8 @@ def verb(name: str) -> ModelScmVerb:
 
 
 def load_contract(node: EnumScmNode) -> dict[str, JsonValue]:
-    loaded = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{node.value}")
-        .joinpath("contract.yaml")
-        .read_text(encoding="utf-8")
-    )
+    package = resources.files(f"omnimarket.nodes.{node.value}")
+    loaded = yaml.safe_load((package / "contract.yaml").read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"{node.value} contract is not a mapping")
     return loaded
