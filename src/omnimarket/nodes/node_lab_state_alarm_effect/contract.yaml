@@ -25,9 +25,9 @@ description: >
   verdict. A send is delivered only when a read-back proves it. Alarm state goes in and comes out; the node holds none.
 
 handler:
-  module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm
-  class: HandlerLabStateAlarm
-  input_model: omnimarket.models.floor_17a.ModelLabStateAlarmRequest
+  module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_floor_canary
+  class: HandlerFloorCanary
+  input_model: omnimarket.models.floor_17a.ModelCanaryInput
 
 handler_routing:
   routing_strategy: operation_match
