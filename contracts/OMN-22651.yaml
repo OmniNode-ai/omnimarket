@@ -36,7 +36,7 @@ dod_evidence:
     description: The node's suite passes, including the golden and error chain tests, the named breaks and the check verb's planted module.
     source: manual
     execution_scope: hosted_and_local
-    binds_ac: [AC1, AC2, AC3]
+    binds_ac: [AC1, AC2, AC3, AC4]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
@@ -45,7 +45,6 @@ dod_evidence:
     description: The pushed head ran the node's suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC4]
     checks:
       - check_type: command
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22651 -- uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov'

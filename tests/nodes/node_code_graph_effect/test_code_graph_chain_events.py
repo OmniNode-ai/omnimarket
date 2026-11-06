@@ -183,3 +183,21 @@ def test_break_unreadable_repository_turns_the_golden_chain_red(
     )
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
+
+
+def test_contract_declares_the_exact_code_graph_event_topics() -> None:
+    assert TOPICS["code_graph_requested"] == (
+        "onex.cmd.omnimarket.code-graph-requested.v1"
+    )
+    assert TOPICS["code_graph_run_started"] == (
+        "onex.evt.omnimarket.code-graph-run-started.v1"
+    )
+    assert TOPICS["code_graph_repo_read"] == (
+        "onex.evt.omnimarket.code-graph-repo-read.v1"
+    )
+    assert TOPICS["code_graph_run_completed"] == (
+        "onex.evt.omnimarket.code-graph-run-completed.v1"
+    )
+    assert TOPICS["code_graph_run_failed"] == (
+        "onex.evt.omnimarket.code-graph-run-failed.v1"
+    )
