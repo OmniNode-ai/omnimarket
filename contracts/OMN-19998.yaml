@@ -11,6 +11,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'Declared finding exits retain a failing alarm, name the finding in the episode, friction row, alert and dispatch brief, and decide deterministically; undeclared exits retain failed-exit behavior -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0'
+  - id: req-omn19998-job-log-accounting
+    statement: Failed lane reads that never attempt bus publication release their reservations, and default log windows use the existing gateway byte cap.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: eight recorded entrypoint import crashes leave all eight reads available; pre-publication bus failures release their reservations, publication and unknown outcomes remain charged, concurrent refunds preserve other charges, shared hits stay free, and default log tails and windows use 65536 bytes while explicit smaller windows remain unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov'
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -307,6 +312,25 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
+        cwd: .
+  - id: dod-omn19998-job-log-accounting
+    description: Replay the recorded eight import crashes through the lane node and real subprocess boundary, then read and cache a repaired result. Positive controls retain charges after dispatch and for corrupt receipts; concurrent failures release only their own reservations. This proof does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/scm/test_onex_scm_command.py -q --no-cov -k dispatch_receipt
+        cwd: .
+  - id: dod-omn19998-job-log-accounting-deploy
+    description: Hosted wiring smoke runs the budget node, its subprocess command, the real SCM CLI, canonical in-memory runtime discovery and adapter, declared bus topics and gateway handler against a recorded HTTP log. The failure line outside the old tail is returned, and a repeat performs no second read. Only credential lookup and external HTTP are replaced; no live installation is asserted.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov -k canonical_runtime_bus
         cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
