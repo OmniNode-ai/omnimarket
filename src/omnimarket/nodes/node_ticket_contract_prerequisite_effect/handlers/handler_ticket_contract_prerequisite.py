@@ -282,6 +282,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
+            # Resolve deployment refs at the effect boundary. The check helper
+            # retains its conservative refusal when a comparison is unreadable.
             base = _resolve_base(request.base)
             failures = check(sha, base, request.title, request.body)
             return ModelTicketContractPrerequisiteResult(

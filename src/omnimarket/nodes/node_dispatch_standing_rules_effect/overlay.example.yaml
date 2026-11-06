@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployed lane supplies its broker through this declaration.
+event_bus:
+  type: kafka
+  lane: dev
+# Supply overlay.redpanda.yaml to bind file-backed facts and audit storage.

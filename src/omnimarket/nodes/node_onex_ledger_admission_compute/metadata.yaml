@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_onex_ledger_admission_compute
 version: "1.0.0"
-description: Deterministic decisions of the onex-ledger wrapper (budget, delegation cells, clone resolution)
+description: Deterministic wrapper admission, including the core-owned relay_requires rule.
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
@@ -18,7 +18,7 @@ dependencies:
   - pydantic>=2.11.0
 authors: [OmniNode Team]
 license: MIT
-tags: [compute, ledger, delegation]
+tags: [compute, ledger, delegation, relay]
 node_role: compute
 pack: "routing"
 display_name: "Onex Ledger Admission Compute"
