@@ -126,8 +126,9 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # emitter golden gate left the tuple with the OCC companion producer.
     # OMN-17427 adds the reviewer eval; OMN-21478 adds internal sibling pins;
     # OMN-21588 adds the composed runtime boot; OMN-22126 adds the prompt cost
-    # estimate contract.
-    assert len(resolved) == 61
+    # estimate contract. OMN-22478 (operator RULING 2026-11-05T20:27:56Z) removes
+    # the two automated review contexts.
+    assert len(resolved) == 59
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
@@ -285,7 +286,6 @@ def test_scoping_is_a_predicate_over_events_not_over_contexts() -> None:
 
     for name in (
         "advisory-job-gate / advisory-job-gate",
-        "Hostile Review Gate",
         "pr-title / check-title",
         "deploy-gate / deploy-gate",
     ):

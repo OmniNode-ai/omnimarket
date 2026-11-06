@@ -49,6 +49,10 @@ externally_consumed_topics:
 metadata:
   transport_type: kafka
 inputs:
+  normalizer_facts:
+    type: object
+    required: true
+    description: Caller-supplied error_normalizer configuration and host snapshot.
   guard:
     type: string
     required: true
@@ -57,6 +61,10 @@ inputs:
     type: string
     required: true
     description: The guard's reason text, unredacted.
+  reason_code:
+    type: string
+    required: false
+    description: Optional producer-declared stable code, distinct from reason prose.
   detail:
     type: string
     required: false
@@ -82,6 +90,12 @@ inputs:
     required: true
     description: UTC timestamp of the row.
 outputs:
+  class_key:
+    type: string
+    description: Stable error class shared across lanes and sessions.
+  key_version:
+    type: string
+    description: Digest of the normalization configuration and host snapshot.
   row:
     type: string
     description: One pipe-delimited FRICTION ledger row.
