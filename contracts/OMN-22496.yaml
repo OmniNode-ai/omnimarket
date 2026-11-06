@@ -15,6 +15,12 @@ requirements:
         statement: "AC1: with tag.gpgsign=true and commit.gpgsign=true in the developer's global git config, the stale-base fixture's test file fails at omnimarket dev 4f751fb96 and passes 7 of 7 at the fix"
       - id: "AC2"
         statement: "AC2: with signing off the same file still passes 7 of 7 at dev and at the fix"
+  - id: "req-omn22496-command-wrapped-pytest-binds"
+    statement: |-
+      A command check that wraps uv run pytest over an existing repo test file binds that file, so the signing-on and signing-off items above are not read as unbound.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
 evidence_requirements:
   - kind: "tests"
     description: "The stale-base test file passes with global signing on and with it off."
@@ -45,4 +51,12 @@ dod_evidence:
         cwd: "."
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22496-command-wrapped-pytest-binds"
+    description: "AC3: a command check that prepares a HOME and then runs uv run pytest binds the file it names; the negative controls still refuse a wrapper with no pytest run and one naming a path not in the tree."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
         cwd: "."

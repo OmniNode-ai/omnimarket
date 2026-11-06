@@ -19,15 +19,23 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_overlay_drift_effect.adapters.pin_history import (
+    InMemoryPinHistory,
+)
 from omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift import (
     CONTRACT,
     answer_command,
     load_topics,
 )
+from omnimarket.nodes.node_overlay_drift_effect.protocols import ProtocolPinHistory
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
-from tests.nodes.node_overlay_drift_effect.overlay_drift_support import PLANTED, World
+from tests.nodes.node_overlay_drift_effect.overlay_drift_support import (
+    MERGED,
+    PLANTED,
+    World,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -46,9 +54,12 @@ PAYLOAD = json.dumps({"correlation_id": CORRELATION, "write": True}).encode()
 
 
 async def _publish(
-    world: World, ledger: InMemoryLedger | None, payload: bytes
+    world: World,
+    ledger: InMemoryLedger | None,
+    payload: bytes,
+    pin_history: ProtocolPinHistory | None = None,
 ) -> list[tuple[str, dict[str, object]]]:
-    handler = world.handler(ledger)
+    handler = world.handler(ledger, pin_history)
     bus = EventBusInmemory()
     seen: list[tuple[str, dict[str, object]]] = []
     done = asyncio.Event()
@@ -216,3 +227,54 @@ def test_named_break_turns_the_golden_assertion_red(tmp_path: Path) -> None:
     events = asyncio.run(_publish(world, InMemoryLedger(), PAYLOAD))
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
+
+
+# OMN-22720: a missing model and an unmerged pin are their own counts on the row.
+MERGED_ONLY = InMemoryPinHistory(frozenset({MERGED}))
+
+
+def assert_new_counts(row: str, *, model_missing: int, pin_unmerged: int) -> None:
+    assert f"model_missing={model_missing}" in row
+    assert f"pin_unmerged={pin_unmerged}" in row
+
+
+def test_golden_chain_missing_model_and_unmerged_pin_are_counted_and_read_working(
+    tmp_path: Path,
+) -> None:
+    world = World("memory", tmp_path)
+    world.break_pin_a_model_the_runtime_lacks()
+    world.break_pin_an_unmerged_revision()
+    ledger = InMemoryLedger()
+    events = asyncio.run(_publish(world, ledger, PAYLOAD, MERGED_ONLY))
+    assert_golden_chain(events, verdict="WORKING")
+    row = ledger.lines[0]
+    assert_new_counts(row, model_missing=1, pin_unmerged=1)
+    assert "rejected=0" in row
+
+
+def test_error_chain_refused_field_still_reads_not_working_beside_the_new_counts(
+    tmp_path: Path,
+) -> None:
+    world = World("memory", tmp_path)
+    world.break_plant_rejected_key()
+    world.break_pin_a_model_the_runtime_lacks()
+    world.break_pin_an_unmerged_revision()
+    ledger = InMemoryLedger()
+    events = asyncio.run(_publish(world, ledger, PAYLOAD, MERGED_ONLY))
+    assert_golden_chain(events, verdict="NOT_WORKING")
+    row = ledger.lines[0]
+    assert "rejected=1" in row
+    assert_new_counts(row, model_missing=1, pin_unmerged=1)
+
+
+def test_named_break_pin_check_disabled_turns_the_count_assertion_red(
+    tmp_path: Path,
+) -> None:
+    """The named break: no pin history injected, so the unmerged pin goes uncounted."""
+    world = World("memory", tmp_path)
+    world.break_pin_a_model_the_runtime_lacks()
+    world.break_pin_an_unmerged_revision()
+    ledger = InMemoryLedger()
+    asyncio.run(_publish(world, ledger, PAYLOAD))
+    with pytest.raises(AssertionError):
+        assert_new_counts(ledger.lines[0], model_missing=1, pin_unmerged=1)

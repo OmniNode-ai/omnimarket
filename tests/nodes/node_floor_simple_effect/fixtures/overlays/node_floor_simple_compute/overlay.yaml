@@ -45,10 +45,18 @@ joins:
   - {id: J17, from_piece: 17, to_piece: 18, label: "the floor to onboarding"}
   - {id: J-cycle, from_piece: 14, to_piece: 9, label: "review back to landing"}
 
-# The rebuild strip. go_given_through_piece is the highest piece the operator has said go to; it moves only when the
-# operator says so. Piece 17 is step 0 (17a) and its reading is the lab state.
+# The rebuild strip. Piece 17 is step 0 (17a) and its reading is the lab state.
 rebuild:
-  go_given_through_piece: 0
+  # The go is read from the ledger's RULING rows, never set here: a ruling on ticket OMN-22478 by the orchestrator lane whose
+  # question asks to start rebuild piece N (or pieces N to M) grants those pieces when the operator's words answer yes, and
+  # takes them back when a later answer does not. The go reaches piece N only when pieces 1 to N are all granted.
+  go:
+    ticket: OMN-22478
+    lane: orchestrator-31d9
+    lookback_days: 60
+    question_pattern: '(?i)\bstart rebuild pieces? (?P<first>\d+)(?: to (?P<last>\d+))?'
+    affirmative_pattern: '(?i)^\W*(go|you may|yes|start)\b'
+  # Only the piece shown while the go cannot be read; with the go read, the strip names the first admitted piece not working.
   current_piece: 1
   step0_pieces: [17]
   lab_state_piece: 17
@@ -105,3 +113,22 @@ error_receipt_max_age_s: 86400
 error_drill_after_s: 21600
 chain_deadline_s: 900
 details_href: detail.html
+
+# Pieces whose golden and error events are ledger rows instead of emissions. A golden row stands for a start and a success of
+# node, an error row for a start and a typed failure (a drill when the row says drill=yes), under a correlation id the row
+# decides. Piece 1 is the nightly code graph: one STATUS row a run from node_code_graph_effect.
+piece_events:
+  - piece: 1
+    node: "node_code_graph_effect:run_code_graph"
+    golden:
+      row_type: STATUS
+      lane: code-graph
+      cells: {src: code-graph, drill: "no", outcome: read}
+    error:
+      row_type: STATUS
+      lane: code-graph
+      cells: {src: code-graph, drill: "yes", outcome: source-unreadable}
+    failure_code_cell: fault
+    failure_default: source_unreadable
+    error_drill_cell: drill
+    lookback_days: 30

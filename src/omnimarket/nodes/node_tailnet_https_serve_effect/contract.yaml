@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-22692. A tailnet https listener (`tailscale serve`) in front of a loopback upstream, for a service whose page sets a
+# Secure cookie and so needs https. The https port and the upstream are overlay data. Install refuses a dead upstream and a
+# port a foreign listener holds, reads the listener back, and uninstall is the rollback. The boot-time systemd unit that
+# re-asserts the listener is placed by node_host_installer_net_units from its overlay; this node writes the env file that
+# unit reads. Externally triggered (an operator or an installer), so no subscription.
+name: tailnet_https_serve_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Installs, reads back and removes a tailnet https listener in front of a loopback upstream.
+input_model: omnimarket.nodes.node_tailnet_https_serve_effect.models.model_tailnet_https_serve.ModelServeRequest
+output_model: omnimarket.nodes.node_tailnet_https_serve_effect.models.model_tailnet_https_serve.ModelServeResult
+handler:
+  module: omnimarket.nodes.node_tailnet_https_serve_effect.handlers.handler_tailnet_https_serve
+  class: HandlerTailnetHttpsServe
+  input_model: omnimarket.nodes.node_tailnet_https_serve_effect.models.model_tailnet_https_serve.ModelServeRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [tailnet-serve, env-file-write, ledger-append]
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+overlay:
+  node: node_tailnet_https_serve_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: local-command
+  ticket: OMN-22692
