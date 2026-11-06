@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_sibling_pin_hook_revs_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Plan, without I/O, which dev merge tag the floor-bound hook blocks of a consumer's pre-commit file take and which tag
+  its source pin takes on a sibling-pin train night. The newest green tag newer than the pin goes to the hook blocks
+  whose stamp is at or above the pin's; the newest green tag strictly older than the lowest hook stamp goes to the pin.
+  A hook strictly newer than the pin is the only state that passes both the pin-floor tests and first-party-ref's
+  one-home-per-literal rule. Hook blocks older than the pin stay. The train reads the tags and writes the files.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: plan_sibling_pin_hook_revs
+    handler:
+      name: HandlerSiblingPinHookRevs
+      module: omnimarket.nodes.node_sibling_pin_hook_revs_compute.handlers.handler_sibling_pin_hook_revs
+    input_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsRequest
+    output_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsPlan
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.sibling-pin-hook-revs-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.sibling-pin-hook-revs-planned.v1
+terminal_event: onex.evt.omnimarket.sibling-pin-hook-revs-planned.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.sibling-pin-hook-revs-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.sibling-pin-hook-revs-planned.v1
+metadata:
+  ticket: OMN-22641
+  transport_type: kafka
+lifecycle: experimental
