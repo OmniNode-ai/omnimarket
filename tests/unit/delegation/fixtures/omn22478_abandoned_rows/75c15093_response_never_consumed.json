@@ -1,0 +1,183 @@
+{
+ "in_flight": false,
+ "payload": {
+  "accumulated_tokens": 0,
+  "best_answered_draft": null,
+  "compliance_attempts": 1,
+  "context_pack_hash": "",
+  "correlation_id": "75c15093-b64c-4663-ad1b-ce112290b15a",
+  "cumulative_attempt_completion_tokens": 0,
+  "cumulative_attempt_cost_usd": 0.0,
+  "cumulative_attempt_prompt_tokens": 0,
+  "current_attempt_intent_ref": [
+   "c8886675-9e78-5f84-9329-f8ffe5b5ab58",
+   "llm.openrouter.api_key"
+  ],
+  "current_attempt_observation": null,
+  "current_attempt_provider": null,
+  "current_inference_attempt_id": "c8886675-9e78-5f84-9329-f8ffe5b5ab58",
+  "current_tier_name": "cheap_frontier",
+  "customer_route_retry_backend_ref": null,
+  "customer_route_retry_count": 0,
+  "deliverable_evidence": null,
+  "effective_deliverable_contract": {
+   "boundary_mode": "marker",
+   "json_schema": null,
+   "markers": [
+    "### ANSWER",
+    "=== ANSWER ==="
+   ],
+   "min_deliverable_share": 0.5,
+   "output_shape": "markdown",
+   "plain_text_constraints": null,
+   "render_start_marker": "### ANSWER"
+  },
+  "effective_response_contract": null,
+  "escalation_count": 0,
+  "escalation_history": [],
+  "gate_content_override": null,
+  "gate_result": null,
+  "in_flight": true,
+  "inference_attempt_ordinal": 1,
+  "inference_completion_tokens": 0,
+  "inference_content": null,
+  "inference_credential_source": null,
+  "inference_intent_in_flight": true,
+  "inference_latency_ms": 0,
+  "inference_llm_call_id": "",
+  "inference_model_used": null,
+  "inference_prompt_tokens": 0,
+  "inference_provider": null,
+  "inference_route": null,
+  "inference_total_tokens": 0,
+  "invocation_command": null,
+  "last_served_attempt": null,
+  "last_served_routing_decision": null,
+  "local_retry_count": 0,
+  "local_retry_tier": null,
+  "output_refusal": null,
+  "preamble_chars": null,
+  "pricing_manifest_version": 1,
+  "proven_attempt_refs": {},
+  "quality_rejected_backend_refs": [],
+  "request": {
+   "acceptance_criteria": [],
+   "compliance_budget": null,
+   "context_pack": "",
+   "context_pack_hash": "",
+   "correlation_id": "75c15093-b64c-4663-ad1b-ce112290b15a",
+   "emitted_at": "2026-11-06T16:25:26.751017Z",
+   "max_tokens": 2048,
+   "output_schema_key": null,
+   "prompt": "scrubbed: recorded text removed",
+   "quality_contract_mode": "extend_task_class",
+   "requested_timeout_seconds": 100,
+   "source_file_path": null,
+   "source_session_id": "scrubbed: recorded text removed",
+   "task_type": "summarization",
+   "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+   "trace_id": "scrubbed: recorded text removed"
+  },
+  "response_contract_evidence": null,
+  "response_contract_instruction": "Respond with only the requested Markdown deliverable. Do not write scratch work, notes to yourself or a thinking process before the extraction marker. Any explanation, steps or reasoning the request asks for belongs inside the deliverable, after the marker. Put this exact extraction start marker on its own line immediately before the deliverable: ### ANSWER\nThe marker is transport metadata and is removed before the caller receives the deliverable. Include it even when the request asks for plain prose or no Markdown headers; those formatting constraints apply to the deliverable after the marker.",
+  "response_contract_output_shape": "markdown",
+  "response_contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+  "routing_decision": {
+   "api_key_ref": "llm.openrouter.api_key",
+   "correlation_id": "75c15093-b64c-4663-ad1b-ce112290b15a",
+   "cost_tier": "cheap_frontier",
+   "dod_deterministic": [
+    "response_non_empty"
+   ],
+   "dod_deterministic_source": "class_definition_of_done",
+   "dod_heuristic": [
+    "no_refusal",
+    "concise",
+    "accurate_summary",
+    "semantic_adequacy",
+    "identifiers_grounded",
+    "numbers_grounded",
+    "claims_grounded",
+    "operator_voice"
+   ],
+   "dod_heuristic_source": "class_definition_of_done",
+   "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
+   "extra_headers": {
+    "HTTP-Referer": "https://omninode.ai",
+    "X-Title": "OmniNode ONEX Experiment"
+   },
+   "max_context_tokens": 256000,
+   "max_tokens": 64000,
+   "provider": "openrouter",
+   "rationale": "Task 'summarization' (~321 tokens) routed to cohere/north-mini-code:free via tier 'cheap_frontier' (max_context=256000). Fast-path: tokens within 8192 threshold. Contract-driven: task_class='summarization' policy='allowed'.",
+   "requested_shape": "unconstrained",
+   "route": "openrouter-north-mini-code",
+   "selected_backend_id": "fe8ab3d8-8deb-5ff3-9e92-e8a431a6b711",
+   "selected_backend_ref": "openrouter-north-mini-code",
+   "selected_model": "cohere/north-mini-code:free",
+   "size_band": {
+    "band": "S",
+    "input_tokens": {
+     "band": "S",
+     "source": {
+      "reference": "omnimarket.handlers.handler_size_band_measurement#input_tokens",
+      "rule": "Total characters of prompt, context pack, and all sources divided by four, rounded up.",
+      "source": "text_measurement"
+     },
+     "threshold": {
+      "reference": "task_class_contracts.v1.yaml#size_band_thresholds.tokens",
+      "rule": "S up to 4000, M up to 16000, L above",
+      "source": "contract"
+     },
+     "value": 321
+    },
+    "status": "measured",
+    "steps": {
+     "band": "S",
+     "source": {
+      "reference": "omnimarket.handlers.handler_size_band_measurement#steps",
+      "rule": "Add separately the distinct nonempty stripped, casefolded acceptance criteria and the distinct stripped, casefolded prompt list-item texts outside fences.",
+      "source": "text_measurement"
+     },
+     "threshold": {
+      "reference": "task_class_contracts.v1.yaml#size_band_thresholds.steps",
+      "rule": "S up to 3, M up to 8, L above",
+      "source": "contract"
+     },
+     "value": 0
+    },
+    "task_class": "summarization",
+    "units": {
+     "band": "S",
+     "source": {
+      "reference": "omnimarket.handlers.handler_size_band_measurement#units",
+      "rule": "Count diff file lines everywhere, headings and consecutive row blocks outside fences in all texts, and each prompt list item outside fences.",
+      "source": "text_measurement"
+     },
+     "threshold": {
+      "reference": "task_class_contracts.v1.yaml#size_band_thresholds.units",
+      "rule": "S up to 3, M up to 10, L above",
+      "source": "contract"
+     },
+     "value": 0
+    }
+   },
+   "system_prompt": "You are a summarization assistant. Produce a concise, accurate summary of the provided content.",
+   "task_type": "summarization",
+   "tier_name": "cheap_frontier",
+   "timeout_ms": 300000
+  },
+  "routing_intent_replayed": false,
+  "same_tier_failed_backend_refs": [],
+  "same_tier_failed_backend_tier": null,
+  "stale_response_rejections": [],
+  "started_at_ns": 1793982509698042275,
+  "state": "ROUTED",
+  "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+  "transport_failed_backend_refs": []
+ },
+ "recorded_at": "2026-11-06T16:43:39.755433+00:00",
+ "state": "FAILED",
+ "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+ "version": 14
+}
