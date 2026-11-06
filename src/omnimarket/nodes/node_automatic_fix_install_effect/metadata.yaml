@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_automatic_fix_install_effect
+version: "1.0.0"
+description: Compare lab installs with released and proven fix heads and install their superset.
+pack: pr_lifecycle
+node_role: effect
+display_name: Automatic Fix Install Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_automatic_fix_install_effect: omnimarket.nodes.node_automatic_fix_install_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: subprocess
+dependencies:
+  - "pydantic>=2.0"
+authors:
+  - OmniNode Platform Team
+license: MIT
+tags: [effect, install, branch, tick]
