@@ -1,4 +1,4 @@
-# Recorded FRICTION rows of the ledger window 2026-11-05T01:07Z to 2026-11-06T01:07Z (OMN-22563).
+# Recorded FRICTION rows of the ledger window 2026-11-05T01:07Z to 2026-11-06T04:00Z (OMN-22563).
 # Row cells other than lane, ticket, cost, class, reason, guard and the closing text are dropped; home paths are scrubbed.
 
 - 2026-11-05T01:13:52Z | FRICTION | lane=lab-stack-reaper | ticket=OMN-20864 | cost=est ~0.1 lane-hours; an unreaped lab stack holds lab capacity; (OMN-20864) | pass refused: docker compose ls failed: failed to connect to the docker API at unix://~/.docker/run/docker.sock; check if the path is correct and if the daemon is running: dial unix ~/.docker/run/docker.sock: connect: no such file or directory

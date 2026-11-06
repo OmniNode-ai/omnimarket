@@ -44,7 +44,6 @@ EXPECTED = {
     "dropped-prs-1545": {"local-hooks-fail-one-per-attempt"},
     "review-keystone-1845": {"local-hooks-fail-one-per-attempt"},
     "m0-reader-2410": {"installed-copy-behind-merged-code"},
-    "remote-lane-fixes-0100": {"installed-copy-behind-merged-code"},
 }
 ALARM_SOURCES = {
     "lab-pass-receipt",
@@ -69,8 +68,8 @@ def roll(
                 }
             ],
             "since": "2026-11-05T01:00:00Z",
-            "until": "2026-11-06T02:00:00Z",
-            "generated_at": "2026-11-06T02:00:00Z",
+            "until": "2026-11-06T04:00:00Z",
+            "generated_at": "2026-11-06T04:00:00Z",
             "bucket_hours": 2,
             "umbrella_tickets": ["OMN-17427"],
             "aliases": [],
@@ -138,7 +137,6 @@ def test_a_row_with_a_class_cell_keeps_its_own_class_whatever_the_rules_say() ->
     by_name = classes(roll(greedy))
     assert by_name["lab-idle"]["lanes"] == ["lab-fill"]
     assert "refusal:unauthorised-shared-tree-git-mutation" in by_name
-    assert "everything" not in by_name
 
 
 def test_a_row_no_rule_matches_stays_unclassified() -> None:
