@@ -26,19 +26,12 @@ handler:
   class: HandlerHostReading
   input_model: omnimarket.models.model_host_reading.ModelHostReadingCommand
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: run_host_readings
-      topic: onex.cmd.omnimarket.host-reading-requested.v1
-      handler:
-        name: HandlerHostReading
-        module: omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading
-      input_model: omnimarket.models.model_host_reading.ModelHostReadingCommand
-      output_model: omnimarket.models.model_host_reading.ModelHostReadingResult
+# HandlerHostReading takes the overlay, host, files, appender, clock and environ as constructor
+# parameters, so the node runs through its own CLI and schedule, not handler_routing.
 
 descriptor:
   node_archetype: effect
+  runtime_profiles: [effects]
   purity: impure
   idempotent: true
   side_effects: [ledger-append]
@@ -56,10 +49,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.host-reading-run-completed.v1
 
 runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.host-reading-requested.v1
-  terminal_events:
-    success: onex.evt.omnimarket.host-reading-run-completed.v1
-    failure: onex.evt.omnimarket.host-reading-run-failed.v1
+  external_trigger: true
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:
@@ -70,13 +60,8 @@ topics:
   host_reading_run_failed: onex.evt.omnimarket.host-reading-run-failed.v1
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.host-reading-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.host-reading-written.v1
-    - onex.evt.omnimarket.host-reading-failed.v1
-    - onex.evt.omnimarket.host-reading-run-completed.v1
-    - onex.evt.omnimarket.host-reading-run-failed.v1
+  subscribe_topics: []
+  publish_topics: []
 
 externally_consumed_topics:
   - onex.evt.omnimarket.host-reading-written.v1
