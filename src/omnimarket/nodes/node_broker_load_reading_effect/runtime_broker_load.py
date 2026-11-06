@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
@@ -39,6 +39,7 @@ from omnimarket.nodes.node_broker_load_reading_effect.models.model_broker_load i
 from omnimarket.nodes.node_broker_load_reading_effect.overlay import (
     NODE_NAME,
     ModelBrokerLoadOverlay,
+    ModelConsumerProbe,
     load_overlay,
 )
 from omnimarket.nodes.node_broker_load_reading_effect.protocols import (
@@ -57,18 +58,25 @@ def _required(name: str, environ: Mapping[str, str]) -> str:
     return value
 
 
+def _in_memory_consumer(_: ModelConsumerProbe) -> ProtocolConsumerStart:
+    return InMemoryConsumerStart(
+        ModelConsumerStart(outcome=EnumConsumerStart.STARTED, elapsed_ms=0)
+    )
+
+
+#: The overlay's ``consumer.backend`` names the backend; this table is the only place it is resolved.
+CONSUMER_BACKENDS: dict[str, Callable[[ModelConsumerProbe], ProtocolConsumerStart]] = {
+    "kafka": KafkaConsumerStart,
+    "inmemory": _in_memory_consumer,
+}
+
+
 def build_handler(
     overlay: ModelBrokerLoadOverlay, environ: Mapping[str, str], write: bool
 ) -> tuple[HandlerBrokerLoad, str]:
     host = _required(overlay.ledger_append.host_env, environ)
     _required(overlay.metrics_source.ssh_host_env, environ)
-    consumer: ProtocolConsumerStart = (
-        KafkaConsumerStart(overlay.consumer)
-        if overlay.consumer.backend == "kafka"
-        else InMemoryConsumerStart(
-            ModelConsumerStart(outcome=EnumConsumerStart.STARTED, elapsed_ms=0)
-        )
-    )
+    consumer = CONSUMER_BACKENDS[overlay.consumer.backend](overlay.consumer)
     handler = HandlerBrokerLoad(
         overlay=overlay,
         host=host,
