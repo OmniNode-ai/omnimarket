@@ -14,6 +14,8 @@ from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core
     _is_friction,
     _parse_aliases,
     build_report,
+    parse_class_owners,
+    parse_class_rules,
     parse_iso8601,
     parse_jsonl_rows,
     parse_markdown_rows,
@@ -88,6 +90,12 @@ class HandlerFrictionRollup:
             duplicates_dropped=duplicates,
             jsonl_provided=any(source.kind == "jsonl" for source in request.sources),
             jsonl_malformed_lines=malformed,
+            class_rules=parse_class_rules(
+                (rule.name, rule.owner, rule.pattern) for rule in request.class_rules
+            ),
+            class_owners=parse_class_owners(
+                (item.class_name, item.owner) for item in request.class_owners
+            ),
         )
         return ModelFrictionRollupResult(
             report=report,

@@ -101,7 +101,8 @@ inputs:
   policy:
     type: object
     required: false
-    description: Quiet/stale thresholds, clone policy and removal cap.
+    description: Quiet/stale thresholds, clone policy, removal cap and merged_only
+      (remove only merged work; every other removal rule is held at keep).
   decider_command:
     type: list[str]
     required: false
@@ -113,6 +114,13 @@ inputs:
     description: 'Argv with {path} and {branch} placeholders; exit 0 claims the pin.
       The node then requires origin to serve refs/heads/{branch} at the tree HEAD,
       read back with git ls-remote, before anything is removed.'
+  merged_pr_command:
+    type: list[str]
+    required: false
+    description: 'Argv with a {slug} placeholder; stdout lists the head commit of
+      each merged pull request of that repository, one 40-digit id per line. A tree
+      whose HEAD is one of them has pushed, landed work (reason pr_merged_head). Unset:
+      no pull request evidence is read.'
   correlation_id:
     type: str
     required: true
