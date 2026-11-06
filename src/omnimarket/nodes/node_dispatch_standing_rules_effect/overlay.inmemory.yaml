@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+dependencies:
+- protocol: omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  implementation: memory_overlay_documents
+  config:
+    standing_rules: "audit_path: standing-rules-audit.jsonl\nfacts:\n  cloud_credit:\n\
+      \    path: cloud-credit.json\n    read: read the configured cloud credit record\n\
+      \  cloud_slot:\n    path: cloud-slot.json\n    read: read the configured cloud\
+      \ slot offer\nledger:\n  path: ledger.md\n  read: read the source ruling from\
+      \ the configured ledger\nrules:\n- check: cloud_first\n  credit_fact: cloud_credit\n\
+      \  dispatch_kinds:\n  - agent\n  - workflow\n  - runner\n  - lab\n  expires_from:\n\
+      \    fact: cloud_credit\n    kind: fact\n  fix: 'FIX: --placement cloud|auto'\n\
+      \  id: R-A\n  mode: route\n  models:\n  - sonnet\n  - opus\n  - claude-sonnet\n\
+      \  - claude-opus\n  order:\n  - cloud\n  - lab\n  slot_fact: cloud_slot\n  source_ruling:\n\
+      \    lane: orchestrator-31d9\n    stamp: '2026-11-04T12:57:20Z'\n"
+- protocol: omnimarket.protocols.protocol_standing_rules_io.ProtocolStandingRulesIO
+  implementation: memory_standing_rules_io
+  config:
+    ledger.md: '2026-11-04T12:57:20Z | RULING | lane=orchestrator-31d9 | cloud first
+      until credits expire
+
+      '
+    cloud-credit.json: '{"remaining": 10, "expires_at": "2026-11-05T00:00:00Z"}'
+    cloud-slot.json: '{"available": true}'
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30
