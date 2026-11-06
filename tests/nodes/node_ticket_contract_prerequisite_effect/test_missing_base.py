@@ -211,6 +211,20 @@ def test_missing_local_base_is_not_guessed_into_a_remote(
     assert _remote_branches(worker) == ["refs/remotes/origin/worker"]
 
 
+def test_unreadable_local_base_keeps_the_missing_contract_refusal(
+    tmp_path: Path,
+) -> None:
+    worker = _worker(tmp_path, contract=False)
+    result = _hook(worker, "--base", "dev", "--title", f"fix({TICKET}): change")
+    assert result.returncode == 1
+    assert (
+        result.stderr.strip()
+        == f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml"
+    )
+    assert "could not read" not in result.stderr
+    assert _remote_branches(worker) == ["refs/remotes/origin/worker"]
+
+
 def test_remote_branch_list_ignores_origin_head_and_keeps_real_branches(
     tmp_path: Path,
 ) -> None:

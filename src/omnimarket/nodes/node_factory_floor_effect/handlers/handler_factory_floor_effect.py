@@ -45,10 +45,12 @@ from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
+    host_drift_cause,
     load_api_keys,
     load_compute_config,
     load_contract,
     load_engines,
+    load_host_drift,
     load_host_table,
     load_lane_containers,
     load_lane_processes,
@@ -233,6 +235,8 @@ class HandlerFactoryFloorEffect:
             home / src.plans_today_dir, src.linear_titles_glob
         )
         fleet_path = home / src.runner_fleet_relpath
+        drift_path = home / src.host_drift_relpath
+        host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
         ledger = read_ledger_rows(
@@ -325,6 +329,10 @@ class HandlerFactoryFloorEffect:
                 lab_rungs=lab_rungs,
                 token_pools=load_token_pools(token_glob.parent, token_glob.name),
             ),
+            host_drift=host_drift,
+            host_drift_cause=""
+            if host_drift is not None
+            else host_drift_cause(drift_path),
             runner_fleet=runner_fleet,
             runner_fleet_cause=""
             if runner_fleet is not None

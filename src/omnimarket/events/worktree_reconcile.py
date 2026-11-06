@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_worktree_reconcile_policy import (
-    ModelWorktreeReconcilePolicy,
+    ModelWorktreeReconcilePolicy as Policy,
 )
 
 
@@ -67,6 +67,9 @@ class ModelWorktreeFacts(BaseModel):
     open_pr: bool | None = None
     live_process: bool = False
     live_claim: bool = False
+    # Name of an installed unit whose ExecStart, WorkingDirectory or Environment names this tree
+    # or a path inside it: the unit runs from it, so removing the tree breaks its next tick.
+    live_unit: str = ""
     last_activity_age_hours: float | None = Field(default=None, allow_inf_nan=False)
     size_bytes: int | None = Field(default=None, ge=0)
     orphan_empty: bool = False
@@ -102,18 +105,14 @@ class ModelWorktreeReconcileRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     facts: tuple[ModelWorktreeFacts, ...]
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
 
 
 class ModelWorktreeReconcileDecisions(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     decisions: tuple[ModelWorktreeDecisionRecord, ...]
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
 
 
 class ModelWorktreeReconcileCommand(BaseModel):
@@ -127,9 +126,7 @@ class ModelWorktreeReconcileCommand(BaseModel):
     exclude_paths: tuple[str, ...] = ()
     ledger_path: str | None = None
     execute: bool = False
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
     decider_command: list[str] | None = Field(default=None, min_length=1)
     pin_command: list[str] | None = Field(default=None, min_length=1)
     # Argv with a {slug} placeholder; stdout lists the head commit (40 hex digits) of

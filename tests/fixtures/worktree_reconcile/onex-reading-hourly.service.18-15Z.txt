@@ -1,0 +1,26 @@
+# Recorded from a lab host (`systemctl --user cat onex-reading-hourly.service`) at 2026-11-06T18:15Z, the unit the
+# worktree reconcile left without an interpreter at 18:16:28Z. Every host path is rewritten to a neutral root.
+# /srv/svc/.config/systemd/user/onex-reading-hourly.service
+# Rendered by the reading writer node (schedule install); the node contract owns the
+# cadence, so change the contract and install again rather than editing this file.
+# Rollback: schedule uninstall.
+[Unit]
+Description=ONEX hourly readings (read-only probes, reading rows only)
+
+[Service]
+Type=oneshot
+TimeoutStartSec=600
+Environment="HOME=/srv/svc"
+Environment="OMNI_HOME=/srv/registry"
+Environment="ONEX_SKILL_OVERLAY_ROOTS=/srv/scratch/overlay-store/overlays"
+Environment="PATH=/srv/svc/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="OMNIBASE_PATH=/srv/registry"
+Environment="ONEX_WORKSPACE_CONFIG_ROOT=/srv/config"
+Environment="ONEX_LEDGER_HOST_NAME=h053"
+Environment="ONEX_LEDGER_BUS_READ_COMMAND=/srv/registry/omni_worktrees/OMN-22643/omnimarket/.venv/bin/onex ledger query --stdin"
+Environment="ONEX_LEDGER_BUS_APPEND_COMMAND=/srv/registry/omni_worktrees/OMN-22643/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path /srv/registry"
+WorkingDirectory=/srv/registry
+ExecStart="/srv/registry/omni_worktrees/OMN-22643/omnimarket/.venv/bin/python" -m omnimarket.nodes.node_reading_writer_effect hourly
+StandardOutput=append:/srv/registry/.onex_state/reading-writer/reading-writer.out.log
+StandardError=append:/srv/registry/.onex_state/reading-writer/reading-writer.err.log
+SyslogIdentifier=onex-reading-hourly
