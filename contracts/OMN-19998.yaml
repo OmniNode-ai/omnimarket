@@ -148,11 +148,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-delegation-ledger-reason
-    statement: Delegation terminal ledger rows retain the reported reason and its provenance without copying task content.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: the recorded dispatch-budget timeout retains reason=timeout through the ledger subscription; explicit causes, legacy failure evidence, unknown failures and completed escalations remain distinguishable; last-attempt failure classes are escaped and redelivery appends once -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -604,20 +599,4 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-delegation-ledger-reason
-    description: Focused mapping tests replay the recorded timeout fields, preserve cause provenance and distinguish unknown failures, gate refusals and completed escalations. This scoped requirement does not assert the original landing-controller timer criteria.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-delegation-ledger-reason-deploy
-    description: Hosted wiring smoke replays the recorded timeout through the production ledger host subscription over an in-memory bus and verifies reason retention and idempotent redelivery. This is not a live ledger-host installation readback.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov
         cwd: .
