@@ -26,3 +26,4 @@ class ModelLaneCloseoutRunResult(BaseModel):
     inventory: ModelLaneTreeInventoryResult
     closeouts: tuple[ModelLaneCloseoutResult, ...] = Field(default=())
     summary: str
+    released_claims: tuple[str, ...] = Field(default=())

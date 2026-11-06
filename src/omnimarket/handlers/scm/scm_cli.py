@@ -992,6 +992,30 @@ def _refused_command(verb_name: str, handled_by: str) -> click.Command:
     return command
 
 
+def cached_job_log_command(
+    factory: Callable[[ModelScmVerb], click.Command],
+) -> click.Command:
+    command = factory(
+        ModelScmVerb(
+            verb="job-log-cached",
+            node=EnumScmNode.GATEWAY,
+            operation="job_log_tail",
+            replaces="host-shared completed job log",
+        )
+    )
+    callback = command.callback
+    assert callback is not None
+
+    def cached(**fields: object) -> object:
+        # Neither arguments nor environment can turn this verb into a live read.
+        fields["cache_only"] = True
+        return callback(**fields)
+
+    command.callback = cached
+    command.help = "A cached job's tail, window or step; a miss makes no GitHub call."
+    return command
+
+
 for _spec in SCM_VERBS:
     scm_group.add_command(
         _write_command(_spec)
@@ -1001,6 +1025,7 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 
