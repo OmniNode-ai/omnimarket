@@ -7,7 +7,7 @@ lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Render and install a launchd registry_module_tick unit that runs a node module of a project with
+  Install a self-contained copied alarm payload, or render and install a launchd registry_module_tick unit that runs a node module of a project with
   `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
   unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
   which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
@@ -23,17 +23,56 @@ output_model:
   name: ModelRegistryUnitsResult
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
 handler:
+  class: HandlerRegistryUnits
   name: HandlerRegistryUnits
   module: omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units
 entrypoint:
   name: NodeHostInstallerRegistryUnits
   module: omnimarket.nodes.node_host_installer_registry_units.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelRegistryUnitsRequest
+        module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
+      handler:
+        name: HandlerRegistryUnits
+        module: omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units
+terminal_event: onex.evt.omnimarket.host-registry-unit-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-registry-unit-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-registry-unit-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
 execution:
   deterministic: false
   side_effects: true
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
 # {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
 units:
+  floor-alarm:
+    platform: launchd
+    kind: copied_tree
+    label: ai.omninode.floor-alarm
+    install_directory: .omninode/floor-alarm
+    state_directory: .onex_state/floor-alarm
+    script: skills/merge-drain/scripts/floor_alarm.py
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    schedule:
+      start_interval: 600
+      run_at_load: false
+    payload_overlay: overlays/floor-alarm.yaml
   factory-floor-publish:
     platform: launchd
     kind: registry_module_tick

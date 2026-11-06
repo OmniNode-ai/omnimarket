@@ -1,0 +1,19 @@
+{
+  "provenance": "Brief B7 and the normalizer's pinned ledger excerpts. These are receipt field extracts, not the unavailable full runner receipts; the live replay remains UNMEASURED.",
+  "receipts": [
+    {
+      "lane": "pfix-68-1316",
+      "run_id": "rlane-pfix-68-1316-3a8419",
+      "engine_rc": 137,
+      "guard": {"requested": {"mem_bytes": 8589934592}, "end": {"scope_result": "oom-kill"}},
+      "retention": {"error": "ModuleNotFoundError: No module named 'omnimarket'"}
+    },
+    {
+      "lane": "lane-push-race-1316",
+      "run_id": "rlane-lane-push-race-1316-93df3b",
+      "engine_rc": 137,
+      "guard": {"requested": {"mem_bytes": 8589934592}, "end": {"scope_result": "oom-kill"}},
+      "retention": {"error": "ModuleNotFoundError: No module named 'omnimarket'"}
+    }
+  ]
+}
