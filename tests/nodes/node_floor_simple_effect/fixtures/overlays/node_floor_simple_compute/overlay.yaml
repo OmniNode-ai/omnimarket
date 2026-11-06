@@ -108,6 +108,19 @@ causes:
     - "alarm:undelivered"
   ignore_stoppages: []
 
+# The reading writer's rows: one STATUS row of its own lane per piece per window. The floor draws each piece's reading from
+# the newest one, so the strip, the colour and the staleness rule read what the writer wrote.
+ledger_readings:
+  row_type: STATUS
+  lane: reading-writer
+  cells: {src: reading}
+  piece_cell: piece
+  verdict_cell: verdict
+  probed_at_cell: probed_at
+  published_at_cell: published_at
+  max_age_cell: max_age
+  lookback_days: 3
+
 freshness_max_age_s: 900
 error_receipt_max_age_s: 86400
 error_drill_after_s: 21600
@@ -132,3 +145,77 @@ piece_events:
     failure_default: source_unreadable
     error_drill_cell: drill
     lookback_days: 30
+  # Pieces 2 to 6 (OMN-22739). A golden row is a WORKING row that is not a drill; an error row is any NOT_WORKING row, drill or
+  # not, so a real failure counts as a typed failure and a drill stays marked as one (error_drill_cell). A reading that is
+  # NOT_WORKING every hour is therefore a failure event every hour, and a broken chain the floor shows for it is a real one.
+  # The failure code is the row's reason cell: it names what failed.
+  - piece: 2
+    node: "node_host_reading_effect:host_canary"
+    golden:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: host-canary, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: host-canary, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: canary_untyped
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 3
+    node: "node_seam_deadline_probe_effect:read"
+    golden:
+      row_type: STATUS
+      lane: seam-deadline
+      cells: {src: seam-deadline, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: seam-deadline
+      cells: {src: seam-deadline, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_result_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 4
+    node: "node_overlay_drift_effect:read"
+    golden:
+      row_type: STATUS
+      lane: overlay-drift
+      cells: {src: overlay-drift, verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: overlay-drift
+      cells: {src: overlay-drift, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: overlay_drift
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 5
+    node: "node_secret_reading_effect:read"
+    golden:
+      row_type: STATUS
+      lane: secret-reading
+      cells: {src: secret-reading, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: secret-reading
+      cells: {src: secret-reading, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: secret_reading_failed
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 6
+    node: "node_host_reading_effect:ledger_durability"
+    golden:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: ledger-durability, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: ledger-durability, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_durable_row_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7
