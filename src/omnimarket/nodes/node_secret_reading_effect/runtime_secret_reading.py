@@ -110,6 +110,8 @@ def _schedule(arguments: Sequence[str]) -> int:
                 default=os.environ.get("OMNI_HOME", ""),
             )
             sub.add_argument("--dry-run", action="store_true")
+        if verb == "run-now":
+            sub.add_argument("--drill", action="store_true", help="run the drill unit")
     args = parser.parse_args(list(arguments))
     scheduler = SecretReadingScheduler(
         schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
@@ -135,7 +137,7 @@ def _schedule(arguments: Sequence[str]) -> int:
     elif args.verb == "status":
         result = scheduler.status(args.host)
     else:
-        result = scheduler.run_now(args.host)
+        result = scheduler.run_now(args.host, drill=args.drill)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.exit_code
