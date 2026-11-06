@@ -26,6 +26,9 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
     handler_ticket_contract_prerequisite as push,
 )
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
+    ModelTicketContractPrerequisiteRequest,
+)
 
 pytestmark = pytest.mark.unit
 TICKET = "OMN-18595"
@@ -130,22 +133,19 @@ def test_nested_changelog_is_not_a_release_cut(
 def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
-        ModelTicketContractPrerequisiteRequest,
-    )
-
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    # The deployed boundary turns a base-resolution error into a failed typed
-    # verdict; the internal check helper deliberately propagates git errors.
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)
+    # Base pinning fails before release-cut classification; the public handler
+    # turns that git error into a typed refusal rather than granting an exemption.
     result = push.HandlerTicketContractPrerequisite().handle(
         ModelTicketContractPrerequisiteRequest(
             head=head, base="no-such-base", title=TITLE
         )
     )
     assert not result.passed
+    assert result.head_sha is None
     assert len(result.failures) == 1
     assert "ticket contract preflight could not read" in result.failures[0]
     assert "no-such-base" in result.failures[0]

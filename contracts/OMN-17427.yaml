@@ -1072,6 +1072,11 @@ requirements:
     acceptance:
       - id: "AC1742733"
         statement: "AC1742733: ModelLabAdmission accepts probe_owner; h101 and h053 (AUTH-REFUSED) and h106 (NAME-UNRESOLVED) lines lead with the receipt's owner action and no rerun advice, an sshd-refused gap says a rerun clears nothing, a receipt with no owner keeps the regex-derived owner, and an unclassified timeout keeps the rerun advice and names the receipt readings -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap' fails at the merge base, where probe_owner is refused as an extra field"
+  - id: "req-pr5134-safety-pin-bounded-retry"
+    statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
+    acceptance:
+      - id: "AC513401"
+        statement: "AC513401: the security-scan workflow pins safety==3.8.1, retries a transient exit 1 a bounded number of times, and exits at once on exit 64 (a real finding) -- falsifier: tests/test_security_scan_workflow_omn17427.py::test_safety_install_is_pinned, ::test_enforcing_invocation_has_no_or_true and ::test_only_crash_exit_is_retried fail at the merge base, where safety is unpinned and not retried."
   - id: "req-lock-security-floors"
     statement: "uv.lock holds multidict and mako at versions outside the affected ranges of the advisories the Dependency Security Scan reports, so the scan passes on dev."
     acceptance:
@@ -4531,6 +4536,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr5134-safety-pin-retry"
+    description: "The security-scan workflow pins safety==3.8.1 and retries only the exit-1 crash a bounded number of times while exit 64 fails at once. The three workflow tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC513401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_security_scan_workflow_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
   - id: "dod-omn17427-lock-security-floors"
     description: "AC3003201: the lock holds multidict and mako past the advisories SFTY-20261005-09094 and SFTY-20261005-32026. The test fails at the merge base."
     source: manual

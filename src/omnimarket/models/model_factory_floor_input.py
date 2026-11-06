@@ -453,6 +453,8 @@ class ModelFactoryFloorConfig(BaseModel):
     andon_markers: tuple[str, ...] = Field(min_length=1)
     gate_kind: str = Field(min_length=1)
     gate_state: str = Field(min_length=1)
+    # Alternate wave subjects emitted by ledger gate runners; empty preserves older configuration.
+    gate_wave_subject_template: str = ""
     gate_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     gate_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     done_outcomes: tuple[str, ...] = Field(min_length=1)
