@@ -293,40 +293,56 @@ def _argv(pyproject: Path, *extra: str) -> list[str]:
 def test_cli_prints_the_plan_and_writes_nothing_without_apply(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = _write(tmp_path)
-    assert cli.main(_argv(path)) == 0
+    pyproject = _write(tmp_path)
+    assert cli.main(_argv(pyproject)) == 0
     printed = json.loads(capsys.readouterr().out)
     assert printed["plan"]["hook_tag"] == NEWEST
     assert printed["plan"]["pin_tag"] == HOOK
     assert "candidate_text" not in printed
-    assert path.read_text() == CONFIG
+    assert (tmp_path / ".pre-commit-config.yaml").read_text() == CONFIG
 
 
 def test_cli_apply_moves_the_planned_blocks_in_place(tmp_path: Path) -> None:
-    path = _write(tmp_path)
-    assert cli.main(_argv(path, "--apply")) == 0
-    assert core_revs(path.read_text()) == [NEWEST, OLD_HOOK, "v0.47.46", NEWEST]
-    assert passes_the_core_hook_floor(HOOK, path.read_text())
+    pyproject = _write(tmp_path)
+    assert cli.main(_argv(pyproject, "--apply")) == 0
+    written = (tmp_path / ".pre-commit-config.yaml").read_text()
+    assert core_revs(written) == [NEWEST, OLD_HOOK, "v0.47.46", NEWEST]
+    assert passes_the_core_hook_floor(HOOK, written)
 
 
-def test_cli_refuses_a_candidate_that_is_not_a_green_red_or_unread_verdict(
+def test_cli_leaves_the_config_alone_for_a_candidate_that_is_not_a_verdict(
     tmp_path: Path,
 ) -> None:
-    path = _write(tmp_path)
-    with pytest.raises(SystemExit) as raised:
-        cli.main([*_argv(path), "--candidate", f"{PIN}=maybe"])
-    assert raised.value.code == 2
-    assert path.read_text() == CONFIG
+    pyproject = _write(tmp_path)
+    argv = _argv(pyproject, "--apply")
+    argv[argv.index("--candidates") + 1] = json.dumps([[NEWEST, "maybe"]])
+    with pytest.raises(ValidationError):
+        cli.main(argv)
+    assert (tmp_path / ".pre-commit-config.yaml").read_text() == CONFIG
+
+
+def test_cli_names_a_distribution_the_pyproject_does_not_pin(tmp_path: Path) -> None:
+    pyproject = _write(tmp_path)
+    argv = _argv(pyproject)
+    argv[argv.index("--distribution") + 1] = "omnibase-infra"
+    with pytest.raises(KeyError, match="omnibase-infra"):
+        cli.main(argv)
 
 
 def test_cli_runs_as_a_module_the_way_the_train_calls_it(tmp_path: Path) -> None:
-    path = _write(tmp_path)
+    pyproject = _write(tmp_path)
     done = subprocess.run(
-        [sys.executable, "-m", f"omnimarket.nodes.{NAME}", *_argv(path, "--apply")],
+        [
+            sys.executable,
+            "-m",
+            f"omnimarket.nodes.{NAME}",
+            *_argv(pyproject, "--apply"),
+        ],
         capture_output=True,
         text=True,
         check=False,
     )
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout)["plan"]["pin_tag"] == HOOK
-    assert core_revs(path.read_text())[0] == NEWEST
+    written = (tmp_path / ".pre-commit-config.yaml").read_text()
+    assert core_revs(written)[0] == NEWEST

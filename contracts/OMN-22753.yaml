@@ -10,11 +10,11 @@ requirements:
   statement: The train's hook rev rewrite is the node's apply operation and command line, with tests that fail on the train as it ran on 2026-11-06 and on a planner whose strictly-newer rule is injected as at-or-newer.
   acceptance:
   - id: AC1
-    statement: 'AC1: given a pre-commit config text, the pin repository url, the pin tag and newer dev tags with a green flag, the apply operation returns the plan and the config text with the planned hook blocks moved to the plan hook tag and every other line unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov'
+    statement: 'AC1: given a pre-commit config text, the pin''s repository url, the pin tag and newer dev tags with a green flag, the apply operation returns the plan and the config text with the planned hook blocks moved to the plan''s hook tag and every other line unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov'
   - id: AC2
-    statement: 'AC2: with the planner strictly-newer rule injected as at-or-newer, the apply tests fail, so the rule is read by them -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov with the rule patched exits non-zero'
-  - id: AC3
-    statement: 'AC3: the command line prints the plan, writes the config only with --apply, and a config with no block of the repository plans the pin alone and is left untouched -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -k cli -q --no-cov'
+    statement: 'AC2: with the planner''s strictly-newer rule injected as at-or-newer, the apply tests fail, so the rule is read by them -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov with the rule patched exits non-zero'
+  - id: AC4
+    statement: 'AC4: the command line prints the plan, writes the config only with --apply, and a config with no block of the repository plans the pin alone and is left untouched -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -k cli -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The hook revs node tests pass
@@ -30,7 +30,7 @@ dod_evidence:
   binds_ac:
   - AC1
   - AC2
-  - AC3
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov
