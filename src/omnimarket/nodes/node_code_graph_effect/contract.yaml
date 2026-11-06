@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Code Graph Effect (OMN-22651, rebuild piece 1 of OMN-22478)
+#
+# Builds the Python import graph of the declared repositories at their default-branch heads,
+# reachability from the declared roots, and a verdict against a frozen sample with known-used
+# controls; appends one reading row per run through the configured append command. It writes
+# code graph rows and nothing else: a reading is never a gate, a stop or an admission.
+name: node_code_graph_effect
+contract_name: node_code_graph_effect
+node_name: node_code_graph_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads each declared repository's committed files at its ref, builds the import graph across
+  repositories, computes what the roots reach, judges the graph against the frozen sample and
+  the known-used controls, and appends one row. The check verb compares a pull request's head with
+  its base and names the modules the head adds that no root reaches. An unreadable repository and
+  an append that does not land are typed failures.
+
+handler:
+  module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph
+  class: HandlerCodeGraph
+  input_model: omnimarket.models.model_code_graph.ModelCodeGraphCommand
+
+# HandlerCodeGraph takes the overlay, host, repository source, appender and clock as constructor
+# parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 3600000
+
+input_model:
+  name: ModelCodeGraphCommand
+  module: omnimarket.models.model_code_graph
+  description: Whether to write, and the fault a drill injects.
+output_model:
+  name: ModelCodeGraphResult
+  module: omnimarket.models.model_code_graph
+  description: Per repository counts and unreachable modules, the sample outcome, the verdict and the row.
+
+terminal_event: onex.evt.omnimarket.code-graph-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  code_graph_requested: onex.cmd.omnimarket.code-graph-requested.v1
+  code_graph_run_started: onex.evt.omnimarket.code-graph-run-started.v1
+  code_graph_repo_read: onex.evt.omnimarket.code-graph-repo-read.v1
+  code_graph_run_completed: onex.evt.omnimarket.code-graph-run-completed.v1
+  code_graph_run_failed: onex.evt.omnimarket.code-graph-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-graph-run-started.v1
+  - onex.evt.omnimarket.code-graph-repo-read.v1
+  - onex.evt.omnimarket.code-graph-run-completed.v1
+  - onex.evt.omnimarket.code-graph-run-failed.v1
+
+# The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).
+schedule:
+  unit_name: onex-code-graph-nightly
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3600
+  cadence:
+    on_calendar: "*-*-* 06:40:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: nightly at 06:40 UTC, before the 05:30 Eastern daily line
+
+overlay:
+  node: node_code_graph_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22651
+  transport_type: inmemory

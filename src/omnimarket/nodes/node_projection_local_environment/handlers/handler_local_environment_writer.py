@@ -25,8 +25,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
@@ -180,8 +179,7 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(path) as handle:
-            self._contract: dict[str, Any] = yaml.safe_load(handle)
+        self._contract: dict[str, Any] = load_contract(path)
         exposures = load_projection_exposures_from_contract(
             self._contract, str(self._contract["name"]), path
         )
