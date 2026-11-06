@@ -1,0 +1,1361 @@
+{
+ "generated_at": "2026-11-06T18:35:52Z",
+ "floor": {
+  "host_status": [
+   {
+    "host": "h051",
+    "label": "h051",
+    "condition": "out",
+    "available": {
+     "state": "read",
+     "value": false,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "h051 is out for the operator's rack and NVMe drive fit from 2026-11-06 (OMN-22642); remove available: false when the operator says it is back",
+    "cap": {
+     "state": "read",
+     "value": 32.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "unread",
+     "value": null,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "unread",
+     "value": null,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_pressure": {
+     "state": "unread",
+     "value": null,
+     "unit": "",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 170.72,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T15:45:09Z",
+     "age_min": 170,
+     "reason": "the newest heartbeat is 170 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "read",
+     "value": true,
+     "source": "capacity advertisement",
+     "read_at": "2026-11-06T18:35:19Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "reading_age": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    }
+   },
+   {
+    "host": "h053",
+    "label": "h053",
+    "condition": "refusing",
+    "available": {
+     "state": "read",
+     "value": true,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "",
+    "cap": {
+     "state": "read",
+     "value": 24.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 2.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "admission_refusal": "cpu 92.5C > 85C",
+    "lanes": [
+     {
+      "lane": "piece4-1320-r",
+      "ticket": "OMN-22478",
+      "kind": "build",
+      "engine": "claude",
+      "started_at": "2026-11-06T16:52:13Z",
+      "run_minutes": 103,
+      "stalled": false
+     },
+     {
+      "lane": "piece5-1320-r",
+      "ticket": "OMN-22478",
+      "kind": "build",
+      "engine": "claude",
+      "started_at": "2026-11-06T16:52:31Z",
+      "run_minutes": 103,
+      "stalled": false
+     }
+    ],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "read",
+     "value": 0.63,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_free_gb": {
+     "state": "read",
+     "value": 64.0,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_pressure": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "psi",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "swap_used_pct": {
+     "state": "read",
+     "value": 9.0,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_free_gb": {
+     "state": "read",
+     "value": 28.7,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_used_pct": {
+     "state": "read",
+     "value": 55.16,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 170.22,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T15:45:39Z",
+     "age_min": 170,
+     "reason": "the newest heartbeat is 170 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "read",
+     "value": true,
+     "source": "capacity advertisement",
+     "read_at": "2026-11-06T18:35:18Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "reading_age": {
+     "state": "read",
+     "value": 0.67,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    }
+   },
+   {
+    "host": "h101",
+    "label": "h101",
+    "condition": "read",
+    "available": {
+     "state": "read",
+     "value": true,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "",
+    "cap": {
+     "state": "read",
+     "value": 12.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 5.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "read",
+     "value": 3.0,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "admission_refusal": "",
+    "lanes": [
+     {
+      "lane": "one-runtime-1315-r",
+      "ticket": "OMN-21288",
+      "kind": "build",
+      "engine": "claude",
+      "started_at": "2026-11-06T16:52:58Z",
+      "run_minutes": 102,
+      "stalled": false
+     }
+    ],
+    "landing_workers": [
+     {
+      "lane": "landing-L28826",
+      "ticket": "OMN-19998",
+      "kind": "landing worker",
+      "engine": "claude",
+      "started_at": "2026-11-06T18:34:29Z",
+      "run_minutes": 1,
+      "stalled": false
+     },
+     {
+      "lane": "landing-L28828",
+      "ticket": "OMN-19998",
+      "kind": "landing worker",
+      "engine": "claude",
+      "started_at": "2026-11-06T18:34:57Z",
+      "run_minutes": 0,
+      "stalled": false
+     },
+     {
+      "lane": "landing-L28822",
+      "ticket": "OMN-19998",
+      "kind": "landing worker",
+      "engine": "claude",
+      "started_at": "2026-11-06T18:34:42Z",
+      "run_minutes": 1,
+      "stalled": false
+     }
+    ],
+    "other_units": {
+     "state": "read",
+     "value": 4.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "read",
+     "value": 0.61,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_free_gb": {
+     "state": "read",
+     "value": 13.9,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_pressure": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "level",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool reading carries no swap cell"
+    },
+    "disk_free_gb": {
+     "state": "read",
+     "value": 143.4,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_used_pct": {
+     "state": "read",
+     "value": 84.52,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 211.5,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T15:04:22Z",
+     "age_min": 211,
+     "reason": "the newest heartbeat is 211 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 10.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "read",
+     "value": false,
+     "source": "capacity advertisement",
+     "read_at": "2026-11-06T18:35:21Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "reading_age": {
+     "state": "read",
+     "value": 0.67,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    }
+   },
+   {
+    "host": "h105",
+    "label": "h105",
+    "condition": "out",
+    "available": {
+     "state": "read",
+     "value": false,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "with the operator at a conference from 2026-11-03; back when the operator says so (RULING 2026-11-02T23:28:22Z)",
+    "cap": {
+     "state": "read",
+     "value": 3.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "unread",
+     "value": null,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "unread",
+     "value": null,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_pressure": {
+     "state": "unread",
+     "value": null,
+     "unit": "",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 176.5,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T15:39:22Z",
+     "age_min": 176,
+     "reason": "the newest heartbeat is 176 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 10.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "unread",
+     "value": null,
+     "source": "capacity advertisement",
+     "read_at": "",
+     "age_min": null,
+     "reason": "no capacity advertisement from this host"
+    },
+    "reading_age": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    }
+   },
+   {
+    "host": "h106",
+    "label": "h106",
+    "condition": "read",
+    "available": {
+     "state": "read",
+     "value": true,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "",
+    "cap": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "read",
+     "value": 0.05,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_free_gb": {
+     "state": "read",
+     "value": 6.2,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_pressure": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "psi",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "swap_used_pct": {
+     "state": "read",
+     "value": 22.0,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_free_gb": {
+     "state": "read",
+     "value": 120.4,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_used_pct": {
+     "state": "read",
+     "value": 48.24,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "heartbeat_age_min": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "",
+     "age_min": null,
+     "reason": "this host has never reported a heartbeat"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "unread",
+     "value": null,
+     "source": "capacity advertisement",
+     "read_at": "",
+     "age_min": null,
+     "reason": "no capacity advertisement from this host"
+    },
+    "reading_age": {
+     "state": "read",
+     "value": 0.67,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    }
+   },
+   {
+    "host": "h200",
+    "label": "h200 (the Mac)",
+    "condition": "out",
+    "available": {
+     "state": "read",
+     "value": false,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "out of lane, landing-worker and unit placement: RULING 2026-11-02T18:19:05Z, no lanes or scheduled work on the orchestrator Mac (OMN-22015)",
+    "cap": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "unread",
+     "value": null,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "admission_refusal": "",
+    "lanes": [
+     {
+      "lane": "docker-decl",
+      "ticket": "OMN-22704",
+      "kind": "build",
+      "engine": "claude",
+      "started_at": "2026-11-06T17:36:06Z",
+      "run_minutes": 59,
+      "stalled": true
+     },
+     {
+      "lane": "docker-decl-1735",
+      "ticket": "OMN-22704",
+      "kind": "build",
+      "engine": "claude",
+      "started_at": "2026-11-06T17:30:08Z",
+      "run_minutes": 65,
+      "stalled": true
+     }
+    ],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "unread",
+     "value": null,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_pressure": {
+     "state": "unread",
+     "value": null,
+     "unit": "",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "heartbeat_age_min": {
+     "state": "read",
+     "value": 30.9,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 37.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "unread",
+     "value": null,
+     "source": "capacity advertisement",
+     "read_at": "",
+     "age_min": null,
+     "reason": "no capacity advertisement from this host"
+    },
+    "reading_age": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    }
+   },
+   {
+    "host": "h201",
+    "label": "h201 (server)",
+    "condition": "read",
+    "available": {
+     "state": "read",
+     "value": true,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "",
+    "cap": {
+     "state": "read",
+     "value": 6.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "read",
+     "value": 6.0,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "read",
+     "value": 0.23,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_free_gb": {
+     "state": "read",
+     "value": 59.1,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "mem_pressure": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "psi",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "swap_used_pct": {
+     "state": "read",
+     "value": 26.0,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_free_gb": {
+     "state": "read",
+     "value": 676.8,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "disk_used_pct": {
+     "state": "read",
+     "value": 63.05,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 169.55,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T15:46:19Z",
+     "age_min": 169,
+     "reason": "the newest heartbeat is 169 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 9.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "read",
+     "value": true,
+     "source": "capacity advertisement",
+     "read_at": "2026-11-06T18:35:14Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "reading_age": {
+     "state": "read",
+     "value": 0.67,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "2026-11-06T18:35:12Z",
+     "age_min": 0,
+     "reason": ""
+    }
+   },
+   {
+    "host": "h202",
+    "label": "h202",
+    "condition": "out",
+    "available": {
+     "state": "read",
+     "value": false,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "h202 is down for repair (operator, 2026-10-23T12:25Z); remove available: false when it is back",
+    "cap": {
+     "state": "read",
+     "value": 8.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "unread",
+     "value": null,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "unread",
+     "value": null,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_pressure": {
+     "state": "unread",
+     "value": null,
+     "unit": "",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 20272.5,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-10-23T16:43:22Z",
+     "age_min": 20272,
+     "reason": "the newest heartbeat is 20272 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 1.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "read",
+     "value": true,
+     "source": "capacity advertisement",
+     "read_at": "2026-11-06T18:35:14Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "reading_age": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    }
+   },
+   {
+    "host": "h203",
+    "label": "h203",
+    "condition": "out",
+    "available": {
+     "state": "read",
+     "value": false,
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "unavailable_reason": "out of every placement, unit and landing worker for a stated reason",
+    "cap": {
+     "state": "read",
+     "value": 6.0,
+     "unit": "slots",
+     "source": "host table",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_used": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "slots",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "slots_free": {
+     "state": "unread",
+     "value": null,
+     "unit": "slots",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "admission_refusal": "",
+    "lanes": [],
+    "landing_workers": [],
+    "other_units": {
+     "state": "read",
+     "value": 0.0,
+     "unit": "units",
+     "source": "slot markers",
+     "read_at": "2026-11-06T18:35:52Z",
+     "age_min": 0,
+     "reason": ""
+    },
+    "load_per_core": {
+     "state": "unread",
+     "value": null,
+     "unit": "per core",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "mem_pressure": {
+     "state": "unread",
+     "value": null,
+     "unit": "",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "swap_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "%",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_free_gb": {
+     "state": "unread",
+     "value": null,
+     "unit": "GB",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "disk_used_pct": {
+     "state": "unread",
+     "value": null,
+     "unit": "% used",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    },
+    "heartbeat_age_min": {
+     "state": "stale",
+     "value": 21452.62,
+     "unit": "min",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-10-22T21:03:15Z",
+     "age_min": 21452,
+     "reason": "the newest heartbeat is 21452 min old; its bound is 120 min"
+    },
+    "drift_open": {
+     "state": "read",
+     "value": 7.0,
+     "unit": "items",
+     "source": "host-drift fleet projection",
+     "read_at": "2026-11-06T18:04:58Z",
+     "age_min": 30,
+     "reason": ""
+    },
+    "docker": {
+     "state": "unread",
+     "value": null,
+     "source": "capacity advertisement",
+     "read_at": "",
+     "age_min": null,
+     "reason": "no capacity advertisement from this host"
+    },
+    "reading_age": {
+     "state": "unread",
+     "value": null,
+     "unit": "min",
+     "source": "pool read",
+     "read_at": "",
+     "age_min": null,
+     "reason": "the pool read holds no row for this host (the host table has it out of selection, so no pool read is asked of it)"
+    }
+   }
+  ]
+ }
+}
