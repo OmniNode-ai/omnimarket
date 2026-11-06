@@ -306,7 +306,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 # Sorted by node name (ASCII), one line per node. Add a node at its sorted position,
 # never at the end: two pull requests that add different nodes then touch different
-# lines and merge without a conflict. scripts/ci/check_entry_point_format.py refuses
+# lines and merge without a conflict. tests/ci/test_entry_points_sorted_merge.py fails
 # an unsorted table. Notes that used to sit between entries are kept below, in order.
 # OMN-20275: ledger-host append effect, hosted by `onex work-ledger serve`.
 # OMN-14151: node_auto_merge_effect entry point DEREGISTERED — legacy arm

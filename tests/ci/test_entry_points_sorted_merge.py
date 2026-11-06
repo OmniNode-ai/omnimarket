@@ -5,12 +5,13 @@
 Every node-adding pull request used to append one line at the end of the
 ``[project.entry-points."onex.nodes"]`` table, so any two of them conflicted and
 a conflicted head gets no pull_request CI. The table is now kept sorted by node
-name and ``scripts/ci/check_entry_point_format.py`` refuses an unsorted table.
+name and this test refuses an unsorted table (the entry-point format script is
+baselined and may not grow, so the sort rule lives here and runs in CI).
 
 Three reads, each with a failing control:
 
-* AC1: the real table is sorted and the checker exits 0; the same table with two
-  names swapped exits 1.
+* AC1: the real table is sorted; the same table with two names swapped is
+  reported out of order.
 * AC2: a node directory with no entry still fails the node drift validator; with
   its entry it passes.
 * AC3: two branches that add different nodes merge without a conflict when each
@@ -22,10 +23,10 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tomllib
+from itertools import pairwise
 from pathlib import Path
 from types import ModuleType
 
@@ -36,7 +37,6 @@ pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
-CHECK_SCRIPT = REPO_ROOT / "scripts" / "ci" / "check_entry_point_format.py"
 DRIFT_SCRIPT = REPO_ROOT / "scripts" / "validate_node_drift.py"
 TABLE_HEADER = '[project.entry-points."onex.nodes"]'
 ENTRY_LINE = re.compile(r'^([A-Za-z0-9_.-]+) = "[^"]+"$')
@@ -66,45 +66,30 @@ def _load(path: Path, name: str) -> ModuleType:
     return module
 
 
-def _run_check(tmp_path: Path, pyproject_text: str) -> subprocess.CompletedProcess[str]:
-    """Run a copy of the checker against a pyproject.toml at a throwaway root."""
-    (tmp_path / "scripts" / "ci").mkdir(parents=True)
-    shutil.copy(CHECK_SCRIPT, tmp_path / "scripts" / "ci" / CHECK_SCRIPT.name)
-    (tmp_path / "pyproject.toml").write_text(pyproject_text)
-    return subprocess.run(
-        [
-            sys.executable,
-            str(tmp_path / "scripts" / "ci" / CHECK_SCRIPT.name),
-            "pyproject.toml",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=tmp_path,
-    )
+def _out_of_order(names: list[str]) -> list[tuple[str, str]]:
+    """Each adjacent (earlier, later) pair of names that is not in sorted order."""
+    return [(a, b) for a, b in pairwise(names) if a > b]
 
 
-def test_real_table_is_sorted_and_the_checker_passes(tmp_path: Path) -> None:
-    names = _names(PYPROJECT.read_text())
-    assert len(names) > 100
-    assert names == sorted(names)
-    assert len(names) == len(
-        tomllib.loads(PYPROJECT.read_text())["project"]["entry-points"]["onex.nodes"]
-    )
-    result = _run_check(tmp_path, PYPROJECT.read_text())
-    assert result.returncode == 0, result.stdout
-
-
-def test_checker_refuses_two_swapped_names(tmp_path: Path) -> None:
-    """Failing control for AC1: two names swapped in the real table exit 1."""
+def test_real_table_is_sorted() -> None:
     text = PYPROJECT.read_text()
-    lines = _entry_lines(text)
-    first, second = lines[10], lines[11]
-    swapped = text.replace(first + "\n" + second, second + "\n" + first, 1)
-    assert swapped != text
-    result = _run_check(tmp_path, swapped)
-    assert result.returncode == 1
-    assert "not sorted" in result.stdout
+    names = _names(text)
+    assert len(names) > 100
+    assert not _out_of_order(names), (
+        'keep [project.entry-points."onex.nodes"] sorted by name and insert a new '
+        "node at its sorted position, never at the end"
+    )
+    assert len(names) == len(
+        tomllib.loads(text)["project"]["entry-points"]["onex.nodes"]
+    )
+
+
+def test_two_swapped_names_are_reported_out_of_order() -> None:
+    """Failing control for AC1: two names swapped in the real table are caught."""
+    names = _names(PYPROJECT.read_text())
+    swapped = [*names]
+    swapped[10], swapped[11] = swapped[11], swapped[10]
+    assert _out_of_order(swapped) == [(names[11], names[10])]
 
 
 def test_a_node_without_an_entry_fails_the_drift_validator(tmp_path: Path) -> None:

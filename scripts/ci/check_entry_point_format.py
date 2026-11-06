@@ -6,9 +6,6 @@
 Runs when pyproject.toml is in the changed file set. Verifies that every
 entry in [project.entry-points."onex.nodes"] is a valid dotted module path
 (no colon:ClassName — these are module-only references, not entry points).
-Also verifies the table is sorted by node name, so that two pull requests that
-add different nodes insert at different lines and merge without a conflict
-(a node appended at the end of the table conflicts with every other one).
 
 Does NOT do filesystem verification (that's the CI runtime_sweep's job).
 This check is purely syntactic — catches malformed entries before commit.
@@ -21,15 +18,9 @@ from __future__ import annotations
 import re
 import sys
 import tomllib
-from itertools import pairwise
 from pathlib import Path
 
 VALID_MODULE_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$")
-
-
-def unsorted_names(names: list[str]) -> list[tuple[str, str]]:
-    """Return each adjacent (earlier, later) pair of names that is out of order."""
-    return [(a, b) for a, b in pairwise(names) if a > b]
 
 
 def main(files: list[str]) -> int:
@@ -60,16 +51,6 @@ def main(files: list[str]) -> int:
                     "unexpected colon (onex.nodes uses module path, not module:class)",
                 )
             )
-
-    out_of_order = unsorted_names(list(entry_points))
-    if out_of_order:
-        print("entry-point-format: onex.nodes entries are not sorted by name:\n")
-        for earlier, later in out_of_order[:20]:
-            print(f"  {earlier} comes before {later}")
-        print(
-            "\nFAIL: keep the table sorted; insert a new node at its sorted position."
-        )
-        return 1
 
     if broken:
         print("entry-point-format: malformed onex.nodes entries in pyproject.toml:\n")
