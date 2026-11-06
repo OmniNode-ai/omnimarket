@@ -30,7 +30,6 @@ from tests.unit.nodes.node_work_ledger_query_effect.state_fixtures import (
     CORRELATION,
     NOW,
     FakeStateReader,
-    msg_entity,
     node,
     request,
 )
@@ -73,7 +72,7 @@ def _dispatch(handler: HandlerWorkLedgerQuery, kind: K, **fields: object) -> obj
 def test_golden_chain_the_terminal_event_names_the_stale_hold_apart() -> None:
     old = open_hold("hold-old", timedelta(days=39))
     young = open_hold("hold-young", timedelta(days=2))
-    reader = FakeStateReader((old, young, msg_entity()))
+    reader = FakeStateReader((old, young))
     terminal = ModelWorkLedgerQueryResult.model_validate(
         _dispatch(node(reader), K.HOLDS)
     )
