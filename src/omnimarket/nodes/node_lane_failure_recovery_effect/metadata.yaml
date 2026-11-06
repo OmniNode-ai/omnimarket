@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_failure_recovery_effect
+version: 1.0.0
+description: Lane failure normalization and shared recovery-plan contributions
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Lane Failure Recovery Effect
+entry_points:
+  onex.nodes:
+    node_lane_failure_recovery_effect: omnimarket.nodes.node_lane_failure_recovery_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: event_bus
+dependencies: [pydantic>=2.11.0, pyyaml>=6.0, omnibase-core>=0.47.60, omnibase-infra>=0.38.0]
+license: MIT
+tags: [effect, errors, recovery, lane]
