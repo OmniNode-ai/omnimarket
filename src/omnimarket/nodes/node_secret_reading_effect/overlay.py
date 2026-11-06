@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -41,19 +40,18 @@ class ModelSecretReadingPublish(BaseModel):
 
 
 class ModelSecretReadingStore(BaseModel):
-    """Which backend the probes resolve through."""
+    """Which store the probes resolve through: the secret store effect when its addressing
+    block is present, the in-memory store when it is null. The overlay chooses; code never
+    compares a backend name."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["inmemory", "secret-store-effect"]
-    #: The secret store effect's addressing, required for that backend. Names, never values.
+    #: The secret store effect's addressing. Names and references, never values.
     secret_store: ModelSecretStoreOverlay | None
 
-    @model_validator(mode="after")
-    def _addressing(self) -> ModelSecretReadingStore:
-        if self.backend == "secret-store-effect" and self.secret_store is None:
-            raise ValueError("backend secret-store-effect needs a secret_store block")
-        return self
+    @property
+    def backend_name(self) -> str:
+        return "inmemory" if self.secret_store is None else "secret-store-effect"
 
 
 class ModelPlantedDummy(BaseModel):
@@ -112,7 +110,7 @@ class ModelSecretReadingOverlay(BaseModel):
         """Hash of what the reading depends on, so a change of consumers shows in the row."""
         text = json.dumps(
             {
-                "backend": self.store.backend,
+                "backend": self.store.backend_name,
                 "consumers": [c.model_dump(mode="json") for c in self.consumers],
                 "max_age": self.publish.publish_max_age_seconds,
                 "surfaces": list(self.exposure.surfaces),

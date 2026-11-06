@@ -246,7 +246,7 @@ class HandlerSecretReading:
             f"exposures={len(result.scan.exposures)}",
             f"planted_dummy={'found' if result.scan.dummy_found else 'missed'}",
             f"open_exposures={result.open_exposures}",
-            f"backend={self._overlay.store.backend}",
+            f"backend={self._overlay.store.backend_name}",
             f"probed_at={stamp_text(now)}",
             f"published_at={stamp_text(now)}",
             f"max_age={publish.publish_max_age_seconds}",

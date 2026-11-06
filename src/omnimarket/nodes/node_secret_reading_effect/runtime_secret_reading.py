@@ -49,10 +49,10 @@ from omnimarket.nodes.node_secret_reading_effect.protocols import (
 
 
 def build_store(overlay: ModelSecretReadingOverlay) -> ProtocolSecretProbeStore:
-    if overlay.store.backend == "inmemory":
+    addressing = overlay.store.secret_store
+    if addressing is None:
         return InMemorySecretProbeStore({})
-    assert overlay.store.secret_store is not None
-    return SecretStoreEffectProbeStore.from_overlay(overlay.store.secret_store)
+    return SecretStoreEffectProbeStore.from_overlay(addressing)
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:

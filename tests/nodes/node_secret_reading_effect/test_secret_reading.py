@@ -232,13 +232,6 @@ def test_the_store_effect_backend_never_raises() -> None:
     assert outcome is EnumSecretProbeOutcome.UNREACHABLE
 
 
-def test_the_real_backend_needs_its_addressing_block() -> None:
-    document = overlay().model_dump(mode="json")
-    document["store"] = {"backend": "secret-store-effect", "secret_store": None}
-    with pytest.raises(ValidationError):
-        ModelSecretReadingOverlay.model_validate(document)
-
-
 def test_a_consumer_declared_twice_refuses_the_overlay() -> None:
     document = overlay().model_dump(mode="json")
     document["consumers"].append(document["consumers"][0])
@@ -257,4 +250,5 @@ def test_the_shipped_example_overlay_loads() -> None:
     loaded = ModelSecretReadingOverlay.model_validate(
         yaml.safe_load(path.read_text(encoding="utf-8"))
     )
-    assert loaded.store.backend == "secret-store-effect"
+    assert loaded.store.secret_store is not None
+    assert loaded.store.backend_name == "secret-store-effect"

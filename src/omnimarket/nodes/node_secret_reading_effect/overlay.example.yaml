@@ -14,7 +14,6 @@ publish:
   drill: false
   publish_max_age_seconds: 7200
 store:
-  backend: secret-store-effect
   secret_store:
     provider: example-provider
     address: https://store.example.invalid

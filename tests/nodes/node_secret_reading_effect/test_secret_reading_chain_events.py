@@ -204,10 +204,18 @@ def test_break_success_in_place_of_failure_turns_the_error_chain_red() -> None:
 
 
 def test_contract_declares_the_exact_secret_reading_event_topics() -> None:
-    assert set(TOPICS) == {
-        "secret_reading_requested",
-        "secret_probe_passed",
-        "secret_probe_failed",
-        "secret_reading_run_completed",
-        "secret_reading_run_failed",
-    }
+    assert TOPICS["secret_reading_requested"] == (
+        "onex.cmd.omnimarket.secret-reading-requested.v1"
+    )
+    assert TOPICS["secret_probe_passed"] == (
+        "onex.evt.omnimarket.secret-probe-passed.v1"
+    )
+    assert TOPICS["secret_probe_failed"] == (
+        "onex.evt.omnimarket.secret-probe-failed.v1"
+    )
+    assert TOPICS["secret_reading_run_completed"] == (
+        "onex.evt.omnimarket.secret-reading-run-completed.v1"
+    )
+    assert TOPICS["secret_reading_run_failed"] == (
+        "onex.evt.omnimarket.secret-reading-run-failed.v1"
+    )

@@ -46,7 +46,7 @@ def document(**changes: Any) -> dict[str, Any]:
             "drill": False,
             "publish_max_age_seconds": 7200,
         },
-        "store": {"backend": "inmemory", "secret_store": None},
+        "store": {"secret_store": None},
         "consumers": [
             {"consumer": "gate", "folder": "/shared/env", "key": "GATE_PASSWORD"},
             {"consumer": "decider", "folder": "/shared/env", "key": "DECIDER_KEY"},
