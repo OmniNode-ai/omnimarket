@@ -63,10 +63,12 @@ def schema_cursor() -> Iterator[Any]:
     psycopg2 = pytest.importorskip("psycopg2")
 
     schema = f"omn22573_{uuid.uuid4().hex[:12]}"
+    dsn = _dsn()
     try:
-        conn = psycopg2.connect(_dsn())
+        conn = psycopg2.connect(dsn)
     except Exception as exc:
         pytest.skip(f"Postgres unreachable: {exc}")
+        raise
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
