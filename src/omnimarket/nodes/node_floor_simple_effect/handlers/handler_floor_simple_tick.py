@@ -248,19 +248,12 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.floor_overlay.file_env,
         )
-        lab_ov = load_structured_overlay(
-            rt.lab_overlay.overlay_id,
-            ModelLabStateOverlay,
-            env,
-            file_env=rt.lab_overlay.file_env,
-        )
         alarm_ov = load_structured_overlay(
             rt.alarm_overlay.overlay_id,
             ModelAlarmOverlay,
             env,
             file_env=rt.alarm_overlay.file_env,
         )
-        goal_scope = self._load_goal_scope(rt, env)
         state_dir = home / rt.state.dir_relpath
         sink = self._sink or JsonlEmissionSink(state_dir / rt.state.emissions)
         piece = floor_ov.rebuild.lab_state_piece
@@ -332,6 +325,13 @@ class HandlerFloorSimpleTick:
             return self._canary_only(
                 rt, env, alarm_ov, home, step, emit, cid, started, lambda: emitted
             )
+        lab_ov = load_structured_overlay(
+            rt.lab_overlay.overlay_id,
+            ModelLabStateOverlay,
+            env,
+            file_env=rt.lab_overlay.file_env,
+        )
+        goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
                 rt,
@@ -400,9 +400,16 @@ class HandlerFloorSimpleTick:
     ) -> ModelFloorSimpleTickResult:
         """Publish the canary status from the page as it is served now; the publish node runs this after the page copy."""
         canary = self._publish_canary(rt, env, alarm_ov, home, step, skip=False)
-        ok = canary == "published"
+        # An alarm overlay that declares no canary block is a host with no hosted canary: the publish step has nothing to
+        # publish and says so in its success counters, and the hosted canary reads the silence if one watches this host.
+        ok = canary in ("published", "not_configured")
         if ok:
-            emit(EMIT_CYCLE, "success", self._clock(), counters={"canary_published": 1})
+            emit(
+                EMIT_CYCLE,
+                "success",
+                self._clock(),
+                counters={f"canary_{canary}": 1},
+            )
         else:
             emit(
                 EMIT_CYCLE,

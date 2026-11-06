@@ -582,6 +582,31 @@ def test_golden_the_canary_only_run_publishes_the_page_as_it_is_served_now(
     assert age < 60  # the page's own age, not a cycle old
 
 
+def test_golden_a_canary_only_run_on_a_host_with_no_canary_block_passes_and_says_so(
+    tmp_path: Path,
+) -> None:
+    """A host whose alarm overlay declares no canary block has nothing to publish; the after-publish step must not fail."""
+    published: list[ModelCanaryStatus] = []
+    sink = InMemoryEmissionSink()
+    home = build_home(tmp_path)
+    result = HandlerFloorSimpleTick(
+        sink=sink,
+        clock=lambda: NOW,
+        served_alarm_ids=lambda: None,
+        slack_apis={"slack_alerts": FakeSlackApi()},
+        canary_publisher=published.append,
+        served_times=lambda: (NOW, NOW),
+    ).run(
+        ModelFloorSimpleTickRequest(home=str(home), canary_only=True),
+        environ=environ(home),
+    )
+    assert result.ok
+    assert result.canary == "not_configured"
+    assert published == []
+    done = [e for e in sink.events if e.phase == "success" and e.counters]
+    assert done[-1].counters == {"canary_not_configured": 1}
+
+
 def test_error_a_canary_only_run_that_cannot_publish_is_a_failed_run(
     tmp_path: Path,
 ) -> None:
