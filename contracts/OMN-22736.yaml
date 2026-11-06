@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-22736
+title: The worktree reconcile node keeps a worktree that an installed unit's ExecStart, WorkingDirectory or Environment points into
+summary: The host worktree reconcile removed a lane worktree at 2026-11-06T18:16:24Z (decision remove, reason content_merged) while the loaded unit onex-reading-hourly.service named that tree's venv in ExecStart and in two Environment lines, and the next tick failed every piece. The node's facts knew a live process, claim, git lock and recent activity, and nothing about installed units. The probe now reads the installed systemd services of the user and the system manager once per run (list-unit-files, cat with drop-ins, and the environment files a unit names) and again at revalidation just before each removal. A tree a unit names, or a path inside it, is the live_unit fact and the decision is keep; a snapshot that cannot be read is a probe error that keeps every tree.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22736-keep-unit-roots
+  statement: A tree that an installed unit runs from is never removed, and a unit snapshot that cannot be read removes nothing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: facts built from the recorded onex-reading-hourly.service text decide keep with reason live_unit for the tree it names, and the same tree with no unit naming it is removed -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_compute.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a unit snapshot that cannot be read (systemctl failing or absent, a required environment file missing) keeps every tree and counts a failure -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_units.py -k unreadable -q --no-cov'
+  - id: AC3
+    statement: 'AC3: a unit installed between discovery and removal stops the removal at revalidation -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_units.py -k between_discovery_and_removal -q --no-cov'
+  - id: AC4
+    statement: 'AC4: the decided event of a kept tree carries the live_unit reason and the decided event of an unreadable snapshot carries the unit_snapshot_failed probe error, each reaching the decided topic -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov'
+  - id: AC5
+    statement: 'AC5: on a lab host from the branch, a dry run over a scratch tree named by a transient user unit reports keep live_unit and, with the unit stopped, reports remove -- falsifier: run the node run command on the lab host with a command file over a scratch root and read the decided event'
+evidence_requirements:
+- kind: tests
+  description: The unit-root reads, the keep decision, the unreadable snapshot and the revalidation case
+  command: uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_effect.py tests/test_worktree_reconcile_compute.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22736-unit-roots
+  description: A tree an installed unit names is kept with reason live_unit, and the same tree with no unit naming it is removed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov
+    cwd: .
+- id: dod-omn22736-unreadable
+  description: An unreadable unit snapshot keeps every tree and counts a failure.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_units.py -k "unreadable or between_discovery_and_removal" -q --no-cov
+    cwd: .
+- id: dod-omn22736-chain-events
+  description: The golden and error decided events carry the live_unit reason and the unit_snapshot_failed probe error.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov
+    cwd: .
+- id: dod-omn22736-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22736 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_effect.py tests/test_worktree_reconcile_compute.py -q --no-cov
+    cwd: .
