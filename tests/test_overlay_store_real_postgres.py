@@ -101,6 +101,7 @@ async def _migrated() -> AsyncIterator[
     await admin.execute(f"CREATE DATABASE {database}")
     connection = await asyncpg.connect(_dsn(database))
     try:
+        await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await connection.execute(MIGRATION.read_text(encoding="utf-8"))
         published: list[tuple[str, bytes]] = []
         runner = HandlerOverlayStoreProjectionRunner()

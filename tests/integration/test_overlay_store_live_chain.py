@@ -71,6 +71,7 @@ async def test_a_real_overlay_travels_a_real_broker_and_database_and_reads_back_
     database = f"overlay_store_{uuid.uuid4().hex[:12]}"
     await admin.execute(f"CREATE DATABASE {database}")
     connection = await asyncpg.connect(_dsn(database))
+    await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
     await connection.execute(MIGRATION.read_text(encoding="utf-8"))
 
     def open_bus() -> Any:
