@@ -230,3 +230,18 @@ def test_break_success_in_place_of_failure_turns_the_error_chain_red(
         assert_failed_chain(
             _golden_events(tmp_path), verdict="UNKNOWN", outcome="source-unreadable"
         )
+
+
+def test_contract_declares_the_exact_host_reading_event_topics() -> None:
+    assert TOPICS["host_reading_written"] == (
+        "onex.evt.omnimarket.host-reading-written.v1"
+    )
+    assert TOPICS["host_reading_failed"] == (
+        "onex.evt.omnimarket.host-reading-failed.v1"
+    )
+    assert TOPICS["host_reading_run_completed"] == (
+        "onex.evt.omnimarket.host-reading-run-completed.v1"
+    )
+    assert TOPICS["host_reading_run_failed"] == (
+        "onex.evt.omnimarket.host-reading-run-failed.v1"
+    )
