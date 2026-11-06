@@ -90,6 +90,7 @@ class CanaryWorld:
         self.inventory = InMemoryHostInventory(_hosts())
         self.advert_age_seconds = dict.fromkeys(POOLED, 60)
         self.advert_error: str | None = None
+        self.advertisements_configured = True
 
     # -- the named breaks ------------------------------------------------------------------
 
@@ -152,6 +153,9 @@ class CanaryWorld:
         )
         return CommandAdvertisementSource(command, 30, {"PATH": "/usr/bin:/bin"})
 
+    def drop_advertisement_source(self) -> None:
+        self.advertisements_configured = False
+
     def break_host_table_unreadable(self) -> None:
         self.inventory.error = "lab_hosts overlay unreadable"
 
@@ -169,6 +173,8 @@ class CanaryWorld:
                 "disk_floor_gb": self.floor_gb,
             }
         )
+        if not self.advertisements_configured:
+            canary = canary.model_copy(update={"advertisements_command_env": None})
         return base.model_copy(update={"canary": canary})
 
     def route(self) -> str:
@@ -524,16 +530,7 @@ def test_golden_chain_assertion_turns_red_when_a_host_is_dropped() -> None:
 def test_advertisements_not_configured_read_nothing_and_fail_nothing() -> None:
     world = CanaryWorld("memory")
     world.break_advertisements_unreadable()
-    base = world.overlay()
-    assert base.canary is not None
-    unconfigured = base.model_copy(
-        update={
-            "canary": base.canary.model_copy(
-                update={"advertisements_command_env": None}
-            )
-        }
-    )
-    world.overlay = lambda: unconfigured  # type: ignore[method-assign]
+    world.drop_advertisement_source()
     verdict, _, cells = _read(world)
     assert verdict == "WORKING"
     assert cells["advert"] == "not-configured"
