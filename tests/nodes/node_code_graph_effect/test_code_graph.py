@@ -123,10 +123,13 @@ def test_graph_reaches_roots_across_repositories(repos: ProtocolRepoSource) -> N
     graph = build_graph(snapshots, rules)
     core = graph.repo_graph("example_core", snapshots[0].head)
     app = graph.repo_graph("example_app", snapshots[1].head)
+    # a TYPE_CHECKING import loads nothing, but marks the lazy export the CLI imports
     assert core.unreachable == (
         "src/example_core/helpers.py",
+        "src/example_core/lazy/model_beta.py",
         "src/example_core/unused.py",
     )
+    assert ("example_core", "src/example_core/lazy/model_alpha.py") in graph.reached
     assert core.test_only == ("src/example_core/helpers.py",)
     assert app.unreachable == ("src/example_app/orphan.py",)
     # the handler's import of the other repository reaches it, and the script's dynamic import counts
@@ -154,7 +157,7 @@ def test_nightly_writes_one_working_row(repos: ProtocolRepoSource) -> None:
     assert row.cells["verdict"] == "WORKING"
     assert row.cells["sample"] == "7/7"
     assert row.cells["controls"] == "2/2"
-    assert row.cells["unreachable"] == "3"
+    assert row.cells["unreachable"] == "4"
 
 
 def test_probe_appends_nothing(repos: ProtocolRepoSource) -> None:

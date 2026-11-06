@@ -32,7 +32,17 @@ CORE: dict[str, str] = {
     "src/example_core/ci_only.py": "def run():\n    return 0\n",
     "pyproject.toml": '[project]\nname = "example-core"\n[project.scripts]\nexample-core = "example_core.cli:main"\n',
     "src/example_core/__init__.py": "",
-    "src/example_core/cli.py": "from example_core.models import Thing\n\ndef main():\n    return Thing\n",
+    "src/example_core/cli.py": (
+        "from example_core.lazy import Alpha\nfrom example_core.models import Thing\n\n"
+        "def main():\n    return Thing, Alpha\n"
+    ),
+    "src/example_core/lazy/__init__.py": (
+        "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n"
+        "    from example_core.lazy.model_alpha import Alpha\n"
+        "    from example_core.lazy.model_beta import Beta\n"
+    ),
+    "src/example_core/lazy/model_alpha.py": "class Alpha:\n    pass\n",
+    "src/example_core/lazy/model_beta.py": "class Beta:\n    pass\n",
     "src/example_core/models.py": "class Thing:\n    pass\n",
     "src/example_core/unused.py": "VALUE = 1\n",
     "src/example_core/helpers.py": "def helper():\n    return 2\n",

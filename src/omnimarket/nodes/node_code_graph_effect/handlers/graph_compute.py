@@ -3,7 +3,9 @@
 """The graph itself: a pure function of repository snapshots and the overlay's root rules.
 
 Entities are Python module files. An edge is an import (``import``, ``from ... import``, a relative
-import, or a literal ``importlib.import_module`` / ``__import__`` name). Roots are ``__main__``
+import, or a literal ``importlib.import_module`` / ``__import__`` name). An import under
+``if TYPE_CHECKING`` loads nothing; it marks a lazy export instead, so ``from package import
+name`` reaches the module the package names for it. Roots are ``__main__``
 modules, files matching a root glob, the targets of ``pyproject.toml`` scripts and entry points,
 and the ``-m`` modules and ``.py`` paths a command file runs (workflows, hook configs, units). A
 contract links its node package to the modules it names, so a declared node's handler is reached
@@ -136,29 +138,65 @@ class _Index:
         return hit + packages
 
 
-def _imported_names(tree: ast.AST, package: Sequence[str]) -> Iterator[str]:
-    for node in ast.walk(tree):
+@dataclass
+class _Scan:
+    """What one module imports at run time, and what it names only for the type checker."""
+
+    #: Dotted names imported at run time (``import x.y``, a literal ``import_module``).
+    names: list[str] = field(default_factory=list)
+    #: ``(base, name)`` of each run-time ``from base import name``.
+    pairs: list[tuple[str, str]] = field(default_factory=list)
+    #: Name to dotted module of each ``from m import name`` under ``if TYPE_CHECKING``: a lazy
+    #: package exports these, so ``from package import name`` loads ``m`` on first use.
+    typing_exports: dict[str, str] = field(default_factory=dict)
+
+
+_NO_SCAN = _Scan()
+
+
+def _is_type_checking(test: ast.expr) -> bool:
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
+def _from_base(node: ast.ImportFrom, package: Sequence[str]) -> str:
+    if not node.level:
+        return node.module or ""
+    keep = len(package) - (node.level - 1)
+    if keep < 0:
+        return ""
+    return ".".join([*package[:keep], *([node.module] if node.module else [])])
+
+
+def _scan(tree: ast.AST, package: Sequence[str]) -> _Scan:
+    scan = _Scan()
+    stack: list[tuple[ast.AST, bool]] = [(tree, False)]
+    while stack:
+        node, typing_only = stack.pop()
+        if isinstance(node, ast.If) and _is_type_checking(node.test):
+            stack.extend((child, True) for child in node.body)
+            stack.extend((child, typing_only) for child in node.orelse)
+            continue
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                yield alias.name
+            if not typing_only:
+                scan.names.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                keep = len(package) - (node.level - 1)
-                if keep < 0:
-                    continue
-                base = ".".join(
-                    [*package[:keep], *([node.module] if node.module else [])]
-                )
-            else:
-                base = node.module or ""
-            if not base:
-                continue
-            yield base
-            for alias in node.names:
-                if alias.name != "*":
-                    yield f"{base}.{alias.name}"
+            base = _from_base(node, package)
+            if base:
+                for alias in node.names:
+                    if alias.name == "*":
+                        if not typing_only:
+                            scan.names.append(base)
+                    elif typing_only:
+                        scan.typing_exports[alias.asname or alias.name] = (
+                            f"{base}.{alias.name}"
+                        )
+                    else:
+                        scan.pairs.append((base, alias.name))
         elif (
-            isinstance(node, ast.Call)
+            not typing_only
+            and isinstance(node, ast.Call)
             and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
@@ -170,7 +208,9 @@ def _imported_names(tree: ast.AST, package: Sequence[str]) -> Iterator[str]:
                 or (isinstance(node.func, ast.Name) and node.func.id in _IMPORT_CALLS)
             )
         ):
-            yield node.args[0].value
+            scan.names.append(node.args[0].value)
+        stack.extend((child, typing_only) for child in ast.iter_child_nodes(node))
+    return scan
 
 
 def _contract_modules(text: str, keys: Sequence[str]) -> Iterator[str]:
@@ -263,6 +303,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
 
     edges: dict[Entity, set[Entity]] = {}
     roots: set[Entity] = set()
+    scans: dict[Entity, _Scan] = {}
     for snapshot in snapshots:
         repo = snapshot.repo
         for path, text in snapshot.files.items():
@@ -286,9 +327,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                     if path.endswith("__init__.py")
                     else name.split(".")[:-1]
                 )
-                targets = edges.setdefault(entity, set())
-                for imported in _imported_names(tree, package):
-                    targets.update(index.resolve(imported, repo))
+                scans[entity] = _scan(tree, package)
             elif path == _PYPROJECT and rules.roots.entry_points:
                 for module in _entry_point_modules(text):
                     roots.update(index.resolve(module, repo))
@@ -313,6 +352,18 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                 for named in _command_paths(text):
                     if (repo, named) in index.name_of:
                         roots.add((repo, named))
+
+    for entity, scan in scans.items():
+        repo = entity[0]
+        targets = edges.setdefault(entity, set())
+        for imported in scan.names:
+            targets.update(index.resolve(imported, repo))
+        for base, alias in scan.pairs:
+            targets.update(index.resolve(f"{base}.{alias}", repo))
+            for package_entity in index.exact(base, repo):
+                exported = scans.get(package_entity, _NO_SCAN).typing_exports.get(alias)
+                if exported is not None:
+                    targets.update(index.resolve(exported, repo))
 
     reached: set[Entity] = set()
     queue = deque(roots - tests)
