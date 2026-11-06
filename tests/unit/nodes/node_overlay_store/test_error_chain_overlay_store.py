@@ -23,6 +23,9 @@ from omnimarket.nodes.node_overlay_store_load_effect.handlers import (
     OverlayHomeSource,
     OverlayLoadRefusedError,
 )
+from omnimarket.nodes.node_overlay_store_read_effect import (
+    runtime_overlay_store_tick as tick_module,
+)
 from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     OverlayAbsentError,
     OverlayStaleError,
@@ -297,3 +300,27 @@ async def test_a_tick_keeps_a_held_snapshot_when_the_store_holds_nothing(
     run = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
     assert run["readings"][0]["source"] == "snapshot"
     assert run["readings"][0]["store_error"] == "the store holds no overlay lab_hosts"
+
+
+def test_a_tick_with_the_broker_down_still_records_this_hosts_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in _tick_overlay(
+        tmp_path, fleet_record_relpath="state/fleet.json"
+    ).items():
+        monkeypatch.setenv(key, value)
+    held = tmp_path / "state" / "fleet.json"
+    held.parent.mkdir()
+    held.write_text(
+        json.dumps({"readings": {"h2:lab_hosts": {"host": "h2", "state": "fresh"}}}),
+        encoding="utf-8",
+    )
+
+    async def refused(*_: object) -> dict[str, object]:
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr(tick_module, "fleet", refused)
+    tick_main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "run")])
+    readings = json.loads(held.read_text(encoding="utf-8"))["readings"]
+    assert readings["h2:lab_hosts"]["state"] == "fresh"
+    assert readings["h1:lab_hosts"]["state"] == "unreadable"
