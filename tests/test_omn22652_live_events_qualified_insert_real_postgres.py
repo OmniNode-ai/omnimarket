@@ -92,7 +92,7 @@ async def server() -> AsyncIterator[_Server]:
         )
     try:
         root = await asyncpg.connect(srv.admin_dsn("postgres"))
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for OMN-22652: {exc}")
     try:
         await root.execute(
