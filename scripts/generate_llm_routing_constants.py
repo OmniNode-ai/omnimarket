@@ -15,15 +15,11 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_REGISTRY = (
-    _REPO_ROOT
-    / "src"
-    / "omnimarket"
-    / "data"
-    / "model_registry"
-    / "model_registry_v1.yaml"
+    _REPO_ROOT / "src/omnimarket/data/model_registry" / "model_registry_v1.yaml"
 )
 _DEFAULT_OUTPUT = (
-    _REPO_ROOT / "src" / "omnimarket" / "routing" / "generated_llm_routing_constants.py"
+    _REPO_ROOT.joinpath("src", "omnimarket", "handlers", "routing")
+    / "generated_llm_routing_constants.py"
 )
 _DEFAULT_TOPOLOGY = (
     _REPO_ROOT.parent / "omnibase_infra" / "contracts" / "llm_endpoints.yaml"

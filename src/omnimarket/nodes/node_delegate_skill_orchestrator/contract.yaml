@@ -485,6 +485,9 @@ secret_request_refusal:
     - "exfiltrat"
 
 config_dependencies:
+  - key: DELEGATION_ROUTING_SOURCES_PATH
+    required: false
+    description: Optional YAML overlay replacing routing_overlay_sources secret references for read-only routing telemetry.
   - key: INFERENCE_PROTOCOL_CONFIG_PATH
     required: false
     description: Optional override for typed provider request-shaping profiles used by direct local dispatch.
@@ -679,3 +682,11 @@ budget_readback:
     over_budget_plus_grace: 1
     nothing_measured: 2
     unrunnable: 3
+
+# Optional routing readers resolve only these declared secret references.
+# A deployment may replace this block with DELEGATION_ROUTING_SOURCES_PATH.
+routing_overlay_sources:
+  projection:
+    dsn_env: OMNIDASH_ANALYTICS_DB_URL
+  verdict:
+    dsn_env: OMNINODE_INTERNAL_DB_URL

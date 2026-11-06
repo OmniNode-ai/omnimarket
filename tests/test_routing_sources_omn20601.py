@@ -432,6 +432,10 @@ def _probe_tenant_routing_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from omnimarket.handlers.routing.customer_key_terminus import EnumDelegationSurface
+    from omnimarket.handlers.routing.tenant_overlay_resolver import (
+        TENANT_OVERLAY_TABLE,
+        resolve_tenant_overlay,
+    )
     from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
         ModelDelegationRequest,
     )
@@ -439,10 +443,6 @@ def _probe_tenant_routing_overlay(
         handler_delegation_routing as routing,
     )
     from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-    from omnimarket.routing.tenant_overlay_resolver import (
-        TENANT_OVERLAY_TABLE,
-        resolve_tenant_overlay,
-    )
 
     contract = tmp_path / "bifrost_delegation.yaml"
     contract.write_text(_BIFROST_ONE_TIER, encoding="utf-8")

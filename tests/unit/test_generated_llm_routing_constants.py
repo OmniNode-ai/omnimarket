@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
-from omnimarket.routing.generated_llm_routing_constants import (
+from omnimarket.handlers.routing.generated_llm_routing_constants import (
     LLM_ENDPOINT_REFS,
     LOGICAL_MODEL_KEYS,
     EnumLlmEndpointRef,
     EnumLogicalModelKey,
 )
+from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
 
 _RETIRED_MODELS = (
     "claude-sonnet-4-6",

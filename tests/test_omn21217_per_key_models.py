@@ -27,6 +27,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.tenant_overlay_resolver import resolve_tenant_overlay
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
@@ -38,7 +39,6 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
 
 pytestmark = pytest.mark.integration
 TENANT = "omn21217-private-test"

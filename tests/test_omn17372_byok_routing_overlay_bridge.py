@@ -34,15 +34,15 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     load_byok_plan_catalog,
     resolve_byok_provider_backend,
 )
-from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
-    HandlerTenantCredentialsProjectionRunner,
-)
-from omnimarket.projection.runner import MessageMeta
-from omnimarket.routing.tenant_overlay_resolver import (
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
     BYOK_ALL_TASK_TYPES,
     TENANT_OVERLAY_TABLE,
     resolve_tenant_overlay,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
+    HandlerTenantCredentialsProjectionRunner,
+)
+from omnimarket.projection.runner import MessageMeta
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"

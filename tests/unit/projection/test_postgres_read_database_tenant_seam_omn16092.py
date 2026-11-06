@@ -36,17 +36,17 @@ from typing import Any
 import pytest
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.routing.roi_overlay import (
+    CONTEXT_ROI_TABLE,
+    resolve_context_roi_db,
+    resolve_roi_overlay,
+)
 from omnimarket.projection import tenant_isolation as tenant_isolation_module
 from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     TENANT_GUC,
     TenantContextMissingError,
-)
-from omnimarket.routing.roi_overlay import (
-    CONTEXT_ROI_TABLE,
-    resolve_context_roi_db,
-    resolve_roi_overlay,
 )
 
 pytestmark = pytest.mark.unit

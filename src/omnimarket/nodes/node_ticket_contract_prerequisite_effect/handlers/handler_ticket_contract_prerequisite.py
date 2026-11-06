@@ -132,7 +132,11 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 
 
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
-    """Read immutable git blobs, including when the working tree has a repair."""
+    """Read immutable blobs; unreadable diffs cannot grant a release exemption.
+
+    The typed handler resolves remote bases before calling this check. Direct
+    callers retain the local readers' fail-closed behavior for an unreadable base.
+    """
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
     if title is None:
         base = _resolve_base(base)

@@ -85,11 +85,16 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.routing.model_routing_overlay_sources import (
+    ModelRoutingOverlaySources,
+)
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
     resolve_rls_read_tenant,
@@ -592,6 +597,40 @@ def resolve_roi_overlay(
     return overlay
 
 
+def resolve_routing_overlay_dsn(role: Literal["projection", "verdict"]) -> str:
+    """Resolve an optional read's DSN from the orchestrator contract or overlay.
+
+    The existing secret names live in the contract, not in the factories. An
+    explicit source overlay replaces that declaration; an unreadable or invalid
+    overlay disables the optional reads without falling back to ambient targets.
+    Values never enter diagnostics. Missing secrets retain static routing.
+    """
+    pointer = os.environ.get("DELEGATION_ROUTING_SOURCES_PATH", "").strip()
+    path = (
+        Path(pointer)
+        if pointer
+        else (
+            Path(__file__).resolve().parents[2]
+            / "nodes/node_delegate_skill_orchestrator/contract.yaml"
+        )
+    )
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        sources = ModelRoutingOverlaySources.model_validate(
+            document.get("routing_overlay_sources")
+            if isinstance(document, dict)
+            else None
+        )
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        _logger.warning(
+            "Routing overlay sources unavailable (%s); static routing",
+            type(exc).__name__,
+        )
+        return ""
+    source = sources.projection if role == "projection" else sources.verdict
+    return os.environ.get(source.dsn_env, "").strip()
+
+
 def resolve_context_roi_db() -> DatabaseAdapter | None:
     """Resolve a read-only projection adapter for ``context_roi_scores``.
 
@@ -615,7 +654,7 @@ def resolve_context_roi_db() -> DatabaseAdapter | None:
     than being absorbed into a ``None`` — returning ``None`` for it would restore
     the exact silent static-routing degrade this fixes.
     """
-    dsn = os.environ.get(_ENV_CONTEXT_ROI_DSN, "").strip()
+    dsn = resolve_routing_overlay_dsn("projection")
     if not dsn:
         return None
     # Resolved before the import/construction below so the refusal is not

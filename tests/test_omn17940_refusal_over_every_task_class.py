@@ -73,6 +73,9 @@ from omnimarket.handlers.routing.customer_key_terminus import (
     EnumCustomerKeyRefusalReason,
     EnumDelegationSurface,
 )
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    ModelTenantRoutingOverlayBackend,
+)
 from omnimarket.inference.task_class_authority import (
     load_task_class_authority,
     withheld_delegation_refusal,
@@ -86,9 +89,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     delta,
     house_credential_refs,
-)
-from omnimarket.routing.tenant_overlay_resolver import (
-    ModelTenantRoutingOverlayBackend,
 )
 
 _CUSTOMER = "acme-corp"

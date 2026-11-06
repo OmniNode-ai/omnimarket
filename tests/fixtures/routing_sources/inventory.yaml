@@ -81,7 +81,7 @@ sources:
       probe: task_class_contract
   - id: tenant_routing_overlay
     selects: a tenant's own backend per task type, chosen from the platform default and the BYOK catalogue
-    resolver: omnimarket.routing.tenant_overlay_resolver:resolve_tenant_overlay
+    resolver: omnimarket.handlers.routing.tenant_overlay_resolver:resolve_tenant_overlay
     packaged_defaults:
       - src/omnimarket/configs/byok_provider_backends.v1.yaml
     overlay: a delegation_routing_tenant_overlay row per tenant and task type
@@ -90,7 +90,7 @@ sources:
       probe: tenant_routing_overlay
   - id: roi_outcome_overlay
     selects: which tiers are skipped, from captured outcomes of the context-ROI and definition-of-done projections
-    resolver: omnimarket.routing.roi_overlay:resolve_roi_overlay
+    resolver: omnimarket.handlers.routing.roi_overlay:resolve_roi_overlay
     packaged_defaults: []
     overlay: the ModelRoutingRoiOverlay the caller threads into the reducer
     resolution_sites: []

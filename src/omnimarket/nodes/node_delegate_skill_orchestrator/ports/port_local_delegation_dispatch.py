@@ -165,6 +165,10 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
 )
+from omnimarket.handlers.routing.roi_overlay import (
+    ModelRoutingRoiOverlay,
+    resolve_roi_overlay,
+)
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -390,10 +394,6 @@ from omnimarket.projection.sqlite_metering_summary import (
 )
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
-)
-from omnimarket.routing.roi_overlay import (
-    ModelRoutingRoiOverlay,
-    resolve_roi_overlay,
 )
 
 

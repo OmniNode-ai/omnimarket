@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 from omnimarket.nodes.node_house_routing_overlay_effect.handlers.handler_house_routing_overlay_write import (
     _ENV_OVERLAY_STORE_DSN,
     HandlerHouseRoutingOverlayWrite,
@@ -34,7 +35,6 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routi
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 
 _TIERS = frozenset({"local", "cheap_cloud", "cheap_frontier", "claude"})
 
