@@ -14,8 +14,10 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeDecisionRecord,
     ModelWorktreeFacts,
     ModelWorktreeReconcileDecisions,
-    ModelWorktreeReconcilePolicy,
     ModelWorktreeReconcileRequest,
+)
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
 )
 from omnimarket.nodes.node_worktree_reconcile_compute.handlers.handler_worktree_reconcile import (
     HandlerWorktreeReconcileCompute,

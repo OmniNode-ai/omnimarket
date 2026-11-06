@@ -7,7 +7,6 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeDecisionRecord,
     ModelWorktreeFacts,
     ModelWorktreeReconcileDecisions,
-    ModelWorktreeReconcilePolicy,
     ModelWorktreeReconcileRequest,
 )
 from omnimarket.events.worktree_reconcile import (
@@ -15,6 +14,10 @@ from omnimarket.events.worktree_reconcile import (
 )
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
+)
+from omnimarket.handlers import rules_worktree_removal as removal
+from omnimarket.models.model_worktree_reconcile_policy import (
+    ModelWorktreeReconcilePolicy,
 )
 
 
@@ -70,6 +73,8 @@ def classify(
         return Decision.KEEP, "foreign_remote"
     if facts.content_merged:
         return Decision.REMOVE, "content_merged"
+    if facts.kind == Kind.LINKED_WORKTREE and facts.merged_pr_head:
+        return Decision.REMOVE, "pr_merged_head"
     if (
         facts.head_on_remote
         and facts.commits_not_on_remote == 0
@@ -86,34 +91,20 @@ def classify(
     return Decision.KEEP, "not_stale"
 
 
-def cap_removals(
-    decisions: ModelWorktreeReconcileDecisions,
-) -> ModelWorktreeReconcileDecisions:
-    used = 0
-    rows = []
-    for row in decisions.decisions:
-        if row.decision in (Decision.REMOVE, Decision.PIN_AND_REMOVE):
-            used += 1
-            if used > decisions.policy.max_removals_per_run:
-                row = row.model_copy(
-                    update={"decision": Decision.KEEP, "reasons": ("removal_cap",)}
-                )
-        rows.append(row)
-    return decisions.model_copy(update={"decisions": tuple(rows)})
-
-
 def reconcile(
     request: ModelWorktreeReconcileRequest,
 ) -> ModelWorktreeReconcileDecisions:
     rows = []
     for facts in request.facts:
-        decision, reason = classify(facts, request.policy)
+        decision, reason = removal.hold_unmerged(
+            *classify(facts, request.policy), request.policy
+        )
         rows.append(
             ModelWorktreeDecisionRecord(
                 path=facts.path, decision=decision, reasons=(reason,)
             )
         )
-    return cap_removals(
+    return removal.cap_removals(
         ModelWorktreeReconcileDecisions(decisions=tuple(rows), policy=request.policy)
     )
 
@@ -133,15 +124,19 @@ def apply_model_verdicts(
             rows.append(row)
             continue
         fact = by_path[row.path]
-        refused = verdict.decision == Decision.REMOVE or (
-            verdict.decision == Decision.PIN_AND_REMOVE
-            and (
-                not fact.facts_complete
-                or fact.dirty
-                or fact.kind == Kind.ORPHAN_DIR
-                or live_reason(fact, decisions.policy) is not None
-                # A pin preserves HEAD only, never a clone's other branches.
-                or fact.kind == Kind.STANDALONE_CLONE
+        refused = (
+            verdict.decision == Decision.REMOVE
+            or removal.refuses_model_removal(verdict.decision, decisions.policy)
+            or (
+                verdict.decision == Decision.PIN_AND_REMOVE
+                and (
+                    not fact.facts_complete
+                    or fact.dirty
+                    or fact.kind == Kind.ORPHAN_DIR
+                    or live_reason(fact, decisions.policy) is not None
+                    # A pin preserves HEAD only, never a clone's other branches.
+                    or fact.kind == Kind.STANDALONE_CLONE
+                )
             )
         )
         rows.append(
@@ -155,4 +150,4 @@ def apply_model_verdicts(
                 model_rationale=verdict.model_rationale,
             )
         )
-    return cap_removals(decisions.model_copy(update={"decisions": tuple(rows)}))
+    return removal.cap_removals(decisions.model_copy(update={"decisions": tuple(rows)}))
