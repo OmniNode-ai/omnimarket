@@ -39,8 +39,6 @@ dod_evidence:
   description: On h051, run the changed onex scm release-list from the branch against the dev bus. The read either completes (the dev gateway node carries the client's fields) or prints the plain node-older-than-client sentence; a client without this change prints neither, so the item fails when the change is wrong.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src onex scm release-list OmniNode-ai/omnimarket --timeout-s 60 2>&1 | grep -Eq 'node is older than this client|"outcome":"completed"'
