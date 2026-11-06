@@ -254,3 +254,81 @@ def test_the_cli_refuses_an_empty_store_key_without_stdout(
     assert code == 3
     assert out.out == ""
     assert json.loads(out.err)["outcome"] == EnumSecretStoreOutcome.FAILED.value
+
+
+# OMN-22792: the launcher contract, --exec-names NAMES -- COMMAND.
+
+
+def _exec_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Stand in for os.execvp: record the command and the environment it would get."""
+    import os
+
+    seen: dict[str, object] = {}
+
+    def fake_execvp(file: str, args: list[str]) -> None:
+        seen["file"], seen["args"] = file, list(args)
+        seen["env"] = dict(os.environ)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_secret_store_effect.runtime_house_model_key_cli.os.execvp",
+        fake_execvp,
+    )
+    return seen
+
+
+def test_exec_mode_hands_the_command_the_resolved_key_and_prints_no_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen = _exec_capture(monkeypatch)
+    monkeypatch.delenv(_NAME, raising=False)
+    with running_fake_store() as (address, state):
+        _seed(state)
+        monkeypatch.setenv("HOME", str(_host(tmp_path, address)))
+        monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
+        with pytest.raises(SystemExit):
+            main(["--exec-names", _NAME, "--", "agent", "-m", "deploy_agent"])
+    out = capsys.readouterr()
+    assert seen["args"] == ["agent", "-m", "deploy_agent"]
+    assert seen["env"][_NAME] == PLANTED  # type: ignore[index]
+    assert PLANTED not in out.out + out.err
+
+
+def test_exec_mode_keeps_a_value_the_environment_already_sets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _exec_capture(monkeypatch)
+    monkeypatch.setenv(_NAME, "from-the-env-store")
+    with running_fake_store() as (address, state):
+        _seed(state)
+        monkeypatch.setenv("HOME", str(_host(tmp_path, address)))
+        monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
+        with pytest.raises(SystemExit):
+            main(["--exec-names", _NAME, "--", "agent"])
+    assert seen["env"][_NAME] == "from-the-env-store"  # type: ignore[index]
+
+
+def test_exec_mode_names_an_unresolved_key_and_still_starts_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen = _exec_capture(monkeypatch)
+    monkeypatch.delenv(_NAME, raising=False)
+    with running_fake_store() as (address, _state):
+        monkeypatch.setenv("HOME", str(_host(tmp_path, address)))
+        monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
+        with pytest.raises(SystemExit):
+            main(["--exec-names", _NAME, "--", "agent"])
+    err = capsys.readouterr().err
+    assert seen["args"] == ["agent"]
+    assert _NAME not in seen["env"]  # type: ignore[operator]
+    assert f"house key {_NAME} did not resolve" in err
+    assert house_key_reference(_NAME) in err
+
+
+def test_exec_mode_refuses_a_name_that_is_not_a_house_model_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _exec_capture(monkeypatch)
+    with pytest.raises(ValidationError):
+        main(["--exec-names", "PATH", "--", "agent"])
+    assert seen == {}
