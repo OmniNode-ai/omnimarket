@@ -35,8 +35,7 @@ dod_evidence:
   description: After the dispatch venv on the dev host carries this change and the deploy agent starts through exec mode (OMN-22792), the dev runtime-effects container holds a non-empty LLM_TYPESAFE_API_KEY. The check prints no value.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
+  binds_ac: []
   checks:
   - check_type: command
     check_value: ssh "$DEPLOY_PROBE_HOST" docker exec omninode-runtime-effects sh -c 'test -n "$LLM_TYPESAFE_API_KEY"'
