@@ -66,9 +66,12 @@ class FakeSource:
 class FakeStore:
     """Holds what was put. ``corrupt`` flips a byte the digest read must notice."""
 
-    def __init__(self, *, free: int = 10**12, corrupt: bool = False) -> None:
+    def __init__(
+        self, *, free: int = 10**12, corrupt: bool = False, fail_prune: bool = False
+    ) -> None:
         self.free = free
         self.corrupt = corrupt
+        self.fail_prune = fail_prune
         self.placed: dict[str, dict[str, bytes]] = {}
         self.pruned_keep: int | None = None
 
@@ -88,6 +91,8 @@ class FakeStore:
         }
 
     def prune(self, keep: int) -> tuple[str, ...]:
+        if self.fail_prune:
+            raise CopyStepError("transfer", "remote exit 1: rm: cannot remove: busy")
         self.pruned_keep = keep
         return ("20261105T170000Z",)
 
