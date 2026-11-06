@@ -19,13 +19,13 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.rules_unit_roots import (
+    UnitRootRefusedError,
+    refuse_worktree_roots,
+)
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     NODE_NAME,
     ModelReadingOverlay,
-)
-from omnimarket.worktree_reconcile.unit_roots import (
-    UnitRootRefusedError,
-    refuse_worktree_roots,
 )
 
 NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"

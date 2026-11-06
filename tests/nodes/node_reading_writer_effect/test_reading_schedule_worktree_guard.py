@@ -16,6 +16,11 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.rules_unit_roots import (
+    UnitRootRefusedError,
+    refuse_worktree_roots,
+    worktree_paths,
+)
 from omnimarket.nodes.node_reading_writer_effect.handlers import (
     schedule as schedule_module,
 )
@@ -24,11 +29,6 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     load_schedule,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
-from omnimarket.worktree_reconcile.unit_roots import (
-    UnitRootRefusedError,
-    refuse_worktree_roots,
-    worktree_paths,
-)
 from tests.nodes.node_reading_writer_effect.reading_support import overlay_document
 
 pytestmark = pytest.mark.unit
