@@ -1162,6 +1162,7 @@ node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_reco
 node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
 node_link_gate_compute = "omnimarket.nodes.node_link_gate_compute"
 node_link_history_effect = "omnimarket.nodes.node_link_history_effect"
+node_landing_placement_effect = "omnimarket.nodes.node_landing_placement_effect"
 node_team_identity_compute = "omnimarket.nodes.node_team_identity_compute"
 node_work_ledger_seam_counter_compute = "omnimarket.nodes.node_work_ledger_seam_counter_compute"
 node_work_ledger_file_mode_replay_effect = "omnimarket.nodes.node_work_ledger_file_mode_replay_effect"

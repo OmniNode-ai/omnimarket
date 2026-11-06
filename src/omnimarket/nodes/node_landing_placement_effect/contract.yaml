@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_placement_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Where a landing worker runs. Probes every host of the pool (the local host directly, the others over ssh)
+  for cores, load, memory, logins and parity, derives each host's slots, and returns each host's reading. The
+  hosts come from the lab host table (the file ONEX_LAB_RUN_HOSTS names, else the lab_hosts overlay); with no table and no
+  LANDING_POOL_HOSTS the read refuses naming lab_hosts.hosts and exits 75, and LANDING_POOL_HOSTS=[] runs local-only.
+input_model:
+  name: ModelLandingPlacementRequest
+  module: omnimarket.nodes.node_landing_placement_effect.models.model_landing_placement
+output_model:
+  name: ModelLandingPlacementResult
+  module: omnimarket.nodes.node_landing_placement_effect.models.model_landing_placement
+handler:
+  module: omnimarket.nodes.node_landing_placement_effect.handlers.handler_landing_placement
+  class: HandlerLandingPlacement
+  input_model: omnimarket.nodes.node_landing_placement_effect.models.model_landing_placement.ModelLandingPlacementRequest
+  output_model: omnimarket.nodes.node_landing_placement_effect.models.model_landing_placement.ModelLandingPlacementResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_landing_placement_effect.handlers.handler_landing_placement:HandlerLandingPlacement
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLandingPlacement
+      module: omnimarket.nodes.node_landing_placement_effect.handlers.handler_landing_placement
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the landing controller with supplied runtime ports.
+# The worker engine policy (OMN-19998): the engines a worker may run as and the engines retired into them.
+landing_engine_policy:
+  claude_engines:
+  - claude_sonnet
+  retired_engines:
+    claude_opus: claude_sonnet
+overlay_keys:
+- lab_hosts.hosts
+- lab_hosts.registry_root_candidates
+- repos.plugin_source
+- repos.private_data
+- repos.knowledge_base
+- repos.private_data_home_envs
+- repos.beside_root
+- hygiene_vocab.vocabulary_rel
+- hygiene_vocab.lab_vocabulary_rel
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 300000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: local
+  description: Where a landing worker runs, read from the lab host table of the overlay.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - effect
+  - landing-placement-effect
+  - OMN-21408
+  related_tickets:
+  - OMN-21408
