@@ -53,10 +53,12 @@ from ..models.model_placement_wait import (
     ModelPlacementWaitRequest,
     ModelPlacementWaitResult,
 )
-from .handler_claude_account_limit import HandlerClaudeAccountLimit
+from .handler_claude_account_limit import (
+    HandlerClaudeAccountLimit,
+    HandlerPlacementWait,
+)
 from .handler_codex_lane_limit import CODEX_LIMITED_PREFIX, HandlerCodexLaneLimit, _read
 from .handler_lane_engine_failover import HandlerLaneEngineFailover
-from .handler_placement_wait import HandlerPlacementWait
 
 LOST_STATUS = "placement-lost"
 PLACEMENT_REFUSAL_WINDOW_S = 600.0  # the throughput tick's own interval

@@ -145,7 +145,7 @@ def test_placement_wait_keeps_its_exit_code(tmp_path: Path) -> None:
 
 
 def test_recorded_wait_uses_canonical_typed_handler(tmp_path: Path) -> None:
-    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_placement_wait import (
+    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_claude_account_limit import (
         HandlerPlacementWait,
     )
     from omnimarket.nodes.node_lane_placement_recovery_effect.models.model_placement_wait import (
@@ -179,7 +179,7 @@ def test_node_dispatches_typed_wait_request(tmp_path: Path) -> None:
     from dataclasses import FrozenInstanceError
     from typing import get_type_hints
 
-    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_placement_wait import (
+    from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_claude_account_limit import (
         HandlerPlacementWait,
     )
     from omnimarket.nodes.node_lane_placement_recovery_effect.models import (
