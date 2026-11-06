@@ -48,8 +48,8 @@ def _make_endpoint(
 ) -> ModelSwarmEndpoint:
     return ModelSwarmEndpoint(
         endpoint_id=ep_id,
-        base_url="http://192.168.86.201:8000/v1",  # onex-allow-internal-ip OMN-12118 reason="test fixture uses lab endpoint to exercise real endpoint_ref wiring"
-        model_id="Qwen3.6-35B-A3B",
+        base_url="https://inference.example.invalid/v1",
+        model_id="fixture-model",
         endpoint_ref=ref,
     )
 
@@ -77,7 +77,7 @@ def _completion_event(
     return {
         "correlation_id": _correlation_id(run_id, subtask_id),
         "success": success,
-        "model_id": "Qwen3.6-35B-A3B",
+        "model_id": "fixture-model",
         "latency_ms": 50,
         "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",
     }
@@ -92,6 +92,15 @@ def _failure_event(run_id: str, subtask_id: str) -> dict[str, object]:
         "failure_class": "all_tiers_exhausted",
         "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
     }
+
+
+@pytest.mark.unit
+def test_endpoint_fixture_uses_portable_values() -> None:
+    """Fanout fixtures exercise endpoint refs without a deployment's identity."""
+    endpoint = _make_endpoint()
+    assert endpoint.base_url == "https://inference.example.invalid/v1"
+    assert endpoint.model_id == "fixture-model"
+    assert _completion_event("run-1", "s1")["model_id"] == endpoint.model_id
 
 
 @pytest.mark.unit
@@ -154,7 +163,7 @@ def test_publishes_delegation_execute_command() -> None:
     topic, payload = pub.publish.call_args.args
     assert "delegation-execute" in topic
     assert payload["endpoint_ref"] == "LLM_LOCAL_PRIMARY_URL"
-    assert payload["model_id"] == "Qwen3.6-35B-A3B"
+    assert payload["model_id"] == "fixture-model"
     assert payload["correlation_id"] == "run-abc-s1"
     assert payload["causation_id"] == "run-abc"
     assert payload["prompt"] == "some prompt"
@@ -274,12 +283,7 @@ def test_no_endpoint_assigned_fails_immediately() -> None:
 @pytest.mark.unit
 def test_endpoint_missing_endpoint_ref_fails_immediately() -> None:
     """Endpoint without endpoint_ref cannot be dispatched."""
-    ep = ModelSwarmEndpoint(
-        endpoint_id="ep1",
-        base_url="http://192.168.86.201:8000/v1",  # onex-allow-internal-ip OMN-12118 reason="test fixture uses lab endpoint to exercise real endpoint_ref wiring"
-        model_id="m1",
-        endpoint_ref="",
-    )
+    ep = _make_endpoint(ref="")
     s = ModelSubtask(subtask_id="s1", description="task")
     pub = _make_publisher()
     sub = _make_subscriber([])

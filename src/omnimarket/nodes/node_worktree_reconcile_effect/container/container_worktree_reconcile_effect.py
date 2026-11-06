@@ -7,6 +7,9 @@ from __future__ import annotations
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile import (
     HandlerWorktreeReconcile,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule import (
+    HandlerWorktreeSchedule,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolClock,
     ProtocolWorktreeDecider,
@@ -41,4 +44,9 @@ def create_handler_worktree_reconcile(
     )
 
 
-__all__ = ["create_handler_worktree_reconcile"]
+def create_handler_worktree_schedule() -> HandlerWorktreeSchedule:
+    """Bind the host scheduler at the node's handler construction site."""
+    return HandlerWorktreeSchedule()
+
+
+__all__ = ["create_handler_worktree_reconcile", "create_handler_worktree_schedule"]
