@@ -553,6 +553,7 @@ def canary_only(
 
     result = HandlerFloorSimpleTick(
         sink=InMemoryEmissionSink(),
+        clock=lambda: NOW,
         served_alarm_ids=lambda: None,
         slack_apis={"slack_alerts": FakeSlackApi()},
         canary_publisher=publish,

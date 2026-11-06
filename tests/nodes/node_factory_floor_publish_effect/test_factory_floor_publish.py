@@ -218,7 +218,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "factory-floor.json",
     )
     # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
-    assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+    assert [
+        c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
+    ] == [
         False,
         False,
         False,
@@ -342,6 +344,9 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
     calls = _program_calls(runner)
+    # The canary status is published after the page is served: the last call is the floor node's canary step.
+    assert calls[-1] == FLOOR_SIMPLE
+    calls = calls[:-1]
     assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE])
     assert calls[-2] == FACTORY
     # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
