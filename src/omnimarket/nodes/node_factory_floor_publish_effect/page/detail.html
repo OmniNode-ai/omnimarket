@@ -209,6 +209,22 @@ details.fold .lrows{margin:0;border-top:0}
 ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.88rem}
 ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px}
 
+/* machines tab (OMN-22673): one card per host of the host table */
+.hcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,430px),1fr));gap:12px;align-items:start}
+.hcard{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:10px;align-content:start;min-width:0}
+.hcard.out{border-style:dashed}
+.hcard.unread{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
+.hcard.stale,.hcard.refusing{border-color:var(--warn);box-shadow:inset 4px 0 0 var(--warn)}
+.hwhy{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;align-items:start}
+.hcell{display:grid;gap:2px;font-size:.82rem;color:var(--muted);min-width:0}
+.hcell .v{font-size:.95rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.hcell .v.unread{font-weight:400;font-style:italic;color:var(--muted);font-size:.85rem}
+.hcell .v .chip{margin-left:6px;font-size:.75rem;padding:2px 5px}
+.hocc{display:grid;gap:2px;font-size:.88rem;margin:0;padding:0;list-style:none}
+.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}
+.hocc li span:last-child{color:var(--muted);font-size:.82rem}
+
 /* today */
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
 .pair>div{background:var(--panel);padding:12px 14px;display:grid;gap:2px;align-content:start;min-width:0}
@@ -313,6 +329,9 @@ a.drill{font-size:.8125rem}
       <div class="dash" id="dash"><p class="muted">Reading the factory record.</p></div>
     </section>
     <section class="pane" id="pane-floor" role="tabpanel" aria-labelledby="tab-floor" hidden></section>
+    <section class="pane" id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden>
+      <div class="dash" id="machines"><p class="muted">Reading the factory record.</p></div>
+    </section>
     <section class="pane" id="pane-process" role="tabpanel" aria-labelledby="tab-process" hidden></section>
     <section class="pane" id="pane-map" role="tabpanel" aria-labelledby="tab-map" hidden></section>
   </main>
@@ -344,6 +363,7 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const TABS = [
   {id: "dashboard", label: "Dashboard", short: "Dashboard"},
   {id: "floor", label: "Factory floor", short: "Floor", page: "floor/?embed=1", report: "factory_floor"},
+  {id: "machines", label: "Machines", short: "Machines"},
   {id: "process", label: "Process before and after", short: "Process", page: "reports/process-health/?embed=1", report: "process_health"},
   {id: "map", label: "Decision map", short: "Map", page: "reports/decision-map/?embed=1", report: "decision_map"}
 ];
@@ -1013,6 +1033,82 @@ function delegationCard(report){
   return `<section class="sec" id="delegation" aria-labelledby="delegationH">${title}<p class="${stale ? "unread" : "sub"}">${stale ? "STALE: " : "Read at "}${esc(clock(report.generated_at))}; positive control: ${esc(report.positive_control_rows)} stored events.</p><p>Newest local run: ${esc(report.latest_local ? clock(report.latest_local) : "never recorded")}</p><p>${esc(report.cause)}</p>${summaries}<h3>Local chat endpoint calls</h3><p>These checks use the production call handler. Unbound means no endpoint is configured, so a call cannot be sent; it does not measure physical server availability. Probes are excluded from traffic counts.</p><ul>${endpoints}</ul></section>`;
 }
 
+// ---- Machines tab (OMN-22673): one card per host of the host table, from floor.host_status. Every cell carries its
+// source, its state (read, stale or unread) and the reason; an unread cell is never drawn as a number and a stale one is
+// marked, so nothing here reads as healthy that was not read fresh.
+const HOST_WORD = {out: "Out of selection", unread: "Not read", stale: "Reading out of date", refusing: "Refusing new work", read: "Read"};
+const HOST_TONE = {out: "idle", unread: "idle", stale: "warn", refusing: "warn", read: "ok"};
+function cellMin(c){ return c.age_min == null ? "" : `, read ${ageText(liveMs(c.age_min))} ago`; }
+function cellHTML(label, c, fmt){
+  if (!c || c.state === "unread" || c.value == null){
+    return `<div class="hcell"><span>${esc(label)}</span><span class="v unread" title="${esc(c ? c.source : "")}">unread${c && c.reason ? " (" + esc(c.reason) + ")" : ""}</span></div>`;
+  }
+  const stale = c.state === "stale" ? `<span class="chip stall" title="${esc(c.reason)}">stale</span>` : "";
+  return `<div class="hcell"><span>${esc(label)}</span><span class="v mono" title="${esc(c.source + cellMin(c))}">${esc(fmt(c.value))}${stale}</span></div>`;
+}
+const fmtGB = v => fmt(v) + " GB";
+function flagHTML(label, c, yes, no){
+  if (!c || c.state === "unread" || c.value == null) return cellHTML(label, c ? Object.assign({}, c, {value: null}) : null, String);
+  const stale = c.state === "stale" ? `<span class="chip stall" title="${esc(c.reason)}">stale</span>` : "";
+  return `<div class="hcell"><span>${esc(label)}</span><span class="v" title="${esc(c.source + cellMin(c))}">${esc(c.value ? yes : no)}${stale}</span></div>`;
+}
+function occRows(list){
+  return list.map(u => `<li><span><b>${esc(u.lane)}</b>${u.ticket ? " · " + esc(u.ticket) : ""}${u.engine === "codex" ? " · Codex" : ""}${u.stalled ? ` <span class="chip stall">gone quiet</span>` : ""}</span><span>running ${esc(ageText(liveMs(u.run_minutes)))}</span></li>`).join("");
+}
+function hostCard(h){
+  const used = h.slots_used, cap = h.cap;
+  const slotLine = used.value == null
+    ? `<p class="capline">Lane slots used: <span class="unread">unread (${esc(used.reason)})</span> of ${cap.value == null ? `<span class="unread">unread</span>` : esc(fmt(cap.value))}</p>`
+    : `<p class="capline"><b>${esc(fmt(used.value))}</b> of ${cap.value == null ? `<span class="unread">cap unread (${esc(cap.reason)})</span>` : `<b>${esc(fmt(cap.value))}</b>`} lane slots used${h.slots_free.value != null ? `; ${esc(fmt(h.slots_free.value))} free by the pool read` : ""}${used.state === "stale" ? " (stale)" : ""}</p>`;
+  const cells = cap.value != null && used.value != null ? Math.min(60, Math.max(0, Math.round(cap.value))) : 0;
+  const usedN = used.value == null ? 0 : Math.round(used.value);
+  const bar = cells ? `<div class="slots" role="img" aria-label="${esc(fmt(usedN) + " of " + fmt(cap.value) + " lane slots used")}">${Array.from({length: cells}, (_, i) => `<i class="${i < usedN ? "used" : ""}${i >= usedN && usedN > cells ? " over" : ""}"></i>`).join("")}</div>` : "";
+  const why = h.condition === "out" ? h.unavailable_reason || "out of selection, no reason in the host table"
+    : h.admission_refusal ? h.admission_refusal
+    : h.condition === "unread" ? h.load_per_core.reason
+    : h.condition === "stale" ? h.reading_age.reason : "";
+  const lanes = h.lanes.length ? `<div><p class="sub">Lanes on this machine (${h.lanes.length})</p><ul class="hocc">${occRows(h.lanes)}</ul></div>` : "";
+  const landing = h.landing_workers.length ? `<div><p class="sub">Landing workers (${h.landing_workers.length})</p><ul class="hocc">${occRows(h.landing_workers)}</ul></div>` : "";
+  const other = h.other_units.value == null
+    ? `<p class="capline">Lab-run jobs: <span class="unread">unread (${esc(h.other_units.reason)})</span></p>`
+    : `<p class="capline">${esc(fmt(h.other_units.value))} other placed units (lab-run jobs and the landing workers' own leases; the slot marker does not say which)</p>`;
+  const pressure = h.mem_pressure.unit === "psi" ? v => fmt(v) + " PSI" : v => "level " + fmt(v) + " (1 normal)";
+  // The cells the pool read gives. When none of them read, they share one cause and are drawn once, not eight times.
+  const poolCells = [["Load per core", h.load_per_core, v => fmt(v)], ["Free memory", h.mem_free_gb, fmtGB], ["Memory pressure", h.mem_pressure, pressure],
+    ["Swap used", h.swap_used_pct, v => fmt(v) + "%"], ["Free disk (run volume)", h.disk_free_gb, fmtGB], ["Disk used", h.disk_used_pct, v => fmt(v) + "%"],
+    ["Last reading", h.reading_age, v => ageText(v * 60000) + " old"]];
+  const noneRead = poolCells.every(([, c]) => !c || c.state === "unread" || c.value == null);
+  const poolFold = noneRead ? `<p class="capline"><span class="unread">Unread from the pool read: ${esc(poolCells.map(x => x[0].toLowerCase()).join(", "))} (${esc(h.reading_age.reason || "no reason recorded")})</span></p>` : "";
+  const poolHTML = noneRead ? "" : poolCells.map(([label, c, f]) => cellHTML(label, c, f)).join("");
+  return `<article class="hcard ${esc(h.condition)}" aria-label="${esc(h.label)}">
+    <div class="mtop"><b>${esc(h.label)}</b><span class="pill ${HOST_TONE[h.condition]}">${esc(HOST_WORD[h.condition])}${h.reading_age.value != null ? " · " + esc(ageText(liveMs(h.reading_age.age_min == null ? 0 : h.reading_age.age_min))) + " ago" : ""}</span></div>
+    ${why ? `<p class="hwhy">${esc(why)}</p>` : ""}
+    ${slotLine}${bar}${lanes}${landing}${other}
+    ${poolFold}
+    <div class="hgrid">
+      ${poolHTML}
+      ${cellHTML("Heartbeat age", h.heartbeat_age_min, v => ageText(v * 60000))}
+      ${cellHTML("Open drift items", h.drift_open, v => fmt(v))}
+      ${flagHTML("Docker", h.docker, "present", "absent")}
+    </div>
+  </article>`;
+}
+function renderMachines(p){
+  const rows = ((p.record.floor || {}).host_status) || [];
+  if (!rows.length){
+    el("machines").innerHTML = `<p class="unread">The record carries no per-host status: it was written before the Machines tab existed, or the host table was not read.</p>`;
+    return {n: 0, ok: 0, attention: 0, out: 0};
+  }
+  const out = rows.filter(h => h.condition === "out").length;
+  const ok = rows.filter(h => h.condition === "read").length;
+  const attention = rows.length - out - ok;
+  el("machines").innerHTML = `<section class="sec" aria-labelledby="hostsH">
+    <header><h2 id="hostsH">Machines, host by host</h2><p>${esc(rows.length + " hosts in the host table: " + ok + " read, " + attention + " not read fresh or refusing work, " + out + " out of selection")}. Each figure names its source when you hover it. A figure with no source today is drawn unread with the reason, and a reading past its bound is marked stale.</p></header>
+    <div class="hcards">${rows.map(hostCard).join("")}</div>
+  </section>`;
+  return {n: rows.length, ok, attention, out};
+}
+
 function renderDashboard(p){
   const rec = p.record, status = p.status, health = p.health;
   const floor = Object.assign({machines: [], lanes: [], cloud: null, shipped: [], waiting: [], stoppages: []}, rec.floor || {});
@@ -1264,6 +1360,11 @@ function renderTabs(p, d){
   // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
   // No line read at all (only planned lines with no plan file, or none) is grey too, never Running.
   setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : d.readL ? "ok" : "idle", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : d.readL ? "Running" : "No line read", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : d.readL ? (d.missing ? `no line stopped; ${d.missing} planned with no plan file` : "no line stopped") : "no line has a plan file yet");
+  const mach = renderMachines(p);
+  tabAge.machines = tabAge.floor;
+  if (!mach.n) setTab("machines", "idle", "Not read", "no host status in the record", "the record carries no per-host status");
+  else setTab("machines", mach.attention ? "warn" : mach.ok ? "ok" : "idle", mach.attention ? "Needs a look" : mach.ok ? "Read" : "All out",
+    `${mach.ok} of ${mach.n} read, ${mach.out} out`, `${mach.attention} not read fresh or refusing work`);
   const h = p.health && p.health.summary;
   tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
   if (!h) setTab("process", "none", "No data", "series not published", "not read");
@@ -1296,7 +1397,7 @@ function renderStamp(){
   }
   const gen = Date.parse(rec.generated_at);
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  if ((currentTab === "dashboard" || currentTab === "floor") && age != null && age > STALE_MIN * 60000){
+  if ((currentTab === "dashboard" || currentTab === "floor" || currentTab === "machines") && age != null && age > STALE_MIN * 60000){
     banner.hidden = false;
     banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`;
   } else banner.hidden = true;
