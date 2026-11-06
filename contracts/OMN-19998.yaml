@@ -133,16 +133,6 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-item-state-contract-terminals
-    statement: The existing shadow item-state nodes advertise reachable terminals and dispatch typed snapshots through their packaged contracts.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: the four item-state nodes auto-wire through the installed runtime and return correlated completed events; the effect resolves its packaged isolated overlay and stays shadow without a measured promotion -- falsifier: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-item-state-runtime-ownership
-    statement: The item-state dispatch consumer is owned by the effects runtime during contract discovery.
-    acceptance:
-      - id: AC13
-        statement: 'AC13: runtime discovery attaches the packaged item-state effect to effects and excludes it from main -- falsifier: uv run --frozen pytest tests/nodes/node_item_state_check_effect/test_runtime_ownership.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -173,14 +163,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
-        cwd: .
-  - id: dod-omn19998-item-state-runtime-ownership
-    description: The focused discovery regression fails at the dispatched head because effects owns zero contracts. At the merge base the item-state contract is absent. The corrected packaged contract is admitted by effects and excluded from main; no live promotion or host timer is asserted.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_item_state_check_effect/test_runtime_ownership.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-ruling-failed-recovery
     description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
@@ -554,20 +536,4 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-item-state-contract-terminals
-    description: Focused item-state regressions cover unanswered items, ended lanes, revision claims, queue delivery, shadow behavior and the four contract-driven runtime commands. Earlier controller timer criteria are not asserted by this slice.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly --tb=short
-        cwd: .
-  - id: dod-omn19998-item-state-contract-terminals-deploy
-    description: Hosted installed-package smoke auto-wires all four packaged contracts through infra and an isolated in-memory bus, then reads a correlated typed terminal. The effect uses its packaged in-memory dependency overlay with no promotion. No live tick, broker or host unit is claimed.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly --tb=short -k runtime_command
         cwd: .
