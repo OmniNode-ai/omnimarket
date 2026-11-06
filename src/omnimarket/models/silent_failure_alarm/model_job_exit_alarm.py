@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Launchd readings, persisted streaks and job-exit decisions.
 
-An episode has a cause: ``failed-exit`` (the job's runs exited nonzero) or ``missed-interval``
-(its run counter did not grow for twice its interval). Each job and cause keeps the time it last
+An episode has a cause: ``failed-exit`` (the job's runs exited nonzero), ``finding-exit`` (the
+job exited with a code declared as its own finding, such as a floor job's exit 1 for floors
+under, OMN-19998) or ``missed-interval`` (its run counter did not grow for twice its interval). Each job and cause keeps the time it last
 opened an episode, so a second episode of the same pair waits out the cooldown.
 """
 
@@ -13,7 +14,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-JobExitCause = Literal["failed-exit", "missed-interval"]
+JobExitCause = Literal["failed-exit", "finding-exit", "missed-interval"]
 
 
 class ModelJobExitReading(BaseModel):
@@ -68,6 +69,9 @@ class ModelJobExitAlarmRequest(BaseModel):
     push_after_minutes: int = Field(default=30, ge=0)
     lanes: dict[str, str] = Field(default_factory=dict)
     intervals: dict[str, int] = Field(default_factory=dict)
+    # Exit codes a job declares as its own finding, by label: the job ran and reported what it
+    # watches (a floor under), so the episode asks a lane to act on the finding, not the job.
+    finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
     missed_factor: int = Field(default=2, gt=0)
     cooldown_minutes: int = Field(default=120, ge=0)
     max_opened: int = Field(default=6, gt=0)

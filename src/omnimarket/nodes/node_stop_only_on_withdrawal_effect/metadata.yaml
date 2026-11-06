@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stop_only_on_withdrawal_effect
+version: 1.0.0
+description: Persist S8 repair intents, dispatcher acknowledgements and cursor through the bus.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_stop_only_on_withdrawal_effect: omnimarket.nodes.node_stop_only_on_withdrawal_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: write
+dependencies:
+  - pydantic>=2.11.0
+  - PyYAML>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, ledger, dispatch]
+node_role: effect
+pack: operator_tooling
+display_name: Stop Only On Withdrawal Effects

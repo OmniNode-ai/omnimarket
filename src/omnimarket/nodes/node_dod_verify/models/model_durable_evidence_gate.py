@@ -17,6 +17,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
+
 
 class EnumDurableEvidenceCheck(StrEnum):
     """Identifiers for the durable-evidence checks the gate runs."""
@@ -119,6 +123,11 @@ class ModelDurableEvidenceCheckResult(BaseModel):
         ..., description="Which check was executed."
     )
     passed: bool = Field(..., description="Whether the check passed.")
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Read fault that prevented evaluating this gate check.",
+    )
     message: str = Field(
         ...,
         description=(
@@ -245,6 +254,11 @@ class ModelRepoEvidenceVerdict(BaseModel):
 
     outcome: EnumRepoEvidenceOutcome = Field(...)
     detail: str = Field(...)
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Typed read fault when no check conclusion could be observed.",
+    )
     governing_contracts: tuple[dict[str, object], ...] = Field(
         default=(),
         description=(
