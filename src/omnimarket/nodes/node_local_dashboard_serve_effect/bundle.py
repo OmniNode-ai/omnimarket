@@ -35,7 +35,6 @@ from __future__ import annotations
 import hashlib
 import shutil
 import tarfile
-import time
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,11 +45,6 @@ from omnimarket.github_api import GitHubApiError, download_release_asset
 #: Where a verified bundle is unpacked. Keyed by digest, so a pin bump lands
 #: beside the old copy rather than over it and a rollback needs no re-download.
 _CACHE_ROOT = Path.home() / ".omninode" / "dashboard" / "bundles"
-
-#: A gateway failure from the release host is worth another try; any other
-#: refusal is final. Three attempts, a half second then a second apart.
-_GATEWAY_STATUSES = frozenset({502, 503, 504})
-_DOWNLOAD_ATTEMPTS = 3
 
 #: Read in 1 MiB blocks: the bundle is a few megabytes and a whole-file read
 #: would hold it twice in memory for no gain.
@@ -167,19 +161,12 @@ def _extract(archive: Path, into: Path) -> None:
 
 
 def _download(url: str, to: Path) -> None:
-    for attempt in range(_DOWNLOAD_ATTEMPTS):
-        try:
-            download_release_asset(url, to)
-            return
-        except GitHubApiError as exc:
-            if (
-                exc.status_code not in _GATEWAY_STATUSES
-                or attempt == _DOWNLOAD_ATTEMPTS - 1
-            ):
-                raise DashboardBundleError(
-                    f"could not download the dashboard bundle from {url}: {exc}"
-                ) from exc
-            time.sleep(0.5 * 2**attempt)
+    try:
+        download_release_asset(url, to)
+    except GitHubApiError as exc:
+        raise DashboardBundleError(
+            f"could not download the dashboard bundle from {url}: {exc}"
+        ) from exc
 
 
 def ensure_bundle(
