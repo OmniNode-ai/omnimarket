@@ -106,6 +106,11 @@ class CanaryWorld:
     def break_busy(self, host: str) -> None:
         self.breaks[host] = "busy"
 
+    def break_unadvertised(self, host: str) -> None:
+        """The pool read never names the host (no advertisement reached the placer) and the
+        route refuses with the busy exit code, as the placement route does for a pinned absent host."""
+        self.breaks[host] = "unadvertised"
+
     def break_replay_old_result(self, host: str) -> None:
         self.breaks[host] = "replay"
 
@@ -172,6 +177,10 @@ class CanaryWorld:
             "sleep": "sleep 5",
             "unreachable": 'echo "lab-run: $0: unreadable (ssh)" >&2; exit 255',
             "busy": 'echo "lab-run: $0: over the load bar" >&2; exit 75',
+            "unadvertised": (
+                'echo "lab-run: h-other: not the requested host" >&2; '
+                'echo "lab-run: no pool host passes the shared admission rule" >&2; exit 75'
+            ),
             "replay": (
                 'echo \'HOST-CANARY-RESULT {"nonce": "old", "free_disk_gb": 50}\'; '
                 f"echo {WRAPPER_END}; exit 0"
@@ -180,10 +189,13 @@ class CanaryWorld:
         arms = "".join(
             f"{host}) {cases[kind]};; " for host, kind in self.breaks.items()
         )
-        script = (
-            f'echo "lab-run: $0: admitted ($0:cores=8,slots=4)" >&2; '
-            f'case "$0" in {arms}*) ;; esac; "$@" && echo {WRAPPER_END}'
+        silent = "|".join(
+            host for host, kind in self.breaks.items() if kind == "unadvertised"
         )
+        admit = 'echo "lab-run: $0: admitted ($0:cores=8,slots=4)" >&2'
+        if silent:
+            admit = f'case "$0" in {silent}) ;; *) {admit};; esac'
+        script = f'{admit}; case "$0" in {arms}*) ;; esac; "$@" && echo {WRAPPER_END}'
         return f"sh -c {shlex.quote(script)} {{host}}"
 
     def environ(self) -> dict[str, str]:
@@ -205,6 +217,12 @@ class CanaryWorld:
         if kind == "busy":
             return ModelCanaryRun(
                 exit_code=75, stderr=f"lab-run: {host}: over the load bar\n"
+            )
+        if kind == "unadvertised":
+            return ModelCanaryRun(
+                exit_code=75,
+                stderr="lab-run: h-other: not the requested host\n"
+                "lab-run: no pool host passes the shared admission rule\n",
             )
         if kind == "replay":
             nonce = "old"
@@ -376,6 +394,7 @@ def test_error_chain_bad_payload_gives_run_failed() -> None:
     [
         (lambda w: w.break_time_out("h-a"), "canary-timed-out-h-a"),
         (lambda w: w.break_unreachable("h-a"), "canary-unreachable-h-a"),
+        (lambda w: w.break_unadvertised("h-b"), "canary-unreachable-h-b"),
         (lambda w: w.break_replay_old_result("h-a"), "canary-untyped-h-a"),
         (lambda w: w.break_raise_floor_over_any_disk(), "disk-under-floor-h-a"),
         (lambda w: w.break_disk_paths_unreadable(), "disk-unread-h-a"),
@@ -386,6 +405,7 @@ def test_error_chain_bad_payload_gives_run_failed() -> None:
     ids=[
         "timed-out",
         "unreachable",
+        "unadvertised-busy-exit",
         "replayed-result",
         "disk-under-floor",
         "disk-unread",
@@ -412,6 +432,20 @@ def test_a_cut_canary_is_never_read_as_free_capacity() -> None:
     assert "h-a" not in cells["typed"].split(",")
     assert "h-a" in cells["failed_hosts"].split(",")
     assert "h-a" not in cells["free_disk_gb"]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_busy_exit_for_a_host_the_pool_read_never_named_is_not_a_busy_refusal(
+    backend: str,
+) -> None:
+    """Seen on the lab 2026-11-06: a pinned canary to a host with no advertisement exits 75
+    with no line for that host; read as busy it would hide a host that is gone."""
+    world = CanaryWorld(backend)
+    world.break_unadvertised("h-b")
+    verdict, _, cells = _read(world)
+    assert verdict == "NOT_WORKING"
+    assert cells["busy"] == "none"
+    assert "h-b" in cells["failed_hosts"].split(",")
 
 
 def test_unreadable_host_table_reads_unknown() -> None:

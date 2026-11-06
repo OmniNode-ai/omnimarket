@@ -10,8 +10,9 @@ where the overlay names an advertisement source, every pooled host's newest capa
 is fresh.
 A parked host is listed with the table's reason and never fails it.
 
-What it never does (the OMN-22538 pool-read lesson): a canary cut at its deadline or a host the pool
-read could not reach is read as a failed host, never as free capacity.
+What it never does (the OMN-22538 pool-read lesson): a canary cut at its deadline, a host the pool
+read could not reach, or a host the pool read never named (a busy exit with no line for the host)
+is read as a failed host, never as free capacity or a typed busy refusal.
 
 Named break: kill the canary's wrapper, so the result is not typed; the reading goes NOT_WORKING
 with ``canary-untyped-<host>``.
@@ -120,6 +121,12 @@ def _pool_line(text: str, host: str, marker: str) -> str | None:
     return next((line for line in text.splitlines() if needle in line), None)
 
 
+def _pool_named(text: str, host: str) -> bool:
+    """The route's pool read gave this host a line of its own (admitted or refused)."""
+    needle = f"{host}: "
+    return any(needle in line for line in text.splitlines())
+
+
 def classify(
     settings: ModelHostCanaryProbeSettings,
     host: str,
@@ -140,8 +147,12 @@ def classify(
         ending = EnumCanaryEnding.TIMED_OUT
     elif _pool_line(text, host, settings.pool_unreadable_marker) is not None:
         ending = EnumCanaryEnding.UNREACHABLE
-    elif run.exit_code in settings.busy_exit_codes:
+    elif run.exit_code in settings.busy_exit_codes and _pool_named(text, host):
         ending = EnumCanaryEnding.BUSY
+    elif run.exit_code in settings.busy_exit_codes:
+        # The pool read never named the host (no advertisement reached it): the refusal is not
+        # the host's own busy answer, so the host failed, never free or full capacity.
+        ending = EnumCanaryEnding.UNREACHABLE
     elif run.exit_code == 0 and typed and wrapper_ended:
         ending = EnumCanaryEnding.TYPED
     else:
