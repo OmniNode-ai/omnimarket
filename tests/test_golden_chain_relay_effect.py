@@ -160,6 +160,21 @@ def test_relay_effect_close_preserves_withdrawal_citation() -> None:
     assert result.ledger_cells["withdrawn-by"] == "2026-11-04T12:00:00Z-parent"
 
 
+@pytest.mark.parametrize("cited", [["a"], {"a": 1}, 7, True])
+def test_relay_effect_close_ignores_a_non_string_withdrawal_citation(
+    cited: Any,
+) -> None:
+    line = json.dumps({"outcome": "withdrawn", "withdrawn-by": cited})
+    result = HandlerRemoteLaneResult().handle(
+        ModelRemoteLaneResultRequest(
+            engine_exit_code=0,
+            final_message=f"{line}\nDELEGATION delegated=1 codex=fixture",
+        )
+    )
+    assert result.outcome == "withdrawn"
+    assert "withdrawn-by" not in result.ledger_cells
+
+
 def _message(**updates: Any) -> ModelS8Message:
     data = {
         "sequence": 5,
