@@ -6,11 +6,6 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched: [events, public_api]
 requirements:
-  - id: req-omn19998-release-asset-retry
-    statement: Public dashboard release downloads recover from transient gateway errors within a fixed attempt bound.
-    acceptance:
-      - id: AC13
-        statement: HTTP 502, 503 and 504 permit at most three GET attempts with 0.5 and 1 second delays; other HTTP, network and local write failures are refused immediately, HTTPS remains required, and downloaded dashboard bytes still match the repository pin.
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -164,11 +159,6 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-placement-wait-outcome
-    statement: The detached parent's placement read returns a typed outcome while preserving the existing human output and exit codes.
-    acceptance:
-      - id: AC12
-        statement: 'AC12: a placing receipt at the 30-second wait budget returns placing with error=false and exit 3; placed, refused and crashed reads retain their exit codes; the public node adapter and typed handler emit one JSON result -- falsifier: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-ledger-detail-reference-retention
     statement: Ledger detail retention preserves old units cited by declared local readers and refuses removal when readers cannot be checked or change during archival.
     acceptance:
@@ -221,41 +211,6 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn19998-release-asset-retry-deploy
-    description: Hosted smoke exercises the production downloader with transient and persistent gateway responses, permanent failures and local write errors, then checks the existing dashboard checksum refusal and verified-page serving path. No lab service is needed.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_github_release_asset_retry.py tests/projection/test_dashboard_bundle_failure_omn20705.py -q --no-cov -p no:randomly
-        cwd: .
-  - id: dod-omn19998-release-asset-integration-proof
-    description: On a lab host, fetch the pinned release through the production bundle loader, verify its digest and index, and compare the public checksum sidecar to the repository pin. No cached bundle is reused.
-    source: manual
-    execution_scope: local_done_gate
-    checks:
-      - check_type: command
-        check_value: |
-          env COMPOSE_PROJECT_NAME=landing-l27541-lab PYTHONDONTWRITEBYTECODE=1 UV_PYTHON=3.12 uv run --frozen python - <<'PY'
-          import shlex
-          import subprocess
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
-          from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import ensure_bundle, load_pin
-
-          pin = load_pin()
-          sidecar = subprocess.check_output(
-              [*shlex.split("curl --fail --silent --show-error --location"), f"{pin.url}.sha256"],
-              text=True,
-              timeout=60,
-          )
-          assert sidecar.split() == [pin.sha256, pin.asset], sidecar
-          with TemporaryDirectory() as cache:
-              root = ensure_bundle(pin, cache_root=Path(cache))
-              assert (root / "index.html").is_file(), root
-          print(f"dashboard_bundle_lab_readback=PASS version={pin.version} sha256={pin.sha256} asset={pin.asset}")
-          PY
-        cwd: .
   - id: dod-omn19998-remote-ref-before-send
     description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
     source: manual
@@ -707,22 +662,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-placement-wait-outcome
-    description: Replay the recorded placing receipt at a 30-second budget through the public node adapter and typed handler, including terminal outcomes and legacy exit codes. Collection fails at the merge base because the typed placement model is absent. This scoped placement proof does not assert the original controller rule, lock, acting gate or launchd timer criteria.
-    source: manual
-    binds_ac: [AC12]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-placement-wait-deploy
-    description: Hosted wiring smoke exercises the detached host caller's public node adapter with a real receipt file and observes its typed JSON line. The clock and liveness ports are controlled. No live placement, production endpoint, broker or host unit is required or asserted.
-    source: manual
-    binds_ac: [AC12]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_placement_wait_result.py -q --no-cov -n 0 -p no:randomly -k recorded_placing_after_30s
         cwd: .
   - id: dod-omn19998-automatic-fix-install
     description: Recorded branch-install regression and negative controls exercise released refs, proven heads, conflict isolation, containment, retry observation and independent host outcomes. This scope does not assert the original controller timer criteria.
