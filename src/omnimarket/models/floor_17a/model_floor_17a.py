@@ -336,6 +336,10 @@ class ModelFloorLane(_Frozen):
     stalled: bool = False
     # The pull request the lane works on ("repo#number"), the key that ties a lane to a pull request class.
     pr: str = ""
+    # The process reading of the lane ("alive", "unread", "dead", "finished"): a dead or finished lane is on nothing.
+    liveness: str = "unread"
+    # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
+    owns: tuple[str, ...] = ()
 
 
 class ModelFloorCauseIn(_Frozen):
