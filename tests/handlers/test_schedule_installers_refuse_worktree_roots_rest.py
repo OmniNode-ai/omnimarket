@@ -126,10 +126,13 @@ def _seam(
     )
 
 
-def _copy_overlay(where: str, environment: dict[str, str] | None = None) -> Any:
+def _copy_overlay(
+    where: str, environment: dict[str, str] | None = None, root: str = "/srv"
+) -> Any:
     document = _example("node_work_ledger_copy_effect")
-    document["launchd"]["interpreter"] = f"/srv/{where}/.venv/bin/python"
-    document["launchd"]["working_directory"] = f"/srv/{where}"
+    document["launchd"]["interpreter"] = f"{root}/{where}/.venv/bin/python"
+    document["launchd"]["working_directory"] = f"{root}/{where}"
+    document["launchd"]["log_directory"] = f"{root}/logs"
     if environment is not None:
         document["launchd"]["environment"].update(environment)
     return ModelCopyOverlay.model_validate(document)
@@ -137,7 +140,7 @@ def _copy_overlay(where: str, environment: dict[str, str] | None = None) -> Any:
 
 def _copy_install(tmp_path: Path, where: str) -> int:
     return copy_module.install(
-        _copy_overlay(where),
+        _copy_overlay(where, root=str(tmp_path)),
         copy_module.load_schedule(),
         agents_dir=tmp_path / "agents",
         uid=501,
