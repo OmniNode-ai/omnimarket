@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_item_lane_miss_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+lifecycle: experimental
+description: 'ItemLaneMissCompute: item response checks and one recovery family.'
+input_model:
+  name: ModelItemSnapshot
+  module: omnimarket.models.item_state_check
+  description: Typed item snapshot and policy facts.
+output_model:
+  name: ModelItemFindings
+  module: omnimarket.models.item_state_check
+  description: Typed item state result.
+handler:
+  module: omnimarket.nodes.node_item_lane_miss_compute.handlers.handler_item_lane_miss
+  class: HandlerItemLaneMiss
+  input_model: omnimarket.models.item_state_check.ModelItemSnapshot
+  output_model: omnimarket.models.item_state_check.ModelItemFindings
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_item_lane_miss_compute.handlers.handler_item_lane_miss:HandlerItemLaneMiss
+  handlers:
+  - operation: item_lane_miss_compute
+    topic: onex.cmd.omnimarket.item-lane-miss-compute-requested.v1
+    handler:
+      name: HandlerItemLaneMiss
+      module: omnimarket.nodes.node_item_lane_miss_compute.handlers.handler_item_lane_miss
+terminal_event: onex.evt.omnimarket.item-lane-miss-compute-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.item-lane-miss-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.item-lane-miss-compute-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.item-lane-miss-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.item-lane-miss-compute-completed.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  author: OmniNode Team
+  description: ItemLaneMissCompute
+  created: '2026-11-04'
+  tags:
+  - operator-items
+  - state-check

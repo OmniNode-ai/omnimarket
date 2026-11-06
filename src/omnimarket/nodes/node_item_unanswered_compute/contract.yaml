@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_item_unanswered_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+lifecycle: experimental
+description: 'ItemUnansweredCompute: item response checks and one recovery family.'
+input_model:
+  name: ModelItemSnapshot
+  module: omnimarket.models.item_state_check
+  description: Typed item snapshot and policy facts.
+output_model:
+  name: ModelItemFindings
+  module: omnimarket.models.item_state_check
+  description: Typed item state result.
+handler:
+  module: omnimarket.nodes.node_item_unanswered_compute.handlers.handler_item_unanswered
+  class: HandlerItemUnanswered
+  input_model: omnimarket.models.item_state_check.ModelItemSnapshot
+  output_model: omnimarket.models.item_state_check.ModelItemFindings
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_item_unanswered_compute.handlers.handler_item_unanswered:HandlerItemUnanswered
+  handlers:
+  - operation: item_unanswered_compute
+    topic: onex.cmd.omnimarket.item-unanswered-compute-requested.v1
+    handler:
+      name: HandlerItemUnanswered
+      module: omnimarket.nodes.node_item_unanswered_compute.handlers.handler_item_unanswered
+terminal_event: onex.evt.omnimarket.item-unanswered-compute-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.item-unanswered-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.item-unanswered-compute-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.item-unanswered-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.item-unanswered-compute-completed.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  author: OmniNode Team
+  description: ItemUnansweredCompute
+  created: '2026-11-04'
+  tags:
+  - operator-items
+  - state-check
+config:
+  closed_states:
+  - done
+  - withdrawn
+  parked_state: parked
+  operator_owner: operator
+  operator_action: operator-question
+  escalation_action: operator-question
+  actions:
+    ask: fill-backlog-item
+    idea: fill-backlog-item
+    promise: fill-backlog-item
+    ruling: fill-backlog-item
+    decision: fill-backlog-item
+    unclassified: fill-backlog-item
+    question: fill-backlog-item
+    message: answer-lane
+  rules:
+    S5:
+      rule_id: S5
+      class_key: item-unanswered
+      mode: shadow
+    S6:
+      rule_id: S6
+      class_key: item-lane-miss
+      mode: shadow
+  retry_limit: 1
+  done_outcomes:
+  - done
+  - merged

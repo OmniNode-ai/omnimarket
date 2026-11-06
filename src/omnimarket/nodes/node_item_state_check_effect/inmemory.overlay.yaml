@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Isolated lab binding. Rules remain shadow until a measured promotion is supplied.
+dependencies:
+  - protocol: omnimarket.protocols.protocol_item_recovery.ProtocolItemRecoveryStore
+    implementation: memory_item_recovery_store
+  - protocol: omnimarket.protocols.protocol_item_recovery.ProtocolItemDispatch
+    implementation: memory_item_dispatch
+    config:
+      operator_action: operator-question
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30

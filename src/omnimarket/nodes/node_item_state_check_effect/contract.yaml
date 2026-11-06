@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_item_state_check_effect
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+lifecycle: experimental
+description: 'ItemStateCheckEffect: item response checks and one recovery family.'
+input_model:
+  name: ModelItemTickRequest
+  module: omnimarket.models.item_state_check
+  description: Typed item snapshot and policy facts.
+output_model:
+  name: ModelItemTickResult
+  module: omnimarket.models.item_state_check
+  description: Typed item state result.
+handler:
+  module: omnimarket.nodes.node_item_state_check_effect.handlers.handler_item_state_check
+  class: HandlerItemStateCheck
+  input_model: omnimarket.models.item_state_check.ModelItemTickRequest
+  output_model: omnimarket.models.item_state_check.ModelItemTickResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_item_state_check_effect.handlers.handler_item_state_check:HandlerItemStateCheck
+  handlers:
+  - operation: item_state_check_effect
+    topic: onex.cmd.omnimarket.item-state-check-effect-requested.v1
+    handler:
+      name: HandlerItemStateCheck
+      module: omnimarket.nodes.node_item_state_check_effect.handlers.handler_item_state_check
+terminal_event: onex.evt.omnimarket.item-state-check-effect-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.item-state-check-effect-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.item-state-check-effect-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.item-state-check-effect-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.item-state-check-effect-completed.v1
+  external_trigger: The open-items tick supplies the folded items, current live lanes,
+    delivery and authority rows, capacity and measured Part A promotions. Stop and
+    age entry points use the same message cause and dispatch store.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - effects
+metadata:
+  author: OmniNode Team
+  description: ItemStateCheckEffect
+  created: '2026-11-04'
+  tags:
+  - operator-items
+  - state-check
+handler_dependencies:
+- omnimarket.protocols.protocol_item_recovery.ProtocolItemRecoveryStore
+- omnimarket.protocols.protocol_item_recovery.ProtocolItemDispatch
