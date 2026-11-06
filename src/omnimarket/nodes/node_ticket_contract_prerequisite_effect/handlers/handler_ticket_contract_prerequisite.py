@@ -45,15 +45,13 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
-def _resolve_base(base: str) -> str | None:
+def _resolve_base(base: str) -> str:
     """Pin the base, fetching only an absent configured remote-tracking branch.
 
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Fetch errors propagate to the failed typed verdict. A
-    base that is unreadable and names no remote returns None, which callers treat
-    as an unreadable diff (the refusal stands).
+    into remote branches. Fetch errors propagate to the failed typed verdict.
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -62,7 +60,7 @@ def _resolve_base(base: str) -> str | None:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            return None
+            raise
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(
@@ -82,12 +80,10 @@ def _resolve_base(base: str) -> str | None:
 _RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
 
 
-def _is_release_cut(sha: str, base: str | None) -> bool:
+def _is_release_cut(sha: str, base: str) -> bool:
     """Whether the diff against the merge base is a root changelog plus optional pins."""
     try:
-        base_sha = _resolve_base(base) if base is not None else None
-        if base_sha is None:
-            return False
+        base_sha = _resolve_base(base)
         merge_base = _git("merge-base", base_sha, sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
     except (OSError, subprocess.SubprocessError):
@@ -123,7 +119,7 @@ def _own_revisions(sha: str, base_sha: str) -> tuple[str, ...]:
     return (sha, "--not", base_sha, *merged)
 
 
-def _changed_paths(sha: str, base: str | None) -> tuple[str, ...]:
+def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
     """The paths this push's own commits change; unreadable fails closed.
 
     A merge commit contributes only what its resolution added beyond both
@@ -131,9 +127,7 @@ def _changed_paths(sha: str, base: str | None) -> tuple[str, ...]:
     resolved into new code still counts.
     """
     try:
-        base_sha = _resolve_base(base) if base is not None else None
-        if base_sha is None:
-            return ("src/<unreadable diff>",)
+        base_sha = _resolve_base(base)
         listing = _git(
             "log",
             "--cc",
@@ -185,19 +179,14 @@ def _blob(sha: str, path: str) -> str:
     return "" if exists.returncode else _git("show", f"{sha}:{path}")
 
 
-def umbrella_appends(sha: str, base: str | None, body: str | None) -> tuple[str, ...]:
+def umbrella_appends(sha: str, base: str, body: str | None) -> tuple[str, ...]:
     """A refusal per umbrella contract this head adds an entry to (OMN-21301).
 
     Every pull request that appends to one contract conflicts every other at the same place, so
     each landing re-conflicts the rest: 25 of 31 conflicted omnimarket pull requests on
     2026-11-05. The comparison is against the merge base, so taking the base branch adds nothing.
     """
-    base_sha = _resolve_base(base) if base is not None else None
-    if base_sha is None:
-        return (
-            "umbrella contract appends cannot be checked: the base is unreadable "
-            "and names no remote, and an unreadable comparison is a refusal",
-        )
+    base_sha = _resolve_base(base)
     try:
         fork = _git("merge-base", sha, base_sha)
     except subprocess.CalledProcessError:
@@ -219,22 +208,12 @@ def umbrella_appends(sha: str, base: str | None, body: str | None) -> tuple[str,
 
 
 def check(
-    head: str, base: str | None, title: str | None = None, body: str | None = None
+    head: str, base: str, title: str | None = None, body: str | None = None
 ) -> tuple[str, ...]:
-    """Read immutable git blobs, including when the working tree has a repair.
-
-    ``base`` is None when the caller could not read it and it names no remote: a
-    title taken from the commits cannot be built without it, and an explicit title
-    still gets the contract refusal, with every comparison that needs the base
-    failing closed.
-    """
+    """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
     if title is None:
-        base = _resolve_base(base) if base is not None else None
-        if base is None:
-            raise subprocess.CalledProcessError(
-                128, ["git", "rev-parse", "--verify", "<base>^{commit}"]
-            )
+        base = _resolve_base(base)
         subjects = _git(
             "log",
             "--first-parent",
@@ -306,8 +285,6 @@ class HandlerTicketContractPrerequisite:
             # Resolve deployment refs at the effect boundary. The check helper
             # retains its conservative refusal when a comparison is unreadable.
             base = _resolve_base(request.base)
-            if base is None and request.title is None:
-                _git("rev-parse", "--verify", f"{request.base}^{{commit}}")
             failures = check(sha, base, request.title, request.body)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
