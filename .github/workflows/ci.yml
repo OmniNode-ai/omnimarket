@@ -388,6 +388,8 @@ jobs:
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+      - name: Lane census alias parity (OMN-19998)
+        run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate

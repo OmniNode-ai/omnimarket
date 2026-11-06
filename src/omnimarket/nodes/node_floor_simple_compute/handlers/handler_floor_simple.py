@@ -254,19 +254,24 @@ class HandlerFloorSimple:
         for definition in sorted(ov.pieces, key=lambda p: p.piece):
             n = definition.piece
             rc = receipts.get(n)
-            admitted = (
-                n <= ov.rebuild.go_given_through_piece or n in ov.rebuild.step0_pieces
-            )
+            go = r.go_given_through
+            admitted = (go is not None and n <= go) or n in ov.rebuild.step0_pieces
             state, age, max_age, why = self._reading(
                 r, n, definition.reading_max_age_s, lab
             )
             state, why, lab_cause = self._with_lab_sources(r, n, lab, state, why)
             started = rc is not None and rc.started
+            unread_go = go is None and not admitted
             if state is None:
                 if started:
-                    status, text = "unknown", "started; no reading row yet"
+                    status, text = "started", "started; no reading row yet"
                 elif admitted:
                     status, text = "unknown", "admitted; no golden and error event yet"
+                elif unread_go:
+                    status, text = (
+                        "unknown",
+                        "not read: the go and the events are on the ledger, which could not be read",
+                    )
                 else:
                     status, text = "not_started", "not started"
             else:
@@ -297,7 +302,12 @@ class HandlerFloorSimple:
                         "reading_state": state,
                         "reading_age_s": age,
                         "reading_max_age_s": max_age,
-                        "cause_id": lab_cause,
+                        "cause_id": lab_cause
+                        or (
+                            "source:ledger"
+                            if unread_go and state is None and not started
+                            else None
+                        ),
                         "golden_age_s": rc.golden_age_s if rc else None,
                         "error_age_s": rc.error_age_s if rc else None,
                         "freshness": rc.freshness if rc else "none",
@@ -638,7 +648,7 @@ class HandlerFloorSimple:
     def _row_draw(
         row: ModelFloorPieceRow, by_id: dict[str, ModelFloorCause]
     ) -> ModelFloorPieceRow:
-        if row.status in ("not_started", "working"):
+        if row.status in ("not_started", "started", "working"):
             return row
         cid = row.cause_id or f"piece:{row.piece}"
         if cid not in by_id:
@@ -706,17 +716,36 @@ class HandlerFloorSimple:
         r: ModelFloorSimpleInput, rows: list[ModelFloorPieceRow]
     ) -> ModelRebuild:
         ov = r.overlay
-        current = ov.rebuild.current_piece
+        go = r.go_given_through
+        if go is None:
+            current = ov.rebuild.current_piece
+        else:
+            # The piece the rebuild is on: the first one the go covers that is not working yet, else the one after the go.
+            current = next(
+                (
+                    x.piece
+                    for x in rows
+                    if x.piece <= go
+                    and x.piece not in ov.rebuild.step0_pieces
+                    and x.status != "working"
+                ),
+                min(go + 1, max(x.piece for x in rows)),
+            )
         row = next(x for x in rows if x.piece == current)
         following = next((x for x in rows if x.piece == current + 1), None)
-        waiting = current > ov.rebuild.go_given_through_piece
+        if go is None:
+            gate = "The go could not be read from the ledger. "
+        elif current > go:
+            gate = "Waiting on your go. "
+        else:
+            gate = ""
         status = (
             "not started"
             if row.status == "not_started"
             else row.status.replace("_", " ")
         )
         headline = f"Piece {current}, {row.name.lower()}: {status}."
-        next_text = ("Waiting on your go. " if waiting else "") + (
+        next_text = gate + (
             f"Next is {following.name.lower()}."
             if following
             else "This is the last piece."
@@ -725,5 +754,5 @@ class HandlerFloorSimple:
             current_piece=current,
             headline=headline,
             next_text=next_text,
-            go_given_through=ov.rebuild.go_given_through_piece,
+            go_given_through=go,
         )

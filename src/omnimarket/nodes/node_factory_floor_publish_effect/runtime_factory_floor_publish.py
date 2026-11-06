@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
@@ -99,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     # The operator-only gate comes first: no file is published to a server that does not carry it. A refusal there
     # withdraws the operator-only reports, is reported, and does not hold the shared pages back (the exit code stays 2).
     gate_refused = False
+    run_start = time.monotonic()
+    access_start = run_start
     try:
         access = HandlerOperatorAccess().handle(
             ModelOperatorAccessRequest(
@@ -115,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(
             f"operator-access: admitted_devices={access.admitted_devices} "
             f"include={access.include_sha256[:12]} changed={access.include_changed} "
-            f"published={len(access.published)} files unread={','.join(access.unread) or 'none'}\n"
+            f"published={len(access.published)} files unread={','.join(access.unread) or 'none'} "
+            f"seconds={time.monotonic() - access_start:.0f}\n"
         )
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home,
@@ -138,11 +142,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(
             f"factory-floor-publish: published={','.join(result.published)} "
             f"record={result.generated_at} sha256={result.data_sha256[:12]} "
-            f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'} "
-            f"after_publish={','.join(f'{s.name}:{s.status}' for s in result.after_publish) or 'none'}\n"
+            f"steps={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.steps) or 'skipped'} "
+            f"after_publish={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.after_publish) or 'none'} "
+            f"cycle_seconds={result.cycle_seconds:.0f} "
+            f"phases={','.join(f'{k}:{v:.0f}s' for k, v in result.phase_seconds.items())}\n"
         )
     if a.skip_reports:
         return 2 if gate_refused or floor_refused else 0
+    reports_start = time.monotonic()
     try:
         reports = HandlerReportsPublish().handle(
             ModelReportsPublishRequest(home=a.registry_home)
@@ -153,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(
         f"reports-site-publish: published={len(reports.published)} files "
         f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "
-        f"index={reports.index_url}\n"
+        f"index={reports.index_url} seconds={time.monotonic() - reports_start:.0f} "
+        f"run_seconds={time.monotonic() - run_start:.0f}\n"
     )
     return 2 if gate_refused or floor_refused else 0
