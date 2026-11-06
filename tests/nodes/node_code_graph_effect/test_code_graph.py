@@ -3,7 +3,7 @@
 """The code graph on both backends, its row, and the piece 1 reading it feeds (OMN-22651).
 
 The last tests are the reading's failing controls: stop the timer and advance the clock and the
-reading goes NOT WORKING; drop the contract roots in a drill and the row goes NOT WORKING while the
+reading goes NOT WORKING; drop the contract links in a drill and the row goes NOT WORKING while the
 operational reading does not read it.
 """
 
@@ -132,6 +132,10 @@ def test_graph_reaches_roots_across_repositories(repos: ProtocolRepoSource) -> N
     # the handler's import of the other repository reaches it, and the script's dynamic import counts
     assert ("example_core", "src/example_core/models.py") in graph.reached
     assert ("example_app", "src/example_app/dyn.py") in graph.reached
+    # a module a workflow runs with -m is a root
+    assert ("example_core", "src/example_core/ci_only.py") in graph.reached
+    # the contract links the registered node package to its handler and the handler to util
+    assert ("example_app", "src/example_app/nodes/node_a/util.py") in graph.reached
     assert core.test_modules == 1
 
 
@@ -207,12 +211,12 @@ def test_failing_control_stop_the_timer_and_advance_the_clock(
     assert _reading(ledger, hours_after_run=27) is EnumReadingVerdict.NOT_WORKING
 
 
-def test_failing_control_drop_the_contract_roots(repos: ProtocolRepoSource) -> None:
-    """A drill that drops the contract roots: the row is NOT WORKING and is drill only."""
+def test_failing_control_drop_the_contract_links(repos: ProtocolRepoSource) -> None:
+    """A drill that drops the contract links: the row is NOT WORKING and is drill only."""
     ledger = InMemoryLedger()
     result = _handler(repos, ledger).handle(
         ModelCodeGraphCommand(
-            correlation_id="d", fault=EnumGraphFault.DROP_CONTRACT_ROOTS
+            correlation_id="d", fault=EnumGraphFault.DROP_CONTRACT_LINKS
         )
     )
     assert result.verdict is EnumReadingVerdict.NOT_WORKING

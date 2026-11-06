@@ -24,6 +24,7 @@ graph_roots:
   test_globs: ["tests/**", "**/tests/**", "**/test_*.py", "**/conftest.py"]
   root_globs: ["scripts/*.py"]
   contract_globs: ["src/**/contract.yaml"]
+  command_globs: [".github/workflows/*.yml"]
   contract_module_keys: [module]
   entry_points: true
   main_modules: true
@@ -58,4 +59,4 @@ schedule_hosts:
 unit_environment:
   EXAMPLE_REPOS_ROOT: $OMNI_HOME
   EXAMPLE_HOST_NAME: example-host
-injected_fault: Stop the timer and advance the clock, or drop the contract roots in a drill run
+injected_fault: Stop the timer and advance the clock, or drop the contract links in a drill run

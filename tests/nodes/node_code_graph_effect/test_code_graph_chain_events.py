@@ -5,7 +5,7 @@
 Publish the input event and assert every event it produces, in order, under one correlation id,
 ending in the success event; inject a defined fault and assert the typed failure event, the ledger
 failure row and the NOT WORKING verdict. The last block shows the golden assertions turn red on a
-named break: the contract roots dropped from the handler's rules.
+named break: the contract links dropped from the handler's rules.
 """
 
 from __future__ import annotations
@@ -161,13 +161,13 @@ def test_error_chain_bad_payload_is_a_typed_failure(repos: ProtocolRepoSource) -
     assert ledger.lines == []
 
 
-def test_break_dropped_contract_roots_turns_the_golden_chain_red(
+def test_break_dropped_contract_links_turns_the_golden_chain_red(
     repos: ProtocolRepoSource,
 ) -> None:
-    """The named break: the contract roots dropped. The golden assertions must fail on it."""
+    """The named break: the contract links dropped. The golden assertions must fail on it."""
     ledger = InMemoryLedger()
     events = asyncio.run(
-        _publish(repos, ledger, _payload(EnumGraphFault.DROP_CONTRACT_ROOTS))
+        _publish(repos, ledger, _payload(EnumGraphFault.DROP_CONTRACT_LINKS))
     )
     with pytest.raises(AssertionError):
         assert_golden_chain(events)

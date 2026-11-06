@@ -4,8 +4,11 @@
 
 Entities are Python module files. An edge is an import (``import``, ``from ... import``, a relative
 import, or a literal ``importlib.import_module`` / ``__import__`` name). Roots are ``__main__``
-modules, files matching a root glob, the modules a contract names, and the targets of
-``pyproject.toml`` scripts and entry points. Reachability runs from the roots over edges of
+modules, files matching a root glob, the targets of ``pyproject.toml`` scripts and entry points,
+and the ``-m`` modules and ``.py`` paths a command file runs (workflows, hook configs, units). A
+contract links its node package to the modules it names, so a declared node's handler is reached
+only when its package is (registered by an entry point, or imported). Reachability runs from the
+roots over edges of
 non-test files only, across every repository in the run, so one repository's import of another
 counts. Test files are read, are never roots, and reach nothing: a module only a test imports is
 unreachable and is named as such. It reads no clock, file, network or environment.
@@ -38,6 +41,10 @@ Entity = tuple[str, str]
 _DOTTED = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _PYPROJECT = "pyproject.toml"
 _IMPORT_CALLS = frozenset({"import_module", "__import__"})
+_MODULE_FLAG = re.compile(
+    r"(?:^|\s)-m\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)"
+)
+_PY_PATH = re.compile(r"(?:^|[\s\"'=:(])((?:\./)?[A-Za-z0-9_][A-Za-z0-9_./-]*\.py)\b")
 
 
 @lru_cache(maxsize=256)
@@ -70,16 +77,17 @@ def _matches(path: str, patterns: Iterable[str]) -> bool:
 
 @dataclass(frozen=True)
 class GraphRules:
-    """The overlay's root rules, with the drill switch that drops the contract roots."""
+    """The overlay's root rules, with the drill switch that drops the contract links."""
 
     roots: ModelGraphRoots
-    contract_roots: bool = True
+    contract_links: bool = True
 
     def wanted(self, path: str) -> bool:
         return (
             path.endswith(".py")
             or path == _PYPROJECT
             or _matches(path, self.roots.contract_globs)
+            or _matches(path, self.roots.command_globs)
         )
 
     def is_test(self, path: str) -> bool:
@@ -187,6 +195,18 @@ def _contract_modules(text: str, keys: Sequence[str]) -> Iterator[str]:
             stack.extend(item)
 
 
+def _command_modules(text: str) -> Iterator[str]:
+    """``-m <module>`` in a command file (a workflow, a hook config, a unit, a shell script)."""
+    for match in _MODULE_FLAG.finditer(text):
+        yield match.group(1)
+
+
+def _command_paths(text: str) -> Iterator[str]:
+    """Repository-relative ``.py`` paths a command file runs."""
+    for match in _PY_PATH.finditer(text):
+        yield match.group(1).removeprefix("./")
+
+
 def _entry_point_modules(text: str) -> Iterator[str]:
     try:
         project = tomllib.loads(text).get("project", {})
@@ -272,9 +292,27 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
             elif path == _PYPROJECT and rules.roots.entry_points:
                 for module in _entry_point_modules(text):
                     roots.update(index.resolve(module, repo))
-            elif rules.contract_roots and _matches(path, rules.roots.contract_globs):
-                for module in _contract_modules(text, rules.roots.contract_module_keys):
+            elif rules.contract_links and _matches(path, rules.roots.contract_globs):
+                # A contract links its node package to the modules it names: the runtime loads
+                # them when it loads the node, so they are reached exactly when the package is.
+                owner = (
+                    repo,
+                    f"{path.rsplit('/', 1)[0]}/__init__.py"
+                    if "/" in path
+                    else "__init__.py",
+                )
+                if owner in index.name_of:
+                    links = edges.setdefault(owner, set())
+                    for module in _contract_modules(
+                        text, rules.roots.contract_module_keys
+                    ):
+                        links.update(index.resolve(module, repo))
+            if _matches(path, rules.roots.command_globs):
+                for module in _command_modules(text):
                     roots.update(index.resolve(module, repo))
+                for named in _command_paths(text):
+                    if (repo, named) in index.name_of:
+                        roots.add((repo, named))
 
     reached: set[Entity] = set()
     queue = deque(roots - tests)

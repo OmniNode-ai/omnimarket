@@ -43,8 +43,11 @@ class ModelGraphRoots(BaseModel):
     test_globs: tuple[str, ...]
     #: Globs of files that are roots themselves (scripts, hooks, plugin entry files).
     root_globs: tuple[str, ...]
-    #: Globs of contract files whose module values are roots.
+    #: Globs of contract files: each links its node package to the modules it names.
     contract_globs: tuple[str, ...]
+    #: Globs of command files (workflows, hook configs, units, shell scripts) whose ``-m``
+    #: modules and ``.py`` paths are roots.
+    command_globs: tuple[str, ...]
     #: Keys of a contract whose string values name a module.
     contract_module_keys: tuple[str, ...] = Field(min_length=1)
     #: ``pyproject.toml`` scripts and entry points are roots.

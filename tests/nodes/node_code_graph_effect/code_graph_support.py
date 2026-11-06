@@ -28,6 +28,8 @@ HOST = "example-host"
 REF = "origin/main"
 
 CORE: dict[str, str] = {
+    ".github/workflows/ci.yml": "jobs:\n  ci:\n    steps:\n      - run: uv run python -m example_core.ci_only --strict\n",
+    "src/example_core/ci_only.py": "def run():\n    return 0\n",
     "pyproject.toml": '[project]\nname = "example-core"\n[project.scripts]\nexample-core = "example_core.cli:main"\n',
     "src/example_core/__init__.py": "",
     "src/example_core/cli.py": "from example_core.models import Thing\n\ndef main():\n    return Thing\n",
@@ -37,7 +39,10 @@ CORE: dict[str, str] = {
     "tests/test_helpers.py": "from example_core.helpers import helper\n\ndef test_helper():\n    assert helper() == 2\n",
 }
 APP: dict[str, str] = {
-    "pyproject.toml": '[project]\nname = "example-app"\n',
+    "pyproject.toml": (
+        '[project]\nname = "example-app"\n'
+        '[project.entry-points."onex.nodes"]\nnode_a = "example_app.nodes.node_a"\n'
+    ),
     "src/example_app/__init__.py": "",
     "src/example_app/nodes/__init__.py": "",
     "src/example_app/nodes/node_a/__init__.py": "",

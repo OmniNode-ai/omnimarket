@@ -23,8 +23,8 @@ class EnumGraphFault(StrEnum):
     NONE = "none"
     #: The first declared repository cannot be read.
     UNREADABLE_REPO = "unreadable-repo"
-    #: The contract handler modules stop being roots.
-    DROP_CONTRACT_ROOTS = "drop-contract-roots"
+    #: Contracts stop linking their node packages to the modules they name.
+    DROP_CONTRACT_LINKS = "drop-contract-links"
 
 
 class ModelRepoSnapshot(BaseModel):

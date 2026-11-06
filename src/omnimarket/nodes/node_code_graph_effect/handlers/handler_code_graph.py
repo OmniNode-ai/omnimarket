@@ -93,7 +93,7 @@ class HandlerCodeGraph:
     def rules(self, fault: EnumGraphFault = EnumGraphFault.NONE) -> GraphRules:
         return GraphRules(
             roots=self._overlay.graph_roots,
-            contract_roots=fault is not EnumGraphFault.DROP_CONTRACT_ROOTS,
+            contract_links=fault is not EnumGraphFault.DROP_CONTRACT_LINKS,
         )
 
     def _snapshots(
