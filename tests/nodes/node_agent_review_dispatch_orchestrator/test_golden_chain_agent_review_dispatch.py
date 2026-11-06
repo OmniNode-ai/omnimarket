@@ -38,11 +38,20 @@ def test_the_contract_declares_one_command_and_three_terminal_topics() -> None:
     }
     contract = yaml.safe_load(_CONTRACT.read_text("utf-8"))
     assert contract["name"] == NODE
-    assert contract["event_bus"]["subscribe_topics"] == [topics.command]
+    # The proactive PR trigger (OMN-19998) and the quorum operation add two inputs and
+    # their results; the review command is also what the trigger publishes.
+    assert contract["event_bus"]["subscribe_topics"] == [
+        topics.command,
+        "onex.evt.github.pr-status.v1",
+        "onex.cmd.omnimarket.agent-review-quorum-requested.v1",
+    ]
     assert set(contract["event_bus"]["publish_topics"]) == {
+        topics.command,
         topics.completed,
         topics.refused,
         topics.failed,
+        "onex.evt.omnimarket.agent-review-pr-trigger-decided.v1",
+        "onex.evt.omnimarket.agent-review-quorum-decided.v1",
     }
 
 
