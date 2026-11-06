@@ -59,8 +59,14 @@ def read_outbox(
         directory = locks / name
         for entry in files.list_names(directory, settings.pending_glob):
             pending += 1
-            queued = _queued_at(
-                files.read_text(directory / entry), settings.queued_at_field
+            try:
+                text: str | None = files.read_text(directory / entry)
+            except UnicodeDecodeError:
+                # A queued file that is not text is an unreadable queued file, counted below as one;
+                # it is not a failure of the host read.
+                text = None
+            queued = (
+                None if text is None else _queued_at(text, settings.queued_at_field)
             )
             if queued is None:
                 unreadable += 1
