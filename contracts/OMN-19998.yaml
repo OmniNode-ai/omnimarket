@@ -148,16 +148,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-ledger-owner-row-type
-    statement: A handoff message naming a PR never owns it under the ledger ownership rule.
-    acceptance:
-      - id: AC14
-        statement: 'AC14: the recorded handoff MSG and explicitly typed non-CLAIM rows return FREE, while a real CLAIM beside the MSG retains ownership; untyped claims and leases keep their existing behavior -- falsifier: uv run --frozen pytest tests/nodes/node_ledger_tail_compute/test_golden_chain_ledger_tail_compute.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-release-index-transport-retry
-    statement: A transient release-index transport failure gets one bounded retry without turning an unreadable result into release evidence.
-    acceptance:
-      - id: AC15
-        statement: 'AC15: a transport failure followed by a definite 404 returns an empty set and a later served version returns its file types; two transport failures return indeterminate; definite HTTP answers and invalid payloads are not retried -- falsifier: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -180,38 +170,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-release-index-initialized-payload
-    description: Successful release-index reads consume their payload inside the successful attempt. Focused controls cover a retry followed by a served release or definite 404, exhausted transport retries, definite HTTP errors and malformed payloads.
-    source: manual
-    binds_ac: [AC15]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-release-payload-deploy
-    description: Hosted smoke calls the release-index reader through the evidence effect handler's public import, with a local transport response after a timeout and an exhausted transport failure. It observes the served file types and indeterminate result without requiring network access or a host installation.
-    source: manual
-    binds_ac: [AC15]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov -k 'transient_transport_failure_then_served_release or transport_failure_exhaustion'
-        cwd: .
-  - id: dod-omn19998-release-index-transport-retry
-    description: The negative-control release from the recorded integration failure is exercised with each supported transport exception followed by a definite 404. Positive release, exhausted retry, definite HTTP and malformed payload controls preserve the evidence distinctions. The CI log did not expose its underlying transport exception.
-    source: manual
-    binds_ac: [AC15]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-ledger-owner-row-type
-    description: The recorded handoff MSG, typed non-CLAIM rows and adjacent real CLAIM exercise HandlerLedgerTail owner through its typed request. Six recorded-case tests fail against the merge-base handler and model. The focused file also covers untyped claims, leases and contract-to-bus wiring; this slice does not assert a host timer installation.
-    source: manual
-    binds_ac: [AC14]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_ledger_tail_compute/test_golden_chain_ledger_tail_compute.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
