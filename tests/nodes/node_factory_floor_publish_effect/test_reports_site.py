@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
     NODE_DIR,
+    HandlerFactoryFloorPublish,
     PublishRefusedError,
     load_runtime,
     remote_write_command,
@@ -30,6 +31,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
+    ModelPublishStep,
+    ModelPublishStepResult,
     ModelReportData,
     ModelReportPage,
     ModelReportsPublishRequest,
@@ -336,6 +339,20 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     )
     docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    # The canary step publishes to a git remote after fetching the served page; this test reads the order of the
+    # publish, so the step is answered here and its own node tests cover what it does.
+    real_step = HandlerFactoryFloorPublish._step
+
+    def step(
+        self: HandlerFactoryFloorPublish,
+        publish_step: ModelPublishStep,
+        *args: Any,
+    ) -> ModelPublishStepResult:
+        if publish_step.name == "floor_canary":
+            return ModelPublishStepResult(name=publish_step.name, status="ok")
+        return real_step(self, publish_step, *args)
+
+    monkeypatch.setattr(HandlerFactoryFloorPublish, "_step", step)
     assert main(["--omni-home", request.home or "", "--skip-refresh"]) == 0
     out = capsys.readouterr().out
     assert "operator-access: admitted_devices=1" in out

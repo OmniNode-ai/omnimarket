@@ -255,7 +255,12 @@ def test_receipt_pid_distinguishes_a_live_quiet_runner_from_an_exited_one(
     for lane, pid in (("pfix-2062-r-1744", child.pid), ("quiet-live", os.getpid())):
         write(tmp_path / lane / f"rlane-{lane}-1.json", receipt_json(lane, pid=pid))
     receipts = load_receipts(
-        tmp_path, now=NOW, window_hours=24, glob="rlane-*.json", result_chars=600
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=1,
     )
     assert receipts is not None
     assert {r.lane: r.runner_alive for r in receipts} == {
