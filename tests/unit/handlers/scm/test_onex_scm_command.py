@@ -182,6 +182,13 @@ def _pr(request: ModelGithubGatewayRequest) -> dict[str, Any]:
 
 
 _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]]] = {
+    "open_pr_facts": lambda r: {
+        "operation": "open_pr_facts",
+        "repo": r.repo,
+        "total_count": 0,
+        "truncated": False,
+        "prs": [],
+    },
     "pr_text": lambda r: {
         "operation": "pr_text",
         **_pr(r),
@@ -448,6 +455,7 @@ _READ_ARGS: dict[str, list[str]] = {
     "pr-status": [f"{REPO}#77", "--source", "bus"],
     "pr-checks": [f"{REPO}#77", "--source", "bus"],
     "pr-list": [REPO, "--source", "bus"],
+    "open-pr-facts": [REPO, "--source", "bus"],
     "pr-merge-commit": [f"{REPO}#77", "--source", "bus"],
     "pr-review": [f"{REPO}#77"],
     "pr-ticket": [f"{REPO}#77"],

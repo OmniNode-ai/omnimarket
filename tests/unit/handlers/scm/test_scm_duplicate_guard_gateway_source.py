@@ -111,11 +111,9 @@ class FailingGatewayBus(FakeBus):
     def _respond(
         self, topic: str, payload: dict[str, Any]
     ) -> tuple[str, dict[str, Any]]:
-        assert GATEWAY.failure is not None
-        return GATEWAY.failure, {
-            "correlation_id": payload["correlation_id"],
+        return GATEWAY.success, {
             "outcome": "failed",
-            "reason": "unknown operation open_pr_facts",
+            "error": "unknown operation open_pr_facts",
         }
 
 
