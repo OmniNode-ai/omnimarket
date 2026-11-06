@@ -54,6 +54,7 @@ handler_routing:
       handler:
         name: HandlerReleaseAsset
         module: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_release_asset
+  default_handler: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve:HandlerLocalDashboardServe
 
 config:
   release_asset_download:
