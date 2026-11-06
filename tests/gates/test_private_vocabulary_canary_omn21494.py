@@ -63,6 +63,12 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
         [
             uv,
             "run",
+            # uv prints "Updating" and "Updated" lines for the git source on
+            # stderr when its cache is cold (a fresh runner), which the
+            # one-line assertion would count as refusal lines. Quiet drops uv's
+            # own progress and keeps its errors and the script's stderr, so the
+            # assertion still reads the script alone. (OMN-22478)
+            "--quiet",
             "--no-project",
             "--isolated",
             "--with",
