@@ -111,8 +111,8 @@ def test_per_attempt_secret_ref_on_the_local_rung_entry() -> None:
         secret_ref=X,
     )
     entry = _local_rung_attempt(
-        cast("Any", backend),
-        cast("Any", result),
+        cast(Any, backend),
+        cast(Any, result),
         None,
         "provider failed",
         configuration=None,
