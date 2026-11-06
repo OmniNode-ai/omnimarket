@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-22517
+title: Keep PR auto-merge results off dev check suites
+summary: The criteria of omnimarket#5139, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19998-automerge-event-scope
+  statement: PR auto-merge automation never attaches its result to an unrelated default-branch head through a check-suite completion.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: Recorded check-suite failures no longer trigger Auto-Merge; PR, review and manual triggers remain, feature-base and unreadable-base cases still refuse, and the tag oracle still rejects a real red -- falsifier: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit'
+evidence_requirements:
+- kind: tests
+  description: Keep PR auto-merge results off dev check suites
+  command: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-automerge-event-scope
+  description: Twelve recorded default-branch workflow runs reproduce the wrong event attribution. The real workflow trigger table excludes their event while the existing executable guard tests retain feature-base refusal, unreadable-base failure and integration-base controls. This scoped source fix does not assert the unrelated controller timer criteria.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+    cwd: .
+- id: dod-omn19998-automerge-event-scope-deploy
+  description: Hosted workflow wiring smoke reads the shipped trigger table with the recorded run fixtures, verifies the surviving PR-scoped trigger actions and executes the actual feature-base guard shell with a substituted read transport. No live dispatch, refresh, pin edit, release or runtime installation is needed for a workflow configuration change.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+    cwd: .
