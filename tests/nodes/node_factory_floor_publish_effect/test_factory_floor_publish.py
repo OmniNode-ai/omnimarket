@@ -1254,7 +1254,7 @@ SHELL_MANIFEST = {
     ],
 }  # fmt: skip
 
-SHELL_FILES = {
+SHELL_FILES: dict[str, object] = {
     "factory-floor.json": SHELL_RECORD,
     "publish-status.json": SHELL_STATUS,
     "process-health.json": SHELL_HEALTH,
