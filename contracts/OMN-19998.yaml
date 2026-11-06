@@ -149,6 +149,16 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-floor-worker-occupancy
+    statement: A finished receipt or an absent worker process removes an unclosed claim from worker occupancy; silence alone does not.
+    acceptance:
+      - id: AC8
+        statement: 'Finished receipts and dead runner or controller process readings occupy no slots, while live quiet workers and unread process sources remain visible; older receipts cannot close a reclaimed lane and both pages label inactive workers separately.'
+  - id: req-omn19998-floor-cloud-source
+    statement: The floor reads current cloud account state through the existing cloud placement node and records the evidence behind stopped lines.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the read-only node snapshot exposes selected account fields from v2 state, supports a reachable host command, and keeps failures unread without publishing diagnostics; dependency release-note links do not stop unrelated tasks, a ticket-linked red PR still stops its task, and a failed gate names its recorded cause and date -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov'
   - id: req-omn19998-floor-publish-interval
     statement: The existing floor publisher keeps large process series off the shared floor payload, retains lossless report detail, and renders a prepared timer environment with its declared projection host.
     acceptance:
@@ -250,6 +260,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k runtime_bus_profile -q
+        cwd: .
   - id: dod-omn19998-lab-host-toolchain
     description: Replay the recorded missing-tool and masked-zero shapes through the existing parity and provisioning handlers, including a real POSIX shell, overlay installer re-probes and working-version controls. Does not assert the unrelated controller timer criteria or live host installation.
     source: manual
@@ -655,6 +666,37 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
+  - id: dod-omn19998-floor-cloud-source
+    description: Focused tests exercise the existing cloud node handler, source command boundary and floor compute handler, including selected-field output, read-only state, malformed input, diagnostic suppression and positive controls for real red PRs. This evidence does not assert a live publisher installation or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy
+    description: Focused regressions start from the named missing-terminal workers, finished receipt, and hostless cause claims. They retain live and unread quiet workers and reject previous-run evidence. This slice does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_dead_worker_occupancy.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy-deploy
+    description: Hosted CLI smoke reads the declared lane sources and writes the floor record through the existing effect and compute handlers. Live controller-host installation remains a separate readback.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-floor-phoenix-timer-env
     description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
     source: manual
@@ -678,6 +720,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
+        cwd: .
   - id: dod-omn19998-brief-frozen-destinations
     description: Replays the recorded source and test destination gap with data-only controls through the existing dispatch node. Original controller rules, locks and host timer criteria remain unproven by this slice.
     source: manual
@@ -693,6 +736,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual

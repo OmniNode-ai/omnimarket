@@ -50,8 +50,19 @@ class ModelFactoryFloorLaneSources(BaseModel):
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)
     lane_marker_min_id: int = Field(gt=0)
-    cloud_accounts_file: str = Field(min_length=1)
     host_table_env: str = Field(min_length=1)
+    controller_dir_env: str = Field(min_length=1)
+    controller_dir_fallback: str = Field(min_length=1)
+    process_start_grace_seconds: int = Field(ge=0)
+
+
+class ModelFactoryFloorCloudSource(BaseModel):
+    """The existing cloud node's read operation, called through the canonical runtime."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    node_name: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
 
 
 class ModelFactoryFloorLimitSources(BaseModel):
@@ -103,6 +114,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
+    cloud_source: ModelFactoryFloorCloudSource
     limit_sources: ModelFactoryFloorLimitSources
     container_source: ModelFactoryFloorContainerSource
     output: ModelFactoryFloorOutput
@@ -149,6 +161,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = Field(min_length=1)
+    # Optional argv prefix ending in `onex node`, e.g. ssh to the reachable state owner.
+    # Empty calls the node on the publisher. Paths are resolved by the node on its own host.
+    cloud_accounts_node_command: tuple[str, ...] = ()
     # The machines drawn as bays, in order. A machine not listed here is never drawn, whatever the pool read holds.
     machines: tuple[ModelFloorMachineDecl, ...] = ()
     # The shared lab host table (caps, repair), relative to the registry home, for a deployment where the host_table_env
