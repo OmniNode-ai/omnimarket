@@ -4,7 +4,8 @@
 
 The floor's machine bays draw each machine's CI runners from ``runner-fleet.json`` under the state directory. The runner
 monitor publishes the observation to the bus and this node is its consumer, so this node saves it: the file holds the
-observation's time and, per runner, the host label it carries and its status (the two fields the floor reads).
+observation's time and, per runner, the host label it carries and its status, plus the runner's name, label class
+and labels, which are what tell an offline runner on a host that is down for repair from one that should be running.
 
 The file is replaced only by an observation newer than the one it holds, so a redelivered older observation never
 overwrites a newer one, and it is written to a temporary name and renamed into place so a reader never sees half of it.
@@ -55,7 +56,13 @@ def save_observation(observation: ModelRunnerFleetObservationWire, path: Path) -
         "observed_at": observation.observed_at.isoformat(),
         "observing_host": observation.host,
         "runners": [
-            {"host": runner.host, "status": runner.status.value}
+            {
+                "host": runner.host,
+                "status": runner.status.value,
+                "runner_name": runner.runner_name,
+                "label_class": runner.label_class,
+                "labels": list(runner.labels),
+            }
             for runner in observation.runners
         ],
     }

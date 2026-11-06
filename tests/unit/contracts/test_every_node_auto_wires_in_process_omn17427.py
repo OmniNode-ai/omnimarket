@@ -149,6 +149,8 @@ def topic_scans(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
 
 # Contracts per wiring batch; each batch stays under the per-test runtime budget.
 _WIRING_BATCH_SIZE = 32
+# The harness schedule node reads its overlay on its first tick, so it wires without one (OMN-22608).
+_HARNESS_SCHEDULE_NODE = "node_lab_test_harness_schedule_compute"
 # The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
 _RELAY_NODES = frozenset(
     {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
@@ -347,17 +349,9 @@ def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> No
     assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
 
 
-@pytest.mark.parametrize(
-    "manifest",
-    _wiring_batches(),
-    ids=lambda manifest: manifest.contracts[0].name,
-)
-@pytest.mark.timeout(900, method="thread")
-async def test_every_node_auto_wires_in_process(
-    monkeypatch: pytest.MonkeyPatch,
-    manifest: ModelAutoWiringManifest,
-    topic_scans: dict[str, int],
-) -> None:
+async def _wire_and_collect_failures(
+    monkeypatch: pytest.MonkeyPatch, manifest: ModelAutoWiringManifest
+) -> tuple[Any, dict[str, str]]:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _UNREACHABLE_BROKER)
@@ -396,6 +390,23 @@ async def test_every_node_auto_wires_in_process(
                 quarantined.contract_name,
                 f"{quarantined.handler_name}: {quarantined.detail[:400]}",
             )
+    return report, failing
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    _wiring_batches(),
+    ids=lambda manifest: manifest.contracts[0].name,
+)
+@pytest.mark.timeout(900, method="thread")
+async def test_every_node_auto_wires_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    manifest: ModelAutoWiringManifest,
+    topic_scans: dict[str, int],
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    report, failing = await _wire_and_collect_failures(monkeypatch, manifest)
     assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
     # Each distinct scan runs once however many handlers ask for it.
     assert topic_scans["run"] <= 1
@@ -413,7 +424,7 @@ async def test_every_node_auto_wires_in_process(
 
 @pytest.mark.timeout(900, method="thread")
 async def test_a_publish_only_tail_batch_is_not_a_smoke_failure(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A batch of only externally triggered nodes wires nothing and still passes.
 
@@ -423,33 +434,36 @@ async def test_a_publish_only_tail_batch_is_not_a_smoke_failure(
     declared in contract')]`` and ``total_wired == 0``, so the bare
     ``total_wired > 0`` this replaced failed while nothing was wrong.
     """
-    topology = load_topology_profile(_TOPOLOGY_PROFILE)
-    monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _UNREACHABLE_BROKER)
-    monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
     publish_only = [
         contract
         for contract in _manifest().contracts
         if not getattr(contract.event_bus, "subscribe_topics", None)
     ]
     assert publish_only, "no publish-only contract is discovered any more"
-    manifest = ModelAutoWiringManifest(contracts=(publish_only[0],))
-
-    bus = EventBusInmemory()
-    container = ModelONEXContainer()
-    await container.service_registry.register_instance(ProtocolEventBusPublisher, bus)
-    await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
-    try:
-        report = await wire_from_manifest(
-            manifest,
-            MessageDispatchEngine(),
-            event_bus=bus,
-            environment=_TOPOLOGY_PROFILE,
-            container=container,
-            topology=topology,
-        )
-    finally:
-        await bus.close()
-
+    report, _ = await _wire_and_collect_failures(
+        monkeypatch, ModelAutoWiringManifest(contracts=(publish_only[0],))
+    )
     assert report.total_wired == 0, "the contract chosen does subscribe after all"
     assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
+
+
+async def test_the_harness_schedule_node_wires_without_its_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A runtime with no harness overlay must boot: the node wires, and refuses on its tick.
+
+    The composed-runtime-boot job loads every node with no harness overlay; a node that
+    refused to construct without it crash-looped the whole runtime.
+    """
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    schedule = [
+        contract
+        for contract in _manifest().contracts
+        if contract.name == _HARNESS_SCHEDULE_NODE
+    ]
+    assert schedule, f"{_HARNESS_SCHEDULE_NODE} is not discovered"
+    _, failing = await _wire_and_collect_failures(
+        monkeypatch, ModelAutoWiringManifest(contracts=tuple(schedule))
+    )
+    assert _HARNESS_SCHEDULE_NODE not in failing, failing
