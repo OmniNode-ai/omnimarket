@@ -24,7 +24,7 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
@@ -65,6 +65,10 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
+    ModelLedgerFloorRead,
+    read_ledger_facts,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
@@ -102,6 +106,17 @@ from omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_ala
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
     build_slack_api,
+)
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    LedgerRouteError,
+    build_row_source,
+)
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+    ModelFileLedgerReadRoute,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolLedgerRowSource,
 )
 
 NODE_NAME = "node_floor_simple_effect"
@@ -175,6 +190,10 @@ class ModelFloorSimpleRuntime(BaseModel):
     served_record_name: str
     served_fetch_timeout_seconds: int
     cycle_deadline_seconds: int
+    # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
+    ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
+        discriminator="route"
+    )
     sources: ModelSourcePaths
     output: ModelOutputPaths
     state: ModelStatePaths
@@ -281,7 +300,9 @@ class HandlerFloorSimpleTick:
         served_times: Callable[[], tuple[datetime | None, datetime | None] | None]
         | None = None,
         deploy_agent_fetch: Callable[[str], Mapping[str, Any] | None] | None = None,
+        ledger_source: ProtocolLedgerRowSource | None = None,
     ) -> None:
+        self._ledger_source = ledger_source
         self._deploy_agent_fetch = deploy_agent_fetch
         self._sink = sink
         self._channels = channels
@@ -622,7 +643,10 @@ class HandlerFloorSimpleTick:
         now = request.now or self._clock()
         state_dir = home / rt.state.dir_relpath
         piece = floor_ov.rebuild.lab_state_piece
-        pre = self._receipts(sink, floor_ov, now, rt)
+        ledger = self._read_ledger(rt, floor_ov, env, now)
+        go = ledger.facts.go_given_through if ledger.facts is not None else None
+        ledger_events = ledger.facts.events if ledger.facts is not None else ()
+        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -630,7 +654,7 @@ class HandlerFloorSimpleTick:
             or (row.error_age_s > floor_ov.error_drill_after_s)
         ):
             self._drill(step)
-            pre = self._receipts(sink, floor_ov, self._clock(), rt)
+            pre = self._receipts(sink, floor_ov, self._clock(), rt, go, ledger_events)
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
@@ -750,7 +774,7 @@ class HandlerFloorSimpleTick:
         )
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
-            lambda: self._receipts(sink, floor_ov, now, rt),
+            lambda: self._receipts(sink, floor_ov, now, rt, go, ledger_events),
             lambda out: {
                 "chains": len(out.chains),
                 "findings": len(out.findings),
@@ -792,10 +816,12 @@ class HandlerFloorSimpleTick:
                 rt.sources.harness_piece,
             ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
+            go_given_through=go,
             sources_read={
                 "floor_record": record is not None,
                 "pull_request_watcher": watcher is not None,
                 "goal_scope": goal_scope is not None,
+                "ledger": ledger.facts is not None,
             },
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
@@ -853,22 +879,38 @@ class HandlerFloorSimpleTick:
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
+    def _read_ledger(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        ov: ModelFloorSimpleOverlay,
+        env: Mapping[str, str],
+        now: datetime,
+    ) -> ModelLedgerFloorRead:
+        """The go and the ledger-written piece events, or the reason the ledger could not be read."""
+        try:
+            source = self._ledger_source or build_row_source(rt.ledger, env)
+        except LedgerRouteError as exc:
+            return ModelLedgerFloorRead(error=f"ledger route not configured: {exc}")
+        return read_ledger_facts(source, ov, now)
+
     @staticmethod
     def _receipts(
         sink: ProtocolEmissionSink,
         ov: ModelFloorSimpleOverlay,
         now: datetime,
         rt: ModelFloorSimpleRuntime,
+        go: int | None,
+        ledger_events: tuple[ModelNodeEmission, ...],
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
-        emissions = sink.read(since)
+        emissions = (*sink.read(since), *ledger_events)
         # A join is judged only into a piece that exists: admitted by the go, a step 0 piece, or one that has emitted.
         judged = tuple(
             sorted(
                 {
                     p.piece
                     for p in ov.pieces
-                    if p.piece <= ov.rebuild.go_given_through_piece
+                    if (go is not None and p.piece <= go)
                     or p.piece in ov.rebuild.step0_pieces
                 }
                 | {e.piece for e in emissions}

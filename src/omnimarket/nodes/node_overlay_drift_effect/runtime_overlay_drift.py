@@ -26,6 +26,9 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_
 from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
     LocalOverlayHome,
 )
+from omnimarket.nodes.node_overlay_drift_effect.adapters.pin_history import (
+    GitPinHistory,
+)
 from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_validator import (
     InterpreterRuntimeValidator,
 )
@@ -77,6 +80,13 @@ def build_handler(
         if write
         else None,
         clock=lambda: datetime.now(UTC),
+        pin_history=GitPinHistory(
+            Path(_required(overlay.pin_history.clone_env, environ)),
+            overlay.pin_history.merged_ref,
+            overlay.pin_history.timeout_seconds,
+        )
+        if overlay.pin_history
+        else None,
     )
     return handler, host
 
@@ -100,7 +110,7 @@ def _run(write: bool) -> int:
         f"outcome={result.outcome.value} checked={counts.checked} accepted={counts.accepted} "
         f"rejected={counts.rejected} model_missing={counts.model_missing} "
         f"unreadable={counts.unreadable} overlay_missing={counts.overlay_missing} "
-        f"unpinned={counts.unpinned} runtime_version={runtime.version if runtime else 'unknown'} "
+        f"unpinned={counts.unpinned} pin_unmerged={counts.pin_unmerged} runtime_version={runtime.version if runtime else 'unknown'} "
         f"runtime_revision={runtime.revision[:12] if runtime else 'unknown'} "
         f"home_revision={result.home_revision[:12]} ledger={result.ledger} "
         f"key={result.row_key} reason={','.join(result.reasons)}\n"
@@ -112,6 +122,8 @@ def _run(write: bool) -> int:
         )
     if result.unpinned:
         sys.stdout.write(f"UNPINNED {' '.join(result.unpinned)}\n")
+    if result.unmerged_pins:
+        sys.stdout.write(f"UNMERGED-PIN {' '.join(result.unmerged_pins)}\n")
     return 1 if result.failed else 0
 
 
