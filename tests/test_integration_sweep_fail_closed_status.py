@@ -45,6 +45,8 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
 )
 from tests.node_overlay_support import (
     INTEGRATION_SWEEP_OVERLAY,
+    RUNTIME_HOST_ROW,
+    install_lab_host_table,
     install_node_overlay,
 )
 
@@ -59,12 +61,14 @@ def _deployment_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """The sweep's hosts and endpoints are deployment facts the suite supplies (OMN-20935)."""
+    root = tmp_path_factory.mktemp("overlay_root")
     install_node_overlay(
         monkeypatch,
-        tmp_path_factory.mktemp("overlay_root"),
+        root,
         "node_integration_sweep_orchestrator",
         INTEGRATION_SWEEP_OVERLAY,
     )
+    install_lab_host_table(monkeypatch, root, [RUNTIME_HOST_ROW])
 
 
 def _dead_infra_run(argv: list[str], **_kwargs: object) -> MagicMock:
