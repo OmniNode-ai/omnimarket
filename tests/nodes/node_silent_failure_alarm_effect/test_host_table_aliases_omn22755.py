@@ -111,7 +111,7 @@ def test_host_table_change_flows_into_the_aliases(tmp_path: Path) -> None:
 
 def test_host_table_change_flows_into_the_quiet_host_reading(tmp_path: Path) -> None:
     table = _table(tmp_path / "hosts.yaml", NAMES)
-    quiet, warnings = _tick(tmp_path / "with", table, "Beta-Box.example.test")
+    quiet, warnings = _tick(tmp_path, table, "Beta-Box.example.test")
     assert warnings == []
     assert "h053" not in quiet
     assert (
@@ -124,7 +124,7 @@ def test_host_table_without_the_host_reads_it_quiet_control(tmp_path: Path) -> N
     table = _table(
         tmp_path / "hosts.yaml", {h: n for h, n in NAMES.items() if h != "h053"}
     )
-    quiet, _ = _tick(tmp_path / "without", table, "Beta-Box.example.test")
+    quiet, _ = _tick(tmp_path, table, "Beta-Box.example.test")
     assert "h053" in quiet
 
 
@@ -135,7 +135,7 @@ def test_host_table_unreadable_leaves_events_unattributed_and_says_why(
     options = ModelSilentFailureAlarmOptions(registry_root=tmp_path, host_table=missing)
     assert options.host_aliases == {}
     assert "no-such-table.yaml" in options.host_table_error
-    quiet, warnings = _tick(tmp_path / "run", missing, "beta-box")
+    quiet, warnings = _tick(tmp_path, missing, "beta-box")
     assert quiet == ()  # UNKNOWN names no host as quiet and no host as live
     assert any("host table unreadable" in w for w in warnings), warnings
 
