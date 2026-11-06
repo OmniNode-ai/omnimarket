@@ -170,7 +170,6 @@ dod_evidence:
       the PR's source and configured transport end to end without a pool host or private overlay.
     source: "manual"
     execution_scope: hosted_and_local
-    binds_ac: ["AC1", "AC7"]
     checks:
       - check_type: "command"
         check_value: 'docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/reading-venv -v "$PWD:/workspace:ro" -w /workspace ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_hourly_writes_one_row_per_piece_for_a_window_through_the_configured_routes tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_probe_writes_nothing -q --no-cov -p no:randomly -p no:cacheprovider'

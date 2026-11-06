@@ -28,19 +28,12 @@ handler:
   class: HandlerReadingWriter
   input_model: omnimarket.models.model_reading.ModelReadingWindowCommand
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: run_reading_window
-      topic: onex.cmd.omnimarket.reading-window-requested.v1
-      handler:
-        name: HandlerReadingWriter
-        module: omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
-      input_model: omnimarket.models.model_reading.ModelReadingWindowCommand
-      output_model: omnimarket.models.model_reading.ModelReadingWindowResult
+# Not a runtime-dispatched handler: HandlerReadingWriter takes its overlay, source, appender and clock
+# as constructor parameters, so the node runs through its own CLI and schedule, not handler_routing.
 
 descriptor:
   node_archetype: effect
+  runtime_profiles: [effects]
   purity: impure
   idempotent: true
   side_effects: [ledger-append]
@@ -74,11 +67,7 @@ topics:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.reading-window-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.reading-piece-written.v1
-    - onex.evt.omnimarket.reading-piece-failed.v1
-    - onex.evt.omnimarket.reading-window-completed.v1
-    - onex.evt.omnimarket.reading-window-failed.v1
+  publish_topics: []
 
 externally_consumed_topics:
   - onex.evt.omnimarket.reading-piece-written.v1
