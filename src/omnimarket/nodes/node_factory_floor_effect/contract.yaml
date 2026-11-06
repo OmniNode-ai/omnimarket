@@ -14,6 +14,11 @@ description: >-
   through the ledger reader, the Linear snapshot plans-today writes, the lab placement reading, the friction
   report), call node_factory_floor_compute with them and write its JSON to the path this contract declares.
   The only reads and the only write of the factory floor live here; the compute node is pure.
+dependencies:
+  - name: omnimarket.nodes.node_cloud_session_placement_effect
+    dependency_type: internal
+    description: Read-only typed cloud account snapshot through the canonical runtime.
+    required: true
 input_model:
   name: ModelFactoryFloorRunRequest
   module: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run
@@ -114,12 +119,26 @@ runtime:
     pool_receipt: hosts-probe/latest.json
     receipt_glob: "rlane-*.json"
     receipt_window_hours: 24
+    # Measured 2026-11-06 on the launching Mac at load 29 under the Background clamp: 19,273 directories took 94 s one at
+    # a time, 20.7 s with 8 workers and 2.6 s with 32.
+    receipt_scan_workers: 32
     result_chars: 600
     placement_dir_env: LANDING_PLACEMENT_DIR
     placement_dir_fallback: .local/state/omni/landing/placement
     lane_marker_min_id: 1000000000
-    cloud_accounts_file: cloud-accounts.json
     host_table_env: ONEX_LAB_RUN_HOSTS
+    # Run on the launching/controller host: receipt pids, worker leases and placement pids are local there.
+    # Reuse landing_workers' group/tag probe so a surviving descendant stays live after its parent exits.
+    controller_dir_env: LANDING_STATE_DIR
+    controller_dir_fallback: .local/state/omni/landing
+    process_start_grace_seconds: 120
+  # The node reads v2 accounts on its own host. The deployment overlay may supply
+  # cloud_accounts_node_command: [ssh, reachable-state-owner, onex, node].
+  # No raw state, credentials or publisher-local filename cross this boundary.
+  cloud_source:
+    node_name: node_cloud_session_placement_effect
+    action: floor_snapshot
+    timeout_seconds: 60
   # The lane containers (application container budget): the hosts and budgets are the overlay's; each host is read over ssh with
   # this listing command and judged by node_lane_container_budget_compute. A host that cannot be read draws UNKNOWN with the
   # cause, never an empty count. The command names its fields: the default JSON form makes the engine compute every size.

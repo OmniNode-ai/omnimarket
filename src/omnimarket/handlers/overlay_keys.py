@@ -9,6 +9,9 @@ under the first root in ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one. When none s
 reader raises :class:`NodeOverlayError` naming the key, the variables that supply it and the
 overlay file. There is no packaged fallback value.
 
+The lab host table also discovers overlays under the declared workspace config
+owner after the explicit overlay roots, without changing selected-source refusals.
+
 The two ``*_home_env(s)`` keys hold variable *names*; :func:`resolve_clone_home` reads the clone path
 they name.
 """
@@ -25,7 +28,9 @@ import yaml
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
     not_configured_message,
 )
@@ -142,30 +147,63 @@ def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable
         ) from None
 
 
-def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
-    return _table_from_file(spec, path_text).hosts
+def _lab_hosts_environment(env: Mapping[str, str]) -> Mapping[str, str]:
+    """Append the declared workspace's overlays after the caller's overlay roots."""
+    workspace = env.get("OMNI_HOME", "").strip()
+    config = env.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
+    if not workspace and not config:
+        return env
+    from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
+        HandlerWorkspaceConfigRootResolve,
+    )
+    from omnibase_infra.models.workspace import ModelWorkspaceConfigRootRequest
+
+    resolution = HandlerWorkspaceConfigRootResolve().handle(
+        ModelWorkspaceConfigRootRequest(
+            workspace_root=Path(workspace or config),
+            environment=dict(env),
+            allow_developer_config=bool(workspace),
+        )
+    )
+    if resolution.config_root is None:
+        return env
+    root = str(resolution.config_root / "config" / "onex" / "overlays")
+    roots = env.get(OVERLAY_ROOTS_ENV, "")
+    return {**env, OVERLAY_ROOTS_ENV: os.pathsep.join(filter(None, (roots, root)))}
 
 
 def resolve_lab_hosts_table(
     environ: Mapping[str, str] | None = None,
 ) -> ModelLabHostsTable:
-    """The whole lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+    """The whole lab host table: pinned file, explicit overlay roots, then workspace overlays.
 
     Hosts come with the table's ``unit_needs`` (what units of named repositories need of a host), which
-    are not overlay keys. Raises :class:`NodeOverlayError` when neither supplies a table."""
+    are not overlay keys. Workspace discovery uses the declared config owner, including developer
+    config under ``OMNI_HOME``. A broken selected source refuses; no host values are packaged.
+    Raises :class:`NodeOverlayError` when no source supplies a valid table."""
     env = os.environ if environ is None else environ
     spec = overlay_key_spec("lab_hosts.hosts")
     pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
     if pinned:
         return _table_from_file(spec, pinned)
-    document = load_structured_overlay(
-        spec.overlay_id,
-        OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
-        env,
-        missing_message=not_configured_message(
-            spec.overlay_id, spec.key, spec.env_vars
-        ),
+    missing_message = (
+        not_configured_message(spec.overlay_id, spec.key, spec.env_vars)
+        + "; or declare ONEX_WORKSPACE_CONFIG_ROOT with config/onex/overlays/lab_hosts/overlay.yaml"
     )
+    try:
+        document = load_structured_overlay(
+            spec.overlay_id,
+            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+            env,
+            missing_message=missing_message,
+        )
+    except NodeOverlayNotFoundError:
+        document = load_structured_overlay(
+            spec.overlay_id,
+            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+            _lab_hosts_environment(env),
+            missing_message=missing_message,
+        )
     if not isinstance(document, ModelLabHostsTable):
         raise NodeOverlayError(
             f"{spec.key}: the {spec.overlay_id} overlay is not a host table"
@@ -188,10 +226,8 @@ def resolve_overlay_key(
     if explicit is not None:
         return _validate_explicit(spec, explicit)
     if key == "lab_hosts.hosts":
-        pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
-        if pinned:
-            return _hosts_from_file(spec, pinned)
-    elif key == "lab_hosts.registry_root_candidates":
+        return resolve_lab_hosts_table(env).hosts
+    if key == "lab_hosts.registry_root_candidates":
         pinned = env.get(REGISTRY_ROOT_ENV, "").strip()
         if pinned:
             return _validate_explicit(spec, (pinned,))

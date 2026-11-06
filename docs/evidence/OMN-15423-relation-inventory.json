@@ -4580,6 +4580,7 @@
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
         "node_llm_delegation_call_effect",
         "node_measured_model_selection_compute",
@@ -5757,6 +5758,7 @@
         "node_compaction_arm_assignment_compute",
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
+        "node_hook_events_by_correlation_read_effect",
         "node_lab_job_check_effect",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
@@ -7798,6 +7800,7 @@
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
         "node_pr_state_emit_effect",
+        "node_pr_state_read_effect",
         "node_wip_admission_compute"
       ],
       "target_schema": "omninode_internal",

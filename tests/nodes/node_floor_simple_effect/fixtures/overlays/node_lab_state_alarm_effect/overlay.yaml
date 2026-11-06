@@ -1,0 +1,12 @@
+# Overlay of node_lab_state_alarm_effect (OMN-19998, 17a; plan figure W23): the alarm channels and their bounds.
+# Loaded into ModelAlarmOverlay. A send counts as delivered only when a read-back proves it, inside readback_s.
+#
+# The primary channel is "unconfigured" on purpose: no sender has been authorised for these alarms. Every alarm is then
+# refused at the primary and goes to the second channel, the floor itself, and the floor draws it as an alarm with no
+# delivery receipt that needs the operator. Replace the primary channel's kind when a channel and a sender are named.
+readback_s: 300
+renotify_s: 3600
+heartbeat_max_age_s: 900
+channels:
+  - {id: primary_unconfigured, kind: unconfigured, role: primary}
+  - {id: floor_banner, kind: floor_banner, role: second}

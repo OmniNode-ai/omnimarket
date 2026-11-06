@@ -293,6 +293,7 @@ def config(**roster_overrides: str) -> ModelAgentReviewConfig:
     fields = dict(OVERLAY)
     if roster_overrides:
         fields["roster"] = [{**OVERLAY["roster"][0], **roster_overrides}]
+        fields["rung_order"] = [fields["roster"][0]["rung"]]
     return ModelAgentReviewConfig.model_validate(fields)
 
 

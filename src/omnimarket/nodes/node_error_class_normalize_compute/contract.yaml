@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_class_normalize_compute
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Pure versioned error normalization. The caller snapshots the error_normalizer
+  overlay and the lab-host overlay into facts. Replay supplies the original facts
+  and pins key_version. Subject fields never enter class identity. Provisional
+  prose keys are handed to the exception/triage owner; this node dispatches nothing.
+input_model: omnimarket.models.error_normalizer.ModelErrorClassNormalizeRequest
+output_model: omnimarket.models.error_normalizer.ModelErrorClassNormalizeResult
+handler:
+  module: omnimarket.nodes.node_error_class_normalize_compute.handlers.handler_error_class_normalize
+  class: HandlerErrorClassNormalize
+  input_model: omnimarket.models.error_normalizer.ModelErrorClassNormalizeRequest
+  output_model: omnimarket.models.error_normalizer.ModelErrorClassNormalizeResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerErrorClassNormalize
+        module: omnimarket.nodes.node_error_class_normalize_compute.handlers.handler_error_class_normalize
+      event_model:
+        name: ModelErrorClassNormalizeRequest
+        module: omnimarket.models.error_normalizer
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.error-class-normalized.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.error-class-normalize.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.error-class-normalize.v1]
+  publish_topics: [onex.evt.omnimarket.error-class-normalized.v1]
+externally_consumed_topics: [onex.evt.omnimarket.error-class-normalized.v1]
+inputs:
+  event: {type: object, required: true, description: Error event and subject facts}
+  facts: {type: object, required: true, description: Configuration and host snapshot}
+  key_version: {type: string, required: false, description: Optional replay version pin}
+  aliases: {type: list, required: false, description: Caller-supplied triage resolutions}
+outputs:
+  class_key: {type: string, description: Stable source/producer/identity/template-hash key}
+  key_version: {type: string, description: SHA256 of configuration and host snapshot}
+  provisional: {type: boolean, description: Prose awaits the triage owner}
+  canonical_key: {type: string, description: Resolved canonical key; null for unresolved or explicit none}
+  alias_state: {type: string, description: Distinguishes unresolved prose from explicit none}
+config:
+  overlay_id: error_normalizer
+  required_overlay_fields: [configuration, hosts]
+  required_configuration_fields: [strip_stages, producer_adapters, lane_name_patterns, max_open_triage]
+metadata:
+  transport_type: kafka

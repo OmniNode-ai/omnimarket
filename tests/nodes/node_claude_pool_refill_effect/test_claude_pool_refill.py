@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -423,3 +424,23 @@ def test_probe_goes_through_the_delegation_node_and_reads_its_typed_receipt(
 
     monkeypatch.setattr(refill_mod, "_run", no_receipt)
     assert refill_mod.probe(ov, ov.hosts[0])[1] == "probe-unavailable"
+
+
+def test_the_probe_script_binds_a_lane_overlay_because_the_probe_refuses_to_run_without_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    ov = _overlay(tmp_path)
+    seen: list[str] = []
+
+    def fake_run(host: Any, script: str, *, timeout: float = 300) -> Any:
+        seen.append(script)
+        return subprocess.CompletedProcess([], 0, stdout="LABEL=none\n", stderr="")
+
+    monkeypatch.setattr(refill_mod, "_run", fake_run)
+    refill_mod.probe(ov, ov.hosts[0])
+    script = seen[0]
+    assert f"-m {refill_mod.PROBE_MODULE} --overlay " in script
+    assert "host_process_environment" in script
+    assert "file_overlay_documents" in script

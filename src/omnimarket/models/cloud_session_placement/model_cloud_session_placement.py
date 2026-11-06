@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_factory_floor_input import ModelFloorCloudAccount
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
@@ -66,6 +68,7 @@ class ModelCloudSessionPlacementRequest(BaseModel):
     action: Literal[
         "route",
         "slots",
+        "floor_snapshot",
         "transports",
         "observe_logins",
         "pick",
@@ -147,6 +150,7 @@ class ModelCloudSessionPlacementResult(BaseModel):
     model_config = _FROZEN
     action: str
     error: str | None = None
+    floor_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
     refusal: str | None = None
     lane_kind: str | None = None
     order: list[str] = Field(default_factory=list)

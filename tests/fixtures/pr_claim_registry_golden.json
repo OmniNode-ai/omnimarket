@@ -21723,6 +21723,52 @@
     "pr_key": "omninode-ai/omniclaude#247"
    },
    "state": "no-heartbeat-fresh-claim"
+  },
+  {
+   "expected": {
+    "changed": {},
+    "claim": null,
+    "claims": [],
+    "messages": [],
+    "pr_keys": [
+     "omninode-ai/omniclaude#247"
+    ],
+    "removed": [
+     "omninode-ai--omniclaude--247.json"
+    ],
+    "succeeded": true
+   },
+   "others": false,
+   "request": {
+    "dry_run": false,
+    "lane_id": "laneA",
+    "operation": "release_ended_own_claims",
+    "run_id": "R1",
+    "session_id": "S1"
+   },
+   "specified_by": "Exact ended lane/run/session ownership; appended expectations, not part of the legacy capture.",
+   "state": "active-r1-laneA-s1"
+  },
+  {
+   "expected": {
+    "changed": {},
+    "claim": null,
+    "claims": [],
+    "messages": [],
+    "pr_keys": [],
+    "removed": [],
+    "succeeded": false
+   },
+   "others": false,
+   "request": {
+    "dry_run": false,
+    "lane_id": "laneA",
+    "operation": "release_ended_own_claims",
+    "run_id": "R1",
+    "session_id": "peer-session"
+   },
+   "specified_by": "Exact ended lane/run/session ownership; appended expectations, not part of the legacy capture.",
+   "state": "active-r1-laneA-s1"
   }
  ],
  "host": "host-fixed",
