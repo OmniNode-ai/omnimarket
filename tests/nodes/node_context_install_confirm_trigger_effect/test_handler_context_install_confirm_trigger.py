@@ -226,7 +226,10 @@ def test_contract_metadata_handler_and_entry_point() -> None:
     assert applied in producer["event_bus"]["publish_topics"]
     assert contract["event_bus"]["subscribe_topics"] == [applied]
     assert contract["runtime_dispatch"]["command_topic"] == applied
-    assert contract["event_bus"]["publish_topics"] == [requested]
+    assert contract["event_bus"]["publish_topics"] == [
+        requested,
+        "onex.evt.omnimarket.context-install-confirm-skipped.v1",
+    ]
     assert contract["terminal_event"] == requested
     assert contract["runtime_dispatch"]["terminal_events"]["success"] == requested
     assert contract["metadata"]["ticket"] == "OMN-21115"

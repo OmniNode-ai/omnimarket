@@ -65,14 +65,41 @@ def test_planted_rejected_key_reads_not_working_naming_overlay_and_field(
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_planted_model_the_runtime_lacks_reads_not_working(
+def test_planted_model_the_runtime_lacks_is_counted_and_reads_working(
     backend: str, tmp_path: Path
 ) -> None:
     world = World(backend, tmp_path)
     world.break_pin_a_model_the_runtime_lacks()
     result, _ = _run(world)
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumReadingVerdict.WORKING
     assert result.counts.model_missing == 1
+    assert result.counts.accepted == 2
+    assert "model_missing-1" in result.reasons
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_every_model_missing_reads_unknown(backend: str, tmp_path: Path) -> None:
+    world = World(backend, tmp_path)
+    world.break_pin_every_model_the_runtime_lacks()
+    result, _ = _run(world)
+    assert result.verdict is EnumReadingVerdict.UNKNOWN
+    assert result.counts.model_missing == 2
+    assert result.counts.accepted == 0
+    assert "no-overlay-judged" in result.reasons
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_rejected_key_with_a_missing_model_reads_not_working(
+    backend: str, tmp_path: Path
+) -> None:
+    # The planted key lands on node_reading_writer_effect, the missing model on node_gone_effect.
+    world = World(backend, tmp_path)
+    world.break_plant_rejected_key()
+    world.break_pin_a_model_the_runtime_lacks()
+    result, _ = _run(world)
+    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert "rejected-1" in result.reasons
+    assert "model_missing-1" in result.reasons
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

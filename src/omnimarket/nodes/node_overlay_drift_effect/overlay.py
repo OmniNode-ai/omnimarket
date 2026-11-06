@@ -54,6 +54,16 @@ class ModelOverlayDriftPublish(BaseModel):
     max_named: int = Field(ge=1)
 
 
+class ModelPinHistorySettings(BaseModel):
+    """Where to read whether a pin's revision was merged: an omnimarket clone and its merged ref."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    clone_env: str = Field(min_length=1)
+    merged_ref: str = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1)
+
+
 class ModelOverlayDriftScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -76,6 +86,9 @@ class ModelOverlayDriftOverlay(BaseModel):
     #: Environment the installed unit carries (the home root, the runtime interpreter, the
     #: append command, the host name).
     unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: When set, each pin's revision is checked against the merged branch and an unmerged pin is
+    #: counted on its own (pin_unmerged); when absent the check does not run.
+    pin_history: ModelPinHistorySettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelOverlayDriftOverlay:
@@ -91,6 +104,11 @@ class ModelOverlayDriftOverlay(BaseModel):
                 "home": self.home.model_dump(mode="json"),
                 "runtime": self.runtime.model_dump(mode="json"),
                 "publish": self.publish.model_dump(mode="json"),
+                **(
+                    {"pin_history": self.pin_history.model_dump(mode="json")}
+                    if self.pin_history
+                    else {}
+                ),
             },
             sort_keys=True,
             separators=(",", ":"),
