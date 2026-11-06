@@ -206,7 +206,7 @@ class HandlerFloorReceipt:
                 freshness = "none"
             elif (
                 g_age is not None
-                and g_age <= request.freshness_max_age_s
+                and g_age <= definition.reading_max_age_s
                 and e_age is not None
                 and e_age <= request.error_max_age_s
             ):
