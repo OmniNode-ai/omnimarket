@@ -2225,7 +2225,11 @@ jobs:
         # that prints and passes. The report is read instead.
         run: |
           set -euo pipefail
-          uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py \
+          # OMN-22551: the replay imports v0.4.133's own source, which imports
+          # omnibase_compat. Nothing that runs in this tree does, and the infra
+          # pin no longer brings it in, so the replay's interpreter gets it
+          # here and nowhere else. 0.5.7 is the release the old lock carried.
+          uv run --with "omnibase-compat==0.5.7" pytest tests/ci/test_check_wire_compatibility_omn18868.py \
             -m integration -q --junit-xml=wire_compat_integration.xml
           uv run python - <<'PY'
           import sys
