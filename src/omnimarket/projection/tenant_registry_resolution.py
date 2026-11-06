@@ -68,6 +68,7 @@ from typing import Protocol
 from uuid import UUID
 
 from omnimarket.config.settings import get_settings
+from omnimarket.models import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection.tenant_isolation import (
     _LEGACY_TENANT_UUID_MAP,
     HOUSE_TENANT_SLUG,
@@ -489,31 +490,31 @@ async def async_resolve_write_tenant_uuid(
         and event_timestamp is not None
         and _legacy_tenant_uuid(tenant_identity) is None
     ):
-        registry_uuid = await _await_mirror_catchup(
-            db, tenant_identity, event_timestamp
+        # OMN-22478: only an event still inside the window can be the mint race
+        # the wait exists for; an older one is refused at once, with its cause.
+        event_age = catchup_policy.assess_event_age(
+            event_timestamp, MIRROR_CATCHUP_DEADLINE_SECONDS
         )
+        if event_age.waited:
+            registry_uuid = await _await_mirror_catchup(
+                db, tenant_identity, event_timestamp
+            )
         if registry_uuid is None:
             watermark = await async_registry_mirror_watermark(db)
             if watermark is not None and watermark < event_timestamp:
-                # The window closed with the mirror STILL behind this event.
-                # Quarantine, because an unbounded wait is a wedged partition
-                # -- but say which of the two refusals this is, and carry the
-                # watermark, so the dead-letter census can tell "nobody minted
-                # this tenant" from "the mirror had not caught up". Those read
-                # identically today and need different fixes.
+                # The mirror is STILL behind this event. Quarantine, because an
+                # unbounded wait is a wedged partition -- but say which of the
+                # two refusals this is, and carry the watermark, so the
+                # dead-letter census can tell "nobody minted this tenant" from
+                # "the mirror had not caught up".
                 raise TenantRegistryResolutionError(
-                    f"OMN-18198: {TENANT_REGISTRY_MIRROR_TABLE} holds no row "
-                    f"for {tenant_identity!r}, AND it is still behind this "
-                    f"event after waiting "
-                    f"{MIRROR_CATCHUP_DEADLINE_SECONDS:.0f}s: the mirror's "
-                    f"watermark is {watermark.isoformat()} while the event was "
-                    f"produced at {event_timestamp.isoformat()}. This is NOT "
-                    "the unknown-tenant refusal -- the tenant may well exist "
-                    f"and {TENANT_REGISTRY_PROJECTION_NODE} has not caught up. "
-                    "Measured steady-state latency of that node on onex-dev is "
-                    "1.06-8.78s, so a lag past this window is a defect in the "
-                    "feed rather than an ordinary race. No identity will be "
-                    "invented or defaulted for it."
+                    catchup_policy.lag_refusal_message(
+                        event_age,
+                        tenant_identity,
+                        watermark,
+                        TENANT_REGISTRY_MIRROR_TABLE,
+                        TENANT_REGISTRY_PROJECTION_NODE,
+                    )
                 )
     return resolve_registry_tenant_uuid_or_none(
         tenant_identity, registry_uuid=registry_uuid
