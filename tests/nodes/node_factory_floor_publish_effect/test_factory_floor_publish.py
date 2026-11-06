@@ -241,6 +241,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         False,
         False,
         False,
+        False,
+        False,
+        False,
         True,
         False,
     ]
