@@ -101,6 +101,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     job_intervals: dict[str, int] = Field(
         default_factory=lambda: dict(CALENDAR_JOB_INTERVALS)
     )
+    # Exit codes a job declares as its own finding, by label (OMN-19998): a floor job exiting 1 for
+    # floors under is working, so its episode briefs a lane to act on the finding, not the job.
+    job_finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
     bash: str = "bash"
     python: str = Field(default_factory=lambda: sys.executable)
 
