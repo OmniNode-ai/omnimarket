@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-22686
+title: The floor's machine bays count placed units and the pool's refusal, so its slot figures match the runner's free slots
+summary: build_bays in node_factory_floor_compute draws each bay as running = the larger of the ledger lanes and the placed units, free = the pool reading's own lane slots (zero for a refused host), slots = those added, so the floor's headline slot figure is what the runner can place.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22686-bays-match-runner
+  statement: A bay counts the placed units beside the ledger lanes and treats a host the pool reading refuses as no room, and a test built from the 2026-11-06T14:27Z record values fails on the old bays and passes on the fix.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a bay runs the larger of the lanes placed and the units placed and is free by the machine free_slots, which is 0 for a refused host -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k bays_match_the_runner'
+  - id: AC2
+    statement: 'AC2: the same test fails with the old bay arithmetic (slots = cap, free = slots less lanes) put back, so the test reads the fix -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k bays_match_the_runner with the old arithmetic exits non-zero'
+  - id: AC3
+    statement: 'AC3: the existing bay test and the floor compute suite still pass -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The floor compute tests pass
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22686-floor-tests
+  description: Runs the floor compute tests, the new bays test among them.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute -q --no-cov
+    cwd: .
