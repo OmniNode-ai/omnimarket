@@ -21,6 +21,8 @@ class EnumHostProbe(StrEnum):
     LEDGER_OUTBOX = "ledger-outbox"
     LEDGER_OLD_NAMES = "ledger-old-names"
     HOST_CANARY = "host-canary"
+    #: Append one probe row through the bus and read it back from the durable store by a deadline.
+    LEDGER_DURABILITY = "ledger-durability"
 
 
 class EnumCanaryEnding(StrEnum):
