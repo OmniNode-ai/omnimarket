@@ -398,3 +398,49 @@ def test_golden_a_clean_green_pull_request_is_still_green_and_waiting(
     ok, note, _ = queue_note(tmp_path, "CLEAN")
     assert ok is False
     assert note.startswith("green and waiting 2439 min")
+
+
+# --- a join judges the piece, not whichever node of it was read last ---------------------------------------------------
+
+
+def node_events(node: str, cid: str, *, fail: bool) -> tuple[ModelNodeEmission, ...]:
+    t0 = datetime(2026, 11, 6, 2, 0, tzinfo=UTC)
+    base = {
+        "node": node,
+        "piece": 17,
+        "correlation_id": cid,
+        "backend": "real",
+        "drill": False,
+    }
+    end = (
+        {"phase": "failure", "failure_code": "x", "failure_detail": "x"}
+        if fail
+        else {"phase": "success"}
+    )
+    return (
+        ModelNodeEmission.model_validate({**base, "phase": "start", "emitted_at": t0}),
+        ModelNodeEmission.model_validate(
+            {**base, **end, "emitted_at": t0 + timedelta(seconds=2)}
+        ),
+    )
+
+
+@pytest.mark.parametrize("failing_node_last", [True, False])
+def test_error_two_nodes_of_one_piece_under_one_id_do_not_replace_each_other_in_a_join(
+    failing_node_last: bool,
+) -> None:
+    """A cycle runs several nodes of piece 17 under one id. The join must see that one of them failed, whatever the order."""
+    ok = node_events("node_a:read", "e" * 32, fail=False)
+    bad = node_events("node_b:alarm", "e" * 32, fail=True)
+    events = (*ok, *bad) if failing_node_last else (*bad, *ok)
+    result = receipts(judged=(1, 17), events=events)
+    assert [f.code for f in result.findings] == ["downstream_missing_typed_failure"]
+    assert result.findings[0].subject == "J0 piece 17 to 1"
+
+
+def test_golden_two_succeeding_nodes_of_one_piece_make_no_finding() -> None:
+    events = (
+        *node_events("node_a:read", "f" * 32, fail=False),
+        *node_events("node_b:alarm", "f" * 32, fail=False),
+    )
+    assert receipts(judged=(1, 17), events=events).findings == ()

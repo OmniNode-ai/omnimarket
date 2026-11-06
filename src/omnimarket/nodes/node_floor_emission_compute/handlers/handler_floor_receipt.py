@@ -34,6 +34,7 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelPieceReceipt,
 )
+from omnimarket.models.floor_17a.model_floor_17a import ChainKind
 
 UPSTREAM_PREFIX = "upstream_"
 
@@ -142,6 +143,35 @@ class _ChainReading:
         )
 
 
+class _PieceView:
+    """Every chain of one piece under one correlation id, as a join sees that piece.
+
+    One cycle runs several nodes of the same piece under one correlation id. A join judges the piece, not a node, so the
+    chains are folded together: the piece failed if any chain failed, it is golden only when every chain is, and it started
+    when its first chain did. Keying a join on the correlation id and the piece alone let the last chain read replace the
+    others, so which node a join judged depended on the order the chains were read in.
+    """
+
+    def __init__(self, readings: list[_ChainReading]) -> None:
+        self.events = sorted(
+            (e for r in readings for e in r.events), key=lambda e: e.emitted_at
+        )
+        starts = [r.started_at for r in readings if r.started_at is not None]
+        ends = [r.ended_at for r in readings if r.ended_at is not None]
+        self.started_at = min(starts) if starts else None
+        self.ended_at = max(ends) if ends else None
+        kinds = {r.kind for r in readings}
+        if "broken" in kinds:
+            self.kind: ChainKind = "broken"
+        elif kinds == {"golden"}:
+            self.kind = "golden"
+        elif "error" in kinds:
+            self.kind = "error"
+        else:
+            self.kind = "open"
+        self.drill = any(r.drill for r in readings)
+
+
 class HandlerFloorReceipt:
     """Pure fold of emissions into receipts."""
 
@@ -156,10 +186,11 @@ class HandlerFloorReceipt:
         ]
         findings: list[ModelChainFinding] = [f for r in readings for f in r.findings]
         by_piece: dict[int, list[_ChainReading]] = defaultdict(list)
-        by_cid: dict[tuple[str, int], _ChainReading] = {}
+        grouped_views: dict[tuple[str, int], list[_ChainReading]] = defaultdict(list)
         for reading in readings:
             by_piece[reading.piece].append(reading)
-            by_cid[(reading.cid, reading.piece)] = reading
+            grouped_views[(reading.cid, reading.piece)].append(reading)
+        by_cid = {key: _PieceView(chains) for key, chains in grouped_views.items()}
 
         pieces: list[ModelPieceReceipt] = []
         for definition in sorted(request.pieces, key=lambda p: p.piece):
@@ -223,7 +254,7 @@ class HandlerFloorReceipt:
     @staticmethod
     def _join(
         jdef: ModelJoinDef,
-        by_cid: dict[tuple[str, int], _ChainReading],
+        by_cid: dict[tuple[str, int], _PieceView],
         now: datetime,
         request: ModelFloorReceiptInput,
     ) -> tuple[ModelJoinReceipt, list[ModelChainFinding]]:
