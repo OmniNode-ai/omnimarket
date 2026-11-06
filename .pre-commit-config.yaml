@@ -2770,6 +2770,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: lane-census-alias-parity
+        name: Lane census alias parity
+        entry: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_lane_census_alias_parity_compute/|tests/nodes/node_lane_census_alias_parity_compute/)
+        stages: [pre-commit]
       - id: dispatch-standing-rules
         name: Standing dispatch rules and runtime wiring
         entry: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
