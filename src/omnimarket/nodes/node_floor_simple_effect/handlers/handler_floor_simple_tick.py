@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import threading
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar
@@ -171,6 +174,7 @@ class ModelFloorSimpleRuntime(BaseModel):
     serve_overlay: ModelOverlayRef
     served_record_name: str
     served_fetch_timeout_seconds: int
+    cycle_deadline_seconds: int
     sources: ModelSourcePaths
     output: ModelOutputPaths
     state: ModelStatePaths
@@ -179,6 +183,56 @@ class ModelFloorSimpleRuntime(BaseModel):
 def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFloorSimpleRuntime:
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     return ModelFloorSimpleRuntime.model_validate(raw["runtime"])
+
+
+class CycleInterrupted(BaseException):
+    """The cycle was stopped from outside (a termination signal, or its own deadline) and must say so before it exits.
+
+    A ``BaseException`` so that no ``except Exception`` of a step swallows it; every ``start`` the cycle has emitted is
+    closed with a typed failure on the way out.
+    """
+
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.detail = detail
+
+
+@contextmanager
+def interruptible(deadline_seconds: int) -> Iterator[None]:
+    """Turn SIGTERM, SIGHUP and the deadline's SIGALRM into ``CycleInterrupted`` for the span of one cycle.
+
+    Only the main thread can take signals; elsewhere (a test runner's worker thread) the span runs unguarded. SIGKILL
+    cannot be caught: the deadline is set below the publish step's own time limit so that limit is never the one that
+    ends a hung cycle.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def stopped(signum: int, _frame: object) -> None:
+        raise CycleInterrupted(
+            "terminated_by_signal", f"the cycle received {signal.Signals(signum).name}"
+        )
+
+    def overdue(_signum: int, _frame: object) -> None:
+        raise CycleInterrupted(
+            "cycle_deadline_exceeded",
+            f"the cycle did not finish within {deadline_seconds} s",
+        )
+
+    previous = {
+        signal.SIGTERM: signal.signal(signal.SIGTERM, stopped),
+        signal.SIGHUP: signal.signal(signal.SIGHUP, stopped),
+        signal.SIGALRM: signal.signal(signal.SIGALRM, overdue),
+    }
+    signal.setitimer(signal.ITIMER_REAL, deadline_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 def write_atomic(path: Path, data: bytes) -> None:
@@ -325,14 +379,101 @@ class HandlerFloorSimpleTick:
                     **extra,
                 )
                 raise FloorSourceError(code, str(exc)) from exc
+            except CycleInterrupted as exc:
+                emit(
+                    node,
+                    "failure",
+                    self._clock(),
+                    failure_code=exc.code,
+                    failure_detail=exc.detail[:300],
+                    **extra,
+                )
+                raise
+            except KeyboardInterrupt:
+                emit(
+                    node,
+                    "failure",
+                    self._clock(),
+                    failure_code="interrupted",
+                    failure_detail="KeyboardInterrupt",
+                    **extra,
+                )
+                raise
             emit(node, "success", self._clock(), counters=counters(result), **extra)
             return result
 
         started = self._clock()
         emit(EMIT_CYCLE, "start", started)
+
+        def conclude(code: str, detail: str) -> None:
+            emit(
+                EMIT_CYCLE,
+                "failure",
+                self._clock(),
+                failure_code=code,
+                failure_detail=detail[:300],
+            )
+
+        # From the cycle's start every way out ends in a success or a typed failure: a refused overlay, an error outside
+        # a step, a termination signal and the cycle's own deadline each close the start that was emitted.
+        try:
+            with interruptible(rt.cycle_deadline_seconds):
+                return self._started_cycle(
+                    rt,
+                    env,
+                    floor_ov,
+                    alarm_ov,
+                    home,
+                    sink,
+                    step,
+                    emit,
+                    cid,
+                    started,
+                    request,
+                    lambda: emitted,
+                )
+        except NodeOverlayError as exc:
+            conclude("overlay_refused", str(exc))
+            raise
+        except CycleInterrupted as exc:
+            conclude(exc.code, exc.detail)
+            raise
+        except KeyboardInterrupt:
+            conclude("interrupted", "KeyboardInterrupt")
+            raise
+        except Exception as exc:
+            code = f"unexpected_{type(exc).__name__}"
+            conclude(code, str(exc))
+            return ModelFloorSimpleTickResult(
+                ok=False,
+                correlation_id=cid,
+                generated_at=started,
+                output=None,
+                level=None,
+                red_rule=None,
+                failure_code=code,
+                failure_detail=str(exc),
+                emitted=emitted,
+            )
+
+    def _started_cycle(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        floor_ov: ModelFloorSimpleOverlay,
+        alarm_ov: ModelAlarmOverlay,
+        home: Path,
+        sink: ProtocolEmissionSink,
+        step: Callable[..., Any],
+        emit: Callable[..., None],
+        cid: str,
+        started: datetime,
+        request: ModelFloorSimpleTickRequest,
+        emitted: Callable[[], int],
+    ) -> ModelFloorSimpleTickResult:
         if request.canary_only:
             return self._canary_only(
-                rt, env, alarm_ov, home, step, emit, cid, started, lambda: emitted
+                rt, env, alarm_ov, home, step, emit, cid, started, emitted
             )
         lab_ov = load_structured_overlay(
             rt.lab_overlay.overlay_id,
@@ -371,7 +512,7 @@ class HandlerFloorSimpleTick:
                 red_rule=None,
                 failure_code=exc.code,
                 failure_detail=exc.detail,
-                emitted=emitted,
+                emitted=emitted(),
             )
         emit(
             EMIT_CYCLE,
@@ -391,7 +532,7 @@ class HandlerFloorSimpleTick:
             output=str(home / rt.output.relpath),
             level=doc.level,
             red_rule=doc.red_rule.state,
-            emitted=emitted,
+            emitted=emitted(),
             canary=canary,
         )
 

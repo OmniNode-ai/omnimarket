@@ -88,6 +88,9 @@ runtime:
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
   served_record_name: floor-simple.json
   served_fetch_timeout_seconds: 10
+  # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
+  # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
+  cycle_deadline_seconds: 100
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json

@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.floor_17a import ModelFloorSimpleTickRequest
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
+    CycleInterrupted,
     HandlerFloorSimpleTick,
     check_overlays,
 )
@@ -71,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     except NodeOverlayError as exc:
         sys.stderr.write(f"REFUSED floor-simple: {exc}\n")
         return 2
+    except CycleInterrupted as exc:
+        sys.stderr.write(f"INTERRUPTED floor-simple: {exc.code}: {exc.detail}\n")
+        return 3
     sys.stdout.write(result.model_dump_json(indent=1) + "\n")
     if result.failure_code == "drill_completed":
         return 0
