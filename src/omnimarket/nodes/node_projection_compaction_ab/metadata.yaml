@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_compaction_ab
+version: "1.0.0"
+description: "Compaction A/B live projection and per-build scoreboard series."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [projection, context-compaction, ab-test, scoreboard, reducer]
+ownership:
+  compaction_ab_rows:
+    ddl_owner: omnimarket.nodes.node_projection_compaction_ab
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_compaction_ab.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the read model; infrastructure vendors its migrations."
+  compaction_ab_build_series:
+    ddl_owner: omnimarket.nodes.node_projection_compaction_ab
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_compaction_ab.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the read model; infrastructure vendors its migrations."
+pack: "data"
+display_name: "Projection: Compaction A/B"
+node_role: "reducer"

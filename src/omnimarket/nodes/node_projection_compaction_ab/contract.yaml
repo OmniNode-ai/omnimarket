@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_compaction_ab
+# Experimental until the live stage is gated on the replay verdict: no topic is
+# subscribed or published and no database writer is wired yet.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_compaction_ab.models.ModelAbProjectionRequest
+description: >
+  One row per boundary of the compaction A/B live stage, keyed by
+  (experiment_id, session_id, boundary_uuid): arm, covariates and the live
+  hypothesis and safeguard counts. Each column has one writer, and a writer's
+  columns advance only on a strictly newer (event_time, event_id), so
+  out-of-order and redelivered events never move a row backwards. The same node
+  holds the per-build scoreboard series keyed by candidate_id and commit, and
+  the floor ratchet over it. This node adds no topic.
+
+handler:
+  module: omnimarket.nodes.node_projection_compaction_ab.handlers.handler_projection_compaction_ab
+  class: HandlerProjectionCompactionAb
+  input_model: omnimarket.nodes.node_projection_compaction_ab.models.ModelAbProjectionRequest
+  output_model: omnimarket.nodes.node_projection_compaction_ab.models.ModelAbProjectionResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compaction_ab_projection
+      handler:
+        name: HandlerProjectionCompactionAb
+        module: omnimarket.nodes.node_projection_compaction_ab.handlers.handler_projection_compaction_ab
+      handler_module: omnimarket.nodes.node_projection_compaction_ab.handlers.handler_projection_compaction_ab
+    - operation: compaction_ab_build_series
+      handler:
+        name: HandlerBuildSeries
+        module: omnimarket.nodes.node_projection_compaction_ab.handlers.handler_build_series
+      handler_module: omnimarket.nodes.node_projection_compaction_ab.handlers.handler_build_series
+
+golden_path:
+  - "A writer's event for a boundary arrives with its (event_time, event_id)"
+  - "The fold moves only that writer's columns, and only when the event is newer"
+  - "A build's calibration report is appended once per (candidate_id, commit)"
+  - "The floor ratchet refuses a build past a floor in the unfavourable direction"
+
+dod_evidence:
+  - test: tests/nodes/node_projection_compaction_ab/test_projection.py::test_upsert_key_one_row_per_key
+    description: "AC1: one row per (experiment_id, session_id, boundary_uuid), one writer per column"
+  - test: tests/nodes/node_projection_compaction_ab/test_projection.py::test_out_of_order_event_does_not_move_row_backwards
+    description: "AC1: an out-of-order event leaves the row where it was"
+  - test: tests/nodes/node_projection_compaction_ab/test_series.py::test_candidate_id_required
+    description: "AC2: the series refuses a build with no candidate_id"
+  - test: tests/nodes/node_projection_compaction_ab/test_series.py::test_floor_ratchet_both_directions
+    description: "AC3: a build past its floor in the unfavourable direction fails, higher and lower alike"
+  - test: tests/nodes/node_projection_compaction_ab/test_data_file.py::test_live_denominators
+    description: "AC4: every live column has a denominator and every safeguard is live or replay-only"
+
+# The handlers fold caller-supplied state and generate SQL without executing it.
+# Migration ownership is declared in scripts/application-relation-ownership.yaml;
+# runtime db_io belongs to the future database writer, once topology grants exist.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: Direct invocation by the compaction A/B measurement runner and its tests; no bus topic is subscribed or published and no runtime hosts this node until the live stage is gated on the replay verdict.
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+
+metadata:
+  transport_type: local

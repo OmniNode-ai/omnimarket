@@ -117,6 +117,20 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_compaction_current_context/migrations/0000_create_compaction_current_context.sql
       access: read_write
       role: compaction_current_context
+    # CM.17 ships these migrations and pure folds ahead of a database writer.
+    # The migration runner owns delivery; the fold requests no runtime adapter.
+    - name: compaction_ab_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_compaction_ab/migrations/0000_create_compaction_ab.sql
+      access: read_write
+      role: compaction_ab_rows
+    - name: compaction_ab_build_series
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_compaction_ab/migrations/0000_create_compaction_ab.sql
+      access: read_write
+      role: compaction_ab_build_series
     - name: automation_liveness_state
       database_ref: application
       schema: omninode_internal
