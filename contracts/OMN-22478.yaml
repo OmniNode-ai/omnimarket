@@ -244,3 +244,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov
         cwd: .
+  - id: dod-omn22478-r2-integration-proof
+    description: The R2 dev-merge redeploy node (OMN-22537, omnimarket#5152) is a runtime path under this ticket's mechanism. Run its chain tests on a lab host at the pushed head. This proves the node's chains on the lab, not a correlated dev merge through a running node; the cutover proof is a separate read.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-r2 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
+        cwd: .

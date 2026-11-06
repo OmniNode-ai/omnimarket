@@ -932,3 +932,58 @@ def test_parsed_rows_can_be_supplied_to_row_object_operations() -> None:
     ]
     assert ask("live_drains", rows=rows).value == rows
     assert ask("closed_claims", rows=rows).value == []
+
+
+# The recorded case: a lane hands its PR to the landing controller with one MSG row
+# (to=landing-controller | pr=<owner/repo#n> | head=<sha> | needs=land) and stops. The
+# MSG names the PR in its pr= cell, and read as an open CLAIM it made the PR OWNED, so the
+# controller held a PR it had been handed to land.
+HANDOFF_MSG = (
+    "2026-10-20T11:58:00Z | MSG | lane=lane-a | to=landing-controller"
+    " | pr=OmniNode-ai/omnimarket#42 | head=0123456789abcdef | needs=land | handed off"
+)
+
+
+def test_owner_handoff_msg_text_is_not_ownership() -> None:
+    assert ask(
+        "owner",
+        pr="omnimarket#42",
+        now=NOW,
+        open_claims=[{"lane": "lane-a", "ts": "m", "at": NOW, "text": HANDOFF_MSG}],
+    ).value == {"state": "FREE", "stale": []}
+
+
+@pytest.mark.parametrize("rtype", ["MSG", "msg", "STATUS", "TERMINAL"])
+def test_owner_typed_non_claim_row_is_not_ownership(rtype: str) -> None:
+    assert ask(
+        "owner",
+        pr="omnimarket#42",
+        now=NOW,
+        open_claims=[
+            {"lane": "lane-a", "at": NOW, "type": rtype, "text": "pr=market#42"}
+        ],
+    ).value == {"state": "FREE", "stale": []}
+
+
+def test_owner_claim_row_still_owns_beside_a_handoff_msg() -> None:
+    claim = (
+        "2026-10-20T11:50:00Z | CLAIM | lane=lane-b | ticket=T-1"
+        " | pr=OmniNode-ai/omnimarket#42 | fixing it"
+    )
+    for extra in ({}, {"type": "CLAIM"}):
+        assert ask(
+            "owner",
+            pr="omnimarket#42",
+            now=NOW,
+            open_claims=[
+                {"lane": "lane-b", "ts": "c", "at": NOW, "text": claim, **extra},
+                {"lane": "lane-a", "ts": "m", "at": NOW, "text": HANDOFF_MSG},
+            ],
+        ).value == {
+            "state": "OWNED",
+            "by": "claim",
+            "lane": "lane-b",
+            "claim_ts": "c",
+            "why": "pr-field",
+            "stale": [],
+        }

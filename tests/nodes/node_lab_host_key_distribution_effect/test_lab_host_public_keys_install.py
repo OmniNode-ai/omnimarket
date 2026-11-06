@@ -20,6 +20,7 @@ from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
 )
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes import node_lab_host_key_distribution_effect as node_package
 from omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_public_keys_install import (
@@ -28,8 +29,6 @@ from omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab
 )
 from omnimarket.nodes.node_lab_host_key_distribution_effect.models import (
     EnumHostInstallStatus,
-    EnumKeyFile,
-    EnumLineState,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
     ModelLabHostPublicKeysInstallRequest,
