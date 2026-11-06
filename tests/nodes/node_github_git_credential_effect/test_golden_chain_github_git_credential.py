@@ -66,14 +66,12 @@ async def test_a_request_is_issued_sealed_to_the_requester_and_narrowed() -> Non
     assert issued.username == "x-access-token"
     assert issued.permissions == PERMISSIONS
     assert issued.requested_by_host == "h201"
-    assert (
-        keys.open(
-            issued.sealed_token,
-            correlation_id=request.correlation_id,
-            repository=request.repository,
-        )
-        == FAKE_TOKEN
+    opened = keys.open(
+        issued.sealed_token,
+        correlation_id=request.correlation_id,
+        repository=request.repository,
     )
+    assert opened == FAKE_TOKEN
     # Neither another key, nor the right key on another request or repository, opens it.
     with pytest.raises(SealError):
         RecipientKeyPair.generate().open(
