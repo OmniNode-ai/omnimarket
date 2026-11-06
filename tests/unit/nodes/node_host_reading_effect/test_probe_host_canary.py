@@ -35,9 +35,9 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 from omnimarket.nodes.node_host_reading_effect.adapters.canary_route import (
     CommandAdvertisementSource,
     InMemoryAdvertisementSource,
-    InMemoryCanaryRunner,
+    InMemoryCanaryRoute,
     InMemoryHostInventory,
-    SubprocessCanaryRunner,
+    SubprocessCanaryRoute,
 )
 from omnimarket.nodes.node_host_reading_effect.adapters.host_files import (
     InMemoryHostFiles,
@@ -236,8 +236,8 @@ class CanaryWorld:
 
     def runner(self) -> Any:
         if self.backend == "real":
-            return SubprocessCanaryRunner({"PATH": "/usr/bin:/bin"})
-        return InMemoryCanaryRunner(
+            return SubprocessCanaryRoute({"PATH": "/usr/bin:/bin"})
+        return InMemoryCanaryRoute(
             self._memory_answer,
             host_of=lambda argv: next(word for word in argv if word in POOLED),
         )

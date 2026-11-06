@@ -24,7 +24,7 @@ from omnimarket.models.model_host_capacity_advertisement import (
 from omnimarket.models.model_host_reading import ModelCanaryHost, ModelCanaryRun
 
 
-class SubprocessCanaryRunner:
+class SubprocessCanaryRoute:
     """Run the route as a child process group; a deadline kills the group and reads timed_out."""
 
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:
@@ -57,7 +57,7 @@ class SubprocessCanaryRunner:
         )
 
 
-class InMemoryCanaryRunner:
+class InMemoryCanaryRoute:
     """Answer each canary from a function of the host the route names; records every call."""
 
     def __init__(
@@ -165,7 +165,7 @@ __all__ = [
     "CommandAdvertisementSource",
     "HostTableInventory",
     "InMemoryAdvertisementSource",
-    "InMemoryCanaryRunner",
+    "InMemoryCanaryRoute",
     "InMemoryHostInventory",
-    "SubprocessCanaryRunner",
+    "SubprocessCanaryRoute",
 ]

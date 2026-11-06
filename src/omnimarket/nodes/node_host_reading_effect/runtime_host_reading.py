@@ -31,7 +31,7 @@ from omnimarket.models.model_host_reading import (
 from omnimarket.nodes.node_host_reading_effect.adapters.canary_route import (
     CommandAdvertisementSource,
     HostTableInventory,
-    SubprocessCanaryRunner,
+    SubprocessCanaryRoute,
 )
 from omnimarket.nodes.node_host_reading_effect.adapters.host_files import LocalHostFiles
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
@@ -82,7 +82,7 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         clock=lambda: datetime.now(UTC),
         environ=os.environ,
         inventory=HostTableInventory(os.environ),
-        canary_runner=SubprocessCanaryRunner(os.environ),
+        canary_runner=SubprocessCanaryRoute(os.environ),
         adverts=_adverts(overlay),
     )
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
