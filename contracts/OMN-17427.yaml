@@ -1082,6 +1082,11 @@ requirements:
     acceptance:
       - id: "AC3003201"
         statement: "AC3003201: uv.lock locks multidict at 6.9.1 or later and mako at 1.4.2 or later -- falsifier: tests/test_uv_lock_security_floors_omn17427.py fails against the lock at the merge base (multidict 6.8.0, mako 1.4.1)"
+  - id: "req-auto-wiring-batch-publish-only-tail"
+    statement: "A bounded auto-wiring batch that holds only contracts the runtime never dispatches wires nothing and is not reported as a smoke failure."
+    acceptance:
+      - id: "AC1742790"
+        statement: "AC1742790: a wiring batch whose every contract is skipped for declaring no event_bus.subscribe_topics passes the batch smoke check, while a batch that wired nothing with an unskipped contract still fails -- falsifier: tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_a_publish_only_tail_batch_is_not_a_smoke_failure fails at the merge base, where the bare total_wired > 0 assertion reds the batch"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4551,4 +4556,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: .
+  - id: "dod-omn17427-wiring-batch-publish-only"
+    description: "AC1742790: the batch smoke check tolerates a batch of only publish-only contracts. Measured on the one-contract tail batch: outcome skipped for 'No event_bus.subscribe_topics declared in contract' and total_wired 0, which the merge base's bare assertion fails."
+    source: manual
+    binds_ac: ["AC1742790"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -p no:randomly --refuse-skips -k publish_only_tail_batch"
         cwd: .

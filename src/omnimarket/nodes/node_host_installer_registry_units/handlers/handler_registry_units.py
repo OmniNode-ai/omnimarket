@@ -66,6 +66,11 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 127, "", str(exc))
 
 
+# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
+DEFAULT_PROCESS_TYPE = "Background"
+PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
+
+
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
     """The ``units`` table of this node's contract."""
     document = yaml.safe_load(
@@ -249,6 +254,11 @@ class HandlerRegistryUnits:
         python: str,
     ) -> str:
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
+        process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
+        if process_type not in PROCESS_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
+            )
         home, root = Path(request.home), Path(request.registry_root)
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
@@ -270,6 +280,7 @@ class HandlerRegistryUnits:
             "USER": user,
             "STATE_DIR": str(state),
             "START_INTERVAL": str(unit["schedule"]["start_interval"]),
+            "PROCESS_TYPE": process_type,
         }
         for key, value in values.items():
             text = text.replace(f"__{key}__", escape(value))
