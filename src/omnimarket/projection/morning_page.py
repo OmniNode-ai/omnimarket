@@ -267,6 +267,7 @@ class ModelMorningPage(BaseModel):
     automation_liveness: ModelProjectionRead
     automation_liveness_runs: ModelProjectionRead
     automation_liveness_alarms: ModelProjectionRead
+    pr_state: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
 
@@ -793,6 +794,15 @@ def build_morning_page(
             limit=_LIST_ROW_CAP,
             tenant_id=tenant_id,
         ),
+        pr_state=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="pr_state",
+            route="/",
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
         inventory=build_inventory(topic_map, cache),
     )
 
@@ -1161,6 +1171,12 @@ def render_morning_page(page: ModelMorningPage) -> str:
             "automation liveness alarms",
             "every liveness alarm episode with its delivery and ledger "
             "recording receipts",
+        ),
+        _render_rows_panel(
+            page.pr_state,
+            "pull request state",
+            "the newest observed state of each pull request, with its CI "
+            "verdict, watcher class and the time it was observed",
         ),
         _render_inventory(page.inventory, page.bus_backed_count),
     ]
