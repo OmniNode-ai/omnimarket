@@ -41,6 +41,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     # The Phoenix base URL a unit that declares this input persists for its tick (the factory floor reads its trace
     # count and newest span age there). Persisted for the same reason as runtime_ssh_host; empty defers to the shell.
     phoenix_url: str = Field(default="", pattern=r"^(?:https?://[^\s/]+(?:/\S*)?)?$")
+    # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
+    # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
+    alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
 
 
 class ModelRegistryUnitsResult(BaseModel):

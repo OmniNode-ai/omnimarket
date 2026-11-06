@@ -82,7 +82,7 @@ class Repo:
             "GIT_COMMITTER_EMAIL": committer,
         }
         return subprocess.run(
-            ["git", *args],
+            ["git", "-c", "tag.gpgsign=false", "-c", "commit.gpgsign=false", *args],
             cwd=self.path,
             check=True,
             capture_output=True,
