@@ -32,7 +32,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
 )
 
 KEY = "OmniNode-ai/web-app#496"
-REPO = "OmniNode-ai/web_app"
+REPO = "OmniNode-ai/web-app"
 HEAD = "ba2e445408a96d34f460ab91b4cbefbca7f6b343"
 HEAD_AFTER_UPDATE = "490dfa4820d2f4ac8492f741915eb0175ccdc0eb"
 BASE_HEAD = "4d99e96b1cf89700d241897ac1a336e80dc8d90e"
