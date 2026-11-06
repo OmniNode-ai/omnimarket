@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stop_only_on_withdrawal_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  S8 StopOnlyOnWithdrawal with ScopeByTask. Decide from the normalizer's complete
+  typed snapshot whether a current CLAIM run stopped on an operator message without
+  a withdrawal to that lane and revision or an unreleased HOLD. Preserve explicit
+  withdrawal citations, flag invalid citations, and use overlay phrases for legacy
+  blocked, partial and unknown stops. Return one repair per task revision and a
+  durable cursor row. The durable tick applies repairs and persists the cursor
+  only after dispatcher acknowledgements; this compute performs no effects.
+input_model:
+  name: ModelS8Request
+  module: omnimarket.models.model_stop_only_on_withdrawal
+output_model:
+  name: ModelS8Result
+  module: omnimarket.models.model_stop_only_on_withdrawal
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: stop_only_on_withdrawal
+      handler:
+        name: HandlerStopOnlyOnWithdrawal
+        module: omnimarket.nodes.node_stop_only_on_withdrawal_compute.handlers.handler_stop_only_on_withdrawal
+      input_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Request
+      output_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Result
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 5000
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.stop-only-on-withdrawal-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stop-only-on-withdrawal-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.stop-only-on-withdrawal-requested.v1
+terminal_event: onex.evt.omnimarket.stop-only-on-withdrawal-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.stop-only-on-withdrawal-decided.v1
+durable_tick_registration:
+  check_id: S8
+  scope_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8ScopeByTask
+  snapshot_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Snapshot
+  repair_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Repair
+  cursor_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Cursor
+  sequence_source: normalizer monotonic ledger position preserved across archive rolls
+  cursor_order: repair intent append, idempotent reopen-and-redispatch acknowledgement, cursor append
+  replay: replay durable repair intents without a dispatcher acknowledgement before advancing cursor
+watchdog_entry:
+  resource: watchdog.overlay.yaml
+  process_id: stop-only-on-withdrawal
+  trigger: durable-tick
+  cursor_check: S8
+  expected_interval_seconds: 60
+  max_silence_seconds: 180
+  positive_control: unauthorized-withdrawal-fixture
+metadata:
+  transport_type: kafka

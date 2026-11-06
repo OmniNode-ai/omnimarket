@@ -130,7 +130,22 @@ def test_nested_changelog_is_not_a_release_cut(
 def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
-        missing_contract_message(TICKET),
+    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
+        ModelTicketContractPrerequisiteRequest,
     )
+
+    head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
+    # The deployed boundary turns a base-resolution error into a failed typed
+    # verdict; the internal check helper deliberately propagates git errors.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    result = push.HandlerTicketContractPrerequisite().handle(
+        ModelTicketContractPrerequisiteRequest(
+            head=head, base="no-such-base", title=TITLE
+        )
+    )
+    assert not result.passed
+    assert len(result.failures) == 1
+    assert "ticket contract preflight could not read" in result.failures[0]
+    assert "no-such-base" in result.failures[0]
