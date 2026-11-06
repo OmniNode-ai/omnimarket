@@ -115,6 +115,31 @@ def download_release_asset(url: str, to: Path) -> None:
             raise GitHubApiError(str(exc)) from exc
 
 
+def _rest_raw(
+    method: str,
+    path: str,
+    *,
+    token: str,
+    body: dict[str, object] | None,
+) -> bytes:
+    """Send one REST request and return the raw response bytes."""
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = _base_headers(token)
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(
+        f"{_GITHUB_REST}{path}", data=data, headers=headers, method=method
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            return bytes(resp.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise GitHubApiError(str(exc)) from exc
+
+
 def rest_json(
     method: str,
     path: str,
@@ -133,24 +158,7 @@ def rest_json(
     Raises:
         GitHubApiError: On HTTP, network, or JSON decode failures.
     """
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = _base_headers(token)
-    if data is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        f"{_GITHUB_REST}{path}",
-        data=data,
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    raw = _rest_raw(method, path, token=token, body=body)
 
     if not raw:
         return {}
@@ -191,24 +199,7 @@ def rest_json_array(
     Raises:
         GitHubApiError: On HTTP, network, or JSON decode failures.
     """
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = _base_headers(token)
-    if data is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        f"{_GITHUB_REST}{path}",
-        data=data,
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    raw = _rest_raw(method, path, token=token, body=body)
 
     if not raw:
         return []
