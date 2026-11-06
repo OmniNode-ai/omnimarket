@@ -43,6 +43,11 @@ requirements:
         statement: 'AC8: recorded quiet-host incidents retain their alarm; each safe host repair preserves backlog, persists a cooldown and requires a newer post-attempt event for capture recovery; unknown reads, cycling broker failures, failed installs and stale or future readbacks never report recovery -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0'
       - id: AC9
         statement: 'AC9: the installed alarm node is discovered and routes its declared bus command to a correlated terminal event; the existing registry installer renders its clean branch checkout, configuration path and revision -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"'
+  - id: req-omn19998-worktree-report-handoff
+    statement: Worktree report publication moves to a bus node that preserves scrub and delivery failures and delegates landing.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: copied CLAIM root path tokens in markdown and JSON become portable; scrub, push, create and handoff failures remain failed and report friction and alerts; successful publication hands the exact PR head to the landing controller without reading checks or merging -- falsifier: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov'
   - id: req-omn19998-delegation-floor-read
     statement: The floor reads delegation projection events through the node's public runtime without circular handler imports.
     acceptance:
@@ -481,6 +486,33 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"
+        cwd: .
+  - id: dod-omn19998-worktree-report-handoff
+    description: Regression shapes from the recorded scrub and publish failures exercise the migrated path rewrite and the production host adapter through an injected subprocess seam. Unknown paths remain for the external scrub to refuse. This does not assert the landing controller timer criteria or a live installation.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short
+        cwd: .
+  - id: dod-omn19998-worktree-report-runtime
+    description: Hosted wiring smoke discovers the installed node entrypoint and routes success and failure through its declared command and completed topics on an in-memory bus. Only the host subprocess seam is replaced; this is not a live host installation readback.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k installed_contract
+        cwd: .
+  - id: dod-omn19998-worktree-report-entrypoint
+    description: The installed node entrypoint uses the publication handler with an injected host for success, push refusal and handoff refusal; the runtime smoke asserts the declared completion topic before routing both outcomes through the bus.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k 'node_entrypoint or installed_contract'
         cwd: .
   - id: dod-omn19998-delegation-floor-read
     description: The projection read distinguishes runs, attempts and terminal-only outcomes over fixed two-hour and twenty-four-hour windows, keeps an unread source distinct from zero, and renders escaped model and host facts. This scoped report check does not assert the controller timer criteria.
