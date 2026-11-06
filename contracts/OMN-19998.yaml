@@ -216,6 +216,11 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: a higher-ranked host missing a required plan branch is passed over for a host holding every input; missing, unchecked and pinned-host inputs refuse placement, while full pools and requests needing no inputs retain their prior outcomes -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-auto-wire-test-budget
+    statement: The in-process auto-wiring test, which wires every node contract in one pass, keeps its own pytest timeout so a growing node count does not fail the shard that runs it.
+    acceptance:
+      - id: AC14
+        statement: 'AC14: test_every_node_auto_wires_in_process carries its own pytest timeout of at least 900 seconds with the thread method, and a test without the marker reads as having no budget -- falsifier: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -807,4 +812,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-auto-wire-test-budget
+    description: The source of the in-process auto-wiring test is read for its own pytest timeout of at least 900 seconds with the thread method, with a positive and a negative control on the reader. The 482 s lab read under the shard's coverage flags is in the pull request body.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-auto-wire-test-budget-deploy
+    description: Hosted smoke reads the real test module from the checked-in tree, not a fixture, for the marker and its method. No live host is asserted.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly -k wiring_test_has_its_own_timeout_budget
         cwd: .
