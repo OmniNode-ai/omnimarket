@@ -1239,7 +1239,6 @@ node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_compute"
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
-
 [project.scripts]
 onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm:main"
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
