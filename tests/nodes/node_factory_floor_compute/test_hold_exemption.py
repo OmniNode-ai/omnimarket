@@ -75,8 +75,9 @@ def test_the_plan_a_hold_names_as_exempt_is_not_stopped_by_it_and_the_other_plan
     None
 ):
     drawn = lines(
-        plan("validators-to-core-and-hardcoded-rules"),
-        plan("orchestration-alignment-wave-plan"),
+        plan("validators-to-core-and-hardcoded-rules", prs=("repo#7",)),
+        plan("orchestration-alignment-wave-plan", prs=("repo#7",)),
+        prs=(pr("repo#7"),),
     )
     exempt = drawn["2026-10-28-validators-to-core-and-hardcoded-rules"]
     held = drawn["2026-10-28-orchestration-alignment-wave-plan"]

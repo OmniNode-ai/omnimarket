@@ -108,6 +108,10 @@ class ModelGithubGatewayRequest(BaseModel):
     job_id: int | None = Field(
         default=None, gt=0, description="Job id; required by job_log_tail."
     )
+    cache_only: bool = Field(
+        default=False,
+        description="job_log_tail: refuse a cache miss without resolving credentials or making HTTP calls.",
+    )
     artifact_id: int | None = Field(
         default=None,
         gt=0,

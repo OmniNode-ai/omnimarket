@@ -396,6 +396,8 @@ requirements:
     statement: "A lab host table whose rows declare the login, the jump host or the key file of their ssh destination (ssh_user, proxy_jump, ssh_identity) is read by lab placement, not refused whole, and a value ssh could read as an option is refused."
   - id: "req-live-unread-receipt-owner-and-reader"
     statement: "A lab-headroom UNKNOWN line for an unreadable host leads with the owner action the probe receipt's LAUNCHER-GAP tag names, says a rerun clears nothing for any gap the launcher recorded (auth refused, name unresolved, sshd refused, no route), and sends the operator to the hosts-probe receipt readings, the read_pool reading the tick itself used, instead of the listing onex_lab_run.py --hosts prints."
+  - id: "req-pr5134-safety-pin-bounded-retry"
+    statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
   - id: "req-lock-security-floors"
     statement: "uv.lock holds multidict and mako at versions outside the affected ranges of the advisories the Dependency Security Scan reports, so the scan passes on dev."
 evidence_requirements:
@@ -3852,6 +3854,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr5134-safety-pin-retry"
+    description: "The security-scan workflow pins safety==3.8.1 and retries only the exit-1 crash a bounded number of times while exit 64 fails at once. The three workflow tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC513401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_security_scan_workflow_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
   - id: "dod-omn17427-lock-security-floors"
     description: "AC3003201: the lock holds multidict and mako past the advisories SFTY-20261005-09094 and SFTY-20261005-32026. The test fails at the merge base."
     source: manual
@@ -4633,6 +4643,9 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_security_scan_workflow_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
       - check_type: test_passes
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: .
@@ -6057,5 +6070,11 @@ dod_evidence:
         label: AC3003201
         reason_kind: no_longer_applicable
         reason: "OMN-17427 carries none of this label on the live ticket (read 2026-11-05), so AC3003201 was never deleted from it: it is a criterion this repository's contract declared on its own for another change. Its statement stays in this file's history and the carrier item dod-omn-17427-contract-only-retirement still runs the tests of dod-omn17427-lock-security-floors."
+        retired_by: lane-drift-dirty-landing-2200
+        retired_at: '2026-11-05T22:17:00Z'
+      - item: dod-omn17427-pr5134-safety-pin-retry
+        label: AC513401
+        reason_kind: no_longer_applicable
+        reason: "OMN-17427 carries none of this label on the live ticket (read 2026-11-05), so AC513401 was never deleted from it: it is a criterion this repository's contract declared on its own for another change. Its statement stays in this file's history and the carrier item dod-omn-17427-contract-only-retirement still runs the tests of dod-omn17427-pr5134-safety-pin-retry."
         retired_by: lane-drift-dirty-landing-2200
         retired_at: '2026-11-05T22:17:00Z'
