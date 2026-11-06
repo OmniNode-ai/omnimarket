@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Test Harness Schedule Compute
+#
+# The named trigger of the central test harness. Pure definition-B compute:
+# handle(ModelRuntimeTick) -> ModelLabTestHarnessRequested | None. The tick that opens a
+# window of the overlay's schedule returns the run request, which the runtime publishes to
+# the harness effect's command topic; every other tick returns nothing. The interval, offset
+# and workflow name come from the harness overlay, never from this contract.
+name: node_lab_test_harness_schedule_compute
+contract_name: node_lab_test_harness_schedule_compute
+node_name: node_lab_test_harness_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Interval schedule for the central test harness. Subscribes to the platform runtime tick;
+  the tick that opens a window of the overlay's schedule returns the run request. No clock
+  read, no state, no I/O. Refuses to load when the harness overlay is absent.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLabTestHarnessSchedule
+        module: omnimarket.nodes.node_lab_test_harness_schedule_compute.handlers.handler_lab_test_harness_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_lab_test_harness_schedule_compute.handlers.handler_lab_test_harness_schedule
+  class: HandlerLabTestHarnessSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "lab_test_harness_schedule"
+
+output_model:
+  name: ModelLabTestHarnessRequested
+  module: omnimarket.models.lab_test_harness
+  description: The run request for the window this tick opens, or no output on any other tick.
+
+terminal_event: onex.cmd.omnimarket.lab-test-harness-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.lab-test-harness-requested.v1
+
+metadata:
+  description: "Runtime-tick schedule of the central test harness"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-05"
+  tags: [compute, lab-test-harness, schedule, pure]
+  related_tickets: ["OMN-22478"]

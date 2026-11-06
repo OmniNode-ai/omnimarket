@@ -23,13 +23,11 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorRunner,
     ModelFloorRunnerFleet,
 )
+from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
     PublishRefusedError,
     Runner,
     run_process,
-)
-from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
-    ModelDelegationReadOverlay,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
     ModelFleetObservationSourceRequest,
@@ -70,10 +68,10 @@ class HandlerFleetObservationSource:
         document: dict[str, Any]
         try:
             overlay = request.overlay or load_structured_overlay(
-                "delegation_health",
-                ModelDelegationReadOverlay,
+                "runtime_host_reads",
+                ModelRuntimeHostReadOverlay,
                 env,
-                file_env="DELEGATION_HEALTH_OVERLAY_PATH",
+                file_env="RUNTIME_HOST_READS_OVERLAY_PATH",
             )
             host = env.get(overlay.ssh_host_env, "").strip()
             if not host:
@@ -83,7 +81,7 @@ class HandlerFleetObservationSource:
                     "set -eu",
                     "RT=$(docker ps --filter "
                     f"label=com.docker.compose.project={overlay.compose_project} --filter "
-                    f"label=com.docker.compose.service={overlay.runtime_service} "
+                    f"label=com.docker.compose.service={overlay.fleet_service} "
                     "--filter status=running --format '{{.Names}}' | head -1)",
                     '[ -n "$RT" ]',
                     "docker exec -i \"$RT\" python3 - <<'PY'",
@@ -115,7 +113,13 @@ class HandlerFleetObservationSource:
             fleet = ModelFloorRunnerFleet(
                 observed_at=data["observed_at"],
                 runners=tuple(
-                    ModelFloorRunner(host_label=row["host"], status=row["status"])
+                    ModelFloorRunner(
+                        host_label=row["host"],
+                        status=row["status"],
+                        runner_name=row.get("runner_name"),
+                        label_class=row.get("label_class"),
+                        labels=tuple(row.get("labels") or ()),
+                    )
                     for row in data["runners"]
                 ),
             )
@@ -123,7 +127,13 @@ class HandlerFleetObservationSource:
                 "status": "read",
                 "observed_at": fleet.observed_at.isoformat(),
                 "runners": [
-                    {"host": row.host_label, "status": row.status}
+                    {
+                        "host": row.host_label,
+                        "status": row.status,
+                        "runner_name": row.runner_name,
+                        "label_class": row.label_class,
+                        "labels": list(row.labels),
+                    }
                     for row in fleet.runners
                 ],
             }

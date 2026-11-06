@@ -1,0 +1,5062 @@
+{
+ "emissions": [
+  {
+   "backend": "real",
+   "correlation_id": "8eec3039fd454e4e9f417464ad3ae436",
+   "counters": {},
+   "drill": true,
+   "emitted_at": "2026-11-05T16:07:50.405808Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_floor_simple_effect:read_sources",
+   "phase": "start",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "8eec3039fd454e4e9f417464ad3ae436",
+   "counters": {},
+   "drill": true,
+   "emitted_at": "2026-11-05T16:07:50.405923Z",
+   "failure_code": "record_payload_invalid",
+   "failure_detail": "the floor record is not JSON (JSONDecodeError)",
+   "node": "node_floor_simple_effect:read_sources",
+   "phase": "failure",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "ba3310dc6e694e7dac7cfa9e4e3bc438",
+   "counters": {},
+   "drill": true,
+   "emitted_at": "2026-11-05T22:10:27.299934Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_floor_simple_effect:read_sources",
+   "phase": "start",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "ba3310dc6e694e7dac7cfa9e4e3bc438",
+   "counters": {},
+   "drill": true,
+   "emitted_at": "2026-11-05T22:10:27.301248Z",
+   "failure_code": "record_payload_invalid",
+   "failure_detail": "the floor record is not JSON (JSONDecodeError)",
+   "node": "node_floor_simple_effect:read_sources",
+   "phase": "failure",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "eb3768f40088452ab7fd3e158eb0f289",
+   "counters": {},
+   "drill": false,
+   "emitted_at": "2026-11-06T02:54:43.666253Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_floor_simple_effect:run_floor_simple_cycle",
+   "phase": "start",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "e24e57f5a68341f3ac90ce215c7e09f6",
+   "counters": {},
+   "drill": false,
+   "emitted_at": "2026-11-06T02:54:43.851192Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_lab_state_alarm_effect:publish_canary",
+   "phase": "start",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "e24e57f5a68341f3ac90ce215c7e09f6",
+   "counters": {
+    "published": 1
+   },
+   "drill": false,
+   "emitted_at": "2026-11-06T02:54:46.264974Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_lab_state_alarm_effect:publish_canary",
+   "phase": "success",
+   "piece": 17
+  },
+  {
+   "backend": "real",
+   "correlation_id": "eb3768f40088452ab7fd3e158eb0f289",
+   "counters": {
+    "canary_published": 1
+   },
+   "drill": false,
+   "emitted_at": "2026-11-06T02:54:46.267106Z",
+   "failure_code": null,
+   "failure_detail": "",
+   "node": "node_floor_simple_effect:run_floor_simple_cycle",
+   "phase": "success",
+   "piece": 17
+  }
+ ],
+ "floor_input": {
+  "alarm_heartbeat_at": "2026-11-06T02:54:20.052177Z",
+  "alarms": [
+   {
+    "alarm_id": "deploy_lag@20261105T160750Z",
+    "channel": "slack_alerts",
+    "delivery": "delivered",
+    "raised_at": "2026-11-05T16:07:50.405539Z",
+    "source_id": "deploy_lag",
+    "title": "Deploy lag: NOT WORKING"
+   },
+   {
+    "alarm_id": "disk@20261105T160750Z",
+    "channel": "slack_alerts",
+    "delivery": "delivered",
+    "raised_at": "2026-11-05T16:07:50.405539Z",
+    "source_id": "disk",
+    "title": "Host disk: NOT WORKING"
+   },
+   {
+    "alarm_id": "hosts@20261105T160750Z",
+    "channel": "slack_alerts",
+    "delivery": "delivered",
+    "raised_at": "2026-11-05T16:07:50.405539Z",
+    "source_id": "hosts",
+    "title": "Lab hosts: NOT WORKING"
+   },
+   {
+    "alarm_id": "runner_groups@20261105T160750Z",
+    "channel": "slack_alerts",
+    "delivery": "delivered",
+    "raised_at": "2026-11-05T16:07:50.405539Z",
+    "source_id": "runner_groups",
+    "title": "CI runner groups: UNKNOWN"
+   }
+  ],
+  "lab": {
+   "computed_at": "2026-11-06T02:54:20.052177Z",
+   "verdicts": [
+    {
+     "age_s": 524,
+     "id": "hosts",
+     "kind": "hosts",
+     "max_age_s": 900,
+     "probed_at": "2026-11-06T02:45:36Z",
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "h101: PARITY-FAILED: plugin-stale:omni: installed plugin omni ships 118f5dc0cc5a",
+     "state": "NOT WORKING",
+     "subjects": [
+      {
+       "name": "h051",
+       "note": "advertising",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h053",
+       "note": "advertising",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h101",
+       "note": "PARITY-FAILED: plugin-stale:omni: installed plugin omni ships 118f5dc0cc5a",
+       "ok": false,
+       "value": null
+      },
+      {
+       "name": "h105",
+       "note": "out: with the operator at a conference from 2026-11-03",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h106",
+       "note": "advertising",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h200",
+       "note": "out: out of lane, landing-worker and unit placement: RULING 2026-11-02T18:19:05Z, no lanes or s",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h201",
+       "note": "advertising",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "h202",
+       "note": "repair: h202 is down for repair (operator, 2026-10-23T12:25Z)",
+       "ok": true,
+       "value": null
+      }
+     ],
+     "summary": "7 of 8 hosts fine",
+     "tickets": [],
+     "title": "Lab hosts"
+    },
+    {
+     "age_s": null,
+     "id": "runner_groups",
+     "kind": "runner_groups",
+     "max_age_s": 900,
+     "probed_at": null,
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "fleet producer: [Errno 2] No such file or directory: '/app/data/.onex_state/runner-fleet/runner-fleet.json'",
+     "state": "UNKNOWN",
+     "subjects": [],
+     "summary": "",
+     "tickets": [],
+     "title": "CI runner groups"
+    },
+    {
+     "age_s": 524,
+     "id": "disk",
+     "kind": "disk",
+     "max_age_s": 900,
+     "probed_at": "2026-11-06T02:45:36Z",
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "h101: 2.0 GB free, under the 10 GB floor",
+     "state": "NOT WORKING",
+     "subjects": [
+      {
+       "name": "h101",
+       "note": "2.0 GB free, under the 10 GB floor",
+       "ok": false,
+       "value": 2.0
+      },
+      {
+       "name": "h201",
+       "note": "641.1 GB free",
+       "ok": true,
+       "value": 641.1
+      },
+      {
+       "name": "h106",
+       "note": "118.4 GB free",
+       "ok": true,
+       "value": 118.4
+      },
+      {
+       "name": "h051",
+       "note": "22.1 GB free",
+       "ok": true,
+       "value": 22.1
+      },
+      {
+       "name": "h053",
+       "note": "197.7 GB free",
+       "ok": true,
+       "value": 197.7
+      }
+     ],
+     "summary": "4 of 5 hosts above 10 GB free",
+     "tickets": [],
+     "title": "Host disk"
+    },
+    {
+     "age_s": 167,
+     "id": "queue_age",
+     "kind": "queue_age",
+     "max_age_s": 900,
+     "probed_at": "2026-11-06T02:51:33Z",
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "",
+     "state": "WORKING",
+     "subjects": [],
+     "summary": "no in-scope green pull request is waiting",
+     "tickets": [],
+     "title": "Merge queue age"
+    },
+    {
+     "age_s": 194,
+     "id": "deploy_lag",
+     "kind": "deploy_lag",
+     "max_age_s": 900,
+     "probed_at": "2026-11-06T02:51:05.209566Z",
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "repo-a#4916: merged, not running, 2857 min, over the 1440 min limit; repo-b#5579: merged, not running, 2832 min, over the 1440 min limit; repo-a#4977: merged, not running, 2829 min, over the 1440 min limit",
+     "state": "NOT WORKING",
+     "subjects": [
+      {
+       "name": "repo-a#4916",
+       "note": "merged, not running, 2857 min, over the 1440 min limit",
+       "ok": false,
+       "value": 2857.0
+      },
+      {
+       "name": "repo-b#5579",
+       "note": "merged, not running, 2832 min, over the 1440 min limit",
+       "ok": false,
+       "value": 2832.0
+      },
+      {
+       "name": "repo-a#4977",
+       "note": "merged, not running, 2829 min, over the 1440 min limit",
+       "ok": false,
+       "value": 2829.0
+      }
+     ],
+     "summary": "oldest merge not yet running is 2857 min old",
+     "tickets": [],
+     "title": "Deploy lag"
+    },
+    {
+     "age_s": 262,
+     "id": "broker_lag",
+     "kind": "broker_lag",
+     "max_age_s": 900,
+     "probed_at": "2026-11-06T02:49:58Z",
+     "published_at": "2026-11-06T02:54:20.052177Z",
+     "reason": "",
+     "state": "WORKING",
+     "subjects": [
+      {
+       "name": "consumer_group_lag",
+       "note": "OK",
+       "ok": true,
+       "value": null
+      },
+      {
+       "name": "broker_listener",
+       "note": "OK",
+       "ok": true,
+       "value": null
+      }
+     ],
+     "summary": "2 of 2 broker conditions OK",
+     "tickets": [],
+     "title": "Broker lag"
+    }
+   ]
+  },
+  "lanes": [],
+  "merges_in_window": 2,
+  "now": "2026-11-06T02:54:20.052177Z",
+  "open_prs": 39,
+  "open_prs_before": 42,
+  "outside_goal": {
+   "merges_in_window": 7,
+   "open_prs": 670,
+   "paused_open": 180,
+   "read": true,
+   "ruling": "scope ruling text omitted from the fixture",
+   "text": "Outside the goal and not counted above: 670 open pull requests (180 of them on the paused list) and 7 merges in the window."
+  },
+  "pr_class_counts": {
+   "green-armed": 1,
+   "held-excluded": 15,
+   "pending": 14,
+   "red": 24
+  },
+  "pr_class_tickets": {
+   "green-armed": [
+    "OMN-19998"
+   ],
+   "held-excluded": [
+    "OMN-21591",
+    "OMN-18366",
+    "OMN-18635",
+    "OMN-20005",
+    "OMN-18509",
+    "OMN-20837",
+    "OMN-20839",
+    "OMN-21079",
+    "OMN-20074",
+    "OMN-21147",
+    "OMN-17427",
+    "OMN-19998"
+   ],
+   "pending": [
+    "OMN-17292",
+    "OMN-19998",
+    "OMN-22526",
+    "OMN-22528",
+    "OMN-22527",
+    "OMN-22522",
+    "OMN-22503",
+    "OMN-22510",
+    "OMN-22511",
+    "OMN-22513",
+    "OMN-22514",
+    "OMN-22515",
+    "OMN-22525",
+    "OMN-22516"
+   ],
+   "red": [
+    "OMN-21700",
+    "OMN-21970",
+    "OMN-17292",
+    "OMN-22530",
+    "OMN-19998",
+    "OMN-22020",
+    "OMN-21342",
+    "OMN-22504",
+    "OMN-17427",
+    "OMN-22506",
+    "OMN-22521",
+    "OMN-21984",
+    "OMN-22524"
+   ]
+  },
+  "readings": {
+   "8": {
+    "max_age_s": 7200,
+    "piece": 8,
+    "probed_at": "2026-11-06T01:55:42.058873Z",
+    "published_at": "2026-11-06T01:55:42.058873Z",
+    "state": "WORKING"
+   }
+  },
+  "receipts": {
+   "chains": [
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "causes": 21,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.474961Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.404504Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "8eec3039fd454e4e9f417464ad3ae436",
+     "counters": {},
+     "drill": true,
+     "ended_at": "2026-11-05T16:07:50.405923Z",
+     "kind": "error",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.405808Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.469907Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.406203Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.470252Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.470091Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "cleared": 0,
+      "escalated": 6,
+      "raised": 6,
+      "undelivered": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.470620Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.470390Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "chains": 6,
+      "findings": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.472087Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.471686Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6df2f535e46a42249b2f259b80b3697b",
+     "counters": {
+      "causes": 21,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.473332Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.472665Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "causes": 21,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.808942Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.692370Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.755219Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.693865Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.755585Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.755433Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.805263Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.755893Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "chains": 12,
+      "findings": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.806369Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.805905Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a20394ca1174ab786cba7e1ff2e497c",
+     "counters": {
+      "causes": 21,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T16:07:50.807576Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T16:07:50.806945Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "causes": 21,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.592697Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.295037Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ba3310dc6e694e7dac7cfa9e4e3bc438",
+     "counters": {},
+     "drill": true,
+     "ended_at": "2026-11-05T22:10:27.301248Z",
+     "kind": "error",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.299934Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.489456Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.303543Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.490165Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.489851Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.568249Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.490981Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "chains": 19,
+      "findings": 2
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.572762Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.570952Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "36bdf110214a48fdaf6e7142d60d4025",
+     "counters": {
+      "causes": 21,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:10:27.579349Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:10:27.577084Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:52.944009Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:49.785272Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:50.120069Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:49.834670Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:50.121213Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:50.120571Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:50.804845Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:50.167372Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "chains": 25,
+      "findings": 2
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:50.824595Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:50.820148Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "736b14e7478e4c8e9a00d19c3593a10d",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:50.863688Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:50.858919Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "efec5e851a9f4c77918eccf8756685cc",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:17:52.941872Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T22:17:50.905015Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:04.963150Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:02.970348Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:03.222536Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:02.975516Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:03.231610Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:03.225052Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:03.266655Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:03.265672Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "chains": 32,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:03.271332Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:03.268953Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "5a66da4e0ea7452ab43e89c20c0a3ecd",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:03.277463Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:03.275084Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b8c038ffb7814f578704ac6c704817f6",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:26:04.959172Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T22:26:03.343482Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:49.405453Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.013230Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:46.262856Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.019376Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:46.264174Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.263506Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:46.266442Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.265972Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "chains": 39,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:46.273583Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.270131Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "85b26b2e5cf6496aa14b9ccbee3a452f",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:46.283599Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.279017Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "17295584f4c648f58301545440c0709d",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:33:49.402731Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T22:33:46.346512Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:11.739887Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:09.785250Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:10.123253Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:09.793573Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:10.125564Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:10.124406Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:10.130765Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:10.129085Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "chains": 46,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:10.139938Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:10.135017Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e57893640c274f81ab3e8f748309670e",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:10.146443Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:10.143756Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e1067f57a17f48698a183c6e6e195c51",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:42:11.736245Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T22:42:10.239659Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:28.750317Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:26.649848Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:26.999357Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:26.740701Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:27.001698Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:27.000626Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:27.005572Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:27.004718Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "chains": 53,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:27.017332Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:27.013806Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1d6f1c96cae54e22880825b833ff7bf0",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:27.029739Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:27.026567Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4ff8de579e5a499cb84547308ff6d269",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T22:54:28.738987Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T22:54:27.142425Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:18.488854Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.212565Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:16.614981Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.245238Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:16.616338Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.615737Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:16.621195Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.620511Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "chains": 60,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:16.647710Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.640292Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3ccd36dba56a4fd5a066828a010e18ad",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:16.675081Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.671234Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "cac831301c1a40679f9a917d744ec3de",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:03:18.486366Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:03:16.756220Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:20.942288Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.018709Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:19.321451Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.027830Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:19.323162Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.322207Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:19.326493Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.325519Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "chains": 67,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:19.343889Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.330435Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "7a24a8e7ca214e64a5dc49cfe9b3de69",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:19.356612Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.353459Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "94943595af014775a7546491eb2707c3",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:12:20.939759Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:12:19.429013Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:37.437040Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:34.449469Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:34.896058Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:34.583429Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:34.897172Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:34.896494Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:35.834265Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:34.898681Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "chains": 74,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:35.843082Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:35.836970Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4525049825834d95ad9fe165e51bebfc",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:35.884369Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:35.880092Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "31166937a5a84d00835b8ea07ca8e6bd",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:20:37.433051Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:20:35.944727Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:16.458510Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:12.840206Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:13.456925Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:12.861311Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:13.458411Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:13.457616Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:14.758258Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:13.531473Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "chains": 81,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:14.775067Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:14.764091Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6a186852c5014ec09f13d175747c498c",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:14.789169Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:14.786254Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "66755119d8604d9fbf50bbf52aaf1c85",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:30:16.456344Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:30:14.813786Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:41.815640Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.415305Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:39.643789Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.429081Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:39.644583Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.644244Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:39.646488Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.646091Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "chains": 88,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:39.654610Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.649680Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ce7eb7799c6e41ee98607c3aea58d91d",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:39.660412Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.658576Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "e66691b421914eba80a5364c3791d9b5",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:37:41.812132Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:37:39.708228Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "causes": 19,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:54.699830Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.598226Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:52.866380Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.624316Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "not_working": 5,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:52.867153Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.866823Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "cleared": 1,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:52.877286Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.876550Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "chains": 95,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:52.892306Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.882427Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "34fccd85e6ae4feea682d4bb06fea969",
+     "counters": {
+      "causes": 19,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:52.916083Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:52.914348Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f7f0a337a5f14da7a9a434d3561bae16",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:45:54.697171Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:45:53.034208Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:40.265847Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:37.837170Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:38.181456Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:37.856107Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:38.182941Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:38.182192Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 1,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:38.713449Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:38.186170Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "chains": 102,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:38.724764Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:38.716294Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "88a8d4fc37134d81b83984f662069495",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:38.751606Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:38.748636Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "a7d7401d957d4122ae83b24fb25e0826",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-05T23:55:40.262354Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-05T23:55:38.813915Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "causes": 19,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:05.340949Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.058071Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:03.456107Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.162046Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "not_working": 5,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:03.457990Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.456689Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "cleared": 1,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:03.465318Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.463802Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "chains": 109,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:03.482795Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.473286Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "f933a2e736504113b41f24b1acd0e9cf",
+     "counters": {
+      "causes": 19,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:03.496006Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.493627Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6d1dbd02b48f441e9ed22b7cbcd21b6c",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:04:05.335888Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T00:04:03.591933Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:56.372697Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:53.563657Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:53.841704Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:53.578068Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:53.843027Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:53.842252Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 1,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:54.613552Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:53.873263Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "chains": 116,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:54.640852Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:54.629305Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6157579e651c4653bb2ba1a73f978382",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:54.798734Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:54.796505Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "a4d4e8e8095a4b959b1550ace3b3764d",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:14:56.367224Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T00:14:54.883365Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "causes": 19,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:18.585512Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:15.878498Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:16.234119Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:15.891299Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "not_working": 5,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:16.238370Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:16.235168Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "cleared": 1,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:16.310911Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:16.310327Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "chains": 123,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:16.413613Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:16.402957Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b91d0aec2c9a4ad7a724e228f99a48ff",
+     "counters": {
+      "causes": 19,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:16.483186Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:16.480587Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "09c2ffa9b59a47c98cb4d72279fec0e5",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:26:18.581166Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T00:26:16.695624Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:13.155933Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:07.942050Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:08.869147Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:08.039110Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:08.871115Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:08.870051Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 1,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:11.057290Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:08.886040Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "chains": 130,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:11.071155Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:11.063735Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "55747c5e008a42678deea684da77eb09",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:11.150066Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:11.094970Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "2228a13e36cd475a8f3d1390cf23bd2a",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:42:13.143758Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T00:42:11.290337Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "causes": 19,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:08.361875Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.119760Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:06.474685Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.177975Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "not_working": 5,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:06.477770Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.476683Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "cleared": 1,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:06.490469Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.489172Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "chains": 137,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:06.522493Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.509924Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9aa0b6022121456abf731e39f57b5424",
+     "counters": {
+      "causes": 19,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:06.568953Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.566105Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6068a6727ff649878b5487d9f5c23cc6",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T00:51:08.358396Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T00:51:06.653141Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:12.863023Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:08.006950Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:08.497613Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:08.075532Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:08.505859Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:08.498147Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 1,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:09.844589Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:08.545635Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "chains": 144,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:09.913824Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:09.894036Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c5b3c82b43da4beb8f5564c763411472",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:10.010222Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:10.005590Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "04874860f1d748608a3110b8b9d865be",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:08:12.832780Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:08:10.175427Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:16.028033Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:15.408392Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:15.895500Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:15.535775Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:15.898057Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:15.896441Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:15.931853Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:15.930274Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "chains": 151,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:15.946200Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:15.935510Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "1170196be24044b99d413cdf6b483d68",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:16.017902Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:16.015236Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b64f86cc37fd4757bc28829e67edea00",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:36.533743Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:34.750581Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "a4ad1eb34e7f4ffcaed14097598a8076",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:13:36.531736Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:13:34.831864Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.135264Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:03.671794Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.090138Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:03.693658Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.092147Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:04.091179Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.097780Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:04.096034Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "chains": 159,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.118815Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:04.100701Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "47d0339309824d48897b99879f36ce30",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:04.127703Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:04.124081Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ceab119b838d403492d0a2672f15bc2f",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:25.132053Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:23.273788Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "3eb42b2883f74d6fb19be7a36165ee51",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:24:25.131084Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:24:23.360718Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.747902Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:51.878802Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.300366Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:51.945126Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.302339Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:52.300944Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.366933Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:52.365851Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "chains": 167,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.567314Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:52.551403Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4b6c8ab123e64539a4f1c8cbf727c3eb",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:31:52.736348Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:31:52.733223Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "89800bfa09764a348be86f2579845fbc",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:32:12.224563Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:32:09.931945Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "c375817e6efb42b088a5224840ba48e9",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:32:12.222921Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:32:10.178887Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:07.169474Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:06.277702Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:06.992689Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:06.436357Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:06.994156Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:06.993260Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:07.037278Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:07.036368Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "chains": 175,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:07.064470Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:07.050469Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fc9e20dcce6545569096a78057c0f4b0",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:07.144534Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:07.135902Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b1506fe4f1a4471a814fd7fe5099ca1a",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:39.552835Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:36.692122Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "0db6365605a14f95ada88355d3d53c48",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:46:39.539560Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:46:36.836787Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:03.033795Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.193844Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:02.691908Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.249890Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:02.694852Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.693808Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:02.743243Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.742121Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "chains": 183,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:02.858874Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.845709Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "27c3d7f307ab461e86938f3d61a9381d",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:02.946019Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:02.943555Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "92fa098dc52c4d9e8ddcf61056af1bf4",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:28.513768Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:26.154699Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "550dfa09686646caa322fc7a24546d51",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T01:55:28.512283Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T01:55:26.457455Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.071153Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:04.712975Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.030672Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:04.748335Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.031500Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:05.031146Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.032786Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:05.032095Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "chains": 191,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.050699Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:05.035460Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "53c54c37bc174acda0df1d3e372ad833",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:05.060736Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:05.057969Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ca305210cdb940c7b94efa76eb4d558b",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:28.118834Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:26.166811Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "9dd1e684ca3646dcb65e20e49d0d5fd1",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:06:28.113964Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T02:06:26.237248Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "causes": 19,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.878607Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:57.859856Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.351867Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:57.953607Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "not_working": 5,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.360558Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:58.358662Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "cleared": 1,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.447536Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:58.431305Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "chains": 199,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.584868Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:58.565337Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "4afbb9dced9044b39f9c19ce9ae40154",
+     "counters": {
+      "causes": 19,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:15:58.713011Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T02:15:58.709912Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:12.353733Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:11.511448Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "sources": 6,
+      "unread": 2
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:11.610840Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:11.516840Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:11.615182Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:11.614619Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 1,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:12.248994Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:11.616070Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "chains": 205,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:12.287704Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:12.279492Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "396c5b980f944925ab1719edde73db85",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:12.308290Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:12.303832Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "b5954cb8d72d4c69a925716fdeda0829",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:24.330360Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:22.352791Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "799afc4c631048ae9e27bb00253ec68f",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:24.328322Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:22.469872Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "2adc392608434f4d80181250bf8c8c5b",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:35.220135Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:33.210493Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "80ef702c5de3427fb3e28358c298bcdd",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:16:35.205580Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T02:16:33.324087Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.405905Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:18.850167Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.258890Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:18.931129Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.262492Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:19.261116Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.301093Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:19.300378Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "chains": 215,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.328920Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:19.303486Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "51d646eb51984abfb5a13e142c274557",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:19.389553Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:19.386673Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "ff3cf1f1ea7d4e88a3a5a7dcf747e29f",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:43.068302Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:40.681584Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "611cdaf8d927471598eb7edf3bac6fbf",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:30:43.055663Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T02:30:40.837923Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "causes": 20,
+      "lab_sources": 6,
+      "pieces": 18,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:15.418986Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:13.919710Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:14.455109Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:14.034050Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "not_working": 6,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:14.469333Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:14.468483Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "cleared": 0,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:14.492904Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:14.492076Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "chains": 223,
+      "findings": 4
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:14.850239Z",
+     "kind": "golden",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:14.819452Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "6c473635bf15409a96508d60bfc59fa0",
+     "counters": {
+      "causes": 20,
+      "red_rule_violations": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:15.366269Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_floor_simple",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:15.361447Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "26283114820447b9a285b76416ff9d2c",
+     "counters": {
+      "canary_published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:46.100877Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:43.427607Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "33a76953b7814aa0a994aec5f1f44f78",
+     "counters": {
+      "published": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:39:46.098325Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:publish_canary",
+     "piece": 17,
+     "started_at": "2026-11-06T02:39:43.708773Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fde3c3ab64d3407eb8c7b3e17d3ee2c4",
+     "counters": {},
+     "drill": false,
+     "ended_at": null,
+     "kind": "open",
+     "node": "node_floor_simple_effect:run_floor_simple_cycle",
+     "piece": 17,
+     "started_at": "2026-11-06T02:54:20.008442Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fde3c3ab64d3407eb8c7b3e17d3ee2c4",
+     "counters": {
+      "sources": 6,
+      "unread": 1
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:54:20.353669Z",
+     "kind": "golden",
+     "node": "node_floor_simple_effect:read_sources",
+     "piece": 17,
+     "started_at": "2026-11-06T02:54:20.078870Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fde3c3ab64d3407eb8c7b3e17d3ee2c4",
+     "counters": {
+      "not_working": 4,
+      "verdicts": 6
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:54:20.508167Z",
+     "kind": "golden",
+     "node": "node_floor_simple_compute:compute_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:54:20.469623Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fde3c3ab64d3407eb8c7b3e17d3ee2c4",
+     "counters": {
+      "cleared": 2,
+      "escalated": 0,
+      "raised": 0,
+      "undelivered": 0
+     },
+     "drill": false,
+     "ended_at": "2026-11-06T02:54:20.587549Z",
+     "kind": "golden",
+     "node": "node_lab_state_alarm_effect:alarm_lab_state",
+     "piece": 17,
+     "started_at": "2026-11-06T02:54:20.529797Z"
+    },
+    {
+     "backend": "real",
+     "correlation_id": "fde3c3ab64d3407eb8c7b3e17d3ee2c4",
+     "counters": {},
+     "drill": false,
+     "ended_at": null,
+     "kind": "open",
+     "node": "node_floor_emission_compute:compute_floor_receipts",
+     "piece": 17,
+     "started_at": "2026-11-06T02:54:20.634444Z"
+    }
+   ],
+   "computed_at": "2026-11-06T02:54:20.052177Z",
+   "findings": [
+    {
+     "code": "downstream_missing_typed_failure",
+     "correlation_id": "8eec3039fd454e4e9f417464ad3ae436",
+     "detail": "A failed and B gave no typed failure in 900 s",
+     "subject": "J0 piece 17 to 1"
+    },
+    {
+     "code": "downstream_missing_typed_failure",
+     "correlation_id": "ba3310dc6e694e7dac7cfa9e4e3bc438",
+     "detail": "A failed and B gave no typed failure in 900 s",
+     "subject": "J0 piece 17 to 1"
+    },
+    {
+     "code": "downstream_missing_typed_failure",
+     "correlation_id": "8eec3039fd454e4e9f417464ad3ae436",
+     "detail": "A failed and B gave no typed failure in 900 s",
+     "subject": "J17 piece 17 to 18"
+    },
+    {
+     "code": "downstream_missing_typed_failure",
+     "correlation_id": "ba3310dc6e694e7dac7cfa9e4e3bc438",
+     "detail": "A failed and B gave no typed failure in 900 s",
+     "subject": "J17 piece 17 to 18"
+    }
+   ],
+   "joins": [
+    {
+     "error_at": null,
+     "from_piece": 17,
+     "golden_at": null,
+     "join": "J0",
+     "state": "broken",
+     "to_piece": 1
+    },
+    {
+     "error_at": null,
+     "from_piece": 1,
+     "golden_at": null,
+     "join": "J1",
+     "state": "not_run",
+     "to_piece": 2
+    },
+    {
+     "error_at": null,
+     "from_piece": 2,
+     "golden_at": null,
+     "join": "J2",
+     "state": "not_run",
+     "to_piece": 3
+    },
+    {
+     "error_at": null,
+     "from_piece": 3,
+     "golden_at": null,
+     "join": "J3",
+     "state": "not_run",
+     "to_piece": 4
+    },
+    {
+     "error_at": null,
+     "from_piece": 4,
+     "golden_at": null,
+     "join": "J4",
+     "state": "not_run",
+     "to_piece": 5
+    },
+    {
+     "error_at": null,
+     "from_piece": 5,
+     "golden_at": null,
+     "join": "J5",
+     "state": "not_run",
+     "to_piece": 6
+    },
+    {
+     "error_at": null,
+     "from_piece": 6,
+     "golden_at": null,
+     "join": "J6",
+     "state": "not_run",
+     "to_piece": 7
+    },
+    {
+     "error_at": null,
+     "from_piece": 7,
+     "golden_at": null,
+     "join": "J7",
+     "state": "not_run",
+     "to_piece": 8
+    },
+    {
+     "error_at": null,
+     "from_piece": 8,
+     "golden_at": null,
+     "join": "J8",
+     "state": "not_run",
+     "to_piece": 9
+    },
+    {
+     "error_at": null,
+     "from_piece": 9,
+     "golden_at": null,
+     "join": "J9",
+     "state": "not_run",
+     "to_piece": 10
+    },
+    {
+     "error_at": null,
+     "from_piece": 10,
+     "golden_at": null,
+     "join": "J10",
+     "state": "not_run",
+     "to_piece": 11
+    },
+    {
+     "error_at": null,
+     "from_piece": 11,
+     "golden_at": null,
+     "join": "J11",
+     "state": "not_run",
+     "to_piece": 12
+    },
+    {
+     "error_at": null,
+     "from_piece": 12,
+     "golden_at": null,
+     "join": "J12",
+     "state": "not_run",
+     "to_piece": 13
+    },
+    {
+     "error_at": null,
+     "from_piece": 13,
+     "golden_at": null,
+     "join": "J13",
+     "state": "not_run",
+     "to_piece": 14
+    },
+    {
+     "error_at": null,
+     "from_piece": 14,
+     "golden_at": null,
+     "join": "J14",
+     "state": "not_run",
+     "to_piece": 15
+    },
+    {
+     "error_at": null,
+     "from_piece": 15,
+     "golden_at": null,
+     "join": "J15",
+     "state": "not_run",
+     "to_piece": 16
+    },
+    {
+     "error_at": null,
+     "from_piece": 16,
+     "golden_at": null,
+     "join": "J16",
+     "state": "not_run",
+     "to_piece": 17
+    },
+    {
+     "error_at": null,
+     "from_piece": 17,
+     "golden_at": null,
+     "join": "J17",
+     "state": "broken",
+     "to_piece": 18
+    },
+    {
+     "error_at": null,
+     "from_piece": 14,
+     "golden_at": null,
+     "join": "J-cycle",
+     "state": "not_run",
+     "to_piece": 9
+    }
+   ],
+   "pieces": [
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 1,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 2,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 3,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 4,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 5,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 6,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 7,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 8,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 9,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 10,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 11,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 12,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 13,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 14,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 15,
+     "started": false
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 16,
+     "started": false
+    },
+    {
+     "counters": {
+      "canary_published": 10,
+      "causes": 1236,
+      "chains": 3426,
+      "cleared": 7,
+      "escalated": 6,
+      "findings": 112,
+      "lab_sources": 186,
+      "not_working": 185,
+      "pieces": 558,
+      "published": 28,
+      "raised": 11,
+      "red_rule_violations": 0,
+      "sources": 192,
+      "undelivered": 18,
+      "unread": 33,
+      "verdicts": 192
+     },
+     "error_age_s": 17032,
+     "error_at": "2026-11-05T22:10:27.301248Z",
+     "freshness": "fresh",
+     "golden_age_s": 0,
+     "golden_at": "2026-11-06T02:54:20.587549Z",
+     "golden_backends": [
+      "real"
+     ],
+     "last_emission_at": "2026-11-06T02:54:20.634444Z",
+     "piece": 17,
+     "started": true
+    },
+    {
+     "counters": {},
+     "error_age_s": null,
+     "error_at": null,
+     "freshness": "none",
+     "golden_age_s": null,
+     "golden_at": null,
+     "golden_backends": [],
+     "last_emission_at": null,
+     "piece": 18,
+     "started": false
+    }
+   ]
+  },
+  "record_read_at": "2026-11-06T02:51:05Z",
+  "slots_total": 64,
+  "slots_unread_hosts": [
+   "h105",
+   "h200",
+   "h202"
+  ],
+  "slots_working": 22,
+  "sources_read": {
+   "floor_record": true,
+   "goal_scope": true,
+   "pull_request_watcher": true
+  },
+  "stoppages": [
+   {
+    "detail": "59 times, 20540 lane-minutes lost, last 2026-11-05T23:58.",
+    "id": "stoppage:lab-idle",
+    "needs_operator": false,
+    "size": 59,
+    "size_unit": "occurrences",
+    "tickets": [],
+    "title": "lab idle"
+   },
+   {
+    "detail": "4 times, 1700 lane-minutes lost, last 2026-11-05T17:38.",
+    "id": "stoppage:lab-source-unreadable",
+    "needs_operator": false,
+    "size": 4,
+    "size_unit": "occurrences",
+    "tickets": [],
+    "title": "lab source unreadable"
+   },
+   {
+    "detail": "4 times, 1540 lane-minutes lost, last 2026-11-06T00:39.",
+    "id": "stoppage:lab-enumerate-unreadable",
+    "needs_operator": false,
+    "size": 4,
+    "size_unit": "occurrences",
+    "tickets": [],
+    "title": "lab enumerate unreadable"
+   },
+   {
+    "detail": "63 times, 1216 lane-minutes lost, last 2026-11-06T00:50.",
+    "id": "stoppage:unclassified",
+    "needs_operator": false,
+    "size": 63,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-17195",
+     "OMN-18954",
+     "OMN-19998",
+     "OMN-20304",
+     "OMN-20769",
+     "OMN-20864",
+     "OMN-22478"
+    ],
+    "title": "unclassified"
+   },
+   {
+    "detail": "7 times, 420 lane-minutes lost, last 2026-11-05T23:13.",
+    "id": "stoppage:throughput-results",
+    "needs_operator": false,
+    "size": 7,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-19998"
+    ],
+    "title": "throughput results"
+   },
+   {
+    "detail": "1 times, 260 lane-minutes lost, last 2026-11-05T18:39.",
+    "id": "stoppage:lab-enumerate-partial",
+    "needs_operator": false,
+    "size": 1,
+    "size_unit": "occurrences",
+    "tickets": [],
+    "title": "lab enumerate partial"
+   },
+   {
+    "detail": "77 times, 73 lane-minutes lost, last 2026-11-06T01:04.",
+    "id": "stoppage:hook-refusal:unauthorised-shared-tree-git-mutation",
+    "needs_operator": false,
+    "size": 77,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-18946"
+    ],
+    "title": "hook refusal: unauthorised shared tree git mutation"
+   },
+   {
+    "detail": "4 times, 73 lane-minutes lost, last 2026-11-06T00:49.",
+    "id": "stoppage:job-exit",
+    "needs_operator": false,
+    "size": 4,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-19998"
+    ],
+    "title": "job exit"
+   },
+   {
+    "detail": "34 times, 27 lane-minutes lost, last 2026-11-06T00:51.",
+    "id": "stoppage:hook-refusal:heavy-work-over-load-bar",
+    "needs_operator": false,
+    "size": 34,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-18946"
+    ],
+    "title": "hook refusal: heavy work over load bar"
+   },
+   {
+    "detail": "15 times, 15 lane-minutes lost, last 2026-11-06T00:34.",
+    "id": "stoppage:hook-refusal:worktree-add-refused",
+    "needs_operator": false,
+    "size": 15,
+    "size_unit": "occurrences",
+    "tickets": [
+     "OMN-18946"
+    ],
+    "title": "hook refusal: worktree add refused"
+   }
+  ],
+  "watcher_read_at": "2026-11-06T02:51:33Z"
+ },
+ "lab_reads": [
+  {
+   "id": "hosts",
+   "read_at": "2026-11-06T02:45:36Z",
+   "reason": "",
+   "status": "read",
+   "subjects": [
+    {
+     "name": "h051",
+     "note": "advertising",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h053",
+     "note": "advertising",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h101",
+     "note": "PARITY-FAILED: plugin-stale:omni: installed plugin omni ships 118f5dc0cc5a",
+     "ok": false,
+     "value": null
+    },
+    {
+     "name": "h105",
+     "note": "out: with the operator at a conference from 2026-11-03",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h106",
+     "note": "advertising",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h200",
+     "note": "out: out of lane, landing-worker and unit placement: RULING 2026-11-02T18:19:05Z, no lanes or s",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h201",
+     "note": "advertising",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "h202",
+     "note": "repair: h202 is down for repair (operator, 2026-10-23T12:25Z)",
+     "ok": true,
+     "value": null
+    }
+   ],
+   "summary": "7 of 8 hosts fine"
+  },
+  {
+   "id": "runner_groups",
+   "read_at": null,
+   "reason": "fleet producer: [Errno 2] No such file or directory: '/app/data/.onex_state/runner-fleet/runner-fleet.json'",
+   "status": "unread",
+   "subjects": [],
+   "summary": ""
+  },
+  {
+   "id": "disk",
+   "read_at": "2026-11-06T02:45:36Z",
+   "reason": "",
+   "status": "read",
+   "subjects": [
+    {
+     "name": "h101",
+     "note": "2.0 GB free, under the 10 GB floor",
+     "ok": false,
+     "value": 2.0
+    },
+    {
+     "name": "h201",
+     "note": "641.1 GB free",
+     "ok": true,
+     "value": 641.1
+    },
+    {
+     "name": "h106",
+     "note": "118.4 GB free",
+     "ok": true,
+     "value": 118.4
+    },
+    {
+     "name": "h051",
+     "note": "22.1 GB free",
+     "ok": true,
+     "value": 22.1
+    },
+    {
+     "name": "h053",
+     "note": "197.7 GB free",
+     "ok": true,
+     "value": 197.7
+    }
+   ],
+   "summary": "4 of 5 hosts above 10 GB free"
+  },
+  {
+   "id": "queue_age",
+   "read_at": "2026-11-06T02:51:33Z",
+   "reason": "",
+   "status": "read",
+   "subjects": [],
+   "summary": "no in-scope green pull request is waiting"
+  },
+  {
+   "id": "deploy_lag",
+   "read_at": "2026-11-06T02:51:05.209566Z",
+   "reason": "",
+   "status": "read",
+   "subjects": [
+    {
+     "name": "repo-a#4916",
+     "note": "merged, not running, 2857 min, over the 1440 min limit",
+     "ok": false,
+     "value": 2857.0
+    },
+    {
+     "name": "repo-b#5579",
+     "note": "merged, not running, 2832 min, over the 1440 min limit",
+     "ok": false,
+     "value": 2832.0
+    },
+    {
+     "name": "repo-a#4977",
+     "note": "merged, not running, 2829 min, over the 1440 min limit",
+     "ok": false,
+     "value": 2829.0
+    }
+   ],
+   "summary": "oldest merge not yet running is 2857 min old"
+  },
+  {
+   "id": "broker_lag",
+   "read_at": "2026-11-06T02:49:58Z",
+   "reason": "",
+   "status": "read",
+   "subjects": [
+    {
+     "name": "consumer_group_lag",
+     "note": "OK",
+     "ok": true,
+     "value": null
+    },
+    {
+     "name": "broker_listener",
+     "note": "OK",
+     "ok": true,
+     "value": null
+    }
+   ],
+   "summary": "2 of 2 broker conditions OK"
+  }
+ ],
+ "lanes": [
+  {
+   "lane": "landing-L28062",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28064",
+   "pr": "repo-b#5705",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28071",
+   "pr": "repo-b#5668",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28074",
+   "pr": "repo-b#5643",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28076",
+   "pr": "repo-c#3170",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-001",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-002",
+   "pr": "repo-a#5160",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-003",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-004",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-005",
+   "pr": "repo-b#5706",
+   "stalled": false,
+   "ticket": "OMN-22532"
+  },
+  {
+   "lane": "lane-006",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "landing-L28041",
+   "pr": "repo-a#5071",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28049",
+   "pr": "repo-b#5669",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28053",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28075",
+   "pr": "repo-a#5046",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28077",
+   "pr": "repo-c#3177",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-007",
+   "pr": "repo-c#3179",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-008",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-009",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-010",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-011",
+   "pr": "repo-d#1681",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-012",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-013",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "landing-L28067",
+   "pr": "repo-a#5128",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28068",
+   "pr": "repo-b#5706",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-014",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-015",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-016",
+   "pr": "repo-b#5678",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-017",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-018",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "landing-L28056",
+   "pr": "repo-a#5143",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-019",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-020",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-021",
+   "pr": "repo-e#488",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-022",
+   "pr": "repo-d#1684",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-023",
+   "pr": "repo-f#445",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-024",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "landing-L28052",
+   "pr": "repo-c#3169",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L28045",
+   "pr": "repo-a#5060",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-025",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-026",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-027",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-028",
+   "pr": "repo-g#6",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-029",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-030",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-031",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-032",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-033",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-034",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-035",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-036",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-037",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-038",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-039",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-040",
+   "pr": "",
+   "stalled": false,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "lane-041",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-042",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-043",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-044",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-22478"
+  },
+  {
+   "lane": "lane-045",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-046",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-047",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-048",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-049",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-050",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-051",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-052",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "lane-053",
+   "pr": "",
+   "stalled": true,
+   "ticket": "OMN-20413"
+  },
+  {
+   "lane": "landing-L27929",
+   "pr": "repo-b#5676",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27931",
+   "pr": "repo-h#1441",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27934",
+   "pr": "repo-c#3170",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27937",
+   "pr": "repo-c#3153",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27932",
+   "pr": "repo-c#3152",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27933",
+   "pr": "repo-b#5704",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  },
+  {
+   "lane": "landing-L27918",
+   "pr": "repo-a#5086",
+   "stalled": true,
+   "ticket": "OMN-19998"
+  }
+ ],
+ "pr_class_prs": {
+  "green-armed": [
+   "repo-b#5685"
+  ],
+  "green-unarmed": [
+   "repo-d#1647"
+  ],
+  "held-excluded": [
+   "repo-b#5624",
+   "repo-e#408",
+   "repo-e#437",
+   "repo-e#438",
+   "repo-e#439",
+   "repo-e#443",
+   "repo-e#448",
+   "repo-e#456",
+   "repo-e#458",
+   "repo-e#459",
+   "repo-e#460",
+   "repo-e#462",
+   "repo-e#466",
+   "repo-e#473",
+   "repo-e#488"
+  ],
+  "pending": [
+   "repo-b#5679",
+   "repo-a#5062",
+   "repo-a#5074",
+   "repo-a#5086",
+   "repo-a#5087",
+   "repo-a#5105",
+   "repo-a#5107",
+   "repo-a#5123",
+   "repo-a#5124",
+   "repo-a#5128",
+   "repo-a#5138"
+  ],
+  "red": [
+   "repo-b#5501",
+   "repo-b#5585",
+   "repo-b#5677",
+   "repo-b#5687",
+   "repo-b#5688",
+   "repo-b#5699",
+   "repo-b#5700",
+   "repo-c#3153",
+   "repo-d#1622",
+   "repo-d#1662",
+   "repo-a#4904",
+   "repo-a#4997",
+   "repo-a#5039",
+   "repo-a#5043",
+   "repo-a#5046",
+   "repo-a#5060",
+   "repo-a#5069",
+   "repo-a#5071",
+   "repo-a#5075",
+   "repo-a#5099",
+   "repo-a#5101",
+   "repo-a#5102",
+   "repo-a#5108",
+   "repo-a#5120",
+   "repo-a#5126",
+   "repo-a#5127"
+  ]
+ },
+ "recorded": {
+  "board_cycle": "2026-11-06T02:54:20.052177Z",
+  "record_generated_at": "2026-11-06T02:51:05Z",
+  "source": "the board cycle and record served on the lab status host, lanes with their pull request from the record, class pull requests from the pull request watcher state; repository and lane names replaced by neutral ones",
+  "watcher_last_tick": "2026-11-06T02:59:34+00:00"
+ },
+ "stoppages_raw": [
+  {
+   "cost_minutes": 20540.0,
+   "last_seen": "2026-11-05T23:58:03Z",
+   "name": "lab-idle",
+   "occurrences": 59,
+   "recurring": true,
+   "tickets": []
+  },
+  {
+   "cost_minutes": 1700.0,
+   "last_seen": "2026-11-05T17:38:14Z",
+   "name": "lab-source-unreadable",
+   "occurrences": 4,
+   "recurring": true,
+   "tickets": []
+  },
+  {
+   "cost_minutes": 1540.0,
+   "last_seen": "2026-11-06T00:39:54Z",
+   "name": "lab-enumerate-unreadable",
+   "occurrences": 4,
+   "recurring": true,
+   "tickets": []
+  },
+  {
+   "cost_minutes": 1216.0,
+   "last_seen": "2026-11-06T00:50:15Z",
+   "name": "unclassified",
+   "occurrences": 63,
+   "recurring": false,
+   "tickets": [
+    "OMN-17195",
+    "OMN-18954",
+    "OMN-19998",
+    "OMN-20304",
+    "OMN-20769",
+    "OMN-20864",
+    "OMN-22478"
+   ]
+  },
+  {
+   "cost_minutes": 420.0,
+   "last_seen": "2026-11-05T23:13:10Z",
+   "name": "throughput-results",
+   "occurrences": 7,
+   "recurring": true,
+   "tickets": [
+    "OMN-19998"
+   ]
+  },
+  {
+   "cost_minutes": 260.0,
+   "last_seen": "2026-11-05T18:39:54Z",
+   "name": "lab-enumerate-partial",
+   "occurrences": 1,
+   "recurring": false,
+   "tickets": []
+  },
+  {
+   "cost_minutes": 73.0,
+   "last_seen": "2026-11-06T01:04:36Z",
+   "name": "hook-refusal:unauthorised-shared-tree-git-mutation",
+   "occurrences": 77,
+   "recurring": true,
+   "tickets": [
+    "OMN-18946"
+   ]
+  },
+  {
+   "cost_minutes": 73.0,
+   "last_seen": "2026-11-06T00:49:17Z",
+   "name": "job-exit",
+   "occurrences": 4,
+   "recurring": true,
+   "tickets": [
+    "OMN-19998"
+   ]
+  },
+  {
+   "cost_minutes": 27.0,
+   "last_seen": "2026-11-06T00:51:29Z",
+   "name": "hook-refusal:heavy-work-over-load-bar",
+   "occurrences": 34,
+   "recurring": true,
+   "tickets": [
+    "OMN-18946"
+   ]
+  },
+  {
+   "cost_minutes": 15.0,
+   "last_seen": "2026-11-06T00:34:10Z",
+   "name": "hook-refusal:worktree-add-refused",
+   "occurrences": 15,
+   "recurring": true,
+   "tickets": [
+    "OMN-18946"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22549"
+title: "The factory floor publishes the canary status after the served page, so its floor age is the page's age"
+summary: "The floor published the canary status before it uploaded the page, so a failed upload left a fresh canary status beside a stale page. The canary is now a required after-publish step that runs from the page as served; a failed upload stops the run before it, and a failed canary publish fails the run. The same change lets the runner groups row read the fleet rows the floor saves, and names the running build's provenance as the evidence that a merge is deployed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22549-canary-after-page"
+    statement: |-
+      The canary status reaches the floor only after the page it describes is served. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the canary status is published by a step that runs after the page upload, a failed upload skips it, and a failed canary publish fails the run
+      - id: "AC2"
+        statement: |-
+          AC2: on the installed floor unit the canary status age is under the 900 s bound across two consecutive cycles
+evidence_requirements:
+  - kind: "tests"
+    description: "The publish tests read the canary step as the call after the page is served, a failed upload as no canary, and a failed canary publish as a failed run; the fleet rows and the build provenance have golden and error tests."
+    command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_floor_simple_effect tests/nodes/node_merged_running_count_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22549-ac1-canary-after-page"
+    description: "AC1. The publish tests pass: the canary is the call after the served page, a failed upload publishes none, a failed canary publish fails the run."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k canary"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22549-integration-proof"
+    description: "The pushed head runs the floor, fleet and merged-running tests on a lab host through onex lab-work and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22549 -- uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_merged_running_count_effect tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_source.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22549-ac2-canary-age"
+    description: "AC2. The canary verdict tests pass: a status younger than the 900 s bound reads working and an older or missing one reads silent or unreadable."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_state_alarm_effect/test_golden_and_error_chain_slack_and_canary.py -q --no-cov -k canary"
+        cwd: "${OMNI_HOME}/omnimarket"
