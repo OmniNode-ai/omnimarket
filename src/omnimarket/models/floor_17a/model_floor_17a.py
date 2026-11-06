@@ -25,6 +25,7 @@ SourceKind = Literal[
     "deploy_lag",
     "broker_lag",
     "overlay_store",
+    "deploy_agent",
 ]
 
 
@@ -217,6 +218,10 @@ class ModelLabStateOverlay(_Frozen):
     conflict_merge_states: tuple[str, ...] = ()
     # The host table and plan rules that split the offline runners into parked on purpose and real problems.
     runner_plan: tuple[ModelRunnerPlanRule, ...] = ()
+    # The deploy agent's address, how many of its results the floor keeps, and how long a read may wait.
+    deploy_agent_url: str = ""
+    deploy_agent_history: int = Field(default=50, gt=0)
+    deploy_agent_timeout_s: int = Field(default=10, gt=0)
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:

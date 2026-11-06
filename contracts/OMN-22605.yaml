@@ -66,6 +66,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py tests/nodes/node_floor_simple_effect/test_harness_reading_floor_simple.py tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn22605-deploy-agent-row"
+    description: "Evidence for no AC: the floor draws the dev deploy agent's own results as a source. A finished job that failed twice in a row reads red with its reason and the last success, a success clears it, an agent that does not answer reads unread, and the old floor reads WORKING on the same failures."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q --no-cov"
+        cwd: "."
   - id: "dod-omn22605-integration-proof"
     description: "The pushed head runs the floor, fleet and merged-running tests on a lab host through onex lab-work and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"

@@ -80,6 +80,12 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     record_slots,
     record_stoppages,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
+    deploy_agent_events,
+    http_fetch,
+    read_deploy_agent,
+    record_deploy_agent,
+)
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
     GitCanaryPublisher,
 )
@@ -119,6 +125,7 @@ class ModelSourcePaths(BaseModel):
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
     overlay_store_relpath: str
+    deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
     harness_piece: int
@@ -219,7 +226,9 @@ class HandlerFloorSimpleTick:
         canary_publisher: Callable[[ModelCanaryStatus], None] | None = None,
         served_times: Callable[[], tuple[datetime | None, datetime | None] | None]
         | None = None,
+        deploy_agent_fetch: Callable[[str], Mapping[str, Any] | None] | None = None,
     ) -> None:
+        self._deploy_agent_fetch = deploy_agent_fetch
         self._sink = sink
         self._channels = channels
         self._served = served_alarm_ids
@@ -520,6 +529,21 @@ class HandlerFloorSimpleTick:
                 reads.append(overlay_store)
                 for event in overlay_store_events(
                     overlay_store, piece, self._clock(), uuid4().hex
+                ):
+                    sink.emit(event)
+            if any(s.kind == "deploy_agent" for s in lab_ov.sources):
+                deploy_path = home / rt.sources.deploy_agent_relpath
+                record_deploy_agent(
+                    deploy_path,
+                    lab_ov,
+                    self._deploy_agent_fetch
+                    or http_fetch(lab_ov.deploy_agent_timeout_s),
+                    now,
+                )
+                deploy_agent = read_deploy_agent(deploy_path, lab_ov, now)
+                reads.append(deploy_agent)
+                for event in deploy_agent_events(
+                    deploy_agent, piece, self._clock(), uuid4().hex
                 ):
                     sink.emit(event)
             if request.drill_offline is not None:

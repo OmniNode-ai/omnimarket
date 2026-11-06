@@ -96,6 +96,8 @@ runtime:
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
     overlay_store_relpath: .onex_state/overlay-store/fleet.json
+    # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
+    deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
     readings_relpath: .onex_state/readings/readings.jsonl
     # The central test harness's stored result (node_lab_test_harness_effect writes it) is the reading of this piece,
