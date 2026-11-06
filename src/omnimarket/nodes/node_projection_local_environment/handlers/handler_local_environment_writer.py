@@ -25,8 +25,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
@@ -42,6 +40,7 @@ from omnimarket.nodes.node_projection_local_environment.handlers.handler_project
 from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
     ModelLocalEnvironmentPlanRequest,
 )
+from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
@@ -180,8 +179,7 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(path) as handle:
-            self._contract: dict[str, Any] = yaml.safe_load(handle)
+        self._contract: dict[str, Any] = load_contract(path)
         exposures = load_projection_exposures_from_contract(
             self._contract, str(self._contract["name"]), path
         )

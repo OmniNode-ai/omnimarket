@@ -8,9 +8,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
@@ -67,8 +66,7 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(_path) as f:
-            self._contract: dict[str, Any] = yaml.safe_load(f)
+        self._contract: dict[str, Any] = load_contract(_path)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         _by_role = {t["role"]: t["name"] for t in _tables}
