@@ -546,7 +546,16 @@ class HandlerSystemdRegistryTick:
             raise ValueError(
                 "LINGER-REQUIRED: the user manager must survive logout; provision linger through the host installer"
             )
-        proof = self.installer.run([*argv, "--check-config"])
+        # The probe reads the configuration the timer will read, so it carries the
+        # unit's rendered environment, not whatever the installer's shell exports.
+        proof = self.installer.run(
+            [
+                "env",
+                *(f"{key}={value}" for key, value in environment.items()),
+                *argv,
+                "--check-config",
+            ]
+        )
         if proof.returncode:
             raise ValueError(
                 f"tick configuration refused before install: {proof.stdout}{proof.stderr}"

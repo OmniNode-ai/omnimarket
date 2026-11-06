@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -127,6 +128,11 @@ def test_tick_unit_installer_renders_the_branch_and_loads_both_unit_files(
     ] in host.commands
     assert ["systemctl", "--user", "start", "onex-item-tick.service"] in host.commands
     assert any("--check-config" in argv for argv in host.commands)
+    probe = next(argv for argv in host.commands if "--check-config" in argv)
+    assert probe[0] == "env"
+    unit_overlay = re.search(r'ONEX_ITEM_TICK_OVERLAY=([^"\n]+)', service)
+    assert unit_overlay is not None
+    assert f"ONEX_ITEM_TICK_OVERLAY={unit_overlay.group(1)}" in probe
 
 
 @pytest.mark.parametrize("day", [4, 7, 8])
