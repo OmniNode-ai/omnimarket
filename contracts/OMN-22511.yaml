@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-22511
+title: Retain named owners for exhausted landing work
+summary: The criteria of omnimarket#5107, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19998-release-asset-gateway
+  statement: Public release downloads recover from transient gateway failures with a bounded retry count.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: Release asset GETs retry HTTP 502, 503 and 504 at most three times with one- and two-second delays, close failed responses, and preserve the destination when all attempts fail; other HTTP errors and non-HTTPS URLs remain refused -- falsifier: uv run --frozen pytest tests/test_release_asset_download.py -q --no-cov'
+- id: req-omn19998-heal-read-retry
+  statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a read that gets HTTP 502, 503 or 504 is retried and succeeds on a later attempt, gives up after four attempts naming GitHub''s error, and a 404, a rate limit or a write is attempted once -- falsifier: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: Retain named owners for exhausted landing work
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_exhaustion_ownership.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-exhaustion-ownership
+  description: Reconstructed exhausted records for two recorded red PR heads retain their budgets and persist a named next-step owner. Focused public-node tests cover cause claimant precedence, a single owned park handoff, repeat ticks, holds, configuration and head changes. This scoped proof does not attest the controller lock, hash or host timer criteria.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_exhaustion_ownership.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn19998-exhaustion-ownership-deploy
+  description: The public landing-decision node handler processes the recorded red heads and serialized controller state with ownership configuration resolved before the tick. This runs without a live host install and does not assert live controller adoption.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_exhaustion_ownership.py -q --no-cov -n 0 -p no:randomly -k 'recorded_red_heads or overlay_is_resolved'
+    cwd: .
+- id: dod-omn19998-release-asset-gateway-deploy
+  description: Hosted smoke exercises the production download helper with gateway failures followed by release bytes, exhaustion and permanent errors. It verifies the successful bytes, failed-response closure, unauthenticated GET and unchanged existing destination on exhaustion. No live controller adoption is asserted.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_release_asset_download.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19998-release-asset-integration-proof
+  description: The lab runs the production downloader against the real public release, verifies the pinned archive and reads its SHA-256 sidecar. The test asserts both the digest and the asset name; it fails on a bad response or missing release bytes.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane landing-27539-release-asset --kind test -- env COMPOSE_PROJECT_NAME=landing-l27539-lab PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q --no-cov -p no:randomly -k test_the_release_carries_the_bundle_and_its_sidecar
+    cwd: .
