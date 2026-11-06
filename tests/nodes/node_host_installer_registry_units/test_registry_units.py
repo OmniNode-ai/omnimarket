@@ -397,3 +397,99 @@ def test_the_central_test_harness_unit_refuses_a_checkout_without_its_timer_modu
         )
     )
     assert result.status == "failure"
+
+
+class Overlap:
+    """A runner that, on its first launchctl bootout, sends a second request for the unit while the first install runs."""
+
+    def __init__(self, second: Any) -> None:
+        self.second = second
+        self.nested: Any = None
+
+    def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        if argv[:2] == ["launchctl", "bootout"] and self.nested is None:
+            self.nested = self.second()
+        return real_run(argv)
+
+
+def test_a_second_install_of_the_unit_is_refused_while_the_first_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    other = Recorder()
+    overlap = Overlap(lambda: HandlerRegistryUnits(other).handle(install))
+    first = HandlerRegistryUnits(overlap).handle(install)
+    assert first.status == "success", first.stderr
+    assert overlap.nested.exit_code == 75
+    assert overlap.nested.status == "failure"
+    assert "INSTALL-IN-PROGRESS" in overlap.nested.stderr
+    assert f"pid={os.getpid()}" in overlap.nested.stderr
+    assert other.calls == []
+
+
+def test_the_lock_is_released_when_an_install_fails_so_the_next_one_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    refused = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision="0" * 40,
+        )
+    )
+    assert refused.exit_code == 1
+    retry = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert retry.status == "success", retry.stderr
+
+
+def test_a_dry_run_and_a_status_read_never_take_the_lock(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    reads: list[Any] = []
+
+    def read_while_installing() -> Any:
+        for mode in ("dry-run", "status"):
+            reads.append(
+                HandlerRegistryUnits(Recorder()).handle(
+                    request(
+                        tmp_path,
+                        mode=mode,
+                        project_path=str(branch),
+                        expected_revision=revision,
+                    )
+                )
+            )
+        return reads[-1]
+
+    first = HandlerRegistryUnits(Overlap(read_while_installing)).handle(install)
+    assert first.status == "success", first.stderr
+    assert reads[0].exit_code == 0
+    assert all("INSTALL-IN-PROGRESS" not in r.stderr for r in reads)
