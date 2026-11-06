@@ -24,6 +24,7 @@ from omnimarket.models.floor_17a import (
     ModelLabSourceRead,
     ModelLabStateOverlay,
     ModelLabSubject,
+    ModelNodeEmission,
 )
 
 TICKET = re.compile(r"\bOMN-\d+\b")
@@ -592,4 +593,99 @@ def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSource
         read_at=finished,
         summary=f"{sum(1 for s in subjects if s.ok)} of {len(subjects)} broker conditions OK",
         subjects=tuple(subjects),
+    )
+
+
+def read_overlay_store(
+    path: Path, overlay: ModelLabStateOverlay, now: datetime
+) -> ModelLabSourceRead:
+    """One subject per host and overlay: fresh with an answering store is ok; anything else says why.
+
+    A stale table is still read by placement, so this row is what makes it visible. A reading older than
+    the source's bound means that host's reader stopped, whatever the reading said when it was written."""
+    source = _by_kind(overlay, "overlay_store")
+
+    def judged(key: str, reading: Mapping[str, Any]) -> ModelLabSubject:
+        age_s = (now - parse_time(reading["read_at"])).total_seconds()
+        stopped = age_s > source.max_age_s
+        return ModelLabSubject(
+            name=key,
+            ok=not stopped
+            and reading["state"] == "fresh"
+            and not reading.get("store_error"),
+            value=reading.get("age_s"),
+            note=(
+                f"no reading for {age_s:.0f}s, over the {source.max_age_s}s bound"
+                if stopped
+                else str(
+                    reading.get("store_error")
+                    or reading.get("detail")
+                    or reading["state"]
+                )[:110]
+            ),
+        )
+
+    try:
+        readings = json.loads(path.read_bytes())["readings"]
+        subjects = tuple(
+            judged(key, reading) for key, reading in sorted(readings.items())
+        )
+        read_at = max(parse_time(r["read_at"]) for r in readings.values())
+    except OSError as exc:
+        return _unread(
+            source.id,
+            f"the overlay store fleet record cannot be opened ({type(exc).__name__})",
+        )
+    except (ValueError, KeyError, TypeError):
+        return _unread(source.id, "the overlay store fleet record cannot be parsed")
+    return ModelLabSourceRead(
+        id=source.id,
+        status="read",
+        read_at=read_at,
+        summary=f"{sum(1 for s in subjects if s.ok)} of {len(subjects)} overlay reads fresh",
+        subjects=subjects,
+    )
+
+
+OVERLAY_STORE_EMITTER = "node_overlay_store_read_effect:floor_read"
+
+
+def overlay_store_events(
+    read: ModelLabSourceRead, piece: int, now: datetime, correlation_id: str
+) -> tuple[ModelNodeEmission, ...]:
+    """The row's golden or error chain for one cycle, for the floor's one emission sink.
+
+    Golden when every subject is ok; an error chain, typed, when the record is unread or a read is stale
+    or storeless, which is what a stale table placement still reads looks like from here."""
+    failing = [subject.name for subject in read.subjects if not subject.ok]
+    start = ModelNodeEmission(
+        node=OVERLAY_STORE_EMITTER,
+        piece=piece,
+        correlation_id=correlation_id,
+        phase="start",
+        emitted_at=now,
+    )
+    if read.status != "read":
+        code, detail = "overlay_store_unread", read.reason
+    elif failing:
+        code, detail = "overlay_store_not_fresh", ", ".join(failing)
+    else:
+        return (
+            start,
+            start.model_copy(
+                update={
+                    "phase": "success",
+                    "counters": {"reads_fresh": len(read.subjects)},
+                }
+            ),
+        )
+    return (
+        start,
+        start.model_copy(
+            update={
+                "phase": "failure",
+                "failure_code": code,
+                "failure_detail": detail[:300],
+            }
+        ),
     )
