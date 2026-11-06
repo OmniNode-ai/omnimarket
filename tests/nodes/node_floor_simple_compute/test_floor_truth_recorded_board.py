@@ -189,7 +189,7 @@ def test_error_a_stoppage_not_seen_for_hours_says_so_instead_of_reading_like_a_l
     assert found.still_occurring is False
     assert found.last_seen_age_s is not None
     assert found.last_seen_age_s > 6 * 3600
-    assert "not seen since" in found.detail
+    assert "no row since in the rollup" in found.detail
     # It stays listed and red: nobody is on it. Only its description became true.
     assert (found.state, found.listed) == ("red", True)
 

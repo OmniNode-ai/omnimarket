@@ -94,7 +94,7 @@ causes:
     - "stoppage:job-exit"
     - "stoppage:throughput-results"
   # The friction rollup is built every two hours, so a stoppage seen within three hours is still occurring as far as the
-  # rollup can say; an older one is drawn as not seen since.
+  # rollup can say; an older one says no row since in the rollup.
   still_occurring_within_s: 10800
   needs_operator:
     - "alarm:undelivered"

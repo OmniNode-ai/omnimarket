@@ -535,7 +535,7 @@ class HandlerFloorSimple:
                 seen += (
                     ", still occurring"
                     if age <= ov.still_occurring_within_s
-                    else ", not seen since"
+                    else ", no row since in the rollup"
                 )
             parts.append(seen)
         if item.id in ov.estimated_cost_stoppages:

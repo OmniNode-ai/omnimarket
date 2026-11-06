@@ -114,7 +114,7 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
             ModelFloorCauseIn(
                 id=f"stoppage:{name}",
                 title=name.replace("-", " ").replace(":", ": "),
-                detail=f"{item.get('occurrences', 0)} times",
+                detail=f"{item.get('occurrences', 0)} {'time' if item.get('occurrences') == 1 else 'times'}",
                 size=int(item.get("occurrences", 0)),
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
