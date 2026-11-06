@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Registry module tick, rendered by node_host_installer_registry_units from its contract.
      Placeholders: __LABEL__ __UNIT__ __UV__ __PYTHON__ __PROJECT__ __MODULE__ __OMNI_HOME__ __EVIDENCE_DIR__
-                   __HOME__ __USER__ __STATE_DIR__ __START_INTERVAL__ __RUN_AT_LOAD__ __ENVIRONMENT__
+                   __HOME__ __USER__ __STATE_DIR__ __START_INTERVAL__ __RUN_AT_LOAD__ __PROCESS_TYPE__ __ENVIRONMENT__
      __PROJECT__ is the canonical registry clone, or the project path override the install named. The agent
      runs the unit's module with the project's own environment, built on __PYTHON__ (the brew interpreter, which holds the
      macOS Local Network grant a uv-managed CPython never gets), so nothing is copied.
@@ -56,7 +56,7 @@
   <string>__OMNI_HOME__</string>
 
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>__PROCESS_TYPE__</string>
 
   <key>StandardOutPath</key>
   <string>__STATE_DIR__/__UNIT__.out.log</string>
