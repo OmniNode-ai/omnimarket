@@ -54,6 +54,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.handlers.projection_ordering import sort_for_presentation
+from omnimarket.models.morning_page.model_flow_consumer import ModelFlowConsumer
+from omnimarket.models.morning_page.model_inventory_row import ModelInventoryRow
+from omnimarket.models.morning_page.model_savings_metric import ModelSavingsMetric
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.table_reader import ProtocolProjectionPageView
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
@@ -173,22 +176,6 @@ class ModelProjectionRead(BaseModel):
     served_tenant_id: str | None = None
 
 
-class ModelFlowConsumer(BaseModel):
-    """One (consumer_group, topic) seam at its most recent observed window."""
-
-    model_config = ConfigDict(frozen=True)
-
-    consumer_group: str
-    topic: str
-    flow_state: str
-    messages_in: int
-    messages_out: int
-    messages_dlq: int
-    handler_errors: int
-    upstream_evidence: str
-    window_end: str
-
-
 class ModelFlowPanel(BaseModel):
     """Event-flow panel: state census, DLQ depth, and the seams needing attention."""
 
@@ -201,16 +188,6 @@ class ModelFlowPanel(BaseModel):
     handler_error_total: int
     attention: tuple[ModelFlowConsumer, ...]
     idle_count: int
-
-
-class ModelSavingsMetric(BaseModel):
-    """One delegation-savings number, always carrying the exposure it came from."""
-
-    model_config = ConfigDict(frozen=True)
-
-    label: str
-    value: str
-    source_topic: str
 
 
 class ModelSavingsPanel(BaseModel):
@@ -230,19 +207,6 @@ class ModelSavingsPanel(BaseModel):
     @property
     def has_data(self) -> bool:
         return bool(self.metrics)
-
-
-class ModelInventoryRow(BaseModel):
-    """One line of the exposure census — what the serving path would answer."""
-
-    model_config = ConfigDict(frozen=True)
-
-    topic: str
-    backing: str
-    source_contract: str
-    cached_row_count: int
-    latest_event_at: str | None
-    tenant_scoped: bool
 
 
 class ModelMorningPage(BaseModel):
