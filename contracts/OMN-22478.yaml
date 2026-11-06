@@ -8,6 +8,12 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-omn22478-event-bus-overlay-model
+    statement: An overlay holding only a node's event bus loads whole through one typed model, closed to stray keys.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: an event-bus-only overlay validates through ModelNodeEventBusOverlay, a stray key refuses, and the model imports with pydantic and pyyaml alone -- falsifier: uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
@@ -31,6 +37,7 @@ dod_evidence:
   - id: dod-omn22478-event-bus-overlay-model
     description: An event-bus-only node overlay loads through its model the way the overlay home loads it, a wrong document refuses, and the model imports with pydantic and pyyaml alone.
     source: manual
+    binds_ac: [AC4]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py -q --no-cov
