@@ -15,14 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
-    SystemdUnitRootReader,
-    UnitSnapshotError,
-)
-from omnimarket.worktree_reconcile.unit_roots import (
+from omnimarket.handlers.rules_unit_roots import (
     UnitRoots,
     split_systemctl_cat,
     unit_paths,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
+    SystemdUnitRootReader,
+    UnitSnapshotError,
 )
 from tests.test_worktree_reconcile_effect import (
     FakeMergedPrReader,

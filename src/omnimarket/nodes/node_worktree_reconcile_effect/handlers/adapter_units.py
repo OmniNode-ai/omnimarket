@@ -15,7 +15,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from omnimarket.worktree_reconcile.unit_roots import (
+from omnimarket.handlers.rules_unit_roots import (
     UnitRoots,
     environment_file_paths,
     environment_files,

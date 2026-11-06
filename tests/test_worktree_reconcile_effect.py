@@ -27,6 +27,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRunResult,
 )
 from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -49,7 +50,6 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_r
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolUnitRootReader,
 )
-from omnimarket.worktree_reconcile.unit_roots import UnitRoots
 from tests.test_worktree_reconcile_compute import facts
 
 pytestmark = pytest.mark.unit

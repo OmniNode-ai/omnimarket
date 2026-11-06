@@ -12,7 +12,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
-from omnimarket.worktree_reconcile.unit_roots import UnitRoots
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 
 
 class ProtocolWorktreeFactsProbe(Protocol):

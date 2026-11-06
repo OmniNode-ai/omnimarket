@@ -21,6 +21,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
 )
 from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     git,
 )
@@ -28,7 +29,6 @@ from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolMergedPrReader,
     ProtocolUnitRootReader,
 )
-from omnimarket.worktree_reconcile.unit_roots import UnitRoots
 
 Operation = Literal["rebase", "merge", "cherry-pick", "bisect"]
 
