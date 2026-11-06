@@ -412,8 +412,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # and declares no handler_routing, so it is experimental: 35 -> 37.
     # node_reading_writer_effect is run by its own CLI and schedule with its overlay, source,
     # appender and clock as constructor parameters, so it is experimental with no
-    # handler_routing: 37 -> 38.
-    assert summary["skipped"] == 38
+    # handler_routing. node_host_installer_registry_units gained a handler_routing in
+    # omnimarket#5123, which left 36 on dev; this node makes it 37.
+    assert summary["skipped"] == 37
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
