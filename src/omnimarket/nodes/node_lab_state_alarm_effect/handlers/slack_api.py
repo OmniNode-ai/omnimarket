@@ -128,16 +128,29 @@ class SlackWebApi:
         return token, channel
 
     def _call(
-        self, url: str, payload: Mapping[str, object], token: str
+        self,
+        url: str,
+        payload: Mapping[str, object],
+        token: str,
+        *,
+        form: bool = False,
     ) -> dict[str, object]:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8",
-        }
+        # A write method takes a JSON body. A read method (conversations.history) takes form fields and ignores a JSON
+        # body, so the read-back would ask for a channel with no arguments and answer with the wrong messages.
+        if form:
+            content_type = "application/x-www-form-urlencoded"
+            body = urllib.parse.urlencode(
+                {
+                    k: str(v).lower() if isinstance(v, bool) else str(v)
+                    for k, v in payload.items()
+                }
+            ).encode("utf-8")
+        else:
+            content_type = "application/json; charset=utf-8"
+            body = json.dumps(payload).encode("utf-8")
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": content_type}
         try:
-            status, raw = self._http(
-                url, json.dumps(payload).encode("utf-8"), headers, self._timeout_s
-            )
+            status, raw = self._http(url, body, headers, self._timeout_s)
         except (OSError, ValueError) as exc:
             raise AlarmSendRefusedError(
                 f"Slack did not answer ({type(exc).__name__})"
@@ -189,6 +202,7 @@ class SlackWebApi:
                     "limit": 1,
                 },
                 token,
+                form=True,
             )
         except AlarmSendRefusedError:
             return None

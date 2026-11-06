@@ -6,15 +6,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
-    ModelDelegationReadOverlay,
-)
+from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
 
 
 class ModelFleetObservationSourceRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    overlay: ModelDelegationReadOverlay | None = None
+    overlay: ModelRuntimeHostReadOverlay | None = None
     timeout_seconds: int = Field(default=30, gt=0)
 
 

@@ -11,6 +11,7 @@ message, git cannot push, and a stale or missing status is silent to the canary.
 from __future__ import annotations
 
 import json
+import urllib.parse
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -200,7 +201,13 @@ def test_golden_and_error_the_web_api_checks_the_response_and_never_prints_a_sec
     def http(
         url: str, body: bytes, headers: Mapping[str, str], timeout: int
     ) -> tuple[int, bytes]:
-        payload = json.loads(body)
+        if url.endswith("conversations.history"):
+            # A read method takes form fields: a JSON body would reach Slack as no arguments at all.
+            assert headers["Content-Type"] == "application/x-www-form-urlencoded"
+            payload = {k: v[0] for k, v in urllib.parse.parse_qs(body.decode()).items()}
+            assert payload["inclusive"] == "true"
+        else:
+            payload = json.loads(body)
         calls.append((url, payload))
         assert headers["Authorization"] == f"Bearer {SECRET_TOKEN}"
         if url.endswith("chat.postMessage"):
