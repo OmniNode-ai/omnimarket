@@ -28,6 +28,8 @@ def live_reason(
         return "live_process"
     if facts.live_claim:
         return "live_claim"
+    if facts.live_unit:
+        return "live_unit"
     if facts.git_locked:
         return "git_locked"
     if facts.in_progress_operation:

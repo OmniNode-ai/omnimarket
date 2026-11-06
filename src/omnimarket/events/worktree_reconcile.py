@@ -67,6 +67,9 @@ class ModelWorktreeFacts(BaseModel):
     open_pr: bool | None = None
     live_process: bool = False
     live_claim: bool = False
+    # Name of an installed unit whose ExecStart, WorkingDirectory or Environment names this tree
+    # or a path inside it: the unit runs from it, so removing the tree breaks its next tick.
+    live_unit: str = ""
     last_activity_age_hours: float | None = Field(default=None, allow_inf_nan=False)
     size_bytes: int | None = Field(default=None, ge=0)
     orphan_empty: bool = False
