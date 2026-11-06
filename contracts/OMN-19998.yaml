@@ -226,6 +226,11 @@ requirements:
     acceptance:
       - id: AC14
         statement: 'AC14: test_every_node_auto_wires_in_process carries its own pytest timeout of at least 900 seconds with the thread method, and a test without the marker reads as having no budget -- falsifier: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-17a
+    statement: The floor's overlay store row and the floor truth tests carry typed helpers, so the floor tests add no suppression comment.
+    acceptance:
+      - id: AC15
+        statement: 'AC15: the floor truth, harness reading, runner groups, deployed provenance and overlay store source tests pass with typed helpers and no type-ignore comment -- falsifier: uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -852,4 +857,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly -k wiring_test_has_its_own_timeout_budget
+        cwd: .
+  - id: dod-omn19998-floor-17a-typed-tests
+    description: The floor truth recorded board, harness reading, runner groups, deployed provenance and overlay store source tests pass at the pushed head with typed helpers in place of type-ignore comments.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py tests/nodes/node_floor_simple_effect/test_harness_reading_floor_simple.py tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py -q --no-cov
         cwd: .

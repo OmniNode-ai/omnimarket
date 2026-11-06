@@ -7,12 +7,14 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
     ModelLabSourceDef,
+    ModelLabStateOverlay,
     ModelPieceDef,
 )
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
@@ -38,6 +40,9 @@ class _Overlay:
             max_age_s=900,
         ),
     )
+
+
+OVERLAY = cast(ModelLabStateOverlay, _Overlay())
 
 
 def _write(tmp_path: Path, readings: dict[str, dict[str, object]]) -> Path:
@@ -69,7 +74,7 @@ def test_each_host_is_a_subject_and_only_fresh_with_an_answering_store_is_ok(
                 "h4:lab_hosts": _reading("unreadable"),
             },
         ),
-        _Overlay(),  # type: ignore[arg-type]
+        OVERLAY,
         NOW,
     )
     assert read.status == "read"
@@ -84,20 +89,20 @@ def test_each_host_is_a_subject_and_only_fresh_with_an_answering_store_is_ok(
 
 
 def test_a_missing_record_is_unread(tmp_path: Path) -> None:
-    read = read_overlay_store(tmp_path / "absent.json", _Overlay(), NOW)  # type: ignore[arg-type]
+    read = read_overlay_store(tmp_path / "absent.json", OVERLAY, NOW)
     assert read.status == "unread"
     assert "cannot be opened" in read.reason
 
 
 def test_a_record_with_no_readings_is_unread(tmp_path: Path) -> None:
-    read = read_overlay_store(_write(tmp_path, {}), _Overlay(), NOW)  # type: ignore[arg-type]
+    read = read_overlay_store(_write(tmp_path, {}), OVERLAY, NOW)
     assert read.status == "unread"
 
 
 def test_a_fresh_row_is_a_golden_chain(tmp_path: Path) -> None:
     read = read_overlay_store(
         _write(tmp_path, {"h1:lab_hosts": _reading("fresh")}),
-        _Overlay(),  # type: ignore[arg-type]
+        OVERLAY,
         NOW,
     )
     events = overlay_store_events(read, 17, NOW, "c1")
@@ -110,14 +115,14 @@ def test_a_stale_row_and_a_missing_record_are_typed_error_chains(
 ) -> None:
     stale = read_overlay_store(
         _write(tmp_path, {"h1:lab_hosts": _reading("stale")}),
-        _Overlay(),  # type: ignore[arg-type]
+        OVERLAY,
         NOW,
     )
     events = overlay_store_events(stale, 17, NOW, "c2")
     assert [e.phase for e in events] == ["start", "failure"]
     assert events[1].failure_code == "overlay_store_not_fresh"
     assert events[1].failure_detail == "h1:lab_hosts"
-    unread = read_overlay_store(tmp_path / "absent.json", _Overlay(), NOW)  # type: ignore[arg-type]
+    unread = read_overlay_store(tmp_path / "absent.json", OVERLAY, NOW)
     assert overlay_store_events(unread, 17, NOW, "c3")[1].failure_code == (
         "overlay_store_unread"
     )
@@ -128,10 +133,10 @@ def test_the_deployed_receipt_fold_counts_both_chains_for_the_piece(
 ) -> None:
     fresh = read_overlay_store(
         _write(tmp_path, {"h1:lab_hosts": _reading("fresh")}),
-        _Overlay(),  # type: ignore[arg-type]
+        OVERLAY,
         NOW,
     )
-    unread = read_overlay_store(tmp_path / "absent.json", _Overlay(), NOW)  # type: ignore[arg-type]
+    unread = read_overlay_store(tmp_path / "absent.json", OVERLAY, NOW)
     receipts = HandlerFloorReceipt().handle(
         ModelFloorReceiptInput(
             now=NOW,
@@ -158,7 +163,7 @@ def test_a_host_whose_reader_stopped_reads_not_ok_though_its_last_reading_said_f
     old["read_at"] = "2026-11-06T00:30:00Z"
     read = read_overlay_store(
         _write(tmp_path, {"h1:lab_hosts": _reading("fresh"), "h2:lab_hosts": old}),
-        _Overlay(),  # type: ignore[arg-type]
+        OVERLAY,
         NOW,
     )
     assert [(s.name, s.ok) for s in read.subjects] == [

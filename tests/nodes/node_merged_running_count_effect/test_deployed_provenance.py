@@ -21,6 +21,7 @@ from omnimarket.models.model_runtime_host_reads import (
     ModelRuntimeRepoRef,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_deployed_provenance import (
+    Ancestry,
     ModelProvenanceLabels,
     SourceDeployedProvenance,
 )
@@ -81,10 +82,12 @@ def source(
     *,
     code: int = 0,
     environ: dict[str, str] | None = None,
-    ancestry=history,  # type: ignore[no-untyped-def]
+    ancestry: Ancestry = history,
     seen: list[tuple[Sequence[str], bytes | None]] | None = None,
 ) -> SourceDeployedProvenance:
-    def run(argv: Sequence[str], stdin: bytes | None, timeout: int):  # type: ignore[no-untyped-def]
+    def run(
+        argv: Sequence[str], stdin: bytes | None, timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
         if seen is not None:
             seen.append((argv, stdin))
         return subprocess.CompletedProcess(

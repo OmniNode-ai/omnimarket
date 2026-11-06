@@ -23,8 +23,10 @@ from typing import Any
 import pytest
 
 from omnimarket.models.floor_17a import (
+    ModelFloorCause,
     ModelFloorLane,
     ModelFloorReceiptInput,
+    ModelFloorReceipts,
     ModelFloorSimple,
     ModelFloorSimpleInput,
     ModelFloorSimpleOverlay,
@@ -89,7 +91,7 @@ def board(
     return HandlerFloorSimple().handle(request), request
 
 
-def cause(doc: ModelFloorSimple, cause_id: str):  # type: ignore[no-untyped-def]
+def cause(doc: ModelFloorSimple, cause_id: str) -> ModelFloorCause:
     return next(c for c in doc.causes if c.id == cause_id)
 
 
@@ -264,7 +266,7 @@ def emissions() -> tuple[ModelNodeEmission, ...]:
 
 def receipts(
     judged: tuple[int, ...] | None, events: tuple[ModelNodeEmission, ...] | None = None
-):  # type: ignore[no-untyped-def]
+) -> ModelFloorReceipts:
     overlay = ModelFloorSimpleOverlay.model_validate(
         overlay_text("node_floor_simple_compute")
     )

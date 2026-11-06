@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.floor_17a import ModelFloorLabLine
 from tests.nodes.node_floor_simple_effect.support import NOW, build_home, iso
 from tests.nodes.node_floor_simple_effect.test_golden_chain_floor_simple import (
     run,
@@ -36,7 +37,7 @@ def host_rows(offline: int = 0) -> dict[str, object]:
     }
 
 
-def line_of(home: Path):  # type: ignore[no-untyped-def]
+def line_of(home: Path) -> ModelFloorLabLine:
     return next(x for x in written(home).lab_state if x.id == "runner_groups")
 
 

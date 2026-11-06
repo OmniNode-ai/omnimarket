@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.models.floor_17a import ModelFloorSimple
+from omnimarket.models.floor_17a import ModelFloorPieceRow, ModelFloorSimple
 from tests.nodes.node_floor_simple_effect.support import NOW, build_home, iso
 from tests.nodes.node_floor_simple_effect.test_golden_chain_floor_simple import (
     run,
@@ -38,7 +38,7 @@ def result(state: str = "WORKING", *, age_s: int = 120) -> dict[str, object]:
     }
 
 
-def piece_row(doc: ModelFloorSimple):  # type: ignore[no-untyped-def]
+def piece_row(doc: ModelFloorSimple) -> ModelFloorPieceRow:
     return next(p for p in doc.pieces if p.piece == PIECE)
 
 
