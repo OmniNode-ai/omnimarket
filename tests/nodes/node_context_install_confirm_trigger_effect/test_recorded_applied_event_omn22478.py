@@ -25,6 +25,7 @@ from pydantic import ValidationError
 
 from omnimarket.models.context_install_confirm_trigger import (
     EnumInstallConfirmTriggerOutcome,
+    ModelInstallConfirmTriggerResult,
     ModelSessionCompactSnapshot,
     ModelSessionContentAppliedEvent,
 )
@@ -82,8 +83,9 @@ def test_golden_the_recorded_runtime_payload_validates_and_drives_the_trigger() 
             activations=(activation(),),
         )
     )
-    result = HandlerContextInstallConfirmTrigger().handle(applied, reader=reader)
+    result = HandlerContextInstallConfirmTrigger(reader=reader).handle(applied)
 
+    assert isinstance(result, ModelInstallConfirmTriggerResult)
     assert reader.read_ids == [RECORDED_EVENT_ID]
     assert result.outcome is EnumInstallConfirmTriggerOutcome.REQUEST_READY
     assert result.confirmation is not None

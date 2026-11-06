@@ -8,7 +8,9 @@ from omnimarket.models.context_install_confirm_request import (
     ModelInstallConfirmAssemblyRequest,
 )
 from omnimarket.models.context_install_confirm_trigger import (
+    EnumInstallConfirmSkipReason,
     EnumInstallConfirmTriggerOutcome,
+    ModelInstallConfirmSkipped,
     ModelInstallConfirmTriggerResult,
     ModelSessionContentAppliedEvent,
 )
@@ -24,14 +26,26 @@ from omnimarket.protocols.protocol_session_compact_source import (
 
 
 class HandlerContextInstallConfirmTrigger:
-    """Produce a publishable confirmation without I/O beyond the supplied reader."""
+    """Produce a publishable confirmation without I/O beyond the injected reader.
+
+    The reader is the contract's optional ``reader`` dependency, given at construction.
+    The runtime builds the handler from the contract; while it supplies no reader the
+    handler answers every applied event with a typed skip and never raises.
+    """
+
+    def __init__(self, reader: ProtocolSessionCompactSource | None = None) -> None:
+        self._reader = reader
 
     def handle(
-        self,
-        applied_event: ModelSessionContentAppliedEvent,
-        *,
-        reader: ProtocolSessionCompactSource,
-    ) -> ModelInstallConfirmTriggerResult:
+        self, applied_event: ModelSessionContentAppliedEvent
+    ) -> ModelInstallConfirmTriggerResult | ModelInstallConfirmSkipped:
+        reader = self._reader
+        if reader is None:
+            return ModelInstallConfirmSkipped(
+                event_id=applied_event.event_id,
+                rows_upserted=applied_event.rows_upserted,
+                reason=EnumInstallConfirmSkipReason.READER_NOT_WIRED,
+            )
         if applied_event.rows_upserted < 1:
             return ModelInstallConfirmTriggerResult(
                 outcome=EnumInstallConfirmTriggerOutcome.NOT_APPLIED

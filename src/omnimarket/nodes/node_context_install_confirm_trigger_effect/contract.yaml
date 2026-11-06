@@ -15,7 +15,11 @@ description: >
   HandlerContextInstallConfirm. Only request_ready carries a confirmation, published on
   the completed topic the receipts projection folds; not_applied (rows_upserted of zero),
   session_unresolved, no_compact_records and all_packages_unreadable publish nothing.
-  Topics come from this contract.
+  The reader is an optional injected dependency (OMN-22478): the runtime has no
+  implementation of ProtocolSessionCompactSource until the compaction line builds one
+  (OMN-21115 under OMN-21090), and with none every applied event is answered by one
+  InstallConfirmSkipped event on the skipped topic, never an exception. Topics come
+  from this contract.
 input_model:
   name: ModelSessionContentAppliedEvent
   module: omnimarket.models.context_install_confirm_trigger
@@ -46,6 +50,16 @@ event_bus:
     - onex.evt.omnimarket.projection-session-content-applied.v1
   publish_topics:
     - onex.evt.omnimarket.context-install-confirm-completed.v1
+    - onex.evt.omnimarket.context-install-confirm-skipped.v1
+published_events:
+  - event_type: InstallConfirmSkipped
+    topic: onex.evt.omnimarket.context-install-confirm-skipped.v1
+    description: An applied session-content event was not turned into a confirmation, with the typed reason (reader_not_wired while the compaction source is not built).
+dependencies:
+  - name: reader
+    dependency_type: protocol
+    description: "ProtocolSessionCompactSource (omnimarket.protocols.protocol_session_compact_source): the session's captured compact content and published activations. Supplied by the runtime when an implementation exists; the compaction line (OMN-21115) builds it."
+    required: false
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.projection-session-content-applied.v1
   terminal_events:

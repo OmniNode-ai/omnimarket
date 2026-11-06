@@ -70,11 +70,21 @@ class FakeSessionCompactSource:
         return self.snapshot
 
 
+def trigger(
+    reader: FakeSessionCompactSource,
+    applied: ModelSessionContentAppliedEvent = APPLIED,
+) -> ModelInstallConfirmTriggerResult:
+    """Run the handler built with the injected reader; a wired reader never skips."""
+    out = HandlerContextInstallConfirmTrigger(reader=reader).handle(applied)
+    assert isinstance(out, ModelInstallConfirmTriggerResult)
+    return out
+
+
 def test_custom_compaction_yields_request_with_records_and_activations() -> None:
     reader = FakeSessionCompactSource(
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.REQUEST_READY
     assert result.request is not None
     assert result.request.records
@@ -87,7 +97,7 @@ def test_custom_compaction_yields_request_with_records_and_activations() -> None
 
 def test_no_chunks_yields_no_compact_records_and_no_request() -> None:
     reader = FakeSessionCompactSource(snapshot(activations=(activation(),)))
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.NO_COMPACT_RECORDS
     assert result.request is None
     assert result.packages_unreadable == ()
@@ -99,7 +109,7 @@ def test_unreadable_only_package_yields_no_request() -> None:
     reader = FakeSessionCompactSource(
         snapshot(chunks=(unreadable,), activations=(activation(),))
     )
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.ALL_PACKAGES_UNREADABLE
     assert result.request is None
     assert result.packages_unreadable == ("0" * 64,)
@@ -110,10 +120,7 @@ def test_same_inputs_twice_yield_equal_results() -> None:
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
     applied = APPLIED
-    handler = HandlerContextInstallConfirmTrigger()
-    assert handler.handle(applied, reader=reader) == handler.handle(
-        applied, reader=reader
-    )
+    assert trigger(reader, applied) == trigger(reader, applied)
 
 
 def test_readable_and_unreadable_packages_keep_request_and_newest_capture() -> None:
@@ -128,7 +135,7 @@ def test_readable_and_unreadable_packages_keep_request_and_newest_capture() -> N
             chunks=(*chunks(package(), 3), unreadable), activations=(activation(),)
         )
     )
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.REQUEST_READY
     assert result.request is not None
     assert result.request.records
@@ -138,7 +145,7 @@ def test_readable_and_unreadable_packages_keep_request_and_newest_capture() -> N
 
 def test_readable_empty_package_still_yields_request() -> None:
     reader = FakeSessionCompactSource(snapshot(chunks=chunks("")))
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.REQUEST_READY
     assert result.request is not None
     assert result.request.records == ()
@@ -149,14 +156,13 @@ def test_wrong_session_in_snapshot_is_refused() -> None:
     wrong_session = chunks(package())[0].model_copy(update={"session_id": "other"})
     reader = FakeSessionCompactSource(snapshot(chunks=(wrong_session,)))
     with pytest.raises(ValueError, match="chunk session_id differs"):
-        HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+        trigger(reader)
 
 
 def test_zero_rows_upserted_reads_nothing_and_publishes_nothing() -> None:
     reader = FakeSessionCompactSource(snapshot(chunks=chunks(package(), 3)))
-    result = HandlerContextInstallConfirmTrigger().handle(
-        ModelSessionContentAppliedEvent(event_id=EVENT_ID, rows_upserted=0),
-        reader=reader,
+    result = trigger(
+        reader, ModelSessionContentAppliedEvent(event_id=EVENT_ID, rows_upserted=0)
     )
     assert result.outcome is EnumInstallConfirmTriggerOutcome.NOT_APPLIED
     assert result.confirmation is None
@@ -165,7 +171,7 @@ def test_zero_rows_upserted_reads_nothing_and_publishes_nothing() -> None:
 
 def test_unresolved_session_publishes_nothing() -> None:
     reader = FakeSessionCompactSource(None)
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.outcome is EnumInstallConfirmTriggerOutcome.SESSION_UNRESOLVED
     assert result.confirmation is None
 
@@ -174,7 +180,7 @@ def test_confirmation_equals_the_compute_node_result_for_the_built_request() -> 
     reader = FakeSessionCompactSource(
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
-    result = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    result = trigger(reader)
     assert result.request is not None
     assert result.confirmation == HandlerContextInstallConfirm().handle(result.request)
 
@@ -226,7 +232,8 @@ def test_contract_metadata_handler_and_entry_point() -> None:
     assert applied in producer["event_bus"]["publish_topics"]
     assert contract["event_bus"]["subscribe_topics"] == [applied]
     assert contract["runtime_dispatch"]["command_topic"] == applied
-    assert contract["event_bus"]["publish_topics"] == [requested]
+    skipped = "onex.evt.omnimarket.context-install-confirm-skipped.v1"
+    assert contract["event_bus"]["publish_topics"] == [requested, skipped]
     assert contract["terminal_event"] == requested
     assert contract["runtime_dispatch"]["terminal_events"]["success"] == requested
     assert contract["metadata"]["ticket"] == "OMN-21115"
@@ -244,7 +251,7 @@ def test_trigger_request_feeds_install_confirmation_and_compaction_receipts() ->
     reader = FakeSessionCompactSource(
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
-    triggered = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    triggered = trigger(reader)
     confirmed = triggered.confirmation
     assert confirmed is not None
     projected = HandlerProjectionCompactionReceipts().handle(
@@ -262,9 +269,8 @@ def test_replayed_confirmation_is_written_with_rows_upserted_above_zero() -> Non
     reader = FakeSessionCompactSource(
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
-    handler = HandlerContextInstallConfirmTrigger()
-    first = handler.handle(APPLIED, reader=reader).confirmation
-    replay = handler.handle(APPLIED, reader=reader).confirmation
+    first = trigger(reader).confirmation
+    replay = trigger(reader).confirmation
     assert first is not None
     assert replay == first
     out = _writer(_Db()).handle(replay.model_dump(mode="json"))
@@ -286,7 +292,7 @@ def test_replay_runs_only_the_fold_with_no_process_network_or_transcript_read(
     reader = FakeSessionCompactSource(
         snapshot(chunks=chunks(package(), 3), activations=(activation(),))
     )
-    confirmation = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader=reader)
+    confirmation = trigger(reader)
     assert confirmation.confirmation is not None
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
@@ -306,16 +312,9 @@ def test_trigger_chunk_permutations_with_duplicates_yield_one_confirmation() -> 
     import random
 
     ordered = chunks(package(), 3)
-    expected = (
-        HandlerContextInstallConfirmTrigger()
-        .handle(
-            APPLIED,
-            reader=FakeSessionCompactSource(
-                snapshot(chunks=ordered, activations=(activation(),))
-            ),
-        )
-        .confirmation
-    )
+    expected = trigger(
+        FakeSessionCompactSource(snapshot(chunks=ordered, activations=(activation(),)))
+    ).confirmation
     assert expected is not None
     rng = random.Random(21115)
     for _ in range(25):
@@ -324,11 +323,7 @@ def test_trigger_chunk_permutations_with_duplicates_yield_one_confirmation() -> 
         reader = FakeSessionCompactSource(
             snapshot(chunks=tuple(shuffled), activations=(activation(),))
         )
-        got = (
-            HandlerContextInstallConfirmTrigger()
-            .handle(APPLIED, reader=reader)
-            .confirmation
-        )
+        got = trigger(reader).confirmation
         assert got == expected
 
 
@@ -339,12 +334,10 @@ def test_trigger_replay_with_a_later_activation_keeps_the_earlier_fact() -> None
 
     from omnimarket.models.context_install_confirm import ModelPublishedActivation
 
-    handler = HandlerContextInstallConfirmTrigger()
-    base = handler.handle(
-        APPLIED,
-        reader=FakeSessionCompactSource(
+    base = trigger(
+        FakeSessionCompactSource(
             snapshot(chunks=chunks(package(), 3), activations=(activation(),))
-        ),
+        )
     ).confirmation
     assert base is not None
     later = ModelPublishedActivation(
@@ -352,11 +345,10 @@ def test_trigger_replay_with_a_later_activation_keeps_the_earlier_fact() -> None
         installed_messages_hash="f" * 64,
         published_at=datetime(2026, 10, 17, 13, tzinfo=UTC),
     )
-    after = handler.handle(
-        APPLIED,
-        reader=FakeSessionCompactSource(
+    after = trigger(
+        FakeSessionCompactSource(
             snapshot(chunks=chunks(package(), 3), activations=(activation(), later))
-        ),
+        )
     ).confirmation
     assert after is not None
     earlier = {f.activation_id: f.model_dump_json() for f in base.facts}

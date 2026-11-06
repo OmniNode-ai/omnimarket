@@ -28,6 +28,13 @@ class EnumInstallConfirmTriggerOutcome(StrEnum):
     ALL_PACKAGES_UNREADABLE = "all_packages_unreadable"
 
 
+@unique
+class EnumInstallConfirmSkipReason(StrEnum):
+    """Why an applied session-content event was not turned into a confirmation."""
+
+    READER_NOT_WIRED = "reader_not_wired"
+
+
 class ModelSessionContentAppliedEvent(BaseModel):
     """The session-content projection's applied event: the row key and the rows written.
 
@@ -68,8 +75,26 @@ class ModelInstallConfirmTriggerResult(BaseModel):
     packages_unreadable: tuple[str, ...] = ()
 
 
+class ModelInstallConfirmSkipped(BaseModel):
+    """The typed record that an applied event was skipped, published on its own topic.
+
+    The trigger's session reader is an optional contract dependency. While the runtime
+    supplies none (OMN-21115, the compaction line, has not built the source), each
+    applied event with rows written ends here: the skip is a fact on the bus, never an
+    exception that sends the event to the dead-letter topic.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event_id: str = Field(min_length=1)
+    rows_upserted: int = Field(ge=0)
+    reason: EnumInstallConfirmSkipReason
+
+
 __all__ = [
+    "EnumInstallConfirmSkipReason",
     "EnumInstallConfirmTriggerOutcome",
+    "ModelInstallConfirmSkipped",
     "ModelInstallConfirmTriggerResult",
     "ModelSessionCompactSnapshot",
     "ModelSessionContentAppliedEvent",
