@@ -48,3 +48,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22573 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov
     cwd: .
+- id: dod-omn22573-sibling-pin-moved
+  description: The Sibling Release Compatibility Gate needs migration 0065 in the pinned omnibase_infra; the pin moves to the dev tag that vendors it byte-identical, with the core tag that infra names. The pin-pair and work-contract digest tests fail when the lock, the pyproject pins or the recorded pair disagree.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/nodes/test_work_contract_pins_current.py -q --no-cov
+    cwd: .
