@@ -17,7 +17,6 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from omnimarket.github_api import GitHubApiError
-from omnimarket.github_app_grant import mint_installation_token_grant
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
     resolve_api_key_async,
@@ -30,6 +29,9 @@ from omnimarket.nodes.node_github_git_credential_effect.protocols import (
     GitCredentialMintRefusedError,
     GitCredentialUnavailableError,
     MintedRepositoryToken,
+)
+from omnimarket.nodes.node_github_git_credential_effect.protocols.github_app_grant import (
+    mint_installation_token_grant,
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"

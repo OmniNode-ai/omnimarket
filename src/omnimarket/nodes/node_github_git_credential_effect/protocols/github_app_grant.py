@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Installation-token minting that also returns the grant (OMN-22613).
 
-Kept beside :mod:`omnimarket.github_app_auth` so that file does not grow: the
+Kept apart from :mod:`omnimarket.github_app_auth` so that file does not grow: the
 git credential node needs the token's expiry and the permissions and
 repositories GitHub says it holds, which ``mint_installation_token`` drops.
 """
