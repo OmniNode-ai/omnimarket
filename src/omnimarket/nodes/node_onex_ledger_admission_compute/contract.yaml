@@ -15,6 +15,12 @@ description: >-
   runs out (124). Reads no files, runs no process, has no clock, mutates nothing. Behaviour-preserving
   port of the decisions of the retired plugins/omni/scripts/onex_ledger.py; running onex-ledger and
   loading the grammar module are not ported by this node.
+  A MSG carrying verbatim is selected for the shared core relay_requires
+  evaluator before any writer runs. Missing core capability refuses the relay.
+relay_requires:
+  resource: relay_requires.yaml
+  evaluator: omnimarket.protocols.protocol_relay_admission.ProtocolRelayAdmission
+  validator_owner: omnibase_core
 input_model:
   name: ModelOnexLedgerAdmissionRequest
   module: omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission
