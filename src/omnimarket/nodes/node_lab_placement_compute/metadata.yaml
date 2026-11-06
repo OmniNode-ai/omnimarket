@@ -22,6 +22,7 @@ capabilities:
   side_effect_class: none
 dependencies:
 - click>=8.1.0
+- omnibase-infra>=0.38.75,<0.39.0
 authors:
 - OmniNode Platform Team
 license: MIT

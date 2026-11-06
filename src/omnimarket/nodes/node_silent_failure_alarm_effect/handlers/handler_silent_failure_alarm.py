@@ -514,6 +514,7 @@ class HandlerSilentFailureAlarm:
                 threshold=options.job_exit_threshold,
                 lanes=options.job_lanes,
                 intervals=options.job_intervals,
+                finding_exits=options.job_finding_exits,
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
             )
@@ -886,12 +887,20 @@ class HandlerSilentFailureAlarm:
                 if episode.cause == "missed-interval"
                 else "exits nonzero"
             )
+            task = (
+                f"{episode.label} is working: exit {episode.last_exit} is its declared "
+                "finding, not a crash. Read what its log reports and act on that condition "
+                "(for a floor job, the floors it names as under); never change the job so "
+                "the finding exits 0"
+                if episode.cause == "finding-exit"
+                else f"Find why {episode.label} {what} and fix the cause through a pull request"
+            )
             brief.write_text(
                 f"Job-exit alarm\n\nEpisode: {episode.episode}\nLabel: {episode.label}\n"
                 f"Cause: {episode.cause}\n"
                 f"streak: {episode.streak}\nlast exit: {episode.last_exit}\n\n"
                 f"{_log_tails(episode, options.uid)}\n"
-                f"Find why {episode.label} {what} and fix the cause through a pull request; "
+                f"{task}; "
                 f"cite episode={episode.episode} in your CLAIM. A cause that lives only on the "
                 f"operator host (a credential, a login, a missing file) is reported in your final "
                 f"message with this log as evidence, not worked around.\n",
