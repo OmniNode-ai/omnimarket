@@ -167,6 +167,18 @@ def test_unreadable_queued_file_fails_the_outbox_reading(world: World) -> None:
     assert "queued-file-unreadable" in reading.reasons
 
 
+def test_a_queued_file_that_is_not_utf8_fails_the_outbox_reading_and_not_the_run(
+    tmp_path: Path,
+) -> None:
+    world = World("filesystem", tmp_path)
+    bad = world.outbox / "0001_bytes.json"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_bytes(b"\xff\xfe not utf-8")
+    reading = _read(world, EnumHostProbe.LEDGER_OUTBOX)
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert "queued-file-unreadable" in reading.reasons
+
+
 def test_outbox_cells_name_the_measure(world: World) -> None:
     world.write(world.outbox / "0001_r1.json", queued(1000))
     world.write(world.outbox / "0002_r2.json", queued(10, "r2"))
