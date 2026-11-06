@@ -4,10 +4,15 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers import (
     HandlerAutomationLivenessOverlayCheckRun,
@@ -95,3 +100,48 @@ def test_overlay_check_effect_contract_binds_the_command_line_and_its_topics() -
             "runtime_automation_liveness_overlay_check_cli:main"
         )
     }
+
+
+def test_collect_files_skips_what_the_checkout_git_ignores(tmp_path: Path) -> None:
+    """A staged copy of a sibling repository sits in an ignored directory and is not ours."""
+    subprocess.run(
+        ["git", "init", "-q", str(tmp_path)],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    write(tmp_path, ".gitignore", "staged/*\n!staged/.gitkeep\n")
+    write(tmp_path, "staged/sibling/systemd/staged-planted.timer", "[Timer]\n")
+    write(tmp_path, "staged/sibling/systemd/staged-planted.service", "[Service]\n")
+    write(tmp_path, "deploy/tracked-planted.timer", "[Timer]\n")
+    write(tmp_path, "deploy/untracked-planted.timer", "[Timer]\n")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", "-f", "deploy/tracked-planted.timer"],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+
+    collected = {
+        file.path
+        for file in HandlerAutomationLivenessOverlayCheckRun.collect_files(
+            "omnibase_infra", tmp_path
+        )
+    }
+
+    assert collected == {
+        ".gitignore",
+        "deploy/tracked-planted.timer",
+        "deploy/untracked-planted.timer",
+    }
+
+
+def test_collect_files_reads_a_tree_that_is_not_a_checkout(tmp_path: Path) -> None:
+    write(tmp_path, "staged/sibling/systemd/plain-planted.timer", "[Timer]\n")
+
+    collected = {
+        file.path
+        for file in HandlerAutomationLivenessOverlayCheckRun.collect_files(
+            "omnibase_infra", tmp_path
+        )
+    }
+
+    assert collected == {"staged/sibling/systemd/plain-planted.timer"}

@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22663
+title: "Rebuild piece 3: the seam deadline probe node reads whether each declared seam's demanded command gets its result by the seam's deadline and writes its reading row"
+summary: >-
+  As built, the node is node_seam_deadline_probe_effect (the ticket text names it node_seam_deadline_reading_effect)
+  and its rows are STATUS lane=seam-deadline src=seam-deadline (the ticket text names lane=seam-reading). For each
+  seam its overlay declares, the node sends one read-only command on the bus and reads the result topic for the
+  correlated answer by the seam's deadline. A seam is WORKING when the success result arrives by the deadline, and
+  NOT_WORKING when no result arrives by the deadline, the answer carries an error or the runtime's typed failure
+  terminal, or the bus cannot be read. One STATUS row per run, drill=yes when a fault is injected (faults
+  unanswerable-command and deadline-zero). The schedule verbs install an hourly systemd user timer on a host the
+  overlay declares, and uninstall is the rollback. It writes reading rows only, never a gate, a stop or an admission.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22663-seam-deadline-reading
+    statement: The seam deadline probe writes one reading row per run that reads WORKING only when every declared seam's demanded command gets its success result by the seam's deadline, and reads NOT_WORKING on a named injected break.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the golden chain test runs a seam answered in time on the in-memory bus and receives the run-started, seam-crossing-read and run-completed events under one correlation id with a WORKING row, and the error chain tests (no result by the deadline, a node slower than the deadline, an error answer, a typed failure terminal, an unreadable bus, a bad payload, an append that does not land) each read NOT_WORKING or end in the typed failure event -- falsifier: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_deadline_chain_events.py -q --no-cov'
+      - id: AC2
+        statement: 'AC2: the named injected break deadline-zero flips a seam that reads WORKING to NOT_WORKING with drill=yes -- falsifier: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_deadline_chain_events.py -q --no-cov -k fault_zero_deadline'
+      - id: AC3
+        statement: 'AC3: schedule install writes an hourly systemd user timer that runs the read verb on a host the overlay declares, uninstall removes it (the rollback), and a host the overlay does not declare is refused -- falsifier: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_deadline_schedule.py -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The golden and error chain events on the in-memory bus, the deadline-zero break, and the schedule install and rollback.
+    command: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22663-seam-deadline-tests
+    description: The chain event tests and the schedule tests pass, and the deadline-zero break reads NOT_WORKING.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov
+        cwd: .
+  - id: dod-omn22663-seam-deadline-integration-proof
+    description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22663 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov'
+        cwd: .
