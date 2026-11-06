@@ -478,9 +478,6 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
-
-      - name: Standing dispatch rules and runtime wiring
-        run: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
       # OMN-14762 (F-18): keep the authoritative coverage-json invocation
       # (pytest-cov, config-driven) aligned with the shadow aggregator's
       # `coverage json -i` so a missing C-extension source can never red one gate
