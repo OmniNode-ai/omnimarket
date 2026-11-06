@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22702
+title: The OMN-22496 contract binds AC1 to pytest evidence, so the repo contract test passes on dev
+summary: contracts/OMN-22496.yaml bound AC1 to an item with only a command check, which the repo contract test refuses; the item now also carries a test_passes check that runs the same stale-base test file.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22702-every-contract-binds
+  statement: Every repo contract binds each criterion to pytest evidence naming an existing repo test file, so the repo contract test passes on dev.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the repo contract test passes at the fix head on a lab host and fails at origin/dev 7b8f67d0b3 naming OMN-22496.yaml:dod-omn22496-signing-on -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov at both revisions"
+evidence_requirements:
+- kind: tests
+  description: The repo contract test at the pushed head.
+  command: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22702-contracts-bind
+  description: The repo contract test passes on a lab host from the branch; at origin/dev 7b8f67d0b3 it fails naming OMN-22496.yaml:dod-omn22496-signing-on as the failing control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly
+    cwd: .
