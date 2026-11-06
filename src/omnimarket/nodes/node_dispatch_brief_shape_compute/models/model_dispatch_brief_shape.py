@@ -3,6 +3,33 @@
 """Typed input and result for the remote-lane runner's pre-placement brief and lane-shape refusals."""
 
 from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelBriefDestinationPolicy(BaseModel):
+    """Deployment authority for repositories whose code must move before editing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    frozen_repositories: tuple[
+        Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")], ...
+    ] = Field(min_length=1)
+    migration_repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+class ModelBriefDestinationRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    authored_prose: str
+    repository: str = ""
+
+
+class ModelBriefDestinationResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    refusals: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)

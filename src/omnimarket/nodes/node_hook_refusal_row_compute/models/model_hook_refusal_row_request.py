@@ -4,14 +4,24 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.error_normalizer import ModelErrorNormalizerFacts
+
 
 class ModelHookRefusalRowRequest(BaseModel):
     """Raw refusal facts; the handler redacts, normalises and keys them."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    normalizer_facts: ModelErrorNormalizerFacts = Field(
+        description="Caller-supplied error_normalizer overlay and host snapshot."
+    )
+
     guard: str = Field(description="The refusing guard's id, unredacted.")
     reason: str = Field(description="The guard's reason text, unredacted.")
+    reason_code: str | None = Field(
+        default=None,
+        description="Producer-declared stable reason code, when available; never the prose reason.",
+    )
     detail: str = Field(default="", description="The refusal's first line.")
     lane: str = Field(
         default="", description="The resolved lane; empty when unresolved."

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from enum import StrEnum, unique
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,12 +29,22 @@ class EnumInstallConfirmTriggerOutcome(StrEnum):
 
 
 class ModelSessionContentAppliedEvent(BaseModel):
-    """The session-content projection's applied event: the row key and the rows written."""
+    """The session-content projection's applied event: the row key and the rows written.
+
+    The runtime publishes every projection terminal event with the handler's own
+    result plus the acknowledgement key ``projected`` set to ``True`` (OMN-16875),
+    so a payload read off the topic carries exactly ``event_id``, ``rows_upserted``
+    and ``projected``. The model was refused that payload for the unknown key and
+    the runtime sent every applied event to the dead-letter topic (OMN-22478).
+    ``projected`` is declared as the one runtime acknowledgement; any other key is
+    still refused.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: str = Field(min_length=1)
     rows_upserted: int = Field(ge=0)
+    projected: Literal[True] = True
 
 
 class ModelSessionCompactSnapshot(BaseModel):

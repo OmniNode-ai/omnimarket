@@ -21,11 +21,40 @@ from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
+from omnimarket.models.scm import ModelScmDispatchReceipt
 
 from ..models.model_lane_github_budget import ModelLaneGithubCall, ModelLaneGithubResult
+
+if TYPE_CHECKING:
+    from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+
+
+class HandlerLaneGithubDispatchBus:
+    """Mark a possible gateway call at the existing bus's publish boundary."""
+
+    def __init__(self, bus: ProtocolLabRunBus, receipt: Path) -> None:
+        from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
+            require_ungrouped,
+        )
+
+        self._bus = require_ungrouped(bus)
+        self._receipt = receipt
+        self.subscribe = self._bus.subscribe
+        self.subscribe_ungrouped = self._bus.subscribe_ungrouped
+
+    def __getattr__(self, name: str) -> Any:
+        # Keep diagnostics on the opened producer's config and binding resolver.
+        return getattr(self._bus, name)
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
+        HandlerLaneGithubBudget.mark_dispatch(self._receipt)
+        return await self._bus.publish(topic, key, value, headers)
+
 
 POLICY = json.loads(
     (Path(__file__).resolve().parents[1] / "contract.yaml").read_text()
@@ -152,6 +181,8 @@ class HandlerLaneGithubBudget:
             return self.execute(request, capture=False)
         cls, endpoint = f"scm {args[1]}", "/".join(args[2:3])
         try:
+            if args[1] == "job-log":
+                request = self.log_defaults(request)
             return self.cached(request, cls, endpoint)
         except (OSError, ValueError) as exc:
             result = ModelLaneGithubResult(
@@ -160,6 +191,45 @@ class HandlerLaneGithubBudget:
             )
             self.record(policy, cls, "GET", endpoint, result.code, "refused")
             return result
+
+    @staticmethod
+    def log_defaults(request: ModelLaneGithubCall) -> ModelLaneGithubCall:
+        """Use the gateway's existing byte cap unless the caller requested less."""
+        options = {arg.partition("=")[0] for arg in request.args}
+        option = (
+            "--length-bytes"
+            if options & {"--offset-bytes", "--step"}
+            else "--tail-bytes"
+        )
+        if option in options:
+            return request
+        return replace(
+            request,
+            args=(*request.args, option, str(POLICY["job_log_default_bytes"])),
+        )
+
+    @staticmethod
+    def mark_dispatch(path: Path) -> None:
+        """Record uncertainty before publishing, including a lost broker acknowledgement."""
+        with path.open("w", encoding="utf-8") as stream:
+            stream.write(
+                ModelScmDispatchReceipt(command_may_have_run=True).model_dump_json()
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    @staticmethod
+    def release_reservation(spent: Path) -> None:
+        with spent.open("r+") as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            used = int(stream.read())
+            if used <= 0:
+                raise ValueError("invalid read reservation")
+            stream.seek(0)
+            stream.truncate()
+            stream.write(str(used - 1))
+            stream.flush()
+            os.fsync(stream.fileno())
 
     @staticmethod
     def execute(
@@ -171,6 +241,12 @@ class HandlerLaneGithubBudget:
         # Preserve the host shim's guards. This boundary records the invocation once;
         # the nested shim must not count it again in the host JSON/TSV logs.
         env = {**request.env, "ONEX_LANE": str(request.policy["lane"])}
+        if request.tool == "onex" and not (
+            env.get("ONEX_STATE_DIR") or env.get("ONEX_STATE_ROOT")
+        ):
+            # The shared job-log cache needs a writable state root and has no
+            # home-directory fallback (OMN-19654): use the lane's own cache root.
+            env["ONEX_STATE_DIR"] = str(request.policy["cache"])
         if request.tool == "gh":
             env.update(ONEX_GH_CALLS_LOG=os.devnull, ONEX_GH_USAGE_LOG="0")
         if request.tool in {"gh", "onex"}:
@@ -264,26 +340,76 @@ class HandlerLaneGithubBudget:
                 result = ModelLaneGithubResult(0, data["stdout"], data["stderr"])
                 self.record(policy, cls, "GET", endpoint, 0, "cache")
                 return result
-            spent = Path(policy["spent"])
-            spent.parent.mkdir(parents=True, exist_ok=True)
-            with spent.open("a+") as stream:
-                fcntl.flock(stream, fcntl.LOCK_EX)
-                stream.seek(0)
-                used = int(stream.read() or "0")
-                if used < 0 or used >= policy["budget"]:
-                    result = ModelLaneGithubResult(
-                        78,
-                        stderr=f"REFUSED lane={policy['lane']} GitHub read budget={policy['budget']} exhausted; shared cache hits remain available.\n",
+            # The hidden option is required, never an environment-only hint: an older
+            # CLI refuses it before it can dispatch. Import crashes also leave this
+            # receipt untouched. Unknown or corrupt receipts keep the reservation.
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=root, suffix=".dispatch"
+            ) as marker:
+                marker.write(
+                    ModelScmDispatchReceipt(
+                        command_may_have_run=False
+                    ).model_dump_json()
+                )
+                marker.flush()
+                os.fsync(marker.fileno())
+                spent = Path(policy["spent"])
+                spent.parent.mkdir(parents=True, exist_ok=True)
+                with spent.open("a+") as stream:
+                    fcntl.flock(stream, fcntl.LOCK_EX)
+                    stream.seek(0)
+                    used = int(stream.read() or "0")
+                    if used < 0 or used >= policy["budget"]:
+                        result = ModelLaneGithubResult(
+                            78,
+                            stderr=f"REFUSED lane={policy['lane']} GitHub read budget={policy['budget']} exhausted; shared cache hits remain available.\n",
+                        )
+                        self.record(
+                            policy, cls, "GET", endpoint, result.code, "refused"
+                        )
+                        return result
+                    stream.seek(0)
+                    stream.truncate()
+                    stream.write(str(used + 1))
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                executed: ModelLaneGithubResult | None = None
+                refunded = False
+                try:
+                    executed = self.execute(
+                        replace(
+                            request,
+                            args=(
+                                *request.args,
+                                "--dispatch-receipt",
+                                marker.name,
+                            ),
+                        )
                     )
-                    self.record(policy, cls, "GET", endpoint, result.code, "refused")
-                    return result
-                stream.seek(0)
-                stream.truncate()
-                stream.write(str(used + 1))
-                stream.flush()
-                os.fsync(stream.fileno())
-            self.record(policy, cls, "GET", endpoint, -1, "allowed")
-            return self.store(cache, self.execute(request))
+                finally:
+                    try:
+                        receipt = ModelScmDispatchReceipt.model_validate_json(
+                            Path(marker.name).read_text()
+                        )
+                        if not receipt.command_may_have_run and (
+                            executed is None or executed.code != 0
+                        ):
+                            self.release_reservation(spent)
+                            refunded = True
+                    except (OSError, ValueError):
+                        # The process might have dispatched: never infer a refund from
+                        # an exit code, stderr text or an unreadable receipt.
+                        pass
+                assert executed is not None
+                self.record(
+                    policy,
+                    cls,
+                    "GET",
+                    endpoint,
+                    executed.code,
+                    "pre-dispatch" if refunded else "allowed",
+                )
+                return self.store(cache, executed)
 
     def auth_status(
         self, request: ModelLaneGithubCall, cls: str, endpoint: str

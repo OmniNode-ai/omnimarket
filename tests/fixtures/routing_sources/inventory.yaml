@@ -124,6 +124,10 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_host_reading_effect/runtime_host_reading.py:find_node_overlay(NODE_NAME)"
+    reason: finds the overlay file of the host readings to pin its root in the installed unit; the overlay holds probe thresholds and host environments and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
@@ -166,6 +170,8 @@ not_routing_resolution_sites:
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
+    reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py:find_node_overlay('lab_hosts')"
@@ -194,6 +200,8 @@ not_routing_resolution_sites:
     reason: finds the overlay.yaml of a skill under the overlay roots so it can be validated against its schema and returned; it reads whatever overlay the caller names and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_reconcile_effect/handlers/retired_repositories.py:find_node_overlay('node_host_reconcile_effect')"
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
+    reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
