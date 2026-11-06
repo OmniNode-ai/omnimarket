@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 
 VENDOR_DIR = NODE_DIR / "page/vendor/omniui"
 PIN_FILE = VENDOR_DIR / "PIN.sha256"
-PAGE = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+PAGE = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 
 # The page variable -> the OmniUI variable it aliases (S1 of the view-centric plan).
 ALIASES = {

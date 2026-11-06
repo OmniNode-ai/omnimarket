@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_overlay_drift_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default.
+#
+#   home             the overlay home clone: the variable holding its path, the overlays directory,
+#                    the overlay file name, and the pins file (<id> <revision> <module>:<class>)
+#   runtime          the runtime whose installed models judge the overlays: the variable holding its
+#                    interpreter's path, and how long it may take
+#   ledger_append    the command in command_env appends rows; host_env holds the host name
+#   publish          the rows' lane and actor, how long a row stays fresh, how many failing overlays
+#                    a row names
+#   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+#   schedule_hosts   hosts that install the daily systemd user timer
+#   unit_environment environment the installed unit carries
+home:
+  root_env: EXAMPLE_OVERLAY_HOME
+  overlays_subdir: overlays
+  overlay_file: overlay.yaml
+  pins_file: .example-node-pins
+runtime:
+  name: example-runtime
+  python_env: EXAMPLE_RUNTIME_PYTHON
+  timeout_seconds: 120
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: overlay-drift
+  actor: node:node_overlay_drift_effect
+  publish_max_age_seconds: 129600
+  max_named: 10
+injected_fault: An overlay key the runtime rejects (the rung_order case)
+schedule_hosts:
+- name: host-a
+  scheduler: systemd-user
+  venv: example-venv
+unit_environment:
+  EXAMPLE_OVERLAY_HOME: /var/lib/example/overlays
+  EXAMPLE_RUNTIME_PYTHON: /var/lib/example/runtime/bin/python
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
+  EXAMPLE_HOST_NAME: host-a

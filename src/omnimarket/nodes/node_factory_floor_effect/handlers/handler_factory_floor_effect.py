@@ -312,6 +312,7 @@ class HandlerFactoryFloorEffect:
                 lane_dir,
                 now=now,
                 window_hours=ls.receipt_window_hours,
+                scan_workers=ls.receipt_scan_workers,
                 glob=ls.receipt_glob,
                 result_chars=ls.result_chars,
             ),

@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Simple Compute (OMN-19998, 17a)
+#
+# Pure compute with two operations:
+#   compute_lab_state:   ModelLabStateInput -> ModelLabStateOutput   (every lab source judged by its reading and age)
+#   compute_floor_simple: ModelFloorSimpleInput -> ModelFloorSimple  (the simple floor: one sentence, three numbers,
+#                         causes biggest first, red only with no work under way, the rebuild strip, the 18 rows)
+# Every piece, join, bound and word of the floor is the overlay's (ModelFloorSimpleOverlay, ModelLabStateOverlay).
+name: node_floor_simple_compute
+contract_name: node_floor_simple_compute
+node_name: node_floor_simple_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Builds the simple factory floor from readings. A source that was not read, a stale read and a failing read are
+  drawn as such and become causes; a cause draws red only when no live lane is on it or it needs the operator, and
+  check_red_rule recomputes that rule from the finished document and the lanes alone. No clock read, no state, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple
+  class: HandlerFloorSimple
+  input_model: omnimarket.models.floor_17a.ModelFloorSimpleInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute_lab_state
+      handler:
+        name: HandlerLabState
+        module: omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state
+      input_model: omnimarket.models.floor_17a.ModelLabStateInput
+      output_model: omnimarket.models.floor_17a.ModelLabStateOutput
+    - operation: compute_floor_simple
+      handler:
+        name: HandlerFloorSimple
+        module: omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple
+      input_model: omnimarket.models.floor_17a.ModelFloorSimpleInput
+      output_model: omnimarket.models.floor_17a.ModelFloorSimple
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelFloorSimpleInput
+  module: omnimarket.models.floor_17a
+  description: The reads of one floor cycle and the floor overlay.
+output_model:
+  name: ModelFloorSimple
+  module: omnimarket.models.floor_17a
+  description: The simple floor document the page draws.
+
+terminal_event: onex.evt.omnimarket.floor-simple-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-simple-compute-requested.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.floor-simple-computed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-simple-computed.v1
