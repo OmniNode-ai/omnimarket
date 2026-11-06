@@ -31,6 +31,12 @@ What counts:
   DECIDED: status ``verified`` or ``failed``. ``skipped`` (no contract to check),
   ``unresolved`` (the verifier faulted) and ``pending`` say nothing about the
   attempt, so they are not samples at all rather than silent failures.
+* A ``failed`` verdict whose failure is the contract lookup itself
+  (``CONTRACT_MISSING``: no definition of done was found for the ticket) is not a
+  sample either (OMN-22690). It judged the ticket's paperwork, not the attempt.
+  Until omnimarket#4535 (OMN-20074, 2026-10-28) the verifier recorded that
+  condition as ``skipped``; after it, as ``failed`` with one failed check, and
+  every tier on the dev lane read 0 percent pass from those alone.
 * A pass is outcome ``done``: the typed done predicate of OMN-18900 (zero failed
   checks and at least one behaviour-proving check). A ``verified`` status that
   proved no behaviour is a fail, as the predicate says.
@@ -100,6 +106,11 @@ DOD_DECIDED_STATUSES: frozenset[str] = frozenset({"verified", "failed"})
 
 #: The only outcome that counts as a pass (``EnumDodEvalOutcome.DONE``).
 DOD_DONE_OUTCOME = "done"
+
+#: The verifier's code for "no DoD contract was found for the ticket"
+#: (``node_dod_verify`` evidence_collector and handler_dod_verify). A verdict
+#: that failed on it checked nothing about the delegated run (OMN-22690).
+DOD_CONTRACT_MISSING_CODE = "CONTRACT_MISSING"
 
 #: Default relations the reader joins. Both are schema-qualified because the
 #: verdict table lives in ``omninode_internal``, not ``public``.
@@ -222,6 +233,13 @@ def _as_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _is_decided(row: dict[str, object]) -> bool:
+    """True when the verdict judged the attempt: verified or failed, not on a missing contract."""
+    if _as_text(row.get("verdict_status")) not in DOD_DECIDED_STATUSES:
+        return False
+    return DOD_CONTRACT_MISSING_CODE not in _as_text(row.get("verdict_error_message"))
+
+
 def _latest_decided_verdict_per_run(
     rows: list[dict[str, object]], *, task_type: str
 ) -> list[dict[str, object]]:
@@ -230,7 +248,7 @@ def _latest_decided_verdict_per_run(
     for row in rows:
         if _as_text(row.get("task_type")) != task_type:
             continue
-        if _as_text(row.get("verdict_status")) not in DOD_DECIDED_STATUSES:
+        if not _is_decided(row):
             continue
         run_id = str(row.get("correlation_id") or "").strip()
         if not run_id:
@@ -328,11 +346,7 @@ def build_dod_overlay(
         )
 
     of_task = [r for r in rows if _as_text(r.get("task_type")) == task_type]
-    undecided = sum(
-        1
-        for r in of_task
-        if _as_text(r.get("verdict_status")) not in DOD_DECIDED_STATUSES
-    )
+    undecided = sum(1 for r in of_task if not _is_decided(r))
     return ModelRoutingDodOverlay(
         task_type=task_type,
         tenant_id=tenant_id,
@@ -548,6 +562,7 @@ def join_delegations_to_verdicts(
                 "verdict_status",
                 "verdict_outcome",
                 "verdict_completed_at",
+                "verdict_error_message",
             ):
                 row[field] = verdict.get(field)
             joined.append(row)
@@ -598,7 +613,8 @@ class PostgresDodOutcomeReader:
             "SELECT correlation_id::text AS verdict_correlation_id, "
             "delegation_correlation_id::text AS delegation_correlation_id, "
             "status AS verdict_status, outcome AS verdict_outcome, "
-            "completed_at AS verdict_completed_at "
+            "completed_at AS verdict_completed_at, "
+            "error_message AS verdict_error_message "
             f"FROM {verdict_relation} "
             "WHERE delegation_correlation_id IS NOT NULL"
         )
