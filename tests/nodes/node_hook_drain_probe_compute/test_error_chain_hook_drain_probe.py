@@ -107,7 +107,9 @@ def test_the_request_is_closed_and_bounded() -> None:
     with pytest.raises(ValidationError):
         ModelHookDrainProbeRequest(pending_event_types=("a",), max_classes=0)
     with pytest.raises(ValidationError):
-        ModelHookDrainProbeRequest(pending_event_types=("a",), surprise=1)  # type: ignore[call-arg]
+        ModelHookDrainProbeRequest.model_validate(
+            {"pending_event_types": ("a",), "surprise": 1}
+        )
 
 
 def reference_probe(
