@@ -172,9 +172,11 @@ def test_live_events_runtime_delivery_strips_runner_keys_and_keeps_coordinates(
         finally:
             await connection.close()
 
+    table_attr = "_table_live_events"
+
     async def connect_fixture_database(self: BaseProjectionRunner) -> None:
         # The handler names omninode_internal; point it at the scratch schema.
-        self._table_live_events = f"{schema}.live_events"  # type: ignore[attr-defined]
+        setattr(self, table_attr, f"{schema}.live_events")
         self._db = AsyncpgAdapter(dsn=integration_postgres_dsn)
         adapters.append(self._db)
         await self._db.connect()
@@ -273,9 +275,11 @@ def test_live_events_delegate_skill_list_source_projects_a_string_source_row(
         finally:
             await connection.close()
 
+    table_attr = "_table_live_events"
+
     async def connect_fixture_database(self: BaseProjectionRunner) -> None:
         # The handler names omninode_internal; point it at the scratch schema.
-        self._table_live_events = f"{schema}.live_events"  # type: ignore[attr-defined]
+        setattr(self, table_attr, f"{schema}.live_events")
         self._db = AsyncpgAdapter(dsn=integration_postgres_dsn)
         await self._db.connect()
 
