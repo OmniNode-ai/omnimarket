@@ -54,13 +54,16 @@ def recorded_roots() -> UnitRoots:
 def test_the_recorded_unit_names_the_tree_the_reconcile_removed() -> None:
     roots = recorded_roots()
     assert roots.naming(REMOVED_TREE) == UNIT
-    # A path inside the tree counts, a sibling tree and the root of all trees do not.
-    assert roots.naming(f"{REMOVED_TREE}/.venv") == ""
+    # A tree a unit names a path inside counts; a part of it no unit names does not, nor does a
+    # sibling tree.
+    assert roots.naming(f"{REMOVED_TREE}/.venv") == UNIT
+    assert roots.naming(f"{REMOVED_TREE}/src") == ""
     assert roots.naming("/srv/registry/omni_worktrees/OMN-22644/omnimarket") == ""
-    assert roots.naming("/srv/registry/omni_worktrees") == ""
 
 
-def test_the_clone_root_the_unit_works_from_names_no_worktree() -> None:
+def test_the_ticket_directory_above_the_named_tree_is_named_and_the_clone_root_is_a_path_too() -> (
+    None
+):
     assert recorded_roots().naming("/srv/registry/omni_worktrees/OMN-22643") == UNIT
     assert "/srv/registry" in unit_paths(FIXTURE.read_text(encoding="utf-8"))
 
