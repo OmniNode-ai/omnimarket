@@ -1171,3 +1171,18 @@ metadata:
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+
+# OMN-22664 (one-runtime plan T10, under OMN-21288): when the fold moves this
+# writer from its own container into the runtime, the runtime's consumer groups
+# start from the committed offsets of the container's group,
+# {env}.omnimarket-projections.delegation-writer.consume.v1, instead of the bus
+# default (latest), so events published while the container is stopped and the
+# runtime has not yet joined are projected. The container's runner reads a
+# partition it never committed from the earliest offset, and the handover does
+# the same. omnibase_infra's HandlerContractSubscribePreflight reads this key; on
+# a runtime that does not carry this writer's profile it is never read.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: delegation-writer
+  from_version: v1
+  from_auto_offset_reset: earliest
