@@ -34,3 +34,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_read_only_principal.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn22625-integration-proof-live
+  description: 'Integration proof on a lab host through the central test location: the read-only principal gate, probe and key install tests run as a lab work unit at the pushed sha on the declared bus
+    lane, so the send, run and receipt path carries them.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22625 -- uv run --frozen pytest tests/nodes/node_read_only_principal_effect/test_read_only_principal.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
