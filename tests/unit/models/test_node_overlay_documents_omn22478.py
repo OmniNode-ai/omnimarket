@@ -13,7 +13,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.overlay_documents.model_node_overlays import (
+from omnimarket.models.node_overlays.model_node_overlays import (
     ModelDuplicateGuardGeneratedPathsOverlay,
     ModelIntegrationSweepOverlay,
     ModelLabDiskHygieneOverlay,
@@ -95,7 +95,7 @@ def test_the_models_import_with_pydantic_alone() -> None:
         "import sys\n"
         "for name in ('yaml',):\n"
         "    sys.modules[name] = None\n"
-        "import omnimarket.models.overlay_documents.model_node_overlays as m\n"
+        "import omnimarket.models.node_overlays.model_node_overlays as m\n"
         "assert not [n for n in sys.modules if n.startswith('omnibase_')], 'imports a core package'\n"
     )
     result = subprocess.run(
