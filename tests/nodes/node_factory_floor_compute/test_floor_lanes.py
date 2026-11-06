@@ -661,3 +661,53 @@ def test_a_signed_in_account_the_overlay_does_not_declare_is_counted_in_the_note
     assert "1 signed-in account" in result.note
     assert "not on the declared machine list" in result.note
     assert "1 listed machines hold no cloud login" in result.note
+
+
+def test_the_bays_match_the_runner_units_count_and_a_refused_host_is_no_room() -> None:
+    """OMN-22686: the 2026-11-06T14:27Z record drew 9 of 64 slots in use while the runner had no free slot.
+
+    h053 had 14 placed units of which 9 were ledger lanes, at cap 16 and 2 free lane slots by the pool reading; h101 was
+    refused by the reading and had a cap of 12; h201 had 1 free lane slot. The bays must add up to what the runner can place.
+    """
+    machines = (
+        ModelFloorMachineDecl(host="h053", label="h053"),
+        ModelFloorMachineDecl(host="h101", label="h101"),
+        ModelFloorMachineDecl(host="h201", label="h201"),
+    )
+    ledger = tuple(
+        r for n in range(9) for r in lane_rows(f"lane-{n}", host="h053")
+    ) + lane_rows("lane-x", host="h201")
+    result = compute_factory_floor(
+        request(
+            machines=machines,
+            ledger=ledger,
+            pool=(
+                reading("h053", cap=16, lane_slots=2),
+                reading(
+                    "h101",
+                    cap=12,
+                    lane_slots=3,
+                    refusal="PARITY-FAILED: bus-host: BUS-HOST-UNRESOLVED",
+                ),
+                reading("h201", cap=3, lane_slots=1),
+            ),
+            host_table=(
+                ModelFloorHostRow(host="h053", cap=16),
+                ModelFloorHostRow(host="h101", cap=12),
+                ModelFloorHostRow(host="h201", cap=3),
+            ),
+            placed=(
+                ModelFloorPlacedHost(host="h053", units=14, lanes=9),
+                ModelFloorPlacedHost(host="h101", units=0, lanes=0),
+                ModelFloorPlacedHost(host="h201", units=2, lanes=1),
+            ),
+        )
+    ).floor
+    bays = {b.host: (b.slots, b.running, b.free, b.stale) for b in result.bays}
+    assert bays == {
+        "h053": (16, 14, 2, False),
+        "h101": (0, 0, 0, False),
+        "h201": (3, 2, 1, False),
+    }
+    # The sum the headline draws is the sum of the runner's free lane slots (2 + 0 + 1), not the caps less the ledger lanes.
+    assert sum(b.free for b in result.bays) == 3
