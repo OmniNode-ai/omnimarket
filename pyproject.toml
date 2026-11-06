@@ -1383,15 +1383,20 @@ omnimarket = "omnimarket.nodes"
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102181416-beb08a83c93e" }
+# OMN-22478: infra#5683 moved ModelInfisicalHandlerConfig to
+# omnibase_infra.models.security as ModelInfisicalConfig; this tag is the dev
+# merge of infra#5714, which carries that move. It pins the core tag below
+# (core 0.47.66) and declares omnibase-spi>=0.23.12; the three tags move
+# together (tests/ci/test_sibling_core_pin_pair_omn17427.py).
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261106014959-37056eb724f1" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261101203942-2080333acfaf" }
-omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261103062530-3580a8d986fd" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261103173624-74e0b0f12767" }
+omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261104012423-c76ff7112252" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
