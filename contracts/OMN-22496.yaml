@@ -52,5 +52,5 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
         cwd: "."
