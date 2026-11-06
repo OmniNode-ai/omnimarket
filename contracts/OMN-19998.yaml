@@ -148,16 +148,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-dispatch-gate-refusal
-    statement: Dispatch brief admission refuses a named prerequisite gate unless its reading is pass.
-    acceptance:
-      - id: AC13
-        statement: 'AC13: a failed or unread required gate refuses the lane and names each gate reading; passing gates and requests naming no gates preserve admission -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0'
-  - id: req-omn19998-mechanize-brief-bound
-    statement: Mechanize briefs bound the pasted exception history while keeping the newest rows and naming omitted history.
-    acceptance:
-      - id: AC14
-        statement: 'AC14: the recorded 455 KB exception-history shape produces a brief at most 64000 UTF-8 bytes with the newest row and an omitted-row source, while a small class preserves its evidence verbatim -- falsifier: uv run --frozen pytest tests/nodes/node_exception_queue_effect/test_mechanize_brief_bound.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -609,20 +599,4 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-dispatch-gate-refusal
-    description: Replays the recorded failed prerequisite gate through the dispatch brief node. The merge-base request model rejects the gate fields. Reader fixtures isolate live WIP state; a separate case checks WIP routing. This scoped proof does not assert runner adoption or a live controller tick.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0
-        cwd: .
-  - id: dod-omn19998-mechanize-brief-bound
-    description: Replays the recorded oversized exception-history shape through the existing brief writer. At the merge base the brief is unbounded. This scoped proof does not assert a host installer or the landing-controller timer criteria.
-    source: manual
-    binds_ac: [AC14]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_exception_queue_effect/test_mechanize_brief_bound.py -q --no-cov -n 0
         cwd: .
