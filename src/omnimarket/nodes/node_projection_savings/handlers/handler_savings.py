@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_modelled_terminal_savings import (
     modelled_terminal_savings,
 )
@@ -32,7 +33,6 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_ident
     ModelSavingsRunIdentityFoldRequest,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
-from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,

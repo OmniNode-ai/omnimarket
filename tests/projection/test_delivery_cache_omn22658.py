@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.projection import delivery_cache
-from omnimarket.projection.delivery_cache import (
+from omnimarket.handlers import delivery_cache
+from omnimarket.handlers.delivery_cache import (
     load_contract,
     load_topology_profile_cached,
 )

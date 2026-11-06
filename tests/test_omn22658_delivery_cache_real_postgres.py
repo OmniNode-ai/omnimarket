@@ -21,10 +21,10 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.handlers import delivery_cache
 from omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer import (
     RegistrationProjectionWriter,
 )
-from omnimarket.projection import delivery_cache
 from omnimarket.projection.runner import BaseProjectionRunner
 from tests.test_omn15359_ac3_replay_real_postgres import (
     local_postgres as local_postgres_fixture,

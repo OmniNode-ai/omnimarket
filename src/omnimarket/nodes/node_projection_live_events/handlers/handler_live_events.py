@@ -62,11 +62,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events import (
     ModelLiveEvent,
 )
-from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import dlq_topics_from_contract
 from omnimarket.projection.models import ProjectionTableConfig

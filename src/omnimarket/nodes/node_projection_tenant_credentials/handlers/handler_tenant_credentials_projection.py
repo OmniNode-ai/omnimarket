@@ -72,6 +72,7 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     resolve_byok_provider_backend,
@@ -79,7 +80,6 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     terminal_event_time,
 )
-from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,

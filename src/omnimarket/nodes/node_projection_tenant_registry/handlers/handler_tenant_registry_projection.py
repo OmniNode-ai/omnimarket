@@ -26,7 +26,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from omnimarket.projection.delivery_cache import load_contract
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_registry_events import (
     TENANT_REGISTRY_OPERATIONS,

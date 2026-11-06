@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.models.model_projection_request import ModelProjectionRequest
-from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (

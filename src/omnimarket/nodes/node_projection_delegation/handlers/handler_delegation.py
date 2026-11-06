@@ -25,6 +25,7 @@ from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_modelled_terminal_savings import (
     apply_modelled_terminal_savings,
 )
@@ -100,7 +101,6 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
     rung_verdict_fill,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
-from omnimarket.projection.delivery_cache import load_contract
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
 )

@@ -667,7 +667,7 @@ class BaseProjectionRunner(ABC):
         )
 
         from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-        from omnimarket.projection.delivery_cache import load_topology_profile_cached
+        from omnimarket.handlers.delivery_cache import load_topology_profile_cached
 
         declarations = tuple(
             ModelDbTableDeclaration.model_validate(raw)
