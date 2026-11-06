@@ -1,0 +1,364 @@
+{
+ "source_repo": "knowledge_base (public, MIT)",
+ "source_sha": "a6a1d1125a47d483b8a76eb3ee4f9be3749eef1f",
+ "selection": "adrs/ADR-*.md and doctrine/*.md (README and template excluded), plus the 6 synthetic planted notes",
+ "file_count": 71,
+ "total_bytes": 322683,
+ "files": [
+  {
+   "path": "adrs/ADR-0001-dependabot-approval-manual.md",
+   "sha256": "74142878bd7b045e5766f8acf02cbb2a029a0198195d55cf095f4423545c053f",
+   "bytes": 2697
+  },
+  {
+   "path": "adrs/ADR-0002-data-verification-invocation.md",
+   "sha256": "38ef53f2e8f17c7740b9a8e6fb9149ae231d8425392bbc7dc1464651d610e940",
+   "bytes": 7791
+  },
+  {
+   "path": "adrs/ADR-0003-registration-runtime-registry-boundary.md",
+   "sha256": "007af25c7fd1b4cfd97d01dcf10122f57f6ce9b38707889d9e37b8a36abd44bb",
+   "bytes": 4917
+  },
+  {
+   "path": "adrs/ADR-0004-registry-owned-consumer-surface.md",
+   "sha256": "047a6935a03eaeab170d5f71d899e9a5bff75509103e4b85459082d8eed1850c",
+   "bytes": 4764
+  },
+  {
+   "path": "adrs/ADR-0005-dispatch-lifecycle-canonical.md",
+   "sha256": "81e571f8e9981e57e21b8e30128cdf4e37fd4b5b1c27fc4435ee039063fa26d1",
+   "bytes": 4709
+  },
+  {
+   "path": "adrs/ADR-0006-skill-liveness-validator-home.md",
+   "sha256": "626b1c207f760ba22d5761636df9ed80eacbfebe46eb7ed15baa19df41b2232a",
+   "bytes": 2752
+  },
+  {
+   "path": "adrs/ADR-0007-skills-canonical-plan.md",
+   "sha256": "0614065f996872df2f5766ef0f9e05e4d837eadfbb3dea4d5786053f6f3ced58",
+   "bytes": 2677
+  },
+  {
+   "path": "adrs/ADR-0008-delegation-config-authority-and-budget-aware-tier-cost.md",
+   "sha256": "c03329047b2e06d4ac40f624a6675f703fb490d8e0f7fbe2c8d8d9750729bbde",
+   "bytes": 14078
+  },
+  {
+   "path": "adrs/ADR-0009-complexity-aware-delegation-routing.md",
+   "sha256": "9ca76066c54326efe390413d2e37901f64a574b4f46e3d9425ccc21006aa0426",
+   "bytes": 29359
+  },
+  {
+   "path": "adrs/ADR-0010-required-context-parity-ratchet.md",
+   "sha256": "bac58d2c6ff9fec770bff197c443bd3eb9682d077d85a6ebc6d5fe7b0bb8d01e",
+   "bytes": 17264
+  },
+  {
+   "path": "adrs/ADR-0011-rsd-recursive-system-design-naming.md",
+   "sha256": "c778d7f6aaae0111e9a9e2dd30dc0c44eff4777c7ef974bdfb3380c964aa219a",
+   "bytes": 3189
+  },
+  {
+   "path": "adrs/ADR-0012-seams-first-class.md",
+   "sha256": "1e6fb39d677621350e9601f74fd68ab8c9115e119c89df0962cbf66600d147c6",
+   "bytes": 4515
+  },
+  {
+   "path": "adrs/ADR-0013-deterministic-fsm-control-plane.md",
+   "sha256": "0d58e3b128eaa758f3e4cb65f4105895e9d736cbf96e2f5d2bad4a0362527587",
+   "bytes": 4246
+  },
+  {
+   "path": "adrs/ADR-0014-factory-economics-frontier-fissions-locals-build.md",
+   "sha256": "70d55b32c85428fadaa8d69a77f05cc3b5d69e7762c3f30c4ac69c003c7c2304",
+   "bytes": 4125
+  },
+  {
+   "path": "adrs/ADR-0018-delegation-graded-benchmark-ladder.md",
+   "sha256": "750f29153522710b4cd2a72a417c6b0df4db72f26bf38b8fd69f55c8f601cf94",
+   "bytes": 3832
+  },
+  {
+   "path": "adrs/ADR-0019-no-self-authored-evidence.md",
+   "sha256": "29337456519721558650f75fe9be4fdaefa4f5fb8af7f93e7c1feecc23bcaf5e",
+   "bytes": 3141
+  },
+  {
+   "path": "adrs/ADR-0020-branch-preview-verification.md",
+   "sha256": "90cb96941e5c758199d0be15236508f338d7e23b81bdabb39b479bcd59040da7",
+   "bytes": 3169
+  },
+  {
+   "path": "adrs/ADR-0021-beta-ships-first-priority-lock.md",
+   "sha256": "bf84482484bee724791246e28183511df32bbfd99e865a1f4189f0bee9fbf020",
+   "bytes": 1076
+  },
+  {
+   "path": "adrs/ADR-0022-shift-left-and-occ-evidence-only-fast-lane.md",
+   "sha256": "65d4e9a1c5a9fd529ed6887d3fc93620c9386dd4c57156ae2c5233b85036e7d4",
+   "bytes": 4419
+  },
+  {
+   "path": "adrs/ADR-0023-remove-occ-merge-queue.md",
+   "sha256": "f05797cef5e7b1a5600758037c45184a872618ae266f3a8a72f6cc55ff75a2ce",
+   "bytes": 3083
+  },
+  {
+   "path": "adrs/ADR-0024-merge-stall-tooling-not-capacity.md",
+   "sha256": "47244a1f5aa440f5db3114f8b889457b9d9f399e79c9d2a4dc3ae48e5d510462",
+   "bytes": 3617
+  },
+  {
+   "path": "adrs/ADR-0025-occ-validator-redesign-option-a.md",
+   "sha256": "064140639cf39a47e1ae5938a68b849732d2002bf6e8c79eb0ef1b06c40580e4",
+   "bytes": 3124
+  },
+  {
+   "path": "adrs/ADR-0026-two-databases-tenant-vs-internal.md",
+   "sha256": "f036c3a0f82ca2040cb84283fc5de71b502661181046a35c0a4eaa26b643ccaa",
+   "bytes": 9045
+  },
+  {
+   "path": "adrs/ADR-0027-one-application-database-domain-separation.md",
+   "sha256": "c5ffb7d184e4949e823a02b61a8b64e229d5b71c387fe76b248871a1525d2e33",
+   "bytes": 7024
+  },
+  {
+   "path": "adrs/ADR-0028-receipt-type-consolidation.md",
+   "sha256": "5590e4f4951f779c8e91f734c953a32ac5c7993dcc0d64966c263e350b66233e",
+   "bytes": 3683
+  },
+  {
+   "path": "adrs/ADR-0029-model-b-failing-rollup-validator-enforcement.md",
+   "sha256": "b0bc9d20503389eff17ba67f7abb6602aae8cd5d5b2f30904ef39d5e888dc91b",
+   "bytes": 5475
+  },
+  {
+   "path": "adrs/ADR-0030-protocol-based-di-architecture.md",
+   "sha256": "3ebca8bb8b852a1e2ba889b3eab1896924165631758313ab45d0d4df2504dcc7",
+   "bytes": 9629
+  },
+  {
+   "path": "adrs/ADR-0031-centralized-field-limit-constants.md",
+   "sha256": "94d9db57cd91ce7e04e66b9325ec69a9dd66ecb2f64704e0362cbe1cb37e9c0e",
+   "bytes": 7179
+  },
+  {
+   "path": "adrs/ADR-0032-reducer-output-exception-consistency.md",
+   "sha256": "f84c3637838eba583ad4fb12b64248b4c0a65631150508524b71071e092e1be0",
+   "bytes": 4006
+  },
+  {
+   "path": "adrs/ADR-0033-registration-trigger-architecture.md",
+   "sha256": "3748b284d548c940e3a1e01b664be777926d36690c99a08c99860619cef115e1",
+   "bytes": 6464
+  },
+  {
+   "path": "adrs/ADR-0034-core-infra-dependency-boundary.md",
+   "sha256": "d611010a2f65af64f3816aa9f5a85994763d8dbf12351de8e490f80054b88bdf",
+   "bytes": 7617
+  },
+  {
+   "path": "adrs/ADR-0035-status-taxonomy-and-categorical-organization.md",
+   "sha256": "18bcd231f531eb24dc124896b44b58fb1de0d5d5bb4cfcb0a987ed6fd28a4b62",
+   "bytes": 5940
+  },
+  {
+   "path": "adrs/ADR-0036-context-mutability-design-decision.md",
+   "sha256": "d7a07ba2bb40351c009bfc2dcc2cf2721f857f81d5f04ea9eb80f4b2da6d8dd8",
+   "bytes": 5525
+  },
+  {
+   "path": "adrs/ADR-0037-validator-error-handling-modelonexerror.md",
+   "sha256": "bdbfa6ea8b9a81709c8e0553cc442b2ec2b5105603d67f15a83559e388be9273",
+   "bytes": 5818
+  },
+  {
+   "path": "adrs/ADR-0038-ci-workflow-modification-risk.md",
+   "sha256": "9756d025fd16214612ae71750d157cf835a9563d2887c8b98d42aaa577b4b8f9",
+   "bytes": 5379
+  },
+  {
+   "path": "adrs/ADR-0039-omnidash-typography-system.md",
+   "sha256": "15b9a03306210e0c1aaaa2dffb4ff8f56ed3f9cc09b4fe6899be1cf5f646db4d",
+   "bytes": 7646
+  },
+  {
+   "path": "adrs/ADR-0040-omnidash-storybook-widget-coverage.md",
+   "sha256": "b9a280212b029b47fa8f0c39d787d9dc36d71db46d2ae4d34c828939f11af650",
+   "bytes": 8983
+  },
+  {
+   "path": "adrs/ADR-0041-omnidash-baselines-roi-card-stays-bespoke.md",
+   "sha256": "503281623f7a34a773c9c8ca3b1313ba356ea2c0b28a9019e25d4eacf809730b",
+   "bytes": 3368
+  },
+  {
+   "path": "adrs/ADR-0042-omnidash-cross-renderer-typed-empty-state-gate.md",
+   "sha256": "7d4cc6358fa5f80c6837cf348805be5139944cb11cdd54b12d770db80341ed29",
+   "bytes": 3526
+  },
+  {
+   "path": "adrs/ADR-0043-omnidash-rjsf-discriminated-union-handling.md",
+   "sha256": "94cad84b45f15dd7928851b316f5d18b51e53a5288db9c2946278f2bab54461a",
+   "bytes": 7422
+  },
+  {
+   "path": "adrs/ADR-0044-event-fan-out-and-app-owned-catalogs.md",
+   "sha256": "d5dce296e4bda520288dc0ce78349262a93be55eb1591bba0c2334ef8c283ecf",
+   "bytes": 15844
+  },
+  {
+   "path": "adrs/ADR-0045-candidate-list-injection.md",
+   "sha256": "c9549c1a0c302f18b0664a0ac380b661344f0fc3cc88388b13a968d8c7a07ca6",
+   "bytes": 3421
+  },
+  {
+   "path": "adrs/ADR-0046-no-fallback-routing.md",
+   "sha256": "089fe7816cc07ec23ab1420e4912892802e7a452b0eccacc68f1c4c5069eb237",
+   "bytes": 3466
+  },
+  {
+   "path": "adrs/ADR-0047-dual-emission-privacy-split.md",
+   "sha256": "de3625d740000e013772b265069134b68c7c3f3f1c4901167ebf6e8ca470d336",
+   "bytes": 4217
+  },
+  {
+   "path": "adrs/ADR-0048-delegation-orchestrator-quality-gate.md",
+   "sha256": "135f36a7d61c2bda36c215b4306e0f5e4c2c1ceb91b3818c97856adb339c8ed0",
+   "bytes": 5062
+  },
+  {
+   "path": "adrs/ADR-0049-three-tier-agent-routing.md",
+   "sha256": "a3ba8f2f447ec49b1be2f142af4d5f5bf1ab70ca98ca91c279042f9705ea520e",
+   "bytes": 5006
+  },
+  {
+   "path": "adrs/ADR-0050-ai-slop-checker-rule-set-v1.md",
+   "sha256": "26248677427413ae68d6a64abca7deb4100a15f6d0e9eeb8c0a233b5f629197b",
+   "bytes": 7217
+  },
+  {
+   "path": "adrs/ADR-0051-sibling-plugin-strategy.md",
+   "sha256": "82609e6f12a464136d60582dd878cd87722ee18ff741764e578d0d2061450ba7",
+   "bytes": 4240
+  },
+  {
+   "path": "adrs/ADR-0052-adaptive-recursive-contract-bisection.md",
+   "sha256": "f982571d526c24df77eb5f180d3ceeda32db3a6bef3f6881eec1808c6a28d87c",
+   "bytes": 5600
+  },
+  {
+   "path": "adrs/ADR-0053-beta-scope-local-install-own-keys.md",
+   "sha256": "923bf459705da821e536ba15520e3ebfe5637576b5e686be52fc3398c39d646e",
+   "bytes": 4177
+  },
+  {
+   "path": "doctrine/authoritative-projections-own-truth.md",
+   "sha256": "8b8ca5c63a6a36c84cca4ff85c0d42a20784e861f9e96949dad86c9363295754",
+   "bytes": 2333
+  },
+  {
+   "path": "doctrine/canonical-reducers-win.md",
+   "sha256": "b7393169c7adc825b147e85fba4da4f6e163b7ef641e822e62a2a414e747bfe3",
+   "bytes": 665
+  },
+  {
+   "path": "doctrine/contracts-define-reality.md",
+   "sha256": "0573351a872588bf86d233e86d8e30ed426a414f1ff78ce5f6fb640692851595",
+   "bytes": 3120
+  },
+  {
+   "path": "doctrine/cursors-represent-projection-progress.md",
+   "sha256": "fd357d446ada6f16f7f29ffdcfa2a26bfea5218cf1031b0a9f68c861cf24d5cf",
+   "bytes": 606
+  },
+  {
+   "path": "doctrine/degrade-safely.md",
+   "sha256": "210bdbb44f54b36ef552c27d984ea5d9c527f418e5996015bd2174c70f7d2265",
+   "bytes": 560
+  },
+  {
+   "path": "doctrine/deterministic-under-replay.md",
+   "sha256": "0a23469be9201f5103d8a64f249eb2460b0ab9dadfb25d25bf5c88b78721719f",
+   "bytes": 697
+  },
+  {
+   "path": "doctrine/evidence-is-first-class-output.md",
+   "sha256": "3e048ba80fd13a1b4e369508e8f0079406e04925c545999526b59c5eae0e7438",
+   "bytes": 1103
+  },
+  {
+   "path": "doctrine/fail-fast-and-loud.md",
+   "sha256": "ef652fefc6cff49e7953ce7bd9ba753e44f02d5d4db453a91daa654e8818b148",
+   "bytes": 1425
+  },
+  {
+   "path": "doctrine/ingestion-and-interpretation-separate.md",
+   "sha256": "1aedec424161f85d3eb4d6bd0c033cd6e5fe8e8903aba9d3075d37a69b27c874",
+   "bytes": 897
+  },
+  {
+   "path": "doctrine/migration-staged-recoverable.md",
+   "sha256": "d0df156a29f44a7c064815f93739aca4baa90b76fbeab63f170368c4481aea0c",
+   "bytes": 658
+  },
+  {
+   "path": "doctrine/ordering-must-be-explicit.md",
+   "sha256": "0f5793ca1a6985bb23898ee8412585a8105104be73b13611a30d91217db92a1e",
+   "bytes": 779
+  },
+  {
+   "path": "doctrine/reducers-define-state-progression.md",
+   "sha256": "4691c24f673b90d1f38f0a47a1e40f7304b34a98d249e68b3dfe8b1e236f6b0b",
+   "bytes": 725
+  },
+  {
+   "path": "doctrine/runtime-complexity-isolated.md",
+   "sha256": "190f99650f10e435e004717d13ed7713d982627b5fac7210f7c5537340bbdafa",
+   "bytes": 821
+  },
+  {
+   "path": "doctrine/state-is-materialized-projection.md",
+   "sha256": "3fc897dd2bd774960cfd2d26c54d8fca1249c9ae0e5c7b0d3e4e780fc6c2c855",
+   "bytes": 654
+  },
+  {
+   "path": "doctrine/truth-must-be-proven.md",
+   "sha256": "c66950b334428fe36a3098a127c0d448a01e10f6ad8598d27f6d968a3301b5f0",
+   "bytes": 784
+  },
+  {
+   "path": "planted_notes/PN-1-lab-canary-day.txt",
+   "sha256": "78d30820ccffe599f58ed2dd0e5a5165f9cd765c54bb523d3fa3f7ced594b5bd",
+   "bytes": 396
+  },
+  {
+   "path": "planted_notes/PN-2-estimator-seed.txt",
+   "sha256": "04f4f4a1be5714c47f4fc0bbaa249bda619c333394cd3bdb18cf7c0d51f0577c",
+   "bytes": 423
+  },
+  {
+   "path": "planted_notes/PN-3-scratch-retention.txt",
+   "sha256": "1e892caf3893bf7d0fb8b4cb3e60154dd14abd110247c700fc91065d2bcb8b54",
+   "bytes": 420
+  },
+  {
+   "path": "planted_notes/PN-4-docs-review-handover.txt",
+   "sha256": "5b9f8bc1e1e54b67d540155658d8a873532291f46b5714c1d39b63736f571727",
+   "bytes": 414
+  },
+  {
+   "path": "planted_notes/PN-5-lantern-pass.txt",
+   "sha256": "229417de918f0a661e1af3bef189b3c4c3836397054b6a5d575d8eb1a0277b5a",
+   "bytes": 343
+  },
+  {
+   "path": "planted_notes/PN-6-billing-sandbox-escalation.txt",
+   "sha256": "a1a3c7c0e506c77853592013ab20647a66f76a47963a0b69d11cd7f578064c1f",
+   "bytes": 337
+  }
+ ]
+}

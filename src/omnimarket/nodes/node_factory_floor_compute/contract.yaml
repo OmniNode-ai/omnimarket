@@ -99,8 +99,9 @@ config:
   # first hold_exemption_slug_tokens words of the plan's file name (after its date), joined by hyphens.
   hold_exemption_markers: [exempt]
   hold_exemption_slug_tokens: 3
-  # Live lanes (OMN-21733): a lane is live while its newest CLAIM has no TERMINAL after it and it wrote a row inside
-  # lane_live_window_minutes; it is stalled after stall_minutes without a row of any kind.
+  # Unclosed claims inside lane_live_window_minutes are candidates. Finished receipts and absent processes
+  # move them to inactive_lanes and occupy no bay; unknown process evidence stays visible. Silence alone
+  # marks a live worker stalled after stall_minutes, never dead.
   lane_live_window_minutes: 180
   stall_minutes: 45
   status_chars: 140

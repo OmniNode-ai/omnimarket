@@ -85,18 +85,6 @@ def test_the_plan_a_hold_names_as_exempt_is_not_stopped_by_it_and_the_other_plan
     assert held.andon.flag is True
 
 
-def test_an_exempt_open_row_without_a_pr_waits_without_a_hold_stop() -> None:
-    exempt = lines(plan("validators-to-core-and-hardcoded-rules"))[
-        "2026-10-28-validators-to-core-and-hardcoded-rules"
-    ]
-    assert exempt.andon.flag is False
-    assert exempt.condition == "queued"
-    item = exempt.stations[0].items[0]
-    assert item.state == "wait"
-    assert item.prs == ()
-    assert item.note == "recorded open, no matching pull request read"
-
-
 def test_the_reason_a_hold_shows_is_its_own_text_never_an_empty_string() -> None:
     held = lines(plan("orchestration-alignment-wave-plan"))[
         "2026-10-28-orchestration-alignment-wave-plan"

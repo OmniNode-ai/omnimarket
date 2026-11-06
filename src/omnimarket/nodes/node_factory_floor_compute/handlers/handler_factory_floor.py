@@ -496,9 +496,8 @@ def _gate(
         default=None,
     )
     if row and row.verdict in request.config.gate_fail_verdicts:
-        reason = row.reason or row.text
-        detail = f": {reason}" if reason else ""
-        return "stop", f"gate failed {_stamp(row.ts)}{detail}"
+        detail = row.reason or row.text or "no cause recorded; gate needs a fresh read"
+        return "stop", f"gate failed {_stamp(row.ts)}: {detail}"
     if row and row.verdict in request.config.gate_pass_verdicts:
         return "done", f"gate passed {_stamp(row.ts)}"
     return None
@@ -595,8 +594,18 @@ def _manifest_items(
 
 def _table_prs(row: ModelFloorTableTask, index: _Index) -> tuple[str, ...]:
     """The pull requests that are the work of a table row, by the tickets in their titles and branches."""
+    listed = row.prs
+    if "watcher-open-pr" in row.state_basis.split(","):
+        # These are inferred by the table writer, not explicit links in the plan.
+        # Release notes in a dependency PR can mention many unrelated tickets.
+        listed = tuple(
+            key
+            for key in listed
+            if (record := index.records.get(pr_key(key))) is None
+            or bool(record.tickets & set(row.tickets))
+        )
     task = ModelFloorManifestTask(
-        id=row.label, tickets=row.tickets, prs=row.prs, scoped=True
+        id=row.label, tickets=row.tickets, prs=listed, scoped=True
     )
     return task_prs(task, row.tickets, index.records)
 
@@ -625,8 +634,9 @@ def _table_item(
     state: ItemState
     kind: EvidenceKind = ""
     prs = _table_prs(row, index)
-    if row.state == "merged":
-        kind = _table_built(row, request, index)
+    built = _table_built(row, request, index)
+    if row.state == "merged" or built:
+        kind = built
         if kind:
             state, note = _settle(
                 "Linear done" if kind == "linear_done" else "PRs merged",
@@ -642,12 +652,21 @@ def _table_item(
                 "recorded merged, no merged pull request read",
             )
         kind = kind or "recorded"
+    elif any(
+        index.records.get(pr_key(key)) is not None
+        and index.records[pr_key(key)].state == "OPEN"
+        for key in prs
+    ):
+        state, note = "active", "matching PR open"
     elif row.state in {"open-green", "open-red"}:
-        state, note = (
-            ("active", f"PR open, {row.state.removeprefix('open-')}")
-            if prs
-            else ("wait", "recorded open, no matching pull request read")
-        )
+        # A row that links no PR keeps its recorded state; only linked PRs the watcher
+        # contradicts (read but not open, or filtered out as unrelated) downgrade it.
+        if not row.prs or (
+            prs and all(pr_key(key) not in index.records for key in prs)
+        ):
+            state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
+        else:
+            state, note = "wait", "recorded open, no matching pull request read"
     elif row.state == "not-started":
         state, note = "prep", "not started"
     else:
@@ -1249,10 +1268,7 @@ def _line(
         )
     )
     hard += tuple(
-        _Cause(
-            f"GATE {item.id} failed: {item.note.removeprefix('gate failed ')}",
-            (item.id,),
-        )
+        _Cause(f"GATE {item.id} failed (last recorded): {item.note}", (item.id,))
         for item in items
         if has_manifest and _is_gate(item, request) and item.state == "stop"
     )
@@ -1372,12 +1388,19 @@ def _floor(
         )[: request.config.stoppage_limit]
     )
     scopes = {_line_id(plan): _scope(plan) for plan in plans}
-    lanes = build_lanes(request, lines, scopes)
+    inventory = build_lanes(request, lines, scopes)
+    lanes = tuple(
+        lane for lane in inventory if lane.liveness not in {"dead", "finished"}
+    )[: request.config.lane_limit]
+    inactive = tuple(
+        lane for lane in inventory if lane.liveness in {"dead", "finished"}
+    )[: request.config.lane_limit]
     machines = build_machines(request, lanes)
     return ModelFloorSection(
         machines=machines,
         cloud=build_cloud(request),
         lanes=lanes,
+        inactive_lanes=inactive,
         stall_minutes=request.config.stall_minutes,
         lane_window_minutes=request.config.lane_live_window_minutes,
         bays=build_bays(machines),
@@ -1448,6 +1471,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             host_table_read=request.host_table is not None,
             placement_markers_read=request.placed is not None,
             receipts_read=request.receipts is not None,
+            lane_processes_read=request.lane_processes is not None,
             running_evidence_read=request.running_evidence is not None,
             cloud_accounts_read=request.cloud_accounts is not None,
             runner_fleet_read=request.runner_fleet is not None,
