@@ -20,6 +20,7 @@ import yaml
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
+    ModelProbeReading,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
@@ -41,6 +42,8 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelAppendOutcome,
     ModelLedgerQuery,
     ModelLedgerRead,
+    ProtocolLedgerRowSource,
+    ProtocolReadingAppender,
 )
 from tests.nodes.node_host_reading_effect.host_reading_support import (
     EXAMPLE,
@@ -121,13 +124,18 @@ class DownReader:
         return ModelLedgerRead(error="read-command-exit-1")
 
 
-def _probe(store_appender: object, reader: object, clock: Clock, **changes: object):  # type: ignore[no-untyped-def]
+def _probe(
+    store_appender: ProtocolReadingAppender,
+    reader: ProtocolLedgerRowSource,
+    clock: Clock,
+    **changes: object,
+) -> ModelProbeReading:
     return read_durability(
         settings(**changes),
         host=LEDGER_HOST,
         actor=ACTOR,
-        appender=store_appender,  # type: ignore[arg-type]
-        reader=reader,  # type: ignore[arg-type]
+        appender=store_appender,
+        reader=reader,
         clock=clock,
         sleep=clock.sleep,
     )

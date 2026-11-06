@@ -26,6 +26,10 @@ from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading imp
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolLedgerRowSource,
+    ProtocolReadingAppender,
+)
 from tests.nodes.node_host_reading_effect.host_reading_support import (
     LEDGER_HOST,
     RUN_AT,
@@ -216,7 +220,10 @@ DURABILITY_PAYLOAD = json.dumps(
 
 
 def _durability_events(
-    tmp_path: Path, probe_appender: object, reader: object, clock: Clock
+    tmp_path: Path,
+    probe_appender: ProtocolReadingAppender,
+    reader: ProtocolLedgerRowSource,
+    clock: Clock,
 ) -> tuple[list[tuple[str, dict[str, object]]], InMemoryLedger]:
     world = World("memory", tmp_path)
     readings = InMemoryLedger()
@@ -227,8 +234,8 @@ def _durability_events(
         appender=readings,
         clock=clock,
         environ=world.environ,
-        probe_appender=probe_appender,  # type: ignore[arg-type]
-        durable_reader=reader,  # type: ignore[arg-type]
+        probe_appender=probe_appender,
+        durable_reader=reader,
         sleep=clock.sleep,
     )
     events = asyncio.run(
