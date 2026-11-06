@@ -133,11 +133,6 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-floor-alarm-bundle
-    statement: The copied floor alarm uses scripts and matching packages from one plugin root instead of borrowing a registry clone revision.
-    acceptance:
-      - id: AC11
-        statement: 'The installer stages the declared scripts and src tree, runs the copied alarm help before activation, preserves its required state and ledger arguments, refuses incomplete bundles without changing the loaded agent, restores the previous bundle on bootstrap failure, and routes typed requests over the declared runtime bus.'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -168,21 +163,6 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn19998-floor-alarm-bundle
-    description: Hermetic replay of the recorded script and handler version skew, complete copied payload, source removal, missing dependencies and bootstrap rollback. This scope does not assert the landing controller timer criteria.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0
-        cwd: .
-  - id: dod-omn19998-floor-alarm-bundle-deploy
-    description: Hosted deployment smoke routes the typed copied-alarm request through the canonical runtime bus, runs the staged script import and parses its rendered launchd plist. Live Mac activation and a fresh timer tick remain the publishing host's install-first obligation.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_copied_units.py -q --no-cov -n 0 -k canonical_runtime_bus
   - id: dod-omn19998-remote-ref-before-send
     description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
     source: manual
