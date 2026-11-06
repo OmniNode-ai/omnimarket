@@ -24,6 +24,17 @@ from omnimarket.models.lab_fill import (
 )
 
 SPRINT = "Sprint 2026-10-26 → 2026-11-01: M4 End-to-End Part 4"
+# A fixture registry stay-out set: the rule spells none of its own.
+STAY_OUT = (
+    {
+        "name": "dashboard",
+        "ruling": "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout",
+        "tickets": ("OMN-19969",),
+        "criteria": ("C31", "C32"),
+        "repos": ("omnidash",),
+        "terms": ("dashboard", "omnidash"),
+    },
+)
 
 
 def _issue(ticket: str = "OMN-20864", **changes: object) -> ModelLabFillTicketIssue:
@@ -44,7 +55,7 @@ def _facts(
     *issues: ModelLabFillTicketIssue, **changes: object
 ) -> ModelLabFillTicketFacts:
     return ModelLabFillTicketFacts.model_validate(
-        {"today": "2026-10-25", "issues": issues, **changes}
+        {"today": "2026-10-25", "issues": issues, "stay_out": STAY_OUT, **changes}
     )
 
 
@@ -152,12 +163,12 @@ def test_sprint_requires_unchecked_criteria(description: str) -> None:
             {"out_of_scope": ("m4_out",)},
             EnumLabFillTicketDrop.OUT_OF_SCOPE,
         ),
-        ({"title": "Improve Dashboard layout"}, {}, EnumLabFillTicketDrop.DASHBOARD),
-        ({"id": "OMN-19969"}, {}, EnumLabFillTicketDrop.DASHBOARD),
-        ({"repo": "omnidash"}, {}, EnumLabFillTicketDrop.DASHBOARD),
-        ({"labels": ("OmniDash UI",)}, {}, EnumLabFillTicketDrop.DASHBOARD),
-        ({}, {"m4_carriers": {"C31": ("OMN-20864",)}}, EnumLabFillTicketDrop.DASHBOARD),
-        ({}, {"m4_carriers": {"C32": ("OMN-20864",)}}, EnumLabFillTicketDrop.DASHBOARD),
+        ({"title": "Improve Dashboard layout"}, {}, EnumLabFillTicketDrop.STAY_OUT),
+        ({"id": "OMN-19969"}, {}, EnumLabFillTicketDrop.STAY_OUT),
+        ({"repo": "omnidash"}, {}, EnumLabFillTicketDrop.STAY_OUT),
+        ({"labels": ("OmniDash UI",)}, {}, EnumLabFillTicketDrop.STAY_OUT),
+        ({}, {"m4_carriers": {"C31": ("OMN-20864",)}}, EnumLabFillTicketDrop.STAY_OUT),
+        ({}, {"m4_carriers": {"C32": ("OMN-20864",)}}, EnumLabFillTicketDrop.STAY_OUT),
     ],
 )
 def test_exclusion_gates(
@@ -293,7 +304,7 @@ def test_first_matching_gate_wins() -> None:
         EnumLabFillTicketDrop.OTHER_OWNER,
         EnumLabFillTicketDrop.NOT_PILLAR,
         EnumLabFillTicketDrop.OUT_OF_SCOPE,
-        EnumLabFillTicketDrop.DASHBOARD,
+        EnumLabFillTicketDrop.STAY_OUT,
         EnumLabFillTicketDrop.OPEN_PR,
         EnumLabFillTicketDrop.CLAIMED,
     ]

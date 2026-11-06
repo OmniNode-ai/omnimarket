@@ -634,8 +634,12 @@ def fake_rule(facts: dict) -> dict:
             else "out-of-scope"
             if i["repo"] in facts["out_of_scope"]
             or any(r in text for r in facts["out_of_scope"])
-            else "dashboard"
-            if "dashboard" in text or set(carriers) & {"C31", "C32"}
+            else "stay-out"
+            if any(
+                any(t in text for t in entry["terms"])
+                or set(carriers) & set(entry["criteria"])
+                for entry in facts["stay_out"]
+            )
             else "open-pr"
             if i["id"] in facts["open_pr"]
             else "claimed"
@@ -845,7 +849,7 @@ def test_skipped_tickets_open_pr_retired_repo_deploy_repo_dashboard_closed_and_u
     assert skipped == {
         "open-pr": 1,
         "out-of-scope": 2,
-        "dashboard": 2,
+        "stay-out": 2,
         "closed": 1,
         "other-owner": 1,
     }

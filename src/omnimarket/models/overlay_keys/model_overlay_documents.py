@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.lab_fill import ModelLabFillStayOut
+
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
     str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9_$/.~-]+$")
@@ -321,6 +323,7 @@ class ModelIdleSlotFillOverlay(_ModelOverlayBase):
     experiment_designs: Annotated[
         tuple[ModelExperimentDesign, ...], Field(min_length=1)
     ]
+    lab_fill_stay_out: Annotated[tuple[ModelLabFillStayOut, ...], Field(min_length=1)]
 
 
 class ModelThroughputTickOverlay(_ModelOverlayBase):

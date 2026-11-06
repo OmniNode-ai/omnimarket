@@ -13,6 +13,7 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
     not_configured_message,
 )
+from omnimarket.models.lab_fill import ModelLabFillStayOut
 from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill_overlay import (
     ModelCloudBacklogOverlay,
     ModelIdleSlotFillOverlay,
@@ -68,6 +69,13 @@ def always_out(environ: Mapping[str, str] | None = None) -> frozenset[str]:
     return frozenset(
         _role_name(role, environ) for role in _field("always_out_roles", environ)
     )
+
+
+def stay_out(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[ModelLabFillStayOut, ...]:
+    """The lab-fill stay-out sets with their ruling ids (``idle_slot_fill.lab_fill_stay_out``)."""
+    return tuple(_field("lab_fill_stay_out", environ))
 
 
 def cloud_backlog(

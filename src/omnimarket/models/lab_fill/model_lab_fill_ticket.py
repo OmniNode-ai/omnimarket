@@ -24,7 +24,7 @@ class EnumLabFillTicketDrop(StrEnum):
     OTHER_OWNER = "other-owner"
     NOT_PILLAR = "not-pillar"
     OUT_OF_SCOPE = "out-of-scope"
-    DASHBOARD = "dashboard"
+    STAY_OUT = "stay-out"
     OPEN_PR = "open-pr"
     CLAIMED = "claimed"
     NO_CRITERIA = "no-criteria"
@@ -67,6 +67,26 @@ class ModelLabFillLiveDescription(BaseModel):
     description: str = ""
 
 
+RULING_ID_PATTERN = r"^RULING \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z(?:\s.*)?$"
+
+
+class ModelLabFillStayOut(BaseModel):
+    """One stay-out set the registry declares, with the ruling that keeps lab-fill out of it.
+
+    A ticket is in the set when its id is listed, an M4 criterion it carries is listed, its
+    repository is listed, or its title, labels or project contain a listed term or repository.
+    """
+
+    model_config = _FROZEN
+
+    name: str = Field(min_length=1)
+    ruling: str = Field(pattern=RULING_ID_PATTERN)
+    tickets: tuple[str, ...] = ()
+    criteria: tuple[str, ...] = ()
+    repos: tuple[str, ...] = ()
+    terms: tuple[str, ...] = ()
+
+
 class ModelLabFillTicketFacts(BaseModel):
     """All backlog inputs; the caller supplies today's date and ownership facts."""
 
@@ -79,6 +99,7 @@ class ModelLabFillTicketFacts(BaseModel):
     claimed: tuple[str, ...] = ()
     open_pr: tuple[str, ...] = ()
     out_of_scope: tuple[str, ...] = ()
+    stay_out: tuple[ModelLabFillStayOut, ...] = ()
     live_descriptions: tuple[ModelLabFillLiveDescription, ...] = ()
 
 
