@@ -106,10 +106,10 @@ def _tenant(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _handler(
-    catalog: Path, prober: object, environ: dict[str, str]
+    catalog: Path, prober: observer.ProtocolServiceProber, environ: dict[str, str]
 ) -> observer.HandlerLocalEnvironmentObserve:
     return observer.HandlerLocalEnvironmentObserve(
-        prober=prober,  # type: ignore[arg-type]
+        prober=prober,
         config=observer.ModelLocalEnvironmentObserveConfig(catalog_dir=str(catalog)),
         environ=environ,
     )
