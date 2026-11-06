@@ -77,6 +77,10 @@ description: >
   returns no decision and raises LandingCoverageError (deterministic for the
   same facts, no side effect), which runtime_dispatch reports on the declared
   failure terminal event; the caller acts on nothing from that tick.
+  A PR citing a factory task ticket merges only on a PASS lab-proof receipt
+  for its head with the profile's negative control recorded failing; the
+  manifest, profiles and receipt rows are facts; the holds are named in
+  lab_proof_holds.
 input_model:
   name: "ModelLandingFacts"
   module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"
