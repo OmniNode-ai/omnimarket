@@ -1082,6 +1082,11 @@ requirements:
     acceptance:
       - id: "AC3003201"
         statement: "AC3003201: uv.lock locks multidict at 6.9.1 or later and mako at 1.4.2 or later -- falsifier: tests/test_uv_lock_security_floors_omn17427.py fails against the lock at the merge base (multidict 6.8.0, mako 1.4.1)"
+  - id: "req-command-wrapped-pytest-binds-its-file"
+    statement: "A dod_evidence check whose check_type is command and whose command runs uv run pytest over an existing repo test file binds that file, so evidence that has to prepare its own environment first is not read as unbound and does not red every open pull request of the repository."
+    acceptance:
+      - id: "AC2249601"
+        statement: "AC2249601: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4551,4 +4556,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: .
+  - id: "dod-omn17427-command-wrapped-pytest-binds"
+    description: "AC2249601: a command check that prepares a HOME and then runs uv run pytest binds the file it names, and the two negative controls beside it still refuse a wrapper with no pytest run and one naming a path not in the tree. The accepting test fails at the merge base, where only test_passes checks are parsed."
+    source: manual
+    binds_ac: ["AC2249601"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: .
