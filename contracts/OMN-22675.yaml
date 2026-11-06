@@ -38,8 +38,6 @@ dod_evidence:
   description: After the dev lane runs migration 101, the savings exposure for the house tenant answers HTTP 200. Only the local Done gate can reach the dev lane.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: test "$(curl -s -m 40 -o /dev/null -w '%{http_code}' "${DEV_PROJECTION_API_URL:?}/projection/onex.snapshot.projection.delegation.savings.v1?tenant=820272f9-4aaf-5add-a2df-0af942852ab2")" = 200
