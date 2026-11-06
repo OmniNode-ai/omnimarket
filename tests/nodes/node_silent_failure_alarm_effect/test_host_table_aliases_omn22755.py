@@ -13,6 +13,7 @@ the table and not on the fixture. Host names here are synthetic; the real table 
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -65,7 +66,7 @@ def _table(path: Path, names: dict[str, list[str]]) -> Path:
 
 def _tick(
     tmp_path: Path, table: Path, event_host: str
-) -> tuple[tuple[str, ...], list[str]]:
+) -> tuple[tuple[str, ...], str, list[str]]:
     """One tick whose only hook event came from ``event_host`` a minute before the ledger rows end."""
     base = world(tmp_path)
     stamp = (HOST_NOW - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -86,8 +87,10 @@ def _tick(
     result = HandlerSilentFailureAlarm(options, host_watches=watches).handle(
         ModelSilentFailureAlarmRequest(now=HOST_NOW)
     )
-    quiet = result.decision.quiet_hosts if result.decision is not None else ()
-    return quiet, list(result.warnings)
+    rows = [row for row in result.rows if "class=quiet-host" in row]
+    named = re.search(r"hosts=([a-z0-9,]+)", rows[0]) if rows else None
+    quiet = tuple(named.group(1).split(",")) if named else ()
+    return quiet, result.summary, list(result.warnings)
 
 
 def test_host_table_yields_each_hosts_event_labels(tmp_path: Path) -> None:
@@ -111,8 +114,9 @@ def test_host_table_change_flows_into_the_aliases(tmp_path: Path) -> None:
 
 def test_host_table_change_flows_into_the_quiet_host_reading(tmp_path: Path) -> None:
     table = _table(tmp_path / "hosts.yaml", NAMES)
-    quiet, warnings = _tick(tmp_path, table, "Beta-Box.example.test")
+    quiet, summary, warnings = _tick(tmp_path, table, "Beta-Box.example.test")
     assert warnings == []
+    assert "quiet_host=UNKNOWN" not in summary
     assert "h053" not in quiet
     assert (
         "h051" in quiet
@@ -124,7 +128,7 @@ def test_host_table_without_the_host_reads_it_quiet_control(tmp_path: Path) -> N
     table = _table(
         tmp_path / "hosts.yaml", {h: n for h, n in NAMES.items() if h != "h053"}
     )
-    quiet, _ = _tick(tmp_path, table, "Beta-Box.example.test")
+    quiet, _, _ = _tick(tmp_path, table, "Beta-Box.example.test")
     assert "h053" in quiet
 
 
@@ -135,8 +139,9 @@ def test_host_table_unreadable_leaves_events_unattributed_and_says_why(
     options = ModelSilentFailureAlarmOptions(registry_root=tmp_path, host_table=missing)
     assert options.host_aliases == {}
     assert "no-such-table.yaml" in options.host_table_error
-    quiet, warnings = _tick(tmp_path, missing, "beta-box")
-    assert quiet == ()  # UNKNOWN names no host as quiet and no host as live
+    quiet, summary, warnings = _tick(tmp_path, missing, "beta-box")
+    assert quiet == ()  # no host is named quiet or live
+    assert "quiet_host=UNKNOWN" in summary
     assert any("host table unreadable" in w for w in warnings), warnings
 
 
