@@ -27,6 +27,7 @@ from omnimarket.nodes.node_remote_lane_effect.handlers import (
 from omnimarket.nodes.node_remote_lane_effect.models import (
     ModelRemoteLaneSharedVenvPruneRequest,
     ModelRemoteLaneSharedVenvRequest,
+    ModelRemoteLaneSharedVenvResult,
 )
 from omnimarket.nodes.node_remote_lane_effect.plugin_shared_venv import (
     MARKER,
@@ -219,7 +220,7 @@ def test_two_placements_at_once_build_one_venv_and_link_one_tree(
     uv: Path, store: Path, tmp_path: Path
 ) -> None:
     tree = _tree(store, "omniclaude-aaaaaaaaaaaa")
-    results: list[object] = []
+    results: list[ModelRemoteLaneSharedVenvResult] = []
 
     def place() -> None:
         results.append(HandlerRemoteLaneSharedVenv().handle(_request(tree, store, uv)))
@@ -229,9 +230,9 @@ def test_two_placements_at_once_build_one_venv_and_link_one_tree(
         t.start()
     for t in threads:
         t.join()
-    assert all(r.ok for r in results)  # type: ignore[attr-defined]
-    assert sum(r.built for r in results) == 1  # type: ignore[attr-defined]
-    assert sum(r.linked for r in results) == 1  # type: ignore[attr-defined]
+    assert all(r.ok for r in results)
+    assert sum(r.built for r in results) == 1
+    assert sum(r.linked for r in results) == 1
     assert _log(tmp_path).count("sync --frozen") == 1
     assert not list((store / "venvs").glob("*.building"))
     assert not list(tree.glob(".venv.building"))
