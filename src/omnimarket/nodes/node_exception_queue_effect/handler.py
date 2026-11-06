@@ -72,6 +72,11 @@ TICKET = "OMN-17427"
 AUDIENCES = ("operator", "orchestrator")
 # The remote-lane runner is the file ONEX_EXCEPTION_RUNNER names; with none set the queue starts no dispatch.
 RUNNER: Path | None = None
+# A mechanize brief once pasted every row of its class verbatim and reached 455 KB. The brief now pastes the newest
+# rows that fit this bound, each field cut to FIELD_MAX_CHARS, and names the queue file that holds the rest.
+BRIEF_MAX_BYTES = 64_000
+FIELD_MAX_CHARS = 2_000
+ROW_FIELDS = ("id", "key", "source", "evidence", "tried", "proposed_fix")
 
 
 def state_dir() -> Path:
@@ -154,24 +159,61 @@ def _brief(
         "(6) SECOND OCCURRENCE BECOMES CODE",
         "",
     ]
-    for row in rows:
-        for field in ("id", "key", "source", "evidence", "tried", "proposed_fix"):
-            lines.append(f"{field}: {row[field]}")
-        lines.append("")
-    lines.extend(
-        [
-            "Build a detector that recognises this class, an actor that resolves it in code, and a scenario in the",
-            "friction replay suite (lane friction-replay-suite) that replays these rows.",
-            "The actor emits to the exception queue (queue_status.py --exception emit) only a case it still cannot resolve.",
-            "A decision row is never resolved by the lane.",
-            "Read PRs only with pr_state_local.py; never merge, arm, rerun or poll CI.",
-            "/omni:pr-handoff the PR; report once at terminal.",
-        ]
-    )
+    tail = [
+        "Build a detector that recognises this class, an actor that resolves it in code, and a scenario in the",
+        "friction replay suite (lane friction-replay-suite) that replays these rows.",
+        "The actor emits to the exception queue (queue_status.py --exception emit) only a case it still cannot resolve.",
+        "A decision row is never resolved by the lane.",
+        "Read PRs only with pr_state_local.py; never merge, arm, rerun or poll CI.",
+        "/omni:pr-handoff the PR; report once at terminal.",
+    ]
+    lines.extend(_bounded_rows(request.state_dir, rows, lines, tail))
+    lines.extend(tail)
     path = request.state_dir / "briefs" / f"{lane}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def _cut(value: object) -> str:
+    text = str(value)
+    if len(text) <= FIELD_MAX_CHARS:
+        return text
+    return (
+        f"{text[:FIELD_MAX_CHARS]} [cut: {len(text) - FIELD_MAX_CHARS} more characters]"
+    )
+
+
+def _bounded_rows(
+    state_dir: Path,
+    rows: list[dict[str, Any]],
+    head: list[str],
+    tail: list[str],
+) -> list[str]:
+    """The newest rows that fit BRIEF_MAX_BYTES beside the head and tail, in queue order, and a left-out note."""
+
+    def size(block: list[str]) -> int:
+        return sum(len(line.encode("utf-8")) + 1 for line in block)
+
+    note_reserve = 400
+    budget = BRIEF_MAX_BYTES - size(head) - size(tail) - note_reserve
+    kept: list[list[str]] = []
+    for row in reversed(rows):
+        block = [f"{field}: {_cut(row[field])}" for field in ROW_FIELDS] + [""]
+        if kept and size(block) > budget:
+            break
+        budget -= size(block)
+        kept.append(block)
+    out = [line for block in reversed(kept) for line in block]
+    left_out = len(rows) - len(kept)
+    if left_out:
+        out = [
+            f"{left_out} rows left out (the oldest of {len(rows)}); read them in "
+            f"{state_dir / QUEUE_FILE}.",
+            "",
+            *out,
+        ]
+    return out
 
 
 def _mechanize(request: ModelExceptionEmitRequest, rows: list[dict[str, Any]]) -> str:

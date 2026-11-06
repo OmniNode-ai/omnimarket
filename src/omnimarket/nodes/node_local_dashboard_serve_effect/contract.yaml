@@ -47,7 +47,22 @@ handler:
   class: HandlerLocalDashboardServe
   input_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard.ModelLocalDashboardServeRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: release_asset_download
+      handler:
+        name: HandlerReleaseAsset
+        module: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_release_asset
+  default_handler: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve:HandlerLocalDashboardServe
+
 config:
+  release_asset_download:
+    handler: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_release_asset.HandlerReleaseAsset
+    input_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_release_asset.ModelReleaseAssetRequest
+    output_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_release_asset.ModelReleaseAssetResult
+    overlay_file: release_asset.overlay.yaml
+    description: Public asset GETs retry gateway failures within the overlay bounds.
   local_environment_report:
     # OMN-19988 mode 1: the native report is written at start and again on
     # this interval while the dashboard serves, so it is never older than the

@@ -185,32 +185,19 @@ def _base_headers(token: str) -> dict[str, str]:
 
 
 def download_release_asset(url: str, to: Path) -> None:
-    """Fetch a public release asset to ``to``, creating parent directories.
+    """Fetch an unauthenticated public asset through the dashboard download handler.
 
-    This lives here rather than beside its caller because the imperative
-    contract guard treats a raw HTTP call in a freestanding module as a
-    violation, and this module is the one declared to make them
-    (``freestanding_raw_http``, OMN-12750). No token is sent: a release asset
-    on a public repository is readable unauthenticated, and the clean-container
-    install path (OMN-19917) has no credential to offer.
-
-    The caller is responsible for deciding whether the bytes are acceptable.
-    Nothing here verifies them.
-
-    Raises:
-        GitHubApiError: On a non-https URL, or any HTTP or network failure.
+    Gateway failures receive bounded retries; other failures raise GitHubApiError.
+    The caller remains responsible for verifying the downloaded bytes.
     """
-    if urllib.parse.urlsplit(url).scheme != "https":
-        raise GitHubApiError(f"refusing a non-https asset URL: {url}")
-    to.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            to.write_bytes(resp.read())
-    except urllib.error.HTTPError as exc:
-        raise GitHubApiError(str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_release_asset import (
+        HandlerReleaseAsset,
+    )
+    from omnimarket.nodes.node_local_dashboard_serve_effect.models.model_release_asset import (
+        ModelReleaseAssetRequest,
+    )
+
+    HandlerReleaseAsset().handle(ModelReleaseAssetRequest(url=url, destination=to))
 
 
 def rest_json(
