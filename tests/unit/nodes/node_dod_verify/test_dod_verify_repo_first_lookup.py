@@ -22,13 +22,36 @@ same worlds at the base commit (``fixtures/omn20886_occ_only_lookup_replay.json`
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Never
 
 import pytest
 
 from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_execution_audience import (
     EnumDodVerifyExecutionAudience,
+)
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.events.dod_verify_retry import (
+    CANONICAL_DOD_VERIFY_RETRY_POLICY,
+    EnumDodVerifyRetryDisposition,
+    ModelDodVerifyRetryState,
+    plan_next_attempt,
+)
+from omnimarket.handlers.scm.handler_gateway_read_client import (
+    GatewayReadError,
+    HandlerGatewayReadClient,
+)
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    GithubGatewayResult,
+    ModelGithubGatewayRequest,
+)
+from omnimarket.nodes.node_dod_verify.handlers import (
+    handler_dod_evidence_github_effect as github_effect,
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDurableEvidenceGateEffect,
@@ -42,6 +65,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     EnumEvidenceCheckStatus,
+    EnumEvidenceUnverifiableCause,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
@@ -52,6 +76,7 @@ from tests.unit.nodes.node_dod_verify.omn_20886_repo_world import (
     World,
     contract,
 )
+from tests.unit.nodes.node_dod_verify.omn_21146_world_gateway import WorldGateway
 
 pytestmark = pytest.mark.unit
 
@@ -353,5 +378,153 @@ def test_gate_refuses_when_repo_evidence_is_unreadable(
     state = _verify_with_gate(world, monkeypatch, ticket, _DESCRIPTION_AC1)
 
     assert [c.evidence_id for c in state.checks] == ["contract"]
-    assert (state.checks[0].message or "").startswith("REPO_CONTRACT_UNRESOLVED:")
-    assert state.status is EnumDodVerifyStatus.FAILED
+    assert (state.checks[0].message or "").startswith("CHECK_RUN_READ_FAILED:")
+    assert state.checks[0].status is EnumEvidenceCheckStatus.SKIPPED
+    assert state.checks[0].unverifiable_cause is (
+        EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+    )
+    assert state.status is EnumDodVerifyStatus.UNRESOLVED
+    assert state.unresolved_cause is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+    assert state.unresolved_cause.retry_eligible
+    assert state.failed_count == 0
+    assert state.verified_count == 0
+    assert "retry" in (state.error_message or "").lower()
+    assert "resolution defect" not in (state.error_message or "")
+
+    world.check_runs[("OmniNode-ai/omnimarket", pr["head_sha"])] = [
+        {
+            "id": 2000,
+            "name": "repo-evidence / dod-verify",
+            "app_slug": "github-actions",
+            "status": "completed",
+            "conclusion": "success",
+        }
+    ]
+    recovered = _verify_with_gate(world, monkeypatch, ticket, _DESCRIPTION_AC1)
+    check = _gate_checks(recovered)["durable_gate::contract_on_occ_main"]
+    assert check.status is EnumEvidenceCheckStatus.VERIFIED
+    assert check.unverifiable_cause is None
+    assert recovered.unresolved_cause is None
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "gateway commit_check_runs: HTTP 502",
+        "gateway bus lane 'dev': config/lab/ci_bus_lanes.yaml missing",
+    ],
+)
+def test_recorded_merged_head_read_fault_is_retryable(
+    world: World, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """Replay the read boundary from the November 2 held-ticket comment.
+
+    The PR number and head are recorded; the contract and merge are a minimal
+    fixture. A production-shaped gateway failure must never become a finding
+    against that contract, and a later read can still resolve the same head.
+    """
+    ticket = "OMN-21347"
+    repo = "OmniNode-ai/omnimarket"
+    head = "aa149509d3ea8ef8bfd4d9a3d89b5247442abeaa"
+    world.merge(
+        "omnimarket",
+        4666,
+        f"fix({ticket}): most-used baseline",
+        {f"contracts/{ticket}.yaml": contract(ticket, "dod-bound", ["AC1"])},
+    )
+    world.state["merges"]["omnimarket#4666"]["head_sha"] = head
+    world.install(monkeypatch)
+
+    def unreadable(request: ModelGithubGatewayRequest) -> Never:
+        assert request.repo == repo
+        assert request.head_sha == head
+        raise GatewayReadError(fault)
+
+    monkeypatch.setattr(
+        github_effect,
+        "_default_gateway_client",
+        lambda: HandlerGatewayReadClient(route=unreadable),
+    )
+    collector = EvidenceCollector()
+    monkeypatch.setattr(
+        HandlerDodVerify, "_make_collector", staticmethod(lambda: collector)
+    )
+    state = HandlerDodVerify().handle(
+        ModelDodVerifyStartCommand(ticket_id=ticket, execution_audience=_AUDIENCE)
+    )
+
+    assert isinstance(state, ModelDodVerifyState)
+    assert state.status is EnumDodVerifyStatus.UNRESOLVED
+    assert state.unresolved_cause is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+    assert state.unresolved_cause.retry_eligible
+    assert state.failed_count == 0
+    assert state.verified_count == 0
+    assert "REPO_CONTRACT_UNRESOLVED" not in (state.checks[0].message or "")
+    assert head in (state.checks[0].message or "")
+    assert fault in (state.checks[0].message or "")
+    assert collector.run_durable_gate() is None
+
+
+def test_check_read_fault_after_contract_collection_is_also_retryable(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ticket = "OMN-90210"
+    world.merge(
+        "omnimarket",
+        121,
+        f"feat({ticket}): check read lost before the Done gate",
+        {f"contracts/{ticket}.yaml": contract(ticket, "dod-bound", ["AC1"])},
+    )
+    original_read = WorldGateway.read
+    reads = 0
+
+    def read(
+        gateway: WorldGateway, request: ModelGithubGatewayRequest
+    ) -> GithubGatewayResult:
+        nonlocal reads
+        if request.operation is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS:
+            reads += 1
+            if reads == 2:
+                raise GatewayReadError("gateway commit_check_runs: HTTP 502")
+        return original_read(gateway, request)
+
+    monkeypatch.setattr(WorldGateway, "read", read)
+    state = _verify_with_gate(world, monkeypatch, ticket, _DESCRIPTION_AC1)
+
+    assert reads == 2
+    check = _gate_checks(state)["durable_gate::contract_on_occ_main"]
+    assert check.status is EnumEvidenceCheckStatus.SKIPPED
+    assert (
+        check.unverifiable_cause is EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+    )
+    assert state.status is EnumDodVerifyStatus.UNRESOLVED
+    assert state.unresolved_cause is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+    assert state.failed_count == 0
+    assert state.verified_count > 0
+
+
+def test_check_read_fault_retries_back_off_and_stop_at_the_existing_budget() -> None:
+    policy = CANONICAL_DOD_VERIFY_RETRY_POLICY
+    now = datetime(2026, 11, 2, tzinfo=UTC)
+    state = ModelDodVerifyRetryState(ticket_id="OMN-21347")
+    for attempt in range(1, policy.max_attempts + 1):
+        state = state.start_attempt(now=now).complete_attempt(
+            now=now,
+            status=EnumDodVerifyStatus.UNRESOLVED,
+            cause=EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED,
+            error_code="CHECK_RUN_READ_FAILED",
+            detail="the deciding head's check-run listing is unreadable",
+        )
+        decision = plan_next_attempt(state, policy=policy, now=now)
+        if attempt < policy.max_attempts:
+            assert decision.disposition is EnumDodVerifyRetryDisposition.RETRY_SCHEDULED
+            now += timedelta(seconds=policy.delay_for_attempt(attempt))
+            assert plan_next_attempt(state, policy=policy, now=now).disposition is (
+                EnumDodVerifyRetryDisposition.ATTEMPT_NOW
+            )
+        else:
+            assert decision.disposition is (
+                EnumDodVerifyRetryDisposition.TERMINAL_ATTEMPTS_EXHAUSTED
+            )
+            assert decision.status is EnumDodVerifyStatus.UNRESOLVED
+            assert decision.disposition.blocks_attempt

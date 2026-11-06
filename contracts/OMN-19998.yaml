@@ -250,6 +250,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k runtime_bus_profile -q
+        cwd: .
   - id: dod-omn19998-lab-host-toolchain
     description: Replay the recorded missing-tool and masked-zero shapes through the existing parity and provisioning handlers, including a real POSIX shell, overlay installer re-probes and working-version controls. Does not assert the unrelated controller timer criteria or live host installation.
     source: manual
@@ -678,6 +679,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
+        cwd: .
   - id: dod-omn19998-brief-frozen-destinations
     description: Replays the recorded source and test destination gap with data-only controls through the existing dispatch node. Original controller rules, locks and host timer criteria remain unproven by this slice.
     source: manual
@@ -693,6 +695,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
