@@ -410,7 +410,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # by a bus command, so it is experimental with no handler_routing.
     # node_host_installer_net_units is called in process by the host installer
     # and declares no handler_routing, so it is experimental: 35 -> 37.
-    assert summary["skipped"] == 37
+    # node_operator_capture_effect now routes process_capture_inbox to a handler,
+    # so it is routable and leaves the experimental bucket: 37 -> 36.
+    assert summary["skipped"] == 36
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
