@@ -118,7 +118,10 @@ def test_error_a_read_dated_in_the_future_is_not_working() -> None:
 
 
 def floor_input(
-    *, lanes: tuple[ModelFloorLane, ...] = (), reds: int = 3
+    *,
+    lanes: tuple[ModelFloorLane, ...] = (),
+    reds: int = 3,
+    go_given_through: int | None = 0,
 ) -> ModelFloorSimpleInput:
     overlay = ModelFloorSimpleOverlay.model_validate(
         overlay_text("node_floor_simple_compute")
@@ -139,6 +142,7 @@ def floor_input(
         lanes=lanes,
         lab=None,
         receipts=None,
+        go_given_through=go_given_through,
     )
 
 

@@ -2768,6 +2768,16 @@ repos:
         files: ^(src/omnimarket/nodes/node_code_edit_scope_compute/|tests/nodes/test_code_edit_scope_node\.py$)
         stages: [pre-commit]
 
+  - repo: local
+    hooks:
+      - id: lane-census-alias-parity
+        name: Lane census alias parity
+        entry: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_lane_census_alias_parity_compute/|tests/nodes/node_lane_census_alias_parity_compute/)
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false
