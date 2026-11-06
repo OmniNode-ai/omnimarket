@@ -1795,7 +1795,10 @@ def test_canary_is_published_after_the_last_file_of_the_page_is_served(
     tmp_path: Path,
 ) -> None:
     ssh = LocalSsh()
-    HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    result = HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert [(s.name, s.status) for s in result.after_publish] == [
+        ("floor_canary", "ok")
+    ]
     canary = _canary_calls(ssh)
     assert len(canary) == 1
     served = [

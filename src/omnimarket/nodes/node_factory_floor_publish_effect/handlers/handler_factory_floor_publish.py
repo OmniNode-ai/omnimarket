@@ -349,7 +349,6 @@ class HandlerFactoryFloorPublish:
                     f"the page was served but the required step {after_step.name} failed "
                     f"({after_result.detail}): {after_result.diagnostic}"
                 )
-        results.extend(after)
 
         digest = hashlib.sha256(data).hexdigest()
         if request.state_dir:
@@ -366,6 +365,7 @@ class HandlerFactoryFloorPublish:
             data_sha256=digest,
             serve_url=overlay.serve_url,
             steps=tuple(results),
+            after_publish=tuple(after),
             process_health_published=health is not None,
             delegation_published=delegation is not None,
             history_snapshot=snapshot,

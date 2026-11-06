@@ -386,6 +386,8 @@ class ModelFactoryFloorPublishResult(BaseModel):
     data_sha256: str
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
+    # The steps that ran after the page was served (the canary status), in order.
+    after_publish: tuple[ModelPublishStepResult, ...] = ()
     process_health_published: bool
     delegation_published: bool = False
     history_snapshot: str = ""
