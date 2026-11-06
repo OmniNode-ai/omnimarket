@@ -22,8 +22,9 @@ input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileCommand
 output_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRunResult
 handler:
   # OMN-19399: invoked by __main__.py on a host timer, which supplies the
-  # effect boundaries. This handler is not a runtime routing target: its host
-  # dependencies are supplied by the CLI. Run with:
+  # effect boundaries. handler_routing lists it as the reconcile operation so the
+  # contract shows how it is reached; a runtime container never dispatches it,
+  # because its host dependencies are supplied by the CLI. Run with:
   # python -m omnimarket.nodes.node_worktree_reconcile_effect --input <command.json>
   module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile
   class: HandlerWorktreeReconcile
@@ -59,6 +60,12 @@ schedule:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+  - operation: reconcile
+    handler:
+      module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile
+      name: HandlerWorktreeReconcile
+    input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileCommand
+    output_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRunResult
   - operation: schedule
     handler:
       module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule
