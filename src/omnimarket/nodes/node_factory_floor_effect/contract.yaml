@@ -103,6 +103,8 @@ runtime:
     # scripts/runner_fleet_event.py); node_projection_runner_fleet saves the newest observation to this path (its
     # state_file), and a bay draws its CI runners as unread until it has.
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+    # The host-drift fleet projection (node_host_drift_fleet's persisted fold): each host's newest heartbeat and open items.
+    host_drift_relpath: .onex_state/host-drift/fleet.json
   # Limits status mirrors under the registry home; absent or invalid files remain unread.
   limit_sources:
     api_meter_relpath: .claude_scratch/limits/api-credit-meter.json

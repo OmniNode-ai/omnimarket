@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -146,6 +146,7 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
             serve_url="u",
@@ -158,6 +159,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
             serve_url="u",
@@ -717,7 +719,7 @@ FLOOR_HARNESS = textwrap.dedent(
     """
 )
 
-FLOOR_RECORD = {
+FLOOR_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -878,7 +880,7 @@ def machine_cells(**cells: object) -> dict[str, object]:
     return {**base, **cells}
 
 
-BAYS_RECORD = {
+BAYS_RECORD: dict[str, Any] = {
     **FLOOR_RECORD,
     "floor": {
         **FLOOR_RECORD["floor"],
@@ -1157,7 +1159,7 @@ SHELL_HARNESS = textwrap.dedent(
 )
 
 SHELL_NOW = "2099-01-01T00:10:00Z"
-SHELL_RECORD = {
+SHELL_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -1252,7 +1254,7 @@ SHELL_MANIFEST = {
     ],
 }  # fmt: skip
 
-SHELL_FILES = {
+SHELL_FILES: dict[str, object] = {
     "factory-floor.json": SHELL_RECORD,
     "publish-status.json": SHELL_STATUS,
     "process-health.json": SHELL_HEALTH,
@@ -1294,17 +1296,18 @@ def _shell_out(result: dict[str, object]) -> dict[str, str]:
     return cast("dict[str, str]", result["out"])
 
 
-def test_page_tabs_the_site_is_one_page_with_four_tabs_and_the_dashboard_first() -> (
+def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first() -> (
     None
 ):
     labels = re.findall(r'\{id: "(\w+)", label: "([^"]+)"', SHELL)
     assert labels == [
         ("dashboard", "Dashboard"),
         ("floor", "Factory floor"),
+        ("machines", "Machines"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
     ]
-    for pane in ("dashboard", "floor", "process", "map"):
+    for pane in ("dashboard", "floor", "machines", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
     assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL
