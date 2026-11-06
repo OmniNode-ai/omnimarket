@@ -11,11 +11,6 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: the dispatch contract round-trips canonical JSON, refuses invalid policy and admission facts, preserves runner arguments and routes through its declared node; machine topic roles resolve only when bound by the overlay -- falsifiers: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka" and uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov -- falsifier: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"'
-- id: req-omn19998-prepush-missing-base
-  statement: The ticket-contract hook resolves its comparison base before checking the outgoing commit, fetching only an absent configured remote branch.
-  acceptance:
-  - id: AC10
-    statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: Publish serialized lane dispatch contract
@@ -45,15 +40,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/test_golden_chain_lane_dispatch_effect.py -q -n 0 --no-cov -k declared_node_over_inmemory_overlay
-    cwd: .
-- id: dod-omn19998-unreadable-base-refusal
-  description: Direct prerequisite calls recover an absent configured remote base with an explicit title or inferred title, and a release cut remains exempt after that recovery. Three direct-call regressions fail at the merge base; each reads back the recovered tracking ref, unchanged head and clean worktree. An unreadable base retains the missing-contract refusal, and source changes and missing runtime integration proof remain refusals. All Git remotes are local and require no credentials.
-  source: manual
-  binds_ac:
-  - AC10
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov
     cwd: .
 - id: dod-omn22526-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

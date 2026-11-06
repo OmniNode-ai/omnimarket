@@ -38,7 +38,7 @@ def _resolve_base(base: str) -> str:
     A single-branch worker clone need not have origin/dev, even when its objects
     are present. An explicit destination refspec repairs that clone regardless
     of its configured fetch refspec. Local refs and object ids are never guessed
-    into remote branches. Callers retain their fail-closed Git error handling.
+    into remote branches. Fetch errors propagate to the failed typed verdict.
     """
     try:
         return _git("rev-parse", "--verify", f"{base}^{{commit}}")
@@ -74,7 +74,6 @@ def _is_release_cut(sha: str, base: str) -> bool:
         merge_base = _git("merge-base", base_sha, sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
     except (OSError, subprocess.SubprocessError):
-        # An unreadable base cannot establish the release-cut exemption.
         return False
     paths = {path for path in listing.split("\0") if path}
     return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
@@ -178,7 +177,6 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
-            base = _resolve_base(base)
             changed = _changed_paths(sha, base)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
@@ -204,6 +202,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
+            # Resolve deployment refs at the effect boundary. The check helper
+            # retains its conservative refusal when a comparison is unreadable.
             base = _resolve_base(request.base)
             failures = check(sha, base, request.title)
             return ModelTicketContractPrerequisiteResult(
