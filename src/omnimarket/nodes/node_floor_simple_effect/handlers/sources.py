@@ -568,25 +568,39 @@ def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSource
     )
 
 
-def read_overlay_store(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def read_overlay_store(
+    path: Path, overlay: ModelLabStateOverlay, now: datetime
+) -> ModelLabSourceRead:
     """One subject per host and overlay: fresh with an answering store is ok; anything else says why.
 
-    A stale table is still read by placement, so this row is what makes it visible."""
+    A stale table is still read by placement, so this row is what makes it visible. A reading older than
+    the source's bound means that host's reader stopped, whatever the reading said when it was written."""
     source = _by_kind(overlay, "overlay_store")
-    try:
-        readings = json.loads(path.read_bytes())["readings"]
-        subjects = tuple(
-            ModelLabSubject(
-                name=key,
-                ok=reading["state"] == "fresh" and not reading.get("store_error"),
-                value=reading.get("age_s"),
-                note=str(
+
+    def judged(key: str, reading: Mapping[str, Any]) -> ModelLabSubject:
+        age_s = (now - parse_time(reading["read_at"])).total_seconds()
+        stopped = age_s > source.max_age_s
+        return ModelLabSubject(
+            name=key,
+            ok=not stopped
+            and reading["state"] == "fresh"
+            and not reading.get("store_error"),
+            value=reading.get("age_s"),
+            note=(
+                f"no reading for {age_s:.0f}s, over the {source.max_age_s}s bound"
+                if stopped
+                else str(
                     reading.get("store_error")
                     or reading.get("detail")
                     or reading["state"]
-                )[:110],
-            )
-            for key, reading in sorted(readings.items())
+                )[:110]
+            ),
+        )
+
+    try:
+        readings = json.loads(path.read_bytes())["readings"]
+        subjects = tuple(
+            judged(key, reading) for key, reading in sorted(readings.items())
         )
         read_at = max(parse_time(r["read_at"]) for r in readings.values())
     except OSError as exc:
