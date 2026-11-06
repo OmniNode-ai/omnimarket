@@ -15,7 +15,6 @@ import asyncio
 import contextlib
 import inspect
 import os
-import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -23,6 +22,7 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
+from omnimarket.models.model_gateway_node_skew import GatewayReadError, failure_error
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
@@ -45,56 +45,6 @@ DEFAULT_GATEWAY_TIMEOUT_S: Final[float] = 45.0
 _RESULT: Final[TypeAdapter[GithubGatewayResult]] = TypeAdapter(GithubGatewayResult)
 
 GatewayRoute = Callable[[ModelGithubGatewayRequest], GithubGatewayResult]
-
-
-# A node's refusal of a request field reads as "the node is older than this client":
-# a client that adds a field before the deployed node carries it gets every request
-# refused by the node's own validation, with pydantic's ``extra_forbidden`` text that
-# names the field and nothing about the cause.
-_VALIDATION_CLASS: Final[str] = "ValidationError"
-# pydantic prints "<field>\n  Extra inputs are not permitted [type=extra_forbidden".
-_REFUSED_FIELD: Final[re.Pattern[str]] = re.compile(
-    r"^(?P<field>[A-Za-z_][\w.]*)\n[ \t]+Extra inputs are not permitted "
-    r"\[type=extra_forbidden",
-    re.MULTILINE,
-)
-
-
-def refused_fields(payload: dict[str, JsonValue]) -> tuple[str, ...]:
-    """The request fields the node's validation refused as unknown, in order.
-
-    Empty unless the failure is a validation error whose every reported error is
-    an ``extra_forbidden`` one: a mixed failure has another cause and is not skew.
-    """
-    if payload.get("failure_class") != _VALIDATION_CLASS:
-        return ()
-    reason = payload.get("failure_reason")
-    if not isinstance(reason, str):
-        return ()
-    count = re.match(r"(?P<n>\d+) validation errors? for ", reason)
-    fields = tuple(dict.fromkeys(m["field"] for m in _REFUSED_FIELD.finditer(reason)))
-    if count is None or int(count["n"]) != len(_REFUSED_FIELD.findall(reason)):
-        return ()
-    return fields
-
-
-def plain_sentence(what: str, fields: tuple[str, ...]) -> str:
-    """One sentence for the operator: cause, the field names and the fix."""
-    names = ", ".join(fields)
-    return (
-        f"{what}: the deployed node does not know the request field(s) {names} "
-        "that this client sends, so the node is older than this client. "
-        "Redeploy the node at a dev-merge tag that carries the field; "
-        "retrying cannot change the answer."
-    )
-
-
-class GatewayReadError(RuntimeError):
-    """The gateway gave no typed result for a request."""
-
-
-class GatewayNodeOlderError(GatewayReadError):
-    """The deployed gateway refused a request field this client sends."""
 
 
 def _resolve_token_off_loop() -> str:
@@ -164,14 +114,7 @@ def read_over_bus(
         # status=failed and the reason; a gateway that predates an operation
         # refuses the request that way.
         if terminal.failed or terminal.payload.get("status") == "failed":
-            if skew := refused_fields(terminal.payload):
-                raise GatewayNodeOlderError(
-                    plain_sentence(f"gateway {request.operation.value}", skew)
-                )
-            reason = str(terminal.payload.get("failure_reason") or "no reason")
-            raise GatewayReadError(
-                f"gateway {request.operation.value} failed: {reason[:300]}"
-            )
+            raise failure_error(request.operation.value, terminal.payload)
         return terminal.payload
 
     def run_call() -> dict[str, JsonValue]:
@@ -229,12 +172,9 @@ class HandlerGatewayReadClient:
 __all__: list[str] = [
     "DEFAULT_GATEWAY_BUS_LANE",
     "GATEWAY_BUS_LANE_ENV",
-    "GatewayNodeOlderError",
     "GatewayReadError",
     "GatewayRoute",
     "HandlerGatewayReadClient",
-    "plain_sentence",
     "read_in_process",
     "read_over_bus",
-    "refused_fields",
 ]

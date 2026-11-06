@@ -13,13 +13,16 @@ import json
 
 import pytest
 from click.testing import CliRunner
+from pydantic import JsonValue
 
-from omnimarket.handlers.scm import handler_gateway_read_client as skew
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_gateway_read_client import (
+    read_over_bus,
+)
+from omnimarket.models import model_gateway_node_skew as skew
+from omnimarket.models.model_gateway_node_skew import (
     GatewayNodeOlderError,
     GatewayReadError,
-    read_over_bus,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     EnumGithubGatewayOperation,
@@ -54,7 +57,9 @@ _MIXED = (
 )
 
 
-def _payload(reason: str, failure_class: str = "ValidationError") -> dict[str, object]:
+def _payload(
+    reason: str, failure_class: str = "ValidationError"
+) -> dict[str, JsonValue]:
     return {
         "status": "failed",
         "failure_class": failure_class,
@@ -75,7 +80,7 @@ def _refuse_with(bus: FakeBus, monkeypatch: pytest.MonkeyPatch, reason: str) -> 
 
 
 def test_the_refused_field_is_read_from_the_real_refusal_text() -> None:
-    assert skew.refused_fields(_payload(_EXTRA)) == ("cache_only",)  # type: ignore[arg-type]
+    assert skew.refused_fields(_payload(_EXTRA)) == ("cache_only",)
 
 
 @pytest.mark.parametrize(
@@ -88,9 +93,9 @@ def test_the_refused_field_is_read_from_the_real_refusal_text() -> None:
     ],
 )
 def test_any_other_failure_is_not_reported_as_node_skew(
-    payload: dict[str, object],
+    payload: dict[str, JsonValue],
 ) -> None:
-    assert skew.refused_fields(payload) == ()  # type: ignore[arg-type]
+    assert skew.refused_fields(payload) == ()
 
 
 def test_a_read_over_the_bus_says_the_node_is_older_than_the_client(
