@@ -16,7 +16,7 @@ class HandlerRemoteLaneSharedVenv:
     def handle(
         self, request: ModelRemoteLaneSharedVenvRequest
     ) -> ModelRemoteLaneSharedVenvResult:
-        from ..plugin_shared_venv import SharedVenvError, ensure_tree_venv
+        from .plugin_shared_venv import SharedVenvError, ensure_tree_venv
 
         try:
             done = ensure_tree_venv(
@@ -38,7 +38,7 @@ class HandlerRemoteLaneSharedVenvPrune:
     def handle(
         self, request: ModelRemoteLaneSharedVenvPruneRequest
     ) -> ModelRemoteLaneSharedVenvPruneResult:
-        from ..plugin_shared_venv import prune_shared
+        from .plugin_shared_venv import prune_shared
 
         return ModelRemoteLaneSharedVenvPruneResult(
             **prune_shared(

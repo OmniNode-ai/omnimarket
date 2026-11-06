@@ -24,17 +24,17 @@ from omnimarket.nodes.node_remote_lane_effect.handlers import (
     HandlerRemoteLaneSharedVenv,
     HandlerRemoteLaneSharedVenvPrune,
 )
-from omnimarket.nodes.node_remote_lane_effect.models import (
-    ModelRemoteLaneSharedVenvPruneRequest,
-    ModelRemoteLaneSharedVenvRequest,
-)
-from omnimarket.nodes.node_remote_lane_effect.plugin_shared_venv import (
+from omnimarket.nodes.node_remote_lane_effect.handlers.plugin_shared_venv import (
     MARKER,
     READY,
     count_files,
     lock_key,
     shared_venv_prune_script,
     shared_venv_script,
+)
+from omnimarket.nodes.node_remote_lane_effect.models import (
+    ModelRemoteLaneSharedVenvPruneRequest,
+    ModelRemoteLaneSharedVenvRequest,
 )
 
 FAKE_UV = """#!{python}
