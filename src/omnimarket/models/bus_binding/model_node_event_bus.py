@@ -36,4 +36,17 @@ class ModelNodeEventBus(BaseModel):
         return self
 
 
-__all__ = ["ModelNodeEventBus"]
+class ModelNodeEventBusOverlay(BaseModel):
+    """A node overlay whose whole document is the node's ``event_bus``.
+
+    Most nodes reached with ``onex run-node`` or a bus client declare nothing else, so this is the
+    model the overlay home validates those documents through. An overlay with further keys has its
+    own model: the key set is closed here so that a stray key refuses rather than passing unread.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event_bus: ModelNodeEventBus
+
+
+__all__ = ["ModelNodeEventBus", "ModelNodeEventBusOverlay"]

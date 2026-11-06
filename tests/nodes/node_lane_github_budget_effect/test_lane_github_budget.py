@@ -183,7 +183,11 @@ def test_shared_cache_serializes_lanes_and_failure_is_not_cached(policy):
             call(config, env, "onex", "scm", "job-log", "o/r", "--job-id", "8").code
             == 3
         )
-    assert int(Path(config["spent"]).read_text()) == 2
+    assert int(Path(config["spent"]).read_text()) == 0
+    actions = [
+        row.split("\t")[-1] for row in Path(config["log"]).read_text().splitlines()
+    ]
+    assert actions[-2:] == ["pre-dispatch", "pre-dispatch"]
 
 
 def test_budget_reservation_is_atomic_and_corrupt_state_fails_closed(policy):
