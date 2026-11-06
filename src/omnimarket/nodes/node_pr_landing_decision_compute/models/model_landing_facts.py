@@ -47,6 +47,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingResultKind,
     EnumLandingSuspension,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
+    ModelLandingExhaustionOwner,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -56,6 +59,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     SUBJECT_PATTERN,
     ModelLandingControllerState,
     ModelLandingMemberRef,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.overlay import (
+    load_exhaustion_owner,
 )
 
 FIXER_HOLD_ALL = "all"
@@ -409,6 +415,11 @@ class ModelLandingPolicy(BaseModel):
     """The fixed numbers the rules use. Declared, never inferred."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    exhaustion_owner: ModelLandingExhaustionOwner = Field(
+        default_factory=load_exhaustion_owner,
+        description="Accountable human or lane after exhaustion; grants no extra attempt.",
+    )
 
     max_workers: int = Field(default=6, ge=0, description="Concurrent workers (D5).")
     load_pause_threshold: float = Field(

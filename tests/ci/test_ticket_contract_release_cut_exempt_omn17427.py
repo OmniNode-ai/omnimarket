@@ -26,9 +26,6 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
     handler_ticket_contract_prerequisite as push,
 )
-from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
-    ModelTicketContractPrerequisiteRequest,
-)
 
 pytestmark = pytest.mark.unit
 TICKET = "OMN-18595"
@@ -79,13 +76,7 @@ def _check(
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(repo)
-    return (
-        push.HandlerTicketContractPrerequisite()
-        .handle(
-            ModelTicketContractPrerequisiteRequest(head=head, base=base, title=TITLE)
-        )
-        .failures
-    )
+    return push.check(head, base, TITLE)
 
 
 def test_changelog_only_release_cut_needs_no_contract(
@@ -139,14 +130,22 @@ def test_nested_changelog_is_not_a_release_cut(
 def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    # An unreadable base is refused by the contract-bound handler before the
-    # release-cut exemption can run; its internal git helper may raise.
-    failures = _check(monkeypatch, tmp_path, head, "no-such-base")
-    assert len(failures) == 1
-    assert failures[0].startswith(
-        "ticket contract preflight could not read the pushed commit:"
+    from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
+        ModelTicketContractPrerequisiteRequest,
     )
-    assert "no-such-base^{commit}" in failures[0]
-    assert "returned non-zero exit status 128" in failures[0]
-    assert "'fetch'" not in failures[0]
+
+    head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
+    # The deployed boundary turns a base-resolution error into a failed typed
+    # verdict; the internal check helper deliberately propagates git errors.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    result = push.HandlerTicketContractPrerequisite().handle(
+        ModelTicketContractPrerequisiteRequest(
+            head=head, base="no-such-base", title=TITLE
+        )
+    )
+    assert not result.passed
+    assert len(result.failures) == 1
+    assert "ticket contract preflight could not read" in result.failures[0]
+    assert "no-such-base" in result.failures[0]

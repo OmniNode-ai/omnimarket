@@ -2750,6 +2750,16 @@ repos:
         files: ^(src/omnimarket/nodes/node_code_edit_scope_compute/|tests/nodes/test_code_edit_scope_node\.py$)
         stages: [pre-commit]
 
+  - repo: local
+    hooks:
+      - id: dispatch-standing-rules
+        name: Standing dispatch rules and runtime wiring
+        entry: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(nodes/node_dispatch_standing_rules_|models/standing_rules/|protocols/protocol_standing_rules_io\.py$|handlers/container/container_overlay_dependencies\.py$)|tests/nodes/test_dispatch_standing_rules\.py$)
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false
