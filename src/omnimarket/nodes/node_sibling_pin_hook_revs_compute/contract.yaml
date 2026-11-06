@@ -15,7 +15,9 @@ description: >
   its source pin takes on a sibling-pin train night. The newest green tag newer than the pin goes to the hook blocks
   whose stamp is at or above the pin's; the newest green tag strictly older than the lowest hook stamp goes to the pin.
   A hook strictly newer than the pin is the only state that passes both the pin-floor tests and first-party-ref's
-  one-home-per-literal rule. Hook blocks older than the pin stay. The train reads the tags and writes the files.
+  one-home-per-literal rule. Hook blocks older than the pin stay. The train reads the tags and writes the pin.
+  The apply operation (OMN-22753) reads the hook blocks of the pin's repository out of a pre-commit config text,
+  plans, and returns the text with the planned blocks moved; the command line (python -m) reads and writes the file.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -25,6 +27,12 @@ handler_routing:
       module: omnimarket.nodes.node_sibling_pin_hook_revs_compute.handlers.handler_sibling_pin_hook_revs
     input_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsRequest
     output_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsPlan
+  - operation: apply_sibling_pin_hook_revs
+    handler:
+      name: HandlerSiblingPinHookRevsApply
+      module: omnimarket.nodes.node_sibling_pin_hook_revs_compute.handlers.handler_sibling_pin_hook_revs_apply
+    input_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsApplyRequest
+    output_model: omnimarket.nodes.node_sibling_pin_hook_revs_compute.models.model_sibling_pin_hook_revs.ModelSiblingPinHookRevsApplyResult
 descriptor:
   node_archetype: compute
   purity: pure
