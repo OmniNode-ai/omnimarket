@@ -8,6 +8,12 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-omn22478-host-row-ledger-path
+    statement: The lab host row model takes the ledger_path column the lab host table carries, under the launcher's rule.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: a row declaring ledger_path loads with it and a relative one refuses -- falsifier: the table is refused whole at the base'
 evidence_requirements:
   - kind: tests
     description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
@@ -39,6 +45,7 @@ dod_evidence:
     description: A host row that declares ledger_path loads with it, and a relative one refuses as the launcher refuses it.
     source: manual
     execution_scope: hosted_and_local
+    binds_ac: [AC11]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov
