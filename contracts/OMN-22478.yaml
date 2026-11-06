@@ -1,0 +1,38 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22478
+title: "Automated code review holds no merge in omnimarket"
+summary: >-
+  Operator RULING 2026-11-05T20:27:56Z takes the automated code review out of what holds a merge. CI Summary stops
+  asserting Hostile Review Gate and Hostile Reviewer (adversarial gate), the manifest stops calling them required, the queue stops mirroring them, and the reviewer starts no run on a pull request. The
+  workflow, its scripts and their tests stay. The static PR Arch Review Gate is unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
+    command: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+  - kind: tests
+    description: The composed-runtime-boot job writes its own broker budget into the env file and reads the broker's start arguments back before it boots the stack.
+    command: uv run --frozen pytest tests/unit/docker/test_composed_boot_broker_budget_omn22478.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22478-market-review-holds-no-merge
+    description: A head with no reviewer row passes CI Summary's external layers, and no pull request starts the reviewer.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-composed-boot-broker-budget
+    description: The composed-runtime-boot job's own broker starts on a fixed budget of at least 4G written into the env file by a sizing step that fails when the template drops the dial, and a read-back step fails when the broker started on any other budget. This is the CI harness's capacity, not a loosened check; every health step of the job is unchanged.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/docker/test_composed_boot_broker_budget_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
