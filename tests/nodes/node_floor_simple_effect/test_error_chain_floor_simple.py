@@ -155,6 +155,8 @@ def test_error_a_builder_that_ignores_the_lanes_fails_the_colour_rule_on_a_plant
                         "needs_operator": False,
                         "lanes": (),
                         "tickets": c.tickets,
+                        "owners": c.owners,
+                        "prs": c.prs,
                     }
                 )
                 for c in cands
