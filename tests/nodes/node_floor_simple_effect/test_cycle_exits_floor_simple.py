@@ -31,12 +31,14 @@ from omnimarket.models.floor_17a import (
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state import (
     HandlerLabState,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers import (
+    handler_floor_simple_tick as tick,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
     InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     EMIT_CYCLE,
-    CycleInterrupted,
     HandlerFloorSimpleTick,
     load_runtime,
 )
@@ -65,7 +67,7 @@ def open_chains(sink: InMemoryEmissionSink, home: Path) -> list[str]:
     )
     late = NOW + timedelta(hours=2)
     receipts = HandlerFloorSimpleTick._receipts(sink, floor_ov, late, load_runtime())
-    return [f.node for f in receipts.findings if f.code == "start_without_terminal"]
+    return [f.subject for f in receipts.findings if f.code == "start_without_terminal"]
 
 
 def refused_lab_overlay_env(home: Path, tmp_path: Path) -> dict[str, str]:
@@ -131,7 +133,7 @@ def test_error_a_termination_signal_closes_the_cycle_and_the_step_it_stopped(
 
     monkeypatch.setattr(HandlerLabState, "handle", stopped_in_the_step)
     before = signal.getsignal(signal.SIGTERM)
-    with pytest.raises(CycleInterrupted) as stopped:
+    with pytest.raises(tick.CycleInterrupted) as stopped:
         handler(sink).run(
             ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
         )
@@ -164,7 +166,7 @@ def test_error_a_cycle_past_its_deadline_ends_itself_with_a_typed_failure(
 
     monkeypatch.setattr(HandlerLabState, "handle", hung)
     began = time.monotonic()
-    with pytest.raises(CycleInterrupted) as overdue:
+    with pytest.raises(tick.CycleInterrupted) as overdue:
         handler(sink).run(
             ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
         )
