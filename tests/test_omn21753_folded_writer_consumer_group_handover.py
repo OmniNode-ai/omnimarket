@@ -29,6 +29,8 @@ NODES = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "nodes"
 
 # Contract directory -> the retired container's node segment.
 FOLDED_WRITERS = {
+    # OMN-22664 (one-runtime plan T10): the delegation writer folds next.
+    "node_projection_delegation": "delegation-writer",
     "node_projection_live_events": "live-events-writer",
     "node_projection_registration": "registration-writer",
     "node_projection_savings": "savings-writer",
