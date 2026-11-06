@@ -66,11 +66,13 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
     load_record,
+    overlay_store_events,
     parse_time,
     read_broker_lag,
     read_deploy_lag,
     read_disk,
     read_hosts,
+    read_overlay_store,
     read_queue_age,
     read_runner_groups,
     read_watcher,
@@ -115,6 +117,7 @@ class ModelSourcePaths(BaseModel):
     watcher_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
+    overlay_store_relpath: str
     readings_relpath: str
     harness_result_relpath: str
     harness_piece: int
@@ -499,6 +502,15 @@ class HandlerFloorSimpleTick:
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(home / rt.sources.lab_alarm_runs_relpath, lab_ov),
             ]
+            if any(s.kind == "overlay_store" for s in lab_ov.sources):
+                overlay_store = read_overlay_store(
+                    home / rt.sources.overlay_store_relpath, lab_ov, now
+                )
+                reads.append(overlay_store)
+                for event in overlay_store_events(
+                    overlay_store, piece, self._clock(), uuid4().hex
+                ):
+                    sink.emit(event)
             if request.drill_offline is not None:
                 reads = [self._planted_offline(r, request.drill_offline) for r in reads]
                 if all(r.id != request.drill_offline for r in reads):
