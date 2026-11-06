@@ -188,6 +188,7 @@ def _reading_row(
         probed_at=probed,
         published_at=published,
         max_age_s=max_age,
+        reason=row.cells.get(rule.reason_cell, "") if rule.reason_cell else "",
     )
 
 

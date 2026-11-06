@@ -119,6 +119,7 @@ ledger_readings:
   probed_at_cell: probed_at
   published_at_cell: published_at
   max_age_cell: max_age
+  reason_cell: reason
   lookback_days: 3
 
 freshness_max_age_s: 900
