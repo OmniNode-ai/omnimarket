@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_agent_review_gate_accept_effect
 version: "1.0.0"
-description: Lets a verified agent review receipt replace lost CI voters on the Hostile Review job
+description: Reads signed exact-head lab verdicts for hosted CI and accepts receipts for lost CI voters
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:

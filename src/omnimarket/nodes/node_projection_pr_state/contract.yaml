@@ -93,6 +93,13 @@ projection_api:
   key_columns:
     - repo
     - pr_number
+  # The ONEX status page reads this exposure through its contract-declared
+  # slot; node_pr_state_read_effect reads it through GET /projection/{topic}.
+  backend_readers:
+    - id: onex_status_page
+      kind: projection_status_page
+      route: /
+      projection_slot: pr_state
 db_io:
   db_tables:
   - name: pr_state

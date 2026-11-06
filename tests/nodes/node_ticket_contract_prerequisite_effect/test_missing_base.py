@@ -18,7 +18,7 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 pytestmark = pytest.mark.unit
-TICKET = "OMN-19998"
+TICKET = "OMN-20864"
 ROOT = Path(__file__).resolve().parents[3]
 MODULE = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
 
@@ -185,9 +185,13 @@ def test_explicit_remote_base_uses_its_exact_tracking_ref(
     )
 
 
-def test_missing_local_base_is_not_guessed_into_a_remote(tmp_path: Path) -> None:
+@pytest.mark.parametrize("explicit_title", [False, True])
+def test_missing_local_base_is_not_guessed_into_a_remote(
+    tmp_path: Path, explicit_title: bool
+) -> None:
     worker = _worker(tmp_path)
-    result = _hook(worker, "--base", "dev")
+    title = ("--title", f"fix({TICKET}): change") if explicit_title else ()
+    result = _hook(worker, "--base", "dev", *title)
     assert result.returncode == 1
     assert "'fetch'" not in result.stderr
     assert _git(worker, "branch", "-r") == "origin/worker"
