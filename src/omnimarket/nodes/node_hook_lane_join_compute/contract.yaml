@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_lane_join_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Join a lane's name to the agent that ran it, from the hook-event table's agent
+  spans, without I/O. A Workflow lane's agent carries the dispatch description,
+  which is the lane's name without its trailing HHMM; the Bash call that holds a
+  ledger stamp belongs to the forked ledger-skill executor beneath the lane, so a
+  stamp join names the executor (17 of 26 stamp-joined agents on 2026-11-05). A
+  lane is joined only when exactly one agent fits its name and start time and
+  that agent fits no other lane. The same request counts the events per reporting
+  host, so a reader can say which hosts captured and which sent nothing.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: join_hook_lanes
+    handler:
+      name: HandlerHookLaneJoin
+      module: omnimarket.nodes.node_hook_lane_join_compute.handlers.handler_hook_lane_join
+    input_model: omnimarket.nodes.node_hook_lane_join_compute.models.model_hook_lane_join.ModelHookLaneJoinRequest
+    output_model: omnimarket.nodes.node_hook_lane_join_compute.models.model_hook_lane_join.ModelHookLaneJoinResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.hook-lane-join-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.hook-lane-join-decided.v1
+terminal_event: onex.evt.omnimarket.hook-lane-join-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-lane-join-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.hook-lane-join-decided.v1
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
+lifecycle: experimental

@@ -33,7 +33,7 @@ def test_gateway_failure_retries_and_writes_the_successful_response(
     assert target.read_bytes() == b"release bytes"
     assert failed_body.closed
     assert opening.call_count == 2
-    assert sleeping.call_args_list == [((1.0,), {})]
+    assert sleeping.call_args_list == [((0.5,), {})]
     request = opening.call_args.args[0]
     assert request.full_url == _URL
     assert request.method == "GET"
@@ -59,7 +59,7 @@ def test_gateway_retries_stop_and_preserve_an_existing_destination(
     assert caught.value.status_code == 504
     assert caught.value.__cause__ is failures[-1]
     assert opening.call_count == 3
-    assert sleeping.call_args_list == [((1.0,), {}), ((2.0,), {})]
+    assert sleeping.call_args_list == [((0.5,), {}), ((1.0,), {})]
     assert target.read_bytes() == b"existing"
 
 

@@ -14,7 +14,11 @@ description: 'A remote lane that has not been placed never reads ''placing'' for
   receipt a dead runner left placing and puts the lane back in the lane queue while the queue''s term lasts.
   Codex zero-turn HTTP 429 observations write an engine-specific host marker with the provider reset
   or a one-hour fallback, disable same-host retry, and count refused runs per host in tick facts.
-  The placement recovery operations (placement_wait, until_placed, end_unplaced, without_queued_no_host,
+  placement_wait_result returns the placement read as one typed outcome (placed, placing, refused or crashed)
+  and prints it as a PLACEMENT_RESULT JSON line, so still placing is not read as an error.
+  HandlerPlacementWait.handle(ModelPlacementWaitRequest) returns ModelPlacementWaitResult; node.py calls it
+  in process with the supplied runtime ports, so the contract declares no handler_routing.
+  The placement recovery operations (placement_wait, placement_wait_result, until_placed, end_unplaced, without_queued_no_host,
   requeue_lost_placements, placement_refusals, execute_observed, codex_placement_facts, codex_tick_facts) are called in process through node.py.'
 input_model:
   name: ModelClaudeAccountLimitRequest
