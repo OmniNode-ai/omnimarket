@@ -32,6 +32,9 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'h=$(mktemp -d) && printf \"[tag]\\n\\tgpgsign = true\\n[commit]\\n\\tgpgsign = true\\n\" > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
+        cwd: "."
   - id: "dod-omn22496-signing-off"
     description: "Under a HOME whose .gitconfig sets no signing key, the same file passes 7 of 7, so behaviour without signing is unchanged."
     source: "manual"
@@ -39,4 +42,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'h=$(mktemp -d) && : > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
         cwd: "."
