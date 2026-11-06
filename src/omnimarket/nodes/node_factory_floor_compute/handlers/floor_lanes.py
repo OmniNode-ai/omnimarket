@@ -467,21 +467,31 @@ def build_machines(
 
 
 def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, ...]:
-    """One bay per drawn machine: the lanes placed on it against its cap, from the same pool read the machine row is.
+    """One bay per drawn machine, counted the way the placement counts it: what is running there, what is free there.
 
-    A machine the pool did not read (unread, in repair or out of selection) or read too long ago has no free bay: its
-    count is the lanes the ledger places there, and it is marked stale rather than shown as room.
+    Running is the larger of the lanes the ledger places on the machine and the units the placement markers hold on it,
+    because a unit of lab work takes a slot of the same cap as a lane does. Free is the machine's own free figure, the
+    pool reading's lane slots, which is zero for a host the reading refuses, so a host the bars refuse is never drawn
+    as room. The bay's slots are those two added together: a refused host adds only what runs on it. A machine the pool
+    did not read (unread, in repair or out of selection) or read too long ago has no free bay: its count is the lanes
+    the ledger places there, its slots are its cap, and it is marked stale rather than shown as room.
     """
     bays: list[ModelFloorBay] = []
     for machine in sorted(machines, key=lambda m: m.host):
-        slots = machine.cap or 0
         stale = machine.state != "read" or machine.stale
+        running = max(machine.lanes_placed, machine.units_placed or 0)
+        if stale:
+            slots, free = machine.cap or 0, 0
+            running = machine.lanes_placed
+        else:
+            free = machine.free_slots
+            slots = running + free
         bays.append(
             ModelFloorBay(
                 host=machine.host,
                 slots=slots,
-                running=machine.lanes_placed,
-                free=0 if stale else max(0, slots - machine.lanes_placed),
+                running=running,
+                free=free,
                 stale=stale,
             )
         )
