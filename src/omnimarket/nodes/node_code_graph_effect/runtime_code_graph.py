@@ -122,6 +122,8 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         f"controls={f'{sample.controls_reached}/{sample.controls_total}' if sample else 'none'} "
         f"ledger={result.ledger} key={result.row_key} reason={','.join(result.reasons[:8])}\n"
     )
+    if result.failure:
+        sys.stderr.write(f"CODE-GRAPH-FAILED {result.failure}\n")
     return 1 if result.status == "failed" else 0
 
 

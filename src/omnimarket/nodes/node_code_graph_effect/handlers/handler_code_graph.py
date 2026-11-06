@@ -255,7 +255,8 @@ class HandlerCodeGraph:
                     "row_key": key,
                     "ledger": why,
                     "row": row,
-                    "failure": result.failure or why,
+                    "failure": result.failure
+                    or f"{why}:{reason_token(appended.message or 'no-message')}",
                 }
             )
         return result.model_copy(

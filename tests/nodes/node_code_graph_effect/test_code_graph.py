@@ -190,6 +190,7 @@ def test_append_that_does_not_land_fails_the_run(repos: ProtocolRepoSource) -> N
     result = _handler(repos, ledger).handle(ModelCodeGraphCommand(correlation_id="a"))
     assert result.status == "failed"
     assert result.ledger == "append-failed:refused"
+    assert result.failure == "append-failed:refused:injected-append-fault"
 
 
 def test_a_sample_changed_after_freezing_refuses_the_load() -> None:
