@@ -241,3 +241,14 @@ def test_cli_exit_code_is_one_when_a_check_cannot_read(
     )
     assert code == 1
     assert ledger.append_requests == {}
+
+
+def test_an_overlay_that_names_a_file_read_route_is_refused(tmp_path: Path) -> None:
+    """The done check reads the ledger through the query node's command and never the file."""
+    body = yaml.safe_load(EXAMPLE.read_text("utf-8"))
+    assert body["read"]["route"] == "command"
+    body["read"] = {"route": "file", "path_env": "ONEX_LEDGER_PATH"}
+    refused = tmp_path / "overlay.yaml"
+    refused.write_text(yaml.safe_dump(body), encoding="utf-8")
+    with pytest.raises(ValidationError):
+        load_overlay({"ONEX_ASK_DONE_CHECK_OVERLAY": str(refused)})

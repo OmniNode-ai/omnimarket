@@ -362,6 +362,7 @@ node_architectural_invariant_loop = "omnimarket.nodes.node_architectural_invaria
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 node_architecture_graph_populate_effect = "omnimarket.nodes.node_architecture_graph_populate_effect"
 node_architecture_graph_query_effect = "omnimarket.nodes.node_architecture_graph_query_effect"
+node_ask_done_check_effect = "omnimarket.nodes.node_ask_done_check_effect"
 node_ask_state_compute = "omnimarket.nodes.node_ask_state_compute"
 node_ask_state_effect = "omnimarket.nodes.node_ask_state_effect"
 node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
