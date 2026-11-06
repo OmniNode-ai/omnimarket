@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22740
+title: The lab plugin store builds one venv per lock hash and links each omniclaude tree to it
+summary: node_remote_lane_effect gains two operations. ensure_shared_plugin_venv keys a shared venv by the SHA-256 of a plugin tree's uv.lock, builds it once under a lock with uv sync --frozen --no-install-project, never changes a ready one, and gives the tree a small .venv of its own that reaches the shared site-packages and holds the tree's own editable project install. prune_shared_plugin_venvs removes the shared venvs no tree links to. Both ship as one tested stdlib payload for the host's python3, like the run retention.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22740-shared-venv
+  statement: A plugin tree placed in the lab store creates a few dozen files for its .venv instead of about 49,000, and its interpreter imports the locked dependencies from the shared venv and the project from the tree.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a tree placed from the branch on h053 and h101 creates under 500 files in its own .venv -- falsifier: a placement from the branch counted on the host still creating more than 500 files under the tree .venv'
+  - id: AC2
+    statement: 'AC2: golden chain and error chain tests pass and the injected shared build failure leaves no ready marker and no link -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k error'
+  - id: AC3
+    statement: 'AC3: a ready shared venv is never rebuilt, and a new lock hash makes a new venv -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k "new_lock or same_lock or at_once"'
+  - id: AC4
+    statement: 'AC4: the prune removes an unlinked old shared venv and keeps a linked and a recent one -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k prune'
+evidence_requirements:
+- kind: tests
+  description: The shared venv operations, the contract's operation set and the retention neighbours.
+  command: uv run --frozen pytest tests/nodes/node_remote_lane_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22740-ac1
+  description: The golden chain, the same-lock reuse and the error chain tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov
+- id: dod-omn22740-ac3
+  description: The never-rebuilt and concurrent-placement tests pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k "new_lock or same_lock or at_once"
+- id: dod-omn22740-ac4
+  description: The prune tests pass.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k prune
