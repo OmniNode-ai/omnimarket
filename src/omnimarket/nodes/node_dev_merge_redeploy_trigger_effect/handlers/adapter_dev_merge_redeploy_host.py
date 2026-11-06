@@ -42,6 +42,7 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_de
     correlation_id_for,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_verify import (
+    OBSERVED_PHASE,
     HandlerDevMergeRedeployVerify,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_decision import (
@@ -50,6 +51,7 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     ModelDevMergeVerdict,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
+    EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployPolicy,
     ModelDevMergeRedeployReceipt,
@@ -102,10 +104,15 @@ class DevMergeRedeployHost:
         policy: ModelDevMergeRedeployPolicy,
         *,
         host_name: str,
+        deploy_bus: ProtocolLabRunBus | None = None,
         topics: ModelDevMergeRedeployTopics | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        # ``bus`` carries the merge events and the receipts. The start command and the terminal
+        # event travel on the deploy lane's bus, which is the same one unless the deployment
+        # keeps them on another broker.
         self._bus = bus
+        self._deploy_bus = deploy_bus if deploy_bus is not None else bus
         self._trigger = trigger
         self._verify = verify
         self._policy = policy
@@ -140,14 +147,17 @@ class DevMergeRedeployHost:
                 merged_group_id(),
                 "latest",
             ),
-            await _subscribe(
-                self._bus,
-                self._topics.completed,
-                self._on_completed,
-                completed_group_id(self._host),
-                "latest",
-            ),
         ]
+        if self._policy.mode is EnumDevMergeMode.PUBLISH:
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._deploy_bus,
+                    self._topics.completed,
+                    self._on_completed,
+                    completed_group_id(self._host),
+                    "latest",
+                )
+            )
 
     async def stop(self) -> None:
         for unsubscribe in self._unsubscribes:
@@ -207,6 +217,11 @@ class DevMergeRedeployHost:
             await self._receipt(event, decision, published=False)
             return
         pending = ModelDevMergePending(event=event, decision=decision)
+        if self._policy.mode is EnumDevMergeMode.OBSERVE:
+            task = asyncio.create_task(self._observe(pending))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+            return
         self._pending[cid] = pending
         try:
             envelope = ModelEventEnvelope[dict[str, object]](
@@ -214,7 +229,7 @@ class DevMergeRedeployHost:
                 event_type=event_type_for(self._topics.start_command),
                 correlation_id=cid,
             )
-            await self._bus.publish(
+            await self._deploy_bus.publish(
                 self._topics.start_command, str(cid).encode("utf-8"), _bytes(envelope)
             )
         except (OSError, RuntimeError, TimeoutError) as exc:
@@ -229,6 +244,51 @@ class DevMergeRedeployHost:
             await self._receipt(event, failed, published=False)
             return
         self._deadlines[cid] = asyncio.create_task(self._expire(cid))
+
+    async def _observe(self, pending: ModelDevMergePending) -> None:
+        """Read the lane until it carries the merge or the deadline passes; publish no command."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._policy.verify_deadline_seconds
+        last = ModelDevMergeVerdict(
+            outcome=EnumDevMergeOutcome.LANE_UNREADABLE,
+            final_phase=OBSERVED_PHASE,
+            message="no lane read finished",
+        )
+        while True:
+            try:
+                verdict = await asyncio.to_thread(self._verify.observe, pending)
+            except Exception as exc:
+                logger.exception("dev-merge-redeploy %s: observe raised", self._host)
+                verdict = ModelDevMergeVerdict(
+                    outcome=EnumDevMergeOutcome.FAILED_INTERNAL,
+                    final_phase=OBSERVED_PHASE,
+                    message=f"{type(exc).__name__}: {exc}"[-2000:],
+                )
+            if verdict.outcome in (
+                EnumDevMergeOutcome.VERIFIED,
+                EnumDevMergeOutcome.FAILED_INTERNAL,
+            ):
+                await self._receipt(
+                    pending.event, pending.decision, published=False, verdict=verdict
+                )
+                return
+            last = verdict
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(self._policy.observe_poll_seconds, remaining))
+        missed = ModelDevMergeVerdict(
+            outcome=EnumDevMergeOutcome.DEADLINE_MISSED,
+            final_phase=OBSERVED_PHASE,
+            lane_revision=last.lane_revision,
+            message=(
+                f"the lane did not carry the merge in {self._policy.verify_deadline_seconds:g}s; "
+                f"last read: {last.message}"
+            )[-2000:],
+        )
+        await self._receipt(
+            pending.event, pending.decision, published=False, verdict=missed
+        )
 
     async def _expire(self, cid: UUID) -> None:
         await asyncio.sleep(self._policy.verify_deadline_seconds)
@@ -297,6 +357,7 @@ class DevMergeRedeployHost:
             merge_sha=event.merge_sha,
             base=event.base,
             correlation_id=decision.correlation_id,
+            mode=self._policy.mode,
             outcome=outcome,
             command_published=published,
             runtime_paths=decision.runtime_paths,
@@ -316,8 +377,9 @@ class DevMergeRedeployHost:
             _bytes(envelope),
         )
         logger.info(
-            "dev-merge-redeploy %s %s#%d %s published=%s",
+            "dev-merge-redeploy %s %s %s#%d %s published=%s",
             self._host,
+            receipt.mode,
             receipt.repo,
             receipt.pr_number,
             receipt.outcome,

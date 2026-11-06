@@ -48,6 +48,18 @@ SUCCESS_OUTCOMES = frozenset(
 )
 
 
+class EnumDevMergeMode(StrEnum):
+    """What the node does with a merge that reaches the lane.
+
+    ``publish`` publishes the redeploy-start command itself and waits for the orchestrator's
+    terminal event. ``observe`` publishes no command: another trigger (the Actions job, until
+    it is cut over) redeploys, and the node only reads the lane until it carries the merge.
+    """
+
+    OBSERVE = "observe"
+    PUBLISH = "publish"
+
+
 class ModelDevMergeRepoPolicy(BaseModel):
     """One repository whose dev merges rebuild the dev lane."""
 
@@ -94,6 +106,12 @@ class ModelDevMergeRedeployPolicy(BaseModel):
         ),
     )
     requested_by: str = Field(min_length=1, description="Label carried on the command.")
+    mode: EnumDevMergeMode = Field(
+        description="observe reads the lane only; publish also publishes the command."
+    )
+    observe_poll_seconds: float = Field(
+        gt=0, description="Seconds between lane reads while observing one merge."
+    )
     verify_deadline_seconds: float = Field(
         gt=0,
         description="From publishing the command to a receipt; a missed deadline is a receipt.",
@@ -121,6 +139,7 @@ class ModelDevMergeRedeployReceipt(BaseModel):
     merge_sha: str
     base: str
     correlation_id: UUID
+    mode: EnumDevMergeMode
     outcome: EnumDevMergeOutcome
     command_published: bool
     runtime_paths: int = Field(ge=0)
@@ -147,6 +166,7 @@ class ModelDevMergeRedeployTopics(BaseModel):
 
 __all__ = [
     "SUCCESS_OUTCOMES",
+    "EnumDevMergeMode",
     "EnumDevMergeOutcome",
     "ModelDevMergeRedeployPolicy",
     "ModelDevMergeRedeployReceipt",

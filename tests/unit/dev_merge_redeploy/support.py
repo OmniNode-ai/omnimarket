@@ -44,7 +44,9 @@ BUILD_CONTEXT_SHA = "c" * 40
 REPO = "OmniNode-ai/omnimarket"
 
 
-def policy(deadline: float = 5.0) -> ModelDevMergeRedeployPolicy:
+def policy(
+    deadline: float = 5.0, mode: str = "publish", poll: float = 0.02
+) -> ModelDevMergeRedeployPolicy:
     return ModelDevMergeRedeployPolicy.model_validate(
         {
             "repos": [
@@ -60,6 +62,8 @@ def policy(deadline: float = 5.0) -> ModelDevMergeRedeployPolicy:
             "classifier_path": "$OMNI_HOME/gate/classifier.py",
             "lane_probe_argv": ["probe"],
             "requested_by": "lab-node",
+            "mode": mode,
+            "observe_poll_seconds": poll,
             "verify_deadline_seconds": deadline,
         }
     )
@@ -125,7 +129,9 @@ class FakeLane:
         lane_sha: str = LANE_SHA_AT_MERGE,
         carries: bool = True,
         unreadable: bool = False,
+        behind_reads: int = 0,
     ) -> None:
+        self.behind_reads = behind_reads
         self.lane_sha = lane_sha
         self.carries = carries
         self.unreadable = unreadable
@@ -140,7 +146,7 @@ class FakeLane:
     def lane_carries(
         self, clone_dir: str, base: str, merge_sha: str, lane_sha: str
     ) -> bool:
-        return self.carries
+        return self.carries and self.reads > self.behind_reads
 
 
 class Bus(EventBusInmemory):
@@ -176,9 +182,10 @@ class Rig:
         build_context: FakeBuildContext | None = None,
         lane: FakeLane | None = None,
         deadline: float = 5.0,
+        mode: str = "publish",
     ) -> None:
         self.bus = Bus()
-        self.policy = policy(deadline)
+        self.policy = policy(deadline, mode)
         self.files = files or FakeFiles()
         self.lane = lane or FakeLane()
         trigger = HandlerDevMergeRedeployTrigger(

@@ -10,6 +10,7 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers import (
     load_dev_merge_redeploy_topics,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models import (
+    EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployPolicy,
     ModelDevMergeRedeployReceipt,
@@ -23,6 +24,7 @@ class NodeDevMergeRedeployTriggerEffect(HandlerDevMergeRedeployTrigger):
 
 __all__ = [
     "DevMergeRedeployHost",
+    "EnumDevMergeMode",
     "EnumDevMergeOutcome",
     "HandlerDevMergeRedeployTrigger",
     "HandlerDevMergeRedeployVerify",

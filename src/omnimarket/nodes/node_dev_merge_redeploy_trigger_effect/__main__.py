@@ -15,6 +15,7 @@ import inspect
 import logging
 import signal
 import sys
+from pathlib import Path
 from typing import Any
 
 import click
@@ -45,23 +46,25 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_de
     HandlerDevMergeRedeployVerify,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
+    EnumDevMergeMode,
     ModelDevMergeRedeployPolicy,
 )
 
 
 def _opener_arguments(
-    bus: BusKind, bus_lane: str | None, kafka_bootstrap: str | None
+    bus: BusKind,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    workspace_root: Path,
 ) -> dict[str, Any]:
-    """The bus opener's keywords, in the order it declares them.
-
-    The opener takes the bus, the lane, the broker and a workspace root. This process names no
-    workspace root: the lane declaration is found the way the opener finds it when it is given
-    none, so the fourth value is ``None``.
-    """
+    """The bus opener's keywords, in the order it declares them: bus, lane, broker, workspace root."""
     keywords = tuple(inspect.signature(open_lab_run_bus).parameters)
-    return dict(zip(keywords, (bus, bus_lane, kafka_bootstrap, None), strict=True))
+    return dict(
+        zip(keywords, (bus, lane, kafka_bootstrap, workspace_root), strict=True)
+    )
 
 
+EXIT_USAGE = 64
 EXIT_BUS = 69
 EXIT_OVERLAY = 78
 
@@ -80,15 +83,37 @@ def group(ctx: click.Context) -> None:
     default="kafka",
     show_default=True,
 )
-@click.option("--bus-lane", default=None, help="The declared bus lane to use.")
+@click.option(
+    "--bus-lane",
+    default=None,
+    help="The declared lane that carries the merge events and the receipts.",
+)
+@click.option(
+    "--deploy-bus-lane",
+    default=None,
+    help=(
+        "The declared lane that carries the redeploy-start command and the terminal event. "
+        "Required when the overlay's mode is publish; refused when it is observe."
+    ),
+)
 @click.option("--kafka-bootstrap", default=None, help="The broker, stated directly.")
+@click.option(
+    "--omnibase-path",
+    "workspace_root",
+    envvar="OMNIBASE_PATH",
+    type=click.Path(file_okay=False, exists=True, path_type=Path),
+    required=True,
+    help="Workspace root holding the lane declaration. Bound to $OMNIBASE_PATH.",
+)
 @click.option(
     "--host-name", required=True, help="This host's name (a deployment fact)."
 )
 def serve_command(
     bus: BusKind,
     bus_lane: str | None,
+    deploy_bus_lane: str | None,
     kafka_bootstrap: str | None,
+    workspace_root: Path,
     host_name: str,
 ) -> None:
     """Serve dev merges on this host until SIGTERM."""
@@ -100,6 +125,14 @@ def serve_command(
     except NodeOverlayError as exc:
         click.echo(f"overlay: {exc}", err=True)
         sys.exit(EXIT_OVERLAY)
+    publishing = policy.mode is EnumDevMergeMode.PUBLISH
+    if publishing != (deploy_bus_lane is not None):
+        click.echo(
+            "usage: --deploy-bus-lane is required exactly when the overlay's mode is publish "
+            f"(mode is {policy.mode.value})",
+            err=True,
+        )
+        sys.exit(EXIT_USAGE)
     probe = [str(part) for part in policy.lane_probe_argv]
     trigger = HandlerDevMergeRedeployTrigger(
         policy,
@@ -115,15 +148,28 @@ def serve_command(
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(NotImplementedError):
                 loop.add_signal_handler(sig, stop.set)
-        async with open_lab_run_bus(
-            **_opener_arguments(bus, bus_lane, kafka_bootstrap)
-        ) as opened:
+        async with contextlib.AsyncExitStack() as stack:
+            events = await stack.enter_async_context(
+                open_lab_run_bus(
+                    **_opener_arguments(bus, bus_lane, kafka_bootstrap, workspace_root)
+                )
+            )
+            deploy = (
+                await stack.enter_async_context(
+                    open_lab_run_bus(
+                        **_opener_arguments(bus, deploy_bus_lane, None, workspace_root)
+                    )
+                )
+                if deploy_bus_lane is not None
+                else None
+            )
             host = DevMergeRedeployHost(
-                opened, trigger, verify, policy, host_name=host_name
+                events, trigger, verify, policy, host_name=host_name, deploy_bus=deploy
             )
             await host.start()
             click.echo(
-                f"serving {host.topics.merged} for {[r.repo for r in policy.repos]}",
+                f"serving {host.topics.merged} in {policy.mode.value} mode for "
+                f"{[r.repo for r in policy.repos]}",
                 err=True,
             )
             try:

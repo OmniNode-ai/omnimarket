@@ -18,4 +18,9 @@ classifier_path: $OMNI_HOME/example-gate-repo/.github/actions/deploy-gate/valida
 # Prints the lane's build-provenance manifest as JSON. The deployment's own way to reach it.
 lane_probe_argv: [ssh, example-lane-host, docker, exec, example-effects-container, cat, /app/build-provenance.json]
 requested_by: lab-node
+# observe: read the lane after a merge another trigger redeploys and publish no command.
+# publish: publish the redeploy-start command and wait for the orchestrator's terminal event.
+mode: observe
+# Seconds between lane reads while observing one merge.
+observe_poll_seconds: 30
 verify_deadline_seconds: 3000

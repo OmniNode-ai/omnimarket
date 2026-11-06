@@ -32,6 +32,9 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     ModelDevMergeRedeployPolicy,
 )
 
+#: The ``final_phase`` of a receipt written in observe mode: no redeploy phase was seen.
+OBSERVED_PHASE = "observed"
+
 
 class HandlerDevMergeRedeployVerify:
     def __init__(
@@ -83,5 +86,42 @@ class HandlerDevMergeRedeployVerify:
             message=f"lane vendors {lane_sha[:12]}, which does not carry {event.merge_sha[:12]}",
         )
 
+    def observe(self, pending: ModelDevMergePending) -> ModelDevMergeVerdict:
+        """One read of the lane for a merge another trigger is redeploying.
 
-__all__ = ["HandlerDevMergeRedeployVerify"]
+        There is no terminal event to wait for, so the verdict is only the lane's state now:
+        ``verified`` once the lane carries the merge, ``lane_behind`` while it does not and
+        ``lane_unreadable`` when it cannot be read. The caller reads again until a deadline.
+        """
+        event = pending.event
+        repo = self._policy.for_repo(event.repo)
+        if repo is None:
+            return ModelDevMergeVerdict(
+                outcome=EnumDevMergeOutcome.LANE_UNREADABLE,
+                final_phase=OBSERVED_PHASE,
+                message=f"{event.repo} is no longer in the policy",
+            )
+        try:
+            lane_sha = self._lane.vendored_revision(repo.source_repo)
+            carries = self._lane.lane_carries(
+                repo.clone_dir, event.base, event.merge_sha, lane_sha
+            )
+        except LaneUnreadableError as exc:
+            return ModelDevMergeVerdict(
+                outcome=EnumDevMergeOutcome.LANE_UNREADABLE,
+                final_phase=OBSERVED_PHASE,
+                message=f"{type(exc).__name__}: {exc}"[-2000:],
+            )
+        outcome = (
+            EnumDevMergeOutcome.VERIFIED if carries else EnumDevMergeOutcome.LANE_BEHIND
+        )
+        verb = "carries" if carries else "does not carry"
+        return ModelDevMergeVerdict(
+            outcome=outcome,
+            final_phase=OBSERVED_PHASE,
+            lane_revision=lane_sha,
+            message=f"lane vendors {lane_sha[:12]}, which {verb} {event.merge_sha[:12]}",
+        )
+
+
+__all__ = ["OBSERVED_PHASE", "HandlerDevMergeRedeployVerify"]
