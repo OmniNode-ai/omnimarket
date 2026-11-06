@@ -307,6 +307,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 [project.entry-points."onex.nodes"]
 node_dispatch_standing_rules_compute = "omnimarket.nodes.node_dispatch_standing_rules_compute"
 node_dispatch_standing_rules_effect = "omnimarket.nodes.node_dispatch_standing_rules_effect"
+node_lane_dispatch_effect = "omnimarket.nodes.node_lane_dispatch_effect"
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
@@ -1223,6 +1224,7 @@ node_retrospective_digest_render_compute = "omnimarket.nodes.node_retrospective_
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 
 [project.scripts]
+onex-lane-dispatch = "omnimarket.nodes.node_lane_dispatch_effect.runtime_lane_dispatch_cli:main"
 onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm:main"
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
 onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main"
