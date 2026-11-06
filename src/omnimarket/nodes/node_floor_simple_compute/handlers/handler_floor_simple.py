@@ -264,9 +264,9 @@ class HandlerFloorSimple:
             unread_go = go is None and not admitted
             # The reading as the writer wrote it; the strip draws it only when the piece counts. A piece the go does not
             # cover, that has not started and reads UNKNOWN (the writer has no producer for it) has no reading to draw:
-            # it is not started, never a failure and never a cause.
+            # it is not started, never a failure and never a cause. A lab source the piece stands on still draws its own cause.
             written_state = state
-            if state == "UNKNOWN" and not admitted and not started:
+            if state == "UNKNOWN" and not admitted and not started and not lab_cause:
                 state = None
             if state is None:
                 if started:
