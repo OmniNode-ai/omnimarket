@@ -71,8 +71,11 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      # A reader cut over to the overlay store names its snapshot of the host table here (OMN-22561).
+      - ONEX_LAB_RUN_HOSTS
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LAB_RUN_HOSTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
       CLAUDE_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
       ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"

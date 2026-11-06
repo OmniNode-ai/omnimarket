@@ -18,7 +18,13 @@ ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
 SourceKind = Literal[
-    "hosts", "runner_groups", "disk", "queue_age", "deploy_lag", "broker_lag"
+    "hosts",
+    "runner_groups",
+    "disk",
+    "queue_age",
+    "deploy_lag",
+    "broker_lag",
+    "overlay_store",
 ]
 
 
