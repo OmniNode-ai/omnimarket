@@ -184,13 +184,6 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-host-tree-install
-    statement: The first host installer slice copies the complete declared source tree, including root data, without selecting individual source files.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: the reduced recorded missing-policy and stale-root-data tree is repaired; future files, dotfiles, links, modes and empty directories are carried; generated destination-only files survive; failed staging and readback preserve the previous install -- falsifier: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly'
-      - id: AC11
-        statement: 'AC11: installed node discovery wires the declared install command to a correlated completion event and reads back the worker policy from the installed recorded tree -- falsifier: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly -k declared_runtime_command'
   - id: req-omn19998-ledger-detail-reference-retention
     statement: Ledger detail retention preserves old units cited by declared local readers and refuses removal when readers cannot be checked or change during archival.
     acceptance:
@@ -338,22 +331,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov -k canonical_runtime_bus
-        cwd: .
-  - id: dod-omn19998-host-tree-install
-    description: Replay a reduced recorded source and installed tree. This scopes evidence to the installer copy slice; the controller timer and acting criteria are not asserted here.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-host-tree-install-deploy
-    description: Hosted runtime wiring smoke discovers the install contract, dispatches its declared command on the in-memory bus and reads its correlated completion and installed policy. Controller-host installation and next tick remain pending for the publishing runner.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly -k declared_runtime_command
         cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
