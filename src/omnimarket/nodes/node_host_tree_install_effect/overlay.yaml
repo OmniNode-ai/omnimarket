@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Roots are request inputs: source_root is the source skills directory;
+# install_root is the controller installation directory. No file list is used.
+# Override through ONEX_HOST_TREE_INSTALL_OVERLAY or ONEX_SKILL_OVERLAY_ROOTS.
+source_relative: merge-drain
+destination_relative: skills/merge-drain
