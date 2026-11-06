@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_worktree_reconcile_policy import (
-    ModelWorktreeReconcilePolicy,
+    ModelWorktreeReconcilePolicy as Policy,
 )
 
 
@@ -105,18 +105,14 @@ class ModelWorktreeReconcileRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     facts: tuple[ModelWorktreeFacts, ...]
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
 
 
 class ModelWorktreeReconcileDecisions(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     decisions: tuple[ModelWorktreeDecisionRecord, ...]
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
 
 
 class ModelWorktreeReconcileCommand(BaseModel):
@@ -130,9 +126,7 @@ class ModelWorktreeReconcileCommand(BaseModel):
     exclude_paths: tuple[str, ...] = ()
     ledger_path: str | None = None
     execute: bool = False
-    policy: ModelWorktreeReconcilePolicy = Field(
-        default_factory=ModelWorktreeReconcilePolicy
-    )
+    policy: Policy = Field(default_factory=Policy)
     decider_command: list[str] | None = Field(default=None, min_length=1)
     pin_command: list[str] | None = Field(default=None, min_length=1)
     # Argv with a {slug} placeholder; stdout lists the head commit (40 hex digits) of

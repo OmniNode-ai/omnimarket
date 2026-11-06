@@ -24,12 +24,9 @@ from omnimarket.models.model_worktree_reconcile_policy import (
 def live_reason(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> str | None:
-    if facts.live_process:
-        return "live_process"
-    if facts.live_claim:
-        return "live_claim"
-    if facts.live_unit:
-        return "live_unit"
+    for reason in ("live_process", "live_claim", "live_unit"):
+        if getattr(facts, reason):
+            return reason
     if facts.git_locked:
         return "git_locked"
     if facts.in_progress_operation:
