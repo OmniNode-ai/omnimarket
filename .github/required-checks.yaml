@@ -184,20 +184,18 @@ gates:
     rationale: "Live required status check on omnimarket dev and main branch protection (verified 2026-07-20 via gh api required_status_checks)."
 
   - name: "Hostile Review Gate"
-    mode: REQUIRED
+    mode: RETIRED
     producer_kind: local
     workflow: hostile-reviewer.yml
     job_path: ["hostile-review-gate"]
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket dev and main branch protection (verified 2026-07-20 via gh api required_status_checks)."
+    rationale: "OMN-22478, operator RULING 2026-11-05T20:27:56Z: the automated review holds no merge. The workflow stays and starts no run on a pull request; to restore, set mode back to REQUIRED, skip_semantics never, and put the context back in branch protection."
 
   - name: "Hostile Reviewer (adversarial gate)"
-    mode: REQUIRED
+    mode: RETIRED
     producer_kind: local
     workflow: hostile-reviewer.yml
     job_path: ["hostile-review"]
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket dev and main branch protection (verified 2026-07-20 via gh api required_status_checks)."
+    rationale: "OMN-22478, operator RULING 2026-11-05T20:27:56Z: the automated review holds no merge. The workflow stays and starts no run on a pull request; to restore, set mode back to REQUIRED, skip_semantics never, and put the context back in branch protection."
 
   - name: "imperative-contract-guard / Imperative Contract Guard"
     mode: REQUIRED

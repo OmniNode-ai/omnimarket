@@ -13,9 +13,19 @@ no clock, file or environment.
 import hashlib
 import re
 
+from omnimarket.models.error_normalizer import (
+    ModelErrorClassNormalizeRequest,
+    ModelErrorEvent,
+)
+from omnimarket.nodes.node_error_class_normalize_compute import (
+    NodeErrorClassNormalizeCompute,
+)
 from omnimarket.nodes.node_hook_refusal_row_compute.models import (
     ModelHookRefusalRowRequest,
     ModelHookRefusalRowResult,
+)
+from omnimarket.protocols.protocol_error_class_normalizer import (
+    ProtocolErrorClassNormalizer,
 )
 
 ROW_CLASS = "FRICTION"
@@ -70,6 +80,11 @@ def dedupe_key(guard: str, reason: str, lane: str) -> str:
 
 
 class HandlerHookRefusalRowCompute:
+    def __init__(self, normalizer: ProtocolErrorClassNormalizer | None = None) -> None:
+        self._normalizer = (
+            normalizer if normalizer is not None else NodeErrorClassNormalizeCompute()
+        )
+
     def handle(self, request: ModelHookRefusalRowRequest) -> ModelHookRefusalRowResult:
         guard = redact(request.guard)[:MAX_GUARD_CHARS] or "unknown-guard"
         reason = normalise_reason(redact(request.reason))
@@ -83,6 +98,19 @@ class HandlerHookRefusalRowCompute:
             else request.lane
         )
         key = dedupe_key(guard, reason, scope)
+        normalized = self._normalizer.handle(
+            ModelErrorClassNormalizeRequest(
+                event=ModelErrorEvent(
+                    source="hook",
+                    producer=redact(request.guard) or "unknown-guard",
+                    code=redact(request.reason_code) if request.reason_code else None,
+                    # Hash the whole reason, before the legacy dedupe token is
+                    # truncated. Detail contains commands and is not a cause.
+                    text=redact(request.reason),
+                ),
+                facts=request.normalizer_facts,
+            )
+        )
         # Redacted again at row build: a caller passing raw text must not be
         # able to forge a column or a second row, and truncation can leave a
         # trailing space the first pass never saw.
@@ -92,6 +120,7 @@ class HandlerHookRefusalRowCompute:
             f"lane={redact(request.lane) or 'unresolved'} | "
             f"actor=hook | model=none | class=refusal | guard={guard} | "
             f"reason={reason} | lane_source={request.lane_source} | dedupe={key} | "
+            f"class_key={normalized.class_key} | key_version={normalized.key_version} | "
             "refusal_count=1 | "
             f"suppressed_since_last_row={request.suppressed} | "
             f'detail="{row_detail}" | existing=OMN-18946 | cost=~1 lane-minute | '
@@ -103,6 +132,8 @@ class HandlerHookRefusalRowCompute:
             reason=reason,
             detail=detail,
             key=key,
+            class_key=normalized.class_key,
+            key_version=normalized.key_version,
             repeated_secret=repeated_secret,
             row=row,
         )
