@@ -34,6 +34,9 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher 
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover import (
     GitWorktreeRemover,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
+    SystemdUnitRootReader,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,7 +71,10 @@ def run_command(
 ) -> ModelWorktreeReconcileRunResult:
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
-        probe=GitWorktreeFactsProbe(merged_pr_reader=CommandMergedPrReader()),
+        probe=GitWorktreeFactsProbe(
+            unit_reader=SystemdUnitRootReader(),
+            merged_pr_reader=CommandMergedPrReader(),
+        ),
         decider=CommandWorktreeDecider(),
         pinner=CommandWorktreePinner(),
         remover=GitWorktreeRemover(),
