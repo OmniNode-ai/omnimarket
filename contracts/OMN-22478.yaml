@@ -14,7 +14,6 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: a row declaring ledger_path loads with it and a relative one refuses -- falsifier: the table is refused whole at the base'
-requirements:
   - id: req-omn22478-event-bus-overlay-model
     statement: An overlay holding only a node's event bus loads whole through one typed model, closed to stray keys.
     acceptance:
