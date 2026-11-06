@@ -683,6 +683,7 @@ node_hook_chain_probe_verdict_effect = "omnimarket.nodes.node_hook_chain_probe_v
 node_hook_drain_probe_compute = "omnimarket.nodes.node_hook_drain_probe_compute"
 node_hook_event_capture = "omnimarket.nodes.node_hook_event_capture"
 node_hook_lane_join_compute = "omnimarket.nodes.node_hook_lane_join_compute"
+node_hook_parse_probe_compute = "omnimarket.nodes.node_hook_parse_probe_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"
 node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
