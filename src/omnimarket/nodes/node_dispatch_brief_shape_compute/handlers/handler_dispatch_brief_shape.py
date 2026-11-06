@@ -31,13 +31,21 @@ import importlib.util
 import os
 import re
 from functools import lru_cache
+from pathlib import PurePosixPath
 from types import ModuleType
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.handlers.wip_admission_brief_gate import (
     dispatch_wip_refusal,
 )
 
 from ..models.model_dispatch_brief_shape import (
+    ModelBriefDestinationPolicy,
+    ModelBriefDestinationRequest,
+    ModelBriefDestinationResult,
     ModelDispatchBriefShapeRequest,
     ModelDispatchBriefShapeResult,
 )
@@ -161,6 +169,169 @@ def gate_problem(request: ModelDispatchBriefShapeRequest) -> str | None:
     )
 
 
+OVERLAY_ID = "brief_destinations"
+_DECLARATION = re.compile(
+    r"^\s*(?:[-*]\s*)?(creates|edits|modifies|updates|deletes|removes|evidence):"
+    r"\s*([A-Za-z0-9_.-]+)@[^:\s]+:(\S+)",
+    re.IGNORECASE,
+)
+_WRITE_VERBS = frozenset(
+    {
+        "add",
+        "create",
+        "write",
+        "implement",
+        "edit",
+        "modify",
+        "update",
+        "fix",
+        "change",
+        "extend",
+        "patch",
+        "refactor",
+        "append",
+        "touch",
+    }
+)
+_ACTION = re.compile(
+    r"(?<![\w./-])("
+    + "|".join(sorted(_WRITE_VERBS))
+    + r"|move|read|delete|remove|inspect|run|verify|check)(?=\s)",
+    re.IGNORECASE,
+)
+_NEGATED = re.compile(r"\b(?:not|never|don't|do not)\s+$", re.IGNORECASE)
+_REPO = re.compile(r"^\s*(?:Repo(?:sitory)?|Target repo):\s*(\S+)\s*$", re.IGNORECASE)
+_QUALIFIED = re.compile(r"(?<![\w.-])([\w.-]+)@[^:\s`]+:([^\s`]+)")
+_REPO_PATH = re.compile(
+    r"(?<![\w./-])([\w.-]+)/((?:src|tests?|scripts|config|docs)/[^\s`]+)"
+)
+_RELATIVE_PATH = re.compile(r"(?<![\w./-])((?:src|tests?|scripts|config|docs)/[^\s`]+)")
+_PATH_ROOTS = frozenset({"src", "tests", "test", "scripts", "config", "docs"})
+_CODE_SUFFIXES = frozenset(
+    {
+        ".py",
+        ".pyi",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".rb",
+        ".pl",
+        ".go",
+        ".rs",
+        ".lua",
+        ".ps1",
+        ".php",
+    }
+)
+
+
+def _destinations(request: ModelBriefDestinationRequest) -> tuple[tuple[str, str], ...]:
+    """Read task write targets; do not infer a write from a bare evidence citation."""
+    repository = request.repository
+    for line in request.authored_prose.splitlines():
+        if match := _REPO.match(line):
+            repository = match[1]
+    targets: dict[tuple[str, str], None] = {}
+    for line in request.authored_prose.splitlines():
+        if line.lstrip().startswith((">", "#")):
+            continue
+        if declared := _DECLARATION.match(line):
+            if declared[1].lower() not in {"evidence", "deletes", "removes"}:
+                targets[(declared[2], declared[3].rstrip(",;)."))] = None
+            continue
+        actions = list(_ACTION.finditer(line))
+        for index, action in enumerate(actions):
+            if _NEGATED.search(line[: action.start()]):
+                continue
+            verb = action[1].lower()
+            segment = line[
+                action.end() : actions[index + 1].start()
+                if index + 1 < len(actions)
+                else len(line)
+            ]
+            if verb == "move":
+                # Moving out is allowed; moving code into a frozen repository is not.
+                into = re.search(r"\b(?:to|into)\s+", segment)
+                if into is None:
+                    continue
+                segment = segment[into.end() :]
+            elif verb not in _WRITE_VERBS:
+                continue
+            qualified = list(_QUALIFIED.finditer(segment))
+            repo_paths = [
+                m for m in _REPO_PATH.finditer(segment) if m[1] not in _PATH_ROOTS
+            ]
+            for match in (*qualified, *repo_paths):
+                targets[(match[1], match[2].rstrip(",;)."))] = None
+            for match in _RELATIVE_PATH.finditer(segment):
+                if not any(
+                    m.start() <= match.start() < m.end()
+                    for m in (*qualified, *repo_paths)
+                ):
+                    targets[(repository, match[1].rstrip(",;)."))] = None
+    return tuple(targets)
+
+
+class HandlerBriefDestinations:
+    def handle(
+        self, request: ModelBriefDestinationRequest
+    ) -> ModelBriefDestinationResult:
+        targets = _destinations(request)
+        if not targets:
+            return ModelBriefDestinationResult(refusals=())
+        try:
+            policy = load_structured_overlay(OVERLAY_ID, ModelBriefDestinationPolicy)
+        except NodeOverlayError as exc:
+            return ModelBriefDestinationResult(
+                refusals=(
+                    (
+                        "destination-policy-unavailable",
+                        f"REMOTE-LANE-DESTINATION-POLICY-UNAVAILABLE {exc}",
+                    ),
+                )
+            )
+        refusals: list[tuple[str, str]] = []
+        for repository, path in targets:
+            path = path.strip("`\"'")
+            parts = PurePosixPath(path).parts
+            if (
+                not repository
+                or not parts
+                or path.startswith(("/", "~"))
+                or "\\" in path
+                or ".." in parts
+            ):
+                refusals.append(
+                    (
+                        "destination-unreadable",
+                        f"REMOTE-LANE-DESTINATION-UNREADABLE {repository}:{path}: "
+                        "name the repository and a repo-relative destination without '..'",
+                    )
+                )
+                continue
+            code = (
+                parts[0] in {"src", "tests", "test"}
+                or PurePosixPath(path).suffix.lower() in _CODE_SUFFIXES
+            )
+            if repository in policy.frozen_repositories and code:
+                refusals.append(
+                    (
+                        "frozen-destination-refused",
+                        f"REMOTE-LANE-FROZEN-DESTINATION-REFUSED {repository}:{path}: "
+                        "the repository is frozen; move the code and its tests to "
+                        f"{policy.migration_repository} as a node or handler with its contract "
+                        "before changing them, then delete the old copy; pure data may stay",
+                    )
+                )
+        return ModelBriefDestinationResult(refusals=tuple(refusals))
+
+
 class HandlerDispatchBriefShape:
     def handle(
         self, request: ModelDispatchBriefShapeRequest
@@ -187,6 +358,16 @@ class HandlerDispatchBriefShape:
         gate = gate_problem(request)
         if gate:
             refusals.append(("gate-failed", f"REMOTE-LANE-GATE-FAILED {gate}"))
+        refusals.extend(
+            HandlerBriefDestinations()
+            .handle(
+                ModelBriefDestinationRequest(
+                    authored_prose=lane_brief.premise_text(request.brief),
+                    repository=request.repo or "",
+                )
+            )
+            .refusals
+        )
         named = BRIEF_REPO_RE.search(lane_brief.premise_text(request.brief))
         if request.repo or named:
             wip = dispatch_wip_refusal(
