@@ -1,0 +1,127 @@
+{
+  "acceptance_status": "UNMEASURED",
+  "actual_friction_count": 3299,
+  "baseline": {
+    "bare_existing_normalizer": {
+      "algorithm": "existing dedupe_key(producer-or-guard, normalise_reason(full event text), lane-or-from) on scrubbed rows",
+      "key_count": 3318,
+      "row_count": 4184,
+      "singleton_count": 3184
+    },
+    "interim_coverage": {
+      "class_inventory": "hook_class_inventory.json",
+      "inventory_difference": "33 distinct guard/reason pairs observed in this source snapshot versus 32 in the plan inventory; interim matcher table is not supplied, so 31-uncovered remains reported, not measured.",
+      "measured": false,
+      "observed_snapshot_hook_classes": 33,
+      "observed_snapshot_hook_records": 2274,
+      "provenance": "plan inventory; pending exact interim table and class inventory",
+      "reported_total_hook_classes": 32,
+      "reported_uncovered_hook_classes": 31
+    },
+    "new_normalizer": {
+      "key_count": 1173,
+      "key_version": "b7b3081256c902d29eaf8fa3a9091a6428b62e2ed08228ec48b23d4557cb1cc9",
+      "singleton_count": 1010
+    }
+  },
+  "captured_breaks": 5,
+  "captured_misses": 5,
+  "corpus_files": [
+    {
+      "path": "corpus-000.jsonl",
+      "row_count": 400,
+      "sha256": "464e9daaddef18b5ba2ce4d5675fda796fe34515cb78d9e6ec113ab1503d0dd2"
+    },
+    {
+      "path": "corpus-001.jsonl",
+      "row_count": 400,
+      "sha256": "12c720e2d42b35d9c56ca69c2ac919bcebf28af3c794e89a3a753eb6d1c11ed7"
+    },
+    {
+      "path": "corpus-002.jsonl",
+      "row_count": 400,
+      "sha256": "60948cffc16c875db6162038c9725536d3085f171055eba86f72442ce53d8164"
+    },
+    {
+      "path": "corpus-003.jsonl",
+      "row_count": 400,
+      "sha256": "be67d74b3e8e2322f384468da85008bb56ee0e44906464227c1e767b7e7c0b65"
+    },
+    {
+      "path": "corpus-004.jsonl",
+      "row_count": 400,
+      "sha256": "0ed75f4baf8f8ff53b0a01532acb50475edda2090f97c6a79565971ac5c5d514"
+    },
+    {
+      "path": "corpus-005.jsonl",
+      "row_count": 400,
+      "sha256": "529ea03578f1de3ba7a7d20e7241e9324f7ae465d81f14b7e2e296145f8446eb"
+    },
+    {
+      "path": "corpus-006.jsonl",
+      "row_count": 400,
+      "sha256": "f5bdc96d142ca056c77aff58f947a394376f7476f8d5e7d455bb7c31ff7efbcd"
+    },
+    {
+      "path": "corpus-007.jsonl",
+      "row_count": 400,
+      "sha256": "7adf011d4a054b81b3a430c00bf20651e15b0e1ccc3fb7fb9805ba414cf44563"
+    },
+    {
+      "path": "corpus-008.jsonl",
+      "row_count": 400,
+      "sha256": "1cc32210568f93174d70e3ee1d6b80eb64528dc71ac9fa9ab884341e1de5f5d2"
+    },
+    {
+      "path": "corpus-009.jsonl",
+      "row_count": 400,
+      "sha256": "7c81d2bfaf8e7b19a92576fafa2fd165d552d40c951a3f05e4f50910f7f30400"
+    },
+    {
+      "path": "corpus-010.jsonl",
+      "row_count": 184,
+      "sha256": "e43f4e7e56f547fa2b7da22ecbd770f40b9d2b58dccc20e4e7b43c69bf51d427"
+    }
+  ],
+  "corpus_sha256": "c4e222d72cebf5f64877ef80cdbf189f794919c7a71b4566b51ef180491cdc92",
+  "counts_by_kind": {
+    "FRICTION": 3299,
+    "MSG": 11,
+    "TERMINAL": 874
+  },
+  "fixture_digests": {
+    "acceptance.json": "7bb56bc43e10b65663966cc8dc84d84679d8036a7c765c77ff6993a860ea22ce",
+    "class_groups.json": "2116eab2c86fad22addef779c5d6f8f2c893fa18f1080cc8f4e907d735b980aa",
+    "hook_class_inventory.json": "7c461720a839779362043695ec128ba17ba6353b21472c4704e24d42964f2645",
+    "hosts_new.json": "f69e8e21a42a39ea48a469ef7bf5692f3dd34d98aa64de07cce3094918db01d3",
+    "hosts_old.json": "c58e0aa2c8f1c9e9c2396a9118ab00e5d26ae8a34c2c6ce5ea4cbb3158df0269",
+    "normalizer_facts.json": "1a2cc71b29f2923ef5193846edef58def580796b50652c62be648886c9d80f24",
+    "supporting_records.json": "d021c25d540e57dfe74dafcb0703506f400b125238a4ec7dc2fe33224ea000fe"
+  },
+  "label_engine": "codex (different from originating ledger-row engines; not independent for Codex-authored rows)",
+  "pending": [
+    "miss-5 completed seed overlay and digest",
+    "B5 exact captured record from capture owner",
+    "B6 exact captured record from capture owner",
+    "per-row sampled labels await seed matchers"
+  ],
+  "pending_misses": [
+    "5"
+  ],
+  "planned_friction_count": 2785,
+  "row_count": 4184,
+  "schema_version": 1,
+  "scrub_policy": "Remove private repository/person/lab vocabulary, home and workspace paths, credentials, ticket identifiers, URLs and network coordinates before hashing. Preserve row grammar, timestamps, public cause text and evidence identity. Network hardware coordinates are also removed.",
+  "source": "operator-tooling committed ledger snapshot and archived rolls available on lane host",
+  "source_count_difference": "Read source yields 3299 FRICTION rows, versus plan inventory 2785. All readable qualifying rows retained; no thinning to match planned count.",
+  "source_digest_scope": "All selected scrubbed replay rows in manifest chunk order, newline terminated; source last-row time includes excluded STATUS rows.",
+  "source_last_row_time": "2026-11-04T13:39:37Z",
+  "source_revision_status": "copy_read_without_cross_repository_git",
+  "source_scrubbed_rows_sha256": "c4e222d72cebf5f64877ef80cdbf189f794919c7a71b4566b51ef180491cdc92",
+  "unmeasured_breaks": [
+    "B5",
+    "B6"
+  ],
+  "window_end": "2026-11-04T13:39:37Z",
+  "window_start": "2026-11-01T00:00:00Z"
+}

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment supplies brief_destinations/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+# Replace these example repository names with the frozen and archived repositories.
+# Do not include repositories whose policy permits fixes in place.
+frozen_repositories:
+  - frozen-repo
+  - archived-repo
+migration_repository: omnimarket
