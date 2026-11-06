@@ -1294,17 +1294,18 @@ def _shell_out(result: dict[str, object]) -> dict[str, str]:
     return cast("dict[str, str]", result["out"])
 
 
-def test_page_tabs_the_site_is_one_page_with_four_tabs_and_the_dashboard_first() -> (
+def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first() -> (
     None
 ):
     labels = re.findall(r'\{id: "(\w+)", label: "([^"]+)"', SHELL)
     assert labels == [
         ("dashboard", "Dashboard"),
         ("floor", "Factory floor"),
+        ("machines", "Machines"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
     ]
-    for pane in ("dashboard", "floor", "process", "map"):
+    for pane in ("dashboard", "floor", "machines", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
     assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL

@@ -160,6 +160,15 @@ config:
     publish_cycle_minutes: 5
     api_budget_usd: 200
     cloud_credit_expiry: "2026-11-05"
+  # The Machines tab's per-host record (OMN-22673). Each value is read from one source and judged against that source's
+  # own bound: the pool read uses pool_stale_minutes above; a capacity advertisement is a snapshot written once per publish
+  # cycle (5 min), so three cycles; a host-drift heartbeat uses the drift overlay's own bound (900 s).
+  host_status:
+    heartbeat_stale_seconds: 900
+    disk_cell: runs
+    advert_stale_minutes: 15
+    docker_tool: docker
+    landing_worker_kind: landing worker
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:
