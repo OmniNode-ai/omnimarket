@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Merge Redeploy Trigger and Verify Effect (OMN-22478, R2)
+#
+# WHAT THIS REPLACES. runtime-rebuild-trigger.yml publishes the redeploy-start command from a
+# CI-pool runner on a pull_request event and routes its verify job to the verify pool. Both run
+# on lab machines for a public repository. This node reads the same merge from the bus
+# (onex.evt.omnimarket.repo-merged.v1, published by the landing controller and the PR watcher
+# for every merge), asks the same question with the same classifier, publishes the same start
+# command, and reads the lane back itself, so a dev merge redeploys and verifies with no
+# public job on any lab runner.
+#
+# WHO HOSTS THIS NODE. One serve process on a lab host (`python -m
+# omnimarket.nodes.node_dev_merge_redeploy_trigger_effect serve`). A shared runtime must NEVER
+# attach it: it reads git clones and runs the lane probe command from the host. The contract
+# therefore declares runtime_dispatch and neither an event_bus block nor handler_routing.
+#
+# WHAT THE OVERLAY HOLDS. Every deployment fact: the repositories, their clones, the
+# classifier's location, the lane probe command, the label on the command and the verify
+# deadline. See overlay.example.yaml. There is no packaged default.
+#
+# CUTOVER. Not done by this contract. The Actions trigger stays until a correlated dev merge
+# reads redeploy, lane read-back and receipt through this node with the Actions trigger and the
+# verify pool unavailable (plan section 8, R2).
+name: "node_dev_merge_redeploy_trigger_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  When a configured repository merges to dev, classifies the merge against the dev lane's
+  runtime paths, publishes the redeploy-start command for it, reads the lane's vendored
+  revision back after the redeploy's terminal event and publishes one receipt per merge.
+input_model:
+  name: "ModelRepoMerged"
+  module: "omnimarket.models.model_repo_merged"
+  description: "A pull request merged into a repository branch."
+output_model:
+  name: "ModelDevMergeRedeployReceipt"
+  module: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy"
+  description: "Repository, merge, correlation id, outcome, final phase and the lane's revision."
+handler:
+  module: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_trigger"
+  class: "HandlerDevMergeRedeployTrigger"
+  input_model: "omnimarket.models.model_repo_merged.ModelRepoMerged"
+# The read-back that runs after the orchestrator's terminal event for a correlation id. Called in
+# process by the serve host with the pending merge and the terminal event; it is bound here so the
+# contract names every handler the node ships.
+verify:
+  handler:
+    module: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_verify"
+    class: "HandlerDevMergeRedeployVerify"
+  input_model: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_decision.ModelDevMergePending"
+  output_model: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_decision.ModelDevMergeVerdict"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 1800000
+runtime_dispatch:
+  subscribe_topic: "onex.evt.omnimarket.repo-merged.v1"
+  start_command_topic: "onex.cmd.omnimarket.redeploy-start.v1"
+  completed_topic: "onex.evt.omnimarket.redeploy-completed.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.dev-merge-redeploy-receipt.v1"
+consumed_events:
+  - event_type: ModelRepoMerged
+    topic: onex.evt.omnimarket.repo-merged.v1
+    description: "A pull request merged; published by the landing controller and the PR watcher."
+  - event_type: ModelRedeployCompletedEvent
+    topic: onex.evt.omnimarket.redeploy-completed.v1
+    description: "The redeploy orchestrator's terminal event for a correlation id."
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.repo-merged.v1
+    producer: "clone-refresh publish, run by the landing controller and the PR watcher on a merge, not a node contract"
+published_events:
+  - event_type: ModelRedeployStartCommand
+    topic: onex.cmd.omnimarket.redeploy-start.v1
+    description: "The command node_redeploy_orchestrator consumes, one per merge that reaches the lane."
+  - event_type: ModelDevMergeRedeployReceipt
+    topic: onex.evt.omnimarket.dev-merge-redeploy-receipt.v1
+    description: "One per merge read: declined, failed, verified, behind or deadline missed."
+metadata:
+  transport_type: kafka
+  description: "Hosted by a serve process on a lab host, never by a CI runner or a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-11-05"
+  tags: ["effect", "redeploy", "OMN-22478"]
+  related_tickets: ["OMN-22478", "OMN-18268", "OMN-19998"]
+
+timeouts:
+  git_timeout_seconds: 120  # Bounds one git call (fetch, cat-file, diff, rev-parse, merge-base, worktree).
+  classifier_timeout_seconds: 120  # Bounds the deploy-path classifier child process.
+  lane_probe_timeout_seconds: 60  # Bounds the lane probe command.
