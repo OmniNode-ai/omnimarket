@@ -88,7 +88,13 @@ def test_an_older_or_equal_observation_never_replaces_a_newer_file(
     assert save_observation(_observation(), path) == SUPERSEDED
     assert save_observation(newer, path) == SUPERSEDED
     assert json.loads(path.read_text(encoding="utf-8"))["runners"] == [
-        {"host": "host-050", "status": "offline"}
+        {
+            "host": "host-050",
+            "status": "offline",
+            "runner_name": "runner-0",
+            "label_class": "omnibase-ci",
+            "labels": [],
+        }
     ]
     assert (
         save_observation(_observation(observed_at=_T0 + timedelta(minutes=6)), path)
@@ -102,3 +108,35 @@ def test_an_unreadable_file_is_replaced_not_trusted(tmp_path: Path) -> None:
     assert save_observation(_observation(), path) == SAVED
     assert runner_fleet_cause(path) == ""
     assert [p.name for p in tmp_path.iterdir()] == ["runner-fleet.json"]
+
+
+def test_a_saved_observation_carries_each_runners_name_class_and_labels(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runner-fleet" / "runner-fleet.json"
+    save_observation(_observation(), path)
+    saved = json.loads(path.read_text(encoding="utf-8"))["runners"]
+    assert [r["runner_name"] for r in saved] == ["runner-0", "runner-1"]
+    assert {r["label_class"] for r in saved} == {"omnibase-ci"}
+    assert all(r["labels"] == [] for r in saved)
+    fleet = load_runner_fleet_strict(path)
+    assert [r.runner_name for r in fleet.runners] == ["runner-0", "runner-1"]
+
+
+def test_an_older_saved_file_without_names_still_loads_and_its_runners_have_none(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runner-fleet.json"
+    path.write_text(
+        json.dumps(
+            {
+                "observed_at": _T0.isoformat(),
+                "observing_host": "omni-201",
+                "runners": [{"host": "host-050", "status": "offline"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fleet = load_runner_fleet_strict(path)
+    assert fleet.runners[0].runner_name is None
+    assert fleet.runners[0].labels == ()

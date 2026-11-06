@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-22626
+title: The host installer copies the complete declared source tree and reads back the installed worker policy
+summary: The first host installer slice copies the complete declared source tree, including root data, without selecting individual source files, and reads back the worker policy from the installed tree.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22626-host-tree-install
+  statement: The first host installer slice copies the complete declared source tree, including root data, without selecting individual source files.
+  acceptance:
+  - id: AC10
+    statement: 'AC10: the reduced recorded missing-policy and stale-root-data tree is repaired; future files, dotfiles, links, modes and empty directories are carried; generated destination-only files survive;
+      failed staging and readback preserve the previous install -- falsifier: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p
+      no:randomly'
+  - id: AC11
+    statement: 'AC11: installed node discovery wires the declared install command to a correlated completion event and reads back the worker policy from the installed recorded tree -- falsifier: uv run
+      --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly -k declared_runtime_command'
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly -k declared_runtime_command
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22626-host-tree-install
+  description: Replay a reduced recorded source and installed tree. This scopes evidence to the installer copy slice; the controller timer and acting criteria are not asserted here.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22626-host-tree-install-deploy
+  description: Hosted runtime wiring smoke discovers the install contract, dispatches its declared command on the in-memory bus and reads its correlated completion and installed policy. Controller-host
+    installation and next tick remain pending for the publishing runner.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py -q --no-cov -n 0 -p no:randomly -k declared_runtime_command
+    cwd: .
+- id: dod-omn22626-integration-proof-live
+  description: 'Integration proof on a lab host through the central test location: the host tree install tests run as a lab work unit at the pushed sha on the declared bus lane, so the send, run and receipt
+    path carries them.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22626 -- uv run --frozen pytest tests/nodes/node_host_tree_install_effect/test_golden_chain_host_tree_install.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
