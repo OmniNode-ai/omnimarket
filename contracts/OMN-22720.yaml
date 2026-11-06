@@ -1,0 +1,50 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22720
+title: "The overlay drift read counts an overlay whose model the runtime lacks on its own line and refuses a pin to a commit that is not on omnimarket dev"
+summary: >-
+  node_overlay_drift_effect counts an overlay whose model the running runtime does not have as model_missing without
+  making the reading NOT_WORKING (a refused field still does), and, when its overlay sets pin_history, checks each
+  pin's omnimarket revision against the merged branch with git merge-base --is-ancestor and counts a pin to a commit
+  the merged branch lacks as pin_unmerged on its own line of the reading row (pin_unmerged and unmerged_pins cells).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22720-drift-counts
+    statement: The drift reading row carries model_missing and pin_unmerged as their own counts; only refused, unreadable or absent overlays make it NOT_WORKING.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: an overlay whose model the running runtime does not have is counted as model_missing on the reading row and does not make the reading NOT_WORKING, while an overlay with a refused field still does -- falsifier: uv run pytest on the node_overlay_drift_effect tests, which fail with the handler change reverted'
+      - id: AC2
+        statement: 'AC2: a pin whose commit is not an ancestor of omnimarket dev is refused by the read and counted on its own line of the reading row, separate from rejected and model_missing -- falsifier: uv run pytest on the node_overlay_drift_effect tests with a fixture pin naming a commit that is on no dev branch, which expects the count to be 1 and fails without the check'
+      - id: AC3
+        statement: 'AC3: the node has a golden chain event test and an error chain event test for the two new counts, and the error one fails for real under a named injected break -- falsifier: uv run pytest on the node''s chain event tests with the check disabled by the named break'
+      - id: AC4
+        statement: 'AC4: the reading row the node writes on h053 from this branch names accepted, rejected, model_missing and the unmerged pin count for the runtime it was read against -- falsifier: readback of the newest piece 4 row from the reading writer source on h053'
+evidence_requirements:
+  - kind: tests
+    description: The both-backend tests, the pin history tests on the in-memory and git backends, and the golden and error chain event tests for the two new counts.
+    command: uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22720-drift-counts-tests
+    description: The node tests pass with the change; with the handler reverted to dev the model_missing and pin_unmerged tests fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov
+        cwd: .
+  - id: dod-omn22720-drift-counts-integration-proof
+    description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check; the h053 row readback for AC4 is in the pull request's Lab line.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22720 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov'
+        cwd: .
