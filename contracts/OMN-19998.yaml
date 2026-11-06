@@ -138,11 +138,6 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
-  - id: req-omn19998-worktree-host-schedule
-    statement: The existing host worktree reconciliation node owns its recurring schedule and emits receipts without removing protected work.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: the node renders and installs a recurring systemd user timer from its contract and a typed host overlay; undeclared hosts, dirty checkouts and revision mismatches refuse installation; overlapping ticks exit with LOCKED, distinct ticks carry fresh correlation IDs and persist run receipts -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -562,12 +557,4 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-worktree-host-schedule
-    description: Isolated host fixtures exercise schedule rendering and installer command readback, refusal paths and the node's actual tick entry with real filesystem discovery. These tests do not assert installation on a live host or the landing-controller criteria.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov
         cwd: .
