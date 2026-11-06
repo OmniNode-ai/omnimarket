@@ -1,0 +1,3 @@
+# Planted note PN-5 (synthetic test fixture)
+
+Naming note dated 2026-11-05. The team calls the procedure of freezing a pass bar before any result Lantern Pass. The first experiment run under it was the durable-workflow experiment on the first pool host. A run that skips the freeze is called a dark run and does not count toward any decision.
