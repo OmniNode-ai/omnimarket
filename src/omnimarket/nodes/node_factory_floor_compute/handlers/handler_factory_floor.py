@@ -22,6 +22,9 @@ from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_containers import (
     with_application_containers,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_host_status import (
+    build_host_status,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     build_bays,
     build_cloud,
@@ -1404,6 +1407,7 @@ def _floor(
         stall_minutes=request.config.stall_minutes,
         lane_window_minutes=request.config.lane_live_window_minutes,
         bays=build_bays(machines),
+        host_status=build_host_status(request, lanes),
         shipped=shipped,
         waiting=waiting,
         stoppages=stoppages,

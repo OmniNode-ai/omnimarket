@@ -216,6 +216,16 @@ class ModelFloorMachineDecl(BaseModel):
     runner_labels: tuple[str, ...] = ()
 
 
+class ModelFloorPoolDisk(BaseModel):
+    """One disk cell of a pool reading: the volume's name and its free and total size in GB."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    free_gb: float = Field(ge=0.0)
+    total_gb: float = Field(gt=0.0)
+
+
 class ModelFloorPoolReading(BaseModel):
     """One host as the landing placement's pool read reported it (the fields the bay draws)."""
 
@@ -234,6 +244,11 @@ class ModelFloorPoolReading(BaseModel):
     slots: int | None = None
     lane_slots: int | None = None
     refusal: str = ""
+    # Every ``disk_<name>=free/total/inode-pct`` cell, and the memory pressure cell (the Linux ``mempsi`` figure, or the
+    # macOS ``pressure`` level) with the kind of that figure. Empty or None when the reading carried no such cell.
+    disks: tuple[ModelFloorPoolDisk, ...] = ()
+    mem_pressure: float | None = None
+    mem_pressure_kind: Literal["", "psi", "level"] = ""
 
     _utc = field_validator("read_at")(_aware)
 
@@ -247,6 +262,31 @@ class ModelFloorHostRow(BaseModel):
     cap: int | None = None
     available: bool = True
     unavailable_reason: str = ""
+
+
+class ModelFloorDriftHost(BaseModel):
+    """One host of the host-drift fleet projection: its newest heartbeat and how many drift items are open on it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    last_heartbeat_at: datetime | None = None
+    open_items: int = Field(ge=0)
+
+    _utc = field_validator("last_heartbeat_at")(
+        lambda value: None if value is None else _aware(value)
+    )
+
+
+class ModelFloorHostDrift(BaseModel):
+    """The host-drift fleet projection as the floor read it: when it was folded and what it holds per host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    folded_at: datetime
+    hosts: tuple[ModelFloorDriftHost, ...]
+
+    _utc = field_validator("folded_at")(_aware)
 
 
 class ModelFloorPlacedHost(BaseModel):
@@ -444,6 +484,23 @@ class ModelFloorLimitsFacts(BaseModel):
     idle_slot_hours_read_at: str = ""
 
 
+class ModelFloorHostStatusConfig(BaseModel):
+    """The bounds and names the per-host Machines record reads; the handler holds none of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # A host-drift heartbeat older than this, or a fleet projection folded longer ago, is stale.
+    heartbeat_stale_seconds: int = Field(gt=0)
+    # The pool reading's disk cell that decides lane admission (``runs`` is the run directories' volume).
+    disk_cell: str = Field(min_length=1)
+    # A capacity advertisement older than this is stale (the file is a snapshot taken once per publish cycle).
+    advert_stale_minutes: int = Field(gt=0)
+    # The advertised tool name that says the host runs containers.
+    docker_tool: str = Field(min_length=1)
+    # The lane kind (floor.lanes[].kind) of a landing worker.
+    landing_worker_kind: str = Field(min_length=1)
+
+
 class ModelFactoryFloorConfig(BaseModel):
     """The vocabularies and limits the contract's ``config`` block declares; the handler holds none."""
 
@@ -519,6 +576,7 @@ class ModelFactoryFloorConfig(BaseModel):
     # The note a built task carries while a gate it depends on reads a fail verdict; such a task is not counted built.
     built_ahead_of_gate_label: str = Field(min_length=1)
     limits: ModelFloorLimitsConfig
+    host_status: ModelFloorHostStatusConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -574,5 +632,8 @@ class ModelFactoryFloorRequest(BaseModel):
     phoenix_traces: ModelFloorPhoenixTraces | None = None
     # Every limit read for the Limits panel; a field left None is an unread source (OMN-22010).
     limits: ModelFloorLimitsFacts = Field(default_factory=ModelFloorLimitsFacts)
+    # The host-drift fleet projection; None when it could not be read, with the reader's words in host_drift_cause.
+    host_drift: ModelFloorHostDrift | None = None
+    host_drift_cause: str = ""
 
     _utc = field_validator("generated_at")(_aware)

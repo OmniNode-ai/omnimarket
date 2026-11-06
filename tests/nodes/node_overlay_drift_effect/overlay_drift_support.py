@@ -38,6 +38,7 @@ from omnimarket.nodes.node_overlay_drift_effect.overlay import (
 )
 from omnimarket.nodes.node_overlay_drift_effect.protocols import (
     ProtocolOverlayHome,
+    ProtocolPinHistory,
     ProtocolRuntimeValidator,
     RuntimeValidatorError,
 )
@@ -50,6 +51,8 @@ NODES = SRC / "omnimarket/nodes"
 EXAMPLE = NODES / "node_overlay_drift_effect/overlay.example.yaml"
 RUN_AT = datetime(2026, 11, 6, 6, 40, tzinfo=UTC)
 HOST = "example-host"
+MERGED = "0123456789abcdef"
+UNMERGED = "fedcba9876543210"
 
 #: Two real overlays and the models that load them, so a planted key is refused by real code.
 OVERLAYS = {
@@ -99,6 +102,19 @@ class World:
         )
         self.texts["node_gone_effect"] = "key: value\n"
 
+    def break_pin_every_model_the_runtime_lacks(self) -> None:
+        """Every pin names a model the runtime does not have; every overlay is still held."""
+        self.pin_lines = [
+            f"{line.split()[0]} 0123456789abcdef "
+            f"omnimarket.nodes.node_gone_effect.models:ModelGone{number}"
+            for number, line in enumerate(self.pin_lines)
+        ]
+
+    def break_pin_an_unmerged_revision(self) -> None:
+        """The first pin names a squashed branch commit: a revision the merged branch lacks."""
+        overlay_id, _, model = self.pin_lines[0].split()
+        self.pin_lines[0] = f"{overlay_id} {UNMERGED} {model}"
+
     def break_pin_an_absent_overlay(self) -> None:
         self.pin_lines.append(
             "node_absent_effect 0123456789abcdef "
@@ -144,7 +160,11 @@ class World:
             return InProcessRuntimeValidator()
         return InterpreterRuntimeValidator(self.python, 120, run=_this_checkout)
 
-    def handler(self, ledger: InMemoryLedger | None) -> HandlerOverlayDrift:
+    def handler(
+        self,
+        ledger: InMemoryLedger | None,
+        pin_history: ProtocolPinHistory | None = None,
+    ) -> HandlerOverlayDrift:
         return HandlerOverlayDrift(
             overlay=overlay(),
             host=HOST,
@@ -152,6 +172,7 @@ class World:
             validator=self.validator(),
             appender=ledger,
             clock=lambda: RUN_AT,
+            pin_history=pin_history,
         )
 
 
