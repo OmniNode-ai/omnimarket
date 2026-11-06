@@ -1,0 +1,8 @@
+transport: inmemory
+delivery:
+  mode: hint
+  queue_context: false
+  window_seconds: 60
+  probe_interval_seconds: 30
+  probe_timeout_seconds: 5
+  latency_budget_ms: 250

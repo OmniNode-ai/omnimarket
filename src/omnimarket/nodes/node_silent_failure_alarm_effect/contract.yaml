@@ -47,17 +47,34 @@ handler_routing:
       handler:
         name: HandlerSilentFailureAlarm
         module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+    - operation: delivery-health
+      event_model:
+        name: ModelDeliveryAlarmRequest
+        module: omnimarket.models.error_rule_delivery
+      topic: onex.cmd.omnimarket.delivery-health-alarm-requested.v1
+      handler:
+        name: HandlerDeliveryHookAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_delivery_hook_alarm
+      input_model: omnimarket.models.error_rule_delivery.ModelDeliveryAlarmRequest
+      output_model: omnimarket.models.error_rule_delivery.ModelDeliveryAlarmResult
 terminal_event: onex.evt.omnimarket.silent-failure-alarm-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
 event_bus:
   subscribe_topics:
+    - onex.cmd.omnimarket.delivery-health-alarm-requested.v1
     - onex.cmd.omnimarket.silent-failure-alarm-requested.v1
     - onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
     - onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
   publish_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
 externally_consumed_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
 externally_produced_topics:
+  - topic: onex.cmd.omnimarket.delivery-health-alarm-requested.v1
+    producer: >
+      External delivery-health diagnostic callers submitting ModelDeliveryAlarmRequest;
+      test_delivery_hook_health_signal_routes_through_existing_alarm_node exercises
+      this ingress through the contract-wired bus. The delivery handler's synchronous
+      alarm port calls HandlerDeliveryHookAlarm in process, not this topic.
   - topic: onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
     producer: "the alarm's own command-line runtime (drainer-observe), run on a quiet host over its declared execution command, not a node contract"
   - topic: onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1

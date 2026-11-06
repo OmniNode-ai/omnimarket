@@ -1163,6 +1163,10 @@ class HandlerSilentFailureAlarm:
             1 for at in stamps if at is not None and now - HOUR < at <= now
         ), open_prs
 
+    def deliver(self, category: str, text: str) -> tuple[bool, str, str | None]:
+        """Public delivery seam for additional alarm handlers in this node."""
+        return self._deliver(category, text)
+
     def _deliver(self, category: str, text: str) -> tuple[bool, str, str | None]:
         """Send through the shared alert channel; credentials are sourced only in the child.
 
