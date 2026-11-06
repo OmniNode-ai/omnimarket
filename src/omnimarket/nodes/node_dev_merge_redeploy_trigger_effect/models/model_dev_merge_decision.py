@@ -12,8 +12,8 @@ from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
     EnumDevMergeOutcome,
 )
-from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
-    ModelRedeployStartCommand,
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_start_command import (
+    ModelDevMergeStartCommand,
 )
 
 
@@ -24,7 +24,7 @@ class ModelDevMergeDecision(BaseModel):
 
     correlation_id: UUID
     outcome: EnumDevMergeOutcome | None
-    command: ModelRedeployStartCommand | None = None
+    command: ModelDevMergeStartCommand | None = None
     runtime_paths: int = Field(default=0, ge=0)
     message: str = Field(default="", max_length=2000)
 

@@ -10,6 +10,9 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     ModelDevMergeRedeployTopics,
     ModelDevMergeRepoPolicy,
 )
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_start_command import (
+    ModelDevMergeStartCommand,
+)
 
 __all__ = [
     "SUCCESS_OUTCOMES",
@@ -18,4 +21,5 @@ __all__ = [
     "ModelDevMergeRedeployReceipt",
     "ModelDevMergeRedeployTopics",
     "ModelDevMergeRepoPolicy",
+    "ModelDevMergeStartCommand",
 ]

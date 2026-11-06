@@ -41,8 +41,8 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     EnumDevMergeOutcome,
     ModelDevMergeRedeployPolicy,
 )
-from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
-    ModelRedeployStartCommand,
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_start_command import (
+    ModelDevMergeStartCommand,
 )
 
 CORRELATION_NAMESPACE = uuid.NAMESPACE_URL
@@ -114,7 +114,7 @@ class HandlerDevMergeRedeployTrigger:
             return self._failed(
                 cid, EnumDevMergeOutcome.FAILED_BUILD_CONTEXT_REF, exc, len(paths)
             )
-        command = ModelRedeployStartCommand(
+        command = ModelDevMergeStartCommand(
             correlation_id=cid,
             scope=EnumRedeployScope.FULL,
             git_ref=ref,
