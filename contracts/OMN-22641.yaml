@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22641
+title: A pure node plans the core hook revs and the core source pin of the sibling-pin train, so every train pull request passes the pin-floor tests
+summary: node_sibling_pin_hook_revs_compute is a pure compute handler that picks the tag for the floor-bound hook blocks and the tag strictly under them for the source pin, so omniclaude's relock script calls it later and does not grow.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22641-hook-revs-node
+  statement: The train's hook rev and source pin choice is a node with a contract, typed models, a golden chain test and an error chain test, and its tests fail when the strictly-newer rule is injected as at-or-newer.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node golden and error chain tests pass -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov'
+  - id: AC2
+    statement: 'AC2: with the strictly-newer rule injected as at-or-newer the same tests fail, so the rule is read by the tests -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov with the rule patched exits non-zero'
+  - id: AC3
+    statement: 'AC3: the node answers as the seven script tests of OMN-22636 do for the same data -- falsifier: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The hook revs node tests pass
+  command: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22641-node-tests
+  description: Runs the golden chain and error chain tests of node_sibling_pin_hook_revs_compute.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov
+    cwd: .
+- id: dod-omn22641-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22641 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov
+    cwd: .
