@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_reading_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: host-reading
+  actor: node:node_host_reading_effect
+  publish_max_age_seconds: 7200
+outbox:
+  ledger_path_env: ONEX_LEDGER_PATH
+  lock_dirname: .ledger_locks
+  outbox_suffix: .bus-outbox
+  refused_dirname: refused
+  pending_glob: "*.json"
+  queued_at_field: queued_at
+  oldest_max_seconds: 900
+  refused_max: 0
+  injected_fault: Plant a queued request older than the bound or a refused file in a sandbox outbox
+# Removed with its probe at the bus cutover; see handlers/probe_ledger_old_names.py.
+old_names:
+  root_env: OMNI_HOME
+  ledger_path_env: ONEX_LEDGER_PATH
+  links:
+    - name: docs/old/LEDGER.md
+      ledger_relative: LEDGER.md
+    - name: docs/old/archive
+      ledger_relative: archive
+  injected_fault: Replace an old name with a regular file in a sandbox copy
+hosts:
+  - name: example-ledger-host
+    scheduler: launchd
+    probes: [ledger-outbox, ledger-old-names]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_PATH: /example/ledger/LEDGER.md
+      ONEX_LEDGER_HOST_NAME: example-ledger-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+  - name: example-writing-host
+    scheduler: systemd-user
+    probes: [ledger-outbox]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_PATH: /example/old/LEDGER.md
+      ONEX_LEDGER_HOST_NAME: example-writing-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
