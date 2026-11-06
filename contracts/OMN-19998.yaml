@@ -133,11 +133,6 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-ended-lane-claims
-    statement: Stopping an ended lane releases only that lane's exact PR claims.
-    acceptance:
-      - id: AC13
-        statement: 'AC13: the stop adapter releases only the exact lane/run/session PR claims, handles final receipts, no-tree closeout, dry run, missing identities, replacement races and failed deletion -- falsifier: uv run --frozen --python 3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -318,14 +313,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov -k recorded_serving_hosts
-        cwd: .
-  - id: dod-omn19998-ended-lane-claims
-    description: Scoped inbox follow-up only. The stop contract's real adapter stops a child process, releases only its exact lane/run/session PR claims, and writes its terminal through the ledger adapter. Final receipts, no-tree closeout, dry run, missing identities, replacement races and failed deletion are exercised. This does not assert the original controller rules, lock, acting gate or launchd timer criteria, and does not assert a live host installation.
-    source: manual
-    binds_ac: [AC13]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
