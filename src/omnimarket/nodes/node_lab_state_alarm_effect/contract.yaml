@@ -31,6 +31,7 @@ handler:
 
 handler_routing:
   routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm:HandlerLabStateAlarm
   handlers:
     - operation: canary_verdict
       handler:
