@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.github_credential_seal import RecipientKeyPair, SealError
+from omnimarket.models.github_credential_seal import RecipientKeyPair, SealError
 from omnimarket.nodes.node_github_git_credential_effect.handlers import (
     HandlerGithubGitCredentialEffect,
 )
@@ -94,3 +94,9 @@ async def test_a_request_is_issued_sealed_to_the_requester_and_narrowed() -> Non
             repository="OmniNode-ai/omnibase_core",
         )
     assert FAKE_TOKEN.encode() not in raw_records(broker, REQUESTED, ISSUED, FAILED)
+
+
+def test_the_contract_publishes_the_issued_and_failed_topics() -> None:
+    """Both result topics are the ones the credential helper reads."""
+    assert ISSUED == "onex.evt.omnimarket.github-git-credential-issued.v1"
+    assert FAILED == "onex.evt.omnimarket.github-git-credential-failed.v1"

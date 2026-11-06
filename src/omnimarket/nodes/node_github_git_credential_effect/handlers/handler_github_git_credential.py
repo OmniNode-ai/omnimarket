@@ -21,13 +21,14 @@ from typing import Final
 
 import yaml
 
-from omnimarket.github_credential_seal import SealError, parse_public_key, seal_token
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_github_git_credential_effect.handlers.handler_app_token_minter import (
-    HandlerAppRepositoryTokenMinter,
+from omnimarket.models.github_credential_seal import (
+    SealError,
+    parse_public_key,
+    seal_token,
 )
 from omnimarket.nodes.node_github_git_credential_effect.models import (
     EnumGitCredentialRefusal,
@@ -41,6 +42,9 @@ from omnimarket.nodes.node_github_git_credential_effect.protocols import (
     GitCredentialUnavailableError,
     MintedRepositoryToken,
     ProtocolRepositoryTokenMinter,
+)
+from omnimarket.nodes.node_github_git_credential_effect.protocols.app_repository_token_minter import (
+    AppRepositoryTokenMinter,
 )
 
 NODE_NAME: Final[str] = "node_github_git_credential_effect"
@@ -127,7 +131,7 @@ class HandlerGithubGitCredentialEffect:
         if self._policy is None:
             self._policy = resolve_policy()
         if self._minter is None:
-            self._minter = HandlerAppRepositoryTokenMinter(self._policy)
+            self._minter = AppRepositoryTokenMinter(self._policy)
         return self._policy, self._minter
 
     async def handle(self, request: ModelGitCredentialRequest) -> Result:

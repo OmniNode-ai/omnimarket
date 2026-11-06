@@ -18,13 +18,10 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.github_api import GitHubApiError
-from omnimarket.github_credential_seal import RecipientKeyPair
+from omnimarket.models.github_credential_seal import RecipientKeyPair
 from omnimarket.nodes.node_github_git_credential_effect.handlers import (
-    HandlerAppRepositoryTokenMinter,
+    AppRepositoryTokenMinter,
     HandlerGithubGitCredentialEffect,
-)
-from omnimarket.nodes.node_github_git_credential_effect.handlers import (
-    handler_app_token_minter as live,
 )
 from omnimarket.nodes.node_github_git_credential_effect.handlers.handler_github_git_credential import (
     packaged_policy,
@@ -37,6 +34,9 @@ from omnimarket.nodes.node_github_git_credential_effect.models import (
 )
 from omnimarket.nodes.node_github_git_credential_effect.protocols import (
     MintedRepositoryToken,
+)
+from omnimarket.nodes.node_github_git_credential_effect.protocols import (
+    app_repository_token_minter as live,
 )
 
 from .support import (
@@ -154,7 +154,7 @@ async def test_a_missing_app_credential_is_credential_unavailable(
     policy = packaged_policy()
     failed = await _refused(
         HandlerGithubGitCredentialEffect(
-            HandlerAppRepositoryTokenMinter(policy), policy=policy
+            AppRepositoryTokenMinter(policy), policy=policy
         ),
         _request(),
     )
@@ -178,7 +178,7 @@ async def test_a_github_refusal_is_mint_refused_with_the_status_and_no_body(
     policy: ModelGitCredentialPolicy = packaged_policy()
     failed = await _refused(
         HandlerGithubGitCredentialEffect(
-            HandlerAppRepositoryTokenMinter(policy), policy=policy
+            AppRepositoryTokenMinter(policy), policy=policy
         ),
         _request(),
     )

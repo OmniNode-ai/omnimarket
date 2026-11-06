@@ -39,9 +39,9 @@ import yaml
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
-from omnimarket.github_credential_seal import RecipientKeyPair, SealError
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.github_credential_seal import RecipientKeyPair, SealError
 from omnimarket.models.scm import ModelScmTopics
 from omnimarket.nodes.node_github_git_credential_effect.handlers.handler_github_git_credential import (
     NODE_NAME,

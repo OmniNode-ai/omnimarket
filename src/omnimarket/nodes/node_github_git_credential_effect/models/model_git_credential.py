@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.github_credential_seal import MAX_PUBLIC_KEY_CHARS
+from omnimarket.models.github_credential_seal import MAX_PUBLIC_KEY_CHARS
 
 GIT_CREDENTIAL_USERNAME: Final = "x-access-token"
 

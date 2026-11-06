@@ -50,7 +50,7 @@ async def _from_store(ref: str) -> SecretStr | None:
         ) from None
 
 
-class HandlerAppRepositoryTokenMinter:
+class AppRepositoryTokenMinter:
     """Mints the writer App's token through the store-resolved refs the policy names."""
 
     def __init__(self, policy: ModelGitCredentialPolicy) -> None:
@@ -109,4 +109,4 @@ class HandlerAppRepositoryTokenMinter:
         )
 
 
-__all__ = ["HandlerAppRepositoryTokenMinter"]
+__all__ = ["AppRepositoryTokenMinter"]
