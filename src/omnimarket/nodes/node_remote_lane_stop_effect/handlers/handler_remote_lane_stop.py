@@ -18,9 +18,12 @@ import re
 import subprocess
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.models.pr_claim import EnumPrClaimOperation, ModelPrClaimRegistryRequest
+from omnimarket.nodes.node_pr_claim_registry_effect import HandlerPrClaimCloseout
 from omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop import (
     EnumStopOutcome,
     ModelRemoteLaneStopRequest,
@@ -146,6 +149,7 @@ class HandlerRemoteLaneStop:
             rows = _lane_rows(self._ledger.read_text(request.ledger_path), lane)
             claim, closer = _claim_and_closer(rows, run_id)
             if receipt.get("final") is True or status not in NOT_FINAL_STATUSES:
+                self._release_claims(request, receipt, base)
                 return self._ended(
                     lane, run_id, f"receipt status={status or 'final'}", closer, base
                 )
@@ -232,9 +236,45 @@ class HandlerRemoteLaneStop:
                 signals=signals,
                 **base,
             )
+        self._release_claims(request, receipt, base)
         if request.placement_dir and isinstance(pid, int):
             self._transport.remove_slot_markers(request.placement_dir, host_name, pid)
         return self._close(request, claim, run_id, host_name, signals, base)
+
+    def _release_claims(
+        self,
+        request: ModelRemoteLaneStopRequest,
+        receipt: dict[str, Any],
+        base: dict[str, Any],
+    ) -> None:
+        if request.claims_dir is None:
+            return
+        session_id = receipt.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise RemoteLaneStopPortError(
+                "ended engine receipt has no session identity; claims retained"
+            )
+        claim_run_id = receipt.get("claim_run_id")
+        if not isinstance(claim_run_id, str) or not claim_run_id:
+            raise RemoteLaneStopPortError(
+                "ended engine receipt has no claim run identity; claims retained"
+            )
+        try:
+            released = HandlerPrClaimCloseout().handle(
+                ModelPrClaimRegistryRequest(
+                    operation=EnumPrClaimOperation.RELEASE_ENDED_OWN_CLAIMS,
+                    claims_dir=request.claims_dir,
+                    now=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    lane_id=request.lane,
+                    run_id=claim_run_id,
+                    session_id=session_id,
+                )
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise RemoteLaneStopPortError(
+                f"ended engine claim closeout: {exc}"
+            ) from exc
+        base["released_claims"] = released.pr_keys
 
     def _stop_process(
         self,
