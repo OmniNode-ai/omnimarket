@@ -268,10 +268,13 @@ def test_run_gate_refuses_a_mutation_and_starts_nothing(
 def test_run_gate_with_no_request_is_refused_not_a_login_shell() -> None:
     ran: list[tuple[str, ...]] = []
     handler = HandlerReadOnlyCommandGate(overlay_source=_overlay)
-    assert (
-        run_gate({}, gate=handler, run=lambda argv: ran.append(argv) or 0)
-        == EXIT_GATE_REFUSED
-    )
+
+    def _record_run(argv: tuple[str, ...]) -> int:
+        ran.append(argv)
+        return 0
+
+    code = run_gate({}, gate=handler, run=_record_run)
+    assert code == EXIT_GATE_REFUSED
     assert ran == []
 
 
