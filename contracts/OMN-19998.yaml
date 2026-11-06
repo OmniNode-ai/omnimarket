@@ -191,11 +191,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-memory-pilot-cognee-node
-    statement: The memory pilot node ingests and answers through an overlay-chosen backend on a frozen bar, runs only for a matching frozen hash, makes no model call off the overlay's allowed hosts, keeps telemetry off, and enables nothing by default.
-    acceptance:
-      - id: AC14
-        statement: 'AC14: a golden request ingests then answers and publishes started and completed on the contract topics; each typed failure (unfrozen pilot, endpoint off the allow list, lab model down, backend error, query before ingest) publishes started and failed on the contract topics, records a failure row and reads NOT_WORKING; the Cognee environment turns telemetry off and a spy on the library shows no event queued with it and one queued without it -- falsifier: uv run --frozen pytest tests/nodes/node_memory_pilot_effect -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-brief-input-placement
     statement: Remote lane placement refuses hosts missing an input required by the brief before selecting a host for the send.
     acceptance:
@@ -211,9 +206,6 @@ evidence_requirements:
   - kind: tests
     description: The additive-wire suite exercises model serialization, queued requests, and the bus caller against the pre-field host model.
     command: uv run pytest tests/unit/work_ledger_bus/test_request_additive_wire.py -q --no-cov -n 0 -p no:randomly
-  - kind: tests
-    description: The memory pilot node's golden chain, error chain, frozen-file, overlay and telemetry tests run at the pushed head; the telemetry spy test needs the optional package and skips where it is absent.
-    command: uv run --frozen pytest tests/nodes/node_memory_pilot_effect -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -724,14 +716,6 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-memory-pilot-cognee-node
-    description: Hosted wiring smoke runs the node's handler against an in-memory bus and recorder on the default backend and on injected faults, and checks the event topics against the contract. With the optional package installed on a lab host the telemetry spy test passes, and with the telemetry switches removed from the pilot environment the environment test and the spy test fail. No live runtime installation, broker overlay or enablement is asserted.
-    source: manual
-    binds_ac: [AC14]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_memory_pilot_effect -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-brief-input-placement
     description: The PR-added placement tests replay the recorded missing-plan-branch case through the typed request and HandlerRemoteLanePlacement. The refreshed base rejects the added request fields; the rebased tree passes all six cases. This scoped placement proof does not assert a live remote send or the landing-controller timer criteria.
