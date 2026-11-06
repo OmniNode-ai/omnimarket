@@ -214,7 +214,7 @@ ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10
 .hcard.unread{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
 .hcard.stale,.hcard.refusing{border-color:var(--warn);box-shadow:inset 4px 0 0 var(--warn)}
 .hwhy{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
-.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;align-items:start}
 .hcell{display:grid;gap:2px;font-size:.82rem;color:var(--muted);min-width:0}
 .hcell .v{font-size:.95rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--muted);font-size:.85rem}
@@ -1071,21 +1071,23 @@ function hostCard(h){
     ? `<p class="capline">Lab-run jobs: <span class="unread">unread (${esc(h.other_units.reason)})</span></p>`
     : `<p class="capline">${esc(fmt(h.other_units.value))} other placed units (lab-run jobs and the landing workers' own leases; the slot marker does not say which)</p>`;
   const pressure = h.mem_pressure.unit === "psi" ? v => fmt(v) + " PSI" : v => "level " + fmt(v) + " (1 normal)";
+  // The cells the pool read gives. When none of them read, they share one cause and are drawn once, not eight times.
+  const poolCells = [["Load per core", h.load_per_core, v => fmt(v)], ["Free memory", h.mem_free_gb, fmtGB], ["Memory pressure", h.mem_pressure, pressure],
+    ["Swap used", h.swap_used_pct, v => fmt(v) + "%"], ["Free disk (run volume)", h.disk_free_gb, fmtGB], ["Disk used", h.disk_used_pct, v => fmt(v) + "%"],
+    ["Last reading", h.reading_age, v => ageText(v * 60000) + " old"]];
+  const noneRead = poolCells.every(([, c]) => !c || c.state === "unread" || c.value == null);
+  const poolFold = noneRead ? `<p class="capline"><span class="unread">Unread from the pool read: ${esc(poolCells.map(x => x[0].toLowerCase()).join(", "))} (${esc(h.reading_age.reason || "no reason recorded")})</span></p>` : "";
+  const poolHTML = noneRead ? "" : poolCells.map(([label, c, f]) => cellHTML(label, c, f)).join("");
   return `<article class="hcard ${esc(h.condition)}" aria-label="${esc(h.label)}">
     <div class="mtop"><b>${esc(h.label)}</b><span class="pill ${HOST_TONE[h.condition]}">${esc(HOST_WORD[h.condition])}${h.reading_age.value != null ? " · " + esc(ageText(liveMs(h.reading_age.age_min == null ? 0 : h.reading_age.age_min))) + " ago" : ""}</span></div>
     ${why ? `<p class="hwhy">${esc(why)}</p>` : ""}
     ${slotLine}${bar}${lanes}${landing}${other}
+    ${poolFold}
     <div class="hgrid">
-      ${cellHTML("Load per core", h.load_per_core, v => fmt(v))}
-      ${cellHTML("Free memory", h.mem_free_gb, fmtGB)}
-      ${cellHTML("Memory pressure", h.mem_pressure, pressure)}
-      ${cellHTML("Swap used", h.swap_used_pct, v => fmt(v) + "%")}
-      ${cellHTML("Free disk (run volume)", h.disk_free_gb, fmtGB)}
-      ${cellHTML("Disk used", h.disk_used_pct, v => fmt(v) + "%")}
+      ${poolHTML}
       ${cellHTML("Heartbeat age", h.heartbeat_age_min, v => ageText(v * 60000))}
       ${cellHTML("Open drift items", h.drift_open, v => fmt(v))}
       ${flagHTML("Docker", h.docker, "present", "absent")}
-      ${cellHTML("Last reading", h.reading_age, v => ageText(v * 60000) + " old at the record")}
     </div>
   </article>`;
 }

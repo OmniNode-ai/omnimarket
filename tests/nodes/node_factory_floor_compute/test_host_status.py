@@ -289,7 +289,7 @@ def stale_facts() -> dict[str, object]:
             folded_at=ago(1),
             hosts=(
                 ModelFloorDriftHost(
-                    host="h053", last_heartbeat_at=ago(20), open_items=0
+                    host="h053", last_heartbeat_at=ago(130), open_items=0
                 ),
             ),
         ),
@@ -308,7 +308,7 @@ def test_stale_a_reading_past_its_bound_is_stale_and_the_host_is_never_read() ->
     assert "bound is 30 min" in h.reading_age.reason
     assert (h.docker.state, h.docker.value) == ("stale", True)
     assert h.heartbeat_age_min.state == "stale"
-    assert h.heartbeat_age_min.value == 20.0
+    assert h.heartbeat_age_min.value == 130.0
     assert_no_cell_reads_fresh_except_live(h)
 
 
@@ -334,14 +334,14 @@ def test_stale_a_fleet_projection_folded_too_long_ago_makes_every_heartbeat_figu
     None
 ):
     old = ModelFloorHostDrift(
-        folded_at=ago(40),
+        folded_at=ago(130),
         hosts=(
-            ModelFloorDriftHost(host="h053", last_heartbeat_at=ago(41), open_items=2),
+            ModelFloorDriftHost(host="h053", last_heartbeat_at=ago(131), open_items=2),
         ),
     )
     h = statuses(**full_facts(host_drift=old))["h053"]
     assert (h.heartbeat_age_min.state, h.drift_open.state) == ("stale", "stale")
-    assert "folded 40 min ago" in h.heartbeat_age_min.reason
+    assert "folded 130 min ago" in h.heartbeat_age_min.reason
 
 
 def test_failing_control_an_injected_break_that_never_judges_age_turns_the_stale_check_red(

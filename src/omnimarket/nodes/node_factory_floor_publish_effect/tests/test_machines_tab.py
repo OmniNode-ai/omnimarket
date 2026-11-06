@@ -78,7 +78,8 @@ def test_error_missing_sources_draw_unread_never_a_number_or_read() -> None:
     html = _machines(_record(host_table=TABLE))
     cards = _cards(html)
     assert len(cards) == 5
-    assert "unread (the pool read was not recorded)" in cards["h053"]
+    assert "Unread from the pool read: load per core, free memory" in cards["h053"]
+    assert "(the pool read was not recorded)" in cards["h053"]
     assert "unread (the host-drift fleet projection was not read)" in cards["h053"]
     assert "unread (the slot markers were not read)" in cards["h053"]
     assert 'class="pill ok"' not in html

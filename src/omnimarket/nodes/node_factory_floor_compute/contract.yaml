@@ -162,9 +162,10 @@ config:
     cloud_credit_expiry: "2026-11-05"
   # The Machines tab's per-host record (OMN-22673). Each value is read from one source and judged against that source's
   # own bound: the pool read uses pool_stale_minutes above; a capacity advertisement is a snapshot written once per publish
-  # cycle (5 min), so three cycles; a host-drift heartbeat uses the drift overlay's own bound (900 s).
+  # cycle (5 min), so three cycles; a host-drift heartbeat comes about hourly (measured 2026-11-06: gaps of 42 to 56
+  # minutes on four lab hosts), so two cycles.
   host_status:
-    heartbeat_stale_seconds: 900
+    heartbeat_stale_seconds: 7200
     disk_cell: runs
     advert_stale_minutes: 15
     docker_tool: docker
