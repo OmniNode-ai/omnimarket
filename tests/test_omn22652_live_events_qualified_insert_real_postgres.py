@@ -94,6 +94,7 @@ async def server() -> AsyncIterator[_Server]:
         root = await asyncpg.connect(srv.admin_dsn("postgres"))
     except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for OMN-22652: {exc}")
+        return
     try:
         await root.execute(
             f"CREATE ROLE \"{srv.login}\" LOGIN PASSWORD '{_LOGIN_PASSWORD}'"
