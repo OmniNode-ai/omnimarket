@@ -1,0 +1,30 @@
+schema_version: 1.0.0
+ticket_id: OMN-22717
+title: The automation liveness check reads only files its repository tracks or could add, never a git-ignored staged copy of another repository
+summary: The reading half of the automation liveness check prunes what the git checkout at a repository root ignores, so a host's staged copy of a sibling repository (written into an ignored workspace directory by a staging script) is no longer read as that repository's installer. A tree that is not a git checkout is read as before, so the scan reads more and never less. No source is exempted and no path list grows.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22717-ignored-not-read
+  statement: The registry-wide liveness check on a host reports the same findings as a clean checkout of each repository, because git-ignored staged content is not read.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a planted unit file inside a git-ignored directory of a git checkout is not collected, while a tracked file and an untracked, not ignored file are -- falsifier: uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_effect -q --no-cov -k "git_ignores or not_a_checkout"'
+evidence_requirements:
+- kind: tests
+  description: The ignored-path read and the non-checkout read of the overlay check run.
+  command: uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22717-ac1
+  description: The checkout-ignore test and the non-checkout test pass; the first fails without the change.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_effect -q --no-cov
