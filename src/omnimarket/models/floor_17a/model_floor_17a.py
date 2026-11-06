@@ -429,7 +429,8 @@ class ModelRebuild(_Frozen):
     current_piece: int
     headline: str
     next_text: str
-    go_given_through: int
+    # The highest piece the ledger's go rulings cover, or ``None`` when the ledger could not be read: unread is not zero.
+    go_given_through: int | None
 
 
 class ModelRedRule(_Frozen):
@@ -465,8 +466,63 @@ class ModelFloorSimple(_Frozen):
     )
 
 
+class ModelGoRule(_Frozen):
+    """How the go for rebuild pieces is read from the ledger's RULING rows (never a number set by hand).
+
+    A RULING row counts when it is on ``ticket``, written by ``lane``, and its ``question`` cell matches
+    ``question_pattern``; the pattern's named groups ``first`` and ``last`` give the pieces it asks about (``last`` is
+    optional and defaults to ``first``). The row grants those pieces when its verbatim answer, the quoted last cell,
+    matches ``affirmative_pattern``, and revokes them when it does not. The newest ruling that covers a piece decides it.
+    The go reaches piece N only when every piece from 1 to N is granted, because the pieces are taken in order.
+    """
+
+    ticket: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    lookback_days: int = Field(gt=0)
+    question_pattern: str = Field(min_length=1)
+    affirmative_pattern: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _patterns(self) -> ModelGoRule:
+        try:
+            question = re.compile(self.question_pattern)
+            re.compile(self.affirmative_pattern)
+        except re.error as exc:
+            raise ValueError(f"a go rule pattern does not compile: {exc}") from exc
+        if "first" not in question.groupindex:
+            raise ValueError("the question pattern names a group called first")
+        return self
+
+
+class ModelRowMatch(_Frozen):
+    """Which ledger rows count: the row type, the lane, and the cells that must equal these values."""
+
+    row_type: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    cells: dict[str, str] = Field(default_factory=dict)
+
+
+class ModelPieceEventRule(_Frozen):
+    """A piece whose golden and error events are ledger rows instead of emissions: which rows, and who emits them.
+
+    A golden row stands for a start and a success of ``node`` under one correlation id. An error row stands for a start
+    and a typed failure, run as a drill when the row says so through ``error_drill_cell``; its failure code is the value
+    of ``failure_code_cell`` (or ``failure_default`` when the row has none).
+    """
+
+    piece: int = Field(ge=1, le=18)
+    node: str = Field(min_length=1)
+    golden: ModelRowMatch
+    error: ModelRowMatch
+    failure_code_cell: str = Field(min_length=1)
+    failure_default: str = Field(min_length=1)
+    error_drill_cell: str = Field(min_length=1)
+    lookback_days: int = Field(gt=0)
+
+
 class ModelRebuildOverlay(_Frozen):
-    go_given_through_piece: int = Field(ge=0, le=18)
+    go: ModelGoRule
+    # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
     lab_state_piece: int = Field(ge=1, le=18)
@@ -503,6 +559,7 @@ class ModelFloorSimpleOverlay(_Frozen):
     rebuild: ModelRebuildOverlay
     numbers: ModelNumbersOverlay
     causes: ModelCauseOverlay
+    piece_events: tuple[ModelPieceEventRule, ...] = ()
     freshness_max_age_s: int = Field(gt=0)
     error_receipt_max_age_s: int = Field(gt=0)
     error_drill_after_s: int = Field(gt=0)
@@ -547,6 +604,8 @@ class ModelFloorSimpleInput(_Frozen):
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
     readings: dict[int, ModelReadingRow] | None = None
+    # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
+    go_given_through: int | None
     alarms: tuple[ModelFloorAlarmLine, ...] = ()
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None

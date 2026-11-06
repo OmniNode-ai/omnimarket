@@ -146,6 +146,8 @@ async def _provisioned_runner() -> AsyncIterator[
 
         runner = HandlerLiveEventsProjectionRunner()
         runner._db = adapter  # type: ignore[assignment]
+        # The handler names omninode_internal; point it at the scratch schema.
+        runner._table_live_events = f"{schema}.live_events"
 
         yield runner, admin_conn, schema
     finally:
