@@ -176,6 +176,39 @@ def test_a_row_later_than_the_deadline_reads_not_working() -> None:
     assert reading.reasons == ("no-durable-row-by-deadline",)
 
 
+class SlowStore(LateStore):
+    """A read that takes ``read_seconds`` on the clock, as the lab read node can under load."""
+
+    def __init__(self, clock: Clock, lag: int, read_seconds: int) -> None:
+        super().__init__(clock, lag)
+        self._read_seconds = read_seconds
+
+    def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        self._clock.now += timedelta(seconds=self._read_seconds)
+        return super().read(query)
+
+
+def test_a_row_found_by_a_read_that_ends_past_the_deadline_reads_not_working() -> None:
+    # Read on h200 2026-11-06T13:53:35Z: a row found by a read that started before the deadline
+    # and ended after it read WORKING with durable_lag_s=232 against deadline_s=180.
+    clock = Clock()
+    store = SlowStore(clock, lag=170, read_seconds=40)
+    reading = _probe(store, store, clock)
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING, reading
+    assert reading.reasons == ("durable-row-after-deadline",)
+    assert reading.cells["durable"] == "late"
+    assert int(reading.cells["durable_lag_s"]) > 180
+
+
+def test_a_row_found_by_a_slow_read_inside_the_deadline_is_working() -> None:
+    clock = Clock()
+    store = SlowStore(clock, lag=20, read_seconds=40)
+    reading = _probe(store, store, clock)
+    assert reading.verdict is EnumReadingVerdict.WORKING, reading
+    # Found by the first read, which ended at 40 s: the lag runs to the end of that read.
+    assert reading.cells["durable_lag_s"] == "40"
+
+
 @pytest.mark.parametrize("status", ["refused", "pending", "error"])
 def test_append_that_does_not_land_is_not_working_and_reads_nothing(
     status: str,

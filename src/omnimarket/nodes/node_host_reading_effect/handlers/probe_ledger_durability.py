@@ -9,6 +9,8 @@ configured read route (the lab read node over the database projection) until a d
 
 - The row reads back in time: WORKING, with the lag from the probe's stamp to the row's
   ``projected_at`` (else to the read that found it).
+- The row reads back with a lag past the deadline (a slow read can find it after the deadline):
+  NOT WORKING, ``durable-row-after-deadline``, with its lag.
 - The append was accepted and no durable row came by the deadline: NOT WORKING,
   ``no-durable-row-by-deadline``. This is the plan's named fault, an append that returns with no
   durable row. Lag alone is this reading; a row that lands later is a late row, not a lost one.
@@ -136,8 +138,20 @@ def read_durability(
                 (row for row in answer.rows if f"probe_id={probe_id}" in row.raw), None
             )
             if found is not None:
-                durable_at = found.ingested_at or now
+                # A read can take up to its timeout: without a projected_at the row is known
+                # durable only when the read that found it ended, never when it started.
+                durable_at = found.ingested_at or clock().astimezone(UTC)
                 lag = max(0, round((durable_at - stamp).total_seconds()))
+                if lag > settings.deadline_seconds:
+                    cells.update(
+                        durable="late", durable_lag_s=str(lag), reads=str(reads)
+                    )
+                    return _reading(
+                        EnumReadingVerdict.NOT_WORKING,
+                        EnumReadingOutcome.READ,
+                        "durable-row-after-deadline",
+                        cells,
+                    )
                 cells.update(durable="yes", durable_lag_s=str(lag), reads=str(reads))
                 return _reading(
                     EnumReadingVerdict.WORKING,
