@@ -95,6 +95,7 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
 )
+from omnimarket.handlers.scm.scm_git_credential import git_credential_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -1025,6 +1026,7 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+scm_group.add_command(git_credential_command)
 scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
