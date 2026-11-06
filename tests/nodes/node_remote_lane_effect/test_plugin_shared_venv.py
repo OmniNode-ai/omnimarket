@@ -474,3 +474,22 @@ def test_a_removed_shared_venv_is_rebuilt_under_the_same_path_and_the_tree_works
     assert again.built
     assert not again.linked  # the tree's links name the same path, which is whole again
     assert _imports(tree).startswith("7 omniclaude-aaaaaaaaaaaa")
+
+
+def test_error_the_suffix_sits_on_the_command_line_so_a_failure_handler_runs(
+    uv: Path, store: Path
+) -> None:
+    tree = _tree(store, "omniclaude-aaaaaaaaaaaa")
+    script = shared_venv_script(
+        "D",
+        "LR",
+        lock_file="uv.lock",
+        venvs_dir="venvs",
+        uv="uv",
+        build_timeout_s=60,
+        suffix='|| { rc=$?; echo "STEP-FAILED rc=$rc"; exit 33; }',
+    )
+    done = _run_script(script + "\necho after", store, tree, uv, FAKE_UV_FAIL="sync")
+    assert done.returncode == 33
+    assert "STEP-FAILED rc=21" in done.stdout
+    assert "after" not in done.stdout

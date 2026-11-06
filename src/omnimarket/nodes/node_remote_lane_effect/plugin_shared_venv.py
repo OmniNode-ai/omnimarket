@@ -466,11 +466,14 @@ def shared_venv_script(
     venvs_dir: str,
     uv: str,
     build_timeout_s: int,
+    suffix: str = "",
 ) -> str:
     """Remote shell for one tree: build the tree's shared venv once and link the tree to it.
 
     ``tree_var`` and ``store_var`` are shell variables of the caller's script (for example ``D`` and ``LR``). The script
-    prints ``PLUGIN-VENV-READY {json}`` and exits 0, or prints ``PLUGIN-VENV-REFUSED <code> <detail>`` and exits 21."""
+    prints ``PLUGIN-VENV-READY {json}`` and exits 0, or prints ``PLUGIN-VENV-REFUSED <code> <detail>`` and exits 21.
+    ``suffix`` is shell text for the end of the command line (for example ``|| exit 21``); a here-document body starts on the
+    line after it, so the caller cannot add it after the script."""
     import shlex
 
     config = json.dumps(
@@ -483,7 +486,7 @@ def shared_venv_script(
         sort_keys=True,
     )
     return (
-        f'python3 - ensure {shlex.quote(config)} "${tree_var}" "${store_var}" <<\'PLUGIN_SHARED_VENV_PY\'\n'
+        f'python3 - ensure {shlex.quote(config)} "${tree_var}" "${store_var}" <<\'PLUGIN_SHARED_VENV_PY\'{suffix}\n'
         + _payload()
         + "\nraise SystemExit(cli(sys.argv[1:]))\nPLUGIN_SHARED_VENV_PY"
     )
@@ -497,10 +500,11 @@ def shared_venv_prune_script(
     retain_days_word: str,
     cap_word: str,
     build_timeout_s: int,
+    suffix: str = "",
 ) -> str:
     """Remote shell: prune the shared venvs no tree links to. ``retain_days_word`` and ``cap_word`` are shell words (for
     example ``"${ONEX_PLUGIN_RETAIN_DAYS:-1}"``) so the host's environment can set them. The report goes to stderr and the
-    exit status is the prune's; the caller decides to ignore it."""
+    exit status is the prune's; ``suffix`` is shell text for the end of the command line (for example ``>&2 || true``)."""
     import shlex
 
     config = json.dumps(
@@ -512,7 +516,7 @@ def shared_venv_prune_script(
         sort_keys=True,
     )
     return (
-        f"python3 - prune {shlex.quote(config)} \"${store_var}\" {retain_days_word} {cap_word} <<'PLUGIN_SHARED_VENV_PY'\n"
+        f"python3 - prune {shlex.quote(config)} \"${store_var}\" {retain_days_word} {cap_word} <<'PLUGIN_SHARED_VENV_PY'{suffix}\n"
         + _payload()
         + "\nraise SystemExit(cli(sys.argv[1:]))\nPLUGIN_SHARED_VENV_PY"
     )
