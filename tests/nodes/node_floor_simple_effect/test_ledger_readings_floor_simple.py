@@ -259,3 +259,29 @@ def test_an_admitted_piece_that_reads_unknown_is_still_a_cause(tmp_path: Path) -
     assert by_piece[2].reading_state == "UNKNOWN"
     assert by_piece[2].status == "unknown"
     assert "piece:2" in {c.id for c in doc.causes}
+
+
+def test_the_strip_says_why_the_writer_gave_each_verdict(tmp_path: Path) -> None:
+    """Whether the writer lacks a piece's source (no producer yet) or the piece truly fails (a source that failed)."""
+    ledger = InMemoryLedger([*lines(GO_RULINGS), *lines(READINGS)])
+    doc = run_tick(build_home(tmp_path), ledger)
+    rule = overlay().ledger_readings
+    assert rule is not None
+    written = {r.piece: r for r in reading_rows(rows(lines(READINGS)), rule)[0]}
+    by_piece = {p.piece: p for p in doc.pieces}
+    assert written[2].reason.startswith("no-producer:")
+    assert f"reading UNKNOWN: {written[2].reason}" in by_piece[2].text
+    assert written[4].reason
+    assert f"reading NOT WORKING: {written[4].reason}" in by_piece[4].text
+    # A piece with events and no golden does not also say it has no events yet.
+    assert "no golden and error event yet" not in by_piece[4].text or (
+        by_piece[4].error_age_s is None
+    )
+
+
+def test_a_reading_row_without_the_reason_cell_draws_no_reason() -> None:
+    rule = overlay().ledger_readings
+    assert rule is not None
+    stripped = rule.model_copy(update={"reason_cell": None})
+    readings, _ = reading_rows(rows(lines(READINGS)), stripped)
+    assert {r.reason for r in readings} == {""}

@@ -537,6 +537,9 @@ class ModelLedgerReadingRule(_Frozen):
     probed_at_cell: str = Field(min_length=1)
     published_at_cell: str = Field(min_length=1)
     max_age_cell: str = Field(min_length=1)
+    # The cell that says why the writer gave the verdict (no producer yet, a source that failed, a stale source); the strip
+    # draws it, so a reader sees whether the writer lacks a piece's source or the piece truly fails. ``None`` draws none.
+    reason_cell: str | None = None
     lookback_days: int = Field(gt=0)
 
 
@@ -603,6 +606,8 @@ class ModelReadingRow(_Frozen):
     probed_at: datetime
     published_at: datetime
     max_age_s: int
+    # Why the writer gave this verdict, when the row says (the rule's reason cell); empty otherwise.
+    reason: str = ""
 
 
 class ModelFloorSimpleInput(_Frozen):

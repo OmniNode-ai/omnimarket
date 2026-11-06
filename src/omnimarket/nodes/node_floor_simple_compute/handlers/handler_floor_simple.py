@@ -289,7 +289,8 @@ class HandlerFloorSimple:
                 text = f"reading {state}" + (f": {why}" if why else "")
                 if admitted and not started:
                     status = "unknown" if status == "working" else status
-                    text += "; no golden and error event yet"
+                    if rc is None or rc.last_emission_at is None:
+                        text += "; no golden and error event yet"
             if rc is not None and rc.last_emission_at is not None:
                 text += (
                     f" · golden {_ago(rc.golden_age_s)}, error {_ago(rc.error_age_s)}"
@@ -349,7 +350,7 @@ class HandlerFloorSimple:
         age = max(int((r.now - row.probed_at).total_seconds()), 0)
         if age > row.max_age_s:
             return "NOT WORKING", age, row.max_age_s, f"stale, read {_ago(age)}"
-        return row.state, age, row.max_age_s, ""
+        return row.state, age, row.max_age_s, row.reason
 
     @staticmethod
     def _with_lab_sources(
