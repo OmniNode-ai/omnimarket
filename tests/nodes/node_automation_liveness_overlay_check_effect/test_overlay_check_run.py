@@ -128,6 +128,7 @@ def test_collect_files_skips_what_the_checkout_git_ignores(tmp_path: Path) -> No
     }
 
     assert collected == {
+        ".gitignore",
         "deploy/tracked-planted.timer",
         "deploy/untracked-planted.timer",
     }
