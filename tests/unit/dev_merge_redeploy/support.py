@@ -156,6 +156,7 @@ class Bus(EventBusInmemory):
     def __init__(self) -> None:
         super().__init__(environment="local", group="dev-merge-redeploy-test")
         self.fail_topic: str | None = None
+        self.fail_with: type[Exception] = OSError
         self.groups: list[tuple[str, str]] = []
 
     async def subscribe(
@@ -168,7 +169,7 @@ class Bus(EventBusInmemory):
         self, topic: str, key: bytes | None, value: bytes, *a: Any, **k: Any
     ) -> None:
         if topic == self.fail_topic:
-            raise OSError("broker refused the write")
+            raise self.fail_with("broker refused the write")
         await super().publish(topic, key, value, *a, **k)
 
 

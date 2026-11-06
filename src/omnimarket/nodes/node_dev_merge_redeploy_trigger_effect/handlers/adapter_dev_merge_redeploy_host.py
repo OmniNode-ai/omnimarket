@@ -234,7 +234,10 @@ class DevMergeRedeployHost:
             await self._deploy_bus.publish(
                 self._topics.start_command, str(cid).encode("utf-8"), _bytes(envelope)
             )
-        except (OSError, RuntimeError, TimeoutError) as exc:
+        except Exception as exc:
+            # Any failure to put the command on the bus ends the merge in its one receipt: a client
+            # error that is not an OSError would otherwise leave the merge pending, with no deadline
+            # task, and the seen set would refuse its redelivery.
             self._pending.pop(cid, None)
             failed = decision.model_copy(
                 update={

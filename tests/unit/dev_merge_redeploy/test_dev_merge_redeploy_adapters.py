@@ -94,6 +94,18 @@ def test_merge_files_fetches_a_commit_the_clone_lacks_and_lists_its_paths(
     assert files == ("src/pkg/mod.py",)
 
 
+def test_merge_files_lists_the_source_path_of_a_rename_as_well(repos: Repos) -> None:
+    body = "line\n" * 200
+    first = repos.merge("src/pkg/mod.py", body)
+    (repos.origin / "docs").mkdir()
+    _git(repos.origin, "mv", "src/pkg/mod.py", "docs/mod.md")
+    _git(repos.origin, "commit", "-q", "-m", "move the module out of src")
+    moved = _git(repos.origin, "rev-parse", "HEAD")
+    assert first != moved
+    files = GitMergeFiles().changed_files(str(repos.clone), "dev", moved)
+    assert set(files) == {"src/pkg/mod.py", "docs/mod.md"}
+
+
 def test_merge_files_refuses_a_commit_that_no_fetch_supplies(repos: Repos) -> None:
     with pytest.raises(MergeFilesUnreadableError, match="not in the clone"):
         GitMergeFiles().changed_files(str(repos.clone), "dev", "e" * 40)

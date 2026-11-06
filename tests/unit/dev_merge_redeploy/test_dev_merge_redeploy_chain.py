@@ -195,6 +195,23 @@ def test_error_chain_the_broker_refusing_the_command_is_a_failed_publish_receipt
     asyncio.run(scenario())
 
 
+def test_error_chain_a_publish_failure_that_is_not_an_oserror_is_still_a_failed_publish_receipt() -> (
+    None
+):
+    async def scenario() -> None:
+        async with Rig() as rig:
+            rig.bus.fail_topic = rig.topics.start_command
+            rig.bus.fail_with = ValueError
+            await rig.publish_merge(merged())
+            await wait_for(lambda: len(rig.receipts()) == 1)
+            receipt = ModelDevMergeRedeployReceipt.model_validate(rig.receipts()[0])
+            assert receipt.outcome is EnumDevMergeOutcome.FAILED_PUBLISH
+            assert receipt.command_published is False
+            assert rig.host.pending == 0
+
+    asyncio.run(scenario())
+
+
 def test_error_chain_a_redeploy_that_did_not_finish_is_deploy_not_done_and_the_lane_is_not_read() -> (
     None
 ):

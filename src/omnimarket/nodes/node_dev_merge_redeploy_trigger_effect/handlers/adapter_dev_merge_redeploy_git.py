@@ -139,7 +139,14 @@ class GitMergeFiles:
             done = _git(
                 self._run,
                 clone,
-                ["diff", "--name-only", "-z", f"{merge_sha}^1", merge_sha],
+                [
+                    "diff",
+                    "--name-only",
+                    "--no-renames",
+                    "-z",
+                    f"{merge_sha}^1",
+                    merge_sha,
+                ],
                 self._timeout,
             )
         except (ValueError, RuntimeError) as exc:
