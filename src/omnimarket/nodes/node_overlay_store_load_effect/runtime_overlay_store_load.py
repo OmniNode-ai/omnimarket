@@ -71,10 +71,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         results = asyncio.run(_run(overlay, args.clone, args.id, args.kafka_bootstrap))
     except (NodeOverlayError, ValueError) as exc:
-        print(f"{NODE}: {type(exc).__name__}: {exc}", file=sys.stderr)  # noqa: T201
+        sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
         return 65
     for result in results:
-        print(result.model_dump_json())  # noqa: T201
+        sys.stdout.write(result.model_dump_json() + "\n")
     return 0
 
 

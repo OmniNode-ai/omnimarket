@@ -11,6 +11,7 @@ trusted; ``refuse`` raises. No usable snapshot reads as unreadable, with its rea
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
@@ -187,8 +188,8 @@ class HandlerOverlayStoreRead:
         except (
             Exception
         ) as exc:  # the read stands; a lost report is printed, never raised
-            print(  # noqa: T201
-                f"overlay reading not reported: {type(exc).__name__}: {exc}"
+            sys.stderr.write(
+                f"overlay reading not reported: {type(exc).__name__}: {exc}\n"
             )
 
 

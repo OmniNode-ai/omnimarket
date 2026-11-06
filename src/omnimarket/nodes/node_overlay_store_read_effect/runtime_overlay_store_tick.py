@@ -59,7 +59,7 @@ def _fleet_record(
     try:
         answer: dict[str, Any] = asyncio.run(fleet(overlay, env, None))
     except Exception as exc:  # the store down is the case this record exists to show
-        print(f"{NODE}: fleet not read: {type(exc).__name__}: {exc}", file=sys.stderr)  # noqa: T201
+        sys.stderr.write(f"{NODE}: fleet not read: {type(exc).__name__}: {exc}\n")
         answer = (
             json.loads(held.read_text(encoding="utf-8"))
             if held.exists()
@@ -83,11 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
         handler = build_handler(overlay, env)
     except NodeOverlayError as exc:
-        print(f"{NODE}: {exc}", file=sys.stderr)  # noqa: T201
+        sys.stderr.write(f"{NODE}: {exc}\n")
         return EXIT_UNREADABLE
     readings = asyncio.run(handler.refresh_all())
     summary = [reading.model_dump(mode="json") for reading in readings]
-    print(json.dumps(summary, sort_keys=True))  # noqa: T201
+    sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
     if overlay.fleet_record_relpath:
         record = args.registry_root / overlay.fleet_record_relpath
         _write_atomically(

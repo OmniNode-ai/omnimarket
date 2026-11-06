@@ -174,7 +174,7 @@ def read_overlay(
 
 
 def _print(payload: Any) -> None:
-    print(json.dumps(payload, indent=2, sort_keys=True))  # noqa: T201
+    sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def exit_for(readings: tuple[ModelOverlayStoreReading, ...]) -> int:
@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
         handler = build_handler(overlay, env, kafka_bootstrap=args.kafka_bootstrap)
     except NodeOverlayError as exc:
-        print(f"{NODE}: {exc}", file=sys.stderr)  # noqa: T201
+        sys.stderr.write(f"{NODE}: {exc}\n")
         return EXIT_UNREADABLE
     if args.verb == "refresh":
         readings = asyncio.run(handler.refresh_all())
