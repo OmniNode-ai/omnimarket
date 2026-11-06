@@ -37,7 +37,20 @@ def live_reason(
     return None
 
 
+MERGED_REASONS = frozenset({"content_merged", "pr_merged_head"})
+REMOVING = (Decision.REMOVE, Decision.PIN_AND_REMOVE)
+
+
 def classify(
+    facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
+) -> tuple[Decision, str]:
+    decision, reason = _classify(facts, policy)
+    if policy.merged_only and decision in REMOVING and reason not in MERGED_REASONS:
+        return Decision.KEEP, f"merged_only:{reason}"
+    return decision, reason
+
+
+def _classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
@@ -70,6 +83,8 @@ def classify(
         return Decision.KEEP, "foreign_remote"
     if facts.content_merged:
         return Decision.REMOVE, "content_merged"
+    if facts.kind == Kind.LINKED_WORKTREE and facts.merged_pr_head:
+        return Decision.REMOVE, "pr_merged_head"
     if (
         facts.head_on_remote
         and facts.commits_not_on_remote == 0
@@ -133,15 +148,21 @@ def apply_model_verdicts(
             rows.append(row)
             continue
         fact = by_path[row.path]
-        refused = verdict.decision == Decision.REMOVE or (
-            verdict.decision == Decision.PIN_AND_REMOVE
-            and (
-                not fact.facts_complete
-                or fact.dirty
-                or fact.kind == Kind.ORPHAN_DIR
-                or live_reason(fact, decisions.policy) is not None
-                # A pin preserves HEAD only, never a clone's other branches.
-                or fact.kind == Kind.STANDALONE_CLONE
+        refused = (
+            verdict.decision == Decision.REMOVE
+            # A merged-only host takes no model advice to remove: the model cannot
+            # produce merge evidence.
+            or (decisions.policy.merged_only and verdict.decision in REMOVING)
+            or (
+                verdict.decision == Decision.PIN_AND_REMOVE
+                and (
+                    not fact.facts_complete
+                    or fact.dirty
+                    or fact.kind == Kind.ORPHAN_DIR
+                    or live_reason(fact, decisions.policy) is not None
+                    # A pin preserves HEAD only, never a clone's other branches.
+                    or fact.kind == Kind.STANDALONE_CLONE
+                )
             )
         )
         rows.append(

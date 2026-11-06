@@ -27,6 +27,9 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcilePolicy,
 )
 from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
+    CommandMergedPrReader,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
     is_junk,
@@ -824,3 +827,224 @@ def test_a_remote_of_another_repository_is_not_a_merge_base(
     items = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
     assert items[0].probe_errors == ()
     assert items[0].content_merged
+
+
+class FakeMergedPrReader:
+    """Stands in for the host's reader: the heads it lists, or a failure."""
+
+    def __init__(
+        self, heads: frozenset[str] = frozenset(), fails: bool = False
+    ) -> None:
+        self.heads = heads
+        self.fails = fails
+        self.asked: list[tuple[list[str], str]] = []
+
+    def merged_heads(self, argv: list[str], slug: str) -> frozenset[str]:
+        self.asked.append((argv, slug))
+        if self.fails:
+            raise RuntimeError("merged pull request reader failed (1)")
+        return self.heads
+
+
+def squash_merged_then_moved_on(
+    tmp_path: Path,
+) -> tuple[Path, Path, str]:
+    """A squash-merged branch whose files the base changed again, so the content
+    test cannot prove it merged, and whose branch the remote deleted at merge."""
+    clone, root, remote = git_fixture(tmp_path)
+    run_git(
+        clone, "remote", "set-url", "origin", "https://example.invalid/owner/repo.git"
+    )
+    path = root / "task" / "repo"
+    run_git(clone, "worktree", "add", "-b", "feature", str(path))
+    (path / "tracked").write_text("branch edit\n")
+    run_git(path, "commit", "-am", "feature commit")
+    head = run_git(path, "rev-parse", "HEAD")
+    run_git(clone, "merge", "--squash", "feature")
+    run_git(clone, "commit", "-m", "squashed commit")
+    (clone / "tracked").write_text("later edit on the base\n")
+    run_git(clone, "commit", "-am", "a later change to the same file")
+    run_git(clone, "push", str(remote), "main")
+    run_git(clone, "fetch", str(remote), "+refs/heads/main:refs/remotes/origin/main")
+    return root, path, head
+
+
+def probe_for(
+    reader: FakeMergedPrReader, monkeypatch: pytest.MonkeyPatch
+) -> GitWorktreeFactsProbe:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
+        lambda: (),
+    )
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts._fetch_all",
+        lambda _clone: True,
+    )
+    return GitWorktreeFactsProbe(merged_pr_reader=reader)
+
+
+def run_with(
+    probe: GitWorktreeFactsProbe,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    **updates: object,
+) -> object:
+    fake = Fakes(())
+    monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
+    decided, completed = publish_topics()
+    handler = HandlerWorktreeReconcile(
+        probe=probe,
+        decider=fake,
+        pinner=fake,
+        remover=GitWorktreeRemover(),
+        clock=fake,
+        publisher=fake,
+        decided_topic=decided,
+        completed_topic=completed,
+    )
+    return handler.handle(
+        command(
+            roots=(str(root),),
+            decider_command=None,
+            pin_command=None,
+            merged_pr_command=["reader", "{slug}"],
+            **updates,
+        )
+    )
+
+
+def test_a_tree_at_a_merged_pull_request_head_is_removed_though_content_is_not_provable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recorded case on h051: 29 merged, clean trees were pinned for removal after 72 hours
+    and 20 more were kept, because the remote deleted the branch at merge and the base had
+    moved on, so only a merged pull request's head could say the work had landed."""
+    root, path, head = squash_merged_then_moved_on(tmp_path)
+    reader = FakeMergedPrReader(frozenset({head}))
+    result = run_with(probe_for(reader, monkeypatch), root, monkeypatch)
+    row = result.decided_events[0]  # type: ignore[attr-defined]
+    assert row.facts.merged_pr_head
+    assert not row.facts.content_merged
+    assert not row.facts.head_on_remote
+    assert row.decision.reasons == ("pr_merged_head",)
+    assert row.outcome == "removed"
+    assert not path.exists()
+    assert reader.asked == [(["reader", "{slug}"], "owner/repo")]
+
+
+def test_without_the_pull_request_evidence_the_same_tree_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failing control: the same tree, the reader listing a different head."""
+    root, path, _ = squash_merged_then_moved_on(tmp_path)
+    reader = FakeMergedPrReader(frozenset({"0" * 40}))
+    result = run_with(probe_for(reader, monkeypatch), root, monkeypatch)
+    row = result.decided_events[0]  # type: ignore[attr-defined]
+    assert not row.facts.merged_pr_head
+    assert row.decision.reasons != ("pr_merged_head",)
+    assert row.outcome != "removed"
+    assert path.exists()
+
+
+def test_a_failed_reader_is_a_failure_and_keeps_the_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, path, _ = squash_merged_then_moved_on(tmp_path)
+    result = run_with(
+        probe_for(FakeMergedPrReader(fails=True), monkeypatch), root, monkeypatch
+    )
+    row = result.decided_events[0]  # type: ignore[attr-defined]
+    assert row.facts.probe_errors == ("merged_pr_read_failed",)
+    assert row.decision.reasons == ("facts_unreadable",)
+    assert result.completed_event.failures == 1  # type: ignore[attr-defined]
+    assert path.exists()
+
+
+def test_no_reader_command_reads_no_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _, head = squash_merged_then_moved_on(tmp_path)
+    reader = FakeMergedPrReader(frozenset({head}))
+    probe = probe_for(reader, monkeypatch)
+    items = probe.discover(command(roots=(str(root),)), NOW)
+    assert not items[0].merged_pr_head
+    assert reader.asked == []
+
+
+def test_the_reader_lists_only_full_commit_ids_and_its_exit_is_checked() -> None:
+    reader = CommandMergedPrReader()
+    sha = "a" * 40
+    got = reader.merged_heads(
+        ["printf", "%s\\nnot-a-sha\\n%s\\n", sha, "b" * 39, "{slug}"], "owner/repo"
+    )
+    assert got == frozenset({sha})
+    with pytest.raises(RuntimeError):
+        reader.merged_heads(["false"], "owner/repo")
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        ({"head_on_remote": True}, "merged_only:work_on_remote"),
+        (
+            {"commits_not_on_remote": 2, "last_activity_age_hours": 100},
+            "merged_only:unpushed_work_stale",
+        ),
+        ({"kind": Kind.ORPHAN_DIR, "orphan_empty": True}, "merged_only:orphan_empty"),
+    ],
+)
+def test_merged_only_holds_every_other_removal_at_keep(
+    updates: dict[str, object], reason: str
+) -> None:
+    fact = facts(**updates)
+    fake = Fakes((fact,))
+    result = fake.handler().handle(
+        command(
+            policy=ModelWorktreeReconcilePolicy(
+                allowed_remote_owners=("owner",), merged_only=True
+            )
+        )
+    )
+    row = result.decided_events[0]
+    assert row.decision.decision == Decision.KEEP
+    assert row.decision.reasons == (reason,)
+    assert row.outcome == "kept"
+    assert not fake.removed
+    assert not fake.pinned
+
+
+@pytest.mark.parametrize(
+    "updates", [{"content_merged": True}, {"merged_pr_head": True}]
+)
+def test_merged_only_still_removes_merged_work(updates: dict[str, object]) -> None:
+    fake = Fakes((facts(**updates),))
+    result = fake.handler().handle(
+        command(
+            policy=ModelWorktreeReconcilePolicy(
+                allowed_remote_owners=("owner",), merged_only=True
+            )
+        )
+    )
+    assert result.completed_event.removed == 1
+    assert len(fake.removed) == 1
+
+
+def test_merged_only_takes_no_model_advice_to_remove() -> None:
+    fact = facts(dirty_tracked_count=1)
+    fake = Fakes((fact,))
+    fake.verdicts = (
+        ModelWorktreeDecisionRecord(
+            path=fact.path,
+            decision=Decision.PIN_AND_REMOVE,
+            reasons=("model",),
+        ),
+    )
+    result = fake.handler().handle(
+        command(
+            policy=ModelWorktreeReconcilePolicy(
+                allowed_remote_owners=("owner",), merged_only=True
+            )
+        )
+    )
+    assert result.decided_events[0].decision.decision == Decision.NEEDS_HUMAN
+    assert not fake.removed
