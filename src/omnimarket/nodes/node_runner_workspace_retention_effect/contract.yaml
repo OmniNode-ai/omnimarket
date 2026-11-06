@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The runner lifecycle adapter hosts this node on its isolated local runtime.
+# As with other host-local effects, runtime_dispatch declares its bus contract;
+# no event_bus block attaches this filesystem effect to a shared runtime.
+name: node_runner_workspace_retention_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  At a verified synchronous runner job boundary, remove disposable repository
+  workspaces and evict each declared cache whose apparent bytes exceed its
+  overlay budget. Preserve runner controls, unknown paths and symlink targets.
+  Refuse active workspaces and unverified lifecycle calls. Never restart a runner.
+input_model:
+  name: ModelRunnerRetentionRequest
+  module: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention
+output_model:
+  name: ModelRunnerRetentionResult
+  module: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention
+handler:
+  module: omnimarket.nodes.node_runner_workspace_retention_effect.handlers.handler_runner_retention
+  class: HandlerRunnerRetention
+  input_model: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention.ModelRunnerRetentionRequest
+  output_model: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention.ModelRunnerRetentionResult
+entrypoint:
+  name: NodeRunnerWorkspaceRetentionEffect
+  module: omnimarket.nodes.node_runner_workspace_retention_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_runner_workspace_retention_effect.handlers.handler_runner_retention:HandlerRunnerRetention
+  handlers:
+    - operation: retain_runner_workspace
+      topic: onex.cmd.omnimarket.runner-workspace-retention-requested.v1
+      handler:
+        name: HandlerRunnerRetention
+        module: omnimarket.nodes.node_runner_workspace_retention_effect.handlers.handler_runner_retention
+      input_model: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention.ModelRunnerRetentionRequest
+      output_model: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention.ModelRunnerRetentionResult
+terminal_event: onex.evt.omnimarket.runner-workspace-retention-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-workspace-retention-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.runner-workspace-retention-completed.v1
+    failure: onex.evt.omnimarket.runner-workspace-retention-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.runner-workspace-retention-completed.v1
+  - onex.evt.omnimarket.runner-workspace-retention-failed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 120000
+overlay:
+  file: overlay.yaml
+  model: omnimarket.nodes.node_runner_workspace_retention_effect.models.model_runner_retention.ModelRunnerRetentionPolicy
+execution:
+  locus: runner-local
+  lifecycle_phases: [job_started, job_completed]
+  prerequisites:
+    - A dedicated local consumer runs as the runner user in its Linux filesystem namespace.
+    - The node runtime is installed outside the disposable work root.
+    - The lifecycle adapter waits synchronously and attests no job steps are running.
+    - The adapter reports every active workspace; any active workspace refuses cleanup.
+    - A shared runtime must never subscribe to this runner-local filesystem command.
+metadata:
+  transport_type: inmemory
+  execution_locus: runner-local

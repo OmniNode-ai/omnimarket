@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment supplies literal absolute paths and explicit host identities.
+# Start observe-only; enabling execute retains the existing preservation rules.
+python: /srv/onex/venv/bin/python
+project: /srv/onex/market
+state_directory: /srv/onex/state/worktree-reconcile
+environment_file: /srv/onex/host.env
+hosts:
+  lab-host:
+    host: lab-host
+    roots: [/srv/onex/worktrees]
+    ledger_path: /srv/onex/state/ledger.md
+    execute: false
+    policy:
+      quiet_hours: 6
+      stale_hours: 72
+      allow_standalone_clone_removal: false
+      max_removals_per_run: 200
+    # Template only: each scheduled tick generates its own correlation UUID.
+    correlation_id: 00000000-0000-4000-8000-000000000000
