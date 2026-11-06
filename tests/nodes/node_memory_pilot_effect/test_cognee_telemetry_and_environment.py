@@ -2,13 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Cognee settings come only from the overlay, and telemetry is off with a control that turns it on.
 
-The control and the spy need the installed package, so they skip where it is absent
-(CI); the pilot host runs them. Nothing here leaves the process: the sender is stubbed.
+The telemetry control needs the installed package and lives in
+pilot_host_cognee_telemetry_check.py, which CI does not collect.
 """
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 
 import pytest
@@ -101,23 +100,3 @@ def test_a_secret_shaped_placeholder_is_refused(tmp_path: Path) -> None:
                 "api_key_placeholder": "sk-live-1234567890",
             }
         )
-
-
-def test_telemetry_is_off_with_the_pilot_environment_and_on_without_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    utils = pytest.importorskip("cognee.shared.utils")
-    sent: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        utils._telemetry_sender, "enqueue", lambda payload: sent.append(payload)
-    )
-    monkeypatch.delenv("ENV", raising=False)
-    for key, value in cognee_environment(_overlay(tmp_path)).items():
-        monkeypatch.setenv(key, value)
-    utils.send_telemetry("pilot probe", uuid.uuid4())
-    assert sent == [], "telemetry must be off under the pilot environment"
-    monkeypatch.delenv("TELEMETRY_DISABLED")
-    utils.send_telemetry("pilot probe", uuid.uuid4())
-    assert len(sent) == 1, (
-        "control: with the switch removed the same call does queue an event"
-    )
