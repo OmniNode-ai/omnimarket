@@ -645,6 +645,9 @@ def test_omnidash_host_floor_page_has_no_links_area(page_name: str) -> None:
         / page_name
     )
     text = page.read_text(encoding="utf-8")
+    # The Process/Machines tab bar is the one nav the floor page owns; any other
+    # nav or links area is still refused.
+    text = re.sub(r'<nav class="tabs"[^>]*>.*?</nav>', "", text, flags=re.S)
     assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
 
 
