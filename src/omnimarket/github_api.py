@@ -15,7 +15,6 @@ in infrastructure helpers).
 from __future__ import annotations
 
 import json
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -28,10 +27,8 @@ _GITHUB_REST = GITHUB_REST_URL
 _GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
-_ASSET_DOWNLOAD_ATTEMPTS = 3
-_ASSET_RETRY_STATUSES = frozenset({502, 503, 504})
 
-PR_GRAPHQL_QUERY = """
+_PR_GRAPHQL_QUERY = """
 query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
     pullRequests(states: [OPEN], first: 100, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
@@ -100,7 +97,29 @@ query($owner: String!, $name: String!, $after: String) {
 """
 
 
-def normalize_open_pr_rollup(
+class GitHubApiError(RuntimeError):
+    """Raised when a GitHub API request fails.
+
+    ``status_code`` carries the HTTP status when the failure originated from an
+    :class:`urllib.error.HTTPError` (``None`` for network/decode failures). Callers
+    that need to classify a specific status — e.g. HTTP 409 stale-metadata on a
+    workflow-run cancel — branch on ``status_code`` rather than string-matching the
+    message.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def split_repo(repo: str) -> tuple[str, str]:
+    owner, sep, repo_name = repo.partition("/")
+    if not owner or not sep or not repo_name:
+        raise GitHubApiError(f"invalid repo slug: {repo!r}")
+    return owner, repo_name
+
+
+def _normalize_open_pr_rollup(
     rollup_nodes: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     normalized_rollup: list[dict[str, Any]] = []
@@ -130,7 +149,7 @@ def normalize_open_pr_rollup(
     return normalized_rollup
 
 
-def normalize_review_threads(
+def _normalize_review_threads(
     raw_threads: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     normalized_threads: list[dict[str, Any]] = []
@@ -147,28 +166,6 @@ def normalize_review_threads(
             }
         )
     return normalized_threads
-
-
-class GitHubApiError(RuntimeError):
-    """Raised when a GitHub API request fails.
-
-    ``status_code`` carries the HTTP status when the failure originated from an
-    :class:`urllib.error.HTTPError` (``None`` for network/decode failures). Callers
-    that need to classify a specific status — e.g. HTTP 409 stale-metadata on a
-    workflow-run cancel — branch on ``status_code`` rather than string-matching the
-    message.
-    """
-
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-
-
-def split_repo(repo: str) -> tuple[str, str]:
-    owner, sep, repo_name = repo.partition("/")
-    if not owner or not sep or not repo_name:
-        raise GitHubApiError(f"invalid repo slug: {repo!r}")
-    return owner, repo_name
 
 
 def _base_headers(token: str) -> dict[str, str]:
@@ -200,9 +197,6 @@ def download_release_asset(url: str, to: Path) -> None:
     The caller is responsible for deciding whether the bytes are acceptable.
     Nothing here verifies them.
 
-    Gateway failures (502, 503, 504) get at most three GET attempts, with
-    half-second then one-second delays. Other failures are returned immediately.
-
     Raises:
         GitHubApiError: On a non-https URL, or any HTTP or network failure.
     """
@@ -210,21 +204,13 @@ def download_release_asset(url: str, to: Path) -> None:
         raise GitHubApiError(f"refusing a non-https asset URL: {url}")
     to.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, method="GET")
-    for attempt in range(_ASSET_DOWNLOAD_ATTEMPTS):
-        try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-                to.write_bytes(resp.read())
-            return
-        except urllib.error.HTTPError as exc:
-            if (
-                exc.code not in _ASSET_RETRY_STATUSES
-                or attempt == _ASSET_DOWNLOAD_ATTEMPTS - 1
-            ):
-                raise GitHubApiError(str(exc), status_code=exc.code) from exc
-            exc.close()
-            time.sleep(0.5 * 2**attempt)
-        except (urllib.error.URLError, OSError) as exc:
-            raise GitHubApiError(str(exc)) from exc
+    try:
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            to.write_bytes(resp.read())
+    except urllib.error.HTTPError as exc:
+        raise GitHubApiError(str(exc), status_code=exc.code) from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise GitHubApiError(str(exc)) from exc
 
 
 def rest_json(
@@ -449,7 +435,7 @@ class GitHubHttpTransport:
             if cursor:
                 variables["after"] = cursor
 
-            data = self._graphql(PR_GRAPHQL_QUERY, variables)
+            data = self._graphql(_PR_GRAPHQL_QUERY, variables)
             repo_data = data.get("repository")
             if not repo_data:
                 break
@@ -471,10 +457,10 @@ class GitHubHttpTransport:
                         )
                         or {}
                     ).get("contexts", {}).get("nodes", []) or []
-                node["statusCheckRollup"] = normalize_open_pr_rollup(rollup_nodes)
+                node["statusCheckRollup"] = _normalize_open_pr_rollup(rollup_nodes)
 
                 raw_threads = (node.get("reviewThreads") or {}).get("nodes") or []
-                node["reviewThreads"] = normalize_review_threads(raw_threads)
+                node["reviewThreads"] = _normalize_review_threads(raw_threads)
 
                 raw_files = (node.get("files") or {}).get("nodes") or []
                 node["files"] = [
