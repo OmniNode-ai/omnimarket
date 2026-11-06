@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22651
+title: "Rebuild piece 1: the code graph node runs nightly at the default-branch heads and writes its reading row"
+summary: >-
+  node_code_graph_effect builds the Python import graph of the declared repositories from their committed objects at
+  their default-branch heads, computes what the declared roots reach across repositories, judges the graph against a
+  frozen sample with known-used controls, and appends one code graph reading row per run. A nightly systemd user timer
+  runs it, installed and removed by the node's own schedule verbs. A check verb compares a pull request's head with
+  its base and names the modules the head adds that no root reaches. Every setting is in the overlay; the repository
+  source is injected, with an in-memory backend and a git-object backend, and both run the same suite.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22651-code-graph-node
+    statement: The code graph is a node with a contract, typed models, an overlay with no defaults and an injected repository source, and each run appends one reading row the piece 1 reading reads.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the golden chain test publishes the run command on the in-memory bus and receives every event in order under one correlation id ending in the run-completed event, and the error chain test injects an unreadable repository and receives the typed run-failed event and a NOT_WORKING ledger row -- falsifier: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_chain_events.py -q'
+      - id: AC2
+        statement: 'AC2: a named injected break (a root rule that drops the contract handler roots) turns the golden chain test red, and the test that holds it fails on the broken handler -- falsifier: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_chain_events.py -q -k break'
+      - id: AC3
+        statement: 'AC3: the check verb exits non-zero on a scratch repository whose pull request head adds a module no root reaches, and zero on the base -- falsifier: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_check.py -q'
+      - id: AC4
+        statement: 'AC4: the nightly run on the lab host writes one STATUS row lane=code-graph src=code-graph that is read back from the ledger after the run -- falsifier: onex-ledger read for lane=code-graph shows a row stamped after the unit''s last start'
+evidence_requirements:
+  - kind: tests
+    description: The code graph suite on both backends, the chain event tests with their named breaks, the check verb on real git clones and the schedule renderer.
+    command: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22651-code-graph-suite
+    description: The node's suite passes, including the golden and error chain tests, the named breaks and the check verb's planted module.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3, AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
+        cwd: .
+  - id: dod-omn22651-code-graph-integration-proof
+    description: The pushed head ran the node's suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22651 -- uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov'
+        cwd: .
