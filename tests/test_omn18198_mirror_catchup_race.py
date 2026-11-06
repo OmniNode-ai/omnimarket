@@ -35,6 +35,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.projection import tenant_mirror_catchup_policy as catchup_policy
 from omnimarket.projection import tenant_registry_resolution as resolution
 from omnimarket.projection.tenant_registry_resolution import (
     TenantRegistryResolutionError,
@@ -126,7 +127,7 @@ def quick_window(monkeypatch: pytest.MonkeyPatch) -> _FakeDb | None:
     # OMN-22478: an event older than the window is not waited for. These tests
     # model a race, so the clock stands 10 ms after the racing event, inside the shrunken window.
     monkeypatch.setattr(
-        resolution, "_utc_now", lambda: EVENT_AT + timedelta(milliseconds=10)
+        catchup_policy, "utc_now", lambda: EVENT_AT + timedelta(milliseconds=10)
     )
     return None
 
