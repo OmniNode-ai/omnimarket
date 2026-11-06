@@ -84,7 +84,7 @@ class SourceLocalFiles:
         lab_pass: SourceLabPassReceipts | None = None,
         lab_pass_cause: str = "no lab-pass receipt source is configured",
         provenance: SourceDeployedProvenance | None = None,
-        provenance_cause: str = "no build provenance source is configured",
+        provenance_cause: str = "",
     ) -> None:
         self._watcher_state = watcher_state
         self._ledger = ledger
@@ -178,7 +178,8 @@ class SourceLocalFiles:
         else:
             reads.append(self._lab_pass.read())
         if self._provenance is None:
-            causes.append(self._provenance_cause)
+            if self._provenance_cause:
+                causes.append(self._provenance_cause)
         else:
             merged = (
                 (pr.repo, pr.number, pr.merge_sha)

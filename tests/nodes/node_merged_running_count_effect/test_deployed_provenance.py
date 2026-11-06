@@ -163,3 +163,50 @@ def test_control_a_source_that_trusts_every_merge_is_caught() -> None:
     """The break the golden test names: a reader that returned every merge would name the one outside the history."""
     read = source().read(MERGES)
     assert ("omnibase_infra", 11) not in {(e.repo, e.number) for e in read.evidence}
+
+
+def test_error_an_absent_overlay_is_a_named_cause_and_no_source(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_count import (
+        build_provenance_source,
+    )
+
+    declared = {
+        "overlay_id": "runtime_host_reads",
+        "overlay_file_env": "RUNTIME_HOST_READS_OVERLAY_PATH",
+        "kind": "deployed",
+        "source_template": "build provenance {repo}@{ref}",
+        "git_timeout_seconds": 5,
+    }
+    built, cause = build_provenance_source(declared, {}, tmp_path, NOW)
+    assert built is None
+    assert "runtime_host_reads" in cause
+
+
+def test_golden_the_shipped_overlay_shape_builds_a_source(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_count import (
+        build_provenance_source,
+    )
+
+    root = tmp_path / "overlays" / "runtime_host_reads"
+    root.mkdir(parents=True)
+    (root / "overlay.yaml").write_text(
+        "ssh_host_env: ONEX_RUNTIME_SSH_HOST\ncompose_project: proj\nfleet_service: svc\n"
+        "provenance_service: svc\nprovenance_path: /app/build-provenance.json\n"
+        "repo_refs:\n  - {repo: omnimarket, clone_relpath: omnimarket,"
+        " ref_path: [per_repo_vcs_provenance, siblings, omnimarket, vcs_ref]}\n"
+    )
+    declared = {
+        "overlay_id": "runtime_host_reads",
+        "overlay_file_env": "RUNTIME_HOST_READS_OVERLAY_PATH",
+        "kind": "deployed",
+        "source_template": "build provenance {repo}@{ref}",
+        "git_timeout_seconds": 5,
+    }
+    built, cause = build_provenance_source(
+        declared,
+        {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
+        tmp_path,
+        NOW,
+    )
+    assert cause == ""
+    assert built is not None

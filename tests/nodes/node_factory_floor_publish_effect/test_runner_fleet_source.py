@@ -144,11 +144,12 @@ def test_fleet_refresh_is_concurrent_and_uses_the_floor_input_path() -> None:
 def test_an_invalid_or_unread_producer_never_supplies_fleet_counts(
     payload: bytes,
 ) -> None:
+    from omnimarket.models.model_runtime_host_reads import (
+        ModelRuntimeHostReadOverlay,
+        ModelRuntimeRepoRef,
+    )
     from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
         HandlerFleetObservationSource,
-    )
-    from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
-        ModelDelegationReadOverlay,
     )
     from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
         ModelFleetObservationSourceRequest,
@@ -160,14 +161,17 @@ def test_an_invalid_or_unread_producer_never_supplies_fleet_counts(
         assert timeout == 7
         return subprocess.CompletedProcess(argv, 0, payload, b"")
 
-    overlay = ModelDelegationReadOverlay(
+    overlay = ModelRuntimeHostReadOverlay(
         ssh_host_env="LAB_SSH",
         compose_project="lab",
-        runtime_service="runtime",
-        postgres_service="postgres",
-        database="projection",
-        db_user="reader",
-        contract_path="/app/delegation.yaml",
+        fleet_service="fleet-runtime",
+        provenance_service="build-runtime",
+        provenance_path="/app/build-provenance.json",
+        repo_refs=(
+            ModelRuntimeRepoRef(
+                repo="lab_repo", clone_relpath="lab_repo", ref_path=("infra_vcs_ref",)
+            ),
+        ),
     )
     document = (
         HandlerFleetObservationSource(run)
