@@ -246,8 +246,9 @@ _DEFAULT_GIT_OP_TIMEOUT_S = 300
 _GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
 
 # OMN-20886: a ticket's product-repository contract could not be resolved (its
-# merged PRs, the contract at a merge commit, or the check runs were unreadable
-# or malformed). Refuses: an OCC copy does not govern such a ticket.
+# merged PRs or the contract at a merge commit were unreadable or malformed).
+# Check-run read faults have their own retryable cause. Refuses: an OCC copy
+# does not govern such a ticket.
 _REPO_CONTRACT_UNRESOLVED_CODE = "REPO_CONTRACT_UNRESOLVED"
 
 
@@ -2418,6 +2419,11 @@ class EvidenceCollector:
                 commit_sha=sha,
             )
         )
+        if not event.resolved:
+            self._record_lookup_failure(
+                f"CHECK_RUN_READ_FAILED: {repo}@{sha}: "
+                f"{event.detail or 'no usable check-run listing returned'}"
+            )
         return event.check_runs if event.resolved else None
 
     def _collect_repo_governed(
@@ -2456,6 +2462,24 @@ class EvidenceCollector:
         )
         if isinstance(resolved, ModelRepoEvidenceVerdict):
             if resolved.outcome is EnumRepoEvidenceOutcome.REFUSED:
+                if resolved.unresolved_cause is (
+                    EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+                ):
+                    self._record_lookup_failure("CHECK_RUN_READ_FAILED")
+                    return [
+                        ModelEvidenceCheckResult(
+                            evidence_id="contract",
+                            description=f"Merged PR check runs for {ticket_id} unreadable",
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+                            ),
+                            message=(
+                                f"{self.lookup_failure_code}: {resolved.detail} "
+                                "Closure stays blocked pending a readable check-run result."
+                            ),
+                        )
+                    ]
                 return [self._repo_contract_refusal(ticket_id, resolved.detail)]
             logger.info(
                 "No product repository governs %s (%s)",
