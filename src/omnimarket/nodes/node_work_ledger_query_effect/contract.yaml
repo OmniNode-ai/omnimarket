@@ -69,6 +69,9 @@ work_ledger_query:
   # refuses a record over its max_request_size (1,048,588 on the dev bus), and
   # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An
   # answer over max_answer_bytes is replaced by a typed refusal.
+  # An until=open HOLD with no RELEASE older than this is stale, not in force: holds lists it under
+  # a stale heading with its age and inbox does not count it (cutover plan section 13, answer 2).
+  hold_stale_after_days: 14
   answer_bound:
     broker_max_request_size: 1048588
     envelope_headroom_bytes: 131072
