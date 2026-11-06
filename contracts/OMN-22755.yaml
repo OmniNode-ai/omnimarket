@@ -39,6 +39,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute -q --no-cov
     cwd: .
+- id: dod-omn22755-ac3-attribution
+  description: "The pool host ids h051, h053 and h106 are attributed from the table's event labels, so a host with a hook event is not read quiet (the hosted counterpart of AC3; the first run itself is read at the local Done gate)."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k "host_table_change_flows_into_the_quiet_host_reading or host_table_without_the_host_reads_it_quiet_control"
+    cwd: .
 - id: dod-omn22755-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
