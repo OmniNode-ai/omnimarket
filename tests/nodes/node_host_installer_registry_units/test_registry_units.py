@@ -330,3 +330,70 @@ def test_the_contract_declares_the_override_and_the_node_is_registered() -> None
         yaml.safe_load((NODE_DIR / "metadata.yaml").read_text(encoding="utf-8"))["name"]
         == contract["name"]
     )
+
+
+HARNESS_UNIT = "lab-test-harness"
+HARNESS_ENTRY = (
+    "src/omnimarket/nodes/node_lab_test_harness_effect/runtime_lab_test_harness.py"
+)
+
+
+def test_the_central_test_harness_unit_runs_its_timer_module_hourly_from_a_branch_checkout(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=HARNESS_ENTRY)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=HARNESS_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    plist = plist_of(result.rendered)
+    assert plist["Label"] == "ai.omninode.lab-test-harness"
+    assert plist["StartInterval"] == 3600
+    assert plist["RunAtLoad"] is True
+    args = plist["ProgramArguments"]
+    assert args[args.index("-m") + 1] == (
+        "omnimarket.nodes.node_lab_test_harness_effect.runtime_lab_test_harness"
+    )
+    assert args[args.index("--project") + 1] == str(branch)
+    assert args[args.index("--python") + 1] == BREW_PYTHON
+    environment = plist["EnvironmentVariables"]
+    assert environment["ONEX_STATE_DIR"] == str(tmp_path / "omni" / ".onex_state")
+    assert environment["OMNIBASE_PATH"] == str(tmp_path / "omni")
+    record = json.loads(
+        (
+            tmp_path
+            / "omni"
+            / ".onex_state"
+            / HARNESS_UNIT
+            / f"{HARNESS_UNIT}.installed.json"
+        ).read_text()
+    )
+    assert record["revision"] == revision
+    assert record["project_is_canonical"] is False
+
+
+def test_the_central_test_harness_unit_refuses_a_checkout_without_its_timer_module(
+    tmp_path: Path, canonical: Path
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)  # carries only the floor's entry file
+    result = HandlerRegistryUnits(real_run).handle(
+        request(
+            tmp_path,
+            unit=HARNESS_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "failure"
