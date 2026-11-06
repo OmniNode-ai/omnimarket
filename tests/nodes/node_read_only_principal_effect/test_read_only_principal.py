@@ -322,6 +322,7 @@ def test_golden_every_channel_reads_and_refuses_its_mutation() -> None:
     assert all(r.read == EnumAttemptOutcome.READ_OK for r in result.receipts)
     assert all(r.mutate == EnumAttemptOutcome.MUTATION_REFUSED for r in result.receipts)
     assert len(runner.calls) == 6
+    assert result.complete
     assert result.lines()[-1] == "principal=ro-test verdict=PASS"
 
 
@@ -407,6 +408,42 @@ def test_break_a_runner_that_accepts_every_mutation_turns_the_golden_probe_red()
     assert all(
         r.mutate == EnumAttemptOutcome.MUTATION_ACCEPTED for r in result.receipts
     )
+
+
+def test_golden_a_narrowed_probe_runs_only_its_channel_and_reads_pass_partial() -> None:
+    runner = MemoryAttemptRunner(_answers())
+    result = HandlerReadOnlyPrincipalProbe(runner=runner).handle(
+        ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,))
+    )
+    assert result.passed
+    assert not result.complete
+    assert [r.channel for r in result.receipts] == [EnumChannel.SSH]
+    assert runner.calls == [("ssh-probe", "read"), ("ssh-probe", "mutate")]
+    assert result.lines()[-1] == "principal=ro-test verdict=PASS-PARTIAL"
+
+
+def test_error_a_narrowed_probe_whose_channel_accepts_a_mutation_reads_fail() -> None:
+    accepted = ModelAttemptRun(exit_code=0, text="created")
+    result = HandlerReadOnlyPrincipalProbe(
+        runner=MemoryAttemptRunner(_answers(ssh_probe__mutate=accepted))
+    ).handle(ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,)))
+    assert result.verdict == "FAIL"
+
+
+def test_a_channel_named_twice_is_refused() -> None:
+    with pytest.raises(ValidationError, match="named once"):
+        ModelProbeRequest(channels=(EnumChannel.SSH, EnumChannel.SSH))
+
+
+def test_break_a_probe_that_ignores_the_narrowing_would_read_a_full_pass() -> None:
+    """The control for PASS-PARTIAL: the partial verdict is not a full PASS, whatever passed."""
+    partial = HandlerReadOnlyPrincipalProbe(
+        runner=MemoryAttemptRunner(_answers())
+    ).handle(ModelProbeRequest(overlay=_overlay(), channels=(EnumChannel.SSH,)))
+    full = HandlerReadOnlyPrincipalProbe(runner=MemoryAttemptRunner(_answers())).handle(
+        ModelProbeRequest(overlay=_overlay())
+    )
+    assert partial.verdict != full.verdict
 
 
 def test_the_node_class_probes_through_the_same_handler() -> None:
@@ -661,6 +698,7 @@ def test_the_command_line_parses() -> None:
     assert parse_args(["probe"]).command == "probe"
     assert parse_args(["install-key", "--dry-run", "--host", "alpha"]).host == ["alpha"]
     assert parse_args(["gate"]).command == "gate"
+    assert parse_args(["probe", "--channel", "ssh"]).channel == ["ssh"]
 
 
 def test_the_contract_names_the_three_operations() -> None:

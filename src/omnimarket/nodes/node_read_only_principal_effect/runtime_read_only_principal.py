@@ -18,6 +18,7 @@ from .handlers.handler_read_only_principal_key_install import (
 )
 from .handlers.handler_read_only_principal_probe import HandlerReadOnlyPrincipalProbe
 from .models.model_read_only_principal import (
+    EnumChannel,
     EnumGateDecision,
     ModelGateDecideRequest,
     ModelKeyInstallRequest,
@@ -27,6 +28,7 @@ from .models.model_read_only_principal import (
 SSH_ORIGINAL_COMMAND_ENV = "SSH_ORIGINAL_COMMAND"
 EXIT_GATE_REFUSED = 126
 EXIT_NOT_CONFIGURED = 2
+EXIT_PARTIAL_PASS = 4
 
 
 def _run_argv(argv: tuple[str, ...]) -> int:
@@ -62,8 +64,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="onex-read-only-principal")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("gate", help="the ssh forced command; reads SSH_ORIGINAL_COMMAND")
-    sub.add_parser(
-        "probe", help="read each channel and attempt one mutation; exit 0 only on PASS"
+    probe = sub.add_parser(
+        "probe",
+        help="read each channel and attempt one mutation; exit 0 only on a complete PASS",
+    )
+    probe.add_argument(
+        "--channel",
+        action="append",
+        default=[],
+        choices=[channel.value for channel in EnumChannel],
+        help="probe only this channel (repeatable); a narrowed pass exits 4, never 0",
     )
     install = sub.add_parser(
         "install-key",
@@ -81,10 +91,14 @@ def main(argv: list[str] | None = None) -> int:
         return run_gate()
     try:
         if args.command == "probe":
-            result = HandlerReadOnlyPrincipalProbe().handle(ModelProbeRequest())
+            result = HandlerReadOnlyPrincipalProbe().handle(
+                ModelProbeRequest(channels=tuple(EnumChannel(c) for c in args.channel))
+            )
             for line in result.lines():
                 print(line, flush=True)
-            return 0 if result.passed else 1
+            if not result.passed:
+                return 1
+            return 0 if result.complete else EXIT_PARTIAL_PASS
         installed = HandlerReadOnlyPrincipalKeyInstall().handle(
             ModelKeyInstallRequest(
                 hosts=tuple(args.host),

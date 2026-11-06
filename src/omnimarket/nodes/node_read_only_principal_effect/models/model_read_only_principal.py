@@ -204,21 +204,46 @@ class ModelChannelReceipt(BaseModel):
 
 
 class ModelProbeRequest(BaseModel):
-    """Probe the principal. An explicit overlay wins over the overlay file."""
+    """Probe the principal. An explicit overlay wins over the overlay file.
+
+    ``channels`` narrows the probe while the credentials are set one at a time; empty probes all
+    three. A narrowed probe can pass but never reads as the whole acceptance (see ``complete``).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     overlay: ModelReadOnlyPrincipalOverlay | None = None
+    channels: tuple[EnumChannel, ...] = ()
+
+    @field_validator("channels")
+    @classmethod
+    def _channels_unique(
+        cls, value: tuple[EnumChannel, ...]
+    ) -> tuple[EnumChannel, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("a channel is named once")
+        return value
 
 
 class ModelProbeResult(BaseModel):
-    """The verdict: PASS only when every channel read and refused its mutation."""
+    """The verdict. ``passed`` is true when every probed channel read and refused its mutation.
+
+    ``complete`` is true only when all three channels were probed, and only a complete pass is the
+    acceptance of section 11: a narrowed pass reads PASS-PARTIAL.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     principal: str
     passed: bool
+    complete: bool
     receipts: tuple[ModelChannelReceipt, ...]
+
+    @property
+    def verdict(self) -> str:
+        if not self.passed:
+            return "FAIL"
+        return "PASS" if self.complete else "PASS-PARTIAL"
 
     def lines(self) -> tuple[str, ...]:
         rows = tuple(
@@ -226,10 +251,7 @@ class ModelProbeResult(BaseModel):
             f"{'ok' if r.passed else 'FAIL'}"
             for r in self.receipts
         )
-        return (
-            *rows,
-            f"principal={self.principal} verdict={'PASS' if self.passed else 'FAIL'}",
-        )
+        return (*rows, f"principal={self.principal} verdict={self.verdict}")
 
 
 class EnumKeyInstallStatus(StrEnum):

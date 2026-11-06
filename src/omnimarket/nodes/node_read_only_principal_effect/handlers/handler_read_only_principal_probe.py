@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from ..models.model_read_only_principal import (
     EnumAttemptOutcome,
+    EnumChannel,
     ModelChannelProbe,
     ModelChannelReceipt,
     ModelProbeRequest,
@@ -61,10 +62,14 @@ class HandlerReadOnlyPrincipalProbe:
         overlay = (
             request.overlay if request.overlay is not None else self._overlay_source()
         )
-        receipts = tuple(self._channel(probe) for probe in overlay.probes)
+        chosen = set(request.channels) or set(EnumChannel)
+        receipts = tuple(
+            self._channel(probe) for probe in overlay.probes if probe.channel in chosen
+        )
         return ModelProbeResult(
             principal=overlay.principal,
             passed=all(receipt.passed for receipt in receipts),
+            complete=chosen == set(EnumChannel),
             receipts=receipts,
         )
 
