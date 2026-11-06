@@ -38,6 +38,9 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
+DEFAULT_PROCESS_TYPE = "Background"
+PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
 
 
 def interpreter_present(path: str) -> bool:
@@ -200,6 +203,11 @@ class HandlerRegistryUnits:
         python: str,
     ) -> str:
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
+        process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
+        if process_type not in PROCESS_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
+            )
         home, root = Path(request.home), Path(request.registry_root)
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
@@ -221,6 +229,7 @@ class HandlerRegistryUnits:
             "USER": user,
             "STATE_DIR": str(state),
             "START_INTERVAL": str(unit["schedule"]["start_interval"]),
+            "PROCESS_TYPE": process_type,
         }
         for key, value in values.items():
             text = text.replace(f"__{key}__", escape(value))
