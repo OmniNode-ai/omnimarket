@@ -56,7 +56,7 @@ class TestHandlerLiveEventsProjectionRunnerConstruction:
     def test_constructs_from_live_contract(self) -> None:
         runner = HandlerLiveEventsProjectionRunner()
         assert "live_events" in KNOWN_PROJECTION_TABLES
-        assert runner._table_live_events == "live_events"
+        assert runner._table_live_events == "omninode_internal.live_events"
 
     def test_subscribe_topics_include_node_heartbeat(self) -> None:
         runner = HandlerLiveEventsProjectionRunner()
@@ -71,6 +71,52 @@ class TestHandlerLiveEventsProjectionRunnerConstruction:
         assert runner._snapshot_exposure.topic == LIVE_EVENTS_TOPIC
         assert runner._snapshot_exposure.key_columns == ("event_id",)
         assert runner._snapshot_exposure.bus_backed is True
+
+    def test_a_schema_that_is_not_a_plain_identifier_is_refused(
+        self, tmp_path: Any
+    ) -> None:
+        contract = tmp_path / "contract.yaml"
+        contract.write_text(
+            "name: projection_live_events\n"
+            "db_io:\n"
+            "  db_tables:\n"
+            "    - name: live_events\n"
+            "      role: live_events\n"
+            "      schema: 'omninode_internal; DROP TABLE x'\n"
+            "event_bus: {}\n"
+            "projection_api: {expose: false}\n"
+        )
+        with pytest.raises(ValueError, match="plain lower-case SQL identifier"):
+            HandlerLiveEventsProjectionRunner(contract_path=contract)
+
+    def test_unqualified_relation_is_never_issued(self) -> None:
+        """OMN-22652 control: the INSERT names the contract-declared schema.
+
+        A bare ``live_events`` resolves through the login's search_path to
+        public.live_events, which the runtime login may not write.
+        """
+        runner = HandlerLiveEventsProjectionRunner()
+        runner._ensure_producer = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        now = datetime.now(UTC)
+        mock_db = _mock_db_returning(
+            {
+                "id": str(uuid4()),
+                "event_id": "e",
+                "type": "ACTION",
+                "timestamp": now,
+                "source": "s",
+                "topic": NODE_HEARTBEAT_TOPIC,
+                "summary": "",
+                "payload": "{}",
+                "correlation_id": None,
+                "created_at": now,
+            }
+        )
+        runner._db = mock_db
+        meta = MessageMeta(partition=0, offset=0, fallback_id="omn22652")
+        asyncio.run(runner.project_event(NODE_HEARTBEAT_TOPIC, {"event_id": "e"}, meta))
+        statement = " ".join(str(mock_db.execute.await_args.args[0]).split())
+        assert statement.startswith("INSERT INTO omninode_internal.live_events (")
 
     def test_missing_table_role_raises(self, tmp_path: Any) -> None:
         bad_contract = tmp_path / "contract.yaml"

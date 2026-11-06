@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22652
+title: The live events writer inserts into the contract-declared omninode_internal.live_events, so the runtime login that holds the grant there can write
+summary: The folded live events writer issued INSERT INTO live_events with the bare table name, which a runtime login resolves to public.live_events where it holds no privilege, so every write since 2026-11-03T14:41Z was refused and its event dead-lettered after six refusals. The relation now carries the schema the node contract declares, and a plain-identifier check keeps a malformed schema out of the statement.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22652-qualified-relation
+  statement: The live events writer names the schema its contract declares in its INSERT, so a login that holds INSERT only on omninode_internal.live_events writes its row there and leaves public.live_events untouched.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the writer INSERT names the contract-declared schema, so a login holding INSERT only on omninode_internal.live_events writes a row there and public.live_events stays untouched, on a real Postgres with both relations and the dev grant shape -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_projection_live_events/tests -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the unqualified statement against the same database and logins is refused with permission denied for table live_events, so the test fails on the old code -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_projection_live_events/tests -q --no-cov -k "unqualified or control"'
+evidence_requirements:
+- kind: tests
+  description: The writer lands its row in the declared schema and the bare statement is refused
+  command: uv run --frozen pytest src/omnimarket/nodes/node_projection_live_events/tests -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22652-qualified-insert
+  description: Runs the unit checks of the relation, the statement text and the identifier refusal.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_live_events/tests -q --no-cov
+    cwd: .
+- id: dod-omn22652-integration-proof
+  description: Runs the golden write and the refused bare statement on a disposable database carrying the dev grant shape, at the lab with a disposable PostgreSQL.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22652 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22652_live_events_qualified_insert_real_postgres.py -q --no-cov
+    cwd: .

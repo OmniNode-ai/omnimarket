@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,8 @@ from omnimarket.projection.runner import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SCHEMA_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
 
 # Mirrors RegistrationProjectionRunner's / SavingsProjectionRunner's own copy
 # of this self-check set (handler_registration.py, handler_savings.py) --
@@ -127,7 +130,24 @@ class HandlerLiveEventsProjectionRunner(BaseProjectionRunner):
         if "live_events" not in _by_role:
             raise ValueError("Contract missing required table role 'live_events'")
 
-        self._table_live_events: str = _by_role["live_events"]
+        # OMN-22652: the relation is named with the schema the contract declares.
+        # A bare name resolves through the login's default search_path to
+        # public.live_events, where the runtime logins hold no grant (the
+        # runtime login holds INSERT on omninode_internal.live_events), so
+        # every write of the folded writer was refused with "permission denied
+        # for table live_events" from 2026-11-03T14:41Z.
+        _live_table = next(t for t in _tables if t["role"] == "live_events")
+        _schema = str(_live_table.get("schema") or "")
+        if _schema and not _SCHEMA_IDENTIFIER.fullmatch(_schema):
+            raise ValueError(
+                f"Contract table {_by_role['live_events']!r} declares schema {_schema!r}, "
+                "which is not a plain lower-case SQL identifier"
+            )
+        self._table_live_events: str = (
+            f"{_schema}.{_by_role['live_events']}"
+            if _schema
+            else _by_role["live_events"]
+        )
 
         # OMN-17427: the contract has declared ``event_bus.dlq_topics`` since
         # OMN-13992, but this runner never handed it to the base class, whose
