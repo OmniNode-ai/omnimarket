@@ -14,7 +14,7 @@ import contextlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from click.testing import CliRunner
@@ -171,7 +171,9 @@ async def test_a_round_trip_opens_the_token_and_the_bus_never_carries_it() -> No
     async def opened() -> AsyncIterator[_NodeBehindABus]:
         yield bus
 
-    asker = BusGitCredentialAsker(opened, timeout_s=5, lane="lane-x", host="h201")  # type: ignore[arg-type]
+    asker = BusGitCredentialAsker(
+        cast(Any, opened), timeout_s=5, lane="lane-x", host="h201"
+    )
     out = await answer_git_credential("get", _GET, asker, git_host="github.com")
     assert out.endswith(f"password={FAKE_TOKEN}\n")
     assert len(bus.published) == 2
@@ -187,7 +189,7 @@ async def test_a_refusal_from_the_node_is_raised_with_its_reason() -> None:
     async def opened() -> AsyncIterator[_NodeBehindABus]:
         yield bus
 
-    asker = BusGitCredentialAsker(opened, timeout_s=5, lane=None, host=None)  # type: ignore[arg-type]
+    asker = BusGitCredentialAsker(cast(Any, opened), timeout_s=5, lane=None, host=None)
     with pytest.raises(GitCredentialRefusedError, match="owner_not_allowed"):
         await answer_git_credential(
             "get",

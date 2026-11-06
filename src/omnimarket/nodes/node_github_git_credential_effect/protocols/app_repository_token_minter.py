@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from omnimarket.github_api import GitHubApiError
-from omnimarket.github_app_auth import mint_installation_token_grant
+from omnimarket.github_app_grant import mint_installation_token_grant
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
     resolve_api_key_async,

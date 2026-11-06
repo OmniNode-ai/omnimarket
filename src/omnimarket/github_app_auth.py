@@ -48,8 +48,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
 
 import jwt as pyjwt
@@ -299,48 +298,6 @@ def mint_installation_token(
             as pyjwt's ``InvalidKeyError: Could not parse the provided public
             key.``
     """
-    return mint_installation_token_grant(
-        app_id=app_id,
-        private_key_pem=private_key_pem,
-        org=org,
-        repositories=repositories,
-        private_key_ref=private_key_ref,
-        installation_id=installation_id,
-    ).token
-
-
-@dataclass(frozen=True, repr=False)
-class InstallationTokenGrant:
-    """One minted installation token and what GitHub says it grants.
-
-    ``repr`` is off so the token never reaches a log line through this object.
-    """
-
-    token: str
-    expires_at: str
-    permissions: dict[str, str]
-    repositories: tuple[str, ...] | None
-
-
-def mint_installation_token_grant(
-    *,
-    app_id: str,
-    private_key_pem: str,
-    org: str = _DEFAULT_ORG,
-    repositories: Sequence[str] | None = None,
-    permissions: Mapping[str, str] | None = None,
-    private_key_ref: str = _DEFAULT_PRIVATE_KEY_SECRET_NAME,
-    installation_id: int | None = None,
-) -> InstallationTokenGrant:
-    """Mint an installation token and return it with its expiry and grants.
-
-    ``permissions``, when given, narrows the token below the App's own set
-    (GitHub refuses a permission the App does not hold). The answer's
-    ``repositories`` names, when GitHub returns them, are what the token was
-    narrowed to; ``None`` means GitHub returned no list (an un-narrowed token).
-
-    Raises the same errors as :func:`mint_installation_token`.
-    """
     private_key_pem = normalize_private_key_pem(
         private_key_pem, declared_ref=private_key_ref
     )
@@ -352,8 +309,6 @@ def mint_installation_token_grant(
     body: dict[str, object] = {}
     if repositories:
         body["repositories"] = list(repositories)
-    if permissions:
-        body["permissions"] = dict(permissions)
     resp = rest_json(
         "POST",
         f"/app/installations/{installation_id}/access_tokens",
@@ -366,26 +321,7 @@ def mint_installation_token_grant(
             "App installation-token exchange returned no token"
         )
     assert_is_app_installation_token(token)
-    granted = resp.get("permissions")
-    listed = resp.get("repositories")
-    return InstallationTokenGrant(
-        token=token,
-        expires_at=str(resp.get("expires_at") or ""),
-        permissions=(
-            {str(k): str(v) for k, v in granted.items()}
-            if isinstance(granted, dict)
-            else {}
-        ),
-        repositories=(
-            tuple(
-                str(entry.get("name"))
-                for entry in listed
-                if isinstance(entry, dict) and entry.get("name")
-            )
-            if isinstance(listed, list)
-            else None
-        ),
-    )
+    return token
 
 
 def resolve_app_installation_token_from_contract(
@@ -458,10 +394,8 @@ __all__ = [
     "GitHubAppCredentialMalformedError",
     "GitHubAppCredentialMissingError",
     "GitHubAppIdentityError",
-    "InstallationTokenGrant",
     "assert_is_app_installation_token",
     "mint_installation_token",
-    "mint_installation_token_grant",
     "normalize_private_key_pem",
     "resolve_app_installation_token_from_contract",
 ]
