@@ -42,7 +42,7 @@ sample:
   controls:
     - {repo: example_app, path: src/example_app/nodes/node_a/handler.py, why: the example node's handler}
     - {repo: example_core, path: src/example_core/models.py, why: the example script's import}
-  frozen_hash: 9ce0021035fb211a
+  frozen_hash: '9ce0021035fb211a'
 ledger_append:
   command_env: EXAMPLE_LEDGER_APPEND_COMMAND
   host_env: EXAMPLE_HOST_NAME
