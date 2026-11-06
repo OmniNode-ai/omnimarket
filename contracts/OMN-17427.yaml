@@ -1077,6 +1077,11 @@ requirements:
     acceptance:
       - id: "AC3003201"
         statement: "AC3003201: uv.lock locks multidict at 6.9.1 or later and mako at 1.4.2 or later -- falsifier: tests/test_uv_lock_security_floors_omn17427.py fails against the lock at the merge base (multidict 6.8.0, mako 1.4.1)"
+  - id: "req-dogfood-skipped-total-derived"
+    statement: "The all-node dogfood inventory's skipped total follows from its buckets instead of a pinned number, so a node entering or leaving the experimental_handler_pending staging bucket cannot red the repository."
+    acceptance:
+      - id: "AC1742734"
+        statement: "AC1742734: test_market_node_runtime_dogfood_inventory_classifies_all_entry_points asserts that every skipped item falls in one of the two known buckets rather than a pinned skipped total, and the non-addressable set check is unchanged -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points fails at the merge base, where the pinned total asserts 36 == 37"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4538,4 +4543,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: .
+  - id: "dod-omn17427-dogfood-skipped-derived"
+    description: "AC1742734: the dogfood inventory test asserts the skipped buckets rather than a pinned skipped total. The test fails at the merge base, where the pinned total asserts 36 == 37."
+    source: manual
+    binds_ac: ["AC1742734"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q --no-cov -p no:randomly --refuse-skips"
         cwd: .
