@@ -41,6 +41,10 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
     #: fault is not a property of the evidence, so another bounded attempt
     #: can legitimately reach a different answer.
     RUN_ERROR_OR_TIMEOUT = "run_error_or_timeout"
+    #: The verifier could not read the deciding merged PR's check runs. No
+    #: check conclusion was observed. A bounded retry may recover the read;
+    #: exhaustion still blocks closure and requires repairing the read path.
+    CHECK_RUN_READ_FAILED = "check_run_read_failed"
     #: OMN-17796. The OCC **governance ref** could not be materialised as a
     #: worktree — ``git worktree add --detach origin/dev`` failed, or blew the
     #: ``DOD_VERIFY_GIT_OP_TIMEOUT_S`` ceiling under contention on the single
@@ -130,6 +134,7 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
 _RETRY_ELIGIBLE_CAUSES: frozenset[EnumDodVerifyUnresolvedCause] = frozenset(
     {
         EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+        EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED,
         EnumDodVerifyUnresolvedCause.OCC_WORKTREE_UNAVAILABLE,
         EnumDodVerifyUnresolvedCause.OCC_REF_REFRESH_FAILED,
     }

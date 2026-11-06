@@ -35,6 +35,10 @@ DELEGATION_KEYS = frozenset(
 )
 DECLARATION_RE = re.compile(r"^(?:LANE_RESULT|TERMINAL)(?:\s|$)")
 OUTCOME_CELL_RE = re.compile(r"(?:^|[\s|])outcome=([^\s|]+)")
+WITHDRAWN_BY_CELL_RE = re.compile(r"(?:^|[\s|])withdrawn-by=([^\s|]+)")
+MESSAGE_STAMP_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z(?:-[A-Za-z0-9][A-Za-z0-9_.:-]*)?"
+)
 # A final message that says the lane is waiting on a background task or a notification.
 WAITING_RE = re.compile(
     r"background|(?:i['\u2019]ll|i will|will|to) be notified|notified (?:when|once)|notification"
@@ -134,6 +138,60 @@ def final_lane_outcome(final_message: str | None) -> str:
     return distinct.pop() if len(distinct) == 1 else "unknown"
 
 
+def final_lane_withdrawn_by(final_message: str | None) -> str | None:
+    """Copy an unambiguous citation from the same unfenced declarations as the outcome.
+
+    A missing, unsafe or contradictory citation stays absent; S8 then sees the
+    withdrawn outcome without authority instead of losing the stop as unknown.
+    """
+    if final_lane_outcome(final_message) != "withdrawn":
+        return None
+    report = DELEGATION_LINE_RE.split(final_message or "", maxsplit=1)[0].strip()
+    try:
+        data = json.loads(report, object_pairs_hook=_unique_object)
+    except (ValueError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        citation = data.get("withdrawn-by")
+        return (
+            citation
+            if isinstance(citation, str) and MESSAGE_STAMP_RE.fullmatch(citation)
+            else None
+        )
+    citations: list[str | None] = []
+    fence: str | None = None
+    for raw in report.splitlines():
+        line = raw.strip()
+        if line.startswith(("```", "~~~")):
+            marker = line[:3]
+            if fence is None:
+                fence = marker
+            elif fence == marker:
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        if DECLARATION_RE.match(line):
+            found = WITHDRAWN_BY_CELL_RE.findall(line)
+            citations.append(found[0].rstrip(".,;") if len(found) == 1 else None)
+        elif line.startswith("{"):
+            try:
+                obj = json.loads(line, object_pairs_hook=_unique_object)
+            except (ValueError, TypeError):
+                return None
+            cited = obj.get("withdrawn-by") if isinstance(obj, dict) else None
+            citations.append(cited if isinstance(cited, str) else None)
+    distinct = set(citations)
+    if len(distinct) != 1:
+        return None
+    citation = distinct.pop()
+    return (
+        citation
+        if isinstance(citation, str) and MESSAGE_STAMP_RE.fullmatch(citation)
+        else None
+    )
+
+
 def waiting_on_background(final_message: str | None) -> bool:
     """True when the final text reads as waiting on a background task and names no handoff."""
     text = final_message or ""
@@ -156,6 +214,14 @@ class HandlerRemoteLaneResult:
         usage = receipt_usage(
             request.engine, request.engine_output, request.brief, request.wall_seconds
         )
+        withdrawn_by = final_lane_withdrawn_by(message)
+        ledger_cells = {
+            key: value
+            for key in ("contract_id", "attempt_id")
+            if (value := getattr(usage, key)) is not None
+        }
+        if withdrawn_by is not None:
+            ledger_cells["withdrawn-by"] = withdrawn_by
         return ModelRemoteLaneResult(
             outcome=outcome,
             problem=problem,
@@ -166,9 +232,6 @@ class HandlerRemoteLaneResult:
             first_turn_context=first_turn_context(
                 request.engine_output, request.brief or None
             ),
-            ledger_cells={
-                key: value
-                for key in ("contract_id", "attempt_id")
-                if (value := getattr(usage, key)) is not None
-            },
+            withdrawn_by=withdrawn_by,
+            ledger_cells=ledger_cells,
         )
