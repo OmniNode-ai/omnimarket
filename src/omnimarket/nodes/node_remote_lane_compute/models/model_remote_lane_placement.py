@@ -39,6 +39,9 @@ class EnumRemoteLaneOutcome(StrEnum):
     VENV_UNKNOWN = "VENV_UNKNOWN"
     # An open andon stop in an enforce class refused the engine; the result names the stop and its swarm lane.
     STOPPED = "STOPPED"
+    # A host would take the lane but lacks an input the brief needs (a map entry, a clone, a patch
+    # or a plan branch), and no host holding every input took it: the send is refused before it is made.
+    INPUT_ABSENT = "INPUT_ABSENT"
 
 
 class ModelRemoteLaneHostReading(BaseModel):
@@ -80,6 +83,9 @@ class ModelRemoteLaneHostReading(BaseModel):
     # lane today. Fail closed: a contributor row is not ready until its data says so.
     lane_ready: bool = False
     lane_not_ready_reason: str | None = None
+    # The inputs of the request's ``required_inputs`` the placement reader found on this host. None: the
+    # reader did not check them, which keeps the host off a lane that needs inputs (fail closed).
+    present_inputs: tuple[str, ...] | None = None
 
 
 class ModelRemoteLaneAttempt(BaseModel):
@@ -164,6 +170,10 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     # policy, now and the lane's exemption claim and bindings (OMN-21958). None: no gate is installed
     # and the decision is as before. A class in ``observe`` mode refuses nothing.
     stop_gate: ModelStopGateFacts | None = None
+    # The inputs the lane's brief needs on its host, each named ``<kind>:<value>`` (``map-entry:<lane>``,
+    # ``clone:<repo>``, ``patch:<path>``, ``plan-branch:<branch>``). A host takes the lane only when its
+    # reading's ``present_inputs`` holds every one. Empty: an old producer's request, placed as before.
+    required_inputs: tuple[str, ...] = ()
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):
