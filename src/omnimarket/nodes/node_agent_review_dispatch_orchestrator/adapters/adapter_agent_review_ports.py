@@ -49,7 +49,10 @@ from typing import Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, SecretStr, ValidationError
 
-from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolLabRunBus,
+    envelope_bytes_for,
+)
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
@@ -69,6 +72,7 @@ from ..models import (
     ModelAgentReceipt,
     ModelAgentReceiptCandidate,
     ModelAgentReviewConfig,
+    ModelAgentReviewRequest,
     ModelAgentReviewTerminal,
     ModelAgentSigningKeyStore,
     ModelAgentVoter,
@@ -332,6 +336,22 @@ class ScmBus:
             )
         result = payload.get("result", payload)
         return result if isinstance(result, dict) else payload
+
+    async def publish_review(self, request: ModelAgentReviewRequest) -> None:
+        """Publish the existing command on its contract-declared topic."""
+        from ..overlay import load_topics
+
+        topic = load_topics().command
+        async with self._open(EnumScmNode.GATEWAY) as bus:
+            await bus.publish(
+                topic=topic,
+                key=f"{request.repo}#{request.pr}#{request.head_sha}".encode(),
+                value=envelope_bytes_for(
+                    topic,
+                    request.model_dump(mode="json"),
+                    uuid.uuid5(uuid.NAMESPACE_URL, request.command_id),
+                ),
+            )
 
 
 class ProtocolScmCall(Protocol):

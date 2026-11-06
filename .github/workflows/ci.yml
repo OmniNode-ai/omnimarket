@@ -633,6 +633,9 @@ jobs:
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+      # OMN-19998: regression proof for the hosted receipt reader and PR-state producer.
+      - name: Public review receipt and runtime dispatch
+        run: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
       # OMN-20910: paired with the contract-prerequisite-verifier-host-tools hook.
       - name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
         run: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
@@ -4048,6 +4051,40 @@ jobs:
           fi
           uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
             python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
+      # OMN-19998: the same refusal as the check-public-lab-selection hook, at that
+      # hook's rev. The job is registered in the CI Summary sweep, so this is required.
+      - name: Read the core pin of the lab selection hook
+        run: |
+          set -eu
+          spec="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          blocks = [r for r in config["repos"] if any(h["id"] == "check-public-lab-selection" for h in r["hooks"])]
+          assert len(blocks) == 1, blocks
+          print("omnibase-core @ git+" + blocks[0]["repo"] + "@" + blocks[0]["rev"])
+          ')"
+          echo "LAB_SELECTION_CORE=${spec}" >> "$GITHUB_ENV"
+      - name: Failing control (planted lab job refused)
+        run: |
+          set -u
+          planted="$RUNNER_TEMP/planted"
+          mkdir -p "$planted/.github/workflows"
+          printf 'on: push\njobs:\n  planted:\n    runs-on: [self-hosted, omnibase-ci]\n    steps:\n      - run: "true"\n' \
+            > "$planted/.github/workflows/zz-planted.yml"
+          if uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --root "$planted" --repo omnimarket --visibility public; then
+            echo "FAILING CONTROL FAILED: a planted lab job was accepted"
+            exit 1
+          fi
+          echo "failing control: a planted lab job refused"
+      - name: Refuse a public workflow selecting a lab runner
+        env:
+          LIVE_VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --repo omnimarket --visibility public --variables-json "$LIVE_VARIABLES"
 
   # OMN-19998: the guard has both refusal and passing-pin controls, including
   # the actual lane-launch and controller-brief callers. Required by CI Summary.
