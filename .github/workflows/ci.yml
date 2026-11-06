@@ -1838,6 +1838,13 @@ jobs:
       - name: Run integration-marked tests (Postgres provisioned)
         env:
           OMN20025_POSTGRES_BACKEND: ci
+          # OMN-22478: the omnidash release proofs (OMN-21469) read the publish
+          # workflow's runs from the GitHub REST API. With no token that read is
+          # unauthenticated and shares the 60-per-hour quota of the runner's
+          # address, which a night of reruns spends: HTTP 403 rate limit. The
+          # run's own token lifts it to the repository quota; the test already
+          # reads GH_TOKEN and sends it through rest_json.
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv run pytest -m "integration and not kafka" \
             -rs -v --tb=short \
