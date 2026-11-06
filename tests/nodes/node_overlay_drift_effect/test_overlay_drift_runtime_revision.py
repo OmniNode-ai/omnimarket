@@ -247,9 +247,9 @@ def test_git_tree_refuses_a_revision_that_is_not_a_commit_id(
 
 # --- the provenance read -----------------------------------------------------------------
 
-SOURCE = ModelRuntimeRevisionSource.model_validate(
-    overlay().runtime.revision_source.model_dump()  # type: ignore[union-attr]
-)
+_DECLARED = overlay().runtime.revision_source
+assert _DECLARED is not None
+SOURCE: ModelRuntimeRevisionSource = _DECLARED
 REV = "fd073f933fcf0873c9a5e5496d8ead529ec9abae"
 
 
