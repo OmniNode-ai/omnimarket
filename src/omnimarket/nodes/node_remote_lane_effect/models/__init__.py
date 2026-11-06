@@ -16,6 +16,12 @@ from .model_remote_lane_retention import (
     ModelRemoteLaneRetentionRequest,
     ModelRemoteLaneRetentionResult,
 )
+from .model_remote_lane_shared_venv import (
+    ModelRemoteLaneSharedVenvPruneRequest,
+    ModelRemoteLaneSharedVenvPruneResult,
+    ModelRemoteLaneSharedVenvRequest,
+    ModelRemoteLaneSharedVenvResult,
+)
 
 __all__ = [
     "SHA_RE",
@@ -26,4 +32,8 @@ __all__ = [
     "ModelRemoteLaneRefResult",
     "ModelRemoteLaneRetentionRequest",
     "ModelRemoteLaneRetentionResult",
+    "ModelRemoteLaneSharedVenvPruneRequest",
+    "ModelRemoteLaneSharedVenvPruneResult",
+    "ModelRemoteLaneSharedVenvRequest",
+    "ModelRemoteLaneSharedVenvResult",
 ]
