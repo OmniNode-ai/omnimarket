@@ -153,14 +153,21 @@ class HandlerWorkLedgerCopy:
                 copy_bytes=written,
                 target_free_bytes=free,
             )
-        pruned = self._store.prune(self._keep)
+        detail = (
+            f"{restored_rows.row_count} rows and {restored_file.line_count} file lines "
+            "restored on a scratch database and matched"
+        )
+        try:
+            pruned = self._store.prune(self._keep)
+        except CopyStepError as exc:
+            # The four reads already agreed, so the copy is verified; a failed prune only leaves
+            # older runs on the target. It is told in the detail and the run is still reported.
+            pruned = ()
+            detail += f"; older runs were not pruned: {exc}"
         return ModelCopyResult(
             run_id=run_id,
             outcome=EnumCopyOutcome.COPIED_VERIFIED,
-            detail=(
-                f"{restored_rows.row_count} rows and {restored_file.line_count} file lines "
-                "restored on a scratch database and matched"
-            ),
+            detail=detail,
             source_rows=source_rows,
             restored_rows=restored_rows,
             source_file=source_file,

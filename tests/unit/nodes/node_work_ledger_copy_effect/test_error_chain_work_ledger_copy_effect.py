@@ -85,3 +85,13 @@ def test_named_break_drop_file_tail_fails_the_file_match() -> None:
 def test_the_unbroken_run_passes_so_the_breaks_are_what_fail_it() -> None:
     outcome, *_ = _run()
     assert outcome is EnumCopyOutcome.COPIED_VERIFIED
+
+
+def test_a_failed_prune_after_a_verified_copy_is_told_and_the_run_is_still_reported() -> (
+    None
+):
+    outcome, _, _, reporter, detail = _run(store=FakeStore(fail_prune=True))
+    assert outcome is EnumCopyOutcome.COPIED_VERIFIED
+    assert "older runs were not pruned" in detail
+    assert "busy" in detail
+    assert reporter.reports[0].pruned == ()
