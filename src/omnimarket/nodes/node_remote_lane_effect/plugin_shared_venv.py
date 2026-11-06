@@ -260,10 +260,10 @@ def link_tree(
     lock = tree / (".venv" + LOCK_SUFFIX)
 
     def settled() -> bool:
-        return marker.is_file()
+        return marker.is_file() and (own / "bin" / "python3").exists()
 
     def foreign() -> bool:
-        return own.exists() and not settled() and not (own / LINKING).exists()
+        return own.exists() and not marker.is_file() and not (own / LINKING).exists()
 
     if settled() or foreign():
         return False
@@ -275,7 +275,7 @@ def link_tree(
         if own.exists():
             _remove(
                 own
-            )  # a crashed link of this module: its LINKING file was never removed
+            )  # a crashed link of this module, or one whose interpreter went (its shared venv was pruned)
         shared_site = _site_packages(shared)
         try:
             own.mkdir()

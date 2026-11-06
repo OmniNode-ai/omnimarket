@@ -459,3 +459,18 @@ def test_the_prune_script_reports_on_stderr_and_takes_the_host_environment(
     assert "pruned=1" in gone.stderr
     assert "PLUGIN-VENV-PRUNED " + key in gone.stderr
     assert not (store / "venvs" / key).exists()
+
+
+def test_a_removed_shared_venv_is_rebuilt_under_the_same_path_and_the_tree_works_again(
+    uv: Path, store: Path
+) -> None:
+    import shutil
+
+    tree = _tree(store, "omniclaude-aaaaaaaaaaaa")
+    first = HandlerRemoteLaneSharedVenv().handle(_request(tree, store, uv))
+    shutil.rmtree(store / "venvs" / first.key)
+    again = HandlerRemoteLaneSharedVenv().handle(_request(tree, store, uv))
+    assert again.ok
+    assert again.built
+    assert not again.linked  # the tree's links name the same path, which is whole again
+    assert _imports(tree).startswith("7 omniclaude-aaaaaaaaaaaa")
