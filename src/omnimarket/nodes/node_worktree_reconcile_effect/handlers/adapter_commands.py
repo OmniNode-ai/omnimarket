@@ -72,6 +72,34 @@ def backup_branch(facts: ModelWorktreeFacts) -> str:
     return f"backup/worktree-reconcile/{tail}"
 
 
+# One call per repository per run: a listing of merged pull requests is a network read.
+MERGED_PR_TIMEOUT_SECONDS = 300
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+
+
+class CommandMergedPrReader:
+    """Run the configured reader and return the head commits of merged pull requests.
+
+    The reader's stdout is the evidence and nothing else is trusted: only lines that
+    are a full 40-digit commit id count. A reader that exits non-zero raises, so a
+    broken reader is a failure the run reports and never a silent "nothing merged".
+    """
+
+    def merged_heads(self, argv: list[str], slug: str) -> frozenset[str]:
+        proc = subprocess.run(
+            [arg.replace("{slug}", slug) for arg in argv],
+            capture_output=True,
+            text=True,
+            timeout=MERGED_PR_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"merged pull request reader failed ({proc.returncode})")
+        return frozenset(
+            line for line in proc.stdout.split() if _COMMIT.fullmatch(line)
+        )
+
+
 class CommandWorktreePinner:
     """Run the configured pin command, then prove the pin on the remote itself.
 
