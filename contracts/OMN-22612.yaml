@@ -44,8 +44,6 @@ dod_evidence:
 - id: dod-omn22612-entry-point-count
   description: The count of standing-rule entry points in pyproject.toml is 0 at the branch head. The control read at origin/dev before the revert prints 2, so the reading can fail.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: test "$(grep -cE '^node_dispatch_standing_rules_(compute|effect) =' pyproject.toml)" = 0
