@@ -169,22 +169,28 @@ def read_ledger_facts(
     )
     if rulings.error is not None:
         return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
-    event_rows: list[ModelLedgerEvidenceRow] = []
+    # One read per (row type, lane) of the rules; a row two rules would both read is one row.
+    wanted: dict[tuple[str, str], int] = {}
     for rule in overlay.piece_events:
         for match in (rule.golden, rule.error):
-            read = source.read(
-                ModelLedgerQuery(
-                    since=now - timedelta(days=rule.lookback_days),
-                    until=until,
-                    row_type=match.row_type,
-                    lane=match.lane,
-                )
+            key = (match.row_type, match.lane)
+            wanted[key] = max(wanted.get(key, 0), rule.lookback_days)
+    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
+    for (row_type, lane), days in sorted(wanted.items()):
+        read = source.read(
+            ModelLedgerQuery(
+                since=now - timedelta(days=days),
+                until=until,
+                row_type=row_type,
+                lane=lane,
             )
-            if read.error is not None:
-                return ModelLedgerFloorRead(
-                    error=f"piece {rule.piece} events unread: {read.error}"
-                )
-            event_rows.extend(read.rows)
+        )
+        if read.error is not None:
+            return ModelLedgerFloorRead(
+                error=f"{row_type} rows of {lane} unread: {read.error}"
+            )
+        for row in read.rows:
+            event_rows[row.raw] = row
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(
@@ -196,6 +202,6 @@ def read_ledger_facts(
                 if r.cells.get("ticket") == go_rule.ticket
                 and re.search(go_rule.question_pattern, r.cells.get("question", ""))
             ),
-            events=piece_events(event_rows, overlay.piece_events),
+            events=piece_events(list(event_rows.values()), overlay.piece_events),
         )
     )

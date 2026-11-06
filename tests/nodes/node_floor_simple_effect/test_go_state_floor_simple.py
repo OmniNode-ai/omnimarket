@@ -198,6 +198,14 @@ def test_piece_events_the_code_graph_rows_are_one_golden_chain_and_one_error_cha
     assert receipts.findings == ()
 
 
+def test_piece_events_a_row_two_rules_would_read_is_one_event_pair() -> None:
+    facts = read_ledger_facts(InMemoryLedger(lines()), overlay(), AT).facts
+    assert facts is not None
+    # Three chains (two golden runs and one drilled error), a start and a terminal each: no duplicate start.
+    assert len(facts.events) == 6
+    assert facts.go_rows == ("2026-11-06T12:10:28Z", "2026-11-06T13:16:32Z")
+
+
 def test_piece_events_piece_1_reads_started_on_the_floor_with_its_golden_and_error_ages(
     tmp_path: Path,
 ) -> None:
