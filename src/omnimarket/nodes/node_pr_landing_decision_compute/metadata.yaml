@@ -1,6 +1,6 @@
 name: node_pr_landing_decision_compute
 version: "0.1.0"
-description: "PR landing decision: one landing-controller tick as a pure function, with typed fixed worker briefs"
+description: "PR landing decision: a pure tick with typed worker briefs and persisted exhaustion accountability"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
