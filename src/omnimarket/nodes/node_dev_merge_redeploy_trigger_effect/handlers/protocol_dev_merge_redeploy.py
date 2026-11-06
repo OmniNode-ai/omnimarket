@@ -58,8 +58,11 @@ class ProtocolBuildContextRef(Protocol):
 
 
 class ProtocolLaneRevision(Protocol):
-    def vendored_revision(self, source_repo: str) -> str:
-        """The commit the lane's running build vendored for ``source_repo`` (40 hex)."""
+    def vendored_revision(self, source_repo: str, section: str) -> str:
+        """The commit the lane's running build records for ``source_repo`` (40 hex).
+
+        ``section`` is the key under ``per_repo_vcs_provenance`` that holds it.
+        """
         ...
 
     def lane_carries(

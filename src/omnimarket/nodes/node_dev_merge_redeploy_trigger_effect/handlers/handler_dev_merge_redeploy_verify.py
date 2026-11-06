@@ -62,7 +62,9 @@ class HandlerDevMergeRedeployVerify:
                 message=f"{event.repo} is no longer in the policy",
             )
         try:
-            lane_sha = self._lane.vendored_revision(repo.source_repo)
+            lane_sha = self._lane.vendored_revision(
+                repo.source_repo, repo.provenance_section
+            )
             carries = self._lane.lane_carries(
                 repo.clone_dir, event.base, event.merge_sha, lane_sha
             )
@@ -102,7 +104,9 @@ class HandlerDevMergeRedeployVerify:
                 message=f"{event.repo} is no longer in the policy",
             )
         try:
-            lane_sha = self._lane.vendored_revision(repo.source_repo)
+            lane_sha = self._lane.vendored_revision(
+                repo.source_repo, repo.provenance_section
+            )
             carries = self._lane.lane_carries(
                 repo.clone_dir, event.base, event.merge_sha, lane_sha
             )

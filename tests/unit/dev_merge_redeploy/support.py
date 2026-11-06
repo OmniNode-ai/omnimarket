@@ -57,6 +57,7 @@ def policy(
                     "clone_dir": "$OMNI_HOME/sibling",
                     "build_context_clone_dir": "$OMNI_HOME/build-context",
                     "build_context_branch": "dev",
+                    "provenance_section": "siblings",
                 }
             ],
             "classifier_path": "$OMNI_HOME/gate/classifier.py",
@@ -137,7 +138,7 @@ class FakeLane:
         self.unreadable = unreadable
         self.reads = 0
 
-    def vendored_revision(self, source_repo: str) -> str:
+    def vendored_revision(self, source_repo: str, section: str) -> str:
         self.reads += 1
         if self.unreadable:
             raise LaneUnreadableError("probe exited 255")

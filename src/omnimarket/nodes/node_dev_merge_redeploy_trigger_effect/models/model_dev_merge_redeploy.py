@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -81,6 +81,13 @@ class ModelDevMergeRepoPolicy(BaseModel):
         ),
     )
     build_context_branch: str = Field(min_length=1)
+    provenance_section: Literal["siblings", "build_context"] = Field(
+        description=(
+            "Where the lane's build provenance records this repository: a vendored sibling "
+            "(per_repo_vcs_provenance.siblings) or the build context itself "
+            "(per_repo_vcs_provenance.build_context)."
+        )
+    )
 
     @model_validator(mode="after")
     def _check_repo(self) -> Self:

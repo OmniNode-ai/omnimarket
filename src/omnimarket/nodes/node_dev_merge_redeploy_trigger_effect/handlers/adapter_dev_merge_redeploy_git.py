@@ -279,7 +279,7 @@ class ProvenanceLaneRevision:
         self._timeout = timeout
         self._git_timeout = git_timeout
 
-    def vendored_revision(self, source_repo: str) -> str:
+    def vendored_revision(self, source_repo: str, section: str) -> str:
         try:
             done = self._run(
                 self._argv,
@@ -298,9 +298,7 @@ class ProvenanceLaneRevision:
             )
         try:
             manifest = json.loads(done.stdout)
-            sha = manifest["per_repo_vcs_provenance"]["siblings"][source_repo][
-                "vcs_ref"
-            ]
+            sha = manifest["per_repo_vcs_provenance"][section][source_repo]["vcs_ref"]
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             raise LaneUnreadableError(
                 f"lane manifest has no vendored ref for {source_repo!r} ({type(exc).__name__})"

@@ -13,6 +13,8 @@ repos:
     # The repository whose tip is the ref the deploy agent rebuilds at.
     build_context_clone_dir: $OMNI_HOME/example-build-context
     build_context_branch: dev
+    # siblings: a repository the lane vendors; build_context: the repository the lane is built in.
+    provenance_section: siblings
 # The CI deploy gate's classifier module, loaded by path.
 classifier_path: $OMNI_HOME/example-gate-repo/.github/actions/deploy-gate/validate_pr_deploy_required.py
 # Prints the lane's build-provenance manifest as JSON. The deployment's own way to reach it.

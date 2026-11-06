@@ -178,7 +178,7 @@ def _manifest(sha: str) -> dict[str, object]:
 
 def test_lane_revision_reads_the_vendored_ref_from_the_manifest() -> None:
     lane = ProvenanceLaneRevision(_probe(_manifest("a" * 40)))
-    assert lane.vendored_revision("omnimarket") == "a" * 40
+    assert lane.vendored_revision("omnimarket", "siblings") == "a" * 40
 
 
 @pytest.mark.parametrize(
@@ -193,7 +193,33 @@ def test_lane_revision_reads_the_vendored_ref_from_the_manifest() -> None:
 )
 def test_lane_revision_unreadable_cases(argv: list[str], why: str) -> None:
     with pytest.raises(LaneUnreadableError, match=why):
-        ProvenanceLaneRevision(argv).vendored_revision("omnimarket")
+        ProvenanceLaneRevision(argv).vendored_revision("omnimarket", "siblings")
+
+
+def test_lane_revision_reads_the_build_context_section_for_the_repository_the_lane_builds_in() -> (
+    None
+):
+    manifest = {
+        "per_repo_vcs_provenance": {
+            "siblings": {"infra": {"vcs_ref": "b" * 40}},
+            "build_context": {"infra": {"vcs_ref": "c" * 40}},
+        }
+    }
+    lane = ProvenanceLaneRevision(_probe(manifest))
+    assert lane.vendored_revision("infra", "build_context") == "c" * 40
+    assert lane.vendored_revision("infra", "siblings") == "b" * 40
+
+
+def test_lane_revision_names_a_repository_missing_from_the_section_it_was_asked() -> (
+    None
+):
+    manifest = {
+        "per_repo_vcs_provenance": {"siblings": {"infra": {"vcs_ref": "b" * 40}}}
+    }
+    with pytest.raises(LaneUnreadableError, match="no vendored ref"):
+        ProvenanceLaneRevision(_probe(manifest)).vendored_revision(
+            "infra", "build_context"
+        )
 
 
 def test_lane_carries_is_containment_not_equality(repos: Repos) -> None:
@@ -244,7 +270,8 @@ def test_the_bus_opener_arguments_follow_the_opener_signature() -> None:
         _opener_arguments,
     )
 
-    arguments = _opener_arguments("kafka", "dev", None)
+    root = Path("/workspace-root")
+    arguments = _opener_arguments("kafka", "dev", None, root)
     keywords = list(arguments)
     assert keywords[:3] == ["bus", "lane", "kafka_bootstrap"]
-    assert list(arguments.values()) == ["kafka", "dev", None, None]
+    assert list(arguments.values()) == ["kafka", "dev", None, root]
