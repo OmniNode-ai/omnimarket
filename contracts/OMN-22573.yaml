@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: a real-Postgres test with 300 distinct failure details reads the view and gets at most 51 failure categories whose counts sum to the failed rows with a detail, and the same test fails on the view of migration 0045 -- falsifier: uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov'
   - id: AC2
-    statement: 'AC2: after the dev roll, the failure_categories of the largest tenant on the dev database is under 20000 bytes -- falsifier: psql length(failure_categories::text) of projection_delegation_quality_gate for tenant 820272f9-4aaf-5add-a2df-0af942852ab2 prints a number under 20000'
+    statement: 'AC2: the failure_categories of the view is under 20000 bytes for 300 distinct failure details, and after the dev roll the largest dev tenant reads under 20000 bytes too -- falsifier: the same test asserts the size and fails on the view of migration 0045; the dev read is psql length(failure_categories::text) of projection_delegation_quality_gate for tenant 820272f9-4aaf-5add-a2df-0af942852ab2'
 evidence_requirements:
 - kind: tests
   description: The bounded failure list on a real Postgres
@@ -27,16 +27,15 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC1
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov
     cwd: .
 - id: dod-omn22573-dev-read-after-roll
-  description: After the dev roll, read the largest tenant's failure_categories length on the dev database. The check prints 1 when it is under 20000 bytes and runs only at the local Done gate, since hosted CI cannot reach the lab.
+  description: AC2 dev probe, unbound (AC2 binds dod-omn22573-bounded-list for the hosted check). After the dev roll, read the largest tenant's failure_categories length on the dev database. The check prints 1 when it is under 20000 bytes and runs only at the local Done gate, since hosted CI cannot reach the lab.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: ssh omni-201 "docker exec omnibase-infra-postgres psql -U postgres -d omnidash_analytics -At -c \"select count(*) from projection_delegation_quality_gate where length(failure_categories::text) < 20000 and tenant_id = '820272f9-4aaf-5add-a2df-0af942852ab2'\""

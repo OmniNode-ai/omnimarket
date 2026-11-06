@@ -65,7 +65,7 @@ def schema_cursor() -> Iterator[Any]:
     schema = f"omn22573_{uuid.uuid4().hex[:12]}"
     try:
         conn = psycopg2.connect(_dsn())
-    except Exception as exc:  # pragma: no cover - environment dependent
+    except Exception as exc:
         pytest.skip(f"Postgres unreachable: {exc}")
     conn.autocommit = True
     try:
