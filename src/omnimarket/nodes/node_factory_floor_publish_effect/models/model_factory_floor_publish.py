@@ -343,6 +343,11 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
     record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
+    # Steps run after the page and the record are served, in order, never concurrently. The canary status is published
+    # here, from the page as served, so its floor age is the age of the page a reader gets. A required step that fails
+    # raises after the page is served: a failed page upload stops the run before these steps, so the canary status
+    # then ages past its bound and reads as silent, and a failed canary publish is a failed run, never a hidden one.
+    after_publish_steps: tuple[ModelPublishStep, ...]
     names: ModelPublishNames
     transport: ModelPublishTransport
     history: ModelPublishHistory

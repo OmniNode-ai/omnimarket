@@ -329,6 +329,28 @@ class HandlerFactoryFloorPublish:
             self._copy(rt, overlay, name, payload)
         pruned = self._prune_history(rt, overlay, now)
 
+        # The page and the record are served. The canary status is published from them, so its floor age is the page's.
+        after: list[ModelPublishStepResult] = []
+        for after_step in rt.after_publish_steps:
+            after_result = self._step(
+                after_step, home, overlay, rt.plugin_root_env, env
+            )
+            after.append(after_result)
+            if after_result.status == "failed" and after_step.required:
+                if request.state_dir:
+                    self._write_evidence(
+                        Path(request.state_dir) / rt.evidence_file,
+                        now,
+                        generated_at,
+                        hashlib.sha256(data).hexdigest(),
+                        tuple(name for name, _ in files),
+                    )
+                raise PublishRefusedError(
+                    f"the page was served but the required step {after_step.name} failed "
+                    f"({after_result.detail}): {after_result.diagnostic}"
+                )
+        results.extend(after)
+
         digest = hashlib.sha256(data).hexdigest()
         if request.state_dir:
             self._write_evidence(

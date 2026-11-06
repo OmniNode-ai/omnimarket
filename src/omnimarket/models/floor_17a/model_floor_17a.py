@@ -648,6 +648,11 @@ class ModelFloorSimpleTickRequest(_Frozen):
     drill_error: bool = False
     drill_offline: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
     check_overlays_root: str | None = None
+    #: The cycle does not publish the canary status: the publish node runs it after the page is served, so the
+    #: status carries the age of the page a reader gets (OMN-19998, 17a).
+    defer_canary: bool = False
+    #: Publish only the canary status, from the page as it is served now, and nothing else.
+    canary_only: bool = False
 
 
 class ModelFloorSimpleTickResult(_Frozen):

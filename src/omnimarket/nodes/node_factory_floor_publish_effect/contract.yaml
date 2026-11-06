@@ -207,7 +207,15 @@ runtime:
     required: false
     timeout_seconds: 120
     module: omnimarket.nodes.node_floor_simple_effect
-    args: ["--home", "{home}"]
+    args: ["--home", "{home}", "--defer-canary"]
+  # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
+  after_publish_steps:
+  - name: floor_canary
+    kind: module
+    required: true
+    timeout_seconds: 120
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--publish-canary"]
   names:
     page: detail.html
     simple_page: index.html

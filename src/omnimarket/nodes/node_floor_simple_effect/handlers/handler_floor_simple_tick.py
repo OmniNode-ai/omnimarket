@@ -324,6 +324,10 @@ class HandlerFloorSimpleTick:
 
         started = self._clock()
         emit(EMIT_CYCLE, "start", started)
+        if request.canary_only:
+            return self._canary_only(
+                rt, env, alarm_ov, home, step, emit, cid, started, lambda: emitted
+            )
         try:
             doc, canary = self._cycle(
                 rt,
@@ -375,6 +379,46 @@ class HandlerFloorSimpleTick:
             level=doc.level,
             red_rule=doc.red_rule.state,
             emitted=emitted,
+            canary=canary,
+        )
+
+    def _canary_only(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        alarm_ov: ModelAlarmOverlay,
+        home: Path,
+        step: Callable[..., Any],
+        emit: Callable[..., None],
+        cid: str,
+        started: datetime,
+        emitted: Callable[[], int],
+    ) -> ModelFloorSimpleTickResult:
+        """Publish the canary status from the page as it is served now; the publish node runs this after the page copy."""
+        canary = self._publish_canary(rt, env, alarm_ov, home, step, skip=False)
+        ok = canary == "published"
+        if ok:
+            emit(EMIT_CYCLE, "success", self._clock(), counters={"canary_published": 1})
+        else:
+            emit(
+                EMIT_CYCLE,
+                "failure",
+                self._clock(),
+                failure_code=f"canary_{canary}",
+                failure_detail=f"the canary status was not published: {canary}",
+            )
+        return ModelFloorSimpleTickResult(
+            ok=ok,
+            correlation_id=cid,
+            generated_at=started,
+            output=None,
+            level=None,
+            red_rule=None,
+            failure_code=None if ok else f"canary_{canary}",
+            failure_detail=""
+            if ok
+            else f"the canary status was not published: {canary}",
+            emitted=emitted(),
             canary=canary,
         )
 
@@ -577,6 +621,8 @@ class HandlerFloorSimpleTick:
         write_atomic(
             home / rt.output.relpath, doc.model_dump_json(indent=1).encode("utf-8")
         )
+        if request.defer_canary:
+            return doc, "deferred_to_publish"
         canary = self._publish_canary(
             rt, env, alarm_ov, home, step, skip=request.drill_offline is not None
         )

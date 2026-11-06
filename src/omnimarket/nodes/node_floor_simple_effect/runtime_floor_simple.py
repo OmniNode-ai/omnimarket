@@ -37,6 +37,16 @@ def main(argv: list[str] | None = None) -> int:
         help="plant one lab source as offline and mark every alarm it raises as a test; use it with a scratch --home",
     )
     ap.add_argument(
+        "--defer-canary",
+        action="store_true",
+        help="do not publish the canary status in this cycle; the publish node runs --publish-canary after the page is served",
+    )
+    ap.add_argument(
+        "--publish-canary",
+        action="store_true",
+        help="publish only the canary status, from the page as it is served now",
+    )
+    ap.add_argument(
         "--check-overlays", metavar="ROOT", help="load the overlays under ROOT and exit"
     )
     args = ap.parse_args(argv)
@@ -54,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
                 home=args.home,
                 drill_error=args.drill_error,
                 drill_offline=args.drill_offline,
+                defer_canary=args.defer_canary,
+                canary_only=args.publish_canary,
             )
         )
     except NodeOverlayError as exc:
