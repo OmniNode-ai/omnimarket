@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     NODE_NAME,
     ModelSeamDeadlineHost,
@@ -177,6 +178,7 @@ class SeamDeadlineScheduler:
                 home=self.home,
                 overlay_root=overlay_root,
             )
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
         files = [

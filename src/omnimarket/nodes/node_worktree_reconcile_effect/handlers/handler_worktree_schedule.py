@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunResult
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_schedule import (
     ModelWorktreeSchedule,
     ModelWorktreeScheduleOverlay,
@@ -143,6 +144,12 @@ class HandlerWorktreeSchedule:
             f"OnBootSec={schedule.on_boot_seconds}s\n"
             f"OnUnitActiveSec={schedule.interval_seconds}s\nPersistent=true\n"
             f"Unit={schedule.unit_name}.service\n\n[Install]\nWantedBy=timers.target\n"
+        )
+        refuse_worktree_roots(
+            {
+                f"{schedule.unit_name}.service": service,
+                f"{schedule.unit_name}.timer": timer,
+            }
         )
         result = ModelWorktreeScheduleResult(
             exit_code=0,

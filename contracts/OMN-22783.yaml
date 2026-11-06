@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22783
+title: The seam deadline, work ledger copy and worktree reconcile schedule installs refuse a unit that runs from a worktree
+summary: A unit installed from a worktree dies when the host worktree reconcile removes that tree (OMN-22735 closed this for the reading writer, OMN-22767 for six more installers). Three installers on dev still rendered and wrote a unit whose program, working directory or environment names a path under omni_worktrees. Each now reads what it renders through the shared unit-root guard and refuses, before any file is written and also in a dry run or render, naming the path and failing. The work ledger copy's launchd agent is read by a new plist-aware guard beside the systemd one; its log paths are not read. A canonical clone or an installed revision outside omni_worktrees installs as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22783-refuse-worktree-roots
+  statement: No schedule install of the three nodes writes a unit that runs from a worktree.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each of the three installers refuses a rendered unit whose program, working directory or environment names a path under omni_worktrees, names the path, fails and writes nothing, also in a dry run or render -- falsifier: uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: each installer still installs from a stable root and writes files with no omni_worktrees text, and a launchd log path under a worktree is not refused -- falsifier: uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -k "stable_root or log_path" -q --no-cov'
+  - id: AC3
+    statement: 'AC3: with the guard let through by a named injected break the same install writes a worktree unit, so each refusal test is red without the guard -- falsifier: uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -k guard_let_through -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The refusals, the stable installs and the injected break of the three installers
+  command: uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22783-refusal
+  description: An install of any of the three nodes whose rendered unit names a worktree path is refused, names the path and writes nothing.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -q --no-cov
+    cwd: .
+- id: dod-omn22783-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head, and the same file against dev's three installer files fails every refusal case. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22783 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -q --no-cov
+    cwd: .

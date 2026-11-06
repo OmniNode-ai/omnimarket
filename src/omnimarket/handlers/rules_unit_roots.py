@@ -14,6 +14,7 @@ Everything here is pure: it reads text it is handed and does no I/O.
 
 from __future__ import annotations
 
+import plistlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -120,6 +121,36 @@ def refuse_worktree_roots(units: Mapping[str, str]) -> None:
     """Raise :class:`UnitRootRefusedError` for the first unit whose text names a worktree path."""
     for name, text in units.items():
         offending = worktree_paths(text)
+        if offending:
+            raise UnitRootRefusedError(name, offending)
+
+
+def plist_paths(data: bytes) -> frozenset[str]:
+    """Every absolute path a launchd plist runs from: its program, working directory and environment.
+
+    The log paths are not read: a log directory under a worktree does not stop the job from running.
+    """
+    document = plistlib.loads(data)
+    values: list[str] = [
+        str(argument) for argument in document.get("ProgramArguments", [])
+    ]
+    values.append(str(document.get("Program", "")))
+    values.append(str(document.get("WorkingDirectory", "")))
+    values.extend(
+        str(value) for value in document.get("EnvironmentVariables", {}).values()
+    )
+    found: set[str] = set()
+    for value in values:
+        for path in _ABSOLUTE_PATH.findall(value):
+            if len(path) > 1:
+                found.add(path.rstrip("/"))
+    return frozenset(found)
+
+
+def refuse_worktree_plists(plists: Mapping[str, bytes]) -> None:
+    """Raise :class:`UnitRootRefusedError` for the first launchd plist that names a worktree path."""
+    for name, data in plists.items():
+        offending = sorted(path for path in plist_paths(data) if under_worktrees(path))
         if offending:
             raise UnitRootRefusedError(name, offending)
 
