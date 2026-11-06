@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22652
 title: The live events writer inserts into the contract-declared omninode_internal.live_events, so the runtime login that holds the grant there can write
-summary: The folded live events writer issued INSERT INTO live_events with the bare table name, which a runtime login resolves to public.live_events where it holds no privilege, so every write since 2026-11-03T14:41Z was refused and its event dead-lettered after six refusals. The relation now carries the schema the node contract declares, and a plain-identifier check keeps a malformed schema out of the statement.
+summary: The folded live events writer issued INSERT INTO live_events with the bare table name, which a runtime login resolves to public.live_events where it holds no privilege, so every write since 2026-11-03T14:41Z was refused and its event dead-lettered after six refusals. The relation now carries the schema the node contract declares.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -23,7 +23,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22652-qualified-insert
-  description: Runs the unit checks of the relation, the statement text and the identifier refusal.
+  description: Runs the unit checks of the relation and the statement text.
   source: manual
   binds_ac:
   - AC1

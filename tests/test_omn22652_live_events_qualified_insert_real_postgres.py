@@ -133,9 +133,11 @@ async def _count(srv: _Server, relation: str) -> int:
 
 
 @pytest.mark.integration
-async def test_runner_writes_the_row_to_the_declared_schema(server: _Server) -> None:
+async def test_runner_writes_the_row_to_the_declared_schema(
+    server: _Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
     runner = HandlerLiveEventsProjectionRunner()
-    runner._ensure_producer = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    monkeypatch.setattr(runner, "_ensure_producer", AsyncMock(return_value=None))
     runner.bind_projection_database_url(server.login_dsn())
     await runner.db.connect()
     try:

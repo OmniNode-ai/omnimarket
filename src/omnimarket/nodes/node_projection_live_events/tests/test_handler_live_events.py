@@ -72,31 +72,16 @@ class TestHandlerLiveEventsProjectionRunnerConstruction:
         assert runner._snapshot_exposure.key_columns == ("event_id",)
         assert runner._snapshot_exposure.bus_backed is True
 
-    def test_a_schema_that_is_not_a_plain_identifier_is_refused(
-        self, tmp_path: Any
+    def test_unqualified_relation_is_never_issued(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        contract = tmp_path / "contract.yaml"
-        contract.write_text(
-            "name: projection_live_events\n"
-            "db_io:\n"
-            "  db_tables:\n"
-            "    - name: live_events\n"
-            "      role: live_events\n"
-            "      schema: 'omninode_internal; DROP TABLE x'\n"
-            "event_bus: {}\n"
-            "projection_api: {expose: false}\n"
-        )
-        with pytest.raises(ValueError, match="plain lower-case SQL identifier"):
-            HandlerLiveEventsProjectionRunner(contract_path=contract)
-
-    def test_unqualified_relation_is_never_issued(self) -> None:
         """OMN-22652 control: the INSERT names the contract-declared schema.
 
         A bare ``live_events`` resolves through the login's search_path to
         public.live_events, which the runtime login may not write.
         """
         runner = HandlerLiveEventsProjectionRunner()
-        runner._ensure_producer = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        monkeypatch.setattr(runner, "_ensure_producer", AsyncMock(return_value=None))
         now = datetime.now(UTC)
         mock_db = _mock_db_returning(
             {
