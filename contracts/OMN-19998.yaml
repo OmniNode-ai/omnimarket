@@ -186,13 +186,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-public-review-off-actions
-    statement: The existing review nodes gain a receipt-only reader and a proactive PR-state command producer before the hosted workflow cutover.
-    acceptance:
-      - id: AC14
-        statement: 'AC14: the proactive exact-head review command and receipt-only reader preserve the publisher, signature and quorum refusal boundary through runtime dispatch, persistent command acknowledgement and bounded missing-receipt refusal -- falsifier: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly'
-      - id: AC15
-        statement: 'AC15: the Hostile Review Gate job runs GitHub-hosted under its required name and still needs the review job, and a planted lab label fails -- falsifier: uv run --frozen pytest tests/ci/test_public_runner_placement_omn19998.py -q --no-cov -n 0 -k hostile_review_gate'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -586,6 +579,7 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect -k recorded_session_reader
         cwd: .
+
   - id: dod-omn19998-process-range
     description: The shipped browser reducer is exercised against typed compute fixtures over four selected ranges, including source gaps, ratios, medians and duplicate records. This focused proof does not assert the unrelated controller timer criteria.
     source: manual
@@ -697,28 +691,4 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-public-review-receipt
-    description: Focused replay of exact-head receipt verification outcomes, persistent command identity, acknowledgement retry and bounded missing-receipt failure. The hosted workflow activation remains a separate patch until trusted base tooling is available. This scoped proof does not claim runner-group policy enforcement or completion of the controller timer criteria.
-    source: manual
-    binds_ac: [AC14]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-public-review-runtime-wiring
-    description: Hosted runtime discovery and in-memory dispatch exercise the contract-declared PR-state handler and its durable per-head command acknowledgement. A live lab runtime install and a real signed receipt remain pending; this entry claims the wiring smoke only.
-    source: manual
-    binds_ac: [AC14]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly -k runtime_discovers
-        cwd: .
-  - id: dod-omn19998-hostile-review-gate-hosted
-    description: The Hostile Review Gate job reads the result of the review job from a GitHub-hosted runner under its required name.
-    source: manual
-    binds_ac: [AC15]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_public_runner_placement_omn19998.py -q --no-cov -n 0 -k hostile_review_gate
         cwd: .
