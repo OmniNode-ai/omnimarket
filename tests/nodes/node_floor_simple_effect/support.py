@@ -51,7 +51,12 @@ def record(**over: Any) -> dict[str, Any]:
             {"host": "h105", "slots": 3, "running": 0, "free": 0, "stale": True},
         ],
         "lanes": [
-            {"lane": "landing-L1", "ticket": "OMN-19998", "stalled": False},
+            {
+                "lane": "landing-L1",
+                "ticket": "OMN-19998",
+                "pr": "r#1",
+                "stalled": False,
+            },
             {"lane": "build-a", "ticket": "OMN-30001", "stalled": False},
         ],
         "stoppages": [
