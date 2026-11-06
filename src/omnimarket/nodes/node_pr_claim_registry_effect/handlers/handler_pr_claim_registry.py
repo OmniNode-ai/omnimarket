@@ -111,6 +111,26 @@ def _to_claim(raw: object) -> ModelPrClaim | None:
     )
 
 
+class HandlerPrClaimCloseout:
+    """Public closeout adapter to this node's registry and shared wire models."""
+
+    def handle(
+        self, request: ModelPrClaimRegistryRequest
+    ) -> ModelPrClaimRegistryResult:
+        if request.operation is not EnumPrClaimOperation.RELEASE_ENDED_OWN_CLAIMS:
+            raise ValueError("closeout requires release_ended_own_claims")
+        if not (request.lane_id and request.run_id and request.session_id):
+            raise ValueError("closeout requires exact lane, run and session identity")
+        result = HandlerPrClaimRegistry().handle(request)
+        if result.messages:
+            raise RuntimeError(
+                "claim closeout unreadable: " + "; ".join(result.messages)
+            )
+        if result.claims and not request.dry_run:
+            raise RuntimeError("claim closeout found replacement claims on readback")
+        return result
+
+
 class HandlerPrClaimRegistry:
     def handle(
         self, request: ModelPrClaimRegistryRequest
@@ -126,6 +146,11 @@ class HandlerPrClaimRegistry:
             case EnumPrClaimOperation.CLEANUP_STALE_OWN_CLAIMS:
                 keys = run.cleanup_stale_own_claims()
                 return run.result(bool(keys), pr_keys=tuple(keys))
+            case EnumPrClaimOperation.RELEASE_ENDED_OWN_CLAIMS:
+                keys = run.release_ended_own_claims()
+                return run.result(
+                    bool(keys), pr_keys=tuple(keys), claims=run.remaining_own_claims()
+                )
             case EnumPrClaimOperation.LIST_ACTIVE:
                 claims = run.list_active_claims()
                 return run.result(bool(claims), claims=claims)
@@ -361,9 +386,17 @@ class _Run:
         if not claim_file.exists():
             return False
         try:
-            existing = json.loads(claim_file.read_text())
+            with claim_file.open("rb") as stream:
+                snapshot = stream.read()
+                identity = os.fstat(stream.fileno())
+            existing = json.loads(snapshot)
             if existing.get("claimed_by_run") != req.run_id:
                 return False  # someone else's claim: never delete
+            if req.session_id is not None and not self._exact_owner(existing):
+                self._say(
+                    f"Refusing to release claim for {req.pr_key}: identity differs."
+                )
+                return False
             # Lanes in one session share the run id, so a matching run id alone
             # does not prove a live claim is the caller's (OMN-19696): when the
             # claim and the caller both name a lane, the lanes must match. An
@@ -376,8 +409,7 @@ class _Run:
                     f"lane {existing.get('lane_id')}, caller lane {req.lane_id}."
                 )
                 return False
-            claim_file.unlink()
-            return True
+            return self._delete_snapshot(claim_file, snapshot, identity)
         except FileNotFoundError:
             return False
         except (AttributeError, OSError, TypeError, ValueError) as e:
@@ -386,6 +418,87 @@ class _Run:
                 "Heartbeat expiry will clean it up."
             )
             return False
+
+    def _exact_owner(self, claim: _Claim) -> bool:
+        req = self._request
+        return bool(
+            req.run_id
+            and req.lane_id
+            and req.session_id
+            and claim.get("claimed_by_run") == req.run_id
+            and claim.get("lane_id") == req.lane_id
+            and claim.get("claimed_by_session") == req.session_id
+        )
+
+    def _delete_snapshot(
+        self, path: Path, snapshot: bytes, identity: os.stat_result
+    ) -> bool:
+        """Delete the inspected inode only; restore a raced replacement without overwriting."""
+        tomb = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tomb")
+        try:
+            path.rename(tomb)
+        except FileNotFoundError:
+            return False
+        removed = False
+        try:
+            moved = tomb.stat()
+            if (moved.st_dev, moved.st_ino) != (identity.st_dev, identity.st_ino):
+                return False
+            if tomb.read_bytes() != snapshot:
+                return False
+            tomb.unlink()
+            removed = True
+            return True
+        finally:
+            if not removed:
+                try:
+                    os.link(tomb, path)
+                except FileExistsError:
+                    # Another acquisition owns the pathname. Keep the displaced
+                    # record on the tomb too, rather than deleting either owner.
+                    self._say(
+                        f"Replacement preserved at {tomb.name}; {path.name} is occupied."
+                    )
+                else:
+                    tomb.unlink()
+
+    def release_ended_own_claims(self) -> list[str]:
+        """The caller has observed engine exit; select a full lane/run/session identity."""
+        req = self._request
+        if not (req.run_id and req.lane_id and req.session_id):
+            self._say("Ended-claim release requires lane, run and session identity.")
+            return []
+        deleted: list[str] = []
+        for path in self._claim_files():
+            try:
+                with path.open("rb") as stream:
+                    snapshot = stream.read()
+                    identity = os.fstat(stream.fileno())
+                claim = json.loads(snapshot)
+                if not isinstance(claim, dict) or not self._exact_owner(claim):
+                    continue
+                key = claim.get("pr_key")
+                if not isinstance(key, str) or path.stem != filesystem_key(key):
+                    continue
+                if req.dry_run or self._delete_snapshot(path, snapshot, identity):
+                    deleted.append(key)
+            except (OSError, TypeError, ValueError) as exc:
+                self._say(f"Could not release ended claim {path.name}: {exc}")
+        return deleted
+
+    def remaining_own_claims(self) -> tuple[ModelPrClaim, ...]:
+        """Read back without deleting: a new claim after the sweep remains owned."""
+        remaining: list[ModelPrClaim] = []
+        for path in self._claim_files():
+            try:
+                raw = json.loads(path.read_bytes())
+                if isinstance(raw, dict) and self._exact_owner(raw):
+                    claim = _to_claim(raw)
+                    if claim is not None:
+                        remaining.append(claim)
+            except (OSError, TypeError, ValueError) as exc:
+                self._say(f"Could not read back ended claim {path.name}: {exc}")
+        return tuple(remaining)
 
     def heartbeat(self) -> bool:
         req = self._request

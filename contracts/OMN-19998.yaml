@@ -6,6 +6,16 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched: [events, public_api]
 requirements:
+  - id: req-omn19998-floor-current-gate
+    statement: The floor uses the newest verdict across the gate's configured wave spellings and names a failed check's recorded cause.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: later subjects 0, G0 and W0 supersede the October 31 failure by timestamp; the November 2 failure cause and date reach the line blocker, passing verdicts clear it, and an overlay can change the wave spelling -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-stop-ownership
+    statement: Manifest and fallback table lines attribute failing CI only to their own PR work.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the recorded dependency update and other-ticket PRs are excluded from a ticketed task; title and branch matches retain genuine red stops, inferred owned PRs reach fallback items, and unread explicit links remain visible -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-job-exit-finding
     statement: A job exit declared as a finding opens a finding episode and directs the repair lane to the reported condition.
     acceptance:
@@ -228,6 +238,12 @@ requirements:
         statement: 'AC14: test_every_node_auto_wires_in_process carries its own pytest timeout of at least 900 seconds with the thread method, and a test without the marker reads as having no budget -- falsifier: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
+    description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
+    command: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
+    description: Floor PR ownership regressions exercise the watcher source adapter and the contract handler for manifest and fallback table lines.
+    command: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
     command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
   - kind: tests
@@ -241,6 +257,38 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-floor-current-gate
+    description: Replays the October 31 and November 2 subject mismatch through parse_ledger_text and HandlerFactoryFloor.handle. Positive pass and fail controls cover each spelling and configurable aliases. This scoped proof does not assert controller timer criteria or that the alignment gate passes.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-current-gate-deploy
+    description: Hosted smoke exercises the production ledger adapter and contract-loaded configuration through the floor handler; no live gate or ledger is mutated.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly -k latest_gate_alias
+        cwd: .
+  - id: dod-omn19998-floor-stop-ownership
+    description: The recorded dependency-update title and branch no longer stop an unrelated ticket's line. Owned red PRs still stop with their check and evidence named; unread explicit links remain visible. This scoped proof does not assert the controller timer criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-stop-ownership-deploy
+    description: Hosted smoke loads the recorded watcher shape through the production source adapter and invokes HandlerFactoryFloor.handle with its contract configuration. It needs no broker, host installation or credential.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly -k recorded-dependency-update
+        cwd: .
   - id: dod-omn19998-remote-ref-before-send
     description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
     source: manual
