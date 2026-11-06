@@ -38,9 +38,6 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
-# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
-DEFAULT_PROCESS_TYPE = "Background"
-PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
 
 
 def interpreter_present(path: str) -> bool:
@@ -58,6 +55,11 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(argv, 127, "", str(exc))
+
+
+# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
+DEFAULT_PROCESS_TYPE = "Background"
+PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
