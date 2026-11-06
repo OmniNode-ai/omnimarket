@@ -124,6 +124,76 @@ class TestTopologyProfileCache:
 
 
 @pytest.mark.unit
+class TestRunnerConnectPathReadsTheProfileOnce:
+    def test_golden_many_deliveries_load_the_profile_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+        from types import SimpleNamespace
+
+        import omnibase_infra.runtime.auto_wiring.handler_wiring as wiring
+        import omnibase_infra.runtime.auto_wiring.standalone_projection_bindings as sb
+        import omnibase_infra.topology as topology
+        from pydantic import SecretStr
+
+        import omnimarket.adapters.asyncpg_adapter as adapter_module
+        from omnimarket.nodes.node_projection_live_events.handlers.handler_live_events import (
+            HandlerLiveEventsProjectionRunner,
+        )
+
+        profile_loads: list[str] = []
+        monkeypatch.setattr(
+            topology,
+            "load_topology_profile",
+            lambda profile: profile_loads.append(profile) or object(),
+        )
+
+        async def no_secrets(_: Any) -> None:
+            return None
+
+        monkeypatch.setattr(wiring, "build_topology_secret_resolver", no_secrets)
+        monkeypatch.setattr(
+            sb,
+            "resolve_standalone_projection_bindings",
+            lambda *_a, **_k: SimpleNamespace(
+                bindings={
+                    "b": SimpleNamespace(dsn=SecretStr("postgresql://x"), principal="p")
+                },
+                watermark_binding="b",
+            ),
+        )
+
+        class FakeAdapter:
+            def __init__(self, dsn: str | None = None) -> None:
+                self.dsn = dsn
+
+            async def connect(self) -> None:
+                return None
+
+            async def close(self) -> None:
+                return None
+
+            async def fetchval(self, _query: str) -> str:
+                return "p"
+
+        monkeypatch.setattr(adapter_module, "AsyncpgAdapter", FakeAdapter)
+        monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "local")
+
+        async def many() -> None:
+            for _ in range(25):
+                runner = HandlerLiveEventsProjectionRunner()
+                runner._standalone_db_tables = tuple(
+                    runner._contract["db_io"]["db_tables"]
+                )
+                await runner._connect_standalone_databases()
+                await runner._close_standalone_databases()
+
+        asyncio.run(many())
+
+        assert profile_loads == ["local"]
+
+
+@pytest.mark.unit
 class TestControl:
     def test_control_without_the_cache_the_parse_count_is_one_per_call(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
