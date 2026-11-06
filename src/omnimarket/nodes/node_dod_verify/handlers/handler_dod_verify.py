@@ -39,6 +39,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     EnumEvidenceCheckStatus,
+    EnumEvidenceUnverifiableCause,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
@@ -80,6 +81,9 @@ def durable_gate_check_results(
         message = check.message
         if not check.passed and gate_run.ticket_read_detail:
             message = f"{message} (ticket unreadable: {gate_run.ticket_read_detail})"
+        read_fault = not check.passed and check.unresolved_cause is (
+            EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+        )
         results.append(
             ModelEvidenceCheckResult(
                 evidence_id=f"durable_gate::{check.check.value}",
@@ -87,7 +91,14 @@ def durable_gate_check_results(
                 status=(
                     EnumEvidenceCheckStatus.VERIFIED
                     if check.passed
+                    else EnumEvidenceCheckStatus.SKIPPED
+                    if read_fault
                     else EnumEvidenceCheckStatus.FAILED
+                ),
+                unverifiable_cause=(
+                    EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+                    if read_fault
+                    else None
                 ),
                 message=message,
             )
@@ -278,6 +289,12 @@ class HandlerDodVerify:
         unverifiable = [
             r for r in executable_checks if r.unverifiable_cause is not None
         ]
+        check_read_faults = [
+            r
+            for r in unverifiable
+            if r.unverifiable_cause
+            is EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+        ]
         # OMN-15391: executed, exited 0, and its exit status cannot depend on
         # the product change — a bare ``gh pr view`` (green for every PR on
         # GitHub) or a ticket-independent foreign suite. It is provenance, and
@@ -363,6 +380,13 @@ class HandlerDodVerify:
             # today, so it is run-wide and antecedent.
             overall = EnumDodVerifyStatus.UNRESOLVED
             unresolved_cause = EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE
+        elif check_read_faults and failed == 0:
+            # The durable gate re-reads checks after collection. That read can
+            # fault even when evidence already verified; it still cannot
+            # establish the newest check's conclusion or authorize closure.
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+            lookup_failure_code = lookup_failure_code or check_read_faults[0].message
         elif lookup_failure_cause is not None and verified == 0:
             # OMN-17022 (off-rails A15). The run could not resolve the PR or
             # repo binding its checks are written against, and NOTHING verified.
@@ -553,6 +577,14 @@ class HandlerDodVerify:
                 "compared with the criteria it carries now. This is a fact about "
                 "the verifier's reach to the ticket, not a verdict about the work: "
                 "no check verified under this run counts."
+            )
+        elif unresolved_cause is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED:
+            error_message = (
+                f"CHECK_RUN_READ_FAILED: the deciding merged PR's checks could "
+                f"not be read ({lookup_failure_code}). No check conclusion was "
+                "observed. Retry the read with bounded backoff; if it remains "
+                "unreadable, repair the gateway configuration or check-run access. "
+                "Closure stays blocked."
             )
         elif unresolved_cause is not None:
             # OMN-17022: a distinct, machine-checkable reason code, sitting

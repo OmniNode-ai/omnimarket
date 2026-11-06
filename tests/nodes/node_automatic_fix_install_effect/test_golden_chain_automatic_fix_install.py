@@ -418,7 +418,8 @@ def test_environment_is_lab_only_and_missing_overlay_refuses(monkeypatch):
         ModelFixInstallRequest()
     )
     assert result.status == "refused"
-    assert result.findings == ("NodeOverlayError",)
+    # No overlay source is the not-found subclass of NodeOverlayError.
+    assert result.findings == ("NodeOverlayNotFoundError",)
 
 
 async def test_installed_discovery_wires_command_to_correlated_terminal(
