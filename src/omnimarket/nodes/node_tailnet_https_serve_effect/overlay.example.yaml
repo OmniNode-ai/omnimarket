@@ -18,3 +18,5 @@ report:
   lane: tailnet-https-serve
   actor: node:node_tailnet_https_serve_effect
   timeout_seconds: 60
+  environment:
+    ONEX_LEDGER_PATH: /srv/ledger/ROLLING_WORK_LEDGER.md

@@ -105,6 +105,8 @@ class ModelServeReport(BaseModel):
     lane: str = Field(min_length=1)
     actor: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1)
+    #: Variables laid over the process environment for the append command (the ledger route of the host).
+    environment: dict[str, str]
 
 
 class ModelServeOverlay(BaseModel):

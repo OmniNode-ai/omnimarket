@@ -257,6 +257,7 @@ def test_the_ledger_row_carries_the_outcome_and_no_pipe_in_the_detail() -> None:
             lane="tailnet-https-serve",
             actor="node:node_tailnet_https_serve_effect",
             timeout_seconds=5,
+            environment={"EXAMPLE_LEDGER": "/srv/ledger.md"},
         )
     )
     result = ModelServeResult(
@@ -288,6 +289,7 @@ def test_the_overlay_needs_the_block_that_matches_its_backend() -> None:
             "lane": "x",
             "actor": "y",
             "timeout_seconds": 5,
+            "environment": {},
         },
     }
     with pytest.raises(ValidationError):
@@ -306,3 +308,45 @@ def test_the_http_probe_answers_true_for_a_live_path_and_false_for_a_missing_one
     probe = HttpUpstreamProbe()
     assert probe.answers(upstream, "/health", 5) is True
     assert probe.answers(upstream, "/missing", 5) is False
+
+
+def test_the_reporter_runs_the_append_with_the_overlay_environment_and_fails_loudly() -> (
+    None
+):
+    import subprocess
+    from collections.abc import Mapping, Sequence
+
+    seen: list[tuple[list[str], Mapping[str, str]]] = []
+    exit_code = [0]
+
+    def run(
+        argv: Sequence[str], timeout: int, env: Mapping[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        seen.append((list(argv), env))
+        return subprocess.CompletedProcess(list(argv), exit_code[0], "", "refused")
+
+    reporter = AppendReporter(
+        ModelServeReport(
+            append_argv=("onex-ledger", "--append"),
+            lane="tailnet-https-serve",
+            actor="node:node_tailnet_https_serve_effect",
+            timeout_seconds=5,
+            environment={"EXAMPLE_LEDGER": "/srv/ledger.md"},
+        ),
+        run=run,
+    )
+    result = ModelServeResult(
+        run_id="20261106T160000Z",
+        mode=EnumServeMode.STATUS,
+        outcome=EnumServeOutcome.SERVING,
+        detail="ok",
+        https_port=PORT,
+        upstream_url="http://127.0.0.1:1",
+    )
+    reporter.report(result)
+    assert seen[0][0][:2] == ["onex-ledger", "--append"]
+    assert seen[0][1] == {"EXAMPLE_LEDGER": "/srv/ledger.md"}
+    exit_code[0] = 3
+    with pytest.raises(ServeStepError) as caught:
+        reporter.report(result)
+    assert caught.value.step == "report"

@@ -10,12 +10,13 @@ from the overlay.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -27,6 +28,9 @@ from omnimarket.nodes.node_tailnet_https_serve_effect.models import (
 from omnimarket.nodes.node_tailnet_https_serve_effect.protocols import ServeStepError
 
 Runner = Callable[[Sequence[str], int], "subprocess.CompletedProcess[str]"]
+EnvRunner = Callable[
+    [Sequence[str], int, Mapping[str, str]], "subprocess.CompletedProcess[str]"
+]
 
 #: The flag that makes ``tailscale serve`` terminate https on a port. ``--http=`` would serve plain http.
 SERVE_PORT_FLAG = "--https="
@@ -36,6 +40,27 @@ def run_command(argv: Sequence[str], timeout: int) -> subprocess.CompletedProces
     try:
         return subprocess.run(
             list(argv), capture_output=True, text=True, check=False, timeout=timeout
+        )
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(list(argv), 127, "", str(exc))
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            list(argv), 124, "", f"timed out after {timeout}s"
+        )
+
+
+def run_command_with_env(
+    argv: Sequence[str], timeout: int, extra_env: Mapping[str, str]
+) -> subprocess.CompletedProcess[str]:
+    """Run with the overlay's extra environment laid over this process's environment."""
+    try:
+        return subprocess.run(
+            list(argv),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+            env={**os.environ, **extra_env},
         )
     except FileNotFoundError as exc:
         return subprocess.CompletedProcess(list(argv), 127, "", str(exc))
@@ -156,7 +181,9 @@ class TailscaleServeBackend:
 class AppendReporter:
     """Appends one STATUS row per run through the configured ledger append command."""
 
-    def __init__(self, spec: ModelServeReport, run: Runner = run_command) -> None:
+    def __init__(
+        self, spec: ModelServeReport, run: EnvRunner = run_command_with_env
+    ) -> None:
         self._r = spec
         self._run = run
 
@@ -183,6 +210,7 @@ class AppendReporter:
         done = self._run(
             [*self._r.append_argv, self.row(result, datetime.now(UTC))],
             self._r.timeout_seconds,
+            self._r.environment,
         )
         if done.returncode:
             raise ServeStepError(
