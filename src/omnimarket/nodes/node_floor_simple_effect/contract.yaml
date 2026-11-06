@@ -43,6 +43,7 @@ descriptor:
   side_effects:
     - reads the floor record, the pull request watcher state, the runner fleet file, the pool receipt and the lab alarm run record under the registry home
     - appends emission events to the journal under the state directory
+    - reads the work ledger's RULING rows for the go on rebuild pieces and the rows of pieces that write ledger rows, through the ledger row port the overlay names
     - reads the served floor record over HTTP to read an alarm delivery back and to learn the age the hosted canary should see
     - posts a lab alarm to the alert channel the overlay names, and reads the post back from that channel
     - pushes the canary status (three times and two bounds, nothing else) to the branch the alarm overlay names
@@ -92,6 +93,14 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
+  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
+  # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
+  ledger:
+    route: file
+    path_env: ONEX_LEDGER_PATH
+    archive_subdir: archive
+    timeout_seconds: 60
+    row_limit: 100000
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
