@@ -22,13 +22,10 @@ requirements:
           AC2: an offline runner whose host the host table marks unavailable reads as one line for that host, and an offline runner on an available host stays red and named
       - id: "AC3"
         statement: |-
-          AC3: the floor cycle's golden and error chains run through the in-memory sink with all 18 piece rows drawn
+          AC3: the simple floor draws 18 piece rows with joins and reading ages, and the golden and error receipts exist on the in-memory backend by a real run
       - id: "AC4"
         statement: |-
-          AC4: the served floor reads draw the runner groups source with the offline runners it cannot name as their own red subject until the producer saves names, and with the split lines once it does
-      - id: "AC5"
-        statement: |-
-          AC5: the floor truth, harness reading, runner groups, deployed provenance and overlay store source tests pass with typed helpers and no type-ignore comment
+          AC4: the served simple floor record read after the install shows the split runner row
 evidence_requirements:
   - kind: "tests"
     description: "The producer's saved file, the runner plan split and the floor cycle's golden and error chains."
@@ -55,17 +52,16 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_runner_plan_split.py tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py -q --no-cov"
         cwd: "."
   - id: "dod-omn22605-ac3-golden-error-chains"
-    description: "AC3. The floor cycle's golden and error chains through the in-memory sink, with all 18 piece rows."
+    description: "AC3, the part a test can read: the floor cycle's golden and error chains through the in-memory sink, with all 18 piece rows. Not read by this item: receipts of a real run on the in-memory backend, which no run produces yet."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_golden_chain_floor_simple.py -q --no-cov"
         cwd: "."
-  - id: "dod-omn22605-ac5-typed-tests"
-    description: "AC5. The floor truth recorded board, harness reading, runner groups, deployed provenance and overlay store source tests pass at the pushed head with typed helpers in place of type-ignore comments."
+  - id: "dod-omn22605-typed-tests"
+    description: "Evidence for no AC: the floor truth recorded board, harness reading, runner groups, deployed provenance and overlay store source tests pass at the pushed head with typed helpers in place of type-ignore comments."
     source: "manual"
-    binds_ac: ["AC5"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py tests/nodes/node_floor_simple_effect/test_harness_reading_floor_simple.py tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py -q --no-cov"
@@ -79,7 +75,7 @@ dod_evidence:
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22605 -- uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute tests/unit/nodes/node_floor_simple_effect tests/test_omn21733_runner_fleet_state_file.py -q --no-cov"
         cwd: "."
   - id: "dod-omn22605-ac4-served-row"
-    description: "AC4. The installed floor unit's served reads hold a runner_groups source whose subjects include the unnamed runners line or a split line, read after the install."
+    description: "AC4, as far as the producer allows: the installed floor unit's served reads hold a runner_groups source whose subjects include the unnamed runners line or a split line. The split lines themselves need the runtime that saves the fleet file to carry the names."
     source: "manual"
     binds_ac: ["AC4"]
     execution_scope: "local_done_gate"
