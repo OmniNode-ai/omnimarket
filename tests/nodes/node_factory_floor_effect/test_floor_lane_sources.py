@@ -202,7 +202,12 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
     old = write(tmp_path / "old" / "rlane-old-1.json", receipt_json("old"))
     os.utime(old.parent, (NOW.timestamp() - 90 * 3600, NOW.timestamp() - 90 * 3600))
     receipts = load_receipts(
-        tmp_path, now=NOW, window_hours=24, glob="rlane-*.json", result_chars=600
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=4,
     )
     assert receipts is not None
     by_lane = {r.lane: r for r in receipts}
@@ -230,6 +235,7 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
             window_hours=24,
             glob="rlane-*.json",
             result_chars=600,
+            scan_workers=4,
         )
         is None
     )

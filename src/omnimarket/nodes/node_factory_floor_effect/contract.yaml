@@ -114,6 +114,9 @@ runtime:
     pool_receipt: hosts-probe/latest.json
     receipt_glob: "rlane-*.json"
     receipt_window_hours: 24
+    # Measured 2026-11-06 on the launching Mac at load 29 under the Background clamp: 19,273 directories took 94 s one at
+    # a time, 20.7 s with 8 workers and 2.6 s with 32.
+    receipt_scan_workers: 32
     result_chars: 600
     placement_dir_env: LANDING_PLACEMENT_DIR
     placement_dir_fallback: .local/state/omni/landing/placement

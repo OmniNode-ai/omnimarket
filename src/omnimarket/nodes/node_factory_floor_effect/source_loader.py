@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
@@ -122,7 +123,17 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+
+
 def _ledger_ts(value: str) -> datetime | None:
+    """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
+    read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if _TS_SHAPE.fullmatch(value):
+        try:
+            return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
+        except ValueError:
+            return None
     try:
         return datetime.strptime(value, TS_FMT).replace(tzinfo=UTC)
     except ValueError:
@@ -1031,26 +1042,42 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
 
 
 def load_receipts(
-    directory: Path, *, now: datetime, window_hours: int, glob: str, result_chars: int
+    directory: Path,
+    *,
+    now: datetime,
+    window_hours: int,
+    glob: str,
+    result_chars: int,
+    scan_workers: int,
 ) -> tuple[ModelFloorReceipt, ...] | None:
-    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands)."""
+    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands).
+
+    Whether a directory was touched inside the window is one metadata read per directory, tens of thousands of them,
+    and each waits on the disk when the process runs in the Background class; they are read ``scan_workers`` at a time.
+    """
+
+    def touched(entry: os.DirEntry[str]) -> bool:
+        return entry.is_dir() and entry.stat().st_mtime >= since
+
+    def newest_receipt(entry: os.DirEntry[str]) -> ModelFloorReceipt | None:
+        files = [
+            p for p in Path(entry.path).glob(glob) if not p.name.endswith(".job.json")
+        ]
+        newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
+        return _receipt_of(newest, result_chars) if newest else None
+
+    since = now.timestamp() - window_hours * 3600
 
     def read() -> tuple[ModelFloorReceipt, ...]:
-        since = now.timestamp() - window_hours * 3600
-        found: list[ModelFloorReceipt] = []
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                if not entry.is_dir() or entry.stat().st_mtime < since:
-                    continue
-                files = [
-                    p
-                    for p in Path(entry.path).glob(glob)
-                    if not p.name.endswith(".job.json")
-                ]
-                newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
-                receipt = _receipt_of(newest, result_chars) if newest else None
-                if receipt is not None:
-                    found.append(receipt)
+        with os.scandir(directory) as scanned:
+            entries = list(scanned)
+        with ThreadPoolExecutor(max_workers=scan_workers) as pool:
+            recent = [
+                e
+                for e, keep in zip(entries, pool.map(touched, entries), strict=True)
+                if keep
+            ]
+            found = [r for r in pool.map(newest_receipt, recent) if r is not None]
         return tuple(sorted(found, key=lambda r: (r.started_at, r.lane)))
 
     return _optional(read)
