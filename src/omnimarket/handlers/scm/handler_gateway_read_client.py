@@ -22,6 +22,10 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
+from omnimarket.handlers.scm.handler_scm_node_skew import (
+    plain_sentence,
+    refused_fields,
+)
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
@@ -48,6 +52,10 @@ GatewayRoute = Callable[[ModelGithubGatewayRequest], GithubGatewayResult]
 
 class GatewayReadError(RuntimeError):
     """The gateway gave no typed result for a request."""
+
+
+class GatewayNodeOlderError(GatewayReadError):
+    """The deployed gateway refused a request field this client sends."""
 
 
 def _resolve_token_off_loop() -> str:
@@ -117,6 +125,10 @@ def read_over_bus(
         # status=failed and the reason; a gateway that predates an operation
         # refuses the request that way.
         if terminal.failed or terminal.payload.get("status") == "failed":
+            if skew := refused_fields(terminal.payload):
+                raise GatewayNodeOlderError(
+                    plain_sentence(f"gateway {request.operation.value}", skew)
+                )
             reason = str(terminal.payload.get("failure_reason") or "no reason")
             raise GatewayReadError(
                 f"gateway {request.operation.value} failed: {reason[:300]}"
@@ -178,6 +190,7 @@ class HandlerGatewayReadClient:
 __all__: list[str] = [
     "DEFAULT_GATEWAY_BUS_LANE",
     "GATEWAY_BUS_LANE_ENV",
+    "GatewayNodeOlderError",
     "GatewayReadError",
     "GatewayRoute",
     "HandlerGatewayReadClient",

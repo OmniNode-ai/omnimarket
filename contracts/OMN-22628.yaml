@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-22628
+title: A gateway read that the deployed node refuses for a field the client sends says so plainly
+summary: When the deployed gateway node refuses a request field the client sends, the client names the node as older than itself instead of failing as an opaque validation error.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22628-node-older-than-client
+  statement: A terminal failure made only of extra_forbidden request fields is read as the node being older than the client, by read_over_bus and onex scm, and no other failure is.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a terminal whose failure is a validation error made only of extra_forbidden fields is read as node-older-than-client and read_over_bus raises a typed error naming the field and the fix -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly'
+  - id: AC2
+    statement: 'AC2: a different validation failure and a mixed failure are not reported as skew -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly'
+  - id: AC3
+    statement: 'AC3: onex scm prints the same sentence on stderr and names the refused fields in the answer -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly -k onex_scm'
+evidence_requirements:
+- kind: tests
+  description: Node-older-than-client reading of a refused request field
+  command: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22628-node-older-than-client
+  description: The golden test reads the real refusal text of the dev gateway node as skew, the error tests leave a different and a mixed validation failure as ordinary refusals, and the onex scm test checks stderr and the answer.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_node_older_than_client.py -q --no-cov -p no:randomly
+    cwd: .

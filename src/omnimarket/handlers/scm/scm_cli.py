@@ -91,6 +91,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
 )
+from omnimarket.handlers.scm.handler_scm_node_skew import (
+    plain_sentence,
+    refused_fields,
+)
 from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
@@ -170,6 +174,21 @@ def _write_has_no_consumer(exc: TimeoutError) -> bool:
     )
 
 
+def _with_skew_reading(
+    spec: ModelScmVerb, payload: dict[str, JsonValue], result: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    """Say plainly, on stderr and in the answer, that the node is older than this client."""
+    fields = refused_fields(payload)
+    if not fields:
+        return result
+    sentence = plain_sentence(f"onex scm {spec.verb}", fields)
+    click.echo(sentence, err=True)
+    return {
+        **result,
+        "node_older_than_client": {"refused_fields": list(fields), "message": sentence},
+    }
+
+
 def _call_bus(
     spec: ModelScmVerb,
     repo: str,
@@ -233,6 +252,8 @@ def _call_bus(
                 or terminal.payload.get("status") == "failed"
             )
             result = terminal.payload.get("result", terminal.payload)
+            if failed and isinstance(result, dict):
+                result = _with_skew_reading(spec, terminal.payload, result)
             return _emit(
                 ModelScmAnswer(
                     verb=spec.verb,
