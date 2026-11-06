@@ -154,6 +154,11 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-error-rule-measurement
+    statement: The daily measurement effect records content-addressed per-row evidence and proposes confirmed-restatement demotion through injected lab ports.
+    acceptance:
+      - id: AC18
+        statement: 'AC18: a daily tick measures every current row, records deterministic weighted samples, per-row counts and Wilson intervals, verifies artifacts and commit-login read-back, and counts and proposes demotion only for independently confirmed in-window operator restatements -- falsifier: uv run pytest tests/unit/nodes/node_error_rule_measurement_effect/test_promotion_measurement.py -k promotion -q --no-cov -n 0'
   - id: req-omn19998-floor-phoenix-timer-env
     statement: The installed floor timer persists the Phoenix URL the floor reads its trace count and newest span age from.
     acceptance:
@@ -654,6 +659,24 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
+        cwd: .
+  - id: dod-omn19998-error-rule-measurement
+    description: Focused fixture controls cover digest, label, identity and read-back failures, zero and sparse evidence, weighted sampling, prospective hint observations, independent confirmation and idempotent demotion. Core admission validation and live deployment remain separate prerequisites; these tests do not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC18
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_measurement_effect/test_promotion_measurement.py -k promotion -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-error-rule-measurement-deploy
+    description: Hosted wiring smoke loads the contract-selected daily handler through the canonical runtime bus adapter with an in-memory transport and isolated artifact and SCM ports. It checks byte-identical typed output, one measurement write and one demotion proposal. Real corpus, real SCM and Redpanda deployment proof remain pending.
+    source: manual
+    binds_ac:
+      - AC18
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_measurement_effect/test_promotion_measurement.py -k canonical_runtime_bus_profile -q --no-cov -n 0
         cwd: .
   - id: dod-omn19998-floor-phoenix-timer-env
     description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.

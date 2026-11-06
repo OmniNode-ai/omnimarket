@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_rule_measurement_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Daily lab replay of every current row against the content-addressed frozen corpus and
+  normalizer snapshot; second-engine labels, weighted per-row rates and Wilson
+  intervals, prospective hint misses, measurement commit read-back and a demotion
+  PR for each confirmed operator restatement during the first live window.
+  This node writes evidence; only the core error-rule validator grants promotion.
+input_model:
+  name: ModelMeasurementTick
+  module: omnimarket.models.error_rule_measurement
+output_model:
+  name: ModelDailyMeasurementResult
+  module: omnimarket.models.error_rule_measurement
+handler:
+  module: omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily
+  class: HandlerErrorRuleMeasurementDaily
+  input_model: omnimarket.models.error_rule_measurement.ModelMeasurementTick
+  output_model: omnimarket.models.error_rule_measurement.ModelDailyMeasurementResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerErrorRuleMeasurementDaily
+        module: omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily
+      event_model:
+        name: ModelMeasurementTick
+        module: omnimarket.models.error_rule_measurement
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.error-rule-measurement-requested.v1
+terminal_event: onex.evt.omnimarket.error-rule-measured.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.error-rule-measurement-requested.v1]
+  publish_topics: [onex.evt.omnimarket.error-rule-measured.v1]
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.error-rule-measurement-requested.v1
+    producer: Lab daily scheduler; one ModelMeasurementTick per configured interval.
+externally_consumed_topics: [onex.evt.omnimarket.error-rule-measured.v1]
+protocol_dependencies:
+  - name: source
+    protocol: omnimarket.protocols.protocol_error_rule_measurement:ProtocolMeasurementSource
+    bind_as: source
+    required: true
+  - name: artifacts
+    protocol: omnimarket.protocols.protocol_error_rule_measurement:ProtocolMeasurementArtifacts
+    bind_as: artifacts
+    required: true
+  - name: writer
+    protocol: omnimarket.protocols.protocol_error_rule_measurement:ProtocolMeasurementWriter
+    bind_as: writer
+    required: true
+  - name: replay
+    protocol: omnimarket.protocols.protocol_error_rule_measurement:ProtocolMeasurementReplay
+    bind_as: replay
+    required: true
+  - name: labeller
+    protocol: omnimarket.protocols.protocol_error_rule_measurement:ProtocolMeasurementLabeller
+    bind_as: labeller
+    required: true
+overlay:
+  node: node_error_rule_measurement_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  fields:
+    - sample_limit
+    - freshness_days
+    - restatement_window_days
+    - schedule_seconds
+    - wilson_z
+    - labeller_engine
+    - write_identity
+    - allowed_write_logins
+    - confirmation_actors
+    - shadow_mode
+    - hint_mode
+    - dispatch_mode
+schedule:
+  scheduler: external
+  interval_overlay_field: schedule_seconds
+  scope: lab
+  fanout: The effect snapshots and measures every row, including shadow; live MATCH and captures share one digest
+write_identity:
+  login_overlay_field: write_identity
+  allow_list_overlay_field: allowed_write_logins
+  provenance: SCM commit login read by the writer boundary, never the measured.written_by cell
+  measurement_node: node_error_rule_measurement_effect
+  pr_write_node: node_github_repo_write_effect
+replay:
+  deterministic: true
+  artifacts: [row_snapshot_digest, row_digest, corpus_digest, labels_digest, normalizer_digest, live_digest]
+  normalizer_snapshot: Full stage configuration plus input host registry, not current runtime state.
+  matcher: Inject the public normalizer and matcher ports; never read mutable overlays during replay.
+metadata:
+  transport_type: kafka
