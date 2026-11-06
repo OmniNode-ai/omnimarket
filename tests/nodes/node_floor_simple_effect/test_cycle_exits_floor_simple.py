@@ -204,3 +204,16 @@ def test_error_an_overlay_that_fails_before_the_start_emits_nothing(
             environ={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "nowhere")},
         )
     assert sink.events == []
+
+
+def test_golden_the_contract_operation_dispatches_to_a_handle_entry_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Auto-wiring binds ``run_floor_simple_cycle`` to ``handle``; a handler with only ``run`` raises on every dispatch."""
+    home = build_home(tmp_path)
+    for name, value in environ(home).items():
+        monkeypatch.setenv(name, value)
+    sink = InMemoryEmissionSink()
+    result = handler(sink).handle(ModelFloorSimpleTickRequest(home=str(home)))
+    assert result.ok
+    assert cycle_phases(sink)[-1] == ("success", None)

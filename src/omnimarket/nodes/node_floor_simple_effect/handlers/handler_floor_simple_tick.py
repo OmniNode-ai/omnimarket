@@ -291,6 +291,12 @@ class HandlerFloorSimpleTick:
         self._canary_publisher = canary_publisher
         self._served_times = served_times
 
+    def handle(
+        self, request: ModelFloorSimpleTickRequest
+    ) -> ModelFloorSimpleTickResult:
+        """The dispatch entry point the contract's ``run_floor_simple_cycle`` operation binds to."""
+        return self.run(request)
+
     def run(
         self,
         request: ModelFloorSimpleTickRequest,
