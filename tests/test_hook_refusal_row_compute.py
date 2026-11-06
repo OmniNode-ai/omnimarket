@@ -9,6 +9,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.error_normalizer import ModelErrorNormalizerFacts
 from omnimarket.nodes.node_hook_refusal_row_compute.handlers import (
     HandlerHookRefusalRowCompute,
 )
@@ -17,6 +18,15 @@ from omnimarket.nodes.node_hook_refusal_row_compute.models import (
 )
 
 pytestmark = pytest.mark.unit
+
+FACTS = ModelErrorNormalizerFacts.model_validate(
+    json.loads(
+        (
+            Path(__file__).parent
+            / "unit/nodes/node_error_class_normalize_compute/fixtures/normalizer_facts.json"
+        ).read_text()
+    )
+)
 
 GOLDEN = json.loads(
     (Path(__file__).parent / "fixtures" / "hook_refusal_row_golden.json").read_text()
@@ -32,6 +42,7 @@ NODE = (
 
 def request(**updates: object) -> ModelHookRefusalRowRequest:
     base: dict[str, object] = {
+        "normalizer_facts": FACTS,
         "guard": "pre_tool_use_worktree_guard.sh",
         "reason": "worktree outside the sanctioned root",
         "timestamp": "2026-10-09T06:00:00Z",
@@ -46,9 +57,15 @@ def request(**updates: object) -> ModelHookRefusalRowRequest:
 )
 def test_matches_the_recorder_golden(case: dict[str, dict[str, object]]) -> None:
     result = HandlerHookRefusalRowCompute().handle(
-        ModelHookRefusalRowRequest(**case["request"])
+        ModelHookRefusalRowRequest(normalizer_facts=FACTS, **case["request"])
     )
-    assert result.model_dump(exclude={"repeated_secret"}) == case["expected"]
+    legacy = result.model_dump(exclude={"repeated_secret", "class_key", "key_version"})
+    legacy["row"] = result.row.replace(
+        f"class_key={result.class_key} | key_version={result.key_version} | ", ""
+    )
+    assert legacy == case["expected"]
+    assert result.class_key
+    assert result.key_version
     assert result.repeated_secret == (result.guard == GOLDEN["secret_guard"])
 
 
