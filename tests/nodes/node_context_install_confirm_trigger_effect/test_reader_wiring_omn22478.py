@@ -205,3 +205,47 @@ def test_the_skip_topic_is_declared_externally_consumed() -> None:
     assert contract["externally_consumed_topics"] == [
         "onex.evt.omnimarket.context-install-confirm-skipped.v1"
     ]
+
+
+def test_golden_injected_publisher_gets_the_skip_once_on_the_contract_topic() -> None:
+    sent: list[tuple[str, bytes]] = []
+    handler = HandlerContextInstallConfirmTrigger(
+        event_publisher=lambda topic, payload: sent.append((topic, payload))
+    )
+
+    result = handler.handle(_recorded_event())
+
+    # The runtime publishes a returned model too, so a publish and a returned skip
+    # would put two records on the topic.
+    assert result is None
+    assert [topic for topic, _ in sent] == [
+        "onex.evt.omnimarket.context-install-confirm-skipped.v1"
+    ]
+    assert json.loads(sent[0][1]) == {
+        "event_id": _recorded_event().event_id,
+        "reason": "source_unavailable",
+        "dependency": "ProtocolSessionCompactSource",
+    }
+
+
+def test_error_a_reader_means_no_skip_is_published() -> None:
+    sent: list[tuple[str, bytes]] = []
+    handler = HandlerContextInstallConfirmTrigger(
+        reader=_Reader(_full_snapshot()),
+        event_publisher=lambda topic, payload: sent.append((topic, payload)),
+    )
+
+    result = handler.handle(_recorded_event())
+
+    assert isinstance(result, ModelInstallConfirmTriggerResult)
+    assert sent == []
+
+
+def test_error_a_failing_publisher_raises_and_is_never_swallowed() -> None:
+    def refuse(topic: str, payload: bytes) -> None:
+        raise ConnectionError("bus down")
+
+    handler = HandlerContextInstallConfirmTrigger(event_publisher=refuse)
+
+    with pytest.raises(ConnectionError):
+        handler.handle(_recorded_event())

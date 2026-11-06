@@ -104,7 +104,7 @@ async def test_golden_recorded_record_yields_one_skip_event_and_nothing_complete
 
     assert report.results[0].outcome.value == "wired"
     assert [topic for topic, _ in published] == [skipped]
-    payload = json.loads(published[0][1])["payload"]
+    payload = json.loads(published[0][1])
     assert payload == {
         "event_id": json.loads(RECORDED_PAYLOAD)["event_id"],
         "reason": "source_unavailable",

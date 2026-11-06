@@ -16,8 +16,9 @@ description: >
   the completed topic the receipts projection folds; not_applied (rows_upserted of zero),
   session_unresolved, no_compact_records and all_packages_unreadable publish nothing.
   With no reader injected (ProtocolSessionCompactSource has no implementation yet,
-  OMN-21115) the handler returns ModelInstallConfirmSkipped, routed to the skipped
-  topic and never to the completed topic.
+  OMN-21115) the handler publishes ModelInstallConfirmSkipped to the skipped topic through
+  the event_publisher the runtime injects, and never to the completed topic. Built
+  without a publisher it returns the model and published_events routes it to the same topic.
   Topics come from this contract.
 input_model:
   name: ModelSessionContentAppliedEvent
@@ -47,7 +48,8 @@ dependencies:
     required: false
     notes: >
       No implementation is built yet (OMN-21115). Without one the handler records the
-      typed ModelInstallConfirmSkipped event on its own topic and publishes nothing on the completed topic; it never raises.
+      typed ModelInstallConfirmSkipped event on its own topic and publishes nothing on
+      the completed topic; it never raises.
 descriptor:
   node_archetype: effect
   purity: impure
