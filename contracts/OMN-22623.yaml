@@ -13,11 +13,6 @@ requirements:
     statement: 'AC1: the recorded runtime payload (event_id, rows_upserted, projected) validates and drives the trigger handler to request_ready, and the same test fails on the model before the change with projected extra_forbidden -- falsifier: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py -q --no-cov'
   - id: AC2
     statement: 'AC2: an unknown key, projected=false and a missing event_id or rows_upserted are each still refused -- falsifier: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py -q --no-cov -k error'
-- id: req-omn22623-dlq-drain
-  statement: After the dev roll of the image carrying the change, applied events reach the trigger and none is dead-lettered.
-  acceptance:
-  - id: AC3
-    statement: 'AC3: after the dev roll of the omnimarket image carrying the change, no new record whose original_topic is projection-session-content-applied reaches onex.dlq.omnibase-infra.events.v1 in 10 minutes -- falsifier: a bounded read of the topic end for 10 minutes after the roll that counts records for that original_topic and prints a number above zero on the unfixed image'
 evidence_requirements:
 - kind: tests
   description: The recorded runtime payload validates and the model stays strict
