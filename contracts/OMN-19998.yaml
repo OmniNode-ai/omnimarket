@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched: [events, public_api]
 requirements:
+  - id: req-omn19998-job-exit-finding
+    statement: A job exit declared as a finding opens a finding episode and directs the repair lane to the reported condition.
+    acceptance:
+      - id: AC11
+        statement: 'Declared finding exits retain a failing alarm, name the finding in the episode, friction row, alert and dispatch brief, and decide deterministically; undeclared exits retain failed-exit behavior -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0'
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -329,6 +334,14 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly -k timer_persists
+        cwd: .
+  - id: dod-omn19998-job-exit-finding
+    description: Replay the recorded floor job exit 1 through the job-exit decision handler and the alarm effect brief writer, including undeclared exit controls. This scoped alarm regression does not assert the controller timer criteria. The test file is absent at the merge base.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0
         cwd: .
   - id: dod-omn19998-publish-recovery
     description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
