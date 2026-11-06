@@ -146,6 +146,13 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="pr_review_threads",
         replaces="gh api graphql (pullRequest reviewThreads)",
     ),
+    # OMN-22654: the open pull requests the duplicate-fix guard reads on a host with no watcher state.
+    ModelScmVerb(
+        verb="open-pr-facts",
+        node=_G,
+        operation="open_pr_facts",
+        replaces="gh pr list --json number,headRefName,headRefOid,baseRefName,title,isDraft,body",
+    ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),

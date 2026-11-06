@@ -7,6 +7,9 @@ the repository's open pull requests (PR watcher state plus ``git diff``) and the
 (``node_pr_duplicate_guard_compute``). A duplicate is refused with exit 4, naming the pull request to
 adopt; a source the guard cannot read exits 3 and opens nothing. There is no switch that turns it off.
 
+A host with no fresh PR watcher state (a lab host) reads the open pull requests from the GitHub gateway instead
+(``open_pr_facts``, OMN-22654); when that read fails too, the answer names both reads it lacks.
+
 Exit codes: 0 clear, 3 unchecked (a source could not be read), 4 a pull request or a live CLAIM already covers it.
 """
 
@@ -19,12 +22,16 @@ from typing import Any, Final
 
 import click
 
+from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_pr_duplicate_guard import ModelPrDuplicateSnapshotRequest
 from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers.handler_pr_duplicate_guard import (
     HandlerPrDuplicateGuard,
 )
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot import (
     HandlerPrDuplicateSnapshot,
+)
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
+    ProtocolOpenPrFactsSource,
 )
 
 EXIT_CLEAR: Final[int] = 0
@@ -46,9 +53,10 @@ def check(
     ledger: str | None = None,
     clone: str | None = None,
     worktree: str | None = None,
+    open_prs_source: ProtocolOpenPrFactsSource | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """(exit code, the one JSON answer) for a pull request about to be opened."""
-    snapshot = HandlerPrDuplicateSnapshot().handle(
+    snapshot = HandlerPrDuplicateSnapshot(open_prs_source).handle(
         ModelPrDuplicateSnapshotRequest(
             repo=repo,
             head_ref=head.rsplit(":", 1)[-1],
@@ -82,6 +90,7 @@ def refuse_or_continue(
     body: str | None,
     lane: str | None,
     watcher_state: str | None,
+    open_prs_source: ProtocolOpenPrFactsSource | None = None,
 ) -> int | None:
     """``onex scm pr-create``'s step: None to go on and create, else the exit code, with the refusal printed."""
     code, answer = check(
@@ -92,6 +101,7 @@ def refuse_or_continue(
         body=body,
         lane=lane,
         watcher_state=watcher_state,
+        open_prs_source=open_prs_source,
     )
     click.echo(json.dumps(answer, separators=(",", ":")))
     if code == EXIT_CLEAR:
@@ -113,6 +123,7 @@ def refuse_or_continue(
 
 
 @click.command("pr-duplicate-check")
+@_with_bus_options
 @click.argument("target")
 @click.option(
     "--head", required=True, help="The branch the pull request would be opened from."
@@ -155,7 +166,20 @@ def refuse_or_continue(
     default=None,
     help="The rolling ledger (default $ONEX_LEDGER_PATH).",
 )
+@click.option(
+    "--timeout-s",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="How long the gateway read of the open pull requests may wait for its answer "
+    "(read only when the host has no fresh PR watcher state).",
+)
 def duplicate_check_command(
+    omnibase_path: Path | None,
+    bus: str,
+    bus_lane: str | None,
+    kafka_bootstrap: str | None,
+    timeout_s: float,
     target: str,
     head: str,
     base: str | None,
@@ -174,6 +198,9 @@ def duplicate_check_command(
         raise click.UsageError(f"target {target!r} is not {_REPO}")
     if body is None and body_file:
         body = Path(body_file).read_text(encoding="utf-8")
+    # Imported here: scm_cli imports this module, and the gateway source opens the bus through scm_cli's opener.
+    from omnimarket.handlers.scm import scm_cli
+
     code, answer = check(
         repo=target,
         head=head,
@@ -186,6 +213,15 @@ def duplicate_check_command(
         ledger=ledger or os.environ.get("ONEX_LEDGER_PATH"),
         clone=clone,
         worktree=worktree,
+        open_prs_source=scm_cli.gateway_open_prs_source(
+            {
+                "omnibase_path": omnibase_path,
+                "bus": bus,
+                "bus_lane": bus_lane,
+                "kafka_bootstrap": kafka_bootstrap,
+            },
+            timeout_s,
+        ),
     )
     click.echo(json.dumps(answer, separators=(",", ":")))
     if code == EXIT_CLEAR:
