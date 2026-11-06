@@ -289,6 +289,32 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
+def _batch_wired_something(report: Any) -> bool:
+    """Whether a batch wiring nothing is a smoke failure (OMN-17427).
+
+    It is one only when something in the batch had a subscription to wire. The
+    catalogue is sliced into fixed-size batches, so the tail batch can hold
+    only publish-only nodes: a node the runtime never dispatches declares an
+    empty ``event_bus.subscribe_topics`` with ``runtime_dispatch.external_trigger``,
+    and infra reports it ``SKIPPED``. On 2026-11-06 the tail batch was exactly
+    one such contract, ``worktree_reconcile_effect``, an externally triggered
+    ingress root, and the bare ``total_wired > 0`` reddened every open pull
+    request of this repository while dev stayed green, because the sharded test
+    matrix runs on ``pull_request`` only. A ``FAILED`` or unresolvably
+    quarantined contract is unaffected: ``_shrink_only`` still catches it.
+    """
+    return report.total_wired > 0 or all(
+        result.outcome == EnumWiringOutcome.SKIPPED for result in report.results
+    )
+
+
+def _batch_wired_nothing_detail(report: Any) -> str:
+    outcomes = ", ".join(
+        f"{result.contract_name}={result.outcome.value}" for result in report.results
+    )
+    return f"batch wired nothing and not every contract in it was skipped: {outcomes}"
+
+
 # Each batch parses its contracts under the shard's coverage tracing; the shard-wide
 # 300 s bound stays for every other test, and this one keeps its own budget (OMN-19998).
 def _wiring_batches() -> list[ModelAutoWiringManifest]:
@@ -370,7 +396,7 @@ async def test_every_node_auto_wires_in_process(
                 quarantined.contract_name,
                 f"{quarantined.handler_name}: {quarantined.detail[:400]}",
             )
-    assert report.total_wired > 0
+    assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
     # Each distinct scan runs once however many handlers ask for it.
     assert topic_scans["run"] <= 1
     _shrink_only(
@@ -383,3 +409,47 @@ async def test_every_node_auto_wires_in_process(
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )
+
+
+@pytest.mark.timeout(900, method="thread")
+async def test_a_publish_only_tail_batch_is_not_a_smoke_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A batch of only externally triggered nodes wires nothing and still passes.
+
+    Red-first control, measured 2026-11-06 against the real runtime on the one
+    contract the tail batch then held: outcomes
+    ``[('worktree_reconcile_effect', 'skipped', 'No event_bus.subscribe_topics
+    declared in contract')]`` and ``total_wired == 0``, so the bare
+    ``total_wired > 0`` this replaced failed while nothing was wrong.
+    """
+    topology = load_topology_profile(_TOPOLOGY_PROFILE)
+    monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _UNREACHABLE_BROKER)
+    monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
+    publish_only = [
+        contract
+        for contract in _manifest().contracts
+        if not getattr(contract.event_bus, "subscribe_topics", None)
+    ]
+    assert publish_only, "no publish-only contract is discovered any more"
+    manifest = ModelAutoWiringManifest(contracts=(publish_only[0],))
+
+    bus = EventBusInmemory()
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(ProtocolEventBusPublisher, bus)
+    await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
+    try:
+        report = await wire_from_manifest(
+            manifest,
+            MessageDispatchEngine(),
+            event_bus=bus,
+            environment=_TOPOLOGY_PROFILE,
+            container=container,
+            topology=topology,
+        )
+    finally:
+        await bus.close()
+
+    assert report.total_wired == 0, "the contract chosen does subscribe after all"
+    assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
