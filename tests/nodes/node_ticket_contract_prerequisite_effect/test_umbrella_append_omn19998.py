@@ -119,6 +119,17 @@ def test_an_umbrella_evidence_line_admits_the_append(
     assert umbrella_appends("HEAD", "dev", body) == ()
 
 
+def test_the_ci_body_variable_admits_the_append(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit(repo, f"contracts/{UMBRELLA}.yaml", _contract("dod-old", "dod-new"), "fix")
+    monkeypatch.setenv(
+        "PR_BODY", "Umbrella evidence: this lane holds no ticket access\n"
+    )
+
+    assert umbrella_appends("HEAD", "dev", None) == ()
+
+
 def test_a_placeholder_evidence_line_does_not_admit_it(repo: Path) -> None:
     _commit(repo, f"contracts/{UMBRELLA}.yaml", _contract("dod-old", "dod-new"), "fix")
 

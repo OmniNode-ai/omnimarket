@@ -35,6 +35,7 @@ from omnimarket.nodes.node_umbrella_ticket_compute.handlers.handler_umbrella_tic
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _UMBRELLA_ENV = "ONEX_UMBRELLA_TICKETS"
+_BODY_ENV = "PR_BODY"
 _ENTRY_SECTIONS = ("requirements", "dod_evidence")
 
 
@@ -192,7 +193,7 @@ def umbrella_appends(sha: str, base: str, body: str | None) -> tuple[str, ...]:
         # A shallow base shares no history with the head: the base tip stands in.
         fork = base_sha
     messages = _git("log", "--format=%B", f"{base_sha}..{sha}")
-    text = f"{body or ''}\n{messages}"
+    text = f"{body or os.environ.get(_BODY_ENV, '')}\n{messages}"
     failures = []
     for ticket in umbrella_ticket_set():
         path = f"contracts/{ticket}.yaml"

@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -324,16 +325,16 @@ def test_golden_chain_event_over_the_declared_topics() -> None:
         ) -> ModelTicketContractMergeResult:
             return NodeTicketContractMergeCompute().handle(request)
 
-    async def run(request: dict[str, str]) -> dict[str, object]:
+    async def run(request: dict[str, str]) -> dict[str, Any]:
         bus = EventBusInmemory(environment="merge-proof", group="merge-proof")
         await bus.start()
-        queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         command = contract_subscribe_topics(CONTRACT)[0]
         terminal = contract_publish_topics(CONTRACT)[0]
         assert terminal == "onex.evt.omnimarket.ticket-contract-merged.v1"
 
-        async def observe(message: object) -> None:
-            await queue.put(json.loads(message.value))  # type: ignore[attr-defined]
+        async def observe(message: Any) -> None:
+            await queue.put(json.loads(message.value))
 
         adapter = LocalRuntimeBusAdapter(
             handler=_AsyncHandler(),
@@ -375,4 +376,4 @@ def test_golden_chain_event_over_the_declared_topics() -> None:
         )
     )
     assert bad["outcome"] == "refused"
-    assert bad["refusals"][0]["code"] == "duplicate_id"  # type: ignore[index]
+    assert bad["refusals"][0]["code"] == "duplicate_id"
