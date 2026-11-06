@@ -324,3 +324,19 @@ def test_a_tick_with_the_broker_down_still_records_this_hosts_reading(
     readings = json.loads(held.read_text(encoding="utf-8"))["readings"]
     assert readings["h2:lab_hosts"]["state"] == "fresh"
     assert readings["h1:lab_hosts"]["state"] == "unreadable"
+
+
+def test_a_tick_arms_the_contracts_deadline_before_it_touches_the_bus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in _tick_overlay(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    armed: list[tuple[float, bool]] = []
+    monkeypatch.setattr(
+        tick_module.faulthandler,
+        "dump_traceback_later",
+        lambda seconds, exit: armed.append((seconds, exit)),
+    )
+    tick_main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "run")])
+    assert armed == [(120.0, True)]
+    assert tick_module.tick_deadline_s() == 120.0

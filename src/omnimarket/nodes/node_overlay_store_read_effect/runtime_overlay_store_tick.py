@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import faulthandler
 import json
 import os
 import sys
@@ -27,10 +28,16 @@ from omnimarket.models.overlay_store import ModelOverlayStoreReadOverlay
 from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read import (
     EXIT_UNREADABLE,
     NODE,
+    _contract,
     build_handler,
     exit_for,
     fleet,
 )
+
+
+def tick_deadline_s() -> float:
+    """The contract's bound on one tick; past it the process ends and the next tick starts clean."""
+    return float(_contract()["descriptor"]["timeout_ms"]) / 1000
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -69,6 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-dir", required=True, type=Path)
     args = parser.parse_args(argv)
     env = os.environ
+    # A consumer caught mid-join when its broker goes away can retry its coordinator forever, and a unit
+    # manager starts no second tick while one runs: measured on a lab host, 18 minutes and counting.
+    faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     try:
         overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
         handler = build_handler(overlay, env)
