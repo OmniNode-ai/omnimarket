@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -114,12 +113,17 @@ def test_error_a_bus_that_is_unavailable_ends_the_run_with_69(
     _url_base, sha = make_origin(tmp_path)
     _install_overlay(tmp_path, monkeypatch, sha)
 
-    @contextlib.asynccontextmanager
-    async def down(
+    class _Down:
+        async def __aenter__(self) -> LabWorkCaseSender:
+            raise LabRunBusError("no bus in this test")
+
+        async def __aexit__(self, *exc_info: object) -> None:
+            return None
+
+    def down(
         overlay: ModelLabTestHarnessOverlay, workspace_root: Path | None = None
-    ) -> AsyncIterator[LabWorkCaseSender]:
-        raise LabRunBusError("no bus in this test")
-        yield  # pragma: no cover
+    ) -> _Down:
+        return _Down()
 
     monkeypatch.setattr(runtime, "open_lab_work_runner", down)
     state_dir = tmp_path / "evidence"
