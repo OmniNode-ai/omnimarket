@@ -20,6 +20,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelFloorSimpleTickRequest,
 )
+from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -67,7 +68,7 @@ def lines_without(*stamps: str) -> list[str]:
     return [x for x in lines() if not any(x.startswith(s) for s in stamps)]
 
 
-def rows(source: list[str]) -> list:  # type: ignore[type-arg]
+def rows(source: list[str]) -> list[ModelLedgerEvidenceRow]:
     parsed = [evidence_row_from_text(x) for x in source]
     return [r for r in parsed if r is not None]
 
