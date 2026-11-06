@@ -177,12 +177,12 @@ def _print(payload: Any) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))  # noqa: T201
 
 
-def _exit_for(readings: tuple[ModelOverlayStoreReading, ...]) -> int:
+def exit_for(readings: tuple[ModelOverlayStoreReading, ...]) -> int:
     unreadable = any(r.state is EnumOverlayReadState.UNREADABLE for r in readings)
     return EXIT_UNREADABLE if unreadable else 0
 
 
-async def _fleet(
+async def fleet(
     overlay: ModelOverlayStoreReadOverlay,
     env: Mapping[str, str],
     kafka_bootstrap: str | None,
@@ -239,9 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.verb == "refresh":
         readings = asyncio.run(handler.refresh_all())
         _print([r.model_dump(mode="json") for r in readings])
-        return _exit_for(readings)
+        return exit_for(readings)
     if args.verb == "fleet":
-        answer = asyncio.run(_fleet(overlay, env, args.kafka_bootstrap))
+        answer = asyncio.run(fleet(overlay, env, args.kafka_bootstrap))
         _print(answer)
         if args.out is not None:
             args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.verb == "read":
         reading = handler.read(args.id)
         _print(reading.model_dump(mode="json"))
-        return _exit_for((reading,))
+        return exit_for((reading,))
     if args.file is None:
         parser.error("compare needs --file")
     compared = compare_documents(
@@ -263,4 +263,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if compared.equal else EXIT_DIFFERS
 
 
-__all__ = ["build_handler", "main", "read_overlay"]
+__all__ = [
+    "EXIT_UNREADABLE",
+    "NODE",
+    "build_handler",
+    "exit_for",
+    "fleet",
+    "main",
+    "read_overlay",
+]

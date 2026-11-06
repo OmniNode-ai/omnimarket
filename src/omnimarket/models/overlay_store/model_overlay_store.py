@@ -165,6 +165,8 @@ class ModelOverlayStoreReadOverlay(_Frozen):
     read_window_s: float = Field(gt=0)
     host_name_env: str = Field(min_length=1)
     overlays: dict[OverlayId, ModelOverlayReadPolicy] = Field(min_length=1)
+    # Where a tick writes the newest reading of each host and overlay, under the registry home. Unset writes none.
+    fleet_record_relpath: str | None = None
 
     @model_validator(mode="after")
     def _backend_names_what_it_needs(self) -> ModelOverlayStoreReadOverlay:

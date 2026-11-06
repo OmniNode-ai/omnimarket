@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -27,7 +29,11 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     compare_documents,
 )
 from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read import (
+    EXIT_UNREADABLE,
     build_handler,
+)
+from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_tick import (
+    main as tick_main,
 )
 from tests.unit.nodes.node_overlay_store.support import (
     LOADED_TOPIC,
@@ -236,3 +242,58 @@ def test_a_host_never_selects_the_postgres_backend() -> None:
     )
     with pytest.raises(NodeOverlayError, match="belongs to a runtime"):
         build_handler(overlay, {"HOST": "h1"})
+
+
+def _tick_overlay(tmp_path: Path, **extra: str) -> dict[str, str]:
+    node = tmp_path / "overlays" / "node_overlay_store_read_effect"
+    node.mkdir(parents=True)
+    lines = [
+        "backend: in_memory",
+        f"snapshot_root: {tmp_path / 'snapshot'}",
+        "read_window_s: 1",
+        "host_name_env: HOST",
+        "overlays:",
+        "  lab_hosts: {stale_after_s: 60, on_stale: read}",
+        *(f"{key}: {value}" for key, value in extra.items()),
+    ]
+    (node / "overlay.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays"),
+        "HOST": "h1",
+    }
+
+
+def test_a_tick_with_no_usable_snapshot_exits_unreadable_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in _tick_overlay(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    state = tmp_path / "state"
+    code = tick_main(["--omni-home", str(tmp_path), "--state-dir", str(state)])
+    assert code == EXIT_UNREADABLE
+    run = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert run["readings"][0]["state"] == "unreadable"
+    assert run["readings"][0]["store_error"] == "the store holds no overlay lab_hosts"
+
+
+@pytest.mark.asyncio
+async def test_a_tick_keeps_a_held_snapshot_when_the_store_holds_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in _tick_overlay(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    held = reader(
+        tmp_path, Store(record().model_dump(mode="json")), reporter=Reporter()
+    )
+    await held.handle("lab_hosts")
+    written = tmp_path / "snapshot" / "lab_hosts" / "overlay.yaml"
+    before = written.read_bytes()
+    state = tmp_path / "state"
+    code = await asyncio.to_thread(
+        tick_main, ["--omni-home", str(tmp_path), "--state-dir", str(state)]
+    )
+    assert code == 0
+    assert written.read_bytes() == before
+    run = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert run["readings"][0]["source"] == "snapshot"
+    assert run["readings"][0]["store_error"] == "the store holds no overlay lab_hosts"
