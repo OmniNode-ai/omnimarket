@@ -11,6 +11,7 @@ read from the checkout and written to the unit's install record.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -20,7 +21,8 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,13 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
+LOCKED_MODES = frozenset({"install", "uninstall"})
+EXIT_INSTALL_IN_PROGRESS = 75
+
+
+class InstallInProgressError(RuntimeError):
+    """Another install or uninstall of the same unit holds the unit's lock."""
 
 
 def interpreter_present(path: str) -> bool:
@@ -83,11 +92,51 @@ class HandlerRegistryUnits:
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
         try:
-            if unit.get("kind") == "copied_tree":
-                return self.copied_unit(request, unit)
-            return self.dispatch(request, unit)
+            with self.install_lock(request, unit):
+                if unit.get("kind") == "copied_tree":
+                    return self.copied_unit(request, unit)
+                return self.dispatch(request, unit)
+        except InstallInProgressError as exc:
+            return self.result(request, EXIT_INSTALL_IN_PROGRESS, error=f"{exc}\n")
         except (OSError, ValueError) as exc:
             return self.result(request, 1, error=f"{exc}\n")
+
+    @contextmanager
+    def install_lock(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Iterator[None]:
+        """Hold the unit's lock for an install or uninstall; a second one is refused, never queued.
+
+        The lock is an advisory ``flock`` on a file in the unit's state directory, so the kernel drops it when the
+        holder ends, fails or dies and a stale lock cannot block the next install. The file names the holder.
+        """
+        if request.mode not in LOCKED_MODES:
+            yield
+            return
+        state = Path(request.registry_root) / str(unit["state_directory"])
+        state.mkdir(parents=True, exist_ok=True)
+        path = state / f"{request.unit}.install.lock"
+        with path.open("a+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                handle.seek(0)
+                holder = handle.read().strip() or "a holder that wrote no record"
+                raise InstallInProgressError(
+                    f"INSTALL-IN-PROGRESS: another {request.unit} install holds {path} ({holder}); "
+                    "this request changed nothing, ask the lane that owns the unit's installs"
+                ) from None
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                f"pid={os.getpid()} mode={request.mode} project={request.project_path or 'canonical'} "
+                f"since={datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
+            )
+            handle.flush()
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     # ------------------------------------------------------------------ plan
 
