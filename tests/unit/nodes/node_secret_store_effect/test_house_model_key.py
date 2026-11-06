@@ -259,15 +259,16 @@ def test_the_cli_refuses_an_empty_store_key_without_stdout(
 # OMN-22792: the launcher contract, --exec-names NAMES -- COMMAND.
 
 
-def _exec_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    """Stand in for os.execvp: record the command and the environment it would get."""
+def _exec_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
+    """Stand in for os.execvp: record the command and the names and values it would get."""
     import os
 
-    seen: dict[str, object] = {}
+    seen: dict[str, list[str]] = {}
 
     def fake_execvp(file: str, args: list[str]) -> None:
-        seen["file"], seen["args"] = file, list(args)
-        seen["env"] = dict(os.environ)
+        seen["args"] = list(args)
+        seen["env_names"] = sorted(os.environ)
+        seen[_NAME] = [os.environ.get(_NAME, "")]
         raise SystemExit(0)
 
     monkeypatch.setattr(
@@ -290,7 +291,7 @@ def test_exec_mode_hands_the_command_the_resolved_key_and_prints_no_value(
             main(["--exec-names", _NAME, "--", "agent", "-m", "deploy_agent"])
     out = capsys.readouterr()
     assert seen["args"] == ["agent", "-m", "deploy_agent"]
-    assert seen["env"][_NAME] == PLANTED  # type: ignore[index]
+    assert seen[_NAME] == [PLANTED]
     assert PLANTED not in out.out + out.err
 
 
@@ -305,7 +306,7 @@ def test_exec_mode_keeps_a_value_the_environment_already_sets(
         monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
         with pytest.raises(SystemExit):
             main(["--exec-names", _NAME, "--", "agent"])
-    assert seen["env"][_NAME] == "from-the-env-store"  # type: ignore[index]
+    assert seen[_NAME] == ["from-the-env-store"]
 
 
 def test_exec_mode_names_an_unresolved_key_and_still_starts_the_command(
@@ -320,7 +321,7 @@ def test_exec_mode_names_an_unresolved_key_and_still_starts_the_command(
             main(["--exec-names", _NAME, "--", "agent"])
     err = capsys.readouterr().err
     assert seen["args"] == ["agent"]
-    assert _NAME not in seen["env"]  # type: ignore[operator]
+    assert _NAME not in seen["env_names"]
     assert f"house key {_NAME} did not resolve" in err
     assert house_key_reference(_NAME) in err
 

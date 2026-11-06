@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import os
 import sys
+from typing import NoReturn
 
 from omnimarket.models.secret_store.model_house_model_key_request import (
     ModelHouseModelKeyRequest,
@@ -36,7 +37,7 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_house_model_key 
 _EXIT_NOT_OK = 3
 
 
-def _exec_with_keys(names: list[str], command: list[str]) -> int:
+def _exec_with_keys(names: list[str], command: list[str]) -> NoReturn:
     """Resolve each unset name into the environment, then replace this process with ``command``."""
     for name in names:
         if os.environ.get(name):
@@ -51,7 +52,6 @@ def _exec_with_keys(names: list[str], command: list[str]) -> int:
             sys.stderr.write(f"house key {name} did not resolve; starting without it\n")
     sys.stderr.flush()
     os.execvp(command[0], command)
-    return _EXIT_NOT_OK  # pragma: no cover - execvp does not return
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             ModelHouseModelKeyRequest(
                 name=name
             )  # a malformed name refuses before any read
-        return _exec_with_keys(names, command)
+        _exec_with_keys(names, command)
     if args.name is None or args.command:
         parser.error(
             "--name is required, and a command is taken only with --exec-names"
