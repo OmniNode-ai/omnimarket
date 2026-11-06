@@ -18,6 +18,10 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.work_ledger_query.model_work_ledger_refusal import (
+    ModelWorkLedgerRefusal,
+)
+
 _LANE = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
 _TICKET = r"^OMN-\d+$"
 _PR = r"^[A-Za-z0-9_.-]+#\d+$"
@@ -273,11 +277,15 @@ class ModelWorkLedgerQueryResult(BaseModel):
     error: str | None = None
     completeness: ModelWorkLedgerCompleteness | None = None
     next_cursor: str | None = None
+    # ``refused`` is a well-formed request whose answer would not fit under the
+    # contract's answer bound: ``refusal`` names the bound and the bounded form,
+    # and no section is filled. It is a terminal answer, never a raised error.
+    refusal: ModelWorkLedgerRefusal | None = None
     # A point query (OMN-21948) answers from work_ledger_state: ``status`` is
     # ``error`` exactly when ``error`` is set, ``page_size`` is the page it was
     # cut to, ``watermark`` is the newest ``projected_at`` of the state table
     # the page was read at, and ``lines`` are the onex-ledger verb's own lines.
-    status: Literal["ok", "error"] = "ok"
+    status: Literal["ok", "error", "refused"] = "ok"
     page_size: int | None = None
     watermark: AwareDatetime | None = None
     lines: tuple[str, ...] = ()

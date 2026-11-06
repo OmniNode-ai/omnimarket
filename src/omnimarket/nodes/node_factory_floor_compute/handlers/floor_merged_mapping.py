@@ -94,8 +94,9 @@ def task_prs(
 ) -> tuple[str, ...]:
     """The pull requests that are the work of the task, by the tickets in their titles and branches.
 
-    A pull request the plan lists for the row stays when the watcher does not know it (a plan may name a pull request in
-    another repository) or when it is the row's by ticket; a known pull request that is some other ticket's work goes.
+    A pull request the plan lists for the row stays when the watcher does not know its identity (a plan may name a pull
+    request in another repository) or when it is the row's by ticket. A known title or branch with no matching ticket,
+    including a dependency update with no ticket at all, is not evidence for a row that names its tickets.
     """
     wanted = frozenset(scope)
     listed = tuple(
@@ -103,7 +104,7 @@ def task_prs(
         for pr in task.prs
         if (record := records.get(pr_key(pr))) is None
         or not task.tickets
-        or not record.tickets
+        or not (record.title or record.head_ref)
         or bool(record.tickets & set(task.tickets))
     )
     inferred = tuple(
