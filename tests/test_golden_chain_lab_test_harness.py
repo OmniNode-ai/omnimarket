@@ -170,7 +170,7 @@ async def test_error_an_off_window_tick_publishes_nothing(overlay_root: Path) ->
     assert seen == []
 
 
-async def test_error_without_an_overlay_the_schedule_refuses(
+async def test_error_without_an_overlay_the_schedule_wires_and_refuses_on_its_first_tick(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from omnimarket.handlers.node_overlay_reader import NodeOverlayError
@@ -179,8 +179,18 @@ async def test_error_without_an_overlay_the_schedule_refuses(
     )
 
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "empty"))
+    handler = HandlerLabTestHarnessSchedule()
+    tick = ModelRuntimeTick(
+        now=DAY,
+        tick_id=uuid4(),
+        sequence_number=1,
+        scheduled_at=DAY,
+        correlation_id=uuid4(),
+        scheduler_id="golden-chain",
+        tick_interval_ms=1000,
+    )
     with pytest.raises(NodeOverlayError):
-        HandlerLabTestHarnessSchedule()
+        handler.handle(tick)
 
 
 def _request(run_id: str = "run-golden") -> ModelLabTestHarnessRequested:

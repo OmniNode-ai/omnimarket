@@ -5,7 +5,11 @@
 The interval, offset and workflow name are the ``schedule`` key of the harness overlay
 (``node_lab_test_harness_effect``), found under ``ONEX_SKILL_OVERLAY_ROOTS``. The contract
 carries none of them and there is no packaged default: an absent or invalid overlay refuses.
-The decision reads only the tick, so the handler holds no state.
+The overlay is read on the first tick, not when the handler is built: a runtime that loads this
+package without the harness overlay must still boot, so the refusal comes when the harness is
+asked to run, where it is seen on every tick, and never as a crash loop of the whole runtime
+(the composed-runtime-boot job read that crash on the first head that built the node eagerly).
+The decision reads only the tick, so the handler holds no state beyond the loaded settings.
 """
 
 from __future__ import annotations
@@ -34,9 +38,11 @@ class HandlerLabTestHarnessSchedule:
     """COMPUTE handler: tick in, one harness run request out per interval."""
 
     def __init__(self, config: ModelRuntimeTickScheduleConfig | None = None) -> None:
-        self._cfg = config or schedule_config()
+        self._cfg = config
 
     def handle(self, request: ModelRuntimeTick) -> ModelLabTestHarnessRequested | None:
+        if self._cfg is None:
+            self._cfg = schedule_config()
         fire = scheduled_fire(
             self._cfg,
             now=request.now,

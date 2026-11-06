@@ -66,8 +66,6 @@ from omnibase_infra.runtime.auto_wiring.report import (
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.topology import load_topology_profile
 
-from tests.helpers.lab_test_harness_fakes import overlay_document
-
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -151,9 +149,8 @@ def topic_scans(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
 
 # Contracts per wiring batch; each batch stays under the per-test runtime budget.
 _WIRING_BATCH_SIZE = 32
-# The harness schedule node refuses to construct without its overlay (OMN-22608).
+# The harness schedule node reads its overlay on its first tick, so it wires without one (OMN-22608).
 _HARNESS_SCHEDULE_NODE = "node_lab_test_harness_schedule_compute"
-_HARNESS_OVERLAY_ID = "node_lab_test_harness_effect"
 # The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
 _RELAY_NODES = frozenset(
     {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
@@ -326,20 +323,6 @@ def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> No
     assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
 
 
-def _supply_harness_overlay(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
-    """Give the harness schedule node the overlay it refuses to construct without.
-
-    The schedule node reads its interval from the harness overlay and has no packaged
-    default (OMN-22608). The wiring check supplies the same document the harness tests
-    use, so the node wires for the reason it would on a runtime that has the overlay.
-    """
-    node_dir = root / _HARNESS_OVERLAY_ID
-    node_dir.mkdir(parents=True)
-    document = overlay_document("a" * 40, root / "result.json")
-    (node_dir / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
-
-
 async def _wire_and_collect_failures(
     monkeypatch: pytest.MonkeyPatch, manifest: ModelAutoWiringManifest
 ) -> tuple[int, dict[str, str]]:
@@ -396,7 +379,7 @@ async def test_every_node_auto_wires_in_process(
     manifest: ModelAutoWiringManifest,
     topic_scans: dict[str, int],
 ) -> None:
-    _supply_harness_overlay(monkeypatch, tmp_path / "overlays")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
     total_wired, failing = await _wire_and_collect_failures(monkeypatch, manifest)
     assert total_wired > 0
     # Each distinct scan runs once however many handlers ask for it.
@@ -413,10 +396,14 @@ async def test_every_node_auto_wires_in_process(
     )
 
 
-async def test_the_harness_schedule_node_fails_to_wire_without_its_overlay(
+async def test_the_harness_schedule_node_wires_without_its_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The control for the overlay the wiring check supplies: withheld, the node fails."""
+    """A runtime with no harness overlay must boot: the node wires, and refuses on its tick.
+
+    The composed-runtime-boot job loads every node with no harness overlay; a node that
+    refused to construct without it crash-looped the whole runtime.
+    """
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
     schedule = [
         contract
@@ -427,4 +414,4 @@ async def test_the_harness_schedule_node_fails_to_wire_without_its_overlay(
     _, failing = await _wire_and_collect_failures(
         monkeypatch, ModelAutoWiringManifest(contracts=tuple(schedule))
     )
-    assert _HARNESS_SCHEDULE_NODE in failing, failing
+    assert _HARNESS_SCHEDULE_NODE not in failing, failing
