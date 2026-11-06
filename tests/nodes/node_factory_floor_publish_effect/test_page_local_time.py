@@ -102,7 +102,7 @@ def test_page_time_new_york_dashboard_shows_local_time_with_zone_and_no_not_toda
     None
 ):
     files = _files(NOW_NEW_YORK, "2026-10-31", "2026-11-01T02:00:00Z")
-    out = _run_at("index.html", files, NOW_NEW_YORK, "America/New_York")
+    out = _run_at("detail.html", files, NOW_NEW_YORK, "America/New_York")
     assert "Record computed Oct 31, 10:04 PM EDT" in out["stamp"]
     assert "UTC" not in out["stamp"]
     assert "Series day 2026-10-31, so far (to Oct 31, 10:00 PM EDT)" in out["dash"]
@@ -115,13 +115,13 @@ def test_page_time_new_york_dashboard_shows_local_time_with_zone_and_no_not_toda
 
 def test_page_time_new_york_still_warns_when_the_series_is_a_local_day_behind() -> None:
     files = _files(NOW_NEW_YORK, "2026-10-30", "2026-10-31T02:00:00Z")
-    out = _run_at("index.html", files, NOW_NEW_YORK, "America/New_York")
+    out = _run_at("detail.html", files, NOW_NEW_YORK, "America/New_York")
     assert "This is not today (2026-10-31): the series is behind." in out["dash"]
 
 
 def test_page_time_utc_viewer_sees_utc_and_the_utc_day() -> None:
     files = _files(NOW_NEW_YORK, "2026-10-31", "2026-11-01T02:00:00Z")
-    out = _run_at("index.html", files, NOW_NEW_YORK, "UTC")
+    out = _run_at("detail.html", files, NOW_NEW_YORK, "UTC")
     assert "Record computed Nov 1, 2:04 AM UTC" in out["stamp"]
     assert "This is not today (2026-11-01): the series is behind." in out["dash"]
 
@@ -147,6 +147,6 @@ def test_page_time_ages_in_the_record_count_from_the_real_clock_not_the_record_t
     files = _files(NOW_NEW_YORK, "2026-11-01", "2026-11-01T02:00:00Z")
     machine = files["factory-floor.json"]["floor"]["machines"][0]
     machine.pop("read_at")
-    out = _run_at("index.html", files, "2026-11-01T06:04:00Z", "UTC")
+    out = _run_at("detail.html", files, "2026-11-01T06:04:00Z", "UTC")
     assert "4.0 h ago" in out["dash"]
     assert "gone quiet 5.0 h" in out["dash"]

@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
     NODE_DIR,
+    HandlerFactoryFloorPublish,
     PublishRefusedError,
     load_runtime,
     remote_write_command,
@@ -30,6 +31,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
+    ModelPublishStep,
+    ModelPublishStepResult,
     ModelReportData,
     ModelReportPage,
     ModelReportsPublishRequest,
@@ -143,7 +146,12 @@ def test_reports_contract_every_page_exists_and_every_link_lands_on_a_published_
     None
 ):
     rt = load_runtime()
-    published = {rt.names.page, rt.names.floor_page, rt.reports.index.remote}
+    published = {
+        rt.names.page,
+        rt.names.simple_page,
+        rt.names.floor_page,
+        rt.reports.index.remote,
+    }
     for entry in rt.reports.entries:
         for page in entry.pages:
             assert (NODE_DIR / page.page_relpath).is_file(), page.page_relpath
@@ -331,6 +339,20 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     )
     docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    # The canary step publishes to a git remote after fetching the served page; this test reads the order of the
+    # publish, so the step is answered here and its own node tests cover what it does.
+    real_step = HandlerFactoryFloorPublish._step
+
+    def step(
+        self: HandlerFactoryFloorPublish,
+        publish_step: ModelPublishStep,
+        *args: Any,
+    ) -> ModelPublishStepResult:
+        if publish_step.name == "floor_canary":
+            return ModelPublishStepResult(name=publish_step.name, status="ok")
+        return real_step(self, publish_step, *args)
+
+    monkeypatch.setattr(HandlerFactoryFloorPublish, "_step", step)
     assert main(["--omni-home", request.home or "", "--skip-refresh"]) == 0
     out = capsys.readouterr().out
     assert "operator-access: admitted_devices=1" in out
@@ -401,7 +423,7 @@ def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_i
 ):
     for name in ("process-health", "decision-map", "decision-quality"):
         assert 'href="../"' in REPORT_PAGES[name].read_text(encoding="utf-8"), name
-    shell = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+    shell = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
     for name in ("process-health", "decision-map"):
         assert f'page: "reports/{name}/?embed=1"' in shell, name
     assert 'href="reports/"' not in shell
