@@ -8,9 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.lab_host_key import public_key_parts
 from omnimarket.models.overlay_keys import ModelLabHostsTable
-
-from .model_lab_host_key_distribution import public_key_parts
 
 PUBLIC_KEYS_OVERLAY_ID = "lab_host_public_keys"
 

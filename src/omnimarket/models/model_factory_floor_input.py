@@ -329,6 +329,10 @@ class ModelFloorRunner(BaseModel):
 
     host_label: str = Field(min_length=1)
     status: Literal["online", "offline", "busy"]
+    # Saved by a producer that reports them; an older saved file has none, and such a row cannot be told apart.
+    runner_name: str | None = Field(default=None, min_length=1)
+    label_class: str | None = Field(default=None, min_length=1)
+    labels: tuple[str, ...] = ()
 
 
 class ModelFloorRunnerFleet(BaseModel):
