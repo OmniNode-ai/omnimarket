@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_memory_pilot_effect
+version: 1.0.0
+description: Memory product pilot (stage one, Cognee) behind a backend protocol, in-memory by default, on a frozen bar and lab models only.
+omnibase_core_compat: '>=0.47.53,<1.0.0'
+pack: context
+node_role: effect
+display_name: Memory Pilot Effect
+entry_points:
+  onex.nodes:
+    node_memory_pilot_effect: omnimarket.nodes.node_memory_pilot_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_state
+dependencies:
+  - omnibase-core>=0.47.53
+  - pyyaml>=6.0
+tags: [effect, context, memory, pilot]
+license: MIT
