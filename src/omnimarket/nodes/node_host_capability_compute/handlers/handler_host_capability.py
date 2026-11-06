@@ -61,6 +61,10 @@ CAPABILITY_SCM_S = 30
 CAPABILITY_VENV_S = 45
 CAPABILITY_LOCK_MIN = 3
 SSH_CONNECT_S = 4
+# The repository the git credential is asked for (OMN-22478). A host whose helper is the node-issued git token route sets
+# credential.useHttpPath, and that node mints a token for one named repository only, so the request names one. An
+# installation token (``ghs_``) carries no OAuth scopes header; the node narrows it to contents and workflows write.
+GIT_PROBE_PATH = "OmniNode-ai/omnimarket.git"
 PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._-]*$")
 
 # What the host lacks, and what its owner adds, per capability; the probe's detail follows.
@@ -158,15 +162,17 @@ cap_venv() {
 }
 cap_git() {
   __FETCH_PATH_EXPORT__
-  printf 'protocol=https\nhost=github.com\n\n' > "$CAP_DIR/.git-request"
+  printf 'protocol=https\nhost=github.com\npath=__GIT_PATH__\n\n' > "$CAP_DIR/.git-request"
   cg=$( probe_bound __CHECK_S__ sh -c 'GIT_TERMINAL_PROMPT=0 git -c credential.interactive=never credential fill < "$1"' sh "$CAP_DIR/.git-request" 2>/dev/null | sed -n 's/^password=//p' | head -n 1 )
   [ -n "$cg" ] || { echo "unknown no-github-credential-for-git"; return 0; }
   command -v curl >/dev/null 2>&1 || { cg=""; echo "unknown no-curl"; return 0; }
+  ck=no; case "$cg" in ghs_*) ck=yes;; esac
   ch=$(printf 'Authorization: token %s\n' "$cg" | curl -sS -o /dev/null -D - --max-time __CHECK_S__ -H @- https://api.github.com/rate_limit 2>/dev/null | tr -d '\r'); cg=""
   cs=$(printf '%s\n' "$ch" | sed -n 's/^HTTP\/[0-9.]* \([0-9][0-9]*\).*/\1/p' | tail -n 1)
   sc=$(printf '%s\n' "$ch" | sed -n 's/^[Xx]-[Oo][Aa][Uu][Tt][Hh]-[Ss][Cc][Oo][Pp][Ee][Ss]: *//p' | tr -d ' ' | tail -n 1)
   if [ "$cs" = 401 ]; then echo "missing github-answered-401-for-the-git-credential"
   elif [ -z "$cs" ]; then echo "unknown github-gave-no-answer"
+  elif [ -z "$sc" ] && [ "$ck" = yes ]; then echo "ok installation-token-http=$cs"
   elif [ -z "$sc" ]; then echo "unknown no-oauth-scopes-header-http=$cs"
   else case ",$sc," in *,workflow,*) echo "ok scopes=$sc";; *) echo "missing scopes=$sc";; esac; fi
 }
@@ -285,6 +291,7 @@ def capability_probe_sh(
         "__VENV_S__": str(CAPABILITY_VENV_S),
         "__LOCK_MIN__": str(CAPABILITY_LOCK_MIN),
         "__SSH_S__": str(SSH_CONNECT_S),
+        "__GIT_PATH__": GIT_PROBE_PATH,
         "__FRESH_MIN__": str(CAPABILITY_FRESH_MIN),
         "__SCM_LANE__": SCM_BUS_LANE,
         "__SECRET_REF__": DELEGATION_SECRET_REF,

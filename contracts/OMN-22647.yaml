@@ -1,0 +1,48 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22647"
+title: "The lab work unit fetch and the git capability probe follow the host's git credential helper and accept a node-issued installation token"
+summary: "The lab work unit's private fetch no longer forces the gh credential helper, and the git-workflow-push probe asks for one named repository and reads a node-issued installation token as ok."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22647-host-helper"
+    statement: "The lab work fetch and the git capability probe work with the host's node-issued git token helper."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the lab work unit's private fetch carries no forced credential helper -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_fetch_follows_host_helper.py -q"
+      - id: "AC2"
+        statement: "AC2: the git-workflow-push probe asks the helper for one named repository and reads a ghs_ installation token answered 200 as ok, while a token with no scopes header that is not an installation token stays unknown -- falsifier: uv run pytest tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q -k installation_token"
+evidence_requirements:
+  - kind: "tests"
+    description: "The caller follows the host's git credential helper."
+    command: "uv run pytest tests/unit/lab_work/test_lab_work_fetch_follows_host_helper.py -q"
+dod_evidence:
+  - id: "dod-omn22647-fetch"
+    description: "The private fetch forces no helper."
+    source: generated
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_fetch_follows_host_helper.py -q"
+        cwd: .
+  - id: "dod-omn22647-probe"
+    description: "The probe names one repository and accepts an installation token."
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q -k installation_token"
+        cwd: .
+  - id: "dod-omn22647-host-helper-integration-proof"
+    description: "The pushed head ran both tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22647 -- uv run --frozen pytest tests/unit/lab_work/test_lab_work_fetch_follows_host_helper.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q --no-cov'
+        cwd: .
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""

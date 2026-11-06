@@ -245,6 +245,29 @@ def test_probe_reads_the_workflow_scope_of_the_git_credential_and_never_puts_it_
     assert box.run()["git-workflow-push"][0] == "missing"
 
 
+def test_probe_asks_for_one_repository_and_accepts_a_node_issued_installation_token(
+    box: Host,
+) -> None:
+    """The node-issued git token route answers per repository with a ``ghs_`` token (OMN-22478)."""
+    asked = box.home / "helper-asked"
+    helper = (
+        f"!f() {{ cat > {asked}; echo username=x-access-token; "
+        "echo password=ghs_fixture-not-a-token; }; f"
+    )
+    (box.home / ".gitconfig").write_text(
+        f'[credential]\n\thelper = "{helper}"\n\tuseHttpPath = true\n'
+    )
+    box.stub("curl", 'cat >/dev/null; printf "HTTP/2 200\\r\\n\\r\\n"\n')
+    assert box.run()["git-workflow-push"] == ("ok", "installation-token-http=200")
+    assert f"path={cap.GIT_PROBE_PATH}" in asked.read_text().splitlines()
+    box.credential("fixture-not-a-token")
+    shutil.rmtree(box.home / ".cache")
+    assert box.run()["git-workflow-push"] == (
+        "unknown",
+        "no-oauth-scopes-header-http=200",
+    )
+
+
 def test_probe_reads_an_ssh_route_to_each_peer(box: Host) -> None:
     assert box.run()["lab-ssh"] == ("unknown", "no-peers-named")
     box.stub("ssh", 'case "$*" in *good-peer*) exit 0;; *) exit 255;; esac\n')
