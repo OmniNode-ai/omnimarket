@@ -51,6 +51,11 @@ def _entry_lines(text: str) -> list[str]:
     return [line for line in match.group(1).split("\n") if ENTRY_LINE.match(line)]
 
 
+def _names(text: str) -> list[str]:
+    """The node names of the onex.nodes table, in file order."""
+    return [line.split(" = ")[0] for line in _entry_lines(text)]
+
+
 def _load(path: Path, name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
@@ -80,9 +85,7 @@ def _run_check(tmp_path: Path, pyproject_text: str) -> subprocess.CompletedProce
 
 
 def test_real_table_is_sorted_and_the_checker_passes(tmp_path: Path) -> None:
-    names = [
-        ENTRY_LINE.match(line).group(1) for line in _entry_lines(PYPROJECT.read_text())
-    ]  # type: ignore[union-attr]
+    names = _names(PYPROJECT.read_text())
     assert len(names) > 100
     assert names == sorted(names)
     assert len(names) == len(
@@ -191,7 +194,7 @@ def test_two_nodes_added_on_two_branches_merge_without_conflict(
     )
     assert merged.returncode == 0, merged.stdout + merged.stderr
     text = (tmp_path / "repo" / "pyproject.toml").read_text()
-    names = [ENTRY_LINE.match(line).group(1) for line in _entry_lines(text)]  # type: ignore[union-attr]
+    names = _names(text)
     assert "node_cc0925_probe_compute" in names
     assert "node_merge_cc0925_probe_effect" in names
     assert names == sorted(names)
