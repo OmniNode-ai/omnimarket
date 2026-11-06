@@ -91,7 +91,9 @@ def overlay_document() -> dict[str, Any]:
                 "injected_fault": "drop the result of the synthetic task in a test route",
             },
         ],
-        "schedule_hosts": [{"name": "h-test", "scheduler": "systemd-user"}],
+        "schedule_hosts": [
+            {"name": "h-test", "scheduler": "systemd-user", "venv": "venv-readings"}
+        ],
         "unit_environment": {"READING_TEST_APPEND": "/bin/true"},
     }
 

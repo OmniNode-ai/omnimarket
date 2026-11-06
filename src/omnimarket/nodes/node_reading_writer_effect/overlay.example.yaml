@@ -81,6 +81,7 @@ pieces:
 schedule_hosts:
 - name: host-a
   scheduler: systemd-user
+  venv: example-venv
 unit_environment:
   EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
   EXAMPLE_HOST_NAME: host-a

@@ -47,7 +47,7 @@ def _scheduler(tmp_path: Path, run: _Recorder) -> HostReadingScheduler:
 
 def _root(tmp_path: Path) -> Path:
     root = tmp_path / "root"
-    python = root / ".onex-dispatch-venv/bin/python"
+    python = root / "example-venv/bin/python"
     python.parent.mkdir(parents=True)
     python.write_text("#!/bin/sh\n")
     return root
@@ -133,3 +133,18 @@ def test_dry_run_prints_and_writes_nothing(tmp_path: Path) -> None:
     assert "OnCalendar" in done.stdout
     assert run.calls == []
     assert not scheduler.unit_dir.exists()
+
+
+def test_the_installed_unit_runs_the_overlays_venv_never_a_dispatch_venv(
+    tmp_path: Path,
+) -> None:
+    run = _Recorder()
+    scheduler = _scheduler(tmp_path, run)
+    root = _root(tmp_path)
+    done = scheduler.install(
+        LEDGER_HOST, omni_root=root, overlay_root=tmp_path / "overlays"
+    )
+    assert done.exit_code == 0, done.stderr
+    agent = plistlib.loads(scheduler.plist.read_bytes())
+    assert agent["ProgramArguments"][0] == str(root / "example-venv/bin/python")
+    assert "dispatch" not in " ".join(agent["ProgramArguments"])

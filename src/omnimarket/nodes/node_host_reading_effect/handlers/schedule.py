@@ -49,7 +49,6 @@ class ModelHostReadingSchedule(BaseModel):
 
     unit_name: str = Field(min_length=1)
     launchd_label: str = Field(min_length=1)
-    dispatch_venv: str
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelHostReadingCadence
@@ -119,10 +118,7 @@ def render_systemd(
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
-    python = _safe(
-        omni_root / schedule.dispatch_venv / "bin" / "python",
-        "dispatch venv interpreter",
-    )
+    python = _safe(omni_root / host.venv / "bin" / "python", "venv interpreter")
     state = _safe(omni_root / schedule.state_directory, "state directory")
     environment = _unit_environment(host, omni_root, home, overlay_root)
     cadence = schedule.cadence
@@ -161,10 +157,7 @@ def render_launchd(
     overlay_root: Path,
 ) -> bytes:
     """The launchd agent, as plist bytes."""
-    python = _safe(
-        omni_root / schedule.dispatch_venv / "bin" / "python",
-        "dispatch venv interpreter",
-    )
+    python = _safe(omni_root / host.venv / "bin" / "python", "venv interpreter")
     state = _safe(omni_root / schedule.state_directory, "state directory")
     return plistlib.dumps(
         {
@@ -247,10 +240,10 @@ class HostReadingScheduler:
         if dry_run:
             text = "".join(body.decode("utf-8") + "\n" for _, body in files)
             return ModelHostScheduleResult(exit_code=0, stdout=text)
-        python = omni_root / self.schedule.dispatch_venv / "bin" / "python"
+        python = omni_root / host.venv / "bin" / "python"
         if not python.is_file():
             return ModelHostScheduleResult(
-                exit_code=1, stderr=f"no dispatch venv interpreter at {python}\n"
+                exit_code=1, stderr=f"no venv interpreter at {python}\n"
             )
         started = self.run([str(python), "-c", f"import {NODE_MODULE}.__main__"])
         if started.returncode:

@@ -91,7 +91,6 @@ externally_consumed_topics:
 # `on_calendar` runs a quarter of an hour after each hour, after the window's cutoff.
 schedule:
   unit_name: onex-reading-hourly
-  dispatch_venv: .onex-dispatch-venv
   state_directory: .onex_state/reading-writer
   timeout_seconds: 600
   cadence:

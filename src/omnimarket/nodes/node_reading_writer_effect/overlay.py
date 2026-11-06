@@ -80,6 +80,9 @@ class ModelReadingScheduleHost(BaseModel):
 
     name: str = Field(min_length=1)
     scheduler: Literal["systemd-user"]
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or absolute). A
+    #: dedicated venv of a worktree or a release, never a dispatch venv.
+    venv: str = Field(min_length=1)
 
 
 class ModelReadingOverlay(BaseModel):

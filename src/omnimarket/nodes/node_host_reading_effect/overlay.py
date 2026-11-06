@@ -74,6 +74,9 @@ class ModelHostReadingHost(BaseModel):
     name: str = Field(min_length=1)
     scheduler: Literal["systemd-user", "launchd"]
     probes: tuple[EnumHostProbe, ...] = Field(min_length=1)
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or absolute). A
+    #: dedicated venv of a worktree or a release, never a dispatch venv.
+    venv: str = Field(min_length=1)
     #: Environment the host's installed unit carries (the routes and their roots).
     environment: dict[str, str]
 

@@ -45,7 +45,6 @@ class ModelReadingSchedule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit_name: str = Field(min_length=1)
-    dispatch_venv: str
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelCadence
@@ -109,7 +108,7 @@ def render_units(
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
-    python = _safe(venv / "bin" / "python", "dispatch venv interpreter")
+    python = _safe(venv / "bin" / "python", "venv interpreter")
     user_home = _safe(home, "home")
     state = _safe(omni_root / schedule.state_directory, "state directory")
     environment = {
@@ -189,7 +188,8 @@ class ReadingScheduler:
         refused = self._declared(host)
         if refused is not None:
             return refused
-        venv = omni_root / self.schedule.dispatch_venv
+        declared = next(row for row in self.overlay.schedule_hosts if row.name == host)
+        venv = omni_root / declared.venv
         python = venv / "bin" / "python"
         try:
             service, timer = render_units(
@@ -206,7 +206,7 @@ class ReadingScheduler:
             return ModelScheduleResult(exit_code=0, stdout=f"{service}\n{timer}")
         if not python.is_file():
             return ModelScheduleResult(
-                exit_code=1, stderr=f"no dispatch venv interpreter at {python}\n"
+                exit_code=1, stderr=f"no venv interpreter at {python}\n"
             )
         started = self.run([str(python), "-c", f"import {NODE_MODULE}.__main__"])
         if started.returncode:

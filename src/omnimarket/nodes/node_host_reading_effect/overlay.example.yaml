@@ -34,6 +34,7 @@ hosts:
   - name: example-ledger-host
     scheduler: launchd
     probes: [ledger-outbox, ledger-old-names]
+    venv: example-venv
     environment:
       ONEX_LEDGER_PATH: /example/ledger/LEDGER.md
       ONEX_LEDGER_HOST_NAME: example-ledger-host
@@ -41,6 +42,7 @@ hosts:
   - name: example-writing-host
     scheduler: systemd-user
     probes: [ledger-outbox]
+    venv: example-venv
     environment:
       ONEX_LEDGER_PATH: /example/old/LEDGER.md
       ONEX_LEDGER_HOST_NAME: example-writing-host

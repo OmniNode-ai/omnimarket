@@ -9,13 +9,18 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     ReadingScheduler,
     load_schedule,
     render_units,
 )
-from tests.nodes.node_reading_writer_effect.reading_support import overlay
+from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
+from tests.nodes.node_reading_writer_effect.reading_support import (
+    overlay,
+    overlay_document,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +40,7 @@ class _Recorder:
 
 def _layout(tmp_path: Path) -> tuple[Path, Path, Path]:
     root = tmp_path / "root"
-    python = root / ".onex-dispatch-venv" / "bin" / "python"
+    python = root / "venv-readings" / "bin" / "python"
     python.parent.mkdir(parents=True)
     python.write_text("#!/bin/sh\n")
     home = tmp_path / "home"
@@ -55,7 +60,7 @@ def test_the_units_come_from_the_contract_and_survive_a_reboot(tmp_path: Path) -
         load_schedule(),
         overlay(),
         omni_root=root,
-        venv=root / ".onex-dispatch-venv",
+        venv=root / "venv-readings",
         home=home,
         overlay_root=overlays,
     )
@@ -146,3 +151,25 @@ def test_a_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert "[Timer]" in result.stdout
     assert recorder.commands == []
     assert not (home / ".config").exists()
+
+
+def test_the_installed_unit_runs_the_overlays_venv_never_a_dispatch_venv(
+    tmp_path: Path,
+) -> None:
+    root, home, overlays = _layout(tmp_path)
+    recorder = _Recorder()
+    done = _scheduler(home, recorder).install(
+        "h-test", omni_root=root, overlay_root=overlays
+    )
+    assert done.exit_code == 0, done.stderr
+    service = (home / ".config/systemd/user/onex-reading-hourly.service").read_text()
+    assert f'ExecStart="{root}/venv-readings/bin/python"' in service
+    assert "dispatch" not in service
+    assert [str(root / "venv-readings/bin/python"), "-c"] == recorder.commands[0][:2]
+
+
+def test_a_host_declared_without_a_venv_is_refused_by_the_overlay() -> None:
+    document = overlay_document()
+    document["schedule_hosts"] = [{"name": "h-test", "scheduler": "systemd-user"}]
+    with pytest.raises(ValidationError):
+        ModelReadingOverlay.model_validate(document)

@@ -89,7 +89,6 @@ externally_consumed_topics:
 schedule:
   unit_name: onex-host-reading-hourly
   launchd_label: ai.omninode.host-reading-hourly
-  dispatch_venv: .onex-dispatch-venv
   state_directory: .onex_state/host-reading
   timeout_seconds: 300
   cadence:
