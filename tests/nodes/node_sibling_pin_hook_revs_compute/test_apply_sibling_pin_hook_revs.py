@@ -23,7 +23,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_sibling_pin_hook_revs_compute import __main__ as cli
+from omnimarket.nodes.node_sibling_pin_hook_revs_compute import (
+    runtime_sibling_pin_hook_revs as cli,
+)
 from omnimarket.nodes.node_sibling_pin_hook_revs_compute.handlers import (
     HandlerSiblingPinHookRevs,
     HandlerSiblingPinHookRevsApply,
@@ -335,7 +337,7 @@ def test_cli_runs_as_a_module_the_way_the_train_calls_it(tmp_path: Path) -> None
         [
             sys.executable,
             "-m",
-            f"omnimarket.nodes.{NAME}",
+            f"omnimarket.nodes.{NAME}.runtime_sibling_pin_hook_revs",
             *_argv(pyproject, "--apply"),
         ],
         capture_output=True,

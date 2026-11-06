@@ -3,7 +3,7 @@
 """CLI for node_sibling_pin_hook_revs_compute: the sibling-pin train calls this (OMN-22753).
 
 Usage:
-    python -m omnimarket.nodes.node_sibling_pin_hook_revs_compute \
+    python -m omnimarket.nodes.node_sibling_pin_hook_revs_compute.runtime_sibling_pin_hook_revs \
         --pyproject pyproject.toml --distribution omnibase-core \
         --candidates '[["dev-20261106051752-0123456789ab", true], ["dev-20261106041752-8377609527be", null]]' \
         [--apply]
