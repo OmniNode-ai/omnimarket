@@ -102,6 +102,9 @@ class ModelHostCanaryProbeSettings(BaseModel):
     advertisements_timeout_seconds: int = Field(ge=1)
     #: An advertisement older than this, or none, fails its host.
     advert_max_age_seconds: int = Field(ge=1)
+    #: A drill overlay sets this, so its rows carry drill=yes and never count as an operational
+    #: reading (the floor counts them as the piece's error events; the reading writer skips them).
+    drill: bool
     injected_fault: str = Field(min_length=1)
 
 

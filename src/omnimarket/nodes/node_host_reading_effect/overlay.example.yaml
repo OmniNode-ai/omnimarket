@@ -46,6 +46,8 @@ canary:
   advertisements_command_env: EXAMPLE_ADVERTISEMENTS_COMMAND
   advertisements_timeout_seconds: 60
   advert_max_age_seconds: 900
+  # A drill overlay sets drill: true, so its rows carry drill=yes and never count as operational.
+  drill: false
   injected_fault: Kill the canary's wrapper so its result is not typed
 hosts:
   - name: example-ledger-host

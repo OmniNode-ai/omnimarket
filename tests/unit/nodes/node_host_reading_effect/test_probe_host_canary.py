@@ -91,6 +91,7 @@ class CanaryWorld:
         self.advert_age_seconds = dict.fromkeys(POOLED, 60)
         self.advert_error: str | None = None
         self.advertisements_configured = True
+        self.drill = False
 
     # -- the named breaks ------------------------------------------------------------------
 
@@ -171,6 +172,7 @@ class CanaryWorld:
                 "run_timeout_seconds": self.timeout_seconds,
                 "disk_paths": self.disk_paths,
                 "disk_floor_gb": self.floor_gb,
+                "drill": self.drill,
             }
         )
         if not self.advertisements_configured:
@@ -324,6 +326,7 @@ def assert_golden_chain(events: list[tuple[str, dict[str, object]]]) -> None:
     assert cells["parked"] == PARKED
     assert cells["advert"] == "read"
     assert cells["advert_age_s"] == "h-a:60,h-b:60"
+    assert cells["drill"] == "no"
     assert events[-1][1]["failed"] == 0
 
 
@@ -385,6 +388,7 @@ def test_error_chain_killed_wrapper_writes_a_not_working_row_naming_the_host(
     (row,) = ledger.lines
     assert "verdict=NOT_WORKING" in row
     assert "failed_hosts=h-b" in row
+    assert "drill=no" in row
 
 
 def test_error_chain_bad_payload_gives_run_failed() -> None:
@@ -534,3 +538,30 @@ def test_advertisements_not_configured_read_nothing_and_fail_nothing() -> None:
     verdict, _, cells = _read(world)
     assert verdict == "WORKING"
     assert cells["advert"] == "not-configured"
+
+
+# -- drill rows (the floor's error events) ------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_drill_overlay_marks_its_error_row_drill_yes(backend: str) -> None:
+    """The named break run under a drill overlay writes the error row the floor counts as piece 2's
+    error event, marked drill=yes so the reading writer never takes it as the operational reading."""
+    world = CanaryWorld(backend)
+    world.drill = True
+    world.break_kill_wrapper("h-b")
+    ledger = InMemoryLedger()
+    events = asyncio.run(_publish(world, ledger, PAYLOAD))
+    assert events[0][1]["verdict"] == "NOT_WORKING"
+    (row,) = ledger.lines
+    assert "drill=yes" in row
+    assert "reason=canary-untyped-h-b" in row
+
+
+def test_an_unread_canary_row_still_says_whether_it_is_a_drill() -> None:
+    world = CanaryWorld("memory")
+    world.break_host_table_unreadable()
+    verdict, reasons, cells = _read(world)
+    assert verdict == "UNKNOWN"
+    assert reasons == ["host-table-unreadable"]
+    assert cells == {"drill": "no"}

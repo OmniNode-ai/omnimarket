@@ -193,6 +193,10 @@ def _run_one(
     return classify(settings, host, nonce, run)
 
 
+def _drill(settings: ModelHostCanaryProbeSettings) -> str:
+    return "yes" if settings.drill else "no"
+
+
 def _names(hosts: list[str]) -> str:
     return ",".join(hosts) if hosts else "none"
 
@@ -255,6 +259,7 @@ def read_canary(
             verdict=EnumReadingVerdict.UNKNOWN,
             outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
             reasons=("host-table-unreadable",),
+            cells={"drill": _drill(settings)},
         )
     pooled: list[ModelCanaryHost] = [host for host in table if host.pooled]
     parked = [host.name for host in table if not host.pooled]
@@ -264,7 +269,11 @@ def read_canary(
             verdict=EnumReadingVerdict.NOT_WORKING,
             outcome=EnumReadingOutcome.READ,
             reasons=("no-pooled-host",),
-            cells={"pooled": "none", "parked": _names(parked)},
+            cells={
+                "pooled": "none",
+                "parked": _names(parked),
+                "drill": _drill(settings),
+            },
         )
     try:
         canary_argv(settings, environ, pooled[0].name, "check")
@@ -274,6 +283,7 @@ def read_canary(
             verdict=EnumReadingVerdict.UNKNOWN,
             outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
             reasons=(str(exc),),
+            cells={"drill": _drill(settings)},
         )
     with ThreadPoolExecutor(max_workers=len(pooled)) as pool:
         readings = list(
@@ -320,6 +330,7 @@ def read_canary(
         "disk_floor_gb": f"{settings.disk_floor_gb:g}",
         "advert": advert_state,
         "advert_age_s": _names([f"{host}:{age}" for host, age in sorted(ages.items())]),
+        "drill": _drill(settings),
     }
     return ModelProbeReading(
         probe=_PROBE,
