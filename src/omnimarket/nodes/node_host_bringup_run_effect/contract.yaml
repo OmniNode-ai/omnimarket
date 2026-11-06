@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Host-local effect, like node_host_reconcile_effect: it runs installer units on the host it
+# brings current, so it subscribes to no topic and a runtime container must never dispatch it.
+# `experimental` is the drift gate's marker for an intentionally unregistered node.
+#
+# The order of units, the installer command, the clone and the deploy-store file are the node
+# overlay (<root>/node_host_bringup_run_effect/overlay.yaml), and the package names none of them.
+# Overlay shape (ModelHostBringupRunOverlay):
+#   installer_command: [..]       argv prefix of the host installer
+#   repo_root: <clone>            passed to the installer as --repo-root
+#   deploy_store_file: <file>     optional workspace config root document
+#   step_timeout_seconds: 600
+#   roles:
+#     <role>:
+#       steps: [{unit, host_name, env, needs_deploy_store, rollback, preview, proof}]
+# Modes: dry-run (default, changes nothing), install (stops at the first failed step),
+# status (each step's own status read), rollback (steps declared rollback=uninstall, last first).
+name: node_host_bringup_run_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+description: Runs the declared bring-up order of installer units for a host returning from a long absence; a dry run by default.
+input_model:
+  name: ModelHostBringupRunRequest
+  module: omnimarket.nodes.node_host_bringup_run_effect.models.model_host_bringup_run
+output_model:
+  name: ModelHostBringupRunResult
+  module: omnimarket.nodes.node_host_bringup_run_effect.models.model_host_bringup_run
+handler:
+  module: omnimarket.nodes.node_host_bringup_run_effect.handlers.handler_host_bringup_run
+  class: HandlerHostBringupRun
+  input_model: omnimarket.nodes.node_host_bringup_run_effect.models.model_host_bringup_run.ModelHostBringupRunRequest
+  output_model: omnimarket.nodes.node_host_bringup_run_effect.models.model_host_bringup_run.ModelHostBringupRunResult
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles:
+  - effects
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.evt.omnimarket.host-bringup-run-completed.v1
+  - onex.evt.omnimarket.host-bringup-run-failed.v1
+runtime_dispatch:
+  external_trigger: true
+terminal_event: onex.evt.omnimarket.host-bringup-run-completed.v1
+failure_event: onex.evt.omnimarket.host-bringup-run-failed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.host-bringup-run-completed.v1
+- onex.evt.omnimarket.host-bringup-run-failed.v1
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  created: '2026-11-06'
+  tags:
+  - host-bringup
+dod_evidence:
+  PYTEST:
+    description: golden and error chains, dry run changes nothing, rollback order, overlay refusals, installer argv
+    command: uv run pytest tests/unit/nodes/test_node_host_bringup_run_effect.py -q
+    pass_criteria: every test passes

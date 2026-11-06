@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_bringup_run_effect
+version: 0.1.0
+description: Runs the declared bring-up order of installer units for a host returning from a long absence; a dry run by default that changes nothing.
+pack: host_bringup
+node_role: effect
+display_name: Host Bring-up Run Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_bringup_run_effect: omnimarket.nodes.node_host_bringup_run_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: local_write
+dependencies:
+- omnibase_core>=0.39.0
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-bringup
