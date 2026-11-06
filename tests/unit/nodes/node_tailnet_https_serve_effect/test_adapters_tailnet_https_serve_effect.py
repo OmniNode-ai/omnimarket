@@ -12,8 +12,9 @@ from __future__ import annotations
 import http.server
 import json
 import stat
+import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -230,17 +231,15 @@ def test_a_missing_binary_is_a_backend_failure_naming_the_step(
 def test_env_placement_and_removal_use_the_command_prefix(tmp_path: Path) -> None:
     seen: list[list[str]] = []
 
-    def run(argv: object, timeout: int) -> object:
-        import subprocess
-
-        seen.append(list(argv))  # type: ignore[call-overload]
-        return subprocess.CompletedProcess(argv, 0, "", "")  # type: ignore[arg-type]
+    def run(argv: Sequence[str], timeout: int) -> subprocess.CompletedProcess[str]:
+        seen.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
 
     backend = TailscaleServeBackend(
         ModelTailscaleBackend(
             binary="tailscale", command_prefix=("sudo", "-n"), timeout_seconds=5
         ),
-        run=run,  # type: ignore[arg-type]
+        run=run,
     )
     backend.place_env("/etc/example/serve.env", "A=1\n")
     backend.remove_env("/etc/example/serve.env")
@@ -313,9 +312,6 @@ def test_the_http_probe_answers_true_for_a_live_path_and_false_for_a_missing_one
 def test_the_reporter_runs_the_append_with_the_overlay_environment_and_fails_loudly() -> (
     None
 ):
-    import subprocess
-    from collections.abc import Mapping, Sequence
-
     seen: list[tuple[list[str], Mapping[str, str]]] = []
     exit_code = [0]
 
