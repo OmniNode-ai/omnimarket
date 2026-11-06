@@ -483,8 +483,8 @@ def test_np2_changed_lock_suffix_changes_the_lock_file(
     contract = _contract()
     contract["append_if_absent"]["lock_suffix"] = ".changed.lock"
     monkeypatch.setattr(
-        "omnimarket.nodes.node_work_ledger_append_effect.local_serve.yaml.safe_load",
-        lambda _text: contract,
+        "omnimarket.nodes.node_work_ledger_append_effect.local_serve.load_append_if_absent_policy",
+        lambda: load_append_if_absent_policy(contract),
     )
     path = _ledger(tmp_path)
     _file_handler(path).handle(_request("row-1"), writer_principal="developer")
