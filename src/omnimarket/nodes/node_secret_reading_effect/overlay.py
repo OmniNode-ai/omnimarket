@@ -110,6 +110,10 @@ class ModelSecretReadingOverlay(BaseModel):
     #: Environment the installed unit carries (the home root, the runtime interpreter, the
     #: append command, the host name).
     unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: The overlay root of the drill (the same overlay with a made-up machine identity and
+    #: drill true). When set, schedule install adds the contract's daily drill unit, so the
+    #: error event stays fresh. ``~`` and environment variables are expanded.
+    drill_overlay_root: str | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelSecretReadingOverlay:

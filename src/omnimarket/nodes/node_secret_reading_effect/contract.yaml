@@ -84,6 +84,13 @@ schedule:
     description: hourly at :05, ten minutes before the reading writer's hourly tick reads the row
   schedulers:
     systemd-user: installed by this node (schedule install) as a systemd user timer
+  drill:
+    unit_name: onex-secret-reading-drill-daily
+    cadence:
+      on_calendar: "*-*-* 06:20:00"
+      randomized_delay: 60s
+      persistent: true
+      description: daily at 06:20 UTC, a read with a made-up machine identity, so the error event stays inside a 24-hour window
 
 overlay:
   node: node_secret_reading_effect

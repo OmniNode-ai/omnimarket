@@ -192,3 +192,126 @@ def test_install_refuses_when_the_venv_cannot_import_the_node(tmp_path: Path) ->
     assert result.exit_code == 1
     assert "would not start" in result.stderr
     assert not (home / ".config").exists()
+
+
+def _drill_overlay(drill_root: Path) -> ModelSecretReadingOverlay:
+    return _overlay().model_copy(update={"drill_overlay_root": str(drill_root)})
+
+
+def _drill_layout(tmp_path: Path) -> Path:
+    drill_root = tmp_path / "overlays-drill"
+    (drill_root / "node_secret_reading_effect").mkdir(parents=True)
+    (drill_root / "node_secret_reading_effect" / "overlay.yaml").write_text(
+        "drill: true\n", encoding="utf-8"
+    )
+    return drill_root
+
+
+def test_the_contract_declares_a_daily_drill_unit() -> None:
+    drill = load_schedule().drill
+    assert drill is not None
+    assert drill.unit_name == "onex-secret-reading-drill-daily"
+    assert drill.cadence.on_calendar == "*-*-* 06:20:00"
+
+
+def test_install_with_a_drill_root_writes_the_drill_pair_and_enables_both_timers(
+    tmp_path: Path,
+) -> None:
+    root, home, overlay_root = _layout(tmp_path)
+    drill_root = _drill_layout(tmp_path)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_overlay(drill_root),
+        home=home,
+        run=runner,
+    )
+    result = scheduler.install("h-test", omni_root=root, overlay_root=overlay_root)
+    assert result.exit_code == 0, result.stderr
+    units = home / ".config/systemd/user"
+    drill_service = (units / "onex-secret-reading-drill-daily.service").read_text(
+        encoding="utf-8"
+    )
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={drill_root}" in drill_service
+    assert "secret-reading-drill.out.log" in drill_service
+    assert drill_service.rstrip().endswith(
+        "SyslogIdentifier=onex-secret-reading-drill-daily"
+    )
+    drill_timer = (units / "onex-secret-reading-drill-daily.timer").read_text(
+        encoding="utf-8"
+    )
+    assert "OnCalendar=*-*-* 06:20:00" in drill_timer
+    assert "Unit=onex-secret-reading-drill-daily.service" in drill_timer
+    hourly = (units / "onex-secret-reading-hourly.service").read_text(encoding="utf-8")
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={overlay_root}" in hourly
+    enabled = [
+        c[-1]
+        for c in runner.commands
+        if c[:4] == ["systemctl", "--user", "enable", "--now"]
+    ]
+    assert enabled == [
+        "onex-secret-reading-hourly.timer",
+        "onex-secret-reading-drill-daily.timer",
+    ]
+
+
+def test_install_refuses_a_drill_root_without_its_overlay_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    root, home, overlay_root = _layout(tmp_path)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_overlay(tmp_path / "missing"),
+        home=home,
+        run=runner,
+    )
+    result = scheduler.install("h-test", omni_root=root, overlay_root=overlay_root)
+    assert result.exit_code == 1
+    assert "no drill overlay" in result.stderr
+    assert not (home / ".config/systemd/user").exists()
+    assert runner.commands == []
+
+
+def test_uninstall_removes_the_drill_pair_too(tmp_path: Path) -> None:
+    root, home, overlay_root = _layout(tmp_path)
+    drill_root = _drill_layout(tmp_path)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_overlay(drill_root),
+        home=home,
+        run=runner,
+    )
+    assert (
+        scheduler.install("h-test", omni_root=root, overlay_root=overlay_root).exit_code
+        == 0
+    )
+    runner.commands.clear()
+    result = scheduler.uninstall("h-test")
+    assert result.exit_code == 0
+    assert list((home / ".config/systemd/user").iterdir()) == []
+    disabled = [
+        c[-1]
+        for c in runner.commands
+        if c[:4] == ["systemctl", "--user", "disable", "--now"]
+    ]
+    assert disabled == [
+        "onex-secret-reading-hourly.timer",
+        "onex-secret-reading-drill-daily.timer",
+    ]
+
+
+def test_run_now_with_drill_starts_the_drill_service(tmp_path: Path) -> None:
+    _, home, _ = _layout(tmp_path)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_overlay(_drill_layout(tmp_path)),
+        home=home,
+        run=runner,
+    )
+    assert scheduler.run_now("h-test", drill=True).exit_code == 0
+    assert runner.commands == [
+        ["systemctl", "--user", "start", "onex-secret-reading-drill-daily.service"]
+    ]
