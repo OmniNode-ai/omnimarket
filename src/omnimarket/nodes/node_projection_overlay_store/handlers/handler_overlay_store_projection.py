@@ -20,7 +20,7 @@ from omnimarket.handlers.handler_projection_runtime_writer import (
 from omnimarket.handlers.overlay_store.store_postgres import PostgresOverlayStore
 from omnimarket.models.overlay_store import ModelOverlayStoreRecord
 from omnimarket.projection.envelope import strip_runner_injected_keys
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta, PublishFn
 
 _STORE_TABLE = "overlay_store"
 _SNAPSHOT_MARK = "onex.snapshot."
@@ -29,8 +29,10 @@ _SNAPSHOT_MARK = "onex.snapshot."
 class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
     """One delivery: validate, store, read back, publish."""
 
-    def __init__(self, contract_path: Path | None = None) -> None:
-        super().__init__()
+    def __init__(
+        self, contract_path: Path | None = None, *, publish_fn: PublishFn | None = None
+    ) -> None:
+        super().__init__(publish_fn=publish_fn)
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)

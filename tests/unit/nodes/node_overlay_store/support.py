@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -148,7 +148,7 @@ def reader(
     *,
     reporter: Reporter | None = None,
     now: datetime = NOW,
-    on_stale: str = "read",
+    on_stale: Literal["read", "refuse"] = "read",
 ) -> HandlerOverlayStoreRead:
     return HandlerOverlayStoreRead(
         store=store,
@@ -156,7 +156,7 @@ def reader(
         reporter=reporter or Reporter(),
         host="h1",
         policies={
-            "lab_hosts": ModelOverlayReadPolicy(stale_after_s=BOUND, on_stale=on_stale)  # type: ignore[arg-type]
+            "lab_hosts": ModelOverlayReadPolicy(stale_after_s=BOUND, on_stale=on_stale)
         },
         clock=lambda: now,
     )

@@ -38,11 +38,8 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     HandlerOverlayStoreRead,
     compare_documents,
 )
-from omnimarket.nodes.node_projection_overlay_store.handlers import (
-    HandlerOverlayStoreProjectionRunner,
-)
 from omnimarket.projection.runner import MessageMeta
-from tests.test_overlay_store_real_postgres import MIGRATION, _Db, _dsn
+from tests.test_overlay_store_real_postgres import MIGRATION, _ConnectionRunner, _dsn
 from tests.unit.nodes.node_overlay_store.support import LOADED_TOPIC, SNAPSHOT_TOPIC
 
 pytestmark = [pytest.mark.integration, pytest.mark.kafka]
@@ -84,13 +81,11 @@ async def test_a_real_overlay_travels_a_real_broker_and_database_and_reads_back_
 
     try:
         async with open_bus() as bus:
-            runner = HandlerOverlayStoreProjectionRunner()
 
             async def publish(topic: str, value: bytes) -> None:
                 await bus.publish(topic, None, value)
 
-            runner._publish_fn = publish  # type: ignore[assignment]
-            runner.db_for = lambda _t, *, operation="write": _Db(connection)  # type: ignore[method-assign,assignment]  # noqa: ARG005
+            runner = _ConnectionRunner(connection, publish)
             done: asyncio.Queue[str] = asyncio.Queue()
 
             async def project(message: Any) -> None:

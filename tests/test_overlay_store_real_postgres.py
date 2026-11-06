@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote_plus
 from uuid import uuid4
 
@@ -29,7 +29,7 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import compare_doc
 from omnimarket.nodes.node_projection_overlay_store.handlers import (
     HandlerOverlayStoreProjectionRunner,
 )
-from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.runner import MessageMeta, PublishFn
 from tests.unit.nodes.node_overlay_store.support import (
     NOW,
     SNAPSHOT_TOPIC,
@@ -80,6 +80,20 @@ class _Db:
         self.pool = _Pool(connection)
 
 
+class _ConnectionRunner(HandlerOverlayStoreProjectionRunner):
+    """The real runner, its writes on one throwaway connection and its publishes to the caller."""
+
+    def __init__(self, connection: asyncpg.Connection, publish: PublishFn) -> None:
+        super().__init__(publish_fn=publish)
+        self._connection = connection
+
+    def db_for(
+        self, table: str, *, operation: Literal["read", "write"] = "write"
+    ) -> Any:
+        assert operation == "write", (table, operation)
+        return _Db(self._connection)
+
+
 @asynccontextmanager
 async def _migrated() -> AsyncIterator[
     tuple[
@@ -104,17 +118,11 @@ async def _migrated() -> AsyncIterator[
         await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await connection.execute(MIGRATION.read_text(encoding="utf-8"))
         published: list[tuple[str, bytes]] = []
-        runner = HandlerOverlayStoreProjectionRunner()
 
         async def publish(topic: str, value: bytes) -> None:
             published.append((topic, value))
 
-        def db_for(_table: str, *, operation: str = "write") -> _Db:
-            assert operation == "write"
-            return _Db(connection)
-
-        runner._publish_fn = publish  # type: ignore[assignment]
-        runner.db_for = db_for  # type: ignore[method-assign,assignment]
+        runner = _ConnectionRunner(connection, publish)
         yield runner, connection, published
     finally:
         await connection.close()
