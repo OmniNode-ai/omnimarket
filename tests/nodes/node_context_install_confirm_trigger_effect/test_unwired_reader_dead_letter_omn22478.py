@@ -37,6 +37,18 @@ from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def _kafka_bootstrap_for_pinned_wiring(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The omnibase_infra revision this repo pins builds the topic-migration services
+    for any handler that declares ``event_publisher`` and has no required parameter (an
+    empty set is a subset), and that build reads ``KAFKA_BOOTSTRAP_SERVERS``. The clients
+    are constructed and never started, so a placeholder address is enough; later
+    omnibase_infra revisions no longer build them and ignore it.
+    """
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+
+
 CONTRACT = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_context_install_confirm_trigger_effect/contract.yaml"
