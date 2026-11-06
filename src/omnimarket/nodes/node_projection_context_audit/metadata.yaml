@@ -1,0 +1,39 @@
+name: node_projection_context_audit
+version: "1.0.0"
+description: >
+  Projects the context-integrity audit events omniclaude publishes into
+  public.context_audit_events with a deterministic row key, replacing the
+  omnibase_infra context-audit consumer module.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_context_audit: "omnimarket.nodes.node_projection_context_audit"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - context-audit
+  - reducer
+ownership:
+  context_audit_events:
+    ddl_owner: omnibase_infra
+    table_role: projection_read_model
+    create_migration: "docker/migrations/forward/053_create_context_audit_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnimarket
+    rationale: >
+      omnibase_infra migration 053 creates context_audit_events. This node's
+      migration only adds the event_key column and its unique index to that
+      table and never creates it.
+pack: "data"
+display_name: "Projection: Context Audit"
+node_role: "effect"
