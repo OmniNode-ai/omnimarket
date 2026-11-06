@@ -795,3 +795,19 @@ def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
             if "a local_done_gate item may not carry binds_ac" in violation
         )
     assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    "item_id", ["dod-omn22496-signing-on", "dod-omn22496-signing-off"]
+)
+def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
+    item_id: str,
+) -> None:
+    """OMN-22702: each OMN-22496 item binds its criterion to pytest evidence."""
+    path = REPO_ROOT / "contracts" / "OMN-22496.yaml"
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    item = next(i for i in contract["dod_evidence"] if i["id"] == item_id)
+    assert item["binds_ac"], f"{item_id} binds no criterion"
+    kinds = [c.get("check_type") for c in item["checks"]]
+    assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
+    assert contract_binds_violations(path.name, contract) == []
