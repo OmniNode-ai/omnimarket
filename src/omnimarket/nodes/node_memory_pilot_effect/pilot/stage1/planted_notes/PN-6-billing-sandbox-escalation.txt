@@ -1,0 +1,3 @@
+# Planted note PN-6 (synthetic test fixture)
+
+Contact note dated 2026-10-30. Escalations for the billing sandbox now go to the platform on-call role. They used to go to the finance role. The change followed two missed pages in one week, when the finance role was off shift. The sandbox's data, schedule and access list were not changed.
