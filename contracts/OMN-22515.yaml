@@ -1,0 +1,33 @@
+schema_version: 1.0.0
+ticket_id: OMN-22515
+title: Remove deployment-specific swarm fixtures
+summary: The criteria of omnimarket#5124, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn19998-ratchet-swarm-fixtures
+  statement: Swarm fanout tests use portable endpoint and model fixtures while retaining command and endpoint-ref coverage.
+  acceptance:
+  - id: AC11
+    statement: 'AC11: the endpoint and completion fixtures use portable values, fanout publishes the supplied endpoint ref and model id, and the missing-ref case still refuses dispatch -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: Remove deployment-specific swarm fixtures
+  command: uv run --frozen pytest src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-ratchet-swarm-fixtures
+  description: The portable-fixture regression fails on the original lab endpoint. The focused file retains endpoint-ref publication, supplied model propagation and missing-ref refusal coverage. This fixture repair does not assert the landing-controller timer criteria or a live host installation.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py -q --no-cov
+    cwd: .
