@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22548"
+title: "The hourly reading units run the venv their overlay names, never the dispatch venv"
+summary: "The reading writer and the host reading nodes took their interpreter from a contract key that named the lab dispatch venv, so a break in that venv's bus publisher stopped the hourly readings. Each overlay host now declares its own venv; the contract keys are removed and an absent venv value is a typed refusal."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22548-overlay-venv"
+    statement: |-
+      The hourly reading units take their interpreter from the host's overlay venv value and from nothing else. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the reading writer and host reading nodes take their interpreter from the host's overlay venv value and fail with a typed refusal when it is absent, and no contract key names a dispatch venv
+      - id: "AC2"
+        statement: |-
+          AC2: the installed hourly units read WORKING with rows on the ledger after the change
+evidence_requirements:
+  - kind: "tests"
+    description: "The schedule tests of both nodes pass with the venv taken from the overlay and refuse without it; the contract carries no dispatch venv key."
+    command: "uv run pytest tests/nodes/node_reading_writer_effect tests/nodes/node_host_reading_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22548-ac1-overlay-venv"
+    description: "AC1. Both nodes' tests pass: the interpreter comes from the overlay host entry, an absent value is a typed refusal, and no contract names the dispatch venv."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect tests/nodes/node_host_reading_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22548-ac2-running-units"
+    description: "AC2. The h051 timer and the Mac agent fired on their schedule after the install and wrote their rows. Read on the running units by the lane that installed them; the host reading probe is the reader."
+    source: "manual"
+    binds_ac: ["AC2"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_host_reading_effect --help"
+        cwd: "${OMNI_HOME}/omnimarket"
