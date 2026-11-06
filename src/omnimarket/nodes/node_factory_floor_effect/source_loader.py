@@ -1329,7 +1329,13 @@ def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(
-            ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
+            ModelFloorRunner(
+                host_label=str(row["host"]),
+                status=row["status"],
+                runner_name=row.get("runner_name"),
+                label_class=row.get("label_class"),
+                labels=tuple(row.get("labels") or ()),
+            )
             for row in data["runners"]
         ),
     )

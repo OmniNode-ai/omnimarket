@@ -187,6 +187,22 @@ class ModelLabSourceRead(_Frozen):
     subjects: tuple[ModelLabSubject, ...] = ()
 
 
+class ModelRunnerPlanRule(_Frozen):
+    """What the host table and the plan say about one family of CI runners, named by a prefix of the runner name.
+
+    The longest matching prefix decides. ``host`` names the machine of the floor record the family runs on; when that
+    machine is declared out or in repair, the family's offline runners are parked on purpose and read as one line for
+    the host. ``meant_to_run`` false is a family the plan leaves stopped. A family that is meant to run and is offline
+    on a machine that is not declared out is a real problem and stays red, with ``restore`` saying what puts it back.
+    """
+
+    name_prefix: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    meant_to_run: bool
+    plan: str = Field(min_length=1)
+    restore: str = ""
+
+
 class ModelLabStateOverlay(_Frozen):
     """The overlay of the lab-state reader and node: the sources and how each is read."""
 
@@ -199,6 +215,8 @@ class ModelLabStateOverlay(_Frozen):
     declared_host_states: tuple[str, ...] = ()
     # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
     conflict_merge_states: tuple[str, ...] = ()
+    # The host table and plan rules that split the offline runners into parked on purpose and real problems.
+    runner_plan: tuple[ModelRunnerPlanRule, ...] = ()
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:

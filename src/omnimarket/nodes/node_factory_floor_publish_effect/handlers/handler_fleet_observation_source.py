@@ -113,7 +113,13 @@ class HandlerFleetObservationSource:
             fleet = ModelFloorRunnerFleet(
                 observed_at=data["observed_at"],
                 runners=tuple(
-                    ModelFloorRunner(host_label=row["host"], status=row["status"])
+                    ModelFloorRunner(
+                        host_label=row["host"],
+                        status=row["status"],
+                        runner_name=row.get("runner_name"),
+                        label_class=row.get("label_class"),
+                        labels=tuple(row.get("labels") or ()),
+                    )
                     for row in data["runners"]
                 ),
             )
@@ -121,7 +127,13 @@ class HandlerFleetObservationSource:
                 "status": "read",
                 "observed_at": fleet.observed_at.isoformat(),
                 "runners": [
-                    {"host": row.host_label, "status": row.status}
+                    {
+                        "host": row.host_label,
+                        "status": row.status,
+                        "runner_name": row.runner_name,
+                        "label_class": row.label_class,
+                        "labels": list(row.labels),
+                    }
                     for row in fleet.runners
                 ],
             }

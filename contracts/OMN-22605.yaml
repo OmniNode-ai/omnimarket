@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22605"
+title: "The one floor pull request, omnimarket#5142, lands with its own contract: emission receipts, lab-state alarm, simple floor and the fleet runner names"
+summary: >-
+  The floor pull request lands as one stack with its own contract file, so it does not touch the shared contracts of
+  OMN-22478 or OMN-19998. The runner fleet file the floor reads now names each runner, and the runner groups row splits
+  offline runners by the host table and the plan: a host declared in repair reads as one line, a runner that should run
+  and does not stays red with what restores it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22605-fleet-names-and-split"
+    statement: |-
+      The runner groups row can tell parked on purpose from a real problem. The criteria below are transcribed from the ticket body, with the commands that run them.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a fleet observation saved by the producer carries each runner's name, label class and labels, and an older file without them reads as unsplit and stays red
+      - id: "AC2"
+        statement: |-
+          AC2: an offline runner whose host the host table marks unavailable reads as one line for that host, and an offline runner on an available host stays red and named
+      - id: "AC3"
+        statement: |-
+          AC3: the simple floor draws 18 piece rows with joins and reading ages, and the golden and error receipts exist on the in-memory backend by a real run
+      - id: "AC4"
+        statement: |-
+          AC4: the served simple floor record read after the install shows the split runner row
+evidence_requirements:
+  - kind: "tests"
+    description: "The producer's saved file, the runner plan split and the floor cycle's golden and error chains."
+    command: "uv run --frozen pytest tests/test_omn21733_runner_fleet_state_file.py tests/unit/nodes/node_floor_simple_effect/test_runner_plan_split.py tests/nodes/node_floor_simple_effect/test_golden_chain_floor_simple.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22605-ac1-producer-names"
+    description: "AC1. The saved observation carries runner_name, label_class and labels, and a file saved before the change still loads with no names."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/test_omn21733_runner_fleet_state_file.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22605-ac2-split"
+    description: "AC2. Twenty offline runners on a host in repair read as one line and the group is ok; the same rows with the host not declared stay red; a runner meant to run that is offline stays red and says what restores it; rows without names stay red."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_runner_plan_split.py tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22605-ac3-golden-error-chains"
+    description: "AC3. The floor cycle's golden and error chains through the in-memory sink, with all 18 piece rows."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_golden_chain_floor_simple.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22605-integration-proof"
+    description: "The pushed head runs the floor, fleet and merged-running tests on a lab host through onex lab-work and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22605 -- uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute tests/unit/nodes/node_floor_simple_effect tests/test_omn21733_runner_fleet_state_file.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22605-ac4-served-row"
+    description: "AC4. The installed floor unit's served record holds a runner_groups line, read after the install."
+    source: "manual"
+    binds_ac: ["AC4"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_floor_simple_effect --help"
+        cwd: "."

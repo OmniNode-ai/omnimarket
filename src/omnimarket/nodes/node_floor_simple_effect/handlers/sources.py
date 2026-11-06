@@ -25,6 +25,7 @@ from omnimarket.models.floor_17a import (
     ModelLabStateOverlay,
     ModelLabSubject,
     ModelNodeEmission,
+    ModelRunnerPlanRule,
 )
 
 TICKET = re.compile(r"\bOMN-\d+\b")
@@ -349,7 +350,72 @@ def _fleet_rollup(data: Mapping[str, Any]) -> list[dict[str, Any]]:
     return list(groups.values())
 
 
-def read_runner_groups(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _plan_rule(name: str, overlay: ModelLabStateOverlay) -> ModelRunnerPlanRule | None:
+    """The rule whose prefix is the longest one that starts the runner's name."""
+    named = [r for r in overlay.runner_plan if name.startswith(r.name_prefix)]
+    return max(named, key=lambda r: len(r.name_prefix)) if named else None
+
+
+def _declared_machines(
+    record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
+) -> dict[str, str]:
+    """Machines of the floor record that the host table declares out or in repair, with the table's note."""
+    if record is None:
+        return {}
+    machines = record.get("floor", {}).get("machines", [])
+    return {
+        str(m.get("host")): str(m.get("note", ""))
+        for m in machines
+        if isinstance(m, dict) and m.get("state") in overlay.declared_host_states
+    }
+
+
+@dataclass
+class _OfflineSplit:
+    """Offline runners by what the host table and the plan say of them. Only ``needs_repair`` and ``unsplit`` are red."""
+
+    parked_host: dict[str, list[str]] = field(default_factory=dict)
+    parked_plan: dict[str, list[str]] = field(default_factory=dict)
+    needs_repair: list[tuple[str, str]] = field(default_factory=list)
+    unsplit: int = 0
+
+
+def _split_offline(
+    rows: list[Any], overlay: ModelLabStateOverlay, declared: Mapping[str, str]
+) -> _OfflineSplit:
+    split = _OfflineSplit()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("status") != "offline":
+            continue
+        name = row.get("runner_name")
+        if not name:
+            split.unsplit += 1
+            continue
+        rule = _plan_rule(str(name), overlay)
+        if rule is None:
+            split.needs_repair.append(
+                (str(name), "offline, and no host table or plan row names it")
+            )
+        elif rule.host in declared:
+            split.parked_host.setdefault(rule.host, []).append(str(name))
+        elif not rule.meant_to_run:
+            split.parked_plan.setdefault(rule.plan, []).append(str(name))
+        else:
+            split.needs_repair.append(
+                (
+                    str(name),
+                    f"offline, meant to run ({rule.plan})"
+                    + (f"; restored by: {rule.restore}" if rule.restore else ""),
+                )
+            )
+    return split
+
+
+def read_runner_groups(
+    path: Path,
+    overlay: ModelLabStateOverlay,
+    record: Mapping[str, Any] | None = None,
+) -> ModelLabSourceRead:
     source = _by_kind(overlay, "runner_groups")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -379,26 +445,69 @@ def read_runner_groups(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSou
                 str(row["version"])
             )
     limit = int(source.limit) if source.limit is not None else 0
+    declared = _declared_machines(record, overlay)
+    split = _split_offline(rows, overlay, declared)
     subjects: list[ModelLabSubject] = []
     for group in rollup:
         name = str(group.get("label_class", "?"))
         offline = int(group.get("offline", 0))
         seen = versions.get(name)
         version = ", ".join(sorted(seen)) if seen else "version not reported"
-        ok = offline <= limit and not (overlay.require_runner_version and not seen)
+        group_rows = [
+            r for r in rows if isinstance(r, dict) and str(r.get("host")) == name
+        ]
+        own = _split_offline(group_rows, overlay, declared)
+        real = len(own.needs_repair) + own.unsplit
+        parked = sum(len(v) for v in own.parked_host.values()) + sum(
+            len(v) for v in own.parked_plan.values()
+        )
+        ok = (real if group_rows else offline) <= limit and not (
+            overlay.require_runner_version and not seen
+        )
+        note = f"{group.get('online', 0)} online, {offline} offline, {version}"
+        if parked:
+            note += f"; {parked} of the offline are parked on purpose, {real} are not"
         subjects.append(
             ModelLabSubject(
-                name=name,
-                ok=ok,
-                value=float(group.get("online", 0)),
-                note=f"{group.get('online', 0)} online, {offline} offline, {version}",
+                name=name, ok=ok, value=float(group.get("online", 0)), note=note
+            )
+        )
+    for host, names in sorted(split.parked_host.items()):
+        subjects.append(
+            ModelLabSubject(
+                name=f"{host} runners",
+                ok=True,
+                value=float(len(names)),
+                note=f"{len(names)} runners offline, parked on purpose: {_declared_machines(record, overlay).get(host, '')[:90]}",
+            )
+        )
+    for plan, names in sorted(split.parked_plan.items()):
+        subjects.append(
+            ModelLabSubject(
+                name=", ".join(sorted(names)[:3]),
+                ok=True,
+                value=float(len(names)),
+                note=f"{len(names)} runners offline, left stopped by the plan ({plan})",
+            )
+        )
+    for runner, why in split.needs_repair:
+        subjects.append(
+            ModelLabSubject(name=runner, ok=False, value=0.0, note=why[:240])
+        )
+    if split.unsplit:
+        subjects.append(
+            ModelLabSubject(
+                name="unnamed runners",
+                ok=False,
+                value=float(split.unsplit),
+                note=f"{split.unsplit} offline runners carry no name in the saved fleet file, so they cannot be told apart; the producer that saves it is older than the one that adds names",
             )
         )
     return ModelLabSourceRead(
         id=source.id,
         status="read",
         read_at=observed,
-        summary=f"{len(subjects)} runner groups read",
+        summary=f"{len(rollup)} runner groups read",
         subjects=tuple(subjects),
     )
 

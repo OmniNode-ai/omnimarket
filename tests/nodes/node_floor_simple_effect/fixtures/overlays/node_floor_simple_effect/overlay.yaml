@@ -25,3 +25,8 @@ require_runner_version: false
 declared_host_states: [out, repair]
 # A green pull request whose merge state is one of these has a conflicting branch and cannot be armed; it is not waiting.
 conflict_merge_states: [DIRTY]
+# The host table and plan rules that split the offline runners into parked on purpose and real problems (plan section 8).
+runner_plan:
+  - {name_prefix: spare-, host: h202, meant_to_run: true, plan: "plan section 8, group 3 and 7 mapping"}
+  - {name_prefix: omninode-runner-, host: h201, meant_to_run: true, plan: "plan section 8, kept until R6", restore: "recreate the container from the current runner image through the runner roll installer, then read it online in the organization API"}
+  - {name_prefix: omninode-prod-deploy-runner, host: h201, meant_to_run: false, plan: "plan section 8, R6 retains it and restores nothing"}

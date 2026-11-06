@@ -498,7 +498,9 @@ class HandlerFloorSimpleTick:
             )
             reads = [
                 read_hosts(record, lab_ov),
-                read_runner_groups(home / rt.sources.runner_fleet_relpath, lab_ov),
+                read_runner_groups(
+                    home / rt.sources.runner_fleet_relpath, lab_ov, record
+                ),
                 read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),

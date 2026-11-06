@@ -55,6 +55,7 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelRebuild,
     ModelRebuildOverlay,
     ModelRedRule,
+    ModelRunnerPlanRule,
     ReadingState,
 )
 
@@ -109,5 +110,6 @@ __all__ = [
     "ModelRebuild",
     "ModelRebuildOverlay",
     "ModelRedRule",
+    "ModelRunnerPlanRule",
     "ReadingState",
 ]
