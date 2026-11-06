@@ -64,6 +64,8 @@ published_events:
   - event_type: ModelInstallConfirmSkipped
     topic: onex.evt.omnimarket.context-install-confirm-skipped.v1
     description: No session compact source was injected, so nothing was read.
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-install-confirm-skipped.v1 # read by operators and the floor; no node subscribes
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.projection-session-content-applied.v1
   terminal_events:

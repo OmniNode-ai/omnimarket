@@ -195,3 +195,13 @@ def test_the_contract_routes_the_skip_event_to_its_own_topic_only() -> None:
     ]
     assert skipped in contract["event_bus"]["publish_topics"]
     assert skipped != contract["terminal_event"]
+
+
+def test_the_skip_topic_is_declared_externally_consumed() -> None:
+    # No node subscribes to the skipped topic; the topic graph gate refuses a
+    # published topic that is neither subscribed nor declared externally consumed.
+    contract = yaml.safe_load(CONTRACT.read_text())
+
+    assert contract["externally_consumed_topics"] == [
+        "onex.evt.omnimarket.context-install-confirm-skipped.v1"
+    ]
