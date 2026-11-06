@@ -7,7 +7,6 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -18,6 +17,11 @@ class EnumServeMode(StrEnum):
     INSTALL = "install"
     UNINSTALL = "uninstall"
     STATUS = "status"
+
+
+class EnumServeBackend(StrEnum):
+    IN_MEMORY = "in-memory"
+    TAILSCALE = "tailscale"
 
 
 class EnumServeOutcome(StrEnum):
@@ -118,7 +122,7 @@ class ModelServeOverlay(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["in-memory", "tailscale"]
+    backend: EnumServeBackend
     listener: ModelServeListener
     tailscale: ModelTailscaleBackend | None = None
     in_memory: ModelInMemoryBackend | None = None
@@ -126,11 +130,15 @@ class ModelServeOverlay(BaseModel):
 
     @model_validator(mode="after")
     def _one_backend_block(self) -> ModelServeOverlay:
-        if self.backend == "tailscale" and (self.tailscale is None or self.in_memory):
+        if self.backend is EnumServeBackend.TAILSCALE and (
+            self.tailscale is None or self.in_memory
+        ):
             raise ValueError(
                 "backend tailscale needs the tailscale block and no in_memory block"
             )
-        if self.backend == "in-memory" and (self.in_memory is None or self.tailscale):
+        if self.backend is EnumServeBackend.IN_MEMORY and (
+            self.in_memory is None or self.tailscale
+        ):
             raise ValueError(
                 "backend in-memory needs the in_memory block and no tailscale block"
             )

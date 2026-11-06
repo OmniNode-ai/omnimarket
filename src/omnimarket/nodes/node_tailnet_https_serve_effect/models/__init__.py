@@ -4,6 +4,7 @@
 
 from omnimarket.nodes.node_tailnet_https_serve_effect.models.model_tailnet_https_serve import (
     OK_OUTCOMES,
+    EnumServeBackend,
     EnumServeMode,
     EnumServeOutcome,
     ModelInMemoryBackend,
@@ -17,6 +18,7 @@ from omnimarket.nodes.node_tailnet_https_serve_effect.models.model_tailnet_https
 
 __all__ = [
     "OK_OUTCOMES",
+    "EnumServeBackend",
     "EnumServeMode",
     "EnumServeOutcome",
     "ModelInMemoryBackend",

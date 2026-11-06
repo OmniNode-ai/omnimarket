@@ -17,13 +17,16 @@ from omnimarket.nodes.node_tailnet_https_serve_effect.adapters.adapters_real imp
 from omnimarket.nodes.node_tailnet_https_serve_effect.handlers.handler_tailnet_https_serve import (
     HandlerTailnetHttpsServe,
 )
-from omnimarket.nodes.node_tailnet_https_serve_effect.models import ModelServeOverlay
+from omnimarket.nodes.node_tailnet_https_serve_effect.models import (
+    EnumServeBackend,
+    ModelServeOverlay,
+)
 
 
 def create_handler_tailnet_https_serve(
     overlay: ModelServeOverlay,
 ) -> HandlerTailnetHttpsServe:
-    if overlay.backend == "in-memory":
+    if overlay.backend is EnumServeBackend.IN_MEMORY:
         assert overlay.in_memory is not None
         return HandlerTailnetHttpsServe(
             listener=overlay.listener,

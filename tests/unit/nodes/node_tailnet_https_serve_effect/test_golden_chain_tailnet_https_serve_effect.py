@@ -19,6 +19,7 @@ from omnimarket.nodes.node_tailnet_https_serve_effect.container.container_tailne
     create_handler_tailnet_https_serve,
 )
 from omnimarket.nodes.node_tailnet_https_serve_effect.models import (
+    EnumServeBackend,
     EnumServeMode,
     EnumServeOutcome,
     ModelServeOverlay,
@@ -71,7 +72,7 @@ def test_example_overlay_validates_and_runs_on_the_in_memory_backend() -> None:
     overlay = ModelServeOverlay.model_validate(
         yaml.safe_load((_NODE / "overlay.example.yaml").read_text())
     )
-    assert overlay.backend == "in-memory"
+    assert overlay.backend is EnumServeBackend.IN_MEMORY
     handler = create_handler_tailnet_https_serve(overlay)
     result = handler.handle(request(EnumServeMode.INSTALL))
     assert result.outcome is EnumServeOutcome.INSTALLED
