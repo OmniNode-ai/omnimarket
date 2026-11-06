@@ -124,8 +124,10 @@ def quick_window(monkeypatch: pytest.MonkeyPatch) -> _FakeDb | None:
     monkeypatch.setattr(resolution, "MIRROR_CATCHUP_POLL_SECONDS", 0.001)
     monkeypatch.setattr(resolution, "MIRROR_CATCHUP_DEADLINE_SECONDS", 0.05)
     # OMN-22478: an event older than the window is not waited for. These tests
-    # model a race, so the clock stands one second after the racing event.
-    monkeypatch.setattr(resolution, "_utc_now", lambda: EVENT_AT + timedelta(seconds=1))
+    # model a race, so the clock stands 10 ms after the racing event, inside the shrunken window.
+    monkeypatch.setattr(
+        resolution, "_utc_now", lambda: EVENT_AT + timedelta(milliseconds=10)
+    )
     return None
 
 
