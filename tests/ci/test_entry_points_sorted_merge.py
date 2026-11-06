@@ -186,13 +186,13 @@ def test_two_nodes_added_on_two_branches_merge_without_conflict(
     merged = _merge_two_branches(
         tmp_path,
         sorted_insert=True,
-        first="node_ab_cc0925_probe_compute",
+        first="node_cc0925_probe_compute",
         second="node_merge_cc0925_probe_effect",
     )
     assert merged.returncode == 0, merged.stdout + merged.stderr
     text = (tmp_path / "repo" / "pyproject.toml").read_text()
     names = [ENTRY_LINE.match(line).group(1) for line in _entry_lines(text)]  # type: ignore[union-attr]
-    assert "node_ab_cc0925_probe_compute" in names
+    assert "node_cc0925_probe_compute" in names
     assert "node_merge_cc0925_probe_effect" in names
     assert names == sorted(names)
 
@@ -202,7 +202,7 @@ def test_appending_both_nodes_at_the_end_conflicts(tmp_path: Path) -> None:
     merged = _merge_two_branches(
         tmp_path,
         sorted_insert=False,
-        first="node_ab_cc0925_probe_compute",
+        first="node_cc0925_probe_compute",
         second="node_merge_cc0925_probe_effect",
     )
     assert merged.returncode != 0
