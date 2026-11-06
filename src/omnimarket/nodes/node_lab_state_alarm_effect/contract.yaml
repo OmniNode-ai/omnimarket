@@ -65,6 +65,9 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.lab-state-alarmed.v1
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-state-alarm-requested.v1
+
 event_bus:
   subscribe_topics: []
   publish_topics:

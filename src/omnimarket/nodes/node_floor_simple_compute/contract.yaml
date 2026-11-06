@@ -59,6 +59,9 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.floor-simple-computed.v1
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-simple-compute-requested.v1
+
 event_bus:
   subscribe_topics: []
   publish_topics:
