@@ -400,6 +400,11 @@ requirements:
     statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
   - id: "req-lock-security-floors"
     statement: "uv.lock holds multidict and mako at versions outside the affected ranges of the advisories the Dependency Security Scan reports, so the scan passes on dev."
+  - id: "req-auto-wiring-batch-publish-only-tail"
+    statement: "A bounded auto-wiring batch that holds only contracts the runtime never dispatches wires nothing and is not reported as a smoke failure."
+    acceptance:
+      - id: "AC1742790"
+        statement: "AC1742790: a wiring batch whose every contract is skipped for declaring no event_bus.subscribe_topics passes the batch smoke check, while a batch that wired nothing with an unskipped contract still fails -- falsifier: tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_a_publish_only_tail_batch_is_not_a_smoke_failure fails at the merge base, where the bare total_wired > 0 assertion reds the batch"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -6078,3 +6083,11 @@ dod_evidence:
         reason: "OMN-17427 carries none of this label on the live ticket (read 2026-11-05), so AC513401 was never deleted from it: it is a criterion this repository's contract declared on its own for another change. Its statement stays in this file's history and the carrier item dod-omn-17427-contract-only-retirement still runs the tests of dod-omn17427-pr5134-safety-pin-retry."
         retired_by: lane-drift-dirty-landing-2200
         retired_at: '2026-11-05T22:17:00Z'
+  - id: "dod-omn17427-wiring-batch-publish-only"
+    description: "AC1742790: the batch smoke check tolerates a batch of only publish-only contracts. Measured on the one-contract tail batch: outcome skipped for 'No event_bus.subscribe_topics declared in contract' and total_wired 0, which the merge base's bare assertion fails."
+    source: manual
+    binds_ac: ["AC1742790"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -p no:randomly --refuse-skips -k publish_only_tail_batch"
+        cwd: .
