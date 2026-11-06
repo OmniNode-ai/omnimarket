@@ -135,6 +135,7 @@ def floor_input(
         record_read_at=NOW - timedelta(minutes=1),
         pr_class_counts={"red": reds},
         pr_class_tickets={"red": ("OMN-1",)},
+        pr_class_prs={"red": ("r#1",)},
         lanes=lanes,
         lab=None,
         receipts=None,
@@ -152,15 +153,25 @@ def test_golden_one_sentence_three_numbers_and_the_rebuild_strip() -> None:
 
 
 def test_golden_a_cause_with_a_live_lane_is_amber_and_one_without_is_red() -> None:
-    # The overlay makes OMN-19998 an owner of the red-checks cause; the watcher names OMN-1.
-    for ticket in ("OMN-19998", "OMN-1"):
-        lane = ModelFloorLane(lane="fix-1", ticket=ticket)
+    # A lane on one of the class's pull requests is on the cause, whatever ticket it carries.
+    for ticket in ("OMN-19998", "OMN-1", ""):
+        lane = ModelFloorLane(lane="fix-1", ticket=ticket, pr="r#1")
         doc = HandlerFloorSimple().handle(floor_input(lanes=(lane,)))
         cause = next(c for c in doc.causes if c.id == "prs:red")
         assert (cause.state, cause.lanes) == ("amber", ("fix-1",))
     bare = HandlerFloorSimple().handle(floor_input())
     nobody = next(c for c in bare.causes if c.id == "prs:red")
     assert (nobody.state, nobody.work_under_way) == ("red", False)
+
+
+def test_error_a_lane_that_only_shares_a_ticket_with_the_cause_is_not_on_it() -> None:
+    # The watcher names OMN-1 where it saw the red pull requests and the landing ticket is on every landing lane; neither
+    # says the lane works on a red pull request, so the cause stays red with nobody on it.
+    for ticket in ("OMN-19998", "OMN-1"):
+        lane = ModelFloorLane(lane="fix-1", ticket=ticket, pr="r#2")
+        doc = HandlerFloorSimple().handle(floor_input(lanes=(lane,)))
+        cause = next(c for c in doc.causes if c.id == "prs:red")
+        assert (cause.state, cause.lanes) == ("red", ())
 
 
 def test_golden_the_biggest_cause_comes_first() -> None:
@@ -173,7 +184,7 @@ def test_golden_the_biggest_cause_comes_first() -> None:
 
 
 def test_error_a_lane_that_is_stalled_is_not_work_under_way() -> None:
-    stalled = ModelFloorLane(lane="fix-3", ticket="OMN-1", stalled=True)
+    stalled = ModelFloorLane(lane="fix-3", pr="r#1", stalled=True)
     cause = next(
         c
         for c in HandlerFloorSimple().handle(floor_input(lanes=(stalled,))).causes
@@ -183,7 +194,7 @@ def test_error_a_lane_that_is_stalled_is_not_work_under_way() -> None:
 
 
 def test_error_a_needs_operator_cause_is_red_even_with_a_lane_on_it() -> None:
-    base = floor_input(lanes=(ModelFloorLane(lane="fix-2", ticket="OMN-1"),))
+    base = floor_input(lanes=(ModelFloorLane(lane="fix-2", pr="r#1"),))
     overlay = base.overlay.model_copy(
         update={
             "causes": base.overlay.causes.model_copy(
@@ -224,7 +235,7 @@ def test_error_a_stale_watcher_makes_the_numbers_unread() -> None:
 def test_error_the_colour_rule_reading_fails_on_a_planted_red_cause_with_work_under_way() -> (
     None
 ):
-    lanes = (ModelFloorLane(lane="fix-2", ticket="OMN-1"),)
+    lanes = (ModelFloorLane(lane="fix-2", pr="r#1"),)
     good = HandlerFloorSimple().handle(floor_input(lanes=lanes))
     planted = good.model_copy(
         update={

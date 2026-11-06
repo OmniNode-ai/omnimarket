@@ -113,6 +113,7 @@ class ModelSourcePaths(BaseModel):
 
     record_relpath: str
     watcher_relpath: str
+    friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
     readings_relpath: str
@@ -486,6 +487,7 @@ class HandlerFloorSimpleTick:
                 queue_classes=lab_ov.queue_age_classes,
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,
                 scope=goal_scope,
+                conflict_states=lab_ov.conflict_merge_states,
             )
             lane_dir = Path(
                 env.get(rt.sources.remote_lane_dir_env, "").strip()
@@ -584,6 +586,10 @@ class HandlerFloorSimpleTick:
             record_read_at=record_read_at,
             pr_class_counts=watcher.class_counts if watcher else {},
             pr_class_tickets=watcher.class_tickets if watcher else {},
+            pr_class_prs=watcher.class_prs if watcher else {},
+            friction_as_of=self._friction_as_of(
+                home / rt.sources.friction_report_relpath
+            ),
             stoppages=record_stoppages(record) if record else (),
             lanes=record_lanes(record) if record else (),
             lab=lab,
@@ -646,6 +652,16 @@ class HandlerFloorSimpleTick:
             return
 
     @staticmethod
+    def _friction_as_of(path: Path) -> datetime | None:
+        """When the friction rollup behind the stoppages was built, or ``None`` when its report cannot be read."""
+        try:
+            return parse_time(
+                json.loads(path.read_text(encoding="utf-8"))["generated_at"]
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    @staticmethod
     def _receipts(
         sink: ProtocolEmissionSink,
         ov: ModelFloorSimpleOverlay,
@@ -653,15 +669,29 @@ class HandlerFloorSimpleTick:
         rt: ModelFloorSimpleRuntime,
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
+        emissions = sink.read(since)
+        # A join is judged only into a piece that exists: admitted by the go, a step 0 piece, or one that has emitted.
+        judged = tuple(
+            sorted(
+                {
+                    p.piece
+                    for p in ov.pieces
+                    if p.piece <= ov.rebuild.go_given_through_piece
+                    or p.piece in ov.rebuild.step0_pieces
+                }
+                | {e.piece for e in emissions}
+            )
+        )
         return HandlerFloorReceipt().handle(
             ModelFloorReceiptInput(
                 now=now,
-                emissions=sink.read(since),
+                emissions=emissions,
                 pieces=ov.pieces,
                 joins=ov.joins,
                 freshness_max_age_s=ov.freshness_max_age_s,
                 error_max_age_s=ov.error_receipt_max_age_s,
                 chain_deadline_s=ov.chain_deadline_s,
+                judged_to_pieces=judged,
             )
         )
 

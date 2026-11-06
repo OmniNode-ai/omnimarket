@@ -80,6 +80,9 @@ class ModelFloorReceiptInput(_Frozen):
     freshness_max_age_s: int = Field(gt=0)
     error_max_age_s: int = Field(gt=0)
     chain_deadline_s: int = Field(gt=0)
+    # The pieces a join may end at and still be judged: admitted pieces and pieces that have emitted. A join into a piece
+    # that does not exist yet cannot be broken, so it is not judged. ``None`` judges every join.
+    judged_to_pieces: tuple[int, ...] | None = None
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -188,6 +191,8 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
+    conflict_merge_states: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:
@@ -300,6 +305,8 @@ class ModelFloorLane(_Frozen):
     lane: str
     ticket: str = ""
     stalled: bool = False
+    # The pull request the lane works on ("repo#number"), the key that ties a lane to a pull request class.
+    pr: str = ""
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -310,8 +317,16 @@ class ModelFloorCauseIn(_Frozen):
     detail: str
     size: int = Field(ge=0)
     size_unit: str
+    # Where the problem was seen: shown, never used to say who is working on it.
     tickets: tuple[str, ...] = ()
+    # Who works on it: tickets the overlay or a lab source declares as owning this cause.
+    owners: tuple[str, ...] = ()
+    # The pull requests of a pull request class ("repo#number"): a lane on one of them is on the cause.
+    prs: tuple[str, ...] = ()
     needs_operator: bool = False
+    last_seen: datetime | None = None
+    # The cost the reporter logged for a stoppage (the reporter's own figure, not a measurement).
+    reported_cost_minutes: float | None = None
 
 
 class ModelFloorCause(_Frozen):
@@ -325,8 +340,14 @@ class ModelFloorCause(_Frozen):
     needs_operator: bool
     lanes: tuple[str, ...] = ()
     tickets: tuple[str, ...] = ()
+    owners: tuple[str, ...] = ()
+    prs: tuple[str, ...] = ()
     listed: bool = True
     members: tuple[str, ...] = ()
+    last_seen: datetime | None = None
+    last_seen_age_s: int | None = None
+    # A stoppage: true when it was seen inside the overlay's window, false when not, ``None`` for a cause that is not one.
+    still_occurring: bool | None = None
 
 
 class ModelFloorJoinRow(_Frozen):
@@ -420,6 +441,8 @@ class ModelRebuildOverlay(_Frozen):
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
     lab_state_piece: int = Field(ge=1, le=18)
+    # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
+    piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)
 
 
 class ModelNumbersOverlay(_Frozen):
@@ -437,6 +460,10 @@ class ModelCauseOverlay(_Frozen):
     needs_operator: tuple[str, ...] = ()
     ignore_stoppages: tuple[str, ...] = ()
     pr_classes: dict[str, str] = Field(default_factory=dict)
+    # Stoppage causes whose logged cost is an estimate of idle capacity, not lost work: the figure is not shown.
+    estimated_cost_stoppages: tuple[str, ...] = ()
+    # A stoppage seen within this many seconds of the clock is still occurring; ``None`` does not judge it.
+    still_occurring_within_s: int | None = Field(default=None, gt=0)
 
 
 class ModelFloorSimpleOverlay(_Frozen):
@@ -483,6 +510,9 @@ class ModelFloorSimpleInput(_Frozen):
     record_read_at: datetime | None
     pr_class_counts: dict[str, int] = Field(default_factory=dict)
     pr_class_tickets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    pr_class_prs: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # When the friction rollup behind the stoppages was built: the stoppages say nothing newer.
+    friction_as_of: datetime | None = None
     stoppages: tuple[ModelFloorCauseIn, ...] = ()
     lanes: tuple[ModelFloorLane, ...] = ()
     lab: ModelLabStateOutput | None

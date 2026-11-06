@@ -52,6 +52,10 @@ rebuild:
   current_piece: 1
   step0_pieces: [17]
   lab_state_piece: 17
+  # A piece whose own reading covers only part of its name also stands on these lab sources (piece -> source ids).
+  # Piece 8 is read from the central test harness's stored result; its CI runners are the lab source runner_groups.
+  piece_lab_sources:
+    8: [runner_groups]
 
 numbers:
   landing_goal_per_hour: 10
@@ -77,10 +81,21 @@ causes:
     "stoppage:throughput-results": Landing results fall short of the goal
     "stoppage:adoption-persisting": A merged fix was not installed
     "alarm:undelivered": A lab alarm has no delivery receipt
-  owners:
-    "prs:red": [OMN-19998]
-    "prs:queue-stuck": [OMN-19998]
-    "prs:green-unarmed": [OMN-19998]
+  # No ticket owns a pull request class. A lane is on a class when it works on one of the class's pull requests (its
+  # pr field); the shared landing ticket is on every landing lane and says nothing about which cause a lane is on.
+  owners: {}
+  # Stoppages whose logged cost is the reporter's estimate of idle capacity (free slots times the next interval, or an
+  # estimated short-fall), not lost work that anything measured: the floor leaves the figure out.
+  estimated_cost_stoppages:
+    - "stoppage:lab-idle"
+    - "stoppage:lab-source-unreadable"
+    - "stoppage:lab-enumerate-unreadable"
+    - "stoppage:lab-enumerate-partial"
+    - "stoppage:job-exit"
+    - "stoppage:throughput-results"
+  # The friction rollup is built every two hours, so a stoppage seen within three hours is still occurring as far as the
+  # rollup can say; an older one is drawn as not seen since.
+  still_occurring_within_s: 10800
   needs_operator:
     - "alarm:undelivered"
   ignore_stoppages: []

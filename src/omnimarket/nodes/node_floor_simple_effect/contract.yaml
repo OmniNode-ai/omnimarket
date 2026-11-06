@@ -91,6 +91,8 @@ runtime:
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
+    # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
+    friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.

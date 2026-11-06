@@ -92,6 +92,7 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             lane=str(item.get("lane", "")),
             ticket=str(item.get("ticket") or ""),
             stalled=bool(item.get("stalled", False)),
+            pr=str(item.get("pr") or ""),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
@@ -104,17 +105,23 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
         if not isinstance(item, dict) or not item.get("name"):
             continue
         name = str(item["name"])
+        try:
+            last_seen: datetime | None = parse_time(item.get("last_seen"))
+        except ValueError:
+            last_seen = None
+        cost = item.get("cost_minutes")
         out.append(
             ModelFloorCauseIn(
                 id=f"stoppage:{name}",
                 title=name.replace("-", " ").replace(":", ": "),
-                detail=(
-                    f"{item.get('occurrences', 0)} times, {item.get('cost_minutes', 0):g} lane-minutes lost, "
-                    f"last {str(item.get('last_seen', ''))[:16]}."
-                ),
+                detail=f"{item.get('occurrences', 0)} times",
                 size=int(item.get("occurrences", 0)),
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
+                last_seen=last_seen,
+                reported_cost_minutes=float(cost)
+                if isinstance(cost, int | float)
+                else None,
             )
         )
     return tuple(out)
@@ -161,7 +168,10 @@ class WatcherReading:
     paused_open: int | None = None
     class_counts: dict[str, int] = field(default_factory=dict)
     class_tickets: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    class_prs: dict[str, tuple[str, ...]] = field(default_factory=dict)
     queue_ages: tuple[tuple[str, int], ...] = ()
+    # The queue-age pull requests whose branch conflicts: green checks, but they cannot be armed.
+    queue_conflicted: frozenset[str] = frozenset()
 
 
 def read_watcher(
@@ -172,6 +182,7 @@ def read_watcher(
     queue_classes: tuple[str, ...],
     merge_window_minutes: int,
     scope: ModelGoalScope | None,
+    conflict_states: tuple[str, ...] = (),
 ) -> WatcherReading | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -186,8 +197,10 @@ def read_watcher(
         )
     counts: dict[str, int] = {}
     tickets: dict[str, list[str]] = {}
+    class_prs: dict[str, list[str]] = {}
     open_prs = outside = paused = 0
     ages: list[tuple[str, int]] = []
+    conflicted: set[str] = set()
     for key, value in prs.items():
         facts = value.get("facts", {})
         if facts.get("state") != "OPEN":
@@ -209,6 +222,7 @@ def read_watcher(
         tickets.setdefault(cls, []).extend(
             tickets_of(str(facts.get("title", "")), str(facts.get("head_ref", "")))
         )
+        class_prs.setdefault(cls, []).append(str(key))
         if cls in queue_classes and not facts.get("draft", False):
             done = [
                 parse_time(d[2])
@@ -217,6 +231,9 @@ def read_watcher(
             ]
             if done:
                 ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
+                merge_state = str((value.get("review") or {}).get("merge_state") or "")
+                if merge_state in conflict_states:
+                    conflicted.add(str(key))
     cutoff = now - timedelta(minutes=merge_window_minutes)
     recent = recent_outside = 0
     for key, value in merges.items():
@@ -245,7 +262,9 @@ def read_watcher(
         paused_open=paused,
         class_counts=counts,
         class_tickets={k: tuple(dict.fromkeys(v)) for k, v in tickets.items()},
+        class_prs={k: tuple(dict.fromkeys(v)) for k, v in class_prs.items()},
         queue_ages=tuple(sorted(ages, key=lambda a: -a[1])),
+        queue_conflicted=frozenset(conflicted),
     )
 
 
@@ -424,7 +443,12 @@ def read_queue_age(
             name=key,
             ok=age <= limit,
             value=float(age),
-            note=f"green and waiting {age} min{'' if age <= limit else f', over the {limit:g} min limit'}",
+            note=(
+                f"checks green {age} min ago but the branch conflicts, so it cannot be armed"
+                if key in watcher.queue_conflicted
+                else f"green and waiting {age} min"
+            )
+            + ("" if age <= limit else f", over the {limit:g} min limit"),
         )
         for key, age in oldest
     ]
@@ -433,7 +457,11 @@ def read_queue_age(
         status="read",
         read_at=watcher.last_tick,
         summary=(
-            f"oldest in-scope green pull request waits {oldest[0][1]} min"
+            (
+                f"oldest in-scope green pull request has had conflicts for {oldest[0][1]} min"
+                if oldest[0][0] in watcher.queue_conflicted
+                else f"oldest in-scope green pull request waits {oldest[0][1]} min"
+            )
             if oldest
             else "no in-scope green pull request is waiting"
         ),

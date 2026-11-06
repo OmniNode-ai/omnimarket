@@ -46,13 +46,27 @@ def _ago(seconds: int | None) -> str:
 
 
 def live_lanes(
-    lanes: tuple[ModelFloorLane, ...], tickets: tuple[str, ...]
+    lanes: tuple[ModelFloorLane, ...],
+    owners: tuple[str, ...],
+    prs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    """The lanes that are on any of ``tickets`` and are not stalled."""
-    wanted = set(tickets)
+    """The lanes that are really on a cause and are not stalled.
+
+    A lane is on a cause when it works on one of the cause's pull requests, or its ticket is one the overlay or a lab
+    source declares as owning the cause. A ticket that merely appears among the places a problem was seen is not
+    ownership: many unrelated lanes share an umbrella ticket, so matching on it names lanes that are not on the cause.
+    """
+    wanted_owners = set(owners)
+    wanted_prs = set(prs)
     return tuple(
         sorted(
-            lane.lane for lane in lanes if lane.ticket in wanted and not lane.stalled
+            lane.lane
+            for lane in lanes
+            if not lane.stalled
+            and (
+                (lane.ticket and lane.ticket in wanted_owners)
+                or (lane.pr and lane.pr in wanted_prs)
+            )
         )
     )
 
@@ -74,12 +88,11 @@ def check_red_rule(
                     f"{cause.id} draws {cause.state} but its members say {expected}"
                 )
             continue
-        under_way = bool(live_lanes(lanes, cause.tickets))
+        on_it = live_lanes(lanes, cause.owners, cause.prs)
+        under_way = bool(on_it)
         if cause.state == "red" and under_way and not cause.needs_operator:
             with_work += 1
-            violations.append(
-                f"{cause.id} draws red while {', '.join(live_lanes(lanes, cause.tickets))} is on it"
-            )
+            violations.append(f"{cause.id} draws red while {', '.join(on_it)} is on it")
         if cause.state == "amber" and not under_way:
             violations.append(f"{cause.id} draws amber with no lane on it")
     rows: list[tuple[str, str | None, str]] = [
@@ -95,7 +108,7 @@ def check_red_rule(
             violations.append(f"{name} draws red with no cause behind it")
         elif owner.state != "red":
             violations.append(f"{name} draws red but its cause {owner.id} is amber")
-        elif live_lanes(lanes, owner.tickets) and not owner.needs_operator:
+        elif live_lanes(lanes, owner.owners, owner.prs) and not owner.needs_operator:
             with_work += 1
             violations.append(f"{name} draws red with work under way on {owner.id}")
     return ModelRedRule.model_validate(
@@ -247,6 +260,7 @@ class HandlerFloorSimple:
             state, age, max_age, why = self._reading(
                 r, n, definition.reading_max_age_s, lab
             )
+            state, why, lab_cause = self._with_lab_sources(r, n, lab, state, why)
             started = rc is not None and rc.started
             if state is None:
                 if started:
@@ -283,6 +297,7 @@ class HandlerFloorSimple:
                         "reading_state": state,
                         "reading_age_s": age,
                         "reading_max_age_s": max_age,
+                        "cause_id": lab_cause,
                         "golden_age_s": rc.golden_age_s if rc else None,
                         "error_age_s": rc.error_age_s if rc else None,
                         "freshness": rc.freshness if rc else "none",
@@ -319,6 +334,36 @@ class HandlerFloorSimple:
         if age > row.max_age_s:
             return "NOT WORKING", age, row.max_age_s, f"stale, read {_ago(age)}"
         return row.state, age, row.max_age_s, ""
+
+    @staticmethod
+    def _with_lab_sources(
+        r: ModelFloorSimpleInput,
+        piece: int,
+        lab: tuple[ModelLabSourceVerdict, ...],
+        state: str | None,
+        why: str,
+    ) -> tuple[str | None, str, str | None]:
+        """Fold in the lab sources the overlay says the piece also stands on.
+
+        A piece whose own reading covers only part of what its name says (the central test harness is the reading of the
+        piece that also holds the CI runners) cannot draw working while a source it stands on is down or unread. Returns
+        the state, the reason, and the cause of the first failing source.
+        """
+        wanted = r.overlay.rebuild.piece_lab_sources.get(piece, ())
+        failing = [v for v in lab if v.id in wanted and v.state != "WORKING"]
+        if not failing:
+            return state, why, None
+        unread = all(v.state == "UNKNOWN" for v in failing)
+        note = "; ".join(
+            f"{v.title} {'not read' if v.state == 'UNKNOWN' else 'not working'}"
+            for v in failing
+        )
+        merged = f"{why}; {note}" if why else note
+        if state is None or state == "WORKING":
+            state = "UNKNOWN" if unread else "NOT WORKING"
+        elif state == "UNKNOWN" and not unread:
+            state = "NOT WORKING"
+        return state, merged, f"lab:{failing[0].id}"
 
     @staticmethod
     def _join_row(
@@ -364,8 +409,12 @@ class HandlerFloorSimple:
             size: int,
             unit: str,
             tickets: tuple[str, ...],
+            *,
+            owners: tuple[str, ...] = (),
+            prs: tuple[str, ...] = (),
+            last_seen: datetime | None = None,
         ) -> None:
-            merged = tuple(dict.fromkeys((*tickets, *ov.owners.get(cid, ()))))
+            declared = tuple(dict.fromkeys((*owners, *ov.owners.get(cid, ()))))
             out.append(
                 ModelFloorCauseIn.model_validate(
                     {
@@ -374,8 +423,11 @@ class HandlerFloorSimple:
                         "detail": detail,
                         "size": size,
                         "size_unit": unit,
-                        "tickets": merged,
+                        "tickets": tuple(dict.fromkeys((*tickets, *declared))),
+                        "owners": declared,
+                        "prs": prs,
                         "needs_operator": cid in ov.needs_operator,
+                        "last_seen": last_seen,
                     }
                 )
             )
@@ -390,6 +442,7 @@ class HandlerFloorSimple:
                     count,
                     "pull requests",
                     r.pr_class_tickets.get(cls, ()),
+                    prs=r.pr_class_prs.get(cls, ()),
                 )
         for item in r.stoppages:
             if item.id in ov.ignore_stoppages:
@@ -397,10 +450,11 @@ class HandlerFloorSimple:
             add(
                 item.id,
                 item.title,
-                item.detail,
+                self._stoppage_detail(item, r),
                 item.size,
                 item.size_unit,
                 item.tickets,
+                last_seen=item.last_seen,
             )
         for name, ok in sorted(r.sources_read.items()):
             if not ok:
@@ -426,6 +480,7 @@ class HandlerFloorSimple:
                 max(failing, 1),
                 "lab readings",
                 v.tickets,
+                owners=v.tickets,
             )
         if r.receipts is not None and r.receipts.findings:
             add(
@@ -448,8 +503,10 @@ class HandlerFloorSimple:
             )
         lab_piece = r.overlay.rebuild.lab_state_piece
         for row in rows:
-            if row.status in ("not_working", "unknown") and not (
-                row.piece == lab_piece and lab_causes
+            if (
+                row.status in ("not_working", "unknown")
+                and not row.cause_id
+                and not (row.piece == lab_piece and lab_causes)
             ):
                 add(
                     f"piece:{row.piece}",
@@ -462,13 +519,49 @@ class HandlerFloorSimple:
         return out
 
     @staticmethod
+    def _stoppage_detail(item: ModelFloorCauseIn, r: ModelFloorSimpleInput) -> str:
+        """What a stoppage row says: how often, how long ago, whether it is still occurring, and which cost is real.
+
+        The count and last-seen time come from the friction rollup, which is built on a cadence of its own, so the row
+        names when it was built. A logged cost that the overlay marks as an estimate of idle capacity is not shown as
+        lane-minutes lost: nothing measured it.
+        """
+        ov = r.overlay.causes
+        parts = [item.detail]
+        if item.last_seen is not None:
+            age = max(int((r.now - item.last_seen).total_seconds()), 0)
+            seen = f"last seen {_ago(age)}"
+            if ov.still_occurring_within_s is not None:
+                seen += (
+                    ", still occurring"
+                    if age <= ov.still_occurring_within_s
+                    else ", not seen since"
+                )
+            parts.append(seen)
+        if item.id in ov.estimated_cost_stoppages:
+            parts.append("no measured cost (the logged figure is an estimate)")
+        elif item.reported_cost_minutes is not None:
+            parts.append(f"{item.reported_cost_minutes:g} lane-minutes logged")
+        text = ", ".join(parts) + "."
+        if r.friction_as_of is not None:
+            built = max(int((r.now - r.friction_as_of).total_seconds()), 0)
+            text += f" From the friction rollup built {_ago(built)}; later rows are not in it."
+        return text
+
+    @staticmethod
     def _causes(
         candidates: list[ModelFloorCauseIn], r: ModelFloorSimpleInput
     ) -> tuple[ModelFloorCause, ...]:
         causes: list[ModelFloorCause] = []
         for c in candidates:
-            lanes = live_lanes(r.lanes, c.tickets)
+            lanes = live_lanes(r.lanes, c.owners, c.prs)
             red = c.needs_operator or not lanes
+            age = (
+                max(int((r.now - c.last_seen).total_seconds()), 0)
+                if c.last_seen is not None
+                else None
+            )
+            within = r.overlay.causes.still_occurring_within_s
             causes.append(
                 ModelFloorCause.model_validate(
                     {
@@ -482,6 +575,15 @@ class HandlerFloorSimple:
                         "needs_operator": c.needs_operator,
                         "lanes": lanes,
                         "tickets": c.tickets,
+                        "owners": c.owners,
+                        "prs": c.prs,
+                        "last_seen": c.last_seen,
+                        "last_seen_age_s": age,
+                        "still_occurring": (
+                            age <= within
+                            if age is not None and within is not None
+                            else None
+                        ),
                     }
                 )
             )
@@ -496,7 +598,7 @@ class HandlerFloorSimple:
                 ModelFloorCause.model_validate(
                     {
                         "id": "lab:state",
-                        "title": f"{len(members)} of {len(r.lab.verdicts) if r.lab else len(members)} lab sources are not working",
+                        "title": HandlerFloorSimple._lab_title(members, r),
                         "detail": "; ".join(
                             m.title.removeprefix("Lab: ") for m in members[:4]
                         )
@@ -519,12 +621,26 @@ class HandlerFloorSimple:
         return tuple(sorted(causes, key=lambda c: (-c.size, c.id)))
 
     @staticmethod
+    def _lab_title(members: list[ModelFloorCause], r: ModelFloorSimpleInput) -> str:
+        """Count the lab sources that fail, naming the ones that are only unread: unread is not the same as not working."""
+        states = {v.id: v.state for v in r.lab.verdicts} if r.lab else {}
+        total = len(states) or len(members)
+        unread = sum(
+            1 for m in members if states.get(m.id.removeprefix("lab:")) == "UNKNOWN"
+        )
+        down = len(members) - unread
+        parts = [f"{down} not working"] if down else []
+        if unread:
+            parts.append(f"{unread} not read")
+        return f"{len(members)} of {total} lab sources fail: {', '.join(parts)}"
+
+    @staticmethod
     def _row_draw(
         row: ModelFloorPieceRow, by_id: dict[str, ModelFloorCause]
     ) -> ModelFloorPieceRow:
         if row.status in ("not_started", "working"):
             return row
-        cid = f"piece:{row.piece}"
+        cid = row.cause_id or f"piece:{row.piece}"
         if cid not in by_id:
             # The lab-state piece: its cause is its first failing lab source.
             cid = "lab:state" if "lab:state" in by_id else cid

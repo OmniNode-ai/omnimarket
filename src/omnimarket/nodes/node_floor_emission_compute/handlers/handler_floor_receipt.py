@@ -13,6 +13,10 @@ and a failure together, a second start, a start with no terminal past the chain 
 A join A to B is judged on the events of the two pieces under one correlation id. Golden: A succeeded, B started
 after that, B succeeded. Error: A failed and B holds a typed ``upstream_`` failure and never started. B starting
 after A failed is a named break, and so is A failing with B silent past the deadline.
+
+Two things are not judged. A join into a piece that does not exist yet (the input lists the pieces that do) cannot be
+broken: nothing downstream is there to answer. And a chain run as a drill is not evidence for a join: its fault is
+injected on purpose to give the piece its own error receipt, and no downstream piece is expected to react to it.
 """
 
 from __future__ import annotations
@@ -228,6 +232,9 @@ class HandlerFloorReceipt:
         error_at: datetime | None = None
         cids = {c for (c, p) in by_cid if p == jdef.from_piece}
         subject = f"{jdef.id} piece {jdef.from_piece} to {jdef.to_piece}"
+        judged = request.judged_to_pieces
+        if judged is not None and jdef.to_piece not in judged:
+            cids = set()
 
         def find(code: str, cid: str, detail: str) -> None:
             found.append(
@@ -243,6 +250,8 @@ class HandlerFloorReceipt:
 
         for cid in sorted(cids):
             a = by_cid[(cid, jdef.from_piece)]
+            if a.drill:
+                continue
             b = by_cid.get((cid, jdef.to_piece))
             a_wins = [e for e in a.events if e.phase == "success"]
             a_fails = [e for e in a.events if e.phase == "failure"]
