@@ -168,7 +168,7 @@ def test_relay_effect_close_ignores_a_non_string_withdrawal_citation(
     result = HandlerRemoteLaneResult().handle(
         ModelRemoteLaneResultRequest(
             engine_exit_code=0,
-            final_message=f"{line}\nDELEGATION delegated=1 codex=fixture",
+            final_message=f"report follows\n{line}\nDELEGATION delegated=1 codex=fixture",
         )
     )
     assert result.outcome == "withdrawn"
