@@ -262,9 +262,7 @@ def test_golden_the_card_is_the_one_the_details_page_draws() -> None:
 
 def test_failing_control_the_page_without_the_machines_tab_draws_no_card() -> None:
     """The same records through the page with the tab taken out draw nothing, so the assertions above can fail."""
-    broken = SIMPLE_SRC.replace(
-        "loadMachines(); setInterval(loadMachines", "setInterval(() => 0"
-    )
+    broken = SIMPLE_SRC.replace("load(); loadMachines();", "load();")
     assert broken != SIMPLE_SRC
     out = _run(_served(), src=broken, hash_="#machines")
     assert _labels(out["machines"]) == []
