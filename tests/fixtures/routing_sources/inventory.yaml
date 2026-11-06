@@ -194,6 +194,8 @@ not_routing_resolution_sites:
     reason: finds the overlay.yaml of a skill under the overlay roots so it can be validated against its schema and returned; it reads whatever overlay the caller names and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_reconcile_effect/handlers/retired_repositories.py:find_node_overlay('node_host_reconcile_effect')"
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
+    reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
