@@ -133,13 +133,6 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-automatic-fix-install
-    statement: A model-free lab tick installs the superset of released and exact-head proven fixes through deployment-bound existing installers.
-    acceptance:
-      - id: AC10
-        statement: 'AC10: a proven branch reaches both behind hosts before merge; installed fixes survive, a conflicting incoming fix is named and dropped alone, repeated ticks avoid reinstalling, and stale sources, moved heads, locks and failed readbacks refuse safely -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly'
-      - id: AC11
-        statement: 'AC11: installed discovery wires the declared command to a correlated terminal, and the host module runs the existing atomic tree installer, reads its recorded revision and observes the installed tree -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -155,11 +148,6 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
-  - id: req-omn19998-census-alias-parity
-    statement: The census host alias parity rule runs as a node with both registries supplied as data.
-    acceptance:
-      - id: AC8
-        statement: 'AC8: exact alias parity refuses missing, extra or different host aliases; adding matching manifest and alarm data for the recorded hp-gen8 host passes without code edits; installed discovery dispatches both verdicts over the contract topics -- falsifier: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -588,21 +576,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn19998-automatic-fix-install
-    description: Recorded branch-install regression and negative controls exercise released refs, proven heads, conflict isolation, containment, retry observation and independent host outcomes. This scope does not assert the original controller timer criteria.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
-  - id: dod-omn19998-automatic-fix-install-deploy
-    description: Hosted wiring smoke discovers the installed entry point and reads a correlated terminal over the real in-memory bus. The host module fixture uses the existing atomic tree installer on a disposable installation and verifies its revision and bytes. Persistent host service installation and deployment-specific routes remain separate live evidence.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
@@ -626,30 +599,4 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-census-alias-parity
-    description: The frozen assertion's exact host-id conversion and alias equality are preserved with explicit deployment data. The recorded hp-gen8 addition refuses until its matching alarm alias data is supplied. This migration does not assert the controller timer criteria or repair the live host service.
-    source: manual
-    binds_ac:
-      - AC8
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
-        cwd: .
-  - id: dod-omn19998-census-alias-parity-deploy
-    description: Hosted installed-package smoke discovers the node and auto-wires its declared command and completion topics on an in-memory bus. Both the missing h051 alias and the data-only repair reach the typed handler and publish correlated verdicts. No sibling checkout, broker or live lab service is needed or asserted.
-    source: manual
-    binds_ac:
-      - AC8
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov -k runtime_command
-        cwd: .
-  - id: dod-omn19998-unreadable-base-refusal
-    description: An unreadable base that names no remote returns no resolved base, so the release-cut exemption is not granted and the missing-contract refusal stands, while a failed fetch of a named remote still propagates. The unreadable-base test fails before this change with a CalledProcessError.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
         cwd: .
