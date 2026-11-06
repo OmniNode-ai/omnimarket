@@ -106,4 +106,4 @@ def test_the_old_import_is_named_by_the_scan() -> None:
     )
     result = _run_with_removed_path_blocked(old.splitlines()[0] + "\n")
     assert result.returncode != 0
-    assert "ImportError" in result.stderr
+    assert "ModuleNotFoundError" in result.stderr
