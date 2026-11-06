@@ -10,9 +10,13 @@ names, collects each candidate file and hands all of it to the pure handler.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.models.automation_liveness_overlay_check import (
     ModelAutomationLivenessOverlayCheckRequest,
@@ -114,7 +118,13 @@ class HandlerAutomationLivenessOverlayCheckRun:
     def collect_files(
         repository: str, root: Path
     ) -> tuple[ModelAutomationLivenessScannedFile, ...]:
-        """Every readable candidate file under ``root``, with paths relative to it."""
+        """Every readable candidate file under ``root``, with paths relative to it.
+
+        What the repository's own ignore rules exclude is not the repository's file: a host stages
+        copies of sibling repositories into an ignored directory, and a clean checkout, which is
+        what CI reads, never holds them.
+        """
+        ignored = HandlerAutomationLivenessOverlayCheckRun.git_ignored_paths(root)
         files: list[ModelAutomationLivenessScannedFile] = []
         for directory, subdirectories, names in os.walk(root):
             # A nested git repository or worktree is another repository's files, not this one's.
@@ -124,11 +134,16 @@ class HandlerAutomationLivenessOverlayCheckRun:
                 if d not in EXCLUDED_DIRECTORIES
                 and not d.startswith(".")
                 and not Path(directory, d, ".git").exists()
+                and f"{Path(directory, d).relative_to(root).as_posix()}/" not in ignored
             )
             for name in sorted(names):
                 path = Path(directory, name)
                 relative = path.relative_to(root).as_posix()
-                if not is_candidate_path(relative) or path.is_symlink():
+                if (
+                    relative in ignored
+                    or not is_candidate_path(relative)
+                    or path.is_symlink()
+                ):
                     continue
                 try:
                     if path.stat().st_size > _MAX_FILE_BYTES:
@@ -142,6 +157,42 @@ class HandlerAutomationLivenessOverlayCheckRun:
                     )
                 )
         return tuple(files)
+
+    @staticmethod
+    def git_ignored_paths(root: Path) -> frozenset[str]:
+        """What the git checkout at ``root`` ignores, as paths relative to it.
+
+        An ignored directory is listed once, with a trailing slash, and covers everything under
+        it. A tree that is not a git checkout, or one git cannot read, ignores nothing, so the
+        scan reads more and never less.
+        """
+        if not Path(root, ".git").exists():
+            return frozenset()
+        try:
+            listed = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "ls-files",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "--directory",
+                    "-z",
+                ],
+                capture_output=True,
+                check=True,
+                timeout=60,
+                env=scrub_git_location_env(os.environ),
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return frozenset()
+        return frozenset(
+            entry.decode("utf-8", "surrogateescape")
+            for entry in listed.split(b"\0")
+            if entry
+        )
 
     @staticmethod
     def _read_text(path: Path) -> str:

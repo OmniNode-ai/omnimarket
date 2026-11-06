@@ -57,6 +57,21 @@ class ModelSessionCompactSnapshot(BaseModel):
     activations: tuple[ModelPublishedActivation, ...] = ()
 
 
+class ModelInstallConfirmSkipped(BaseModel):
+    """The trigger found no ``ProtocolSessionCompactSource`` injected, so it read nothing.
+
+    Published on its own contract-declared topic, never on the completed topic the
+    receipts projection folds, so a deployment without a source records the skip
+    instead of dead-lettering the applied event (OMN-22478).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event_id: str = Field(min_length=1)
+    reason: Literal["source_unavailable"] = "source_unavailable"
+    dependency: Literal["ProtocolSessionCompactSource"] = "ProtocolSessionCompactSource"
+
+
 class ModelInstallConfirmTriggerResult(BaseModel):
     """Only ``request_ready`` carries a confirmation for the completed-event topic."""
 
@@ -70,6 +85,7 @@ class ModelInstallConfirmTriggerResult(BaseModel):
 
 __all__ = [
     "EnumInstallConfirmTriggerOutcome",
+    "ModelInstallConfirmSkipped",
     "ModelInstallConfirmTriggerResult",
     "ModelSessionCompactSnapshot",
     "ModelSessionContentAppliedEvent",
