@@ -48,3 +48,10 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23033 -- uv run --frozen pytest tests/nodes/node_repo_state_query_effect -q --no-cov'
     cwd: .
+- id: dod-omn23033-deploy-golden-chain
+  description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or GitHub read: runs the node''s golden chain through the in-process bus and requires the planted current mirror to answer from the mirror and the planted stale mirror to pull once.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_golden_chain_node_repo_state_query_effect.py -q --no-cov
+    cwd: .

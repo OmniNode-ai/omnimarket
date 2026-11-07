@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_repo_state_query_effect serve|query`` (OMN-23033)."""
 
-from omnimarket.nodes.node_repo_state_query_effect.handlers.handler_repo_state_query_serve import (
+from omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_repo_state_query_serve import (
     main,
 )
 

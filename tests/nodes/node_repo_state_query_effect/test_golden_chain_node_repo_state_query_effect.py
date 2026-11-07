@@ -28,7 +28,7 @@ from omnimarket.nodes.node_canonical_clone_refresh_effect import (
     ModelRepoMerged,
     publish_repo_merged,
 )
-from omnimarket.nodes.node_repo_state_query_effect.handlers.handler_repo_state_query_serve import (
+from omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_repo_state_query_serve import (
     RepoStateCaller,
     RepoStateHost,
     load_overlay,
