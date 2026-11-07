@@ -19,9 +19,11 @@ GRANT SELECT, INSERT, UPDATE
     ON omninode_internal.ledger_line_citation
     TO omninode_runtime;
 
-SELECT 1 / count(*) AS ledger_line_citation_insert_grant_assertion
-FROM information_schema.role_table_grants
-WHERE table_schema = 'omninode_internal'
-  AND table_name = 'ledger_line_citation'
-  AND grantee = 'omninode_runtime'
-  AND privilege_type = 'INSERT';
+-- Check effective privileges too: an inherited DELETE must not pass merely
+-- because this migration's direct GRANT omitted it.
+SELECT 1 / (
+    has_table_privilege('omninode_runtime', 'omninode_internal.ledger_line_citation', 'SELECT')
+    AND has_table_privilege('omninode_runtime', 'omninode_internal.ledger_line_citation', 'INSERT')
+    AND has_table_privilege('omninode_runtime', 'omninode_internal.ledger_line_citation', 'UPDATE')
+    AND NOT has_table_privilege('omninode_runtime', 'omninode_internal.ledger_line_citation', 'DELETE')
+)::int AS ledger_line_citation_write_grant_assertion;
