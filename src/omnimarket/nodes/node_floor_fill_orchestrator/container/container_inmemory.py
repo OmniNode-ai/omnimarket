@@ -49,7 +49,7 @@ def build_inmemory_handler(config: ModelFloorFillConfig) -> HandlerFloorFillComm
         pool=ScriptedPool(0),
         ledger=ScriptedLedger(),
         tickets=ScriptedTickets(),
-        starter=ScriptedStarter(),
+        runner=ScriptedStarter(),
         clock=ScriptedClock(datetime(1970, 1, 1, tzinfo=UTC)),
     )
     return HandlerFloorFillCommand(

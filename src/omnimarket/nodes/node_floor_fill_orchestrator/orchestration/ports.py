@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 """The seams the orchestrator takes in its constructor, and the typed results they return.
 
-Every seam is a narrow ``Protocol``. ``ProtocolWorkLedgerStore`` and ``ProtocolLaneHostPool`` live in
-omnibase_spi; the others are declared here until their omnibase_spi protocols merge (the fact source
-of this task, the process runner of T2 and the ticket store of T11): each is bound to its effect node
-by an adapter, and the golden tests run on the scripted ones in ``scripted_ports.py``.
+Every seam is a narrow ``Protocol``. The fact source (``ProtocolFactSource``) and the process runner
+(``ProtocolLaneProcessRunner``, one seam for the detached lane start and the bounded forward) are
+omnibase_spi protocols and are re-exported here. The others are still declared here (the state store, the
+pool, the ledger, the clock and the tickets seam, which carries T1's verdict models); each is bound to its
+effect node by an adapter, and the golden tests run on the scripted ones in ``scripted_ports.py``.
 
 A seam never raises for an expected outcome of the world: an unreadable source raises
 ``FloorFillUnreadableError`` with its cause, which the pass turns into ``UNKNOWN <source>-unread:<cause>``.
@@ -17,6 +18,12 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
+from omnibase_spi.contracts.services import (
+    ModelLaneProcessRunResult,
+    ModelLaneProcessStartResult,
+    ModelLaneStartSpec,
+)
+from omnibase_spi.protocols.lane import ProtocolFactSource, ProtocolLaneProcessRunner
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
@@ -25,6 +32,13 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
 )
 
 STATE_UNREACHABLE = "unreachable"
+
+# The start spec carries no key, ticket or attempt of its own: the pass adds them to the environment of the
+# detached start, so a runner (and the scripted one) can tell which key a start is for.
+ENV_KEY = "FLOOR_FILL_KEY"
+ENV_TICKET = "FLOOR_FILL_TICKET"
+ENV_ATTEMPT = "FLOOR_FILL_ATTEMPT"
+_MARKER_ENV = frozenset({ENV_KEY, ENV_TICKET, ENV_ATTEMPT})
 
 
 class FloorFillUnreadableError(Exception):
@@ -58,15 +72,6 @@ class ModelLaneStart(BaseModel):
     working_directory: str
 
 
-class ModelLaneStartOutcome(BaseModel):
-    """``started`` or ``failed(cause)``: the process effect's answer. A start is confirmed by the ledger, never by this."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    state: Literal["started", "failed"]
-    cause: str | None = None
-
-
 class ModelMintResult(BaseModel):
     """The ticket mint for one key: a usable ticket, a refusal the line prints, or no answer in time."""
 
@@ -77,15 +82,8 @@ class ModelMintResult(BaseModel):
     cause: str | None = None
 
 
-class ModelRunOutcome(BaseModel):
-    """A bounded foreground command: ``exited`` with a code and output, ``timed_out`` or ``failed``."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    state: Literal["exited", "timed_out", "failed"]
-    exit_code: int | None = None
-    stdout: str = ""
-    cause: str | None = None
+# The bounded foreground command and the detached start answer in omnibase_spi's own result models.
+ModelRunOutcome = ModelLaneProcessRunResult
 
 
 @runtime_checkable
@@ -100,23 +98,6 @@ class ProtocolFloorStateStore(Protocol):
         self, key: str, expected_version: int, new_version: int, payload: str
     ) -> bool:
         """Write ``payload`` as ``new_version`` iff the stored version is ``expected_version`` (0: no row)."""
-        ...
-
-
-@runtime_checkable
-class ProtocolFloorFactSource(Protocol):
-    """The facts a pass reads: the floor, the plan texts, the open-count brake and the stop signals."""
-
-    def read_floor(self, url: str) -> str: ...
-
-    def read_plan(self, plans_root: str, line_id: str) -> str: ...
-
-    def landing_only(self) -> bool:
-        """True while the open-count brake holds (the open count rose on two reads)."""
-        ...
-
-    def stop_refuses(self, task_class: str) -> str | None:
-        """The cause when a stop signal refuses the class, else None."""
         ...
 
 
@@ -162,40 +143,46 @@ class ProtocolFloorTickets(Protocol):
 
 
 @runtime_checkable
-class ProtocolFloorLaneStarter(Protocol):
-    """T2's ``start_detached`` behind one seam."""
-
-    def start(self, start: ModelLaneStart) -> ModelLaneStartOutcome: ...
-
-
-@runtime_checkable
-class ProtocolFloorCommandRunner(Protocol):
-    """T2's ``run_bounded``: run a command in the foreground under a deadline (the forward to the fill host)."""
-
-    def run_bounded(
-        self, argv: Sequence[str], timeout_seconds: float
-    ) -> ModelRunOutcome: ...
-
-
-@runtime_checkable
 class ProtocolFloorClock(Protocol):
     def now(self) -> datetime: ...
 
 
+def lane_start_from_spec(
+    spec: ModelLaneStartSpec,
+) -> ModelLaneStart | None:
+    """Read a start spec back into the key, ticket and attempt the pass put in its environment (None: not a floor start)."""
+    env = dict(spec.environment)
+    if not env.keys() >= _MARKER_ENV:
+        return None
+    return ModelLaneStart(
+        key=env[ENV_KEY],
+        lane=spec.lane,
+        ticket=env[ENV_TICKET],
+        attempt=int(env[ENV_ATTEMPT]),
+        argv=spec.argv,
+        environment=tuple(kv for kv in spec.environment if kv[0] not in _MARKER_ENV),
+        working_directory=spec.working_directory,
+    )
+
+
 __all__: list[str] = [
+    "ENV_ATTEMPT",
+    "ENV_KEY",
+    "ENV_TICKET",
     "STATE_UNREACHABLE",
     "FloorFillUnreadableError",
+    "ModelLaneProcessStartResult",
     "ModelLaneStart",
-    "ModelLaneStartOutcome",
+    "ModelLaneStartSpec",
     "ModelMintResult",
     "ModelRunOutcome",
     "ModelStateRead",
+    "ProtocolFactSource",
     "ProtocolFloorClock",
-    "ProtocolFloorCommandRunner",
-    "ProtocolFloorFactSource",
-    "ProtocolFloorLaneStarter",
     "ProtocolFloorLedger",
     "ProtocolFloorPool",
     "ProtocolFloorStateStore",
     "ProtocolFloorTickets",
+    "ProtocolLaneProcessRunner",
+    "lane_start_from_spec",
 ]

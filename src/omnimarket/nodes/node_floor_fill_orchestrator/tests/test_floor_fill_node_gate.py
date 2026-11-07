@@ -217,3 +217,46 @@ def test_one_writer_control_two_lanes_start_without_the_conditional_write() -> N
     assert (
         sum(len(s.starts) for s in starters) == 2
     )  # the reading the real test asserts is == 1
+
+
+# The injected protocols that still resolve outside omnibase_spi, by contract code name. Each stays
+# node-local for a stated reason; the test below fails if a protocol moves (or a new one appears)
+# without this table changing, and the strict xfail after it turns red the day the table is empty.
+NODE_LOCAL_SEAMS: dict[str, str] = {
+    "LED": "adapts ProtocolWorkLedgerStore (spi) with the CLAIM and liveness reading; a decision-shaped seam",
+    "HST": "adapts ProtocolLaneHostPool (spi) to a free-slot count; a decision-shaped seam",
+    "CLK": "a one-method clock; omnibase_spi ProtocolClock is the replacement once its shape is checked",
+    "STO": "the conditional state row; bound to the state_io table by the omnibase_infra migration follow-up",
+    "TKT": "carries T1's verdict models, which move to the floor-fill models package (OMN-22931); the spi store is ProtocolFloorTicketStore",
+}
+
+
+def _seam_modules() -> dict[str, tuple[str, str]]:
+    out: dict[str, tuple[str, str]] = {}
+    for dep in _contract()["protocol_dependencies"]:
+        module, _, name = dep["protocol"].partition(":")
+        _resolve(dep["protocol"])  # raises when it does not resolve
+        out[dep["name"]] = (module, name)
+    return out
+
+
+def test_seams_in_spi_lists_each_injected_protocol_and_what_is_still_node_local() -> (
+    None
+):
+    seams = _seam_modules()
+    outside = {
+        code
+        for code, (module, _) in seams.items()
+        if module.split(".")[0] != "omnibase_spi"
+    }
+    assert outside == set(NODE_LOCAL_SEAMS)
+    assert {"SRC", "PRC"} <= set(seams) - outside
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="G-NODE point 3: five seams are still node-local (NODE_LOCAL_SEAMS)",
+)
+def test_seams_in_spi_complete() -> None:
+    assert not NODE_LOCAL_SEAMS
+    assert all(m.split(".")[0] == "omnibase_spi" for m, _ in _seam_modules().values())

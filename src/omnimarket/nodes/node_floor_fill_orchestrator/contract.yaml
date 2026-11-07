@@ -62,14 +62,13 @@ state_io:
     module: "omnimarket.nodes.node_floor_fill_orchestrator.state_codec"
     name: "StateIoCodec"
 protocol_dependencies:
-  - {name: SRC, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorFactSource", bind_as: facts, required: true}
+  - {name: SRC, protocol: "omnibase_spi.protocols.lane:ProtocolFactSource", bind_as: facts, required: true}
   - {name: LED, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorLedger", bind_as: ledger, required: true}
   - {name: HST, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorPool", bind_as: pool, required: true}
   - {name: CLK, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorClock", bind_as: clock, required: true}
   - {name: STO, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorStateStore", bind_as: store, required: true}
   - {name: TKT, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorTickets", bind_as: tickets, required: true}
-  - {name: PRC, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorLaneStarter", bind_as: starter, required: true}
-  - {name: RUN, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorCommandRunner", bind_as: runner, required: true}
+  - {name: PRC, protocol: "omnibase_spi.protocols.lane:ProtocolLaneProcessRunner", bind_as: runner, required: true}
 dependencies:
   - name: omnimarket.nodes.node_floor_fill_candidates_compute
     dependency_type: internal

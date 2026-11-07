@@ -32,7 +32,8 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
     FloorFillOrchestrator,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
-    ProtocolFloorCommandRunner,
+    ModelLaneStartSpec,
+    ProtocolLaneProcessRunner,
 )
 
 ARGV_PLACEHOLDER = "{argv}"
@@ -60,7 +61,7 @@ class HandlerFloorFillCommand:
         *,
         config: ModelFloorFillConfig,
         orchestrator: FloorFillOrchestrator,
-        runner: ProtocolFloorCommandRunner,
+        runner: ProtocolLaneProcessRunner,
     ) -> None:
         self._config = config
         self._orchestrator = orchestrator
@@ -87,7 +88,11 @@ class HandlerFloorFillCommand:
     ) -> ModelFloorFillEntryResult:
         try:
             outcome = self._runner.run_bounded(
-                forward_argv(self._config.remote_argv, request),
+                ModelLaneStartSpec(
+                    argv=forward_argv(self._config.remote_argv, request),
+                    working_directory=self._config.process_working_directory,
+                    lane=self._config.scope,
+                ),
                 float(self._config.command_timeout_seconds),
             )
         except Exception:

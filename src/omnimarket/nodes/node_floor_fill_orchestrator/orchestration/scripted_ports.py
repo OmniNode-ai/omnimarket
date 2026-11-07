@@ -21,10 +21,12 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     FloorFillUnreadableError,
+    ModelLaneProcessStartResult,
     ModelLaneStart,
-    ModelLaneStartOutcome,
+    ModelLaneStartSpec,
     ModelMintResult,
     ModelRunOutcome,
+    lane_start_from_spec,
 )
 
 _ = ModelFloorFillCandidatesRequest  # the request type the fixture floors are valid for
@@ -206,7 +208,9 @@ class ScriptedTickets:
 
 
 class ScriptedStarter:
-    """The process effect: records each start, answers ``failed`` for the keys told to, and can run a hook."""
+    """The process effect for detached starts: records each start, answers ``failed`` for the keys told to, and can run a hook."""
+
+    synchronous_execution = True
 
     def __init__(
         self,
@@ -222,26 +226,41 @@ class ScriptedStarter:
         self.after_start = after_start
         self.starts: list[ModelLaneStart] = []
 
-    def start(self, start: ModelLaneStart) -> ModelLaneStartOutcome:
+    def start_detached(self, spec: ModelLaneStartSpec) -> ModelLaneProcessStartResult:
+        start = lane_start_from_spec(spec)
+        if start is None:
+            return ModelLaneProcessStartResult(
+                state="failed", cause="not-a-floor-start"
+            )
         self.starts.append(start)
         if self.fail_all or start.key in self.fail_keys:
-            return ModelLaneStartOutcome(state="failed", cause=self.cause)
+            return ModelLaneProcessStartResult(state="failed", cause=self.cause)
         if self.after_start is not None:
             self.after_start(start)
-        return ModelLaneStartOutcome(state="started")
+        return ModelLaneProcessStartResult(state="started", pid=len(self.starts))
+
+    def run_bounded(
+        self, spec: ModelLaneStartSpec, timeout_seconds: float
+    ) -> ModelRunOutcome:
+        return ModelRunOutcome(state="failed", cause="not-a-command-runner")
 
 
 class ScriptedCommandRunner:
-    """T2's ``run_bounded`` for the forward: records argv, answers from a script."""
+    """The process effect for the forward: records argv and timeout, answers from a script."""
+
+    synchronous_execution = True
 
     def __init__(self, outcome: ModelRunOutcome) -> None:
         self.outcome = outcome
         self.calls: list[tuple[tuple[str, ...], float]] = []
 
+    def start_detached(self, spec: ModelLaneStartSpec) -> ModelLaneProcessStartResult:
+        return ModelLaneProcessStartResult(state="failed", cause="not-a-starter")
+
     def run_bounded(
-        self, argv: Sequence[str], timeout_seconds: float
+        self, spec: ModelLaneStartSpec, timeout_seconds: float
     ) -> ModelRunOutcome:
-        self.calls.append((tuple(argv), timeout_seconds))
+        self.calls.append((tuple(spec.argv), timeout_seconds))
         return self.outcome
 
 
