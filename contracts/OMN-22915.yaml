@@ -10,15 +10,15 @@ requirements:
   statement: The reducer judge runs in shadow with a named difference, the guard replay lists changed verdicts, and the accepted-row topic holds rows forever and rebuilds the live table.
   acceptance:
   - id: AC1
-    statement: 'AC1: the reducer judge reads each appended row in shadow and writes its accept or refuse verdict beside the live judge''s, and a test with a row the live judge accepts and the shadow refuses names the difference -- falsifier: uv run pytest tests/unit/nodes/node_ledger_state_reducer/test_shadow_judge.py -q'
+    statement: 'AC1: the reducer judge reads each appended row in shadow and writes its accept or refuse verdict beside the live judge''s, and a test with a row the live judge accepts and the shadow refuses names the difference -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_shadow_judge.py -q'
   - id: AC2
-    statement: 'AC2: the guard replay re-judges a recorded week of rows and reports any row whose verdict changed -- falsifier: uv run pytest tests/unit/nodes/node_ledger_state_reducer/test_guard_replay.py -q'
+    statement: 'AC2: the guard replay re-judges a recorded week of rows and reports any row whose verdict changed -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py -q'
   - id: AC3
     statement: 'AC3: the accepted-row topic is declared with retention -1 in the broker declaration and a rebuild from it equals the live table row for row -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py -q'
 evidence_requirements:
 - kind: tests
   description: The shadow judge, guard replay and rebuild tests, each with its failing control, and the projection golden chain.
-  command: uv run --frozen pytest tests/unit/nodes/node_ledger_state_reducer tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py tests/unit/nodes/test_golden_chain_projection_work_ledger.py -q --no-cov
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py tests/unit/nodes/test_golden_chain_projection_work_ledger.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -31,7 +31,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_ledger_state_reducer/test_shadow_judge.py -q --no-cov
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_shadow_judge.py -q --no-cov
 - id: dod-omn22915-ac2
   description: The guard replay tests pass on the branch, including the altered-guard failing control.
   source: manual
@@ -39,7 +39,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_ledger_state_reducer/test_guard_replay.py -q --no-cov
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py -q --no-cov
 - id: dod-omn22915-ac3
   description: The rebuild tests pass on the branch, including the retention declaration and the withheld-row failing control.
   source: manual
@@ -54,4 +54,4 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22915 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ledger_state_reducer tests/unit/nodes/node_projection_work_ledger -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22915 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute tests/unit/nodes/node_projection_work_ledger -q --no-cov
