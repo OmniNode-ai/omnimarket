@@ -5,7 +5,10 @@
 # CLI-run effect, like node_local_secret_store_effect: no subscription and no
 # onex.nodes entry point, invoked as `python -m
 # omnimarket.nodes.node_claude_token_pool_effect` on the lab host whose pool it
-# is (the remote-lane runner at lane start, the operator adding a token).
+# is (the remote-lane runner at lane start, the operator adding a token). It also
+# owns its schedule (OMN-23000): the `tick` verb, run by the timer
+# `schedule install --host <name>` writes, rotates the host's login off a limited
+# or revoked token.
 # `experimental` is the drift gate's marker for an intentionally unregistered
 # node; the topic graph sees it as an externally triggered ingress root.
 name: claude_token_pool_effect
@@ -23,6 +26,11 @@ description: >
   when every token is limited. Every operation rewrites a status mirror holding
   labels and limit times only. No result, refusal or log line carries a value.
   mark_revoked skips a token whose OAuth login was revoked until it is re-added.
+  sync_marks makes the limit and revoked marks of the labels a source names equal
+  the source's, so a stale mark is cleared. The scheduled tick (OMN-23000) reads
+  the one source's marks (refusing an unreadable or stale source), draws a
+  different first token on every host, and swaps the host's login to a usable token
+  when the one in use is limited or revoked, appending one event per rotation.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 
@@ -33,6 +41,14 @@ handler:
 
 handler_routing:
   default_handler: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool:HandlerClaudeTokenPool
+  routing_strategy: operation_match
+  handlers:
+    - operation: tick
+      handler:
+        name: HandlerClaudeTokenRotation
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation
+      input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationRequest
+      output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationResult
 
 descriptor:
   node_archetype: effect
@@ -49,5 +65,22 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+# The node's own timer, installed by `schedule install --host <name>` as the scheduler the overlay
+# names for that host (a systemd user timer on a lab host, a launchd agent on the Mac), removed by
+# `schedule uninstall`. The interval is the overlay's; this block holds only how the unit is run.
+schedule:
+  unit_name: onex-claude-token-rotation
+  launchd_label: ai.omninode.claude-token-rotation
+  state_directory: .onex_state/claude-token-rotation
+  timeout_seconds: 120
+  boot_delay: 2min
+  randomized_delay: 30s
+  persistent: true
+
+overlay:
+  node: node_claude_token_pool_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
 metadata:
+  ticket: OMN-23000
   transport_type: kafka
