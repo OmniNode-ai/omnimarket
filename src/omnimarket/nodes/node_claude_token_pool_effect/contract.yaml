@@ -45,8 +45,8 @@ handler_routing:
   handlers:
     - operation: tick
       handler:
-        name: HandlerClaudeTokenRotation
-        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation
+        name: HandlerClaudeTokenRotationTick
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick
       input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationRequest
       output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationResult
 
