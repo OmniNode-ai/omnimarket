@@ -22,7 +22,10 @@ CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
     """Topics by role from the node's contract."""
-    return dict(contract_section(path, "topics"))
+    topics = contract_section(path, "topics")
+    if not isinstance(topics, dict):
+        raise ValueError(f"{path}: topics must be a mapping")
+    return {str(role): str(topic) for role, topic in topics.items()}
 
 
 class HandlerSeamRowAppend:
