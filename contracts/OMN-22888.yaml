@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-22888
+title: The fill's owned and lane-resend running counts equal the lanes that wrote in the last 120 minutes
+summary: 'A new node of the stopped-line fill plan (OMN-22847), node_floor_fill_owner_count_compute, counts the lanes that wrote a CLAIM or TERMINAL row inside a window the node overlay sets, and that one number is both the owned and the running count; the ledger is read through an injected reader and a read that returns nothing fails with a typed code instead of reading zero.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22888-owner-count-from-lane-writes
+  statement: The fill's owned and running counts are the number of lanes that wrote to the ledger in the overlay's window, not the number of CLAIM rows no TERMINAL closed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: on the ledger snapshot of 2026-11-07T10:36:35Z the running count equals a CLAIM and TERMINAL liveness count over 120 minutes -- falsifier: uv run pytest of a replay of that snapshot through the owner count node'
+evidence_requirements:
+- kind: tests
+  description: The tests of this ticket at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_owner_count_compute/tests -q -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22888-snapshot-replay
+  description: The replay test feeds the ledger snapshot as read at 2026-11-07T10:36:35Z (rows 08:00Z to 10:40Z, reduced to timestamp, kind and lane) through the node and compares running_count and the lane set with a count taken straight from the snapshot lines; it also shows the window is the overlay setting (30, 120 and 240 minutes give different counts). It fails at the merge base, where the node does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_owner_count_compute/tests/test_floor_fill_owner_count.py -q -o addopts='' -k snapshot_replay
+    cwd: .
+- id: dod-omn22888-chains
+  description: The golden chain test reads a start and a success through the floor's receipt fold; the error chain tests read a typed failure for each named injected break (ledger_unreadable, ledger_silent) and for an unparseable ledger, each with a control that reads golden without the break.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_owner_count_compute/tests/test_floor_fill_owner_count.py -q -o addopts='' -k 'golden or error'
+    cwd: .
