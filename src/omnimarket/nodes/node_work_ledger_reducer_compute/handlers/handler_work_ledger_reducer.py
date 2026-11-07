@@ -10,13 +10,13 @@ shadow judge is stateless here (the caller supplies the ledger text before the r
 from __future__ import annotations
 
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_guard_replay import (
-    HandlerWorkLedgerGuardReplay,
+    WorkLedgerGuardReplay,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_rebuild import (
-    HandlerWorkLedgerRebuild,
+    WorkLedgerRebuild,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
-    HandlerWorkLedgerShadowJudge,
+    WorkLedgerShadowJudge,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_reducer import (
     ModelWorkLedgerReducerRequest,
@@ -31,17 +31,17 @@ class HandlerWorkLedgerReducer:
         if request.operation == "shadow_judge" and request.shadow is not None:
             return ModelWorkLedgerReducerResult(
                 operation=request.operation,
-                shadow=HandlerWorkLedgerShadowJudge().handle(request.shadow),
+                shadow=WorkLedgerShadowJudge().handle(request.shadow),
             )
         if request.operation == "guard_replay" and request.replay is not None:
             return ModelWorkLedgerReducerResult(
                 operation=request.operation,
-                replay=HandlerWorkLedgerGuardReplay().handle(request.replay),
+                replay=WorkLedgerGuardReplay().handle(request.replay),
             )
         if request.operation == "rebuild" and request.rebuild is not None:
             return ModelWorkLedgerReducerResult(
                 operation=request.operation,
-                rebuild=HandlerWorkLedgerRebuild().handle(request.rebuild),
+                rebuild=WorkLedgerRebuild().handle(request.rebuild),
             )
         raise ValueError(
             f"operation {request.operation} has no request"

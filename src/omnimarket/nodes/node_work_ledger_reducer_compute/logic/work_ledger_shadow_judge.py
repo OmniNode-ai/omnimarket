@@ -26,7 +26,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_
 JudgeFn = Callable[[str, str, str], ModelJudgeVerdict]
 
 
-class HandlerWorkLedgerShadowJudge:
+class WorkLedgerShadowJudge:
     """Judges each row the live judge answered, and keeps the ledger text the next row is judged on."""
 
     def __init__(self, judge: JudgeFn = judge_row) -> None:

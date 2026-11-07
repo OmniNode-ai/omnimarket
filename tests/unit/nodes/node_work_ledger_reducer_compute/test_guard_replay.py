@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_guard_replay import (
-    HandlerWorkLedgerGuardReplay,
+    WorkLedgerGuardReplay,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
@@ -86,9 +86,9 @@ def _week() -> list[ModelRecordedRow]:
 
 
 def _replay(
-    entries: list[ModelRecordedRow], handler: HandlerWorkLedgerGuardReplay | None = None
+    entries: list[ModelRecordedRow], handler: WorkLedgerGuardReplay | None = None
 ) -> ModelGuardReplayResult:
-    return (handler or HandlerWorkLedgerGuardReplay()).handle(
+    return (handler or WorkLedgerGuardReplay()).handle(
         ModelGuardReplayRequest(ledger_name=LEDGER, entries=tuple(entries))
     )
 
@@ -149,7 +149,7 @@ def test_failing_control_an_altered_guard_makes_the_same_weeks_list_non_empty() 
 
     entries = _week()
     assert _replay(entries).differences == ()
-    broken = _replay(entries, HandlerWorkLedgerGuardReplay(judge=altered))
+    broken = _replay(entries, WorkLedgerGuardReplay(judge=altered))
     assert broken.equivalent is False
     assert len(broken.differences) == 7
     assert {d.replayed.rule for d in broken.differences} == {"OMN-0 altered guard"}
@@ -161,7 +161,7 @@ def test_one_changed_verdict_does_not_cascade_into_later_rows() -> None:
     entries = _week()
     broken = _replay(
         entries,
-        HandlerWorkLedgerGuardReplay(
+        WorkLedgerGuardReplay(
             judge=lambda r, e, n: (
                 ModelJudgeVerdict(verdict=EnumJudgeVerdict.REFUSE, rule="x", reason="x")
                 if r.startswith(_stamp(WEEK_START))

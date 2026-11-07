@@ -57,7 +57,7 @@ def _row_columns(row: ModelWorkLedgerRowRecord) -> dict[str, object]:
     }
 
 
-class HandlerWorkLedgerRebuild:
+class WorkLedgerRebuild:
     def handle(self, request: ModelRebuildRequest) -> ModelRebuildResult:
         rebuilt = self.rebuild(request.events)
         if request.live is None:

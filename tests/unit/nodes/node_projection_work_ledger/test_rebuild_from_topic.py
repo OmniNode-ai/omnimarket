@@ -26,7 +26,7 @@ from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     TOPIC_ACCEPTED_ROW,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_rebuild import (
-    HandlerWorkLedgerRebuild,
+    WorkLedgerRebuild,
     WorkLedgerRebuildError,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_rebuild import (
@@ -112,9 +112,7 @@ def _live_table(shuffle_seed: int = 7) -> ModelWorkLedgerTable:
 def _rebuild(
     events: tuple[ModelAcceptedRowEvent, ...], live: ModelWorkLedgerTable | None = None
 ) -> ModelRebuildResult:
-    return HandlerWorkLedgerRebuild().handle(
-        ModelRebuildRequest(events=events, live=live)
-    )
+    return WorkLedgerRebuild().handle(ModelRebuildRequest(events=events, live=live))
 
 
 # --- the broker declaration -------------------------------------------------------------------

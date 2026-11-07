@@ -16,7 +16,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge i
     judge_row,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
-    HandlerWorkLedgerShadowJudge,
+    WorkLedgerShadowJudge,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_judge import (
     EnumJudgeVerdict,
@@ -48,7 +48,7 @@ def _request(
 
 
 def test_golden_a_row_both_judges_accept_is_filed_agreeing() -> None:
-    record = HandlerWorkLedgerShadowJudge().handle(_request(STATUS, "", ACCEPT))
+    record = WorkLedgerShadowJudge().handle(_request(STATUS, "", ACCEPT))
     assert record.agrees is True
     assert record.difference is None
     assert record.live == ACCEPT
@@ -59,9 +59,7 @@ def test_a_row_both_judges_refuse_under_the_same_rule_is_filed_agreeing() -> Non
     existing = HOLD + "\n"
     live = judge_row(HOLD_REUSED_ID, existing, LEDGER)
     assert live.verdict is EnumJudgeVerdict.REFUSE
-    record = HandlerWorkLedgerShadowJudge().handle(
-        _request(HOLD_REUSED_ID, existing, live)
-    )
+    record = WorkLedgerShadowJudge().handle(_request(HOLD_REUSED_ID, existing, live))
     assert record.agrees is True
     assert record.shadow.rule == live.rule
 
@@ -69,7 +67,7 @@ def test_a_row_both_judges_refuse_under_the_same_rule_is_filed_agreeing() -> Non
 def test_error_a_row_the_live_judge_accepts_and_the_shadow_refuses_names_the_difference() -> (
     None
 ):
-    record = HandlerWorkLedgerShadowJudge().handle(
+    record = WorkLedgerShadowJudge().handle(
         _request(HOLD_REUSED_ID, HOLD + "\n", ACCEPT)
     )
     assert record.agrees is False
@@ -88,7 +86,7 @@ def test_a_row_the_live_judge_refuses_and_the_shadow_accepts_names_the_differenc
     refused = ModelJudgeVerdict(
         verdict=EnumJudgeVerdict.REFUSE, rule="OMN-19256 row grammar", reason="r"
     )
-    record = HandlerWorkLedgerShadowJudge().handle(_request(STATUS, "", refused))
+    record = WorkLedgerShadowJudge().handle(_request(STATUS, "", refused))
     assert record.agrees is False
     assert (
         record.difference == "shadow accepted; live refused under OMN-19256 row grammar"
@@ -99,7 +97,7 @@ def test_both_refusing_under_different_rules_is_a_difference() -> None:
     other = ModelJudgeVerdict(
         verdict=EnumJudgeVerdict.REFUSE, rule="OMN-1 other rule", reason="r"
     )
-    record = HandlerWorkLedgerShadowJudge().handle(
+    record = WorkLedgerShadowJudge().handle(
         _request(HOLD_REUSED_ID, HOLD + "\n", other)
     )
     assert record.agrees is False
@@ -112,20 +110,18 @@ def test_both_refusing_under_different_rules_is_a_difference() -> None:
 def test_failing_control_a_shadow_with_its_guards_removed_loses_the_difference() -> (
     None
 ):
-    broken = HandlerWorkLedgerShadowJudge(judge=_accept_everything)
+    broken = WorkLedgerShadowJudge(judge=_accept_everything)
     record = broken.handle(_request(HOLD_REUSED_ID, HOLD + "\n", ACCEPT))
     # The injected break: the same row the real shadow refuses is filed as agreeing.
     assert record.agrees is True
-    real = HandlerWorkLedgerShadowJudge().handle(
-        _request(HOLD_REUSED_ID, HOLD + "\n", ACCEPT)
-    )
+    real = WorkLedgerShadowJudge().handle(_request(HOLD_REUSED_ID, HOLD + "\n", ACCEPT))
     assert real.agrees is False
 
 
 def test_observe_judges_each_row_on_the_rows_the_live_judge_accepted_before_it() -> (
     None
 ):
-    shadow = HandlerWorkLedgerShadowJudge()
+    shadow = WorkLedgerShadowJudge()
     first = shadow.observe(row_ref="a", row=HOLD, ledger_name=LEDGER, live=ACCEPT)
     assert first.agrees is True
     second = shadow.observe(
@@ -138,7 +134,7 @@ def test_observe_judges_each_row_on_the_rows_the_live_judge_accepted_before_it()
 
 
 def test_a_row_the_live_judge_refused_does_not_join_the_shadow_text() -> None:
-    shadow = HandlerWorkLedgerShadowJudge()
+    shadow = WorkLedgerShadowJudge()
     refused = ModelJudgeVerdict(verdict=EnumJudgeVerdict.REFUSE, rule="x", reason="x")
     shadow.observe(row_ref="a", row=HOLD, ledger_name=LEDGER, live=refused)
     follow = shadow.observe(

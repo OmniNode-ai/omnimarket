@@ -26,7 +26,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_
 )
 
 
-class HandlerWorkLedgerGuardReplay:
+class WorkLedgerGuardReplay:
     def __init__(self, judge: JudgeFn = judge_row) -> None:
         self._judge = judge
 
