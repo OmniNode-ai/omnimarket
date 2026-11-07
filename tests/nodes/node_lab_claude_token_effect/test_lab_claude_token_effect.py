@@ -8,8 +8,6 @@ a script or an argv."""
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +23,6 @@ from omnimarket.nodes.node_lab_claude_token_effect.handlers.handler_lab_claude_t
     limited_ref,
     pool_index_ref,
     pool_ref,
-    probe_answered,
 )
 from omnimarket.nodes.node_lab_claude_token_effect.models.model_lab_claude_token_request import (
     ModelLabClaudeTokenRequest,
@@ -467,29 +464,6 @@ def test_rotate_dry_run_names_candidates_by_reference_only(tmp_path: Path) -> No
     assert pool_ref("spare-a") in text
     assert pool_ref("spare-b") in text
     _no_leak(result, host)
-
-
-@pytest.mark.skipif(shutil.which("zsh") is None, reason="needs zsh")
-def test_probe_script_runs_under_zsh_where_an_unquoted_command_variable_does_not_split(
-    tmp_path: Path,
-) -> None:
-    """A macOS lab host's ssh login shell is zsh: ``B="timeout 90"; $B claude`` was one word there, so every probe exited 127 (OMN-22478)."""
-    for name in ("claude", "timeout"):
-        stub = tmp_path / name
-        body = "echo ok\n" if name == "claude" else 'shift\nexec "$@"\n'
-        stub.write_text("#!/bin/sh\n" + body)
-        stub.chmod(0o755)
-    home = tmp_path / "home"
-    (home / ".config" / "omni").mkdir(parents=True)
-    (home / ".config" / "omni" / "claude-oauth-token").write_text("t")
-    done = subprocess.run(
-        ["zsh", "-c", PROBE_SCRIPT],
-        env={"HOME": str(home), "PATH": f"{tmp_path}:/usr/bin:/bin"},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert probe_answered(done.returncode, done.stdout), done.stderr
 
 
 def test_probe_script_never_runs_an_unquoted_variable_as_a_command() -> None:

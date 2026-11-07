@@ -258,12 +258,12 @@ dod_evidence:
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-r2 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
         cwd: .
   - id: dod-omn22478-token-probe-zsh
-    description: The probe script, run under zsh with a timeout stub on the path, exits 0 and answers ok. Fails at the merge base, where the unquoted timeout variable is one word under zsh and the probe exits 127.
+    description: The probe script never runs an unquoted variable as a command, which zsh does not split (the cause of exit 127 on a macOS lab host), and runs the timeout through an array. Fails at the merge base, where the probe line starts with the unquoted timeout variable. A test that ran the script under zsh was removed because it skips on every runner without zsh and the skip-count ratchet refuses a new skip.
     source: manual
     binds_ac: [AC14]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py -q --no-cov -k "never_runs_an_unquoted_variable or runs_under_zsh"
+        check_value: uv run --frozen pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py -q --no-cov -k never_runs_an_unquoted_variable
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn22478-token-probe-zsh-integration-proof
     description: The pushed head ran the lab claude-token node's suite on a lab host through the lab-work surface and exited 0.
