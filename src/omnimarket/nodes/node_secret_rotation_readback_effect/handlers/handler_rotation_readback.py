@@ -232,6 +232,7 @@ class HandlerRotationReadback:
             f"host={self._host}",
             f"piece={publish.piece}",
             f"tag={'drill' if command.drill else 'operational'}",
+            f"drill={'yes' if command.drill else 'no'}",
             f"rotation={_clean(command.rotation_id)}",
             f"approver={_clean(command.approver.strip())}",
             f"rotated={command.rotated_folder}:{command.rotated_key}",

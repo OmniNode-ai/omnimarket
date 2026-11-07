@@ -67,6 +67,7 @@ def test_rotation_drill_probes_every_consumer_and_writes_one_row_per_consumer() 
         assert f"approver={APPROVER}" in line
         assert "rotation=drill-rotation-1" in line
         assert "tag=drill" in line
+        assert "drill=yes" in line
 
 
 def test_every_consumer_of_a_longer_overlay_list_gets_its_own_row() -> None:
