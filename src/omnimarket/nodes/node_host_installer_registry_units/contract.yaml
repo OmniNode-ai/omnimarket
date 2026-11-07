@@ -7,7 +7,7 @@ lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Install a self-contained copied alarm payload, or render and install a launchd registry_module_tick unit that runs a node module of a project with
+  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
   `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
   unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
   which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
@@ -130,6 +130,38 @@ units:
     tick_no_sync: true
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_tick
+    entry_file: src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
+    state_directory: .onex_state/overlay-store-refresh
+  # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
+  # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
+  overlay-store-refresh-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-store-refresh
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 300
+      run_timeout_s: 240
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_tick
     entry_file: src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
