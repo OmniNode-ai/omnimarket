@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23004
+title: The temp retention node removes an old entry that holds a read-only directory, so the h051 retention timer stops failing every 5 minutes
+summary: 'The temp retention node (node_temp_retention_effect) ages out unheld entries under a host''s declared temp directories. On h051 the pass reported "<temp entry>: PermissionError" and exited 1 (journal of the 5 minute timer unit: 2026-11-07 00:40Z and the ticks from 12:42Z; the directory was gone by the 14:11Z tick), because the old entry held a directory with its write bit cleared, so rmtree could not unlink the files inside it. The pass now gives the running user''s own directories under that entry their owner bits and removes it. This pull request carries the node (never merged before) with that fix.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23004-readonly-dir
+  statement: An old unheld entry that holds a directory without write permission is removed by the retention pass without an error, so the pass exits 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an old unheld entry holding a read-only directory is removed and the pass reports no errors, and the same test fails with the recorded "<entry>: PermissionError" when the removal is the plain rmtree -- falsifier: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k read_only_directory_inside'
+  - id: AC2
+    statement: 'AC2: the node keeps every rule of the node as first built (held, recent, protected, other-user, socket-holding entries kept; windows by pressure; schedule rendered from the contract) -- falsifier: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly'
+evidence_requirements:
+- kind: tests
+  description: The retention tests, including the read-only directory control, the golden chain test and the schedule tests.
+  command: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23004-ac1
+  description: The read-only directory test passes on the branch and fails with the recorded PermissionError when the removal is the plain rmtree.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k read_only_directory_inside
+    cwd: .
+- id: dod-omn23004-ac2
+  description: The whole retention test directory passes on the branch.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
