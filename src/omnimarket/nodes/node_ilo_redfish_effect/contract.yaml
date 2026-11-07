@@ -57,6 +57,20 @@ config:
     type: str
     default: "/shared/env"
     description: "Folder of the lab secret store that holds the iLO account keys the setup verb creates."
+  # Where the lab secret store is and who may read it. The project and the environment are declared
+  # here, not taken from the shell: an operator shell can carry another project's identifier.
+  secret_project_id:
+    type: str
+    default: "872e00f4-1279-49a4-8e16-a2bd961f4996"
+    description: "Project of the lab secret store that holds the iLO keys (onex-platform)."
+  secret_environment:
+    type: str
+    default: "dev"
+    description: "Environment of the lab secret store the setup verb reads and writes."
+  identity_env_file:
+    type: str
+    default: "~/.omnibase/.env"
+    description: "The operator env file that holds the machine identity (INFISICAL_ADDR, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET). It wins over the shell, which can be older than the file."
 
 metadata:
   transport_type: in_process

@@ -55,7 +55,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_adapters import (
     InfisicalSetupSecrets,
     fetch_certificate_der,
-    load_secret_folder,
+    load_store_target,
     prompt_address,
     prompt_admin_password,
 )
@@ -197,7 +197,7 @@ def _setup(args: argparse.Namespace) -> int:
             f"set {OVERLAY_ROOTS_ENV} or pass --overlay-root to say where the overlay is created",
         )
     try:
-        store = InfisicalSetupSecrets(load_secret_folder())
+        store = InfisicalSetupSecrets(load_store_target())
     except SetupStoreError as exc:
         return _fail("secret_store_unavailable", str(exc))
     handler = HandlerIloSetup(

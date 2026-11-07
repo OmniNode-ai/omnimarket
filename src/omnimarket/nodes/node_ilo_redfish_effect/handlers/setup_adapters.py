@@ -16,7 +16,8 @@ import ssl
 import sys
 from collections.abc import Callable, Coroutine
 from getpass import getpass
-from typing import Any, TypeVar
+from pathlib import Path
+from typing import Any, NamedTuple, TypeVar
 from uuid import UUID
 
 import yaml
@@ -35,24 +36,70 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
     http_exchange,
 )
 
-# The variable names the lane resolver reads for the same machine identity (names only).
+# The machine identity the lane resolver reads (names only). The project and the environment are
+# declared by the node contract, not read from the shell.
 IDENTITY_VARS = (
     "INFISICAL_ADDR",
     "INFISICAL_CLIENT_ID",
     "INFISICAL_CLIENT_SECRET",
-    "INFISICAL_PROJECT_ID",
-    "INFISICAL_ENVIRONMENT_SLUG",
 )
 _T = TypeVar("_T")
 
 
-def load_secret_folder() -> str:
-    """The store folder the node contract declares (``config.secret_folder.default``)."""
-    raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    folder = raw["config"]["secret_folder"]["default"]
-    if not isinstance(folder, str) or not folder.startswith("/"):
+class SetupStoreTarget(NamedTuple):
+    """The contract-declared place of the iLO keys in the lab secret store."""
+
+    folder: str
+    project_id: str
+    environment: str
+    identity_env_file: str
+
+
+def load_store_target() -> SetupStoreTarget:
+    """The store target the node contract declares (``config.secret_*`` and ``identity_env_file``)."""
+    config = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))["config"]
+    values = {
+        name: config[name]["default"]
+        for name in (
+            "secret_folder",
+            "secret_project_id",
+            "secret_environment",
+            "identity_env_file",
+        )
+    }
+    if not all(isinstance(v, str) and v for v in values.values()):
+        raise ValueError("the secret store config of the node contract is incomplete")
+    if not values["secret_folder"].startswith("/"):
         raise ValueError("secret_folder must be an absolute folder")
-    return folder
+    return SetupStoreTarget(
+        folder=values["secret_folder"],
+        project_id=values["secret_project_id"],
+        environment=values["secret_environment"],
+        identity_env_file=values["identity_env_file"],
+    )
+
+
+def read_identity(env_file: str, ambient: dict[str, str]) -> dict[str, str]:
+    """The identity variables: the operator env file wins, the shell fills what the file lacks.
+
+    Only the names in ``IDENTITY_VARS`` are taken from the file, which also holds unrelated settings.
+    """
+    found: dict[str, str] = {n: ambient[n] for n in IDENTITY_VARS if n in ambient}
+    path = Path(env_file).expanduser()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return found
+    for line in lines:
+        name, sep, raw = line.removeprefix("export ").partition("=")
+        name = name.strip()
+        if sep and name in IDENTITY_VARS:
+            value = raw.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if value:
+                found[name] = value
+    return found
 
 
 def fetch_certificate_der(address: str, port: int) -> bytes:
@@ -64,22 +111,26 @@ def fetch_certificate_der(address: str, port: int) -> bytes:
 class InfisicalSetupSecrets:
     """The iLO folder of the lab secret store: key names, a read, and a create-only put."""
 
-    def __init__(self, folder: str, environ: dict[str, str] | None = None) -> None:
-        env = dict(os.environ) if environ is None else environ
+    def __init__(
+        self, target: SetupStoreTarget, environ: dict[str, str] | None = None
+    ) -> None:
+        env = read_identity(
+            target.identity_env_file, dict(os.environ) if environ is None else environ
+        )
         missing = sorted(n for n in IDENTITY_VARS if not env.get(n, "").strip())
         if missing:
             raise SetupStoreError(
                 f"the lab secret store identity is not configured; missing {missing}"
             )
         try:
-            project = UUID(env["INFISICAL_PROJECT_ID"].strip())
+            project = UUID(target.project_id)
         except ValueError:
-            raise SetupStoreError("INFISICAL_PROJECT_ID is not a UUID") from None
-        self._folder = "/" + folder.strip("/")
+            raise SetupStoreError("the declared secret project is not a UUID") from None
+        self._folder = "/" + target.folder.strip("/")
         self._store = HandlerInfisicalHttp(
             address=env["INFISICAL_ADDR"].strip(),
             project_id=str(project),
-            environment=env["INFISICAL_ENVIRONMENT_SLUG"].strip(),
+            environment=target.environment,
             client_id=SecretStr(env["INFISICAL_CLIENT_ID"].strip()),
             client_secret=SecretStr(env["INFISICAL_CLIENT_SECRET"].strip()),
             exchange=http_exchange,
