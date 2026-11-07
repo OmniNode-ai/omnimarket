@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -130,7 +130,7 @@ class TimedSsh(LocalSsh):
 
 
 def _handle(
-    tmp_path: Path, runner: LocalSsh, clock: object | None = None
+    tmp_path: Path, runner: LocalSsh, clock: Callable[[], float] | None = None
 ) -> tuple[object, Path]:
     home = _home(tmp_path)
     state = tmp_path / "state"
@@ -141,7 +141,7 @@ def _handle(
     handler = (
         HandlerFactoryFloorPublish(runner)
         if clock is None
-        else HandlerFactoryFloorPublish(runner, clock=clock)  # type: ignore[arg-type]
+        else HandlerFactoryFloorPublish(runner, clock=clock)
     )
     return handler.handle(
         request, environ=PLUGIN
