@@ -89,6 +89,14 @@ def test_no_floor_fill_node_takes_a_shared_model_from_a_sibling_node() -> None:
     assert offenders == [], "\n".join(offenders)
 
 
+def test_the_cross_node_allowlist_names_no_floor_fill_node() -> None:
+    allowlist = (
+        Path(__file__).resolve().parent / "test_no_cross_node_reach_in.py"
+    ).read_text(encoding="utf-8")
+    assert "node_floor_fill" not in allowlist
+    assert "models.floor_fill" not in allowlist
+
+
 def test_control_a_model_imported_through_a_sibling_handlers_package_is_found() -> None:
     source = (
         "from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (\n"

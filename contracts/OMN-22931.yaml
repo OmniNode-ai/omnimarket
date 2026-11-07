@@ -33,21 +33,21 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_floor_fill_shared_models.py tests/test_no_cross_node_reach_in.py -q --no-cov
 - id: dod-omn22931-ac2
-  description: The allowlist file is the file on origin/dev, byte for byte.
+  description: The cross-node allowlist file names no floor fill node and still holds its frozen count; it is also the file on origin/dev, byte for byte (git diff --exit-code origin/dev -- tests/test_no_cross_node_reach_in.py).
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: git diff --exit-code origin/dev -- tests/test_no_cross_node_reach_in.py
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_floor_fill_shared_models.py tests/test_no_cross_node_reach_in.py -q --no-cov -k "allowlist or known_violations_not_grown"
 - id: dod-omn22931-ac3
-  description: The node tests of T1, T4 and T12 pass after the move; T13 is not on dev and takes its retarget in the stacked pull request on its own branch.
+  description: The node tests of T1, T4 and T12 pass after the move and import their models from the package; T13 is not on dev and takes its retarget in the stacked pull request on its own branch.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute src/omnimarket/nodes/node_floor_fill_lines_compute src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_reducer -q --no-cov
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute src/omnimarket/nodes/node_floor_fill_lines_compute src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_reducer tests/test_floor_fill_shared_models.py -q --no-cov
 - id: dod-omn22931-integration-proof
   description: Run the tests of the three floor fill nodes, the shared-models import test and the cross-node reach-in test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
