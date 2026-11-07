@@ -20,7 +20,9 @@ from omnimarket.nodes.node_work_ledger_copy_effect.container.container_work_ledg
 )
 from omnimarket.nodes.node_work_ledger_copy_effect.models import (
     EnumDrillOutcome,
+    ModelDrillResult,
     ModelSnapshotOverlay,
+    ModelSnapshotResult,
 )
 from tests.unit.nodes.node_work_ledger_copy_effect.support_snapshot import (
     RecordingRunner,
@@ -60,7 +62,9 @@ def _runner(*, nc_exit: int = 1) -> RecordingRunner:
     )
 
 
-def _job_and_drill(tmp_path: Path, runner: RecordingRunner):  # type: ignore[no-untyped-def]
+def _job_and_drill(
+    tmp_path: Path, runner: RecordingRunner
+) -> tuple[ModelSnapshotOverlay, ModelSnapshotResult, ModelDrillResult]:
     overlay = _overlay(tmp_path)
     made = create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
         snapshot_request()
