@@ -23,7 +23,7 @@ class ProtocolRunnerGroupSource(Protocol):
     def read(self) -> ModelRunnerGroupSnapshot: ...
 
 
-class InMemoryRunnerGroupSource:
+class InMemoryGroupSnapshotSource:
     def __init__(self, snapshot: ModelRunnerGroupSnapshot) -> None:
         self._snapshot = snapshot
 
@@ -41,7 +41,7 @@ def parse_runner_group_snapshot(text: str, source: str) -> ModelRunnerGroupSnaps
         ) from exc
 
 
-class TextRunnerGroupSource:
+class TextGroupSnapshotSource:
     """The real backend's seam: an effect reads the collector's saved file and hands its text here."""
 
     def __init__(self, text: str, source: str) -> None:

@@ -66,8 +66,8 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_
     ModelRunnerGroupSnapshot,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.protocols.runner_groups import (
-    InMemoryRunnerGroupSource,
-    TextRunnerGroupSource,
+    InMemoryGroupSnapshotSource,
+    TextGroupSnapshotSource,
 )
 
 pytestmark = pytest.mark.unit
@@ -484,7 +484,7 @@ HOSTED_OPEN = {
 
 
 def test_runner_group_golden_no_public_repository_reaches_a_lab_runner() -> None:
-    source = InMemoryRunnerGroupSource(_snapshot(LAB_CLOSED, HOSTED_OPEN))
+    source = InMemoryGroupSnapshotSource(_snapshot(LAB_CLOSED, HOSTED_OPEN))
     assert public_repos_reaching_lab(source.read()) == ()
 
 
@@ -493,7 +493,7 @@ def test_runner_group_error_a_lab_group_open_to_public_repositories_names_them()
 ):
     open_lab = {**LAB_CLOSED, "allows_public_repositories": True, "visibility": "all"}
     breaches = public_repos_reaching_lab(
-        InMemoryRunnerGroupSource(_snapshot(open_lab, HOSTED_OPEN)).read()
+        InMemoryGroupSnapshotSource(_snapshot(open_lab, HOSTED_OPEN)).read()
     )
     assert {(b.group, b.repository) for b in breaches} == {
         ("lab-pool", "acme/site"),
@@ -529,7 +529,7 @@ def test_runner_group_golden_the_text_source_reads_the_saved_snapshot(
 ) -> None:
     path = tmp_path / "runner_groups.json"
     path.write_text(json.dumps(_snapshot(LAB_CLOSED).model_dump(mode="json")))
-    source = TextRunnerGroupSource(path.read_text(), path.name)
+    source = TextGroupSnapshotSource(path.read_text(), path.name)
     assert public_repos_reaching_lab(source.read()) == ()
 
 
@@ -538,7 +538,7 @@ def test_runner_group_error_an_unreadable_snapshot_is_refused_never_read_as_clea
     text: str,
 ) -> None:
     with pytest.raises(ValueError, match=r"runner group snapshot saved\.json"):
-        TextRunnerGroupSource(text, "saved.json").read()
+        TextGroupSnapshotSource(text, "saved.json").read()
 
 
 def test_runner_group_control_break_a_read_that_ignores_the_public_flag_reads_clean(
