@@ -168,3 +168,10 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_client_call_claim.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^class InMemoryClientCallClaimStore:$' | grep -qx 1
+  - id: "dod-omn21098-integration-proof"
+    description: "Run this pull request's own claim store check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21098 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -q --no-cov'
