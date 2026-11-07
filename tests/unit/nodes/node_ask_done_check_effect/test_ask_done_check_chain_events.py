@@ -17,6 +17,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_ask_state import (
     EnumAskState,
     ModelAskPrompt,
@@ -250,5 +251,5 @@ def test_an_overlay_that_names_a_file_read_route_is_refused(tmp_path: Path) -> N
     body["read"] = {"route": "file", "path_env": "ONEX_LEDGER_PATH"}
     refused = tmp_path / "overlay.yaml"
     refused.write_text(yaml.safe_dump(body), encoding="utf-8")
-    with pytest.raises(ValidationError):
+    with pytest.raises(NodeOverlayError, match=r"fields \['read\."):
         load_overlay({"ONEX_ASK_DONE_CHECK_OVERLAY": str(refused)})
