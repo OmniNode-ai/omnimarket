@@ -8,9 +8,9 @@ the host itself: fetch the exact pushed sha into a bare repository under
 its output written to ``<work_root>/logs/<work_unit_id>.log``, and remove the
 worktree. The log stays, so the receipt's ``log_path`` can be read afterwards.
 
-A private repository is fetched through ``gh auth git-credential``; a host with
-no ``gh`` login can fetch public repositories only, which is why a caller
-placing a private-repository unit asks for the ``gh`` tool.
+A private repository is fetched through the host's configured git credential
+helper (OMN-22478): the node-issued git token route, or the stored ``gh`` login on
+a host not yet switched. A host with neither fetches public repositories only.
 """
 
 from __future__ import annotations
@@ -145,10 +145,6 @@ class LocalShellLabWorkExecutor:
             )
             if has.returncode != 0:
                 fetched = self._git(
-                    "-c",
-                    "credential.helper=",
-                    "-c",
-                    "credential.helper=!gh auth git-credential",
                     "-C",
                     str(bare),
                     "fetch",
