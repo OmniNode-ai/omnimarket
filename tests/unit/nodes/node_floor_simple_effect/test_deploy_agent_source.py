@@ -9,6 +9,7 @@ floor drew no row for it: its deploy lag row read WORKING at 773 minutes against
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -276,3 +277,49 @@ def test_a_record_written_before_the_change_with_superseded_jobs_is_read_without
     read = read_deploy_agent(path, OVERLAY, NOW)
     assert read.subjects[0].ok
     assert read.subjects[0].value == 0.0
+
+
+def test_a_legacy_record_full_of_superseded_jobs_does_not_lose_a_failure_to_the_bound(
+    tmp_path: Path,
+) -> None:
+    """A record written before the change: one failure, then four superseded jobs, history bound 5.
+
+    The next failure used to push the first one out of the bound while the superseded entries
+    stayed, so two failures with no success between them read as one and the row stayed ok.
+    """
+    path = tmp_path / "deploy-agent.json"
+    legacy = [
+        {
+            "correlation_id": "bad-0",
+            "status": "failed",
+            "completed_at": "2026-11-06T10:00:00Z",
+            "reason": ESTIMATOR,
+        }
+    ] + [
+        {
+            "correlation_id": f"sup-{n}",
+            "status": "superseded",
+            "completed_at": f"2026-11-06T10:0{n + 1}:00Z",
+            "reason": "",
+        }
+        for n in range(4)
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "observed_at": "2026-11-06T10:09:00Z",
+                "agent_readable": True,
+                "error": "",
+                "state": "idle",
+                "jobs": legacy,
+            }
+        ),
+        encoding="utf-8",
+    )
+    agent = _Agent()
+    agent.finished("bad-1", "failed", NOW - timedelta(minutes=2), ESTIMATOR)
+    _cycle(path, agent, NOW - timedelta(minutes=1))
+
+    read = read_deploy_agent(path, OVERLAY, NOW)
+    assert read.subjects[0].value == 2.0
+    assert not read.subjects[0].ok

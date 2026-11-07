@@ -85,7 +85,12 @@ def record_deploy_agent(
     """Read the agent once and fold what it says into the record at ``path``. Never raises for an unreadable agent."""
     try:
         previous = json.loads(path.read_text(encoding="utf-8"))
-        jobs: list[dict[str, Any]] = list(previous.get("jobs", []))
+        # Entries the agent ended superseded are not results (OMN-22737). A record
+        # written before that change may hold them; they leave here, before the
+        # history bound is applied, so they cannot push a real result out of it.
+        jobs: list[dict[str, Any]] = [
+            j for j in previous.get("jobs", []) if j.get("status") != SUPERSEDED
+        ]
     except (OSError, ValueError, AttributeError):
         jobs = []
     base = overlay.deploy_agent_url.rstrip("/")
