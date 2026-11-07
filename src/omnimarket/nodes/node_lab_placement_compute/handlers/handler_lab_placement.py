@@ -165,6 +165,7 @@ class HandlerLabPlacement:
                 eligible=False,
                 reason=reason,
                 min_free_gb=own_bar,
+                max_cpu_c=row.max_cpu_c,
                 speed=speed,
             )
 
@@ -196,6 +197,7 @@ class HandlerLabPlacement:
             eligible=True,
             reason="eligible",
             min_free_gb=own_bar,
+            max_cpu_c=row.max_cpu_c,
             speed=speed,
         )
 
