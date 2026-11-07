@@ -12,6 +12,9 @@ from collections.abc import Callable, Mapping
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
+from .handlers.adapter_onex_store_credential_resolver import (
+    OnexStoreCredentialResolver,
+)
 from .handlers.handler_read_only_command_gate import HandlerReadOnlyCommandGate
 from .handlers.handler_read_only_principal_key_install import (
     HandlerReadOnlyPrincipalKeyInstall,
@@ -91,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
         return run_gate()
     try:
         if args.command == "probe":
-            result = HandlerReadOnlyPrincipalProbe().handle(
+            result = HandlerReadOnlyPrincipalProbe(
+                credential_resolver=OnexStoreCredentialResolver()
+            ).handle(
                 ModelProbeRequest(channels=tuple(EnumChannel(c) for c in args.channel))
             )
             for line in result.lines():

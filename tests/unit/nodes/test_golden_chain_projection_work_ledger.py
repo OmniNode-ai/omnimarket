@@ -30,10 +30,14 @@ _CONTRACT = (
 )
 
 
-def test_the_projection_publishes_only_its_applied_event() -> None:
+def test_the_projection_publishes_its_applied_event_and_the_accepted_row_topic() -> (
+    None
+):
     contract = yaml.safe_load(_CONTRACT.read_text())
+    # OMN-22915: the accepted-row topic (L12) is the one other topic the node publishes.
     assert contract["event_bus"]["publish_topics"] == [
-        "onex.evt.omnimarket.projection-work-ledger-applied.v1"
+        "onex.evt.omnimarket.projection-work-ledger-applied.v1",
+        "onex.evt.omnimarket.work-ledger-row-accepted.v1",
     ]
     assert (
         contract["terminal_event"]
