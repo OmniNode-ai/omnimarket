@@ -124,7 +124,7 @@ _TEMPLATE_FIELDS = re.compile(r"\{(HOST|ROLE|FIELD)\}")
 # to add a host's names to the lane's resolver config: a new host's keys already match this pattern. The
 # lane declaration carries the same text; the test beside the setup verb pins that the key template yields
 # names this pattern covers.
-ILO_ACCOUNT_REF_PATTERN = r"^ILO_[A-Z0-9]+_(READ|WRITE)_(USERNAME|PASSWORD)$"
+ILO_ACCOUNT_REF_PATTERN = r"^ILO_[A-Z0-9_]+_(READ|WRITE)_(USERNAME|PASSWORD)$"
 
 
 def credential_key(template: str, *, host: str, role: str, field: str) -> str:
