@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_host_table_copies_drift_compute/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default, and an
+# overlay that cannot be found refuses the run.
+#
+#   copies          every declared copy of the host table: a name and a file path. A path may start with
+#                   $NAME or ${NAME}; the variable must be set, or the copy reads as unreadable.
+#   table           the key holding the list of hosts in a copy and the key naming each host
+#   absent_token    what a copy that lacks a field or a host row shows in its place
+#   host_row_field  the field name a host missing from some copies is reported under
+#   ledger_append   the command in command_env appends rows; host_env holds the host name
+#   publish         the rows' lane and actor, how long a row stays fresh, how many differences a row names,
+#                   and how many characters of a value a row shows
+#   injected_fault  the fault injected on purpose that must turn the reading NOT WORKING
+copies:
+- name: copy-a
+  path: $EXAMPLE_COPY_A
+- name: copy-b
+  path: $EXAMPLE_COPY_B
+table:
+  hosts_key: hosts
+  name_key: name
+absent_token: "<absent>"
+host_row_field: "<host-row>"
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: host-table-copies-drift
+  actor: node:node_host_table_copies_drift_compute
+  publish_max_age_seconds: 129600
+  max_named: 12
+  value_chars: 24
+injected_fault: A cap changed in one copy of the host table

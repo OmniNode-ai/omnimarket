@@ -1,0 +1,48 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22809
+title: "A node reads every declared copy of the lab host table and names each differing field per host with its value in each copy"
+summary: >-
+  node_host_table_copies_drift_compute reads the copies of the lab host table its overlay declares (the packaged table, the
+  config overlay of the internal repository and the overlay home's copy), takes the copy paths from that overlay with no
+  default (a missing overlay is refused), reports each differing field per host with its value in each copy, and appends one
+  reading row the floor can show.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22809-copies-drift
+    statement: The copies of the lab host table are compared field by field per host, the paths come from the node's overlay, and the result is a reading row.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: three copies differing in one field of one host name the host, the field and each value, and identical copies report none -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov'
+      - id: AC2
+        statement: 'AC2: the copy paths come from the overlay and a missing overlay is refused -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov -k overlay'
+      - id: AC3
+        statement: 'AC3: a run on h053 over the three real copies reports the measured differences, and a planted cap change in a scratch copy is named -- falsifier: the READING and DIFF lines of the node run on h053, recorded in the pull request Lab line'
+evidence_requirements:
+  - kind: tests
+    description: The node's focused tests, golden and error chain event tests, and the named breaks.
+    command: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22809-drift-tests
+    description: The node tests pass with the change; each named break turns its assertion red.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+        cwd: .
+  - id: dod-omn22809-drift-run-on-h053
+    description: The node run on h053 over the three real copies; hosted CI cannot reach the lab copies, so the run is read in the pull request Lab line.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22809 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov'
+        cwd: .
