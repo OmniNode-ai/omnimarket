@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
+ReadingVerdict = Literal["fresh", "stale", "failing", "unread"]
 SourceKind = Literal[
     "hosts",
     "runner_groups",
@@ -447,6 +448,36 @@ class ModelRedRule(_Frozen):
     violations: tuple[str, ...] = ()
 
 
+class ModelHealthReadingUsed(_Frozen):
+    """One piece reading the customer health line used, with the age it was judged at (OMN-22923, piece 17b)."""
+
+    piece: int = Field(ge=1, le=18)
+    name: str
+    state: ReadingState | None
+    age_s: int | None
+    max_age_s: int | None
+    verdict: ReadingVerdict
+
+
+class ModelFloorHealthLine(_Frozen):
+    """The one customer health line: its state, its words, when it was computed and the readings behind it.
+
+    Computed by ``node_product_floor_verdict_compute`` from the piece readings of the same floor record, so a stale
+    reading turns the line NOT WORKING and is named in ``named``.
+    """
+
+    schema_id: Literal["omni.floor-health/1"] = "omni.floor-health/1"
+    state: ReadingState
+    line: str = Field(min_length=1)
+    generated_at: datetime
+    # How old this line may be before the page stops drawing it as current; from the overlay.
+    max_age_s: int = Field(gt=0)
+    readings: tuple[ModelHealthReadingUsed, ...]
+    # One entry per reading that keeps the line from WORKING, each naming the piece and why.
+    named: tuple[str, ...] = ()
+    oldest_age_s: int | None = None
+
+
 class ModelFloorSimple(_Frozen):
     schema_id: Literal["omni.floor-simple/1"] = "omni.floor-simple/1"
     generated_at: datetime
@@ -469,6 +500,8 @@ class ModelFloorSimple(_Frozen):
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
+    # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
+    health: ModelFloorHealthLine | None = None
 
 
 class ModelGoRule(_Frozen):

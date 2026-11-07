@@ -8,6 +8,8 @@ node_version: "1.0.0"
 description: >-
   Definition-B decisions of the product-floor alarm; reads no files, runs no process, has no clock;
   the git scan, file reads, ledger append, alert delivery and episode state stay with the caller.
+  Also decides the customer health line (decide_customer_health, OMN-22923): one line from the floor record's piece
+  readings, each judged by its own age, a reading past its maximum age NOT WORKING and named.
   Behaviour-preserving product-rate, waiting and controller decisions and summary/status formatting.
   A repo with clones but neither a scan nor a scan error is UNKNOWN with
   "cannot count <repo>: no scan supplied". Controller silence uses the caller's threshold,
@@ -31,6 +33,13 @@ handler_routing:
       handler:
         name: HandlerProductFloorVerdict
         module: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_product_floor_verdict
+    # 17b (OMN-22923): the customer health line from the floor record's piece readings.
+    - operation: decide_customer_health
+      handler:
+        name: HandlerCustomerHealth
+        module: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health
+      input_model: omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health.ModelCustomerHealthRequest
+      output_model: omnimarket.models.floor_17a.ModelFloorHealthLine
 descriptor:
   node_archetype: compute
   purity: pure
@@ -73,13 +82,16 @@ runtime_dispatch:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.product-floor-verdict-requested.v1
+    - onex.cmd.omnimarket.customer-health-requested.v1
   publish_topics:
     - onex.evt.omnimarket.product-floor-verdict-completed.v1
+    - onex.evt.omnimarket.customer-health-computed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.product-floor-verdict-completed.v1
+  - onex.evt.omnimarket.customer-health-computed.v1
 metadata:
   transport_type: inmemory
   description: Product-floor alarm verdict decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-18008]
+  related_tickets: [OMN-18008, OMN-22923]
