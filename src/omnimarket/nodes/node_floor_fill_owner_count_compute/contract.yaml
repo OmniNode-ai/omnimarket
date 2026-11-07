@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_owner_count_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  The owned and running lane counts of the stopped-line fill (OMN-22847), as one number: the lanes that wrote a
+  CLAIM or TERMINAL row to the rolling ledger inside the overlay's window (120 minutes in the deployment's overlay).
+  On 2026-11-07T10:36Z the lab fill reported lane-resend running 321 of 393 and owned 56 of 96 red pull requests
+  while 6 lanes had written in the last 120 minutes, because it counted every CLAIM no TERMINAL had closed, however
+  old. This node counts a lane once when it wrote inside the window, and owned_count equals running_count equals
+  that number. The ledger comes through an injected reader (in memory by default; a file reader belongs to an effect node) and
+  the time through an injected clock. The read runs under the floor's emission contract: a start, then a success, or
+  a typed failure (ledger_unreadable, ledger_silent, ledger_unparseable). A read that returned nothing is a failure,
+  never zero lanes. Called in process by the floor-fill orchestrator, whose observation carries running_count.
+handler:
+  module: omnimarket.nodes.node_floor_fill_owner_count_compute.handlers.handler_floor_fill_owner_count
+  class: HandlerFloorFillOwnerCount
+  input_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountRequest
+  output_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator; the chain events go to the floor's emission journal.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: floor_fill_owner_count
+    handler:
+      name: HandlerFloorFillOwnerCount
+      module: omnimarket.nodes.node_floor_fill_owner_count_compute.handlers.handler_floor_fill_owner_count
+    input_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountRequest
+    output_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountResult
+# Read through omnimarket.handlers.node_overlay_reader.load_structured_overlay: <root>/node_floor_fill_owner_count_compute/overlay.yaml
+# under a root in ONEX_SKILL_OVERLAY_ROOTS. No packaged value; a missing or invalid overlay refuses naming the setting.
+deployment_overlay:
+  name: node_floor_fill_owner_count_compute
+  required: true
+  fields:
+  - lane_write_window_minutes
+  - liveness_kinds
+  - emission_piece
+  description: Minutes a lane's last write keeps it counted, the ledger row kinds that show a lane is alive, and the
+    floor piece the node's chain is counted under.
+protocol_dependencies:
+- name: ProtocolLaneWriteReader
+  module: omnimarket.nodes.node_floor_fill_owner_count_compute.protocols.protocol_lane_write_reader
+  default: InMemoryLaneWriteReader
+- name: ProtocolEmissionSink
+  module: omnimarket.handlers.emission_sink
+  default: InMemoryEmissionSink
+  real_backend: JsonlEmissionSink
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+metadata:
+  ticket: OMN-22888
+  origin_tickets:
+  - OMN-22847
+  transport_type: local
+lifecycle: experimental
