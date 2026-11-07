@@ -80,6 +80,18 @@ schedule:
     randomized_delay: 60s
     persistent: true
     description: hourly, thirty-five minutes past
+  # The error event of piece 3 comes from a drill: a run with an injected fault writes a row with drill=yes, which the
+  # reading never reads. Without a schedule the error event only exists when someone runs the drill by hand, and the
+  # floor's golden-and-error freshness reads stale after 24 hours (served floor 2026-11-07T22:53Z: error 27 h ago).
+  # Twice a day keeps the newest error event under 12 hours old, inside the floor's 24 hour window.
+  drill:
+    unit_name: onex-seam-deadline-drill
+    fault: deadline-zero
+    cadence:
+      on_calendar: "*-*-* 00,12:50:00"
+      randomized_delay: 60s
+      persistent: true
+      description: twice a day at 00:50 and 12:50, a run that waits no time for the result so the error event stays fresh
 
 overlay:
   node: node_seam_deadline_probe_effect

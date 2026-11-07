@@ -77,6 +77,7 @@ def test_uninstall_is_the_rollback(tmp_path: Path) -> None:
         "disable",
         "--now",
         "onex-seam-deadline-hourly.timer",
+        "onex-seam-deadline-drill.timer",
     ] in calls
 
 
@@ -86,3 +87,59 @@ def test_a_host_the_overlay_does_not_declare_is_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "schedule_hosts" in result.stderr
+
+
+# --- the scheduled drill: the error event of piece 3 -----------------------------------------------------------------
+
+
+def test_install_writes_the_drill_pair_that_injects_the_fault(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    result = _scheduler(tmp_path, calls).install(
+        "example-lab-host", omni_root=tmp_path / "root", overlay_root=tmp_path / "ovl"
+    )
+    assert result.exit_code == 0, result.stderr
+    unit_dir = tmp_path / "home/.config/systemd/user"
+    service = (unit_dir / "onex-seam-deadline-drill.service").read_text()
+    timer = (unit_dir / "onex-seam-deadline-drill.timer").read_text()
+    assert (
+        "-m omnimarket.nodes.node_seam_deadline_probe_effect read --fault deadline-zero"
+        in service
+    )
+    assert "OnCalendar=*-*-* 00,12:50:00" in timer
+    assert [
+        "systemctl",
+        "--user",
+        "enable",
+        "--now",
+        "onex-seam-deadline-drill.timer",
+    ] in calls
+    # the hourly service still reads with no fault
+    hourly = (unit_dir / "onex-seam-deadline-hourly.service").read_text()
+    assert "--fault" not in hourly
+
+
+def test_run_now_drill_starts_the_drill_service(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    result = _scheduler(tmp_path, calls).run_now("example-lab-host", drill=True)
+    assert result.exit_code == 0
+    assert [
+        "systemctl",
+        "--user",
+        "start",
+        "onex-seam-deadline-drill.service",
+    ] in calls
+
+
+def test_error_named_break_drill_dropped_leaves_no_drill_unit(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    scheduler = _scheduler(tmp_path, calls)
+    scheduler.schedule = scheduler.schedule.model_copy(update={"drill": None})
+    scheduler.drill_service_name = scheduler.drill_timer_name = None
+    result = scheduler.install(
+        "example-lab-host", omni_root=tmp_path / "root", overlay_root=tmp_path / "ovl"
+    )
+    assert result.exit_code == 0, result.stderr
+    assert not (
+        tmp_path / "home/.config/systemd/user/onex-seam-deadline-drill.timer"
+    ).exists()
+    assert scheduler.run_now("example-lab-host", drill=True).exit_code == 1

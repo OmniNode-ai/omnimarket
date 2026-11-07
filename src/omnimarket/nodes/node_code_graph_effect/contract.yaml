@@ -81,6 +81,18 @@ schedule:
     randomized_delay: 120s
     persistent: true
     description: nightly at 06:40 UTC, before the 05:30 Eastern daily line
+  # The error event of piece 1 comes from a drill: a run with an injected fault writes a row with drill=yes, which no
+  # operational reading reads. Without a schedule the error event only exists when someone runs the drill by hand, and
+  # the floor's golden-and-error freshness reads stale after 24 hours (served floor 2026-11-07T22:53Z: error 29 h ago).
+  # Twice a day keeps the newest error event under 12 hours old, inside the floor's 24 hour window.
+  drill:
+    unit_name: onex-code-graph-drill
+    fault: unreadable-repo
+    cadence:
+      on_calendar: "*-*-* 00,12:25:00 UTC"
+      randomized_delay: 120s
+      persistent: true
+      description: twice a day at 00:25 and 12:25 UTC, a run with an unreadable repository so the error event stays fresh
 
 overlay:
   node: node_code_graph_effect

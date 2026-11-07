@@ -79,3 +79,79 @@ def test_an_undeclared_host_is_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "not in the node_code_graph_effect overlay" in result.stderr
+
+
+# --- the scheduled drill: the error event of piece 1 -----------------------------------------------------------------
+
+
+def test_dry_run_renders_the_drill_pair_beside_the_nightly_pair(tmp_path: Path) -> None:
+    result = _scheduler(tmp_path / "home", _Runner()).install(
+        "example-host",
+        omni_root=tmp_path / "root",
+        overlay_root=tmp_path / "overlays",
+        dry_run=True,
+    )
+    assert result.exit_code == 0, result.stderr
+    assert "OnCalendar=*-*-* 00,12:25:00 UTC" in result.stdout
+    assert (
+        "-m omnimarket.nodes.node_code_graph_effect nightly --fault unreadable-repo"
+        in result.stdout
+    )
+    assert "SyslogIdentifier=onex-code-graph-drill" in result.stdout
+    # the nightly service still runs with no fault
+    assert "node_code_graph_effect nightly\n" in result.stdout
+
+
+def test_install_enables_both_timers_and_uninstall_removes_both(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    python = root / "example/.venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    runner = _Runner()
+    scheduler = _scheduler(tmp_path / "home", runner)
+    assert (
+        scheduler.install(
+            "example-host", omni_root=root, overlay_root=tmp_path / "o"
+        ).exit_code
+        == 0
+    )
+    for timer in ("onex-code-graph-nightly.timer", "onex-code-graph-drill.timer"):
+        assert ["systemctl", "--user", "enable", "--now", timer] in runner.calls
+        assert (tmp_path / "home/.config/systemd/user" / timer).is_file()
+    assert scheduler.uninstall("example-host").exit_code == 0
+    for unit in (
+        "onex-code-graph-nightly.timer",
+        "onex-code-graph-drill.timer",
+        "onex-code-graph-drill.service",
+    ):
+        assert not (tmp_path / "home/.config/systemd/user" / unit).exists()
+
+
+def test_run_now_drill_starts_the_drill_service_once(tmp_path: Path) -> None:
+    runner = _Runner()
+    result = _scheduler(tmp_path, runner).run_now("example-host", drill=True)
+    assert result.exit_code == 0
+    assert [
+        "systemctl",
+        "--user",
+        "start",
+        "--no-block",
+        "onex-code-graph-drill.service",
+    ] in runner.calls
+
+
+def test_error_named_break_drill_dropped_leaves_no_drill_unit(tmp_path: Path) -> None:
+    schedule = load_schedule().model_copy(update={"drill": None})
+    scheduler = CodeGraphScheduler(
+        schedule=schedule, overlay=overlay(), home=tmp_path / "home", run=_Runner()
+    )
+    result = scheduler.install(
+        "example-host",
+        omni_root=tmp_path / "root",
+        overlay_root=tmp_path / "o",
+        dry_run=True,
+    )
+    assert "--fault" not in result.stdout
+    assert scheduler.run_now("example-host", drill=True).exit_code == 1

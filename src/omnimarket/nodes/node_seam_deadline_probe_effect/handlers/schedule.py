@@ -44,6 +44,16 @@ class ModelSeamDeadlineCadence(BaseModel):
     description: str
 
 
+class ModelSeamDeadlineDrill(BaseModel):
+    """The scheduled drill: the fault a run injects, so the error event of piece 3 stays inside its window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    fault: str = Field(min_length=1)
+    cadence: ModelSeamDeadlineCadence
+
+
 class ModelSeamDeadlineSchedule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -51,6 +61,7 @@ class ModelSeamDeadlineSchedule(BaseModel):
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelSeamDeadlineCadence
+    drill: ModelSeamDeadlineDrill | None = None
 
 
 class ModelScheduleResult(BaseModel):
@@ -96,8 +107,11 @@ def render_systemd(
     omni_root: Path,
     home: Path,
     overlay_root: Path,
+    drill: bool = False,
 ) -> tuple[str, str]:
-    """The systemd user service and timer text."""
+    """The systemd user service and timer text of the hourly run, or of the scheduled drill."""
+    if drill and schedule.drill is None:
+        raise ValueError("the contract's schedule declares no drill")
     root = _safe(omni_root, "registry root")
     user_home = _safe(home, "home")
     python = _safe(omni_root / host.venv / "bin" / "python", "venv interpreter")
@@ -112,28 +126,41 @@ def render_systemd(
             for name, value in host.environment.items()
         },
     }
-    cadence = schedule.cadence
+    if drill and schedule.drill is not None:
+        cadence = schedule.drill.cadence
+        unit_name = schedule.drill.unit_name
+        arguments = f"read --fault {schedule.drill.fault}"
+        what = "ONEX scheduled seam deadline drill (piece 3 error event; an injected fault, drill=yes)"
+        tick = "ONEX seam deadline drill tick"
+        logs = "seam-deadline-drill"
+    else:
+        cadence = schedule.cadence
+        unit_name = schedule.unit_name
+        arguments = "read"
+        what = "ONEX hourly seam deadline reading (piece 3)"
+        tick = "ONEX hourly seam deadline reading tick"
+        logs = "seam-deadline"
     service = (
         "# Rendered by the seam deadline node (schedule install); the node contract owns the\n"
         "# cadence, so change the contract and install again rather than editing this file.\n"
         "# Rollback: schedule uninstall.\n"
-        "[Unit]\nDescription=ONEX hourly seam deadline reading (piece 3)\n"
+        f"[Unit]\nDescription={what}\n"
         "\n[Service]\nType=oneshot\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={python} -m {NODE_MODULE} read\n"
-        f"StandardOutput=append:{state}/seam-deadline.out.log\n"
-        f"StandardError=append:{state}/seam-deadline.err.log\n"
-        f"SyslogIdentifier={schedule.unit_name}\n"
+        f"ExecStart={python} -m {NODE_MODULE} {arguments}\n"
+        f"StandardOutput=append:{state}/{logs}.out.log\n"
+        f"StandardError=append:{state}/{logs}.err.log\n"
+        f"SyslogIdentifier={unit_name}\n"
     )
     timer = (
         f"# {cadence.description}\n"
-        "[Unit]\nDescription=ONEX hourly seam deadline reading tick\n"
+        f"[Unit]\nDescription={tick}\n"
         f"\n[Timer]\nOnCalendar={cadence.on_calendar}\n"
         f"RandomizedDelaySec={cadence.randomized_delay}\n"
         f"Persistent={'true' if cadence.persistent else 'false'}\n"
-        f"Unit={schedule.unit_name}.service\n"
+        f"Unit={unit_name}.service\n"
         "\n[Install]\nWantedBy=timers.target\n"
     )
     return service, timer
@@ -156,6 +183,9 @@ class SeamDeadlineScheduler:
         self.run = run
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
+        drill = schedule.drill
+        self.drill_service_name = f"{drill.unit_name}.service" if drill else None
+        self.drill_timer_name = f"{drill.unit_name}.timer" if drill else None
         self.unit_dir = home / ".config/systemd/user"
 
     def _declared(self, name: str) -> ModelSeamDeadlineHost | ModelScheduleResult:
@@ -181,12 +211,24 @@ class SeamDeadlineScheduler:
                 home=self.home,
                 overlay_root=overlay_root,
             )
+            units = {self.service_name: service, self.timer_name: timer}
+            if self.drill_service_name and self.drill_timer_name:
+                drill_service, drill_timer = render_systemd(
+                    self.schedule,
+                    host,
+                    omni_root=omni_root,
+                    home=self.home,
+                    overlay_root=overlay_root,
+                    drill=True,
+                )
+                units[self.drill_service_name] = drill_service
+                units[self.drill_timer_name] = drill_timer
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
         # A unit that runs from a worktree dies when the host reconcile removes the tree: refuse
         # before anything is written or printed, naming the path (OMN-22783).
         try:
-            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
+            refuse_worktree_roots(units)
         except UnitRootRefusedError as exc:
             return ModelScheduleResult(
                 exit_code=1,
@@ -195,10 +237,7 @@ class SeamDeadlineScheduler:
                     f"in the {NODE_NAME} overlay and install again\n"
                 ),
             )
-        files = [
-            (self.unit_dir / self.service_name, service),
-            (self.unit_dir / self.timer_name, timer),
-        ]
+        files = [(self.unit_dir / name, body) for name, body in units.items()]
         if dry_run:
             return ModelScheduleResult(
                 exit_code=0, stdout="".join(body + "\n" for _, body in files)
@@ -219,7 +258,10 @@ class SeamDeadlineScheduler:
             output += f"wrote {target}\n"
         for step in (
             ["systemctl", "--user", "daemon-reload"],
-            ["systemctl", "--user", "enable", "--now", self.timer_name],
+            *(
+                ["systemctl", "--user", "enable", "--now", name]
+                for name in self._timer_names()
+            ),
         ):
             done = self.run(step)
             if done.returncode:
@@ -237,11 +279,16 @@ class SeamDeadlineScheduler:
         host = self._declared(name)
         if isinstance(host, ModelScheduleResult):
             return host
-        self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
+        self.run(["systemctl", "--user", "disable", "--now", *self._timer_names()])
         output = ""
         for target in (
-            self.unit_dir / self.timer_name,
+            *(self.unit_dir / unit for unit in self._timer_names()),
             self.unit_dir / self.service_name,
+            *(
+                [self.unit_dir / self.drill_service_name]
+                if self.drill_service_name
+                else []
+            ),
         ):
             if target.exists():
                 target.unlink()
@@ -262,11 +309,26 @@ class SeamDeadlineScheduler:
             exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr
         )
 
-    def run_now(self, name: str) -> ModelScheduleResult:
+    def _timer_names(self) -> tuple[str, ...]:
+        return (
+            self.timer_name,
+            *([self.drill_timer_name] if self.drill_timer_name else []),
+        )
+
+    def run_now(self, name: str, *, drill: bool = False) -> ModelScheduleResult:
         host = self._declared(name)
         if isinstance(host, ModelScheduleResult):
             return host
-        done = self.run(["systemctl", "--user", "start", self.service_name])
+        if drill and self.drill_service_name is None:
+            return ModelScheduleResult(
+                exit_code=1, stderr="the contract's schedule declares no drill\n"
+            )
+        unit = (
+            self.drill_service_name
+            if drill and self.drill_service_name
+            else self.service_name
+        )
+        done = self.run(["systemctl", "--user", "start", unit])
         return ModelScheduleResult(
             exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr
         )

@@ -43,6 +43,16 @@ class ModelCodeGraphCadence(BaseModel):
     description: str
 
 
+class ModelCodeGraphDrill(BaseModel):
+    """The scheduled drill: the fault a run injects, so the error event of piece 1 stays inside its window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    fault: str = Field(min_length=1)
+    cadence: ModelCodeGraphCadence
+
+
 class ModelCodeGraphSchedule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -50,6 +60,7 @@ class ModelCodeGraphSchedule(BaseModel):
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelCodeGraphCadence
+    drill: ModelCodeGraphDrill | None = None
 
 
 def load_schedule(path: Path = CONTRACT_PATH) -> ModelCodeGraphSchedule:
@@ -79,8 +90,11 @@ def render_systemd(
     omni_root: Path,
     home: Path,
     overlay_root: Path,
+    drill: bool = False,
 ) -> tuple[str, str]:
-    """The systemd user service and timer text."""
+    """The systemd user service and timer text of the nightly run, or of the scheduled drill."""
+    if drill and schedule.drill is None:
+        raise ValueError("the contract's schedule declares no drill")
     root = _safe(omni_root, "registry root")
     user_home = _safe(home, "home")
     venv = Path(host.venv) if Path(host.venv).is_absolute() else omni_root / host.venv
@@ -97,28 +111,41 @@ def render_systemd(
             for name, value in overlay.unit_environment.items()
         },
     }
-    cadence = schedule.cadence
+    if drill and schedule.drill is not None:
+        cadence = schedule.drill.cadence
+        unit_name = schedule.drill.unit_name
+        arguments = f"nightly --fault {schedule.drill.fault}"
+        what = "ONEX scheduled code graph drill (piece 1 error event; an injected fault, drill=yes)"
+        tick = "ONEX code graph drill tick"
+        logs = "code-graph-drill"
+    else:
+        cadence = schedule.cadence
+        unit_name = schedule.unit_name
+        arguments = "nightly"
+        what = "ONEX nightly code graph (piece 1 reading)"
+        tick = "ONEX nightly code graph tick"
+        logs = "code-graph"
     service = (
         "# Rendered by the code graph node (schedule install); the node contract owns the\n"
         "# cadence, so change the contract and install again rather than editing this file.\n"
         "# Rollback: schedule uninstall.\n"
-        "[Unit]\nDescription=ONEX nightly code graph (piece 1 reading)\n"
+        f"[Unit]\nDescription={what}\n"
         "\n[Service]\nType=oneshot\nNice=10\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={python} -m {NODE_MODULE} nightly\n"
-        f"StandardOutput=append:{state}/code-graph.out.log\n"
-        f"StandardError=append:{state}/code-graph.err.log\n"
-        f"SyslogIdentifier={schedule.unit_name}\n"
+        f"ExecStart={python} -m {NODE_MODULE} {arguments}\n"
+        f"StandardOutput=append:{state}/{logs}.out.log\n"
+        f"StandardError=append:{state}/{logs}.err.log\n"
+        f"SyslogIdentifier={unit_name}\n"
     )
     timer = (
         f"# {cadence.description}\n"
-        "[Unit]\nDescription=ONEX nightly code graph tick\n"
+        f"[Unit]\nDescription={tick}\n"
         f"\n[Timer]\nOnCalendar={cadence.on_calendar}\n"
         f"RandomizedDelaySec={cadence.randomized_delay}\n"
         f"Persistent={'true' if cadence.persistent else 'false'}\n"
-        f"Unit={schedule.unit_name}.service\n"
+        f"Unit={unit_name}.service\n"
         "\n[Install]\nWantedBy=timers.target\n"
     )
     return service, timer
@@ -141,6 +168,9 @@ class CodeGraphScheduler:
         self.run = run
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
+        drill = schedule.drill
+        self.drill_service_name = f"{drill.unit_name}.service" if drill else None
+        self.drill_timer_name = f"{drill.unit_name}.timer" if drill else None
         self.unit_dir = home / ".config/systemd/user"
 
     def _declared(
@@ -169,13 +199,23 @@ class CodeGraphScheduler:
                 home=self.home,
                 overlay_root=overlay_root,
             )
-            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
+            units = {self.service_name: service, self.timer_name: timer}
+            if self.drill_service_name and self.drill_timer_name:
+                drill_service, drill_timer = render_systemd(
+                    self.schedule,
+                    self.overlay,
+                    host,
+                    omni_root=omni_root,
+                    home=self.home,
+                    overlay_root=overlay_root,
+                    drill=True,
+                )
+                units[self.drill_service_name] = drill_service
+                units[self.drill_timer_name] = drill_timer
+            refuse_worktree_roots(units)
         except ValueError as exc:
             return ModelHostScheduleResult(exit_code=1, stderr=f"{exc}\n")
-        files = [
-            (self.unit_dir / self.service_name, service),
-            (self.unit_dir / self.timer_name, timer),
-        ]
+        files = [(self.unit_dir / name, body) for name, body in units.items()]
         if dry_run:
             return ModelHostScheduleResult(
                 exit_code=0, stdout="".join(body + "\n" for _, body in files)
@@ -208,7 +248,10 @@ class CodeGraphScheduler:
                 output += f"wrote {target}\n"
         for step in (
             ["systemctl", "--user", "daemon-reload"],
-            ["systemctl", "--user", "enable", "--now", self.timer_name],
+            *(
+                ["systemctl", "--user", "enable", "--now", name]
+                for name in self._timer_names()
+            ),
         ):
             done = self.run(step)
             output += done.stdout
@@ -227,9 +270,15 @@ class CodeGraphScheduler:
         host = self._declared(name)
         if isinstance(host, ModelHostScheduleResult):
             return host
-        done = self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
+        done = self.run(
+            ["systemctl", "--user", "disable", "--now", *self._timer_names()]
+        )
         output = done.stdout
-        for unit in (self.timer_name, self.service_name):
+        for unit in (
+            *self._timer_names(),
+            self.service_name,
+            *([self.drill_service_name] if self.drill_service_name else []),
+        ):
             target = self.unit_dir / unit
             if target.exists():
                 target.unlink()
@@ -241,16 +290,30 @@ class CodeGraphScheduler:
             stderr=reloaded.stderr,
         )
 
-    def run_now(self, name: str) -> ModelHostScheduleResult:
+    def _timer_names(self) -> tuple[str, ...]:
+        return (
+            self.timer_name,
+            *([self.drill_timer_name] if self.drill_timer_name else []),
+        )
+
+    def run_now(self, name: str, *, drill: bool = False) -> ModelHostScheduleResult:
         host = self._declared(name)
         if isinstance(host, ModelHostScheduleResult):
             return host
-        done = self.run(
-            ["systemctl", "--user", "start", "--no-block", self.service_name]
+        if drill and self.drill_service_name is None:
+            return ModelHostScheduleResult(
+                exit_code=1, stderr="the contract's schedule declares no drill\n"
+            )
+        unit = (
+            self.drill_service_name
+            if drill and self.drill_service_name
+            else self.service_name
         )
+        done = self.run(["systemctl", "--user", "start", "--no-block", unit])
         return ModelHostScheduleResult(
             exit_code=done.returncode,
-            stdout=done.stdout or f"started the nightly run on {name} once\n",
+            stdout=done.stdout
+            or f"started the {'drill' if drill else 'nightly'} run on {name} once\n",
             stderr=done.stderr,
         )
 
