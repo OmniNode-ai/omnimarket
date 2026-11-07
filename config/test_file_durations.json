@@ -1630,6 +1630,8 @@
   "tests/nodes/node_work_progress_compute/test_work_progress.py": 0.51,
   "tests/nodes/node_work_progress_compute/test_work_progress_profiles.py": 0.07,
   "tests/nodes/node_worker_memory_admission_compute/test_golden_chain_worker_memory_admission_compute.py": 0.18,
+  "tests/nodes/node_workflow_baseline_compare_compute/test_error_chain_workflow_baseline_compare.py": 0.05,
+  "tests/nodes/node_workflow_baseline_compare_compute/test_golden_chain_workflow_baseline_compare.py": 0.05,
   "tests/nodes/node_workflow_routing_scan_compute/test_error_chain_workflow_routing_scan.py": 0.05,
   "tests/nodes/node_workflow_routing_scan_compute/test_golden_chain_workflow_routing_scan.py": 0.05,
   "tests/nodes/test_code_edit_scope_node.py": 0.17,
