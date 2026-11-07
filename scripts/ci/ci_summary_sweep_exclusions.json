@@ -1,0 +1,20 @@
+{
+  "AC1 exact revision row on PostgreSQL 16": {
+    "reason": "omn20025-ac1-postgres-proof.yml restricts the proof to PR 3094 from this repository.",
+    "ticket": "OMN-17427",
+    "added": "2026-10-17",
+    "expires": "2026-12-20"
+  },
+  "auto-tag": {
+    "reason": "auto-tag-on-merge.yml runs on closed PRs; the job requires a merged PR with a release label or release title.",
+    "ticket": "OMN-17427",
+    "added": "2026-10-17",
+    "expires": "2026-12-20"
+  },
+  "Tessl Reviewer": {
+    "reason": "Automated reviewer app posts a neutral row on every pull request; the operator ruling takes it out of what blocks a merge.",
+    "ticket": "OMN-22478",
+    "added": "2026-11-07",
+    "expires": "2026-12-20"
+  }
+}

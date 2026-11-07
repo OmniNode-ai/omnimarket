@@ -849,23 +849,25 @@ class SweepExclusion:
 
 SWEEP_EXCLUSION_MAX_DAYS: int = 90
 
-# OMN-17427: measured over 43 merged PR heads on 2026-10-17. Only these
-# external pull_request rows skip by design; ci.yml owns the other skips.
+# The registry is data, in ci_summary_sweep_exclusions.json beside this file
+# (stdlib json: the poller runs with no third-party packages). Each entry names
+# its reason, ticket, added date and expiry. The first two were measured over 43
+# merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
+# that skip by design. The Tessl Reviewer entry is RULING 2026-11-05T20:27:56Z
+# (OMN-22478): the automated reviewer's neutral row never blocks a merge.
 # Expiry re-arms the sweep.
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
-    "AC1 exact revision row on PostgreSQL 16": SweepExclusion(
-        reason="omn20025-ac1-postgres-proof.yml restricts the proof to PR 3094 from this repository.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-    "auto-tag": SweepExclusion(
-        reason="auto-tag-on-merge.yml runs on closed PRs; the job requires a merged PR with a release label or release title.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-}
+SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
+
+
+def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
+    """Read the exclusion registry; a malformed file raises and fails the gate."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {name: SweepExclusion(**fields) for name, fields in raw.items()}
+
+
+EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
+    SWEEP_EXCLUSIONS_FILE
+)
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
 _SWEEP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
