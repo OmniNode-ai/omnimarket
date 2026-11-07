@@ -45,7 +45,9 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLandingRead,
     ModelLedgerQuery,
+    ProtocolLandingSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
@@ -145,7 +147,9 @@ class HandlerReadingWriter:
         clock: Callable[[], datetime],
         compute: HandlerReadingCompute | None = None,
         revision: str | None = None,
+        landing: ProtocolLandingSource | None = None,
     ) -> None:
+        self._landing = landing
         self._overlay = overlay
         self._source = source
         self._appender = appender
@@ -211,7 +215,7 @@ class HandlerReadingWriter:
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
-        for source in spec.sources:
+        for source in spec.all_sources:
             read = self._source.read(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
@@ -227,6 +231,15 @@ class HandlerReadingWriter:
                 )
             )
         return tuple(gathered)
+
+    def _landing_read(
+        self, spec: ModelPieceReadingSpec, now: datetime
+    ) -> ModelLandingRead:
+        if spec.landing is None:
+            return ModelLandingRead()
+        if self._landing is None:
+            return ModelLandingRead(error="no landing source wired")
+        return self._landing.read(spec.landing, now)
 
     def _existing(
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
@@ -262,6 +275,7 @@ class HandlerReadingWriter:
         now: datetime,
         write: bool,
     ) -> ModelReadingPieceOutcome:
+        landing = self._landing_read(spec, now)
         result = self._compute.handle(
             ModelReadingComputeRequest(
                 spec=spec,
@@ -272,6 +286,8 @@ class HandlerReadingWriter:
                 overlay_hash=self._overlay.overlay_hash(spec.piece),
                 revision=self._revision,
                 sources=self._evidence(spec, end),
+                landing=landing.snapshot,
+                landing_error=landing.error,
             )
         )
 
