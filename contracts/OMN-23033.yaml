@@ -55,3 +55,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_golden_chain_node_repo_state_query_effect.py -q --no-cov
     cwd: .
+- id: dod-omn23033-watcher-refresh
+  description: Runs the watcher refresh tests; a planted stale watcher state with a newer bus event reads mirror_behind with no declared refresh command and with a tick that changes nothing, and reads current after the declared repo-state-refresh command runs.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_watcher_refresh_effect -q --no-cov
+    cwd: .
+- id: dod-omn23033-watcher-refresh-deploy-probe
+  description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines the watcher refresh, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_repo_state_watcher_refresh_effect/handlers/handler_watcher_refresh.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerWatcherRefresh" > /dev/null'
+    cwd: .
