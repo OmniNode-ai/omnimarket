@@ -60,6 +60,13 @@ class ModelFloorFillOwnerCountRequest(BaseModel):
 
     as_of: datetime | None = None
 
+    @field_validator("as_of")
+    @classmethod
+    def _as_of_is_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("as_of must carry a timezone")
+        return value
+
 
 class ModelFloorFillOwnerCountResult(BaseModel):
     """The lanes that wrote inside the window, and the one count the fill reports as owned and as running."""

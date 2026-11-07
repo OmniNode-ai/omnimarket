@@ -36,7 +36,7 @@ class ProtocolLaneWriteReader(Protocol):
 def parse_ledger_text(
     text: str, since: datetime, until: datetime
 ) -> ModelFloorFillLaneWrites:
-    """Rows of ``[since, until]`` that carry a ``lane=`` cell; a line that is not a ledger row is skipped and counted.
+    """Rows of ``[since, until]`` that carry a ``lane=`` cell; a line that is not a ledger row, has an impossible stamp or has no lane is skipped and counted.
 
     The ledger is appended in arrival order, not timestamp order, so every line is tested against the window.
     """
@@ -49,10 +49,13 @@ def parse_ledger_text(
         if match is None:
             skipped += 1
             continue
-        at = datetime.strptime(match.group(1), _STAMP).replace(tzinfo=UTC)
+        try:
+            at = datetime.strptime(match.group(1), _STAMP).replace(tzinfo=UTC)
+        except ValueError:
+            skipped += 1
+            continue
         if not since <= at <= until:
             continue
-        read += 1
         lane = next(
             (
                 cell[5:].strip()
@@ -61,12 +64,13 @@ def parse_ledger_text(
             ),
             "",
         )
-        if lane:
-            rows.append(
-                ModelFloorFillLedgerRow(
-                    at=at, kind=match.group(2), lane=lane.split()[0]
-                )
-            )
+        if not lane:
+            skipped += 1
+            continue
+        read += 1
+        rows.append(
+            ModelFloorFillLedgerRow(at=at, kind=match.group(2), lane=lane.split()[0])
+        )
     return ModelFloorFillLaneWrites(
         rows=tuple(rows), lines_read=read, lines_skipped=skipped
     )
