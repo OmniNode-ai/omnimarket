@@ -232,6 +232,20 @@ output_model:
   name: "ModelHostBringupPlan"
   module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
   description: "Planned steps in need order with skip or act per target, or the refusals."
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_bringup_run:HandlerHostBringupRun"
+  handlers:
+    - operation: "run_host_bringup"
+      handler:
+        name: "HandlerHostBringupRun"
+        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_bringup_run"
+    - operation: "derive_host_declaration"
+      handler:
+        name: "HandlerHostDeclarationDerive"
+        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_declaration_derive"
+runtime_dispatch:
+  external_trigger: "Direct Python invocation: run_host_bringup drives one host toward one top target with the injected probe, actuator, lease, bus and clock; derive_host_declaration derives every copy of the host table from the declaration and names each difference."
 descriptor:
   node_archetype: orchestrator
   purity: pure

@@ -16,9 +16,15 @@ requirements:
   - id: "req-omn21899-bringup-run"
     statement: |-
       One run drives one host toward one top target, one action per pass, under a fenced lease; exit 0 up, 75 waiting on a person, 1 a target failed, 2 usage, 3 the lease is held or the fence was replaced; one terminal per run id, emitted before the lease is released; every run owed a terminal is closed abandoned at takeover; every host action runs inside the fenced lock and renews the lease to start plus lease_grace_s; a wait passes only on its check reading ok.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: one run drives one host toward one top target under a fenced lease, with exit 0 up, 75 waiting on a person, 1 a target failed, 2 usage and 3 lease held or fence replaced, and one terminal per run id emitted before the lease is released -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_run.py -q"
   - id: "req-omn21899-declared-once"
     statement: |-
       A host is declared once in the owner copy of the lab host table; every other copy is derived from it, a hand-added host, column or value in any copy is named by surface, host and field, and the in-service flip changes the declaration only.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: every copy of the host table is derived from the declaration, a hand-added host, column or value in any copy is named by surface, host and field, and the in-service flip changes the declaration only -- falsifier: uv run pytest tests/unit/nodes/test_node_host_declaration_derive.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "The focused node tests pass."
@@ -49,6 +55,7 @@ dod_evidence:
   - id: "dod-omn21899-bringup-run"
     description: "The run suite: exit codes, lease takeover, terminal if-absent and before release, renewal at action start, stale holder refused, wait timeout, flip last on the committed 57-target graph."
     source: "manual"
+    binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/test_node_host_bringup_run.py -q --no-cov --tb=line"
@@ -56,6 +63,7 @@ dod_evidence:
   - id: "dod-omn21899-declared-once"
     description: "The derive suite: in sync, flip, a host left unavailable in two copies, a hand-added column, value drift, missing and surplus hosts, refusals."
     source: "manual"
+    binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/test_node_host_declaration_derive.py -q --no-cov --tb=line"
