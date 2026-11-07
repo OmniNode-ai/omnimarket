@@ -103,6 +103,7 @@ def join_overlay(**changes: object) -> ModelJoinJ4Overlay:
         "lane": "secret-join-j4",
         "actor": "node:node_secret_reading_effect",
         "drill": False,
+        "allow_injected_break": False,
         "injected_fault": "Swap the consumer for one that logs its key's value",
     }
     base.update(changes)
@@ -501,12 +502,12 @@ def test_error_a_drill_overlay_is_not_evidence_for_the_join() -> None:
     assert join.state == "not_run"
 
 
-def test_error_an_injected_break_is_refused_outside_a_drill_overlay() -> None:
+def test_error_an_injected_break_is_refused_unless_the_overlay_allows_it() -> None:
     assert set(DRILL_CONSUMERS) == {"log-value", "row-value"}
-    with pytest.raises(ValueError, match="only under a drill overlay"):
-        _consumer("log-value", drill=False)
-    assert isinstance(_consumer("log-value", drill=True), LeakyLogConsumer)
-    assert isinstance(_consumer(None, drill=False), OverlayKeyConsumer)
+    with pytest.raises(ValueError, match="only under an overlay that allows it"):
+        _consumer("log-value", allowed=False)
+    assert isinstance(_consumer("log-value", allowed=True), LeakyLogConsumer)
+    assert isinstance(_consumer(None, allowed=False), OverlayKeyConsumer)
 
 
 def test_error_the_overlay_loader_refuses_an_absent_overlay(tmp_path: Path) -> None:
@@ -529,11 +530,11 @@ def test_golden_overlay_loader_reads_a_document_under_a_root(tmp_path: Path) -> 
 def test_error_a_drill_log_is_held_in_process_and_goes_nowhere_else(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert _log_sink(drill=True) is _held
-    assert _log_sink(drill=False) is _log
-    _log_sink(drill=True)(f"line carrying {GATE_VALUE}")
+    assert _log_sink(held=True) is _held
+    assert _log_sink(held=False) is _log
+    _log_sink(held=True)(f"line carrying {GATE_VALUE}")
     seen = capsys.readouterr()
     assert GATE_VALUE not in seen.out
     assert GATE_VALUE not in seen.err
-    _log_sink(drill=False)("a clean operational line")
+    _log_sink(held=False)("a clean operational line")
     assert capsys.readouterr().err == "a clean operational line\n"

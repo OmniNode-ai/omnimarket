@@ -42,6 +42,9 @@ class ModelJoinJ4Overlay(BaseModel):
     actor: str = Field(min_length=1)
     #: A drill run is tagged so no join counts it as evidence.
     drill: bool
+    #: Whether this overlay may run a named injected break (the join's error test). An
+    #: operational overlay says false and refuses one.
+    allow_injected_break: bool
     injected_fault: str = Field(min_length=1)
 
 

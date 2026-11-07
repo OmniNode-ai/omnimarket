@@ -3,8 +3,8 @@
 """The named injected breaks of the J4 join (OMN-22912): consumers that leak on purpose.
 
 Each one is the failing control of a join test: the same run with the consumer swapped must read
-NOT WORKING, which shows the scan can see. They are used by the tests and by a drill run under a
-drill overlay, never by an operational run.
+NOT WORKING, which shows the scan can see. They are used by the tests and by a run under an
+overlay that allows an injected break, never by an operational run.
 """
 
 from __future__ import annotations

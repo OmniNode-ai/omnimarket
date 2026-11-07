@@ -18,4 +18,5 @@ emission_journal: /example/state/floor-simple/emissions.jsonl
 lane: secret-join-j4
 actor: node:node_secret_reading_effect
 drill: false
-injected_fault: Swap the consumer for one that logs its key's value, under a drill overlay
+allow_injected_break: false
+injected_fault: Swap the consumer for one that logs its key's value, under an overlay that allows it

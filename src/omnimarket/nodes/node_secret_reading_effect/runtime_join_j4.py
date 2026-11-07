@@ -6,7 +6,7 @@
 ``probe``  the same run, appending no row (the chains still go to the emission journal).
 
 ``--inject <break>`` swaps the consumer for a named injected break (the failing control); it is
-refused unless the join overlay is a drill overlay. The result prints as one JSON object with no
+refused unless the join overlay sets ``allow_injected_break``. The result prints as one JSON object with no
 value in it. Exit codes: 0 the join read WORKING; 1 it read NOT WORKING or the run failed; 3 a
 deployment fact is missing (no overlay, no host name, no append route).
 """
@@ -51,11 +51,11 @@ from omnimarket.nodes.node_secret_reading_effect.runtime_secret_reading import (
 )
 
 
-def _consumer(inject: str | None, drill: bool) -> ProtocolJ4Consumer:
+def _consumer(inject: str | None, allowed: bool) -> ProtocolJ4Consumer:
     if inject is None:
         return OverlayKeyConsumer()
-    if not drill:
-        raise ValueError("an injected break runs only under a drill overlay")
+    if not allowed:
+        raise ValueError("an injected break runs only under an overlay that allows it")
     breaks: dict[str, ProtocolJ4Consumer] = {
         "log-value": LeakyLogConsumer(),
         "row-value": LeakyRowConsumer(),
@@ -68,13 +68,13 @@ def _log(line: str) -> None:
 
 
 def _held(line: str) -> None:
-    """A drill's log line is held in process for the scan and goes nowhere else: an injected
-    break may carry a real value, and a drill never puts one on a terminal or a file."""
+    """A held log line is kept in process for the scan and goes nowhere else: an injected break
+    may carry a real value, and such a run never puts one on a terminal or a file."""
     del line
 
 
-def _log_sink(drill: bool) -> Callable[[str], None]:
-    return _held if drill else _log
+def _log_sink(held: bool) -> Callable[[str], None]:
+    return _held if held else _log
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
@@ -93,8 +93,8 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         surfaces=LocalExposureSurfaces(),
         sink=JsonlEmissionSink(journal),
         appender=build_appender(reading.ledger_append, join.lane) if write else None,
-        consumer=_consumer(arguments.inject, join.drill),
-        log=_log_sink(join.drill),
+        consumer=_consumer(arguments.inject, join.allow_injected_break),
+        log=_log_sink(join.drill or arguments.inject is not None),
         clock=lambda: datetime.now(UTC),
         host=host,
     )
