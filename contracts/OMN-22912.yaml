@@ -40,6 +40,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov -k error
+- id: dod-omn22912-ac3-fold
+  description: The floor's own receipt fold reads the join's golden and error chains as J4 golden with an age and error with no finding.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov -k floor_fold
 - id: dod-omn22912-ac3
   description: The served floor record named by FLOOR_SIMPLE_JSON_URL shows J4 with a state other than broken and a golden age, after the branch's join has run against the real dev store.
   source: manual
