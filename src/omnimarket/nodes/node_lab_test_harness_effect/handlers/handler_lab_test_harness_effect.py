@@ -199,6 +199,10 @@ def outcome_for(
     )
 
 
+class LabHarnessLedgerAppendError(RuntimeError):
+    """A ledger row of the harness's chain events was refused, errored or went unconfirmed."""
+
+
 class HandlerLabTestHarnessEffect:
     """EFFECT handler: one run request in, the current reading out."""
 
@@ -305,6 +309,7 @@ class HandlerLabTestHarnessEffect:
         ]
         if planted:
             rows.append(("planted", False, True, FAILURE_PLANTED))
+        dropped: list[str] = []
         for kind, working, drill, reason in rows:
             row = ledger_row(
                 overlay,
@@ -316,8 +321,15 @@ class HandlerLabTestHarnessEffect:
                 at=self._now(),
                 piece_number=emission.piece_number,
             )
-            self._appender.append(
+            outcome = self._appender.append(
                 row, str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}|{kind}"))
+            )
+            if not outcome.ok:
+                dropped.append(f"{kind}:{outcome.status}:{outcome.message}")
+        if dropped:
+            raise LabHarnessLedgerAppendError(
+                "the ledger did not take the harness's rows (refused, errored or unconfirmed), so the floor on another host "
+                f"cannot read them: {'; '.join(dropped)}"
             )
 
     @staticmethod
@@ -388,6 +400,7 @@ __all__: list[str] = [
     "FAILURE_PLANTED",
     "FAILURE_RAISED",
     "HandlerLabTestHarnessEffect",
+    "LabHarnessLedgerAppendError",
     "appender_from_overlay",
     "failure_code_for",
     "ledger_row",

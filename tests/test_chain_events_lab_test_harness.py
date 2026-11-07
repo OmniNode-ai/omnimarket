@@ -52,6 +52,7 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_har
     FAILURE_NOT_RED,
     FAILURE_PLANTED,
     FAILURE_RAISED,
+    LabHarnessLedgerAppendError,
     sink_from_overlay,
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.protocol_lab_test_harness import (
@@ -114,6 +115,14 @@ class RecordingAppender:
         self.rows.append(rows.rstrip("\n"))
         self.request_ids.append(request_id)
         return ModelAppendOutcome(status="accepted")
+
+
+class RefusingAppender(RecordingAppender):
+    """The bus append command when the ledger host refuses the row."""
+
+    def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
+        super().append(rows, request_id)
+        return ModelAppendOutcome(status="refused", message="row-grammar")
 
 
 @pytest.fixture(autouse=True)
@@ -465,3 +474,14 @@ async def test_error_a_broken_golden_command_writes_a_not_working_row_with_its_t
     )
     assert "golden never" in text
     assert "no events yet" not in text
+
+
+async def test_error_a_ledger_host_that_refuses_the_rows_fails_the_run_instead_of_passing_silently(
+    tmp_path: Path,
+) -> None:
+    appender = RefusingAppender()
+    with pytest.raises(LabHarnessLedgerAppendError, match="refused"):
+        await run_harness(
+            tmp_path, InMemoryEmissionSink(), "run-rows-refused", appender=appender
+        )
+    assert len(appender.rows) == 2
