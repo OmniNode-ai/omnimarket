@@ -172,10 +172,8 @@ def test_alarm_config_loads_as_options(tmp_path: Path) -> None:
 
 def test_alarm_config_names_no_home_directory_or_person() -> None:
     document = json.dumps(load_units()[UNIT]["config_file"]["document"])
-    forbidden_parts = (("", "Users", ""), ("", "home", ""))
-    forbidden = ["/".join(parts) for parts in forbidden_parts] + ["@" + "192" + "."]
-    for fragment in forbidden:
-        assert fragment not in document
+    for forbidden in ("/" + "Users/", "/" + "home/", "@" + "192."):
+        assert forbidden not in document
 
 
 def test_alarm_config_install_writes_the_file_at_0600_and_keeps_the_one_it_replaced(
