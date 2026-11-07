@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-22988
+title: The hourly Linear snapshot unit and the hourly-tick Linear read are pinned to the omnimarket Linear snapshot node by parity, failed-read and planted-divergence tests
+summary: The host's hourly morning-workflows unit has run node_linear_snapshot_effect since its OMN-22866 change, so no second snapshot implementation exists beside the node. This change adds the parity test of the unit's entry point against the node's handler on a recorded hour, the failed-read test that keeps the hourly tick window pointer, and the planted-divergence tests. The deletion half is not done; see the pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22988-parity
+  statement: The unit's entry point and the node's handler write the same snapshot of a recorded hour, and a planted divergence turns the comparison red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the unit entry point snapshot of a recorded hour equals the node handler snapshot (title, assignee, labels, description) field for field -- falsifier: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov -k parity_with_unit_on_recorded_hour'
+  - id: AC3
+    statement: 'AC3: a planted divergence, in a copy of the output and in the reader the unit runs, turns the parity comparison red -- falsifier: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov -k planted_divergence'
+evidence_requirements:
+- kind: tests
+  description: The snapshot node tests pass
+  command: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22988-node-tests
+  description: Runs the shape, parity, failed-read and planted-divergence tests of node_linear_snapshot_effect.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
+    cwd: .
