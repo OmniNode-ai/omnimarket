@@ -395,6 +395,7 @@ async def test_three_part_proof_node_roundtrip_profile(
     settings and fails when it is absent. It never substitutes an in-memory bus.
     """
     import os
+    from typing import get_type_hints
     from uuid import uuid4
 
     from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
@@ -402,9 +403,6 @@ async def test_three_part_proof_node_roundtrip_profile(
 
     from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_run_local import (
         run_local,
-    )
-    from omnimarket.nodes.node_binding_parity_orchestrator.models.model_run_local import (
-        ModelRunLocalConfig,
     )
     from omnimarket.nodes.node_binding_parity_orchestrator.protocols.protocol_local_bus import (
         ProtocolLocalBus,
@@ -429,7 +427,10 @@ async def test_three_part_proof_node_roundtrip_profile(
         )
     else:
         assert transport == "inmemory"
-    config = ModelRunLocalConfig.model_validate(proof["run_local"])
+    # The config model belongs to the sibling node; read it off run_local's own
+    # signature instead of importing that node's model package.
+    config_model = get_type_hints(run_local)["config"]
+    config = config_model.model_validate(proof["run_local"])
     config = config.model_copy(
         update={"consumer_group": f"{config.consumer_group}-{uuid4().hex}"}
     )
