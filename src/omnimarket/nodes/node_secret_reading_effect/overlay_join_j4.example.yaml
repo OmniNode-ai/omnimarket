@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at
+# <root>/node_secret_reading_join_j4/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+# The store addressing, the consumers and the planted dummy come from the piece 5 reading overlay
+# (overlay.example.yaml). No key has a default; an overlay never holds a secret value.
+consumer: example-gate
+consumer_node: node_example_consumer_effect:resolve_by_overlay
+consumer_piece: 4
+scan_node: node_secret_reading_effect:scan_join_j4
+scan_piece: 5
+code_globs:
+  - /example/src/node_example_consumer_effect/**/*.py
+log_surfaces:
+  - /example/logs/node_example_consumer_effect.log
+max_bytes_per_surface: 33554432
+emission_journal: /example/state/floor-simple/emissions.jsonl
+lane: secret-join-j4
+actor: node:node_secret_reading_effect
+drill: false
+injected_fault: Swap the consumer for one that logs its key's value, under a drill overlay
