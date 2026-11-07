@@ -18,6 +18,11 @@ description: >
   node_projection_read_effect's handler (decision D1 (a), OMN-20159), which owns
   all SQL, over the store the local writers fill. Tenant-scoped reads are
   pinned to this install's identity; another tenant answers 422.
+  The dashboard's money figures are served computed: GET /money/window sums
+  the window's metering day rows and the usage rows (spend per model, per
+  route, per day, cost per run), and a run read carries run_manifest_costs
+  (pricing manifest price x recorded tokens for the served model) beside the
+  recorded cost_usd. The page does no money arithmetic of its own.
   At start and on each heartbeat it writes this install's native environment
   row into the existing local store, through the shared local-environment
   write; it never creates a store.

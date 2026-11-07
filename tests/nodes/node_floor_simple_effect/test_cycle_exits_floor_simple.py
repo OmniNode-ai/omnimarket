@@ -20,6 +20,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -33,9 +36,6 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state impor
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers import (
     handler_floor_simple_tick as tick,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     EMIT_CYCLE,
