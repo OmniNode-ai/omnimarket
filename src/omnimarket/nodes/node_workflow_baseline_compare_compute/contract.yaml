@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_workflow_baseline_compare_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Compare one scheduled baseline run to the frozen baseline without I/O. The run is the timestamped
+  command the schedule sent and the runtime result that answers it (same command id, observed no earlier
+  than the command). The receipt holds both times, the comparisons with counts before times, and a
+  verdict: WORKING when every metric holds, NOT WORKING when a count or a time is worse than the
+  baseline, a metric is missing, the result does not answer the command, or no result came by its
+  deadline, UNKNOWN while the deadline has not passed. A NOT WORKING receipt carries one cause-lane
+  request keyed to the run.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: compare_workflow_baseline
+    handler:
+      name: HandlerWorkflowBaselineCompare
+      module: omnimarket.nodes.node_workflow_baseline_compare_compute.handlers.handler_workflow_baseline_compare
+    input_model: omnimarket.nodes.node_workflow_baseline_compare_compute.models.model_workflow_baseline_compare.ModelWorkflowBaselineCompareRequest
+    output_model: omnimarket.nodes.node_workflow_baseline_compare_compute.models.model_workflow_baseline_compare.ModelWorkflowBaselineCompareReceipt
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.workflow-baseline-run-observed.v1
+  publish_topics:
+  - onex.evt.omnimarket.workflow-baseline-compared.v1
+  - onex.cmd.omnimarket.workflow-baseline-cause-lane-requested.v1
+terminal_event: onex.evt.omnimarket.workflow-baseline-compared.v1
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.workflow-baseline-run-observed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.workflow-baseline-compared.v1
+metadata:
+  ticket: OMN-22959
+  transport_type: kafka
+lifecycle: experimental
