@@ -13,6 +13,8 @@ leaves the floor reading "no events yet" for the same working reading.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -51,6 +53,9 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_har
     FAILURE_PLANTED,
     FAILURE_RAISED,
     sink_from_overlay,
+)
+from omnimarket.nodes.node_lab_test_harness_effect.handlers.protocol_lab_test_harness import (
+    ProtocolLabTestRunner,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
@@ -116,7 +121,9 @@ def _host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_TEST_HOST", "h053")
 
 
-def overlay(sha: str, tmp_path: Path, *, emission: bool = True, **kw: Any):  # type: ignore[no-untyped-def]
+def overlay(
+    sha: str, tmp_path: Path, *, emission: bool = True, **kw: Any
+) -> ModelLabTestHarnessOverlay:
     document = overlay_document(sha, tmp_path / "r.json", **kw)
     if emission:
         document["emission"] = {
@@ -337,18 +344,18 @@ async def test_error_a_silent_lab_host_ends_the_run_chain_in_an_infrastructure_f
 async def test_error_a_run_that_raises_closes_its_chain_with_a_typed_failure(
     tmp_path: Path,
 ) -> None:
-    class _Down:
-        async def __aenter__(self) -> Any:
-            raise RuntimeError("bus down")
-
-        async def __aexit__(self, *exc_info: object) -> None:
-            return None
+    @asynccontextmanager
+    async def open_down(
+        overlay: ModelLabTestHarnessOverlay,
+    ) -> AsyncIterator[ProtocolLabTestRunner]:
+        raise RuntimeError("bus down")
+        yield
 
     _, sha = make_origin(tmp_path)
     sink = InMemoryEmissionSink()
     handler = HandlerLabTestHarnessEffect(
         overlay=overlay(sha, tmp_path),
-        runner_opener=lambda _ov: _Down(),  # type: ignore[arg-type,return-value]
+        runner_opener=open_down,
         store=InMemoryLabTestHarnessStore(),
         now=lambda: NOW,
         sink=sink,
