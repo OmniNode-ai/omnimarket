@@ -93,8 +93,10 @@ repos:
       # validator (validator_contracts_and_di, which core publishes no hook for).
       - id: canonical-handler-shape-ratchet
         files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/.*\.py$
+        require_serial: true
       - id: check-binding-conformance
         files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/(handlers/[^/]+|handler_[^/]+)\.py$
+        require_serial: true
       # OMN-14172 integration silent-skip guard: the --selftest drives the decision
       # over synthetic reports and validates scripts/ci/integration_skip_guard.yaml
       # (this repo's config, read from the default path). No DB needed locally; the
