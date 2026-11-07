@@ -22,6 +22,7 @@ against the unbroken scenario first (the control), so the red is the break's and
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import uuid
@@ -171,11 +172,23 @@ class RedpandaChainBus:
 
     async def roundtrip(self, topic: str, payload: bytes) -> bytes:
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+        from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
         from omnibase_infra.event_bus.kafka_auth import (
-            build_aiokafka_auth_kwargs_from_env,
+            build_aiokafka_auth_kwargs_for,
+        )
+        from omnibase_infra.event_bus.lane_client_transport_binding import (
+            bind_lane_client_transport,
         )
 
-        auth = build_aiokafka_auth_kwargs_from_env()
+        from tests.bus_lane_guard import declared_test_lane
+
+        # The declared lane's own identity (the machine's client store, else the SASL environment), bound for this
+        # one broker address only; a lane that resolves no identity refuses here and the leg fails, never skips.
+        _, transport = resolve_lane_binding(declared_test_lane())
+        with contextlib.ExitStack() as scope:
+            if transport is not None:
+                scope.enter_context(bind_lane_client_transport(transport))
+            auth = build_aiokafka_auth_kwargs_for(self._bootstrap)
         drill_topic = f"{topic}.{self._tag}"
         producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap, **auth)
         consumer = AIOKafkaConsumer(
