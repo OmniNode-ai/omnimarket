@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Broker Load Reading Effect (OMN-22800, piece 3 of the base-first rebuild, OMN-22478)
+#
+# Reads the broker's load from two sides and appends one reading row: the broker's own public metrics
+# (cluster partitions, topics, shards, partitions that never carried a record), and the time a consumer
+# takes to start on a probe topic. The bars are overlay values. It writes reading rows and nothing else:
+# a reading is never a gate, a stop or an admission, and the node never changes the broker.
+name: node_broker_load_reading_effect
+contract_name: node_broker_load_reading_effect
+node_name: node_broker_load_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The reading of the dev broker's single-shard overload. WORKING when partitions per shard and the consumer
+  start time are inside their bars, NOT_WORKING when either is over (with the shards the bar would need and the
+  partitions that never carried a record named on the row), UNKNOWN when the broker's metrics or the probe
+  consumer cannot be read.
+
+handler:
+  module: omnimarket.nodes.node_broker_load_reading_effect.handlers.handler_broker_load
+  class: HandlerBrokerLoad
+  input_model: omnimarket.nodes.node_broker_load_reading_effect.models.model_broker_load.ModelBrokerLoadCommand
+
+# HandlerBrokerLoad takes the overlay, host, metrics source, consumer probe, appender and clock as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, broker-consumer-join]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelBrokerLoadCommand
+  module: omnimarket.nodes.node_broker_load_reading_effect.models.model_broker_load
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelBrokerLoadResult
+  module: omnimarket.nodes.node_broker_load_reading_effect.models.model_broker_load
+  description: The verdict, the measured load, the bars and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.broker-load-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  broker_load_requested: onex.cmd.omnimarket.broker-load-requested.v1
+  broker_load_written: onex.evt.omnimarket.broker-load-written.v1
+  broker_load_failed: onex.evt.omnimarket.broker-load-failed.v1
+  broker_load_run_completed: onex.evt.omnimarket.broker-load-run-completed.v1
+  broker_load_run_failed: onex.evt.omnimarket.broker-load-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.broker-load-written.v1
+  - onex.evt.omnimarket.broker-load-failed.v1
+  - onex.evt.omnimarket.broker-load-run-completed.v1
+  - onex.evt.omnimarket.broker-load-run-failed.v1
+
+overlay:
+  node: node_broker_load_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_broker_load_reading_effect.overlay.ModelBrokerLoadOverlay
+
+metadata:
+  ticket: OMN-22800
+  transport_type: inmemory

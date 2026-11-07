@@ -414,8 +414,8 @@ def test_page_reports_decision_map_scripts_are_pinned_with_integrity_hashes() ->
 def test_page_reports_load_no_script_or_style_from_elsewhere(name: str) -> None:
     page = REPORT_PAGES[name].read_text(encoding="utf-8")
     assert "src=" not in page
-    assert page.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in page
+    assert page.count("<link") == 3
+    assert 'href="data:,"' not in page
 
 
 def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_in_place() -> (

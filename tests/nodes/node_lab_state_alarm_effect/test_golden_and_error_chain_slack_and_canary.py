@@ -19,6 +19,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelAlarm,
     ModelAlarmChannelDef,
@@ -31,9 +34,6 @@ from omnimarket.models.floor_17a import (
     ModelLabSourceVerdict,
     ModelLabStateAlarmRequest,
     ModelLabStateAlarmResult,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,

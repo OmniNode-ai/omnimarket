@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22749
+title: "The quiet-host alarm's fix text names a broker refusal beside a stopped drainer"
+summary: >-
+  The fix text of the quiet-host decision named only the drainer installer, so a host whose drainer is active and
+  refused by the broker for want of a WRITE grant was told to reinstall it. The text now names that case beside the
+  stopped drainer and says to read the topic the drainer log names as not authorized.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22749-quiet-host-fix-text
+    statement: The quiet-host alarm's fix names an active drainer refused by the broker as a cause beside a drainer that is not active.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the fix text carries both branches and the refusal wording, and appears in the alert and the friction row -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py -q --no-cov -k broker_refusal'
+      - id: AC2
+        statement: 'AC2: the same test fails on the previous fix text -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py -q --no-cov -k broker_refusal run with the handler from the base branch'
+evidence_requirements:
+  - kind: tests
+    description: The quiet-host decision tests, including the new fix-text test.
+    command: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22749-fix-text
+    description: The compute tests pass with the change; with the handler reverted to dev the new fix-text test fails.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+        cwd: .
+  - id: dod-omn22749-fix-text-integration-proof
+    description: The pushed head ran the compute tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22749 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute -q --no-cov'
+        cwd: .

@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22803
+title: Lab pool placement holds new heavy work on a host whose CPU reads above its hold bar and names the temperature as the reason, so a hot host is not given a third model check
+summary: A Linux host with a CPU sensor advertises its CPU package temperature as the pseudo-tool cpu-temp-c:<degrees> (riding tools so a caller on an older omnimarket still parses the advertisement), the host table verdict carries the row's max_cpu_c, and pool placement refuses a host above that bar naming the temperature and the bar. A host with no reading or no bar is judged on load and memory as before. The 85 C alarm bar is not touched.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22803-cpu-hold
+  statement: Pool placement holds new heavy work on a host above its CPU hold bar and says so.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a host above its row's max_cpu_c is refused naming the temperature and the bar, a host at or under it is placed, and a host with no reading or no bar is judged on load and memory as before -- falsifier: uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_pool_place_cpu_temp_omn22802.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC2
+    statement: "AC2: the capacity reader returns the CPU package temperature of a host with a k10temp or coretemp sensor as the pseudo-tool cpu-temp-c and none for a host without one -- falsifier: uv run --frozen pytest tests/nodes/node_lab_work_unit_effect/test_capacity_cpu_temp_omn22802.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC3
+    statement: "AC3: the readings of 2026-11-06 (h053 90.0 and 63.0 C, h201 87.3 and 75.0 C, bar 80 C) refuse the two hot ones and place the two cool ones -- falsifier: uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_pool_place_cpu_temp_omn22802.py -q --no-cov -n 0 -p no:randomly -k todays_readings"
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_pool_place_cpu_temp_omn22802.py tests/nodes/node_lab_work_unit_effect/test_capacity_cpu_temp_omn22802.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22803-pool-place-cpu-hold
+  description: The placement and reader tests pass; on the dev source they fail because neither the reader function nor the verdict cell exists.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_pool_place_cpu_temp_omn22802.py tests/nodes/node_lab_work_unit_effect/test_capacity_cpu_temp_omn22802.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22803-integration-proof
+  description: The pushed head ran the placement and reader tests and the existing lab work placement suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22803 -- uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_pool_place_cpu_temp_omn22802.py tests/nodes/node_lab_work_unit_effect/test_capacity_cpu_temp_omn22802.py tests/unit/lab_work/test_lab_work_placement.py -q --no-cov'
+    cwd: .
