@@ -91,6 +91,21 @@ class ModelLabTestHarnessCase(BaseModel):
         return value
 
 
+class ModelLabTestHarnessScheduleHost(BaseModel):
+    """A host the harness's own timer is declared for, and the venv its unit runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    #: The venv whose interpreter runs the unit, relative to the registry root (or absolute).
+    venv: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        return _plain(value)
+
+
 class ModelLabTestHarnessOverlay(BaseModel):
     """Every setting of the harness. The node ships none of these values."""
 
@@ -114,6 +129,12 @@ class ModelLabTestHarnessOverlay(BaseModel):
     #: Where the current reading is written for the floor to read.
     current_result_path: str = Field(min_length=1)
     cases: tuple[ModelLabTestHarnessCase, ...] = Field(min_length=2)
+    #: Hosts the harness's own systemd user timer is installed on (``schedule install --host``).
+    #: Empty means no host declares the timer.
+    schedule_hosts: tuple[ModelLabTestHarnessScheduleHost, ...] = ()
+    #: Environment the installed unit carries (the state root, the registry root, the workspace
+    #: config root): the unit holds no setting of its own.
+    unit_environment: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("piece", "tag", "lane")
     @classmethod
@@ -130,6 +151,9 @@ class ModelLabTestHarnessOverlay(BaseModel):
         ids = [case.case_id for case in self.cases]
         if len(ids) != len(set(ids)):
             raise ValueError("case ids must be unique")
+        hosts = [host.name for host in self.schedule_hosts]
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("a schedule host is declared twice")
         return self
 
     @property
