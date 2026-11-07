@@ -168,6 +168,8 @@ class ModelFloorLedgerRow(BaseModel):
     actor: str = ""
     to: str = ""
     run_id: str = ""
+    # The owns= cell as written: a comma list of what the row's lane says it owns (``floor:<holdup id>`` for the floor).
+    owns: tuple[str, ...] = ()
 
     _utc = field_validator("ts")(_aware)
 
