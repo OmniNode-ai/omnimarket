@@ -19,6 +19,7 @@ import pytest
 from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_seam_deadline_probe_effect.adapters.inmemory_seam_bus import (
     InMemorySeamBus,
+    Responder,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline import (
     EnumSeamCrossing,
@@ -62,10 +63,10 @@ def _answer(payload: dict[str, str | int | bool]) -> dict[str, object] | None:
 
 
 def _wiring(
-    node: object = _answer, *, latency_ms: int = 5
+    node: Responder = _answer, *, latency_ms: int = 5
 ) -> tuple[HandlerAttachOnDemand, InMemorySeamBus, InMemoryNodeAttacher]:
     bus = InMemorySeamBus(latency_ms=latency_ms)
-    attacher = InMemoryNodeAttacher(bus, available={COMMAND_TOPIC: node})  # type: ignore[arg-type]
+    attacher = InMemoryNodeAttacher(bus, available={COMMAND_TOPIC: node})
     return HandlerAttachOnDemand(attacher=attacher, bus=bus), bus, attacher
 
 

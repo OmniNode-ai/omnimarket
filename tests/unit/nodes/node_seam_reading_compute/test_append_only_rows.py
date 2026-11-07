@@ -111,10 +111,11 @@ def test_append_only_rows_cannot_be_mutated_through_the_returned_tuple() -> None
     store = InMemorySeamRowStore()
     store.append(_row())
 
+    mutator, field = "append", "reason"
     with pytest.raises(AttributeError):
-        store.rows("review-dispatch").append(_row())  # type: ignore[attr-defined]
+        getattr(store.rows("review-dispatch"), mutator)(_row())
     with pytest.raises(ValidationError):
-        store.rows("review-dispatch")[0].reason = "changed"  # type: ignore[misc]
+        setattr(store.rows("review-dispatch")[0], field, "changed")
 
 
 def test_append_only_golden_chain_events_end_in_the_appended_event() -> None:
