@@ -24,8 +24,8 @@ class EnumRowAppendStatus(StrEnum):
 
 
 def row_key(seam: str, probed_at: datetime) -> str:
-    """The identity of a row: one seam read at one instant."""
-    stamp = probed_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """The identity of a row: one seam read at one instant, to the microsecond the row keeps."""
+    stamp = probed_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     return hashlib.sha256(f"{seam}|{stamp}".encode()).hexdigest()[:32]
 
 

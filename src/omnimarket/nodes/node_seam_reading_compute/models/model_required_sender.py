@@ -60,6 +60,9 @@ class ModelRequiredSenderRequest(BaseModel):
         names = [d.seam for d in self.declarations]
         if len(names) != len(set(names)):
             raise ValueError("a seam is declared twice")
+        demanded_names = [d.seam for d in self.demanded]
+        if len(demanded_names) != len(set(demanded_names)):
+            raise ValueError("a seam is demanded twice")
         undeclared = sorted({d.seam for d in self.demanded} - set(names))
         if undeclared:
             raise ValueError(f"demand for undeclared seam: {undeclared[0]}")
