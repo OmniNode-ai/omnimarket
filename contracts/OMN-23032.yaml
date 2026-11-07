@@ -55,3 +55,12 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23032 -- uv run --frozen pytest tests/nodes/node_job_log_filler_effect tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly'
     cwd: .
+- id: dod-omn23032-filler-deploy
+  description: Reads the filler node's contract from the pushed branch through the GitHub contents API; the exit status depends on the branch holding the lane job-log policy key the node and the gateway share, so it goes red when the node is absent. Runs on a hosted runner.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_job_log_filler_effect/contract.yaml?ref=omn-23032-job-log-filler" --jq .content | base64 -d | grep -q lane_reads_cache_only'
+    cwd: .
