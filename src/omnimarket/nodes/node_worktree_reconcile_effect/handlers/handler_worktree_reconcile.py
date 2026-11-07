@@ -277,7 +277,8 @@ class HandlerWorktreeReconcile:
             )
         # A REMOVE justified by remote/merge evidence must still have it.
         return (
-            not (old.head_on_remote or old.content_merged)
+            not (old.head_on_remote or old.content_merged or old.merged_pr_head)
             or new.head_on_remote
             or new.content_merged
+            or new.merged_pr_head
         )

@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Reading Compute (OMN-22478, B0 reading writer)
+#
+# Pure compute: handle(ModelReadingComputeRequest) -> ModelReadingComputeResult. It takes the rows
+# of a closed window, the piece's reading spec and the three hashes of the row key, reads no
+# clock, file, network or environment, and so declares no protocol_dependencies. node_version is
+# the `revision` cell of every reading row: change the rules, change the version.
+name: node_reading_compute
+contract_name: node_reading_compute
+node_name: node_reading_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  A reading as a pure function of ledger rows in a window that closed at a fixed time plus a
+  close delay: WORKING, NOT_WORKING or UNKNOWN. The input manifest is frozen at the cutoff,
+  identical duplicate rows are dropped by key, conflicting duplicates fail the window, a stale
+  source reads NOT_WORKING, a source that cannot be read reads UNKNOWN, and a piece with no
+  producer today reads UNKNOWN with its reason. The row key is piece, window start, order hash,
+  overlay hash and revision.
+
+handler:
+  module: omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute
+  class: HandlerReadingCompute
+  input_model: omnimarket.models.model_reading.ModelReadingComputeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute_reading
+      topic: onex.cmd.omnimarket.reading-compute-requested.v1
+      handler:
+        name: HandlerReadingCompute
+        module: omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute
+      input_model: omnimarket.models.model_reading.ModelReadingComputeRequest
+      output_model: omnimarket.models.model_reading.ModelReadingComputeResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 5000
+
+input_model:
+  name: ModelReadingComputeRequest
+  module: omnimarket.models.model_reading
+  description: One piece's spec, one closed window, the evidence rows of each source.
+output_model:
+  name: ModelReadingComputeResult
+  module: omnimarket.models.model_reading
+  description: The verdict, outcome, reasons, manifest hash, row key and content hash.
+
+terminal_event: onex.evt.omnimarket.reading-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.reading-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.reading-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.reading-compute-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.reading-computed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.reading-computed.v1
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

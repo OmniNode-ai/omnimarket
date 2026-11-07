@@ -21,8 +21,13 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
 )
 from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     git,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
+    ProtocolMergedPrReader,
+    ProtocolUnitRootReader,
 )
 
 Operation = Literal["rebase", "merge", "cherry-pick", "bisect"]
@@ -168,7 +173,21 @@ def repo_slug(url: str) -> str | None:
 
 
 class GitWorktreeFactsProbe:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        unit_reader: ProtocolUnitRootReader,
+        merged_pr_reader: ProtocolMergedPrReader | None = None,
+    ) -> None:
+        self._merged_pr_reader = merged_pr_reader
+        # What installed units name, read per run and again before each removal. A tree a unit
+        # names is live; a snapshot that cannot be read is a probe error, which keeps every tree.
+        self._unit_reader = unit_reader
+        self._units = UnitRoots()
+        # Merged pull request heads per repository, read once per run. None marks a
+        # repository whose reader failed: its trees carry that as a probe error.
+        self._merged_heads: dict[str, frozenset[str] | None] = {}
+        self._merged_lock = threading.Lock()
         self._command: ModelWorktreeReconcileCommand | None = None
         self._cwds: tuple[Path, ...] = ()
         self._claims: tuple[str, ...] = ()
@@ -188,6 +207,11 @@ class GitWorktreeFactsProbe:
         except (OSError, subprocess.SubprocessError, RuntimeError):
             self._cwds = ()
             errors.append("process_snapshot_failed")
+        try:
+            self._units = self._unit_reader.read()
+        except Exception:
+            self._units = UnitRoots()
+            errors.append("unit_snapshot_failed")
         # A shared ledger is appended to every few seconds, so a changed ledger is
         # the normal state, not an error: claims are re-read before each removal.
         try:
@@ -300,6 +324,23 @@ class GitWorktreeFactsProbe:
                 pool.map(lambda item: self._probe(item[0], item[1], now), selected)
             )
 
+    def _merged_pr_head(self, slug: str | None, head: str) -> bool | None:
+        """Whether HEAD is the head of a merged pull request; None when the read failed."""
+        assert self._command is not None
+        argv = self._command.merged_pr_command
+        if argv is None or self._merged_pr_reader is None or slug is None:
+            return False
+        with self._merged_lock:
+            if slug not in self._merged_heads:
+                try:
+                    self._merged_heads[slug] = self._merged_pr_reader.merged_heads(
+                        argv, slug
+                    )
+                except (OSError, RuntimeError, subprocess.SubprocessError):
+                    self._merged_heads[slug] = None
+            heads = self._merged_heads[slug]
+        return None if heads is None else head in heads
+
     def _read_claims(self, now: datetime) -> tuple[str, ...]:
         assert self._command is not None
         if not self._command.ledger_path:
@@ -326,6 +367,12 @@ class GitWorktreeFactsProbe:
             claims = self._read_claims(now)
         except OSError:
             errors.append("ledger_unreadable")
+        # A unit may have been installed since discovery: ask again just before removal.
+        try:
+            units = self._unit_reader.read()
+        except Exception:
+            units = UnitRoots()
+            errors.append("unit_revalidation_failed")
         path = Path(facts.path)
         return fresh.model_copy(
             update={
@@ -334,6 +381,7 @@ class GitWorktreeFactsProbe:
                     cwd == path or cwd.is_relative_to(path) for cwd in cwds
                 ),
                 "live_claim": claimed(path, Path(facts.root), claims),
+                "live_unit": units.naming(str(path)),
                 # Size is not re-measured; keep what discovery measured rather
                 # than a 0 that could read as an empty tree.
                 "size_bytes": facts.size_bytes,
@@ -360,6 +408,7 @@ class GitWorktreeFactsProbe:
                 cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
             ),
             live_claim=claimed(path, root, self._claims),
+            live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,
         )
         try:
@@ -587,8 +636,15 @@ class GitWorktreeFactsProbe:
                 if remotes
                 else None
             )
+            merged_pr_head = self._merged_pr_head(slug, head)
             return facts.model_copy(
                 update={
+                    "merged_pr_head": bool(merged_pr_head),
+                    "probe_errors": (
+                        (*facts.probe_errors, "merged_pr_read_failed")
+                        if merged_pr_head is None
+                        else facts.probe_errors
+                    ),
                     "repo_slug": slug,
                     "remote_owner": slug.split("/")[0] if slug else None,
                     "branch": branch,

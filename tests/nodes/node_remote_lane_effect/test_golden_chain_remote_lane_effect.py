@@ -78,6 +78,8 @@ def test_contract_declares_dispatch_and_bound_operations() -> None:
         "resolve_remote_lane_ref",
         "retain_finished_remote_run",
         "publish_remote_lane_commit",
+        "ensure_shared_plugin_venv",
+        "prune_shared_plugin_venvs",
     }
     entry = entries["resolve_remote_lane_ref"]
     assert entry["operation"] == "resolve_remote_lane_ref"
@@ -110,7 +112,7 @@ def test_a_named_branch_or_tag_resolves_and_a_named_sha_passes(
             repo="repo_a", owner="owner_a", ref="feature", omni_home=str(home)
         )
     )
-    assert (branch.sha, branch.landing_branch) == (feature, None)
+    assert (branch.sha, branch.landing_branch) == (feature, "dev")
     tag = handler.handle(
         ModelRemoteLaneRefRequest(
             repo="repo_a", owner="owner_a", ref="v1", omni_home=str(home)

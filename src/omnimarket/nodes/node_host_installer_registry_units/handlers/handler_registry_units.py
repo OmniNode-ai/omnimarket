@@ -11,6 +11,8 @@ read from the checkout and written to the unit's install record.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import plistlib
@@ -19,7 +21,8 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,7 @@ from xml.sax.saxutils import escape
 import yaml
 
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
+    ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
     ModelRegistryUnitsResult,
 )
@@ -36,6 +40,13 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
+LOCKED_MODES = frozenset({"install", "uninstall"})
+EXIT_INSTALL_IN_PROGRESS = 75
+
+
+class InstallInProgressError(RuntimeError):
+    """Another install or uninstall of the same unit holds the unit's lock."""
 
 
 def interpreter_present(path: str) -> bool:
@@ -53,6 +64,11 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(argv, 127, "", str(exc))
+
+
+# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
+DEFAULT_PROCESS_TYPE = "Background"
+PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -81,9 +97,51 @@ class HandlerRegistryUnits:
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
         try:
-            return self.dispatch(request, unit)
+            with self.install_lock(request, unit):
+                if unit.get("kind") == "copied_tree":
+                    return self.copied_unit(request, unit)
+                return self.dispatch(request, unit)
+        except InstallInProgressError as exc:
+            return self.result(request, EXIT_INSTALL_IN_PROGRESS, error=f"{exc}\n")
         except (OSError, ValueError) as exc:
             return self.result(request, 1, error=f"{exc}\n")
+
+    @contextmanager
+    def install_lock(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Iterator[None]:
+        """Hold the unit's lock for an install or uninstall; a second one is refused, never queued.
+
+        The lock is an advisory ``flock`` on a file in the unit's state directory, so the kernel drops it when the
+        holder ends, fails or dies and a stale lock cannot block the next install. The file names the holder.
+        """
+        if request.mode not in LOCKED_MODES:
+            yield
+            return
+        state = Path(request.registry_root) / str(unit["state_directory"])
+        state.mkdir(parents=True, exist_ok=True)
+        path = state / f"{request.unit}.install.lock"
+        with path.open("a+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                handle.seek(0)
+                holder = handle.read().strip() or "a holder that wrote no record"
+                raise InstallInProgressError(
+                    f"INSTALL-IN-PROGRESS: another {request.unit} install holds {path} ({holder}); "
+                    "this request changed nothing, ask the lane that owns the unit's installs"
+                ) from None
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                f"pid={os.getpid()} mode={request.mode} project={request.project_path or 'canonical'} "
+                f"since={datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
+            )
+            handle.flush()
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     # ------------------------------------------------------------------ plan
 
@@ -196,6 +254,11 @@ class HandlerRegistryUnits:
         python: str,
     ) -> str:
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
+        process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
+        if process_type not in PROCESS_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
+            )
         home, root = Path(request.home), Path(request.registry_root)
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
@@ -217,6 +280,7 @@ class HandlerRegistryUnits:
             "USER": user,
             "STATE_DIR": str(state),
             "START_INTERVAL": str(unit["schedule"]["start_interval"]),
+            "PROCESS_TYPE": process_type,
         }
         for key, value in values.items():
             text = text.replace(f"__{key}__", escape(value))
@@ -422,3 +486,213 @@ class HandlerRegistryUnits:
             project_is_canonical=canonical,
             record=record,
         )
+
+    def copied_unit(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> ModelRegistryUnitsResult:
+        """Stage and smoke a copied bundle before changing a loaded agent."""
+        label = str(unit["label"])
+        home = Path(request.home)
+        install = home / str(unit["install_directory"])
+        state = Path(request.registry_root) / str(unit["state_directory"])
+        plist = home / "Library/LaunchAgents" / f"{label}.plist"
+        rendered = ""
+        digest = ""
+
+        def result(
+            code: int = 0, out: str = "", err: str = ""
+        ) -> ModelRegistryUnitsResult:
+            return ModelRegistryUnitsResult(
+                unit=request.unit,
+                mode=request.mode,
+                status="failure" if code else "success",
+                exit_code=code,
+                stdout=out,
+                stderr=err,
+                rendered=rendered,
+                project=request.source_root,
+                bundle_sha256=digest,
+                project_is_canonical=False,
+            )
+
+        def checked(argv: list[str]) -> subprocess.CompletedProcess[str]:
+            done = self.run(argv)
+            if done.returncode:
+                raise ValueError(f"{argv[0]} exited {done.returncode}: {done.stderr}")
+            return done
+
+        try:
+            domain = f"gui/{checked(['id', '-u']).stdout.strip()}"
+            target = f"{domain}/{label}"
+            if request.mode == "kickstart":
+                checked(["launchctl", "kickstart", target])
+                return result(out=f"kickstarted {label}\n")
+            if request.mode == "uninstall":
+                self.run(["launchctl", "bootout", target])
+                plist.unlink(missing_ok=True)
+                return result(
+                    out=f"removed {label}; copied payload and state retained\n"
+                )
+            if request.mode == "status":
+                checked(["launchctl", "print", target])
+                log = state / "runs.jsonl"
+                rows = log.read_text(encoding="utf-8").splitlines()
+                if not rows or time.time() - log.stat().st_mtime > 1800:
+                    raise ValueError("runs.jsonl is empty or older than 30 minutes")
+                return result(out=f"LOADED {label}\n{rows[-1]}\n")
+            overlay_path = Path(__file__).resolve().parents[1] / self.relative(
+                str(unit["payload_overlay"])
+            )
+            payload = ModelCopiedUnitPayload.model_validate(
+                yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+            )
+            source = Path(request.source_root)
+            if not request.source_root or not source.is_absolute():
+                raise ValueError(
+                    "source_root must name the absolute plugin root, with skills and src"
+                )
+            python = next(
+                (
+                    str(p)
+                    for p in unit["interpreter_candidates"]
+                    if os.access(p, os.X_OK)
+                ),
+                "",
+            )
+            if not python:
+                raise ValueError("no declared executable interpreter exists")
+            with tempfile.TemporaryDirectory(prefix="copied-unit-") as scratch:
+                staged = Path(scratch) / "payload"
+                staged.mkdir()
+                for name in payload.copied_files:
+                    relative = self.relative(str(name))
+                    origin = source / relative
+                    destination = staged / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(origin, destination)
+                for name in payload.copied_trees:
+                    relative = self.relative(str(name))
+                    shutil.copytree(
+                        source / relative,
+                        staged / relative,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"),
+                    )
+                script = self.relative(str(unit["script"]))
+                # The same layout is tested here and installed below. Clean PYTHONPATH
+                # in the command adapter; never point it at another checkout.
+                checked([python, "-B", str(staged / script), "--help"])
+                sha = hashlib.sha256()
+                for path in sorted(p for p in staged.rglob("*") if p.is_file()):
+                    sha.update(path.relative_to(staged).as_posix().encode() + b"\0")
+                    sha.update(hashlib.sha256(path.read_bytes()).digest())
+                digest = sha.hexdigest()
+                schedule = unit["schedule"]
+                ledger = request.ledger_path or str(
+                    Path(request.registry_root) / "docs/tracking/ROLLING_WORK_LEDGER.md"
+                )
+                arguments = [
+                    str(arg).format(state=str(state), ledger=ledger)
+                    for arg in payload.arguments
+                ]
+                user = checked(["id", "-un"]).stdout.strip()
+                rendered = plistlib.dumps(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            python,
+                            "-B",
+                            str(install / script),
+                            *arguments,
+                        ],
+                        "WorkingDirectory": request.registry_root,
+                        "ProcessType": "Background",
+                        "StartInterval": schedule["start_interval"],
+                        "RunAtLoad": schedule["run_at_load"],
+                        "EnvironmentVariables": {
+                            "HOME": str(home),
+                            "OMNI_HOME": request.registry_root,
+                            "USER": user,
+                            "LOGNAME": user,
+                            "ONEX_LEDGER_PATH": ledger,
+                            "ONEX_STATE_DIR": str(
+                                Path(request.registry_root) / ".onex_state"
+                            ),
+                            "PATH": f"{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+                        },
+                        "StandardOutPath": str(state / f"{request.unit}.out.log"),
+                        "StandardErrorPath": str(state / f"{request.unit}.err.log"),
+                    },
+                    sort_keys=False,
+                ).decode()
+                candidate = Path(scratch) / "agent.plist"
+                candidate.write_text(rendered, encoding="utf-8")
+                checked(["plutil", "-lint", str(candidate)])
+                if request.mode == "dry-run":
+                    return result(out=rendered)
+                self.activate(
+                    staged, install, candidate, plist, state, domain, target, checked
+                )
+                (state / "install.json").write_text(
+                    json.dumps(
+                        {"source_root": request.source_root, "bundle_sha256": digest}
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return result(out=f"installed {label}; bundle_sha256={digest}\n")
+        except (OSError, ValueError, shutil.Error) as exc:
+            return result(1, err=f"{exc}\n")
+
+    @staticmethod
+    def relative(name: str) -> Path:
+        path = Path(name)
+        if path.is_absolute() or ".." in path.parts or not path.parts:
+            raise ValueError(f"payload path must stay relative: {name}")
+        return path
+
+    def activate(
+        self,
+        staged: Path,
+        install: Path,
+        candidate: Path,
+        plist: Path,
+        state: Path,
+        domain: str,
+        target: str,
+        checked: Runner,
+    ) -> None:
+        """Keep the old payload and plist for rollback if bootstrap refuses."""
+        install.parent.mkdir(parents=True, exist_ok=True)
+        plist.parent.mkdir(parents=True, exist_ok=True)
+        state.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".copied-unit-", dir=install.parent
+        ) as scratch:
+            swap = Path(scratch)
+            ready = swap / "ready"
+            shutil.copytree(staged, ready)
+            previous = swap / "previous"
+            old_plist = plist.read_bytes() if plist.exists() else None
+            loaded = self.run(["launchctl", "print", target]).returncode == 0
+            if loaded:
+                checked(["launchctl", "bootout", target])
+            replaced = False
+            try:
+                if install.exists():
+                    install.rename(previous)
+                ready.rename(install)
+                replaced = True
+                shutil.copy2(candidate, plist)
+                checked(["launchctl", "bootstrap", domain, str(plist)])
+            except (OSError, ValueError):
+                if replaced:
+                    shutil.rmtree(install)
+                if previous.exists():
+                    previous.rename(install)
+                if old_plist is None:
+                    plist.unlink(missing_ok=True)
+                else:
+                    plist.write_bytes(old_plist)
+                    if loaded:
+                        checked(["launchctl", "bootstrap", domain, str(plist)])
+                raise

@@ -1079,6 +1079,26 @@ requirements:
         statement: "AC504301: a check run leaves an existing .onex-workspace-reconcile.json byte-identical and writes .onex-workspace-reconcile.check.json -- falsifier: tests/test_host_reconcile_effect.py::test_check_run_leaves_the_repair_receipt_intact fails before the receipt-path change."
       - id: "AC504302"
         statement: "AC504302: check and repair runs write parseable receipts at their respective default paths and failure alerts name the same paths -- falsifier: tests/test_host_reconcile_effect.py::test_run_receipt_lock_and_publication and ::test_failures_publish_slack_command_before_completed_event fail when check mode writes to the repair path."
+  - id: "req-pr5134-safety-pin-bounded-retry"
+    statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
+    acceptance:
+      - id: "AC513401"
+        statement: "AC513401: the security-scan workflow pins safety==3.8.1, retries a transient exit 1 a bounded number of times, and exits at once on exit 64 (a real finding) -- falsifier: tests/test_security_scan_workflow_omn17427.py::test_safety_install_is_pinned, ::test_enforcing_invocation_has_no_or_true and ::test_only_crash_exit_is_retried fail at the merge base, where safety is unpinned and not retried."
+  - id: "req-lock-security-floors"
+    statement: "uv.lock holds multidict and mako at versions outside the affected ranges of the advisories the Dependency Security Scan reports, so the scan passes on dev."
+    acceptance:
+      - id: "AC3003201"
+        statement: "AC3003201: uv.lock locks multidict at 6.9.1 or later and mako at 1.4.2 or later -- falsifier: tests/test_uv_lock_security_floors_omn17427.py fails against the lock at the merge base (multidict 6.8.0, mako 1.4.1)"
+  - id: "req-auto-wiring-batch-publish-only-tail"
+    statement: "A bounded auto-wiring batch that holds only contracts the runtime never dispatches wires nothing and is not reported as a smoke failure."
+    acceptance:
+      - id: "AC1742790"
+        statement: "AC1742790: a wiring batch whose every contract is skipped for declaring no event_bus.subscribe_topics passes the batch smoke check, while a batch that wired nothing with an unskipped contract still fails -- falsifier: tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_a_publish_only_tail_batch_is_not_a_smoke_failure fails at the merge base, where the bare total_wired > 0 assertion reds the batch"
+  - id: "req-command-wrapped-pytest-binds-its-file"
+    statement: "A dod_evidence check whose check_type is command and whose command runs uv run pytest over an existing repo test file binds that file, so evidence that has to prepare its own environment first is not read as unbound and does not red every open pull request of the repository."
+    acceptance:
+      - id: "AC2249601"
+        statement: "AC2249601: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4556,3 +4576,35 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py -q --no-cov -p no:randomly --refuse-skips -k 'check_run_leaves_the_repair_receipt_intact or run_receipt_lock_and_publication or failures_publish_slack_command_before_completed_event'"
         cwd: "."
+  - id: "dod-omn17427-pr5134-safety-pin-retry"
+    description: "The security-scan workflow pins safety==3.8.1 and retries only the exit-1 crash a bounded number of times while exit 64 fails at once. The three workflow tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC513401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_security_scan_workflow_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
+  - id: "dod-omn17427-lock-security-floors"
+    description: "AC3003201: the lock holds multidict and mako past the advisories SFTY-20261005-09094 and SFTY-20261005-32026. The test fails at the merge base."
+    source: manual
+    binds_ac: ["AC3003201"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: .
+  - id: "dod-omn17427-wiring-batch-publish-only"
+    description: "AC1742790: the batch smoke check tolerates a batch of only publish-only contracts. Measured on the one-contract tail batch: outcome skipped for 'No event_bus.subscribe_topics declared in contract' and total_wired 0, which the merge base's bare assertion fails."
+    source: manual
+    binds_ac: ["AC1742790"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -p no:randomly --refuse-skips -k publish_only_tail_batch"
+        cwd: .
+  - id: "dod-omn17427-command-wrapped-pytest-binds"
+    description: "AC2249601: a command check that prepares a HOME and then runs uv run pytest binds the file it names, and the two negative controls beside it still refuse a wrapper with no pytest run and one naming a path not in the tree. The accepting test fails at the merge base, where only test_passes checks are parsed."
+    source: manual
+    binds_ac: ["AC2249601"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
+        cwd: .

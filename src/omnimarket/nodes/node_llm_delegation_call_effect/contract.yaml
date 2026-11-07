@@ -56,6 +56,11 @@ description: |
   model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
   output, exit_cause, exit_code). The credential is never a field of either model.
 
+  The shared HandlerProviderQuotaReset reads typed reset requests through the
+  existing quota classifier on failed calls. Both this effect and the local
+  dispatch port use it; provider markers and reset modes stay in the delegation
+  policy overlay and the existing provider-quota observation topics are reused.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -498,6 +503,16 @@ codex_harness:
   reasoning_effort: high
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
+
+# Provider quota reset reader: called in-process by the quota policy through the shared classifier, never from the
+# bus. It is not in handler_routing because a routed handler needs a subscribed topic and an event_type.
+provider_quota_reset:
+  request_model:
+    name: "ModelProviderQuotaResetRequest"
+    module: "omnimarket.models.delegation.model_provider_quota_reset"
+  handler:
+    name: "HandlerProviderQuotaReset"
+    module: "omnimarket.handlers.handler_provider_quota_reset"
 
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is

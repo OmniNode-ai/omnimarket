@@ -195,6 +195,9 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # still refuses. Remedy: install the distribution into the verifier's
     # environment.
     VERIFIER_ENVIRONMENT = "verifier_environment"
+    # The gateway returned no usable check-run listing for the deciding head.
+    # Set from the read result, never from a check's output. Still blocks Done.
+    CHECK_RUN_READ_FAILED = "check_run_read_failed"
 
 
 class EnumProductCloneFreshness(StrEnum):

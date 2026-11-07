@@ -1099,3 +1099,108 @@ def test_check_run_leaves_the_repair_receipt_intact(
     handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root, "check"))
     assert repair.read_text() == "last repair receipt\n"
     assert (root / ".onex-workspace-reconcile.check.json").exists()
+
+
+def restoring_delegate(root: Path, proven: str, argv_log: Path) -> None:
+    """A venv delegate that installs the clone head, or the proven commit under --proven."""
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    write_venv_delegate(
+        root,
+        f'printf "%s\\n" "$*" >> "{argv_log}"\n'
+        'if [ "$3" = "--proven" ]; then\n'
+        f'  printf "{proven}\\n" > "{sp}/installed-commit"\n'
+        "else\n"
+        f'  git -C "{root / "omnimarket"}" rev-parse HEAD > "{sp}/installed-commit"\n'
+        "fi\n",
+    )
+
+
+def installed_commit(root: Path) -> str:
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    return (sp / "installed-commit").read_text().strip()
+
+
+def test_a_repair_that_cannot_stamp_puts_the_venv_back_on_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded OMN-19998 case: the venv left on a dev head under an older floor.
+
+    The floor names commit P. The repair installs the clone head, the dispatch premise
+    then fails on a refused clone, so the floor is retained at P. Nothing may leave the
+    venv on the unproven head, because the wrapper reads that as below the floor and
+    refuses every evidence command until some later run stamps.
+    """
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    floor = root / ".onex-workspace-floor.json"
+    floor.write_text(json.dumps({"omnimarket_commit": proven}) + "\n")
+    (root / "omnimarket/.unhealthy").touch()
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 2
+    assert result.floor_stamped is False
+    assert json.loads(floor.read_text()) == {"omnimarket_commit": proven}
+    runs = argv_log.read_text().splitlines()
+    assert len(runs) == 2
+    assert "--proven" not in runs[0]
+    assert runs[1].endswith("--proven")
+    assert installed_commit(root) == proven
+    assert any("restoring omnimarket" in line for line in result.diagnostics)
+
+
+def test_a_repair_that_stamps_is_not_restored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    (root / ".onex-workspace-floor.json").write_text(
+        json.dumps({"omnimarket_commit": proven}) + "\n"
+    )
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 0
+    assert result.floor_stamped is True
+    assert len(argv_log.read_text().splitlines()) == 1
+    assert installed_commit(root) == run_git(root / "omnimarket", "rev-parse", "HEAD")
+
+
+def test_a_failed_repair_with_no_floor_restores_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    (root / "omnimarket/.unhealthy").touch()
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, installed_commit(root), argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 2
+    assert len(argv_log.read_text().splitlines()) == 1
+
+
+def test_check_mode_never_restores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    (root / ".onex-workspace-floor.json").write_text(
+        json.dumps({"omnimarket_commit": "2" * 40}) + "\n"
+    )
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root, "check"))
+
+    assert not argv_log.exists()
