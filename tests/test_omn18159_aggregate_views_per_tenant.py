@@ -314,7 +314,8 @@ class TestEveryBusBackedExposureHasAnInProcessPublisher:
         served.update(e.topic for e in handler._row_exposures)
 
         assert served == set(bus_backed), sorted(set(bus_backed) ^ served)
-        assert len(bus_backed) == 6, bus_backed
+        # OMN-21970 adds delegation.daily.v1, the seventh.
+        assert len(bus_backed) == 7, bus_backed
 
     def test_an_unservable_bus_backed_shape_fails_construction(
         self, tmp_path: Path

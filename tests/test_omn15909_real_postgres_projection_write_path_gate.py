@@ -68,6 +68,7 @@ from omnimarket.projection.tenant_isolation import (
     TenantScopedWriteUnboundError,
     resolve_tenant_uuid,
 )
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -113,7 +114,10 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     disposable, empty, single-connection test schema -- so a plain
     ``CREATE INDEX`` is schema-equivalent here.
     """
-    return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+    # OMN-21970: and resolve 0065/0066's ``public.`` names in the test schema.
+    return for_isolated_schema(
+        raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+    )
 
 
 # Minimal, self-contained mirror of omnibase_infra forward migration

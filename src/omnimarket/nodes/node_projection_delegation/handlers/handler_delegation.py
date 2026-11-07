@@ -215,6 +215,8 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "projection_delegation_model_routing",
         "projection_delegation_quality_gate",
         "projection_delegation_token_usage",
+        # OMN-21970: the per-day view, read and republished the same way.
+        "projection_delegation_daily",
     }
 )
 
@@ -2344,8 +2346,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
 
 def _safe_numeric_str(value: Any) -> str | None:
-    if value is None:
-        return None
+    # None reaches the except below: float(None) raises TypeError.
     try:
         n = float(value)
         if not math.isfinite(n):
