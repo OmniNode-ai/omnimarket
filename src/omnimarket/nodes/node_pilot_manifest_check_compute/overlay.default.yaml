@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The in-memory default overlay of node_pilot_manifest_check_compute (OMN-22979).
+hash_algorithm: sha256
+require_frozen_before_start: true
+missing_metric_fails_bar: true

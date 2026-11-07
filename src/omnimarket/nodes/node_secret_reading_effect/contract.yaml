@@ -79,6 +79,27 @@ externally_consumed_topics:
   - onex.evt.omnimarket.secret-reading-run-completed.v1
   - onex.evt.omnimarket.secret-reading-run-failed.v1
 
+# The node's own hourly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on each host the overlay's schedule_hosts names, removed by `schedule uninstall`.
+schedule:
+  unit_name: onex-secret-reading-hourly
+  state_directory: .onex_state/secret-reading
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:05:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly at :05, ten minutes before the reading writer's hourly tick reads the row
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+  drill:
+    unit_name: onex-secret-reading-drill-daily
+    cadence:
+      on_calendar: "*-*-* 06:20:00"
+      randomized_delay: 60s
+      persistent: true
+      description: daily at 06:20 UTC, a read with a made-up machine identity, so the error event stays inside a 24-hour window
+
 overlay:
   node: node_secret_reading_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
