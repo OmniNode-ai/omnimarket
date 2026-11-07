@@ -17,6 +17,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -181,7 +182,12 @@ def _run(
     return asyncio.run(go())
 
 
-def _receipts(world: _World, *, now: datetime | None = None) -> object:
+def _caller(world: _World) -> LabWorkCaller:
+    assert world.caller is not None
+    return world.caller
+
+
+def _receipts(world: _World, *, now: datetime | None = None) -> Any:
     emissions = tuple(world.sink.events)
     return HandlerFloorReceipt().handle(
         ModelFloorReceiptInput(
@@ -255,11 +261,11 @@ def test_golden_every_host_returns_one_correlated_result_and_the_floor_reads_j2_
     assert len(world.commands) == len(POOLED)
     assert len({r.correlation_id for r in by_host.values()}) == len(POOLED)
     receipts = _receipts(world)
-    join = receipts.joins[0]  # type: ignore[attr-defined]
+    join = receipts.joins[0]
     assert join.join == "J2"
     assert join.state == "golden_only"
     assert join.golden_at is not None
-    assert receipts.findings == ()  # type: ignore[attr-defined]
+    assert receipts.findings == ()
 
 
 async def _no_advert_world(world: _World) -> tuple[ModelJoinJ2HostResult, ...]:
@@ -289,11 +295,11 @@ def test_error_a_host_with_no_advertisement_is_a_typed_failure_and_nothing_is_se
     # the seam piece holds a typed upstream refusal and never started
     assert _phases(world, cid, 3) == [("failure", "upstream_canary_no_advertisement")]
     receipts = _receipts(world)
-    join = receipts.joins[0]  # type: ignore[attr-defined]
+    join = receipts.joins[0]
     assert join.state == "error_only"
     assert join.error_at is not None
     assert join.golden_at is None
-    assert receipts.findings == ()  # type: ignore[attr-defined]
+    assert receipts.findings == ()
 
 
 def test_error_golden_then_error_makes_the_floor_read_j2_passed() -> None:
@@ -306,7 +312,7 @@ def test_error_golden_then_error_makes_the_floor_read_j2_passed() -> None:
     by_host = _by_host(results)
     assert by_host[POOLED[0]].outcome is EnumJoinJ2Outcome.GOLDEN
     assert by_host[SILENT].outcome is EnumJoinJ2Outcome.NO_ADVERTISEMENT
-    join = _receipts(world).joins[0]  # type: ignore[attr-defined]
+    join = _receipts(world).joins[0]
     assert join.state == "passed"
     assert join.golden_at is not None
     assert join.error_at is not None
@@ -321,7 +327,7 @@ def test_error_a_stale_advertisement_is_a_typed_failure_and_nothing_is_sent() ->
         )
         stale = JoinJ2(
             settings=SETTINGS,
-            caller=world.caller,  # type: ignore[arg-type]
+            caller=_caller(world),
             sink=world.sink,
             backend="in_memory",
             clock=lambda: later,
@@ -358,7 +364,7 @@ def test_error_an_advertising_host_that_does_not_serve_gives_no_result_and_is_no
         ("start", None),
         ("failure", "seam_no_result"),
     ]
-    join = _receipts(world).joins[0]  # type: ignore[attr-defined]
+    join = _receipts(world).joins[0]
     assert join.golden_at is None
 
 
@@ -379,7 +385,7 @@ def test_error_control_a_receipt_for_another_unit_is_not_read_as_the_result() ->
         "failure",
         "seam_result_uncorrelated",
     )
-    join = _receipts(world).joins[0]  # type: ignore[attr-defined]
+    join = _receipts(world).joins[0]
     assert join.golden_at is None
 
 
