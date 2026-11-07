@@ -33,21 +33,33 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
 - id: dod-omn22928-ac2
-  description: The unowned_red probe over the recorded board with the floor overlay of the overlays pull request names no cause; the same probe over the overlay on main names the unowned causes. The overlay lives in the overlays repository, so the probe runs in the lane and is recorded in the pull request comment.
+  description: The recorded board 0254 read with the owners map of the floor overlay names no red cause, and read with the entries this change declared taken away names the causes missing one. The owners map is recorded in a fixture of this repository.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: |-
-      test "$(git -C "$OMNI_HOME/overlays" show origin/main:overlays/node_floor_simple_compute/overlay.yaml | grep -c -E '"(lab:disk|lab:deploy_lag|lab:runner_groups|stoppage:lab-enumerate-unreadable|stoppage:lab-enumerate-partial|stoppage:lab-source-unreadable|stoppage:hook-refusal:heavy-work-over-load-bar|stoppage:hook-refusal:worktree-add-refused)": \[OMN-')" = 8
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -k "every_red_cause_of_the_recorded_board or owner_entry_is_missing" -q --no-cov
 - id: dod-omn22928-ac3
-  description: The floor publish read of floor-simple.json on the publisher host after the install carries the red-with-no-declared-owner line. The publisher host is not reachable from the lab; the install is the orchestrator tick step.
+  description: The served document carries red_rule.unowned_red and the simple page draws the red-with-no-declared-owner line from it.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -k "served_document_and_page" -q --no-cov
+- id: dod-omn22928-overlay-probe
+  description: The overlays repository's floor overlay on main declares an owner for each of the 8 causes. The overlay lives in the overlays repository, so this runs at the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      test "$(git -C "$OMNI_HOME/overlays" show origin/main:overlays/node_floor_simple_compute/overlay.yaml | grep -c -E '"(lab:disk|lab:deploy_lag|lab:runner_groups|stoppage:lab-enumerate-unreadable|stoppage:lab-enumerate-partial|stoppage:lab-source-unreadable|stoppage:hook-refusal:heavy-work-over-load-bar|stoppage:hook-refusal:worktree-add-refused)": \\[OMN-')" = 8
+- id: dod-omn22928-publisher-read
+  description: The floor publish read of floor-simple.json on the publisher host after the install carries red_rule.unowned_red. The publisher host is not reachable from the lab; the install is the orchestrator tick step.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
