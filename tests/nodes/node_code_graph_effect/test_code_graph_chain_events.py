@@ -257,7 +257,9 @@ def test_error_chain_sample_below_bar_ends_not_working(
     ]
     assert {body["correlation_id"] for _, body in events} == {CORRELATION}
     assert events[-1][1]["verdict"] == "NOT_WORKING"
-    assert str(events[-1][1]["reasons"][0]).startswith("below-bar:5-of-7")  # type: ignore[index]
+    reasons = events[-1][1]["reasons"]
+    assert isinstance(reasons, list)
+    assert str(reasons[0]).startswith("below-bar:5-of-7")
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
     row = evidence_row_from_text(ledger.lines[0])
