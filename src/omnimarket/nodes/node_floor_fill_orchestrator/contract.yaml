@@ -84,6 +84,12 @@ dependencies:
     required: true
 runtime_dispatch:
   external_trigger: "onex run-node node_floor_fill_orchestrator -- <command>, called by the fill's tick unit and by the prompt-submit hook entry."
+# The tick unit: installed by `schedule install` as a systemd user timer on floor_fill.host_id, removed by
+# `schedule uninstall` (the rollback). The interval (floor_fill.tick_interval_seconds) is the overlay's.
+schedule:
+  unit_name: onex-floor-fill-tick
+  timeout_seconds: 900
+
 overlay:
   example: "overlay.example.yaml"
   section: "floor_fill"
