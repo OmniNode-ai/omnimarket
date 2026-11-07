@@ -17,6 +17,11 @@ after A failed is a named break, and so is A failing with B silent past the dead
 Two things are not judged. A join into a piece that does not exist yet (the input lists the pieces that do) cannot be
 broken: nothing downstream is there to answer. And a chain run as a drill is not evidence for a join: its fault is
 injected on purpose to give the piece its own error receipt, and no downstream piece is expected to react to it.
+
+A join reads, for a piece whose node declares its chains (``declared_chains``), only those chains. A node can emit
+chains of its piece that are not the pipeline a join reads, such as one chain per row the floor cycle reads; such a
+chain still counts toward the piece's own receipt and still gets its findings, and no join demands a typed upstream
+refusal for it. This narrows what a join reads to what it was specified to read; it relaxes no verdict.
 """
 
 from __future__ import annotations
@@ -187,9 +192,13 @@ class HandlerFloorReceipt:
         findings: list[ModelChainFinding] = [f for r in readings for f in r.findings]
         by_piece: dict[int, list[_ChainReading]] = defaultdict(list)
         grouped_views: dict[tuple[str, int], list[_ChainReading]] = defaultdict(list)
+        declared = {d.piece: frozenset(d.nodes) for d in request.declared_chains}
         for reading in readings:
             by_piece[reading.piece].append(reading)
-            grouped_views[(reading.cid, reading.piece)].append(reading)
+            # A join reads the chains the piece's node declares; the piece's own receipt above keeps every chain.
+            nodes = declared.get(reading.piece)
+            if nodes is None or reading.node in nodes:
+                grouped_views[(reading.cid, reading.piece)].append(reading)
         by_cid = {key: _PieceView(chains) for key, chains in grouped_views.items()}
 
         pieces: list[ModelPieceReceipt] = []

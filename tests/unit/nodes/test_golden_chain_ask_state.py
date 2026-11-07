@@ -100,6 +100,15 @@ def test_golden_chain_chat_only_lane_owned_done_and_parked(tmp_path: Path) -> No
         + "2026-10-31T10:00:00Z | TERMINAL | lane=lane-a | friction=none | closes-CLAIM=2026-10-31T08:05:00Z | outcome=done\n",
         encoding="utf-8",
     )
+    reported = handler.handle(_request(tmp_path))
+    assert {e.ask_id: e.state for e in reported.asks}[
+        "ask-0000000002"
+    ] is EnumAskState.UNVERIFIED
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8")
+        + "2026-10-31T10:30:00Z | STATUS | lane=ask-check | ask=ask-0000000002 | done_check=ledger:row | verdict=TRUE\n",
+        encoding="utf-8",
+    )
     done = handler.handle(_request(tmp_path))
     assert {e.ask_id: e.state for e in done.asks}["ask-0000000002"] is EnumAskState.DONE
 

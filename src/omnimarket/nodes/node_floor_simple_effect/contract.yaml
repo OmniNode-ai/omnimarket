@@ -95,6 +95,17 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
+  # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
+  # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
+  # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
+  pipeline_chains:
+    - node_floor_simple_effect:run_floor_simple_cycle
+    - node_floor_simple_effect:read_sources
+    - node_floor_simple_compute:compute_lab_state
+    - node_lab_state_alarm_effect:alarm_lab_state
+    - node_floor_emission_compute:compute_floor_receipts
+    - node_floor_simple_compute:compute_floor_simple
+    - node_lab_state_alarm_effect:publish_canary
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
