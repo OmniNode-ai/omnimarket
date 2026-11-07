@@ -127,15 +127,32 @@ def test_error_unread_receipts_give_none_not_zero() -> None:
 
 
 def test_golden_the_reason_is_the_reading_without_the_event_ages() -> None:
-    # A golden chain makes the row's text carry "golden ..., error ..."; the reason is the text before it.
-    doc = HandlerFloorSimple().handle(
-        with_receipts((chain(2, "golden", 60, "a"),)).model_copy(
-            update={"go_given_through": 3}
-        )
+    # With a receipt that has emitted, the row's text ends with the golden and error ages; the reason is the text before it.
+    base = with_receipts((chain(2, "golden", 60, "a"),))
+    assert base.receipts is not None
+    emitted = ModelPieceReceipt(
+        piece=2,
+        started=True,
+        golden_at=NOW - timedelta(seconds=60),
+        error_at=NOW - timedelta(seconds=120),
+        golden_backends=("memory",),
+        last_emission_at=NOW - timedelta(seconds=60),
+        golden_age_s=60,
+        error_age_s=120,
+        freshness="fresh",
     )
+    receipts = base.receipts.model_copy(
+        update={
+            "pieces": tuple(
+                emitted if r.piece == 2 else r for r in base.receipts.pieces
+            )
+        }
+    )
+    doc = HandlerFloorSimple().handle(base.model_copy(update={"receipts": receipts}))
     p = piece(doc, 2)
     assert p.reason
-    assert "golden" not in p.reason
+    assert " · golden" in p.text
+    assert " · " not in p.reason
     assert p.text.startswith(p.reason)
 
 
