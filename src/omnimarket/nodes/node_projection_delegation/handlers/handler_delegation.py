@@ -42,6 +42,10 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_aggregate_coalescer import (
+    AggregateCoalescer,
+    window_s_from_contract,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.delegation_coercion import (
     _as_decimal_local,
     _as_int_local,
@@ -108,10 +112,6 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
     rung_verdict_fill,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
-from omnimarket.projection.aggregate_coalescer import (
-    AggregateCoalescer,
-    window_s_from_contract,
-)
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
 )

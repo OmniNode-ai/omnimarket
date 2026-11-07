@@ -8,7 +8,9 @@ each view is republished once per window. They cannot prove that the deferred
 read still works, because the views are whole-table aggregates evaluated by
 Postgres under ``FORCE ROW LEVEL SECURITY`` with the tenant in a GUC. This module
 runs the deferred flush against the migrated schema, as the NOBYPASSRLS writer
-role the OMN-18139 fixture builds, and reads what the flush published.
+role the OMN-18139 fixture builds, and reads what the flush published. The
+coalescer under test lives in
+``omnimarket.nodes.node_projection_delegation.handlers.delegation_aggregate_coalescer``.
 """
 
 from __future__ import annotations
