@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The 58 target rows of the host bring-up orchestrator contract (OMN-21883).
+"""The 59 target rows of the host bring-up orchestrator contract (OMN-21883).
 
-Binds the generated contract to the plan: 4, 7, 15, 8, 7, 9 and 8 targets across
+Binds the generated contract to the plan: 4, 7, 15, 8, 7, 10 and 8 targets across
 stages A to G, every row loading through ``load_bringup_graph`` with a check, a
 falsifier and an enum action, a planted row without a falsifier refused, and no
 host, address, path or version anywhere in the contract. The generator that
@@ -47,7 +47,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _CONTRACT = _REPO / "src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml"
 _EXCERPT = _REPO / "tests/fixtures/host_bringup/plan_excerpt.md"
 
-_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 9, "G": 8}
+_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 10, "G": 8}
 _TOP_TARGETS = {"up", "storage-up"}
 
 
@@ -77,12 +77,12 @@ def _plan(observations: dict[str, EnumObservedState]) -> Any:
     )
 
 
-# --- the 58 rows -------------------------------------------------------------
+# --- the 59 rows -------------------------------------------------------------
 
 
 def test_target_rows_count_per_stage() -> None:
     graph = load_bringup_graph(_contract())
-    assert len(graph.targets) == 58
+    assert len(graph.targets) == 59
     assert dict(sorted(Counter(t.stage for t in graph.targets).items())) == (
         _STAGE_COUNTS
     )
@@ -91,7 +91,7 @@ def test_target_rows_count_per_stage() -> None:
 def test_target_rows_every_row_loads_with_check_falsifier_and_action() -> None:
     graph = load_bringup_graph(_contract())
     names = [t.name for t in graph.targets]
-    assert len(set(names)) == 58
+    assert len(set(names)) == 59
     for target in graph.targets:
         assert target.check.kind in EnumBringupCheckKind
         assert target.action in EnumBringupAction
@@ -136,7 +136,7 @@ def test_target_rows_graph_plans_with_no_cycle_orphan_or_unknown_need() -> None:
     plan = _plan({})
     assert plan.status is EnumPlanStatus.PLANNED
     assert plan.refusals == ()
-    assert len(plan.steps) == 58
+    assert len(plan.steps) == 59
     order = {s.target: s.order for s in plan.steps}
     for row in _contract()["targets"]:
         for need in row["needs"]:
@@ -234,6 +234,60 @@ def test_error_chain_without_the_switch_row_the_same_host_plans_no_act() -> None
     for row in contract["targets"]:
         row["needs"] = [n for n in row["needs"] if n != "run-volume-on-drive"]
     plan = _drive_host_with_run_volume_in_ram(contract)
+    acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
+    assert acting == []
+
+
+# --- the omnidash host copy on a ProLiant (OMN-21899, OMN-22478) -----------------
+
+
+def _host_with_omnidash_unit_down(contract: dict[str, Any]) -> Any:
+    """Every check reads ok except the omnidash host unit: the host's units are installed, the
+    tailnet is up, and the dashboard copy is not installed or its updater has stopped."""
+    names = [t["name"] for t in contract["targets"]]
+    observed = dict.fromkeys(names, EnumObservedState.OK)
+    observed["omnidash-host"] = EnumObservedState.NOT_OK
+    return HandlerHostBringupPlan().handle(
+        ModelHostBringupPlanRequest(
+            graph=load_bringup_graph(contract),
+            observations=tuple(
+                ModelCheckObservation(target=n, state=s) for n, s in observed.items()
+            ),
+        )
+    )
+
+
+def test_omnidash_host_is_a_declared_step_after_the_host_units_and_the_tailnet() -> (
+    None
+):
+    row = _row(_contract(), "omnidash-host")
+    assert row["stage"] == "F"
+    assert row["action"] == "host_unit_install"
+    assert row["check"]["kind"] == "unit_status"
+    assert set(row["needs"]) == {"host-units", "tailnet"}
+    order = {s.target: s.order for s in _plan({}).steps}
+    assert order["host-units"] < order["omnidash-host"]
+    assert order["tailnet"] < order["omnidash-host"]
+
+
+def test_a_host_whose_omnidash_unit_is_down_acts_on_that_step_alone() -> None:
+    plan = _host_with_omnidash_unit_down(_contract())
+    assert plan.status is EnumPlanStatus.PLANNED
+    acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
+    assert acting == ["omnidash-host"]
+
+
+def test_error_chain_without_the_omnidash_row_the_same_host_plans_no_act() -> None:
+    """The injected break: a graph with no row for the dashboard copy plans nothing for a host whose
+    dashboard copy is down, so nothing installs it and nothing restarts its updater. The reading
+    above fails for real under this break."""
+    contract = copy.deepcopy(_contract())
+    contract["targets"] = [
+        t for t in contract["targets"] if t["name"] != "omnidash-host"
+    ]
+    for row in contract["targets"]:
+        row["needs"] = [n for n in row["needs"] if n != "omnidash-host"]
+    plan = _host_with_omnidash_unit_down(contract)
     acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
     assert acting == []
 
@@ -345,7 +399,7 @@ def test_generator_renders_rows_that_load() -> None:
 
 def test_generator_refuses_a_plan_that_does_not_match_the_declared_shape() -> None:
     rows = parse_plan_rows(_EXCERPT.read_text(encoding="utf-8"))
-    with pytest.raises(PlanShapeError, match="58"):
+    with pytest.raises(PlanShapeError, match="59"):
         build_contract_text(rows)
 
 

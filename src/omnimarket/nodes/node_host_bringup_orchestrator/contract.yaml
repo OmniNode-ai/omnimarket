@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Host Bring-up Orchestrator target graph (OMN-21883)
 #
-# The 58 declared bring-up targets of the host bring-up dependency graph plan,
-# stages A to G (4, 7, 15, 8, 7, 9 and 8). Each row holds its stage, its needs, a
+# The 59 declared bring-up targets of the host bring-up dependency graph plan,
+# stages A to G (4, 7, 15, 8, 7, 10 and 8). Each row holds its stage, its needs, a
 # read-only already-satisfied check, a falsifier and an enum action, and loads
 # through load_bringup_graph in node_host_bringup_plan_compute; a row missing any
 # of them fails the load. The rows hold shape and no value: a check subject is
@@ -22,7 +22,7 @@ contract_version:
   patch: 0
 node_version: "0.1.0"
 lifecycle: experimental
-description: "The declared host bring-up target graph: 58 targets, each with a check, a falsifier and an enum action."
+description: "The declared host bring-up target graph: 59 targets, each with a check, a falsifier and an enum action."
 input_model:
   name: "ModelHostBringupPlanRequest"
   module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
@@ -38,7 +38,7 @@ descriptor:
   timeout_ms: 5000
 dod_evidence:
   PYTEST:
-    description: "the 58 rows load, count 4, 7, 15, 8, 7, 9 and 8 per stage, and a planted row without a falsifier is refused"
+    description: "the 59 rows load, count 4, 7, 15, 8, 7, 10 and 8 per stage, and a planted row without a falsifier is refused"
     command: "uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q"
     pass_criteria: "every test passes"
 targets:
@@ -324,9 +324,15 @@ targets:
     check: {kind: unit_status, subject: lab_work_serve}
     falsifier: "a stop ages out within 40 s"
     action: host_unit_install
+  - name: omnidash-host
+    stage: F
+    needs: [host-units, tailnet]
+    check: {kind: unit_status, subject: omnidash_host}
+    falsifier: "a stopped updater timer, or a served commit that is not the newest tip of the dashboard repository after the declared interval, reads unsatisfied"
+    action: host_unit_install
   - name: verify
     stage: F
-    needs: [lab-work-serve, sshd-key-only, collaborator-accounts]
+    needs: [lab-work-serve, omnidash-host, sshd-key-only, collaborator-accounts]
     check: {kind: runbook_verified, subject: verify}
     falsifier: "any one failing item stops the flip"
     action: stop
