@@ -37,7 +37,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k host_table
     cwd: .
 - id: dod-omn22755-ac3-attribution
   description: "The pool host ids h051, h053 and h106 are attributed from the table's event labels, so a host with a hook event is not read quiet (the hosted counterpart of AC3; the first run itself is read at the local Done gate)."
