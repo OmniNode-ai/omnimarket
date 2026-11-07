@@ -26,9 +26,11 @@ requirements:
   - id: AC9
     statement: 'AC9: `-k duplicate_ticket_one_lane` (T11 criterion 5) passes here, with the orchestrator, the reducer and the stubbed Linear store. -- falsifier: `uv run pytest -k duplicate_ticket_one_lane` with the orchestrator, the reducer and the stubbed Linear store'
   - id: AC10
-    statement: 'AC10: **The stored answer and the forward.** After a `tick`, `lines` prints exactly the tick''s rendered lines; with the stored answer aged `max_age_minutes + 1` it prints the stale line and no MISSING; with no row it prints the absent line; a `tick` run on another host is refused `wrong-host`, and an `inspect`, `lines` or `send_key` run on another host runs on the fill host through the scripted runner with its output and exit code relayed, while a failing forward and a forward past the command timeout print `UNKNOWN floor-fill-unreachable` and exit 75 -- falsifier: `-k lines_prints_stored_answer`, `-k lines_stale_and_absent`, `-k older_snapshot_cannot_publish`, `-k tick_wrong_host_refused`, `-k forward_to_fill_host`, `-k forward_send_key_preserves_argument` (the scripted remote entry receives exactly the supplied key, one element, and reserves and dispatches that key) and `-k forward_failure_unreachable`. An overlay with `tick_interval_seconds` not below `max_age_minutes` in seconds, or a `host_id` that is not an available row of the lab host table (a fixture table with an unavailable row and a missing row), refuses naming the keys -- falsifier: `-k interval_order_refused` and `-k fill_host_must_be_available_lab_host`.'
-  - id: AC10b
-    statement: 'AC10b: **First tick and the deadline on the fill host.** Against a real store with no row for the scope the first `tick` creates the row and starts the lanes, a second command racing it on the insert ends `STALE-STATE`, and a store that cannot be read is told apart from a missing row; a command that stalls on the fill host is ended by that host''s own entry at `command_timeout_seconds` and no process remains -- falsifier: `-k first_tick_creates_row`, `-k absent_row_vs_unreadable_store` and `-k entry_exits_process_at_timeout`.'
+    statement: 'AC10: **The stored answer and the forward.** After a `tick`, `lines` prints exactly the tick''s rendered lines; with the stored answer aged `max_age_minutes + 1` it prints the stale line and no MISSING; with no row it prints the absent line; a `tick` run on another host is refused `wrong-host`, and an `inspect`, `lines` or `send_key` run on another host runs on the fill host through the scripted runner with its output and exit code relayed, while a failing forward and a forward past the command timeout print `UNKNOWN floor-fill-unreachable` and exit 75 -- falsifier: `-k lines_prints_stored_answer`, `-k lines_stale_and_absent`, `-k older_snapshot_cannot_publish`, `-k tick_wrong_host_refused`, `-k forward_to_fill_host`, `-k forward_send_key_preserves_argument` (the scripted remote entry receives exactly the supplied key, one element, and reserves and dispatches that key) and `-k forward_failure_unreachable`. An overlay with `tick_interval_seconds` not below `max_age_minutes` in seconds, or a `host_id` that is not an available row of the lab host table (a fixture table with an unavailable row and a missing row), refuses naming the keys -- falsifier: `-k interval_order_refused` and `-k fill_host_must_be_available_lab_host`.
+
+      AC10b: **First tick and the deadline on the fill host.** Against a real store with no row for the scope the first `tick` creates the row and starts the lanes, a second command racing it on the insert ends `STALE-STATE`, and a store that cannot be read is told apart from a missing row; a command that stalls on the fill host is ended by that host''s own entry at `command_timeout_seconds` and no process remains -- falsifier: `-k first_tick_creates_row`, `-k absent_row_vs_unreadable_store` and `-k entry_exits_process_at_timeout`.
+
+      (The ticket''s criterion AC10b rides on this entry: the contract schema binds only labels of AC plus digits.)'
   - id: AC11
     statement: 'AC11: G-NODE holds, and a scripted scenario (four startable lines, one refusing runner, one degraded read) gives equal decision projections and answer statuses on the in-memory and Redpanda legs -- falsifier: `-m floor_fill_parity -k orchestrator` with the Redpanda receipt in the PR body.'
 evidence_requirements:
@@ -113,7 +115,7 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "duplicate_ticket_one_lane"
     cwd: .
 - id: dod-omn22854-ac10
-  description: AC10 the stored answer, the wrong-host refusal, the forward to the fill host and the overlay order and host-table refusals.
+  description: 'AC10 and AC10b: the stored answer, the wrong-host refusal, the forward to the fill host, the overlay order and host-table refusals, the first tick, the racing insert, an unreadable store against a missing row, and a stalled command ending its own process at the deadline.'
   source: manual
   binds_ac:
   - AC10
@@ -121,12 +123,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "lines_prints_stored_answer or lines_stale_and_absent or older_snapshot_cannot_publish or tick_wrong_host_refused or forward_to_fill_host or forward_send_key_preserves_argument or forward_failure_unreachable or interval_order_refused or fill_host_must_be_available_lab_host"
     cwd: .
-- id: dod-omn22854-ac10b
-  description: AC10b (the label AC10b is not a bindable label for the contract schema, which takes AC plus digits; the item binds the nearest label AC10 and carries the AC10b checks) AC10b the first tick creates the row, a racing insert ends STALE-STATE, an unreadable store is told apart from a missing row, and a stalled command ends its own process at the deadline.
-  source: manual
-  binds_ac:
-  - AC10
-  checks:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "first_tick_creates_row or absent_row_vs_unreadable_store or entry_exits_process_at_timeout"
     cwd: .
