@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-22907
+title: 'Piece 3''s first task: the J2 join test, a canary on each host publishes one command, placement consumes the host''s capacity advertisement and one correlated result returns on the dev bus, golden and error'
+summary: Adds the J2 join (rebuild plan section 4.1, piece 2 to piece 3) as a handler of node_host_reading_effect with its settings in the node overlay. For each pooled host a canary chain (piece 2) reads the host's newest capacity advertisement and a seam chain (piece 3) places one command on that host and reads one correlated result, both emitted under one correlation id in the floor's emission contract. A host with no or a stale advertisement fails the canary chain typed, the seam chain holds a typed upstream refusal and no command is published. A receipt for another unit, a timeout, a refused placement and a command that ended non-zero each end the seam chain typed and none is read as success. The join-j2 verb runs it on the in-memory or the dev bus. No bound is changed and nothing is muted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22907-j2-join
+  statement: A golden and an error join test on the in-memory bus, with a named injected break that turns the error test red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden join test on the in-memory bus, a host canary publishes one command, placement reads the advertisement and one correlated result returns -- falsifier: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q -k golden'
+  - id: AC2
+    statement: 'AC2: error join test, a host with no advertisement yields a typed failure and no result is read as success -- falsifier: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q -k error'
+evidence_requirements:
+- kind: tests
+  description: The J2 golden and error join tests on the in-memory bus.
+  command: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22907-ac1
+  description: The golden J2 join tests pass on the branch.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q --no-cov -k golden
+- id: dod-omn22907-ac2
+  description: The error J2 join tests pass on the branch, including the receipt for another unit read as a typed failure.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q --no-cov -k error

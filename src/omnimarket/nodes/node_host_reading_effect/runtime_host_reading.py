@@ -4,6 +4,7 @@
 
 ``hourly``   read this host's probes and append the rows (what the schedule runs).
 ``probe``    the same reads, appending nothing.
+``join-j2``  run the J2 join (piece 2 to piece 3) for each pooled host on a bus, emit its two chains.
 ``schedule`` check | install | uninstall | status | run-now, for a host in the overlay.
 
 Exit codes: 0 every probe was read and written (a probe reading NOT WORKING is still 0: a probe
@@ -15,16 +16,25 @@ that did not land, a host the overlay does not declare); 3 a deployment fact is 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import os
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from pydantic import ValidationError
 
+from omnimarket.delegated_test_loop.lane_bus import (
+    BusKind,
+    LabRunBusError,
+    open_lab_run_bus,
+)
 from omnimarket.handlers.emission_sink import JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.lab_work.bus import LabWorkCaller
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
@@ -46,6 +56,9 @@ from omnimarket.nodes.node_host_reading_effect.adapters.host_files import LocalH
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
     HandlerHostReading,
 )
+from omnimarket.nodes.node_host_reading_effect.handlers.handler_join_j2 import (
+    HandlerJoinJ2,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (
     HostReadingScheduler,
     load_schedule,
@@ -58,6 +71,13 @@ from omnimarket.nodes.node_host_reading_effect.overlay import (
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
+)
+
+# The opener's keyword for the workspace root, read from its signature rather than spelled here.
+_WORKSPACE_KW = next(
+    name
+    for name in inspect.signature(open_lab_run_bus).parameters
+    if name.endswith("_home")
 )
 
 
@@ -164,6 +184,73 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
     return 1 if failed else 0
 
 
+def _join_j2(arguments: Sequence[str]) -> int:
+    """Run J2 for each pooled host (or the hosts named) on the bus chosen, and print one line each."""
+    parser = argparse.ArgumentParser(prog="join-j2")
+    parser.add_argument("--bus", choices=("kafka", "inmemory"), default="kafka")
+    parser.add_argument("--bus-lane", default=None)
+    parser.add_argument("--kafka-bootstrap", default=None)
+    parser.add_argument("--workspace-root", default=os.environ.get("OMNI_HOME"))
+    parser.add_argument("--host", action="append", default=None)
+    args = parser.parse_args(list(arguments))
+    overlay = load_overlay()
+    if overlay.join_j2 is None:
+        raise ValueError("the overlay has no join_j2 block")
+    join = overlay.join_j2
+    home = os.environ.get(join.emission_home_env, "").strip()
+    if not home:
+        raise ValueError(f"{join.emission_home_env} is not set")
+    hosts = tuple(args.host or ()) or tuple(
+        host.name for host in HostTableInventory(os.environ).hosts() if host.pooled
+    )
+
+    async def main() -> tuple[bool, list[str]]:
+        async with open_lab_run_bus(
+            bus=cast(BusKind, args.bus),
+            lane=args.bus_lane,
+            kafka_bootstrap=args.kafka_bootstrap,
+            **{
+                _WORKSPACE_KW: Path(args.workspace_root)
+                if args.workspace_root
+                else None
+            },
+        ) as bus:
+            caller = LabWorkCaller(
+                bus, wait_slack_seconds=join.settings.result_wait_slack_seconds
+            )
+            await caller.start()
+            try:
+                await caller.collect(join.collect_window_seconds)
+                results = await HandlerJoinJ2(
+                    settings=join.settings,
+                    caller=caller,
+                    sink=JsonlEmissionSink(Path(home) / join.emission_journal_relpath),
+                    backend="real" if args.bus == "kafka" else "in_memory",
+                ).run_hosts(hosts)
+            finally:
+                await caller.stop()
+        lines = [
+            f"J2 host={r.host} outcome={r.outcome.value} failure={r.failure_code or 'none'} "
+            f"correlation={r.correlation_id} unit={r.work_unit_id or 'none'} "
+            f"receipt_host={r.receipt_host or 'none'} advert_age_s={r.advert_age_seconds} "
+            f"detail={r.detail!r}"
+            for r in results
+        ]
+        golden = sum(r.ok for r in results)
+        lines.append(
+            f"RUN-J2 hosts={len(results)} golden={golden} failed={len(results) - golden}"
+        )
+        return golden == len(results), lines
+
+    try:
+        ok, lines = asyncio.run(main())
+    except LabRunBusError as exc:
+        sys.stderr.write(f"J2-BUS-FAILED {exc}\n")
+        return 1
+    sys.stdout.write("\n".join(lines) + "\n")
+    return 0 if ok else 1
+
+
 def _schedule(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="schedule")
     verbs = parser.add_subparsers(dest="verb", required=True)
@@ -214,6 +301,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments and arguments[0] == "schedule":
             return _schedule(arguments[1:])
+        if arguments and arguments[0] == "join-j2":
+            return _join_j2(arguments[1:])
         parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
         parser.add_argument("verb", choices=("hourly", "probe"))
         parser.add_argument(
