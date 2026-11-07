@@ -64,10 +64,8 @@ event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.floor-compare-written.v1
-    # The emission contract: a start, then a success or a typed failure, through the sink.
-    - onex.evt.omnimarket.floor-node-started.v1
-    - onex.evt.omnimarket.floor-node-succeeded.v1
-    - onex.evt.omnimarket.floor-node-failed.v1
+    # The start, success and typed-failure emissions go through the emission sink to the floor's journal, not the bus,
+    # so they are not declared here.
 
 externally_consumed_topics:
   - onex.evt.omnimarket.floor-compare-written.v1
