@@ -31,6 +31,9 @@ from omnimarket.models.model_reading import (
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     stamp_text,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.landing_adapters import (
+    WatcherFileLandingSource,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
@@ -68,6 +71,11 @@ def _run_window(arguments: argparse.Namespace, write: bool) -> int:
         source=source,
         appender=appender,
         clock=lambda: datetime.now(UTC),
+        landing=(
+            WatcherFileLandingSource(overlay.landing_route, os.environ)
+            if overlay.landing_route is not None
+            else None
+        ),
     )
     result = handler.handle(
         ModelReadingWindowCommand(

@@ -55,7 +55,8 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     ]
     assert contract["terminal_event"] in bus["publish_topics"]
     assert {e["operation"] for e in contract["handler_routing"]["handlers"]} == {
-        "plan_sibling_pin_hook_revs"
+        "plan_sibling_pin_hook_revs",
+        "apply_sibling_pin_hook_revs",
     }
 
 
