@@ -259,9 +259,8 @@ class RepoStateHost:
     ) -> None:
         try:
             answer = await self._handler.handle(request)
-        except (
-            Exception
-        ) as exc:  # fallback-ok: a handler crash is answered on the failure terminal
+        except Exception as exc:
+            # A handler crash is answered on the failure terminal, never dropped.
             logger.exception("repo-state handler raised")
             await self._publish(
                 self._topics.failure,

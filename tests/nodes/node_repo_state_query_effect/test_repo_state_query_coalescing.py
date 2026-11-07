@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_query import (
+    EnumRepoStateMirror,
     EnumRepoStateSource,
     EnumRepoStateWant,
     ModelRepoStateQuery,
@@ -87,7 +88,7 @@ async def test_injected_break_without_the_in_flight_table_every_query_pulls(
 ) -> None:
     """The falsifier is live: with the shared pull removed, N queries make N pulls."""
 
-    class _Forgets(dict):  # type: ignore[type-arg]
+    class _Forgets(dict[tuple[str, EnumRepoStateMirror], object]):
         def __setitem__(
             self, key: object, value: object
         ) -> None:  # never remembers a flight
