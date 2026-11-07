@@ -99,3 +99,20 @@ async def test_error_chain_a_task_with_its_result_dropped_is_judged_fail_with_a_
     terminal: Any = recorder.events[-1].payload
     assert terminal.row_cells["verdict"] == "FAIL"
     assert terminal.row_cells["result"] == "dropped"
+
+
+async def test_golden_chain_terminal_carries_the_declared_outputs_on_the_judged_topic() -> (
+    None
+):
+    cid, recorder = await run_chain("pong")
+    terminal: Any = recorder.events[-1].payload
+    assert (
+        recorder.events[-1].topic
+        == "onex.evt.omnimarket.delegation-synthetic-probe-judged.v1"
+    )
+    assert terminal.correlation_id == cid
+    assert terminal.task_id == "synthetic-golden-chain"
+    assert terminal.elapsed_seconds == 12
+    dumped = terminal.model_dump()
+    assert "task_id" in dumped
+    assert "elapsed_seconds" in dumped
