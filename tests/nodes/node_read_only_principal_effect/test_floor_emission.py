@@ -328,7 +328,7 @@ def test_cannot_run_an_executor_that_raises_is_a_typed_failure_and_the_error_sur
     sink = InMemoryEmissionSink()
     overlay = _overlay(_emission())
     handler = HandlerReadOnlyPrincipalProbe(
-        _Raises(),  # type: ignore[arg-type]
+        _Raises(),
         lambda: overlay,
         sink=sink,
         clock=_clock(),
@@ -367,7 +367,7 @@ def test_cannot_run_an_interrupt_closes_the_start() -> None:
     sink = InMemoryEmissionSink()
     overlay = _overlay(_emission())
     handler = HandlerReadOnlyPrincipalProbe(
-        _Interrupted(),  # type: ignore[arg-type]
+        _Interrupted(),
         lambda: overlay,
         sink=sink,
         clock=_clock(),
