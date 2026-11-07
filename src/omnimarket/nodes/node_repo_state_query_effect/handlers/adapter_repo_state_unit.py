@@ -191,7 +191,7 @@ class RepoStateUnitInstaller:
                 *(f"{name}={value}" for name, value in environment.items() if value),
                 str(python),
                 "-c",
-                f"import {NODE_MODULE}.handlers.handler_repo_state_query_serve",
+                f"import {NODE_MODULE}.handlers.adapter_repo_state_query_serve",
             ]
         )
         if probe.returncode:
