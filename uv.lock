@@ -10,8 +10,8 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261101203942-2080333acfaf" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261102181416-beb08a83c93e" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261104102410-b002ec3ceab1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261103062530-3580a8d986fd" },
 ]
 
@@ -3084,8 +3084,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.62"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261101203942-2080333acfaf#2080333acfaf6c076313be3ceadea9bc0394aaee" }
+version = "0.47.66"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261104102410-b002ec3ceab1#b002ec3ceab1d0968f6adaabac5d47e63656aefb" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3107,7 +3107,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261102181416-beb08a83c93e#beb08a83c93ea4cc2855dd92e0ddbed1d9f16261" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455#5e69171dd45594742a56ac4b9f8a3e38a8178120" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3128,7 +3128,6 @@ dependencies = [
     { name = "jsonschema" },
     { name = "mcp" },
     { name = "neo4j" },
-    { name = "omnibase-compat" },
     { name = "omnibase-core" },
     { name = "omnibase-spi" },
     { name = "opentelemetry-api" },
@@ -3219,6 +3218,7 @@ intelligence = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "omnibase-compat" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -3249,8 +3249,8 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261101203942-2080333acfaf" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261102181416-beb08a83c93e" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261104102410-b002ec3ceab1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261103062530-3580a8d986fd" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3" },
     { name = "packaging", specifier = ">=24.0" },
@@ -3273,6 +3273,7 @@ provides-extras = ["dep-health", "intelligence"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.19.1" },
+    { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "pre-commit", specifier = "==4.5.1" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
