@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import inspect
 import json
+import os
 import sys
 import uuid
 from collections.abc import Callable, Mapping
@@ -136,7 +137,8 @@ def run_command(
             Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
             open_lab_run_bus,
         )
-        values = ("kafka", lane, None, None)
+        workspace = os.environ.get("OMNIBASE_PATH") or os.environ.get("OMNI_HOME")
+        values = ("kafka", lane, None, Path(workspace) if workspace else None)
 
         async def main() -> ModelJobLogFillResult:
             async with opener(**dict(zip(names, values, strict=True))) as bus:
