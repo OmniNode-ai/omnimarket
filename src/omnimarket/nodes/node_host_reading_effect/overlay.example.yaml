@@ -49,6 +49,21 @@ canary:
   # A drill overlay sets drill: true, so its rows carry drill=yes and never count as operational.
   drill: false
   injected_fault: Kill the canary's wrapper so its result is not typed
+# Join J1, the code graph to hosts and capacity: the nodes host discovery and placement depend on, and the
+# emission journal the floor reads its receipts from.
+join_j1:
+  join: J1
+  from_piece: 1
+  to_piece: 2
+  graph_chain_node: "node_code_graph_effect:graph_run"
+  host_chain_node: "node_host_reading_effect:join_j1"
+  nodes:
+    - {name: node_lane_host_discovery_compute, repo: example_app, package_dir: src/example_app/nodes/node_lane_host_discovery_compute}
+    - {name: node_lab_placement_compute, repo: example_app, package_dir: src/example_app/nodes/node_lab_placement_compute}
+  emission:
+    home_env: EXAMPLE_FLOOR_HOME
+    journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  injected_fault: Remove a required node's package from the repository the graph reads
 hosts:
   - name: example-ledger-host
     scheduler: launchd
@@ -74,3 +89,12 @@ hosts:
       ONEX_LEDGER_HOST_NAME: example-canary-host
       ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
       EXAMPLE_CANARY_ROUTE: /example/route --lane host-canary --host {host} --
+  - name: example-join-host
+    scheduler: launchd
+    probes: [join-j1]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_HOST_NAME: example-join-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_REPOS_ROOT: /example/clones
+      EXAMPLE_FLOOR_HOME: /example/floor-home
