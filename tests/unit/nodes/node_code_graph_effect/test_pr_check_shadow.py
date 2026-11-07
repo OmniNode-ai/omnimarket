@@ -87,7 +87,7 @@ def _pulls() -> InMemoryPullRequestSource:
 
 
 def _command(**changes: object) -> ModelShadowCommand:
-    return ModelShadowCommand(correlation_id="shadow-1", **changes)  # type: ignore[arg-type]
+    return ModelShadowCommand.model_validate({"correlation_id": "shadow-1", **changes})
 
 
 def test_the_shadow_logs_what_it_would_refuse_and_holds_nothing() -> None:
@@ -313,7 +313,7 @@ def test_a_run_reads_each_base_once_however_many_pull_requests_target_it() -> No
         reads.append((repo, ref))
         return original(repo, ref, wanted)
 
-    source.snapshot = counting  # type: ignore[method-assign]
+    object.__setattr__(source, "snapshot", counting)
     handler = HandlerCodeGraphShadow(
         overlay=overlay(),
         host=HOST,
