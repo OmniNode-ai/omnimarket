@@ -490,3 +490,10 @@ def test_probe_script_runs_under_zsh_where_an_unquoted_command_variable_does_not
         check=False,
     )
     assert probe_answered(done.returncode, done.stdout), done.stderr
+
+
+def test_probe_script_never_runs_an_unquoted_variable_as_a_command() -> None:
+    """zsh does not word-split an unquoted variable, so ``$B claude`` is one word there (OMN-22478). Needs no zsh on the runner."""
+    for line in PROBE_SCRIPT.splitlines():
+        assert not line.startswith("$"), line
+    assert "${B[@]}" in PROBE_SCRIPT

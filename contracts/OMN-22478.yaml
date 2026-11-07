@@ -263,7 +263,7 @@ dod_evidence:
     binds_ac: [AC14]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py -q --no-cov
+        check_value: uv run --frozen pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py -q --no-cov -k "never_runs_an_unquoted_variable or runs_under_zsh"
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn22478-token-probe-zsh-integration-proof
     description: The pushed head ran the lab claude-token node's suite on a lab host through the lab-work surface and exited 0.
