@@ -65,15 +65,18 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillStoredAnswer,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
+    ENV_ATTEMPT,
+    ENV_KEY,
+    ENV_TICKET,
     FloorFillUnreadableError,
-    ModelLaneStart,
+    ModelLaneStartSpec,
+    ProtocolFactSource,
     ProtocolFloorClock,
-    ProtocolFloorFactSource,
-    ProtocolFloorLaneStarter,
     ProtocolFloorLedger,
     ProtocolFloorPool,
     ProtocolFloorStateStore,
     ProtocolFloorTickets,
+    ProtocolLaneProcessRunner,
 )
 from omnimarket.nodes.node_floor_fill_reducer.handlers import (
     EnumFloorFillDropReason,
@@ -146,11 +149,11 @@ class FloorFillOrchestrator:
         *,
         config: ModelFloorFillConfig,
         store: ProtocolFloorStateStore,
-        facts: ProtocolFloorFactSource,
+        facts: ProtocolFactSource,
         pool: ProtocolFloorPool,
         ledger: ProtocolFloorLedger,
         tickets: ProtocolFloorTickets,
-        starter: ProtocolFloorLaneStarter,
+        runner: ProtocolLaneProcessRunner,
         clock: ProtocolFloorClock,
         candidates: HandlerFloorFillCandidates,
         reducer: HandlerFloorFillReducer,
@@ -162,7 +165,7 @@ class FloorFillOrchestrator:
         self._pool = pool
         self._ledger = ledger
         self._tickets = tickets
-        self._starter = starter
+        self._runner = runner
         self._clock = clock
         self._candidates = candidates
         self._reducer = reducer
@@ -528,12 +531,8 @@ class FloorFillOrchestrator:
         # The reserve write comes before the intent it authorises.
         self._write(ctx, reserved.state)
         (intent,) = reserved.intents
-        outcome = self._starter.start(
-            ModelLaneStart(
-                key=intent.key,
-                lane=intent.lane,
-                ticket=intent.ticket,
-                attempt=intent.attempt,
+        outcome = self._runner.start_detached(
+            ModelLaneStartSpec(
                 argv=_fill(
                     self._config.runner_command,
                     {
@@ -543,8 +542,14 @@ class FloorFillOrchestrator:
                         "attempt": str(intent.attempt),
                     },
                 ),
-                environment=tuple(sorted(self._config.process_environment.items())),
+                environment=(
+                    *sorted(self._config.process_environment.items()),
+                    (ENV_KEY, intent.key),
+                    (ENV_TICKET, intent.ticket),
+                    (ENV_ATTEMPT, str(intent.attempt)),
+                ),
                 working_directory=self._config.process_working_directory,
+                lane=intent.lane,
             )
         )
         if outcome.state == "started":

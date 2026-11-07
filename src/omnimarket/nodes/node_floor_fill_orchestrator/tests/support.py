@@ -98,7 +98,7 @@ class Harness:
             pool=self.pool,
             ledger=self.ledger,
             tickets=self.tickets,
-            starter=self.starter,
+            runner=self.starter,
             clock=self.clock,
             candidates=HandlerFloorFillCandidates(),
             reducer=HandlerFloorFillReducer(),
