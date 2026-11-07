@@ -28,3 +28,11 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
+- id: dod-omn22864-integration-proof
+  description: The join refusal tests run on a lab host at the pushed head, with the failing control that drops the piece 3 terminal emission, and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22864 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
+    cwd: .
