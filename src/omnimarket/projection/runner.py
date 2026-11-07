@@ -1265,6 +1265,7 @@ class BaseProjectionRunner(ABC):
             failure_reason=f"poison projection error: {err}",
             handler=type(self).__name__,
             correlation_id=correlation_id,
+            source=meta,
         )
         value = json.dumps(envelope, default=str).encode("utf-8")
         try:
