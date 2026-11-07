@@ -52,8 +52,6 @@ dod_evidence:
 - id: dod-omn22778-config-equals-live
   description: "The Mac unit's live configuration equals the document the installer renders for the Mac's request inputs. Runtime evidence read at the local Done gate."
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
