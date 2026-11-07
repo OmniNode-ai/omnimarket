@@ -26,6 +26,18 @@ handler:
   class: HandlerExposureProbe
   input_model: omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe.ModelExposureProbeRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: runner_group_exposure_probe
+      handler:
+        name: HandlerExposureProbe
+        module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe
+    - operation: runner_group_exposure_reading_write
+      handler:
+        name: HandlerExposureReadingWriter
+        module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_reading_writer
+
 # HandlerExposureProbe takes the overlay and an http getter as constructor parameters.
 # HandlerExposureReadingWriter (handlers.handler_exposure_reading_writer) takes the reading overlay,
 # the host, the probe and the appender as constructor parameters: the node runs through its own CLI
