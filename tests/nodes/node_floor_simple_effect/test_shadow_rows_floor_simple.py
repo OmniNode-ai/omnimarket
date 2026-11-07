@@ -26,7 +26,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
     InMemoryPullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
-    HandlerCodeGraphShadow,
+    CodeGraphShadowCheck,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
@@ -89,7 +89,7 @@ def write_shadow_row(
     at: datetime = WROTE,
     fault: EnumGraphFault = EnumGraphFault.NONE,
 ) -> None:
-    result = HandlerCodeGraphShadow(
+    result = CodeGraphShadowCheck(
         overlay=overlay(),
         host=HOST,
         source=memory_source({CLEAN_SHA: WIRED, PLANTED_SHA: PLANTED}),

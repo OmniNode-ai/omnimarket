@@ -25,11 +25,11 @@ description: >
   repository, pull request source or an append that does not land are typed failures.
 
 handler:
-  module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph
-  class: HandlerCodeGraph
+  module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+  class: HandlerCodeGraphRequested
   input_model: omnimarket.models.model_code_graph.ModelCodeGraphCommand
 
-# HandlerCodeGraph and HandlerCodeGraphShadow take the overlay, host, repository source, appender
+# HandlerCodeGraph and CodeGraphShadowCheck take the overlay, host, repository source, appender
 # and clock as constructor parameters, so the CLI and schedule build them. handler_routing binds the
 # envelope-shaped wrappers, which build them at dispatch, so the boot resolver can construct them.
 handler_routing:

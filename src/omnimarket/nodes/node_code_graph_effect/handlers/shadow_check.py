@@ -76,7 +76,7 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
-class HandlerCodeGraphShadow:
+class CodeGraphShadowCheck:
     """Check the open pull requests of the overlay's shadow repositories, in shadow."""
 
     def __init__(
@@ -336,7 +336,7 @@ def shadow_events_of(
 
 
 def answer_shadow_command(
-    payload: bytes, handler: HandlerCodeGraphShadow, topics: dict[str, str]
+    payload: bytes, handler: CodeGraphShadowCheck, topics: dict[str, str]
 ) -> list[tuple[str, bytes]]:
     """One shadow command message in, the events it produces out, each as (topic, JSON bytes).
 

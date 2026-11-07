@@ -22,7 +22,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
     InMemoryPullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
-    HandlerCodeGraphShadow,
+    CodeGraphShadowCheck,
     answer_shadow_command,
     load_shadow_topics,
 )
@@ -63,7 +63,7 @@ def _payload(fault: EnumGraphFault = EnumGraphFault.NONE) -> bytes:
 async def _publish(
     pulls: InMemoryPullRequestSource, ledger: InMemoryLedger, payload: bytes
 ) -> list[tuple[str, dict[str, object]]]:
-    handler = HandlerCodeGraphShadow(
+    handler = CodeGraphShadowCheck(
         overlay=overlay(),
         host=HOST,
         source=memory_source({CLEAN_SHA: WIRED, PLANTED_SHA: PLANTED}),

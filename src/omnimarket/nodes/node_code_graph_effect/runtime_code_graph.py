@@ -53,7 +53,7 @@ from omnimarket.nodes.node_code_graph_effect.handlers.schedule import (
     state_directory,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
-    HandlerCodeGraphShadow,
+    CodeGraphShadowCheck,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     NODE_NAME,
@@ -176,7 +176,7 @@ def _check(arguments: argparse.Namespace) -> int:
     return 0 if result.passed else 1
 
 
-def build_shadow_handler(write: bool) -> tuple[HandlerCodeGraphShadow, str]:
+def build_shadow_handler(write: bool) -> tuple[CodeGraphShadowCheck, str]:
     """The shadow handler as the overlay and the environment name it, and this host's name."""
     overlay = load_overlay()
     shadow = overlay.shadow
@@ -192,7 +192,7 @@ def build_shadow_handler(write: bool) -> tuple[HandlerCodeGraphShadow, str]:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
-    handler = HandlerCodeGraphShadow(
+    handler = CodeGraphShadowCheck(
         overlay=overlay,
         host=host,
         source=_source(overlay),

@@ -31,7 +31,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
     WatcherStatePullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
-    HandlerCodeGraphShadow,
+    CodeGraphShadowCheck,
 )
 from omnimarket.nodes.node_code_graph_effect.protocols import PullRequestSourceError
 from omnimarket.nodes.node_code_graph_effect.runtime_code_graph import main
@@ -66,7 +66,7 @@ MISSING_SHA = "9" * 40
 def _handler(
     ledger: InMemoryLedger | None, pulls: InMemoryPullRequestSource, **changes: object
 ):
-    return HandlerCodeGraphShadow(
+    return CodeGraphShadowCheck(
         overlay=overlay(**changes),
         host=HOST,
         source=memory_source({CLEAN_SHA: WIRED, PLANTED_SHA: PLANTED}),
@@ -314,7 +314,7 @@ def test_a_run_reads_each_base_once_however_many_pull_requests_target_it() -> No
         return original(repo, ref, wanted)
 
     object.__setattr__(source, "snapshot", counting)
-    handler = HandlerCodeGraphShadow(
+    handler = CodeGraphShadowCheck(
         overlay=overlay(),
         host=HOST,
         source=source,
