@@ -849,6 +849,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
             correlation_id=correlation_id,
+            source=meta,
         )
         return True
 

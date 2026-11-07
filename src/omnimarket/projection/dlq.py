@@ -18,7 +18,10 @@ runner emits a DURABLE failure signal ON THE BUS instead of dropping:
   (``original_message`` / ``failure_reason`` / ``retry_count`` / ``failed_at`` /
   ``handler``) so a single DLQ consumer can drain every producer; and
 * the failure carries the offending event's ``correlation_id`` so the dropped
-  payload is recoverable by correlation.
+  payload is recoverable by correlation; and
+* when the caller holds the record's ``MessageMeta``, the envelope names the
+  source topic, partition and offset (OMN-21288), so a redrive can re-read the
+  refused record from its source without resetting any consumer group's offset.
 
 A projection handler that can raise ``ValidationError`` without routing to a DLQ
 topic is rejected by the ``dlq`` rule of ``node_contract_projection_check_compute`` (CI +
@@ -33,6 +36,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Final
+
+from omnimarket.models.model_message_meta import MessageMeta
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +133,7 @@ def build_dlq_envelope(
     handler: str,
     correlation_id: str,
     retry_count: int = 0,
+    source: MessageMeta | None = None,
 ) -> dict[str, Any]:
     """Build the canonical DLQ envelope for a dropped projection event.
 
@@ -135,6 +141,8 @@ def build_dlq_envelope(
     consumer drains every producer. ``correlation_id`` is hoisted to the top
     level (in addition to riding inside ``original_message``) so the failure is
     recoverable by correlation even when the offending payload is unparseable.
+    ``source``, when given, adds ``source_topic`` / ``source_partition`` /
+    ``source_offset`` naming the record the event was read from (OMN-21288).
     """
     bounded, truncated = bound_dlq_original_message(
         original_message, max_bytes=DLQ_MAX_ENVELOPE_BYTES - _ENVELOPE_RESERVE_BYTES
@@ -147,6 +155,10 @@ def build_dlq_envelope(
         "failed_at": datetime.now(UTC).isoformat(),
         "handler": handler,
     }
+    if source is not None:
+        envelope["source_topic"] = source.topic
+        envelope["source_partition"] = source.partition
+        envelope["source_offset"] = source.offset
     if truncated:
         envelope["original_message_truncated"] = True
         envelope["original_message_bytes"] = len(
@@ -164,6 +176,7 @@ async def route_to_dlq(
     handler: str,
     correlation_id: str,
     retry_count: int = 0,
+    source: MessageMeta | None = None,
 ) -> bool:
     """Publish a malformed projection event to the contract-declared DLQ topic.
 
@@ -201,6 +214,7 @@ async def route_to_dlq(
         handler=handler,
         correlation_id=correlation_id,
         retry_count=retry_count,
+        source=source,
     )
     value = json.dumps(envelope, default=str).encode("utf-8")
     try:

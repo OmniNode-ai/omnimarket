@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-22811
+title: Projection dead letters name their source record, and a redrive node re-publishes them to the source topic
+summary: The projection dead-letter envelope records the source topic, partition and offset of the refused record, so a redrive can re-read it from its source without resetting any consumer group's offset.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22811-dlq-envelope-source-coordinates
+  statement: Both projection DLQ routing paths record where the refused record came from.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a dead-letter envelope built from a MessageMeta carries source_topic, source_partition and source_offset, and one built without a source keeps its earlier keys -- falsifier: uv run pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov fails"
+  - id: AC2
+    statement: "AC2: the runner poison path and the delegation malformed path pass the MessageMeta they hold -- falsifier: the same pytest run with source=meta removed from the runner fails two tests"
+evidence_requirements:
+- kind: tests
+  description: The source-coordinate tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22811-source-coordinates
+  description: The source-coordinate tests pass on a lab host from the branch; with source=meta removed from the runner's poison path two of them fail.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov -p no:randomly
+    cwd: .
