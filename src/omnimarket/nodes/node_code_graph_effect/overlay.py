@@ -93,6 +93,23 @@ class ModelGraphSample(BaseModel):
     def _shape(self) -> ModelGraphSample:
         if self.min_agree > len(self.entries):
             raise ValueError("min_agree is larger than the sample")
+        labelled: dict[tuple[str, str], str] = {}
+        for entry in self.entries:
+            if (entry.repo, entry.path) in labelled:
+                raise ValueError(f"the sample labels {entry.repo}/{entry.path} twice")
+            labelled[(entry.repo, entry.path)] = entry.expected
+        seen_controls: set[tuple[str, str]] = set()
+        for control in self.controls:
+            key = (control.repo, control.path)
+            if key in seen_controls:
+                raise ValueError(
+                    f"the sample names control {control.repo}/{control.path} twice"
+                )
+            seen_controls.add(key)
+            if labelled.get(key) == "unused":
+                raise ValueError(
+                    f"control {control.repo}/{control.path} is known used and labelled unused"
+                )
         computed = self.content_hash()
         if not computed.startswith(self.frozen_hash):
             raise ValueError(
@@ -100,19 +117,43 @@ class ModelGraphSample(BaseModel):
             )
         return self
 
-    def content_hash(self) -> str:
-        text = json.dumps(
-            {
-                "entries": [entry.model_dump(mode="json") for entry in self.entries],
-                "min_agree": self.min_agree,
-                "controls": [
-                    control.model_dump(mode="json") for control in self.controls
-                ],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+    @classmethod
+    def freeze(
+        cls,
+        *,
+        entries: tuple[ModelGraphSampleEntry, ...],
+        min_agree: int,
+        controls: tuple[ModelGraphControl, ...],
+    ) -> ModelGraphSample:
+        """The sample frozen under the full sha256 of its content, the value the ledger row carries."""
+        frozen_hash = _sample_sha256(entries, min_agree, controls)
+        return cls(
+            entries=entries,
+            min_agree=min_agree,
+            controls=controls,
+            frozen_hash=frozen_hash,
         )
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def content_hash(self) -> str:
+        return _sample_sha256(self.entries, self.min_agree, self.controls)
+
+
+def _sample_sha256(
+    entries: tuple[ModelGraphSampleEntry, ...],
+    min_agree: int,
+    controls: tuple[ModelGraphControl, ...],
+) -> str:
+    """sha256 of the canonical JSON of the labels, the bar and the controls."""
+    text = json.dumps(
+        {
+            "entries": [entry.model_dump(mode="json") for entry in entries],
+            "min_agree": min_agree,
+            "controls": [control.model_dump(mode="json") for control in controls],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class ModelCodeGraphPublish(BaseModel):
