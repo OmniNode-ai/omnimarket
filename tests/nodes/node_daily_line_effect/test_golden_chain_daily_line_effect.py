@@ -23,6 +23,7 @@ from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run imp
 
 pytestmark = pytest.mark.unit
 
+TERMINAL = "onex.evt.omnimarket.daily-line-published.v1"
 NOW = datetime(2026, 11, 8, 10, 30, tzinfo=UTC)
 FLOOR = {
     "generated_at": "2026-11-08T10:28:00+00:00",
@@ -70,6 +71,8 @@ def test_golden_chain_daily_line_effect_declares_its_runtime_and_schedule() -> N
     )
     assert contract["name"] == "node_daily_line_effect"
     assert contract["node_type"] == "effect"
+    assert contract["terminal_event"] == TERMINAL
+    assert contract["externally_consumed_topics"] == [TERMINAL]
     assert contract["schedule"]["cadence"]["time_zone"] == "America/New_York"
     assert contract["schedule"]["cadence"]["on_calendar"] == "*-*-* 05:30:00"
     assert contract["runtime"]["published_relpath"].endswith("daily-line.json")
