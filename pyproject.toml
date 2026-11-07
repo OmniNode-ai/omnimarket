@@ -637,6 +637,7 @@ node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_co
 node_floor_emission_compute = "omnimarket.nodes.node_floor_emission_compute"
 node_floor_fill_candidates_compute = "omnimarket.nodes.node_floor_fill_candidates_compute"
 node_floor_fill_lines_compute = "omnimarket.nodes.node_floor_fill_lines_compute"
+node_floor_fill_orchestrator = "omnimarket.nodes.node_floor_fill_orchestrator"
 node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
 node_floor_simple_compute = "omnimarket.nodes.node_floor_simple_compute"
 node_floor_simple_effect = "omnimarket.nodes.node_floor_simple_effect"
