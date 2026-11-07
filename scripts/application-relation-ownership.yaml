@@ -185,6 +185,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
       access: write
       role: alert_channel_liveness
+    # One row per skill-started or skill-completed event, written by
+    # node_projection_skill_lifecycle in place of the omnibase_infra skill
+    # lifecycle consumer. TENANT data under row level security.
+    - name: skill_executions
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_skill_lifecycle/migrations/0001_create_skill_executions.sql
+      access: write
+      role: skill_executions
     # OMN-19977: replaceable metering snapshots, one row per (tenant, window,
     # baseline model). Declared HERE because the OMN-15361 SQL gate resolves a
     # created application object against this manifest.
