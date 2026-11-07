@@ -28,6 +28,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
     ScriptedCommandRunner,
+    ScriptedFacts,
     ScriptedStarter,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.store import (
@@ -121,7 +122,7 @@ def test_config_variation_behaviour_follows_each_key() -> None:
     # url and plans_root reach the fact source.
     seen: list[tuple[str, str]] = []
 
-    class Spy(type(h.facts)):  # type: ignore[misc]
+    class Spy(ScriptedFacts):
         def read_floor(self, url: str) -> str:
             seen.append(("url", url))
             return str(super().read_floor(url))

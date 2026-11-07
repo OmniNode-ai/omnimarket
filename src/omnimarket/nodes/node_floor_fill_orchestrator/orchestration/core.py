@@ -95,6 +95,9 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers import (
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     HandlerFloorFillReducer,
 )
+from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+    ModelFloorFillEntry,
+)
 
 # The class a floor task is sent as: the name the open-count brake and the stop signal answer to.
 FLOOR_TASK_CLASS = "floor-task"
@@ -139,6 +142,18 @@ def _fill(argv: tuple[str, ...], values: Mapping[str, str]) -> tuple[str, ...]:
             element = element.replace("{" + name + "}", value)
         out.append(element)
     return tuple(out)
+
+
+def _entry_moment(entry: ModelFloorFillEntry) -> datetime:
+    """The moment an entry waits from: its reservation, or its send once it is SENT."""
+    moment = (
+        entry.reserved_at
+        if entry.state is EnumFloorFillEntryState.RESERVED
+        else entry.sent_at
+    )
+    if moment is None:
+        raise ValueError(f"floor fill entry {entry.key} has no moment to wait from")
+    return moment
 
 
 class FloorFillOrchestrator:
@@ -382,11 +397,7 @@ class FloorFillOrchestrator:
             ModelFloorFillStateEntry(
                 key=e.key,
                 status=e.state.value,
-                at=(
-                    e.reserved_at
-                    if e.state is EnumFloorFillEntryState.RESERVED
-                    else e.sent_at
-                ).isoformat(),  # type: ignore[union-attr]
+                at=_entry_moment(e).isoformat(),
                 ended=e.ended,
             )
             for e in ctx.state.entries.values()

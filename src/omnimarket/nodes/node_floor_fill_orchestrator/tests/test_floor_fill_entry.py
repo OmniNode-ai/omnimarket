@@ -9,6 +9,7 @@ import sys
 import textwrap
 import time
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -47,9 +48,9 @@ ANSWER_KEY = OVERLAY["scope"] + ":answer"
 
 
 def _handler(
-    runner: ScriptedCommandRunner, **scripted: object
+    runner: ScriptedCommandRunner, **scripted: Any
 ) -> tuple[HandlerFloorFillCommand, Harness]:
-    h = harness(**scripted)  # type: ignore[arg-type]
+    h = harness(**scripted)
     return (
         HandlerFloorFillCommand(
             config=h.config, orchestrator=h.orchestrator(), runner=runner
@@ -224,7 +225,7 @@ def test_entry_exits_process_at_timeout() -> None:
     code = textwrap.dedent(
         """
         import sys, time
-        from omnimarket.nodes.node_floor_fill_orchestrator.__main__ import run_entry
+        from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import run_entry
         from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import HandlerFloorFillCommand
         from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import FloorFillOrchestrator
         from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import HandlerFloorFillCandidates
