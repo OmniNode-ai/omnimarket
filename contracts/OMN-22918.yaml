@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22918
+title: 'Rebuild piece 9: the reading writer carries a landing row that reads WORKING or NOT WORKING from the landing goal hourly requirements'
+summary: The reading writer reads the pull request watcher through a landing source, judges the landing goal's hourly requirements in node_reading_compute (an eligible head unmerged over an hour; while 10 or more wait, merges under 10 an hour; below that, the daily synthetic landing canary) and writes the piece 9 reading row the floor draws.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22918-landing-reading
+  statement: The piece 9 reading is computed from the watcher snapshot and the canary row by a node, reads NOT WORKING on a held head, a missed rate or a stale snapshot, and reads UNKNOWN when the watcher cannot be read.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the landing row reads NOT WORKING when a fixture head green on every required context stays unmerged over an hour and WORKING when it merges inside the hour -- falsifier: uv run pytest tests/unit/nodes/node_reading_writer_effect/test_landing_row.py -q'
+  - id: AC2
+    statement: 'AC2: with 10 or more waiting and merges under 10 an hour the row reads NOT WORKING -- falsifier: uv run pytest tests/unit/nodes/node_reading_writer_effect/test_landing_rate.py -q'
+  - id: AC3
+    statement: 'AC3: the served floor shows piece 9 with a reading age instead of not started -- falsifier: curl -s the served floor-simple.json and read pieces\[5\].status'
+evidence_requirements:
+- kind: tests
+  description: The landing row tests, the watcher source tests and the golden and error chain event tests
+  command: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22918-landing-row
+  description: A fixture head green and unmerged over an hour reads NOT WORKING and the same head merged inside the hour reads WORKING.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_row.py -q --no-cov
+    cwd: .
+- id: dod-omn22918-landing-rate
+  description: Ten or more waiting with merges under ten an hour reads NOT WORKING; below ten waiting the daily canary decides.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_rate.py -q --no-cov
+    cwd: .
+- id: dod-omn22918-chain-and-source
+  description: The watcher state file and the goal scope overlay become a snapshot and then a reading row the floor draws (the floor draws any reading that is not UNKNOWN in place of not started); golden and error chains end in typed events under one correlation id. On the served floor piece 9 is pieces[8], since pieces[5] is piece 6.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_watcher_source.py tests/unit/nodes/node_reading_writer_effect/test_landing_chain_events.py -q --no-cov
+    cwd: .
