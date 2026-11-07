@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 
 from .guard_schedule_models import (
     ModelGuardHostRow,
@@ -221,6 +222,7 @@ class GuardScheduler:
             service, timer = render_units(
                 self.schedule, row, omni_root=omni_root, venv=venv, home=self.home
             )
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
             return ModelGuardScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:

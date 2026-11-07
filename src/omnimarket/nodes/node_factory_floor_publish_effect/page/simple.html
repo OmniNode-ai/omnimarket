@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Factory floor</title>
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="favicon.svg" id="icon-svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 :root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -17,7 +19,7 @@ main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
 h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
 .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
-.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}
+.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}.dot.quiet{background:var(--grey)}
 .row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
 .strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
 .p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center}
@@ -49,7 +51,7 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
 .hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
 </style></head><body><main>
-<nav class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a></nav>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a></div>
 <section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
 <section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
 </main>
@@ -59,6 +61,16 @@ const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
 let doc = null, failure = "";
+const ICON_BASE = "#2b6cb0", ICON_TINT = {green: "#1f7a4d", amber: "#a56a00", red: "#b3261e", grey: "#9aa1a9"};
+let iconSvg = null, iconTint = "";
+async function tintIcon(tint){
+  if (tint === iconTint) return;
+  iconTint = tint;
+  try {
+    if (iconSvg === null) { const r = await fetch("favicon.svg"); if (!r.ok) throw new Error("HTTP " + r.status); iconSvg = await r.text(); }
+    document.getElementById("icon-svg").href = "data:image/svg+xml," + encodeURIComponent(iconSvg.split(ICON_BASE).join(ICON_TINT[tint]));
+  } catch (e) { iconTint = ""; }
+}
 async function load(){
   try {
     const r = await fetch(DATA, {cache: "no-store"});
@@ -73,6 +85,7 @@ function draw(){
   const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
   const limit = doc.freshness_max_age_s || FALLBACK_MAX_AGE_S;
   let h = "";
+  tintIcon(failure || age > limit || !ICON_TINT[doc.level] ? "grey" : doc.level);
   document.title = (failure || age > limit ? "STALE " : "") + "Factory floor, record " + ago(age);
   if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
   else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
@@ -84,7 +97,7 @@ function draw(){
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
   for (const c of listed.slice(0, doc.causes_shown)) {
-    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;

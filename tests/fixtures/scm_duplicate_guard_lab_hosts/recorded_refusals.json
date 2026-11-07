@@ -1,0 +1,24 @@
+{
+  "what": "The pr-create refusals landing workers on lab hosts recorded in their worker logs (landing state dir, workers/<lease>/worker.log), verbatim: onex scm pr-create ran the duplicate guard on a host with no PR watcher state and opened nothing (OMN-22654).",
+  "read_at": "2026-11-06T13:10Z",
+  "refusals": [
+    {
+      "lease": 27537,
+      "host": "h053",
+      "kind": "fix",
+      "subject": "OmniNode-ai/omnimarket#5064",
+      "spawned_at": "2026-11-05T15:07:34Z",
+      "stdout": "{\"state\":\"unchecked\",\"reason\":\"no PR watcher state file: set ONEX_PR_WATCHER_STATE (or OMNI_HOME) so open pull requests can be read\"}",
+      "stderr": "PR-DUPLICATE-GUARD unchecked, no pull request opened: no PR watcher state file: set ONEX_PR_WATCHER_STATE (or OMNI_HOME) so open pull requests can be read"
+    },
+    {
+      "lease": 27585,
+      "host": "h051",
+      "kind": "fix",
+      "subject": "OmniNode-ai/omnimarket#5140",
+      "spawned_at": "2026-11-05T16:10:04Z",
+      "stdout": "{\"state\":\"unchecked\",\"reason\":\"no PR watcher state file: set ONEX_PR_WATCHER_STATE (or OMNI_HOME) so open pull requests can be read\"}",
+      "stderr": "PR-DUPLICATE-GUARD unchecked, no pull request opened: no PR watcher state file: set ONEX_PR_WATCHER_STATE (or OMNI_HOME) so open pull requests can be read"
+    }
+  ]
+}
