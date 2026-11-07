@@ -167,9 +167,11 @@ class TestRunNodeBootstrapResolution:
             pytest.skip("omnibase_core not installed or cli_run_node.py not found")
 
         content = path.read_text(encoding="utf-8")
-        assert "KAFKA_BOOTSTRAP_SERVERS" in content, (
-            "cli_run_node.py must reference KAFKA_BOOTSTRAP_SERVERS"
-        )
+        if "KAFKA_BOOTSTRAP_SERVERS" not in content:
+            # Newer core resolves the bus from the contract overlay (OMN-22362) and
+            # reads no bootstrap env var at all; no env default can exist then.
+            assert 'localhost:19092"' not in content
+            return
         # Fail-fast contract (OMN-11757): cli_run_node.py must not silently default
         # to a localhost bootstrap. Two accepted forms:
         #   (1) bare key access  os.environ["KAFKA_BOOTSTRAP_SERVERS"]  (raises KeyError), or
