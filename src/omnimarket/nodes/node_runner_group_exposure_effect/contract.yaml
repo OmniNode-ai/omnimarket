@@ -34,6 +34,13 @@ handler_routing:
         name: HandlerExposureProbe
         module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe
 
+# The reading writer is bound here, outside handler_routing: it takes constructor parameters, so
+# the routing resolver cannot build it, and the node runs it through its own CLI and schedule.
+reading_writer:
+  handler:
+    name: HandlerExposureReadingWriter
+    module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_reading_writer
+
 # HandlerExposureProbe takes the overlay and an http getter as constructor parameters.
 # HandlerExposureReadingWriter (handlers.handler_exposure_reading_writer) takes the reading overlay,
 # the host, the probe and the appender as constructor parameters: the node runs through its own CLI
@@ -70,11 +77,8 @@ topics:
   reading_failed: onex.evt.omnimarket.runner-group-exposure-reading-failed.v1
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.runner-group-exposure-probed.v1
-    - onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
+  subscribe_topics: []
+  publish_topics: []
 
 externally_consumed_topics:
   - onex.evt.omnimarket.runner-group-exposure-probed.v1
