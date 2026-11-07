@@ -14,9 +14,14 @@ lag 1, 3, 3, 3, 3, 3, 2, 2, 2, 1, 1, 1 over eight seconds on the broker, one
 commit about every 1.5 to 2 s, then 0. The lab alarm's rule (lag grew across two
 consecutive samples) raised on every such burst: 25 raises in 24 hours.
 
-It was not a batch size (the loop commits per message), not a rebalance or
-restart (the group generation was stable across the reading), and not a poison
-message (nothing reached the dead-letter topic).
+What the reading rules out and what it does not: the loop commits per message,
+so batch size is not the cause; and in the burst read above the commits advanced
+one message at a time with no stall, which is the shape of a slow write, not of a
+rebalance. It does not rule out a restart at a dev redeploy for other raises: the
+writer container that ran earlier was recreated at 10:59:48Z, so its logs are
+gone, and the broker's group log is behind SASL. Ledger rows of this alarm from
+2026-11-05 and 2026-11-06 show a separate earlier regime of 17,382 to 20,153 lag
+that this change does not address or explain.
 
 THE FIX
 
