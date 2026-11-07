@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_work_state_projection_compute/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root, or name
+# the file in ONEX_WORK_STATE_OVERLAY. Every value decides what counts; the handler holds none of them.
+#
+#   ticket_id_pattern        how a ticket id is spelled; a criterion reference matching it is a ticket
+#   ticket_done_state_types  tracker state types that need no more work
+#   ticket_requires_pattern  the ticket description line naming its start criterion (group `refs`)
+#   terminal_done_outcomes   TERMINAL outcomes that leave nothing; any other outcome leaves the lane stopped
+#   attribution_cells        CLAIM cell -> item alias prefix; a lane is attributed to every item one of these names
+#   left_cells               cells of a lane's later rows that say what is left
+#   lane_live_hours          a lane with no closing row is live this long after its newest row
+#   receipt_ended_statuses   lane receipt statuses that mean the engine has ended
+#   plan                     how a plan file spells a task, its ticket, its start criterion and done
+ticket_id_pattern: '^[A-Z][A-Z0-9]+-\d+$'
+ticket_done_state_types: [completed, canceled]
+ticket_requires_pattern: '^\s*(?:Start criterion|Blocked by|Requires):\s*(?P<refs>.+)$'
+terminal_done_outcomes: [done, handed-off, skipped-owned, skipped-already-built, skipped-superseded, superseded, complete]
+attribution_cells:
+  ticket: ticket
+  owns: pr
+  cause: cause
+  key: key
+left_cells: [branch, head, pr, blocker]
+lane_live_hours: 3
+receipt_ended_statuses: [no-host, exited, stopped, failed]
+plan:
+  task_heading_pattern: '^#{2,4}\s+(?P<task>T\d+[a-z]?)\.\s+(?P<title>.+?)\s*$'
+  requires_pattern: '^\s*-\s*\*\*(?:Start criterion|Depends on|Requires):\*\*\s*(?P<refs>.+?)\s*$'
+  ticket_pattern: '\*\*Ticket:\*\*\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)'
+  done_pattern: '^\s*-\s*\*\*Status:\*\*\s*(?:done|merged)\b'
