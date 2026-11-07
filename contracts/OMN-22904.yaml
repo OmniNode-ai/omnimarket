@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-22904
+title: "Piece 2's first task: the J1 join test reads the code graph's used-or-unused verdict for host discovery and placement and publishes a typed result tied to the graph run, with a golden and an error case"
+summary: "Join J1 (code graph to hosts and capacity) had no run, so the floor drew it as not run. The host reading node gains a join-j1 probe: it reads one graph run's used-or-unused verdict for the nodes host discovery and placement depend on and publishes one typed result under the graph run's correlation id. A graph run that carries every verdict gives a golden chain on both pieces; a graph run with a verdict missing gives a typed failure and the host stage emits a typed upstream failure and never starts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22904-join-j1
+  statement: "Join J1 reads the code graph's verdict for node_lane_host_discovery_compute and the placement nodes and publishes a typed result tied to the graph run, golden when every verdict is present and a typed failure with no start when one is missing, and both show on the floor record's join J1."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden join test: a graph run that carries a verdict for node_lane_host_discovery_compute and the placement nodes yields one typed result with the graph run''s correlation id -- falsifier: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j1.py -q -k golden'
+  - id: AC2
+    statement: 'AC2: error join test: a graph run with the verdict missing yields a typed failure and no start -- falsifier: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j1.py -q -k error'
+  - id: AC3
+    statement: 'AC3: both results appear on the floor record''s join J1 with their ages on the lab -- falsifier: curl -s the served floor-simple.json and read pieces\[0\].joins\[0\].state'
+evidence_requirements:
+- kind: tests
+  description: "Join J1 golden and error chain event tests on the in-memory and the git-backed graph source"
+  command: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j1.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22904-tests
+  description: "Golden join test and error join test of join J1 pass on both graph source backends."
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j1.py -q --no-cov
+    cwd: .
+- id: dod-omn22904-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22904 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_reading_effect -q --no-cov
+    cwd: .
+- id: dod-omn22904-floor-read
+  description: "The served floor record's join J1 reads a state other than not_run with golden and error ages, read from the lab after the join-j1 probe has run on the floor host."
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'curl -fsS "$ONEX_FLOOR_SIMPLE_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)[\"pieces\"][0][\"joins\"][0]; assert j[\"id\"]==\"J1\" and j[\"state\"]!=\"not_run\" and j[\"golden_age_s\"] is not None and j[\"error_age_s\"] is not None, j"'
+    cwd: .
