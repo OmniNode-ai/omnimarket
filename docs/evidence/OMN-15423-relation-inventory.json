@@ -6275,7 +6275,8 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
-        "idx_ledger_line_citation_row"
+        "idx_ledger_line_citation_row",
+        "ledger_line_citation_pkey"
       ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
@@ -6284,7 +6285,8 @@
         "status": "not_applicable_no_source_tenant_id"
       },
       "keys": [
-        "PRIMARY KEY (ledger_id, file_key, generation, line_no)"
+        "PRIMARY KEY (ledger_id, file_key, generation, line_no)",
+        "UNIQUE INDEX ledger_line_citation_pkey"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
