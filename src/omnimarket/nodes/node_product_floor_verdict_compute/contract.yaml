@@ -86,6 +86,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.product-floor-verdict-completed.v1
     - onex.evt.omnimarket.customer-health-computed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.customer-health-requested.v1
+    producer: "the floor cycle of node_floor_simple_effect, which runs decide_customer_health in process through its step runner (17b, OMN-22923) -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.product-floor-verdict-completed.v1
   - onex.evt.omnimarket.customer-health-computed.v1

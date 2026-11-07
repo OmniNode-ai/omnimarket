@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
-from omnimarket.models.floor_17a import ModelFloorSimple
+from omnimarket.models.floor_17a import ModelFloorHealthLine, ModelFloorSimple
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
 )
@@ -76,7 +76,7 @@ def own_overlay(home: Path) -> dict[str, str]:
     }
 
 
-def health_of(doc: ModelFloorSimple):  # type: ignore[no-untyped-def]
+def health_of(doc: ModelFloorSimple) -> ModelFloorHealthLine:
     assert doc.health is not None
     return doc.health
 
