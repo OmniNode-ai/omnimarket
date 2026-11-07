@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_task_ticket_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Find or create the one ticket of a floor task through the ticket store, and read the ticket stored for an entry. The mint
+  searches by the exact Floor key line first and creates only when no usable match exists: the oldest match that carries the
+  line, is open and is not an umbrella is used, a match the old fill can see (a project, a label naming delegation or a
+  pillar) ends the mint ticket-refused:old-fill-visible, and a create is read back once and must show a usable ticket. A call
+  that fails or runs past floor_fill.mint_timeout_seconds, and a read-back that is unreadable or unusable, ends the mint for
+  the tick with no ticket (unavailable) and the next tick searches first again. The gate runs inside the store's create. The
+  entry check reads one stored ticket and says usable, refused (canceled, done, umbrella, old-fill-visible) or unreadable.
+  Called in process by the floor-fill orchestrator; the in-memory profile binds an in-memory store.
+handler:
+  module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint
+  class: HandlerFloorTaskTicketMint
+  input_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintRequest
+  output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator with the payload of a task that has no usable ticket.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: floor_task_ticket_mint
+    handler:
+      name: HandlerFloorTaskTicketMint
+      module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint
+    input_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintRequest
+    output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintResult
+  - operation: floor_task_ticket_entry_check
+    handler:
+      name: HandlerFloorTaskTicketEntryCheck
+      module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_entry_check
+    input_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskEntryTicketRequest
+    output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskEntryTicketVerdict
+# The node reads no overlay itself: the orchestrator reads the key and carries it on the request, and a request that lacks it
+# is refused naming the key (floor_fill.mint_timeout_seconds).
+deployment_overlay:
+  name: floor_fill
+  required: true
+  fields:
+  - floor_fill.mint_timeout_seconds
+  description: The deadline of each call of the ticket store. A key no overlay supplies refuses naming the key.
+overlay:
+  example: overlay.example.yaml
+  section: floor_fill
+protocol_dependencies:
+- name: floor_ticket_store
+  protocol: omnibase_spi.protocols.lane:ProtocolFloorTicketStore
+  bind_as: store
+  required: true
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  side_effects:
+  - linear_ticket_create
+  runtime_profiles: []
+metadata:
+  ticket: OMN-22850
+  origin_tickets:
+  - OMN-17427
+  transport_type: local
+lifecycle: experimental
