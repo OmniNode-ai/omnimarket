@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.models.model_host_reconcile_schedule import (
     ModelHostReconcileHostRow,
     ModelHostReconcileSchedule,
@@ -249,6 +250,7 @@ class HostReconcileScheduler:
             service, timer = render_units(
                 self.schedule, omni_root=omni_root, venv=venv, home=self.home
             )
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
             return ModelHostReconcileScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if not python.is_file():

@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-22659
+title: 'Rebuild piece 5: the secret reading node probes each store consumer and writes its reading row'
+summary: node_secret_reading_effect resolves every declared consumer key through the secret store effect by handle, scans declared ledger and log surfaces for each resolved value beside a planted dummy, counts exposures awaiting rotation, and writes one piece 5 reading row. Values stay in process.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22659-secret-reading
+  statement: The piece 5 reading is computed by a node from the running store and surfaces, reads NOT_WORKING on a revoked scope, a blind scanner, a found value, an unreachable store or an open exposure, and never carries a value.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the golden chain test publishes the run command on the in-memory bus and receives every event in order under one correlation id ending in the run-completed event, and the error chain test injects a bad payload and an unreachable store and receives the typed failure events and a NOT_WORKING row -- falsifier: uv run pytest tests/nodes/node_secret_reading_effect/test_secret_reading_chain_events.py -q'
+  - id: AC2
+    statement: 'AC2: revoking one consumer''s scope in the in-memory test store turns that consumer and the run verdict NOT_WORKING, and a scanner that misses the planted dummy reads NOT_WORKING -- falsifier: uv run pytest tests/nodes/node_secret_reading_effect/test_secret_reading.py -q'
+  - id: AC3
+    statement: 'AC3: no resolved value appears in any event, row, result or log the node produces -- falsifier: uv run pytest tests/nodes/node_secret_reading_effect/test_secret_reading.py -q -k never'
+  - id: AC4
+    statement: 'AC4: a run on the lab host against the Infisical store writes one STATUS row lane=secret-reading src=secret-reading that is read back from the ledger, and the same run with a revoked identity reads NOT_WORKING -- falsifier: onex-ledger read for lane=secret-reading shows the two rows'
+evidence_requirements:
+- kind: tests
+  description: Golden and error chain event tests and the reading tests of node_secret_reading_effect
+  command: uv run --frozen pytest tests/nodes/node_secret_reading_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22659-chain-tests
+  description: Golden chain ends in run-completed under one correlation id; error chains for a bad payload, an unreachable store, a revoked scope and an append that does not land give typed failure events and NOT_WORKING rows.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_secret_reading_effect/test_secret_reading_chain_events.py -q --no-cov
+    cwd: .
+- id: dod-omn22659-controls
+  description: A revoked consumer scope and a scanner that misses the planted dummy each read NOT_WORKING; no value reaches a row, event or result.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_secret_reading_effect/test_secret_reading.py -q --no-cov
+    cwd: .
+- id: dod-omn22659-integration-proof
+  description: On h053 the branch read the Infisical dev store through the secret store effect and wrote an operational and a revoked-identity drill row, both read back from work_ledger_rows over the dev bus with onex ledger query --lane secret-reading.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --lane secret-reading --since 2026-11-06T14:00:00Z | grep -q 'src=secret-reading'
+    cwd: .

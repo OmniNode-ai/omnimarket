@@ -147,6 +147,9 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api graphql (pullRequest reviewThreads)",
     ),
     ModelScmVerb(
+        verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
+    ),
+    ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
     ModelScmVerb(verb="pr-edit", node=_W, operation="pr_edit", replaces="gh pr edit"),
@@ -242,11 +245,8 @@ def verb(name: str) -> ModelScmVerb:
 
 
 def load_contract(node: EnumScmNode) -> dict[str, JsonValue]:
-    loaded = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{node.value}")
-        .joinpath("contract.yaml")
-        .read_text(encoding="utf-8")
-    )
+    package = resources.files(f"omnimarket.nodes.{node.value}")
+    loaded = yaml.safe_load((package / "contract.yaml").read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"{node.value} contract is not a mapping")
     return loaded

@@ -27,6 +27,9 @@ from omnimarket.models.model_host_reading import (
     ModelProbeReading,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.nodes.node_host_reading_effect.handlers.probe_host_canary import (
+    read_canary,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_old_names import (
     read_old_names,
 )
@@ -34,7 +37,12 @@ from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_outbox impo
     read_outbox,
 )
 from omnimarket.nodes.node_host_reading_effect.overlay import ModelHostReadingOverlay
-from omnimarket.nodes.node_host_reading_effect.protocols import ProtocolHostFiles
+from omnimarket.nodes.node_host_reading_effect.protocols import (
+    ProtocolAdvertisementSource,
+    ProtocolCanaryRunner,
+    ProtocolHostFiles,
+    ProtocolHostInventory,
+)
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
     stamp_text,
@@ -74,6 +82,10 @@ class HandlerHostReading:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         environ: Mapping[str, str],
+        inventory: ProtocolHostInventory | None = None,
+        canary_runner: ProtocolCanaryRunner | None = None,
+        nonce_for: Callable[[str], str] | None = None,
+        adverts: ProtocolAdvertisementSource | None = None,
     ) -> None:
         self._overlay = overlay
         self._host = host
@@ -81,6 +93,10 @@ class HandlerHostReading:
         self._appender = appender
         self._clock = clock
         self._environ = environ
+        self._inventory = inventory
+        self._canary_runner = canary_runner
+        self._adverts = adverts
+        self._nonce_for = nonce_for or (lambda _host: uuid.uuid4().hex[:16])
 
     def handle(self, command: ModelHostReadingCommand) -> ModelHostReadingResult:
         host = self._overlay.host(self._host)
@@ -117,6 +133,27 @@ class HandlerHostReading:
                 return read_outbox(
                     self._overlay.outbox, self._files, self._environ, now
                 )
+            if probe is EnumHostProbe.HOST_CANARY:
+                if (
+                    self._overlay.canary is None
+                    or self._inventory is None
+                    or self._canary_runner is None
+                ):
+                    return ModelProbeReading(
+                        probe=probe,
+                        verdict=EnumReadingVerdict.UNKNOWN,
+                        outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                        reasons=("canary-ports-not-wired",),
+                    )
+                return read_canary(
+                    self._overlay.canary,
+                    self._inventory,
+                    self._canary_runner,
+                    self._environ,
+                    self._nonce_for,
+                    self._adverts,
+                    now,
+                )
             assert self._overlay.old_names is not None
             return read_old_names(self._overlay.old_names, self._files, self._environ)
         except OSError as exc:
@@ -130,6 +167,9 @@ class HandlerHostReading:
     def _fault(self, probe: EnumHostProbe) -> str:
         if probe is EnumHostProbe.LEDGER_OUTBOX:
             return self._overlay.outbox.injected_fault
+        if probe is EnumHostProbe.HOST_CANARY:
+            assert self._overlay.canary is not None
+            return self._overlay.canary.injected_fault
         assert self._overlay.old_names is not None
         return self._overlay.old_names.injected_fault
 
@@ -160,6 +200,7 @@ class HandlerHostReading:
                 verdict=reading.verdict,
                 outcome=reading.outcome,
                 reasons=reading.reasons,
+                cells=reading.cells,
                 row_key=key,
                 ledger=ledger,
                 row=row,
@@ -221,6 +262,7 @@ def events_of(
                 "verdict": probe.verdict.value,
                 "outcome": probe.outcome.value,
                 "reasons": list(probe.reasons),
+                "cells": dict(probe.cells),
                 "row_key": probe.row_key,
                 "ledger": probe.ledger,
             },

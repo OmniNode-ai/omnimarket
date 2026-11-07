@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22787
+title: "The overlay drift read judges the pinned overlays against the omnimarket revision the dev runtime says it runs"
+summary: >-
+  node_overlay_drift_effect gains an optional overlay setting runtime.revision_source. When set, each run reads the
+  omnimarket revision from the runtime's build provenance file (over ssh, from the container found by its compose
+  labels), exports omnimarket's source tree at exactly that revision from a clone with git archive, and judges the
+  pinned overlays through that tree, so the reading is about the code the runtime runs and not about the interpreter the
+  unit holds. The row names runtime_revision. A provenance that cannot be read, a revision the clone lacks, or a tree
+  that is not first on the import path gives an UNKNOWN row with a typed reason, never a guess.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22787-runtime-revision
+    statement: The drift read judges the overlays through omnimarket at the revision the runtime's provenance names, and says which revision on its row.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: with the setting, the row names the provenance revision as runtime_revision and the models judged are that revision''s (one overlay is accepted at one revision and refused at the other), and with the setting absent the read is unchanged -- falsifier: uv run pytest tests/nodes/node_overlay_drift_effect -q --no-cov, which fails with the setting ignored'
+      - id: AC2
+        statement: 'AC2: a provenance that cannot be read, a revision the clone lacks, or a tree that is not first on the import path gives an UNKNOWN row with a typed reason and never a guess -- falsifier: uv run pytest tests/nodes/node_overlay_drift_effect/test_overlay_drift_runtime_revision.py -q --no-cov, error chain event tests under the named injected break'
+      - id: AC3
+        statement: 'AC3: the node has a golden chain event test and error chain event tests for the setting, and the golden one fails for real when the setting is ignored -- falsifier: uv run pytest tests/nodes/node_overlay_drift_effect/test_overlay_drift_runtime_revision.py -q --no-cov, named break test'
+      - id: AC4
+        statement: 'AC4: the row written on h053 from this branch names runtime_revision fd073f933fcf and reads WORKING -- falsifier: readback of the newest piece 4 probe output on h053 from this branch'
+evidence_requirements:
+  - kind: tests
+    description: The revision tests on the git and in-memory backends, the provenance read tests and the chain event tests.
+    command: uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22787-runtime-revision-tests
+    description: The node tests pass with the change; with the setting ignored the revision tests fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3, AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov
+        cwd: .
+  - id: dod-omn22787-runtime-revision-integration-proof
+    description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the h053 probe readback for AC4 is in the pull request's Lab line.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22787 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_overlay_drift_effect -q --no-cov'
+        cwd: .

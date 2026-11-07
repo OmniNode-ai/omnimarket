@@ -29,8 +29,13 @@ from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
 from omnimarket.nodes.node_overlay_drift_effect.adapters.pin_history import (
     GitPinHistory,
 )
+from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_revision import (
+    GitRevisionTree,
+    ProvenanceRuntimeRevision,
+)
 from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_validator import (
     InterpreterRuntimeValidator,
+    RevisionTreeRuntimeValidator,
 )
 from omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift import (
     HandlerOverlayDrift,
@@ -46,6 +51,9 @@ from omnimarket.nodes.node_overlay_drift_effect.overlay import (
     NODE_NAME,
     ModelOverlayDriftOverlay,
     load_overlay,
+)
+from omnimarket.nodes.node_overlay_drift_effect.protocols import (
+    ProtocolRuntimeValidator,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
@@ -67,9 +75,21 @@ def build_handler(
     home = LocalOverlayHome(
         Path(_required(overlay.home.root_env, environ)), overlay.home
     )
-    validator = InterpreterRuntimeValidator(
+    interpreter = InterpreterRuntimeValidator(
         Path(_required(overlay.runtime.python_env, environ)),
         overlay.runtime.timeout_seconds,
+    )
+    source = overlay.runtime.revision_source
+    validator: ProtocolRuntimeValidator = (
+        RevisionTreeRuntimeValidator(
+            interpreter,
+            ProvenanceRuntimeRevision(source, environ),
+            GitRevisionTree(
+                Path(_required(source.clone_env, environ)), source.git_timeout_seconds
+            ),
+        )
+        if source
+        else interpreter
     )
     handler = HandlerOverlayDrift(
         overlay=overlay,
