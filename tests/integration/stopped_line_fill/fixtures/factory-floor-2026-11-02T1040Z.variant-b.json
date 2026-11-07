@@ -1,0 +1,482 @@
+{
+  "schema_id": "omni.factory-floor/1",
+  "generated_at": "2026-11-02T10:40:00Z",
+  "fixture_note": "Reduced factory-floor record: six lines with names, tickets and pull requests neutralised, floor section limited to the keys the fill reads. Variant B: every prep task of the last two lines is done, so four lines are startable.",
+  "lines": [
+    {
+      "line_id": "2026-10-01-line-a-plan",
+      "name": "Line A",
+      "plan_path": "plans/2026-10-01-line-a-plan.md",
+      "source": "manifest",
+      "status_pill": "building",
+      "percent_built": 0,
+      "stations": [
+        {
+          "id": "tasks",
+          "name": "Station tasks",
+          "state": "active",
+          "items": [
+            {
+              "id": "T0.1",
+              "title": "Task T0.1",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T0.2",
+              "title": "Task T0.2",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T0.3",
+              "title": "Task T0.3",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "TE.8",
+              "title": "Task TE.8",
+              "kind": "lane",
+              "state": "active",
+              "note": "PRs example/repo#101",
+              "tickets": [],
+              "prs": [
+                "example/repo#101"
+              ]
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": false,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    },
+    {
+      "line_id": "2026-10-02-line-b-plan",
+      "name": "Line B",
+      "plan_path": "plans/2026-10-02-line-b-plan.md",
+      "source": "manifest",
+      "status_pill": "stopped",
+      "percent_built": 10,
+      "stations": [
+        {
+          "id": "tasks",
+          "name": "Station tasks",
+          "state": "active",
+          "items": [
+            {
+              "id": "CM.0",
+              "title": "Task CM.0",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "CM.1",
+              "title": "Task CM.1",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "CM.2",
+              "title": "Task CM.2",
+              "kind": "lane",
+              "state": "active",
+              "note": "PRs example/repo#102",
+              "tickets": [],
+              "prs": [
+                "example/repo#102"
+              ]
+            },
+            {
+              "id": "CM.3",
+              "title": "Task CM.3",
+              "kind": "lane",
+              "state": "done",
+              "note": "PRs example/repo#103",
+              "tickets": [],
+              "prs": [
+                "example/repo#103"
+              ]
+            },
+            {
+              "id": "CM.8",
+              "title": "Task CM.8",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": true,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    },
+    {
+      "line_id": "2026-10-03-line-c-plan",
+      "name": "Line C",
+      "plan_path": "plans/2026-10-03-line-c-plan.md",
+      "source": "manifest",
+      "status_pill": "building",
+      "percent_built": 0,
+      "stations": [
+        {
+          "id": "tasks",
+          "name": "Station tasks",
+          "state": "active",
+          "items": [
+            {
+              "id": "T0.1",
+              "title": "Task T0.1",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T0.2",
+              "title": "Task T0.2",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T1.1",
+              "title": "Task T1.1",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T0.8a",
+              "title": "Task T0.8a",
+              "kind": "lane",
+              "state": "active",
+              "note": "PRs example/repo#104",
+              "tickets": [],
+              "prs": [
+                "example/repo#104"
+              ]
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": false,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    },
+    {
+      "line_id": "2026-10-04-line-d-plan",
+      "name": "Line D",
+      "plan_path": "plans/2026-10-04-line-d-plan.md",
+      "source": "manifest",
+      "status_pill": "stopped",
+      "percent_built": 10,
+      "stations": [
+        {
+          "id": "tasks",
+          "name": "Station tasks",
+          "state": "active",
+          "items": [
+            {
+              "id": "T1",
+              "title": "Task T1",
+              "kind": "lane",
+              "state": "active",
+              "note": "PRs example/repo#105",
+              "tickets": [],
+              "prs": [
+                "example/repo#105"
+              ]
+            },
+            {
+              "id": "T2",
+              "title": "Task T2",
+              "kind": "lane",
+              "state": "done",
+              "note": "PRs example/repo#106",
+              "tickets": [],
+              "prs": [
+                "example/repo#106"
+              ]
+            },
+            {
+              "id": "T7",
+              "title": "Task T7",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T8",
+              "title": "Task T8",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "T10",
+              "title": "Task T10",
+              "kind": "lane",
+              "state": "prep",
+              "note": "ready",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": true,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    },
+    {
+      "line_id": "2026-10-05-line-e-plan",
+      "name": "Line E",
+      "plan_path": "plans/2026-10-05-line-e-plan.md",
+      "source": "manifest",
+      "status_pill": "queued",
+      "percent_built": 0,
+      "stations": [
+        {
+          "id": "0",
+          "name": "Station 0",
+          "state": "prep",
+          "items": [
+            {
+              "id": "W0.1",
+              "title": "Task W0.1",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "W0.2",
+              "title": "Task W0.2",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "W0.3",
+              "title": "Task W0.3",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "G0",
+              "title": "Task G0",
+              "kind": "gate",
+              "state": "wait",
+              "note": "waits for W0.1,W0.2,W0.3,W0.4,W0.5",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        },
+        {
+          "id": "1a",
+          "name": "Station 1a",
+          "state": "wait",
+          "items": [
+            {
+              "id": "P1",
+              "title": "Task P1",
+              "kind": "adopted",
+              "state": "wait",
+              "note": "waits for G0",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "G1a",
+              "title": "Task G1a",
+              "kind": "gate",
+              "state": "wait",
+              "note": "waits for P1,P2,P3,P4,P5,G0",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [
+            "0"
+          ],
+          "group": "",
+          "tickets": []
+        },
+        {
+          "id": "1b",
+          "name": "Station 1b",
+          "state": "wait",
+          "items": [
+            {
+              "id": "W1.1",
+              "title": "Task W1.1",
+              "kind": "lane",
+              "state": "wait",
+              "note": "waits for G1a",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "G1b",
+              "title": "Task G1b",
+              "kind": "gate",
+              "state": "wait",
+              "note": "waits for W1.1,W1.6a,G1a",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [
+            "1a"
+          ],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": false,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    },
+    {
+      "line_id": "2026-10-06-line-f-plan",
+      "name": "Line F",
+      "plan_path": "plans/2026-10-06-line-f-plan.md",
+      "source": "manifest",
+      "status_pill": "building",
+      "percent_built": 16,
+      "stations": [
+        {
+          "id": "tasks",
+          "name": "Station tasks",
+          "state": "active",
+          "items": [
+            {
+              "id": "S1",
+              "title": "Task S1",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "S2",
+              "title": "Task S2",
+              "kind": "lane",
+              "state": "done",
+              "note": "PRs example/repo#107",
+              "tickets": [],
+              "prs": [
+                "example/repo#107"
+              ]
+            },
+            {
+              "id": "S3",
+              "title": "Task S3",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            },
+            {
+              "id": "S4",
+              "title": "Task S4",
+              "kind": "lane",
+              "state": "done",
+              "note": "merged",
+              "tickets": [],
+              "prs": []
+            }
+          ],
+          "feeders": [],
+          "group": "",
+          "tickets": []
+        }
+      ],
+      "andon": {
+        "flag": false,
+        "reason": "",
+        "causes": [],
+        "hard": false
+      },
+      "application_containers": null
+    }
+  ],
+  "floor": {
+    "lanes": [],
+    "waiting": [],
+    "shipped": []
+  }
+}

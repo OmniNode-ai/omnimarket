@@ -1,0 +1,5 @@
+2026-11-02T10:39:00Z | STATUS | lane=floor-alpha | ticket=OMN-900100 | key=floor:other-line:T1
+2026-11-02T10:39:30Z | CLAIM | lane=floor-beta | ticket=OMN-900101 | key=floor:other-line:T2
+2026-11-02T10:41:10Z | CLAIM | lane=floor-gamma | ticket=OMN-900102 | key=floor:other-line:T3
+2026-11-02T10:41:11Z | CLAIM | lane=floor-delta | ticket=OMN-900103 | key=floor:2026-10-01-line-a-plan:T0.10
+2026-11-02T10:41:12Z | CLAIM | lane=floor-line-a-T0.1-a1 | ticket=OMN-900001 | key=floor:2026-10-01-line-a-plan:T0.1

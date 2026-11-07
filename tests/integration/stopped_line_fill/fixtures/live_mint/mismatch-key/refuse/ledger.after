@@ -1,0 +1,2 @@
+2026-11-02T10:39:00Z | STATUS | lane=floor-alpha | ticket=OMN-900100 | key=floor:other-line:T1
+2026-11-02T10:39:30Z | CLAIM | lane=floor-beta | ticket=OMN-900101 | key=floor:other-line:T2

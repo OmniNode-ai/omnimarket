@@ -1,0 +1,11 @@
+{
+  "id": "OMN-900001",
+  "state": "Backlog",
+  "parent": "OMN-22856",
+  "project": null,
+  "labels": [
+    "Delegation"
+  ],
+  "pillar": null,
+  "description": "Gate: OMN-22856 AC-1\n\nFloor key: floor:2026-10-01-line-a-plan:T0.1\n\nPlan task T0.1: Example task T0.1\n\n## Acceptance criteria\n\n- [ ] AC1: Example behaviour of T0.1 holds -- falsifier: `pytest -k example_t0_1`\n\n## Definition of done\n\n- The change is merged on the landing branch of every repository the task changes -- falsifier: the pull request of each repository reads merged on its landing branch\n- The change is deployed on the dev lane -- falsifier: the dev deployment evidence names the merged commit\n- Integration check: run on a lab host (integration check for T0.1) -- falsifier: the integration check is run and its output is read\n"
+}
