@@ -5,6 +5,8 @@
 from .model_sibling_pin_hook_revs import (
     EnumHookRevsReason,
     ModelHookRevsCandidate,
+    ModelSiblingPinHookRevsApplyRequest,
+    ModelSiblingPinHookRevsApplyResult,
     ModelSiblingPinHookRevsPlan,
     ModelSiblingPinHookRevsRequest,
 )
@@ -12,6 +14,8 @@ from .model_sibling_pin_hook_revs import (
 __all__ = [
     "EnumHookRevsReason",
     "ModelHookRevsCandidate",
+    "ModelSiblingPinHookRevsApplyRequest",
+    "ModelSiblingPinHookRevsApplyResult",
     "ModelSiblingPinHookRevsPlan",
     "ModelSiblingPinHookRevsRequest",
 ]
