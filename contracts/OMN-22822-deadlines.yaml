@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-22822
+title: The dev delegation orchestrator stops acting on replayed delegation requests and replayed quality-gate results that arrive past their deadline
+summary: The dead-letter replay node re-delivered messages from 2026-11-03 to 2026-11-05 onto live topics. The orchestrator already records a replayed inference response past its 900 s completion bound as expired. A replayed delegation request (deadline is its emitted_at plus the bound) opened a routing intent and so a provider attempt, and a replayed failing quality-gate result (deadline is the run's start plus the bound) sent the run to the next rung and called a provider again. Both are now recorded as expired, close the run FAILED, and emit no routing, inference or gate intent. The bound is the contract-declared completion_bound.max_wall_seconds, read once or injected, never written into the handler.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22822-expire-replayed-requests
+  statement: A replayed delegation request past its deadline never opens a routing intent or a provider attempt.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a replayed delegation request emitted more than the completion bound before it arrives is recorded as expired and never routed, for a request no run holds and for a run still RECEIVED, while a request inside the bound is routed as before, in a test from the recorded request and its replay with a failing control -- falsifier: uv run pytest of the expired request and gate result test'
+- id: req-omn22822-expire-replayed-gate-results
+  statement: A replayed quality-gate result past its run's deadline is never re-evaluated or escalated.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a replayed quality-gate result that reaches a run past the completion bound is recorded as expired and neither re-evaluated nor escalated, while a result inside the bound is handled as before, in a test from the recorded run row and its replay with a failing control -- falsifier: uv run pytest of the expired request and gate result test'
+evidence_requirements:
+- kind: tests
+  description: The recorded request and gate result replays, the expiry, a second delivery, the in-bound case and the injected bound
+  command: uv run --frozen pytest tests/unit/delegation/test_omn22822_expired_replayed_request_and_gate_result.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22822-expired-replayed-request
+  description: The recorded request of run c490e90f replayed 54 hours after it was emitted is recorded as expired, closes the run FAILED and emits no routing intent, for a request no run holds and for a run still RECEIVED; the same request emitted now is still routed; a bound injected larger than its age routes it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn22822_expired_replayed_request_and_gate_result.py -q --no-cov
+    cwd: .
+- id: dod-omn22822-expired-replayed-gate-result
+  description: A failing quality-gate verdict replayed to the recorded run row of c490e90f advanced to INFERENCE_COMPLETED is recorded as expired, closes the run FAILED with a timeout outcome and emits no routing, inference or gate intent; the same verdict inside the bound is handled exactly as a handler whose bound can never pass handles it.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn22822_expired_replayed_request_and_gate_result.py -q --no-cov
+    cwd: .
+- id: dod-omn22822-deadlines-chain
+  description: The replays pushed through the real request and gate-result dispatchers close the run with one terminal (golden), a second delivery and a malformed replay change nothing (error chain), and the neighbouring delegation suites still pass.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn22822_expired_replayed_request_and_gate_result.py tests/unit/delegation/test_omn22822_expired_replayed_response.py tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q --no-cov
+    cwd: .
