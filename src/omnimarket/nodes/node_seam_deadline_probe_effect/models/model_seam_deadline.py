@@ -10,6 +10,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+    ModelSeamCounts,
+)
 
 
 class EnumSeamFault(StrEnum):
@@ -32,6 +35,8 @@ class EnumSeamCrossing(StrEnum):
     RESULT_ERROR = "result-error"
     NO_RESULT_BY_DEADLINE = "no-result-by-deadline"
     BUS_UNREADABLE = "bus-unreadable"
+    #: An on-demand seam whose node could not be attached, so its command was never sent.
+    ATTACH_FAILED = "attach-failed"
 
 
 class ModelSeamDeadlineCommand(BaseModel):
@@ -93,6 +98,8 @@ class ModelSeamDeadlineResult(BaseModel):
     fault: EnumSeamFault
     seams: tuple[ModelSeamReading, ...] = ()
     failure: str | None = None
+    #: The seam counts of the overlay's declarations; None when it declares none.
+    counts: ModelSeamCounts | None = None
     row_key: str | None = None
     ledger: str = "not-written"
     row: str | None = None
