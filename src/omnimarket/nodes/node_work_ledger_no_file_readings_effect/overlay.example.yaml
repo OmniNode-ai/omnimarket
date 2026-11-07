@@ -1,0 +1,43 @@
+# The in-memory default. The real overlay (deployment data, outside this repository, found under
+# ONEX_SKILL_OVERLAY_ROOTS or at the file ONEX_LEDGER_NO_FILE_OVERLAY names) sets route.kind: command and
+# names, per reading, the variable holding the probe's argv; the probe prints that reading's facts as JSON.
+# A reading with no probe wired reads UNKNOWN, which counts as NOT_WORKING.
+#
+# The floor reads piece 6 from the reading writer's rows. To show these seven there, add to the piece 6
+# sources of the reading writer's overlay:
+#   - {source_id: no_file, row_type: STATUS, lane: <lane below>, cells: {src: <row_source below>},
+#      mode: newest, pass_when: [{cell: verdict, op: eq, value: WORKING}], max_age_seconds: 129600}
+readings:
+  - number: 1
+    name: file-absent-and-probe-append-returns-a-seq
+    injected_fault: re-create a file at the ledger path
+  - number: 2
+    name: census-of-readers-and-writers-is-zero
+    injected_fault: seed one reader of the ledger file in a registered repository
+  - number: 3
+    name: path-absent-an-hour-and-readers-restarted-without-fallback
+    injected_fault: take the query node down so a read exits non-zero
+  - number: 4
+    name: rebuilt-table-equals-the-live-table
+    injected_fault: withhold one row from the accepted-row feed
+  - number: 5
+    name: snapshot-restore-drill-passes
+    injected_fault: damage the snapshot
+  - number: 6
+    name: no-rows-through-commit-and-no-publish-job
+    injected_fault: reload the publish job on a test host
+  - number: 7
+    name: daily-receipt-compares-table-to-accepted-topic-only-and-is-exact
+    injected_fault: plant one row in the projection alone
+absence_min_hours: 1
+publish_quiet_hours: 48
+receipt_sources: [table, accepted_row_topic]
+census_total_bound: 0
+lane: work-ledger-no-file
+actor: node:node_work_ledger_no_file_readings_effect
+row_source: no-file-readings
+max_age_seconds: 129600
+journal_env: ONEX_LEDGER_NO_FILE_JOURNAL
+route:
+  kind: inmemory
+  timeout_seconds: 120
