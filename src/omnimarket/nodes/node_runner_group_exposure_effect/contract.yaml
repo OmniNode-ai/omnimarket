@@ -33,10 +33,6 @@ handler_routing:
       handler:
         name: HandlerExposureProbe
         module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe
-    - operation: runner_group_exposure_reading_write
-      handler:
-        name: HandlerExposureReadingWriter
-        module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_reading_writer
 
 # HandlerExposureProbe takes the overlay and an http getter as constructor parameters.
 # HandlerExposureReadingWriter (handlers.handler_exposure_reading_writer) takes the reading overlay,
@@ -74,8 +70,11 @@ topics:
   reading_failed: onex.evt.omnimarket.runner-group-exposure-reading-failed.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.runner-group-exposure-probed.v1
+    - onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.runner-group-exposure-probed.v1

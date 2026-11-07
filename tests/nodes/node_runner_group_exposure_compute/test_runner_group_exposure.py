@@ -11,6 +11,14 @@ import pytest
 import yaml
 
 from omnimarket.models.model_reading import EnumReadingVerdict
+from omnimarket.models.runner_group_exposure import (
+    EnumExposureReadFailure,
+    ModelExposureSettings,
+    ModelGroupJob,
+    ModelGroupWorkflowFile,
+    ModelRunnerGroupExposureRequest,
+    ModelRunnerGroupFacts,
+)
 from omnimarket.nodes.node_runner_group_exposure_compute import (
     NodeRunnerGroupExposureCompute,
 )
@@ -22,14 +30,6 @@ from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner
     SUBJECT_READ_AGE,
     SUBJECTS,
     HandlerRunnerGroupExposure,
-)
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
-    EnumExposureReadFailure,
-    ModelExposureSettings,
-    ModelGroupJob,
-    ModelGroupWorkflowFile,
-    ModelRunnerGroupExposureRequest,
-    ModelRunnerGroupFacts,
 )
 
 NOW = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)

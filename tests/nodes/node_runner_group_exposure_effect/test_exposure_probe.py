@@ -21,6 +21,9 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_reading import EnumReadingVerdict
+from omnimarket.models.runner_group_exposure import (
+    EnumExposureReadFailure,
+)
 from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure import (
     SUBJECT_ALLOWS_PUBLIC,
     SUBJECT_PINNED_EQUALS_FILES,
@@ -28,9 +31,6 @@ from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner
     SUBJECT_PUBLIC_REACH_FILES,
     SUBJECT_READ_AGE,
     SUBJECTS,
-)
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
-    EnumExposureReadFailure,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe import (
     HandlerExposureProbe,

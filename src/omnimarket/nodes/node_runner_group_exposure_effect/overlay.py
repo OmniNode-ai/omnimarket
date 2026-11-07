@@ -19,14 +19,14 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
+from omnimarket.models.runner_group_exposure import (
     EnumExposureReadFailure,
     ModelExposureSettings,
     ModelGroupJob,
     ModelGroupWorkflowFile,
     ModelRunnerGroupFacts,
 )
+from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_runner_group_exposure_effect"
 

@@ -26,7 +26,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure
   class: HandlerRunnerGroupExposure
-  input_model: omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure.ModelRunnerGroupExposureRequest
+  input_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureRequest
 
 handler_routing:
   routing_strategy: operation_match
@@ -36,8 +36,8 @@ handler_routing:
       handler:
         name: HandlerRunnerGroupExposure
         module: omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure
-      input_model: omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure.ModelRunnerGroupExposureRequest
-      output_model: omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure.ModelRunnerGroupExposureReading
+      input_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureRequest
+      output_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureReading
 
 descriptor:
   node_archetype: compute
@@ -48,11 +48,11 @@ descriptor:
 
 input_model:
   name: ModelRunnerGroupExposureRequest
-  module: omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure
+  module: omnimarket.models.runner_group_exposure
   description: The facts of one read, the overlay settings and the time to judge at.
 output_model:
   name: ModelRunnerGroupExposureReading
-  module: omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure
+  module: omnimarket.models.runner_group_exposure
   description: One overall verdict and the five subjects behind it.
 
 terminal_event: onex.evt.omnimarket.runner-group-exposure-read.v1

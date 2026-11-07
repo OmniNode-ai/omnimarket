@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
+from omnimarket.models.runner_group_exposure import (
     ModelExposureSubject,
     ModelRunnerGroupExposureReading,
     ModelRunnerGroupExposureRequest,

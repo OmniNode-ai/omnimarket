@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
+from omnimarket.models.runner_group_exposure import (
     EnumExposureReadFailure,
     ModelGroupJob,
     ModelGroupWorkflowFile,

@@ -16,11 +16,11 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.runner_group_exposure import (
+    ModelRunnerGroupExposureRequest,
+)
 from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure import (
     HandlerRunnerGroupExposure,
-)
-from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
-    ModelRunnerGroupExposureRequest,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_source import (
     GithubGroupSource,
