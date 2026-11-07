@@ -27,6 +27,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import JsonValue, SecretStr, ValidationError
@@ -267,10 +268,10 @@ class HandlerIloSetup:
         self,
         steps: list[ModelIloSetupStep],
         step: str,
-        state: str,
+        state: Literal["done", "reused", "refused"],
         note: str = "",
     ) -> None:
-        steps.append(ModelIloSetupStep(step=step, state=state, note=note))  # type: ignore[arg-type]
+        steps.append(ModelIloSetupStep(step=step, state=state, note=note))
         self._emit(f"   {state:<7} {step}{(' - ' + note) if note else ''}")
 
     def _setup_host(
