@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23038
+title: Piece 9's landing reading reads pull request state on the lab from the pr_state projection, with its address set by an overlay
+summary: >-
+  The reading writer's piece 9 landing source read the pull request watcher's state file, which only the orchestrator Mac holds, so the hourly reading on a lab host read piece 9 UNKNOWN every hour. A second backend, ProjectionLandingSource, reads the lab's pr_state projection through the pr_state read node's page source. The landing_route of the reading overlay names the backend (source: projection); the projection address is the projection_api_url of the node_pr_state_read_effect overlay and no environment variable or code value stands in for it. A read that cannot be completed is an error, never an empty queue.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23038-projection-landing-source
+    statement: >-
+      Piece 9's landing snapshot can be read on a lab host from the pr_state projection, with the projection address supplied by an overlay only.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the reading writer reads pull request state through the pr_state projection reader, with its url set by an overlay and not in code -- falsifier: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_projection_source.py -q -k without_the_overlay_address, which fails when the overlay value is removed from the passing case"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The projection source tests, the existing landing tests of the reading writer, and a probe of piece 9 on the lab host from the branch with and without the overlay value.
+    command: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect tests/nodes/node_reading_writer_effect -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23038-ac1-address-from-overlay
+    description: >-
+      With the overlay value present the source asks the address the overlay names and counts in-scope heads and merges; with it removed, or with only OMNIDASH_API_URL set, the read is an error, no request is made and the piece reads UNKNOWN. At the merge base the source does not exist and the test file fails on import.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_projection_source.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

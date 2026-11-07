@@ -32,6 +32,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     stamp_text,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.landing_adapters import (
+    ProjectionLandingSource,
     WatcherFileLandingSource,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
@@ -47,11 +48,27 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     ReadingScheduler,
     load_schedule,
 )
-from omnimarket.nodes.node_reading_writer_effect.overlay import NODE_NAME, load_overlay
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    NODE_NAME,
+    ModelLandingProjectionRoute,
+    ModelReadingOverlay,
+    load_overlay,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import ProtocolLandingSource
 
 
 def _stamp_arg(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _landing_source(overlay: ModelReadingOverlay) -> ProtocolLandingSource | None:
+    """The overlay's landing route names the backend: the pr_state projection or the watcher's state file."""
+    route = overlay.landing_route
+    if route is None:
+        return None
+    if isinstance(route, ModelLandingProjectionRoute):
+        return ProjectionLandingSource(route, os.environ)
+    return WatcherFileLandingSource(route, os.environ)
 
 
 def _run_window(arguments: argparse.Namespace, write: bool) -> int:
@@ -71,11 +88,7 @@ def _run_window(arguments: argparse.Namespace, write: bool) -> int:
         source=source,
         appender=appender,
         clock=lambda: datetime.now(UTC),
-        landing=(
-            WatcherFileLandingSource(overlay.landing_route, os.environ)
-            if overlay.landing_route is not None
-            else None
-        ),
+        landing=_landing_source(overlay),
     )
     result = handler.handle(
         ModelReadingWindowCommand(
