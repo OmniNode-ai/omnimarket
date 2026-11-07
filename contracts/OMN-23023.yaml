@@ -1,0 +1,41 @@
+schema_version: 1.0.0
+ticket_id: OMN-23023
+title: The quiet-host alarm does not count host-drift timer rows as lane activity
+summary: The quiet-host alarm reads the stamps of CLAIM, STATUS and TERMINAL rows that name a pool host as lane activity on it. The host-drift timer writes drift-pass STATUS rows (actor=timer:) that name its host, so a host with only timer stamps after its last hook event read as a host that ran lanes and sent no hook events. The lane-stamp read now skips rows whose actor cell starts with timer:. Lane rows are counted as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23023-timer-rows
+  statement: A row written by a host timer is not read as a lane on the host it names, and a lane's own rows still make a host read quiet.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: host-drift timer rows (actor=timer:) no longer count as lanes in the quiet-host read, and lane rows still raise the alarm, with a failing control that counts a timer row as a lane -- falsifier: uv run pytest of the quiet-host alarm tests in omnimarket with the control test named in the pull request body'
+  - id: AC2
+    statement: 'AC2: a replay over the recorded ledger copy for h202 and h051 at 16:45Z and 16:51Z raises no alarm for the timer-only stamps -- falsifier: the replay command in the pull request body run over the ledger copy'
+evidence_requirements:
+- kind: tests
+  description: The timer-row tests of the quiet-host alarm and the existing alarm effect tests.
+  command: uv run pytest tests/nodes/node_silent_failure_alarm_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23023-ac1
+  description: The four timer-row tests pass on the branch; the timer-only test fails when the timer rule is switched off, and the control with lane rows raises.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_timer_rows_omn22778.py -q
+- id: dod-omn23023-ac2
+  description: The replay over the recorded ledger copy at 16:45:32Z and 16:51:02Z raises no alarm for h202 and h051 once only their timer stamps remain after the last hook event, and raises for h202 with the timer rule switched off. The replay command is in the pull request body and needs the ledger copy, which hosted CI does not have; the check below is the recorded-hosts test of the same handler that runs everywhere.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_timer_rows_omn22778.py -q -k recorded_hosts
