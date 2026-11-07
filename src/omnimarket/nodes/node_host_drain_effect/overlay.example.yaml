@@ -19,6 +19,14 @@ runner_stop:
   runners:
     - {name: example-runner-1, host: example-host-a, unit: example-runner-1.service, directory: /example/runners/example-runner-1}
     - {name: example-runner-2, host: example-host-b, unit: example-runner-2.service, directory: /example/runners/example-runner-2}
+  probe_kind: proc
+  command_probe:
+    activity_command: [example-container-exec, "{unit}", example-activity-check]
+    busy_token: busy
+    idle_token: idle
+    running_command: [example-container-inspect, "{unit}"]
+    running_token: "true"
+    timeout_seconds: 20
   proc_root: /proc
   worker_process_name: Runner.Worker
   listener_process_name: Runner.Listener

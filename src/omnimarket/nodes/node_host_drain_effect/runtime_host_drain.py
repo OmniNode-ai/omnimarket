@@ -31,6 +31,7 @@ from omnimarket.handlers.emission_sink import (
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
+    CommandRunnerProbe,
     CommandRunnerStopper,
     ProcRunnerProbe,
 )
@@ -126,7 +127,11 @@ def run(
     if args.verb == "runner-stop":
         stopper = HandlerIdleRunnerStop(
             overlay.runner_stop,
-            probe=ProcRunnerProbe(overlay.runner_stop),
+            probe=(
+                CommandRunnerProbe(overlay.runner_stop)
+                if overlay.runner_stop.probe_kind == "command"
+                else ProcRunnerProbe(overlay.runner_stop)
+            ),
             stopper=CommandRunnerStopper(overlay.runner_stop),
             sink=sink,
             clock=lambda: datetime.now(UTC),

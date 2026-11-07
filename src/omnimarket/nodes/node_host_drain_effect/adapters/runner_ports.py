@@ -78,6 +78,48 @@ class ProcRunnerProbe:
         return bool(names & {self._worker, self._listener})
 
 
+class CommandRunnerProbe:
+    """Reads a runner by the overlay's argv (a container runner): busy, idle or unknown, and whether it is up."""
+
+    def __init__(
+        self, settings: ModelRunnerStopSettings, *, run: CommandRun = subprocess.run
+    ) -> None:
+        self._settings = settings
+        self._probe = settings.command_probe
+        self._run = run
+
+    def _output(self, argv_template: tuple[str, ...], runner_name: str) -> str | None:
+        row = next((r for r in self._settings.runners if r.name == runner_name), None)
+        if row is None:
+            return None
+        argv = [part.replace("{unit}", row.unit) for part in argv_template]
+        try:
+            done = self._run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=self._probe.timeout_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return done.stdout.strip() if done.returncode == 0 else None
+
+    def activity(self, runner_name: str) -> EnumRunnerActivity:
+        out = self._output(self._probe.activity_command, runner_name)
+        if out == self._probe.busy_token:
+            return EnumRunnerActivity.BUSY
+        if out == self._probe.idle_token:
+            return EnumRunnerActivity.IDLE
+        return EnumRunnerActivity.UNKNOWN
+
+    def is_running(self, runner_name: str) -> bool | None:
+        out = self._output(self._probe.running_command, runner_name)
+        if out is None:
+            return None
+        return out == self._probe.running_token
+
+
 class CommandRunnerStopper:
     """Stops a runner's service with the overlay's argv; no shell."""
 

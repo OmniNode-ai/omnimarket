@@ -65,10 +65,29 @@ class ModelRunnerRow(_Frozen):
     directory: str = Field(min_length=1)
 
 
+class ModelCommandProbeSettings(_Frozen):
+    """A runner read by argv, for runners that live in containers whose processes the host table cannot tell apart.
+
+    Each argv replaces {unit}. The activity command prints ``busy_token`` when the runner holds a job and
+    ``idle_token`` when it does not; any other output, a non-zero exit or a timeout reads UNKNOWN.
+    The running command prints ``running_token`` when the runner's service is up. No shell on the host.
+    """
+
+    activity_command: tuple[str, ...] = Field(min_length=1)
+    busy_token: str = Field(min_length=1)
+    idle_token: str = Field(min_length=1)
+    running_command: tuple[str, ...] = Field(min_length=1)
+    running_token: str = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1)
+
+
 class ModelRunnerStopSettings(_Frozen):
     piece: int = Field(ge=1, le=18)
     chain_node: str = Field(min_length=1)
     runners: tuple[ModelRunnerRow, ...] = Field(min_length=1)
+    #: proc: read the host's process table; command: read each runner by the argv of command_probe.
+    probe_kind: Literal["proc", "command"]
+    command_probe: ModelCommandProbeSettings
     proc_root: str = Field(min_length=1)
     worker_process_name: str = Field(min_length=1)
     listener_process_name: str = Field(min_length=1)

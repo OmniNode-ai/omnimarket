@@ -105,3 +105,45 @@ def test_command_lane_source_reads_the_integer_the_command_prints(
 ) -> None:
     lanes = CommandLaneSource(overlay.lanes, run=lambda *_a, **_k: _Done(0, "3\n"))  # type: ignore[arg-type]
     assert lanes.running("example-host-a") == 3
+
+
+def test_command_probe_reads_busy_idle_and_unknown_from_the_argv_output(
+    overlay: ModelHostDrainOverlay,
+) -> None:
+    from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
+        CommandRunnerProbe,
+    )
+    from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+        EnumRunnerActivity,
+    )
+
+    probe_settings = overlay.runner_stop.command_probe
+
+    def probe_with(code: int, out: str) -> CommandRunnerProbe:
+        return CommandRunnerProbe(
+            overlay.runner_stop, run=lambda *_a, **_k: _Done(code, out)
+        )  # type: ignore[arg-type]
+
+    assert (
+        probe_with(0, probe_settings.busy_token + "\n").activity("example-runner-1")
+        is EnumRunnerActivity.BUSY
+    )
+    assert (
+        probe_with(0, probe_settings.idle_token).activity("example-runner-1")
+        is EnumRunnerActivity.IDLE
+    )
+    assert (
+        probe_with(0, "garbage").activity("example-runner-1")
+        is EnumRunnerActivity.UNKNOWN
+    )
+    # A command that fails reads UNKNOWN, never idle: the stop fails closed.
+    assert (
+        probe_with(1, probe_settings.idle_token).activity("example-runner-1")
+        is EnumRunnerActivity.UNKNOWN
+    )
+    assert (
+        probe_with(0, probe_settings.running_token).is_running("example-runner-1")
+        is True
+    )
+    assert probe_with(0, "false").is_running("example-runner-1") is False
+    assert probe_with(1, "").is_running("example-runner-1") is None
