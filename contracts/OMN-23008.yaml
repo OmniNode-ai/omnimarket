@@ -1,0 +1,45 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23008
+title: The TruffleHog secret scan runs from a pinned image digest, and a weekly drift check reports when upstream moves
+summary: >-
+  The trufflesecurity/trufflehog action is a wrapper whose only step runs ghcr.io/trufflesecurity/trufflehog:latest, so the scanner in the secret scan was a moving tag. security-scan.yml now runs the image by digest with the arguments the action built for each event, and trufflehog-digest-drift.yml compares the pin with :latest every week, opening an issue and failing when they differ.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23008-digest-pin
+    statement: >-
+      The secret scan runs TruffleHog from an immutable image digest with the same range, flags and exclusions as the action it replaces, and a scheduled check flags an upstream move.
+    acceptance:
+      - id: AC1
+        statement: "AC1: security-scan.yml runs the scanner from ghcr.io/trufflesecurity/trufflehog@sha256 with no TruffleHog action or tag, and hands it the action's range and flags for push, pull_request, schedule and workflow_dispatch -- falsifier: uv run --frozen pytest tests/test_security_scan_trufflehog_digest_omn23008.py -q -n 0 --no-cov -k 'digest_and_the_action_is_gone or push or pull_request or full_history'"
+      - id: AC2
+        statement: "AC2: a scheduled and dispatchable drift workflow reads the pinned image from security-scan.yml and can open an issue -- falsifier: uv run --frozen pytest tests/test_security_scan_trufflehog_digest_omn23008.py -q -n 0 --no-cov -k drift_check"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The digest-pin tests of this change, and the workflow action-ref golden, which drops the two TruffleHog action rows and gains the drift workflow's checkout row.
+    command: uv run --frozen pytest tests/test_security_scan_trufflehog_digest_omn23008.py tests/ci/test_omn20558_ratchet_burndown_characterization.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23008-ac1-digest-pinned-scan
+    description: >-
+      The scan steps' real scripts, run with a recording docker, pass the digest image and the action's range and flags for each event. At the merge base they fail, because the steps are action uses with no run script and no TRUFFLEHOG_IMAGE.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_security_scan_trufflehog_digest_omn23008.py -q -n 0 --no-cov -k 'digest_and_the_action_is_gone or push or pull_request or full_history'
+  - id: dod-omn23008-ac2-drift-check
+    description: >-
+      The drift workflow is scheduled and dispatchable on a hosted runner, holds issues write, and reads TRUFFLEHOG_IMAGE from security-scan.yml. At the merge base it fails, because the workflow does not exist.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_security_scan_trufflehog_digest_omn23008.py -q -n 0 --no-cov -k drift_check

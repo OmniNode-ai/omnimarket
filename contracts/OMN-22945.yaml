@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22945"
+title: "R0: a canary job completes on every rolled runner pool and its log shows the timezone import exiting 0"
+summary: >-
+  Adds node_runner_pool_canary_compute, a pure compute node that reads each rolled runner pool's
+  canary result: a canary job must have run on one of the pool's own runners with the timezone
+  import exiting 0, and every registered runner of the pool must read online in the organization
+  listing. A missing canary, a non-zero exit, a job that ran on a neighbouring pool, no listing row
+  or an offline runner reads NOT WORKING. The seven pools are the node contract's pool_rules.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-runner-pool-canary-node"
+    statement: |-
+      Each of the seven rolled runner pools has a canary whose timezone import exits 0, and a pool whose canary is missing or non-zero reads NOT WORKING.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: for each of the seven pools a canary job completes and its log shows `uv run python -c "import zoneinfo; zoneinfo.ZoneInfo('America/New_York')"` exiting 0 -- falsifier: uv run pytest tests/unit/test_runner_pool_canary.py -q -k zoneinfo_per_pool
+      - id: "AC2"
+        statement: |-
+          AC2: a pool whose canary is missing or non-zero reads NOT WORKING and the pool's runners read online in the organization API -- falsifier: uv run pytest tests/unit/test_runner_pool_canary.py -q -k missing_pool_fails
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the node suite, including the golden and error chain tests on the in-memory bus."
+    command: "uv run pytest tests/nodes/node_runner_pool_canary_compute -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22945-ac1-zoneinfo_per_pool"
+    description: "AC1: each of the seven pools reads WORKING on an exit 0 canary and NOT WORKING on an exit 1 canary; the log marker parses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_runner_pool_canary_compute/test_runner_pool_canary.py -k zoneinfo_per_pool -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22945-ac2-missing_pool_fails"
+    description: "AC2: a pool with a missing canary, a canary on a neighbouring pool, runners not online or no listing row reads NOT WORKING."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_runner_pool_canary_compute/test_runner_pool_canary.py -k missing_pool_fails -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22945-deploy-contract-rules"
+    description: "Deploy probe: read the node's contract.yaml at the checked-out commit from GitHub and require the declared pool_rules. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_runner_pool_canary_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^pool_rules:$' | grep -qx 1
+  - id: "dod-omn22945-integration-proof"
+    description: "The pushed head ran the runner-pool canary node suite, including its golden and error chains, on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22945 -- uv run --frozen pytest tests/nodes/node_runner_pool_canary_compute -q -n 0 -p no:randomly --no-cov"
+        cwd: "."

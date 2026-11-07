@@ -42,8 +42,9 @@ _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 # Golden updated for the hygiene caller pin in #3778, replay refs in #3756,
 # core guard in #3789, the hook push rehearsal caller in #4065, the reviewer eval
 # in #4090, the core full-suite reuse caller in #4138, and the first-party
-# dev-merge tags in OMN-17427, the sibling-pin train workflow in OMN-21895, and
-# the prompt cost estimate contract workflow in OMN-22126.
+# dev-merge tags in OMN-17427, the sibling-pin train workflow in OMN-21895,
+# the prompt cost estimate contract workflow in OMN-22126, and the TruffleHog
+# digest pin and drift workflow in OMN-23008.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )
