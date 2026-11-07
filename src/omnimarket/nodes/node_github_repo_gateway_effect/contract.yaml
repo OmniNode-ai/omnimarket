@@ -7,9 +7,9 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 4, patch: 1}
+contract_version: {major: 1, minor: 5, patch: 0}
 node_type: effect
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 lifecycle: experimental
 
 # The bytes already streamed for the first view are shared by all subsequent
@@ -29,7 +29,7 @@ description: >
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
   job_log_tail, artifacts, pr_text, releases, pr_heads, commit_check_runs,
-  merged_pr, pr_review_threads) and returns a small typed object
+  merged_pr, pr_review_threads, open_pr_facts) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
   log reads, `gh run download`, `gh release list`, commit check-run reads,
   PR state/head/merge detail reads, and a PR's review threads with their
@@ -106,6 +106,10 @@ operations:
   # GraphQL reports. The id a reply to a thread names is root_comment_id.
   - name: pr_review_threads
     description: "Request ModelGithubGatewayRequest, result ModelPrReviewThreadsResult; replaces gh api graphql (pullRequest reviewThreads)."
+
+  # OMN-22654: every open PR's head, base, title and fix markers in one read, for the duplicate-fix guard on a host that has no PR watcher state.
+  - name: open_pr_facts
+    description: "Request ModelGithubGatewayRequest, result ModelOpenPrFactsResult; replaces gh pr list --json number,headRefName,headRefOid,baseRefName,title,isDraft,body (the Fix-Check and Fix-Cause lines only)."
 
 input_model:
   name: ModelGithubGatewayRequest
