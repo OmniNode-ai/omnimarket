@@ -172,7 +172,12 @@ def test_alarm_config_loads_as_options(tmp_path: Path) -> None:
 
 def test_alarm_config_names_no_home_directory_or_person() -> None:
     document = json.dumps(load_units()[UNIT]["config_file"]["document"])
-    for forbidden in ("/Users/", "/home/", "@192."):
+    forbidden_fragments = (
+        "/Users/",  # test-literal-ok: asserts the config names no home path
+        "/home/",
+        "@192.",
+    )
+    for forbidden in forbidden_fragments:
         assert forbidden not in document
 
 
