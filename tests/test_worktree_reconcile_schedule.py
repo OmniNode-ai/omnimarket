@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule import (
     HandlerWorktreeSchedule,
 )
@@ -18,6 +19,25 @@ from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_sched
     ModelWorktreeScheduleOverlay,
     ModelWorktreeScheduleRequest,
 )
+
+
+class _NoInstalledUnits:
+    """A host with no installed service, so a tick never reads the runner's own systemd."""
+
+    def read(self) -> UnitRoots:
+        return UnitRoots.from_paths({})
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_unit_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tick reads installed units through `systemctl`; a runner whose systemd cannot answer must not fail it."""
+    from omnimarket.nodes.node_worktree_reconcile_effect import (
+        runtime_worktree_reconcile,
+    )
+
+    monkeypatch.setattr(
+        runtime_worktree_reconcile, "SystemdUnitRootReader", _NoInstalledUnits
+    )
 
 
 def overlay(tmp_path: Path) -> Path:
