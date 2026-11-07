@@ -471,6 +471,9 @@ class ModelRedRule(_Frozen):
     red_rows: int
     red_with_work_under_way: int
     violations: tuple[str, ...] = ()
+    # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
+    # is on these by construction, so the ids are shown rather than counted.
+    unowned_red: tuple[str, ...] = ()
 
 
 class ModelFloorSimple(_Frozen):
