@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Any
 
 import pytest
 
@@ -38,7 +39,7 @@ NOT_WORKING = EnumReadingVerdict.NOT_WORKING
 UNKNOWN = EnumReadingVerdict.UNKNOWN
 
 
-def read(probes=None, eval_runs=None) -> ModelContextRecallReading:  # type: ignore[no-untyped-def]
+def read(probes: Any = None, eval_runs: Any = None) -> ModelContextRecallReading:
     return HandlerContextRecallReading().handle(request(probes, eval_runs))
 
 

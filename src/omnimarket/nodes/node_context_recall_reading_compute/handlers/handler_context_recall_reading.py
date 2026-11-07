@@ -265,6 +265,17 @@ def answer_command(
     ]
 
 
+async def publish_answer(
+    bus: Any,
+    payload: bytes,
+    handler: HandlerContextRecallReading,
+    topics: dict[str, str],
+) -> None:
+    """Answer one command message by publishing each resulting event on the bus."""
+    for topic, body in answer_command(payload, handler, topics):
+        await bus.publish(topic, key=None, value=body)
+
+
 def _correlation_of(payload: bytes) -> str:
     """The correlation id of a payload that failed validation, or ``unknown``."""
     try:
@@ -283,4 +294,5 @@ __all__ = [
     "fact_recalled",
     "load_topics",
     "probe_reason",
+    "publish_answer",
 ]

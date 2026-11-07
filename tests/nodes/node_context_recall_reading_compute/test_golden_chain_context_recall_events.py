@@ -23,8 +23,8 @@ from omnimarket.nodes.node_context_recall_reading_compute.handlers import (
 )
 from omnimarket.nodes.node_context_recall_reading_compute.handlers.handler_context_recall_reading import (
     HandlerContextRecallReading,
-    answer_command,
     load_topics,
+    publish_answer,
 )
 from tests.nodes.node_context_recall_reading_compute.reading_support import (
     eval_run,
@@ -49,8 +49,7 @@ async def _publish(handler: HandlerContextRecallReading, payload: bytes) -> Even
     done = asyncio.Event()
 
     async def on_command(message: Any) -> None:
-        for topic, body in answer_command(message.value, handler, TOPICS):
-            await bus.publish(topic, key=None, value=body)
+        await publish_answer(bus, message.value, handler, TOPICS)
 
     def collector(topic: str) -> Callable[[Any], Awaitable[None]]:
         async def collect(message: Any) -> None:
@@ -171,7 +170,7 @@ def _break(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
                 e for e in original(reading, topics) if e[0] != topics["probe_read"]
             ],
         )
-    else:  # pragma: no cover - a mutation must be named in the table
+    else:
         raise AssertionError(name)
 
 
