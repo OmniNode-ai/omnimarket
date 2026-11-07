@@ -330,3 +330,16 @@ class TestFailingControl:
         assert _codes(_receipts(source, sink, NOW)) == [
             "downstream_missing_typed_failure"
         ]
+
+
+class TestTerminalEvent:
+    def test_the_contract_names_the_completed_event_the_run_ends_in(self) -> None:
+        contract = yaml.safe_load(
+            (OVERLAY_EXAMPLE.parent / "contract.yaml").read_text()
+        )
+        completed = "onex.evt.omnimarket.join-refusal-run-completed.v1"
+        failed = "onex.evt.omnimarket.join-refusal-run-failed.v1"
+        assert contract["terminal_event"] == completed
+        assert contract["topics"]["join_refusal_run_completed"] == completed
+        assert contract["topics"]["join_refusal_run_failed"] == failed
+        assert set(contract["externally_consumed_topics"]) == {completed, failed}

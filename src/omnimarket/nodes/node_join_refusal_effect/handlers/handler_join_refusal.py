@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from omnimarket.handlers.emission_sink import ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
@@ -55,11 +56,9 @@ class HandlerJoinRefusal:
         overlay: ModelJoinRefusalOverlay,
         source: ProtocolLedgerRowSource,
         sink: ProtocolEmissionSink,
-        backend: str,
+        backend: Literal["in_memory", "real"],
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        if backend not in ("in_memory", "real"):
-            raise ValueError("backend is in_memory or real")
         self._overlay = overlay
         self._source = source
         self._sink = sink
