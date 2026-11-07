@@ -167,8 +167,14 @@ class TestRunNodeBootstrapResolution:
             pytest.skip("omnibase_core not installed or cli_run_node.py not found")
 
         content = path.read_text(encoding="utf-8")
+        # Newer omnibase_core reads the variable in cli_commands.py (the bootstrap
+        # validator cli_run_node calls) instead of cli_run_node.py itself; the
+        # fail-fast access form is checked wherever the read lives.
+        commands = path.parent / "cli_commands.py"
+        if "KAFKA_BOOTSTRAP_SERVERS" not in content and commands.exists():
+            content += commands.read_text(encoding="utf-8")
         assert "KAFKA_BOOTSTRAP_SERVERS" in content, (
-            "cli_run_node.py must reference KAFKA_BOOTSTRAP_SERVERS"
+            "omnibase_core cli must reference KAFKA_BOOTSTRAP_SERVERS"
         )
         # Fail-fast contract (OMN-11757): cli_run_node.py must not silently default
         # to a localhost bootstrap. Two accepted forms:
