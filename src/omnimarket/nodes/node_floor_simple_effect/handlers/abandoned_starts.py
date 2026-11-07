@@ -7,6 +7,10 @@ Every way out of a cycle that can still run code ends its start in a success or 
 terminal, and the floor reads ``start_without_terminal`` on it for the whole window the receipts look back over. The next
 cycle closes such a start with a typed failure under the chain's own correlation id, so the journal says what happened to it.
 
+The failure is stamped at the instant the start became abandoned (the start plus the bound), never at the closing: the
+closing cycle's own time would give piece 17 a fresh error event it did not have, and would outlive the start in the journal's
+window. The detail names the real closing time.
+
 A start is abandoned only when it is older than the contract's ``abandon_after_seconds``, which is above the longest time
 the publish node lets a cycle live: a cycle still running is never closed from under itself.
 """
@@ -22,7 +26,7 @@ from omnimarket.models.floor_17a import ModelNodeEmission
 ABANDONED_CODE = "abandoned_without_terminal"
 ABANDONED_DETAIL = (
     "the process that emitted this start ended without a success or a typed failure "
-    "(killed, restarted or crashed); closed by a later cycle"
+    "(killed, restarted or crashed); closed by a later cycle at "
 )
 
 
@@ -54,11 +58,11 @@ def abandoned_starts(
                 piece=piece,
                 correlation_id=cid,
                 phase="failure",
-                emitted_at=now,
+                emitted_at=first.emitted_at + limit,
                 backend=first.backend,
                 drill=first.drill,
                 failure_code=ABANDONED_CODE,
-                failure_detail=ABANDONED_DETAIL,
+                failure_detail=ABANDONED_DETAIL + now.isoformat(),
             )
         )
     return tuple(closed)
