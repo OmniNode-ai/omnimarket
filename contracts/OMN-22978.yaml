@@ -48,3 +48,10 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22978 -- uv run --frozen pytest tests/unit/nodes/node_eval_corpus_reader_effect -q --no-cov -n 0 -p no:randomly'
     cwd: .
+- id: dod-omn22978-j15-deploy-probe
+  description: 'Deploy check: on the hosted runner, run every test of the eval corpus reader node, the join handler and the corpus reader through the packaged node contract. It fails at the merge base, which has no such node, and needs only this checkout and locked dependencies.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/nodes/node_eval_corpus_reader_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
