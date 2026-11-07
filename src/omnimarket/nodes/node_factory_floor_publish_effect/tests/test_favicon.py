@@ -141,8 +141,11 @@ HARNESS = textwrap.dedent(
     const [pagePath, recordJson, svgPath] = process.argv.slice(1);
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(fs.readFileSync(pagePath, "utf8"))[1];
     const els = {};
-    const mk = id => ({id, innerHTML: "", textContent: "", href: "", className: "", style: {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id))};
+    const mk = id => ({id, innerHTML: "", textContent: "", href: "", className: "", hidden: false, attrs: {}, style: {}, dataset: {},
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}});
+    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+    globalThis.window = {addEventListener() {}};
+    globalThis.location = {hash: ""};
     globalThis.setInterval = () => 0;
     globalThis.fetch = async url => {
       if (url.startsWith("favicon.svg")) {
