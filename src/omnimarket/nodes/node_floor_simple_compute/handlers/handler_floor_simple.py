@@ -268,6 +268,12 @@ class HandlerFloorSimple:
             state, why, lab_cause = self._with_lab_sources(r, n, lab, state, why)
             started = rc is not None and rc.started
             unread_go = go is None and not admitted
+            # The reading as the writer wrote it; the strip draws it only when the piece counts. A piece the go does not
+            # cover, that has not started and reads UNKNOWN (the writer has no producer for it) has no reading to draw:
+            # it is not started, never a failure and never a cause. A lab source the piece stands on still draws its own cause.
+            written_state = state
+            if state == "UNKNOWN" and not admitted and not started and not lab_cause:
+                state = None
             if state is None:
                 if started:
                     status, text = "started", "started; no reading row yet"
@@ -289,7 +295,8 @@ class HandlerFloorSimple:
                 text = f"reading {state}" + (f": {why}" if why else "")
                 if admitted and not started:
                     status = "unknown" if status == "working" else status
-                    text += "; no golden and error event yet"
+                    if rc is None or rc.last_emission_at is None:
+                        text += "; no golden and error event yet"
             if rc is not None and rc.last_emission_at is not None:
                 text += (
                     f" · golden {_ago(rc.golden_age_s)}, error {_ago(rc.error_age_s)}"
@@ -305,7 +312,7 @@ class HandlerFloorSimple:
                         "status": status,
                         "draw": "grey" if status == "not_started" else "green",
                         "text": text,
-                        "reading_state": state,
+                        "reading_state": written_state,
                         "reading_age_s": age,
                         "reading_max_age_s": max_age,
                         "cause_id": lab_cause
@@ -349,7 +356,7 @@ class HandlerFloorSimple:
         age = max(int((r.now - row.probed_at).total_seconds()), 0)
         if age > row.max_age_s:
             return "NOT WORKING", age, row.max_age_s, f"stale, read {_ago(age)}"
-        return row.state, age, row.max_age_s, ""
+        return row.state, age, row.max_age_s, row.reason
 
     @staticmethod
     def _with_lab_sources(

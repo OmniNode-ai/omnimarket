@@ -814,6 +814,7 @@ class HandlerFloorSimpleTick:
                 home / rt.sources.readings_relpath,
                 home / rt.sources.harness_result_relpath,
                 rt.sources.harness_piece,
+                ledger.facts.readings if ledger.facts is not None else (),
             ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
@@ -1094,15 +1095,24 @@ class HandlerFloorSimpleTick:
 
     @staticmethod
     def _readings(
-        path: Path, harness_path: Path, harness_piece: int
+        path: Path,
+        harness_path: Path,
+        harness_piece: int,
+        ledger_rows: tuple[ModelReadingRow, ...] = (),
     ) -> dict[int, ModelReadingRow] | None:
-        """The newest reading row per piece: the reading writer's rows, and the central test harness's stored result.
+        """The newest reading row per piece: the reading writer's rows (its file and, when the overlay names them, its ledger rows), and the central test harness's stored result.
 
         The harness result is one JSON document the harness node writes after each run; it is the reading of the piece
         the contract names, kept apart from the reading writer's rows. A result that is missing or unreadable adds no
         row, so the piece is drawn as having no reading, never as working.
         """
         newest: dict[int, ModelReadingRow] = {}
+        for ledger_row in ledger_rows:
+            if (
+                ledger_row.piece not in newest
+                or ledger_row.published_at > newest[ledger_row.piece].published_at
+            ):
+                newest[ledger_row.piece] = ledger_row
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError:
