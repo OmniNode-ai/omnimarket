@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22860
 title: A runner group's exposure to public origins is read as five subjects, from an in-memory fixture or the GitHub REST API
-summary: Two nodes. node_runner_group_exposure_compute is the pure reading of five subjects (files that select a group label with a public-origin trigger, the group's pinned workflows against those files, the group's public-repository setting, jobs of public origin in the window, the read's age). node_runner_group_exposure_effect reads one group from the source the overlay names (an in-memory fixture, or the GitHub REST API with a token named by an environment variable and a call budget) and asks the compute node for the reading. A group that cannot be read (denied, over budget, unreadable) or a read past its max age reads UNKNOWN and ends in the typed failure event. The schedule and a reading writer are not part of this ticket.
+summary: Two nodes. node_runner_group_exposure_compute is the pure reading of five subjects (files that select a group label with a public-origin trigger, the group's pinned workflows against those files, the group's public-repository setting, jobs of public origin in the window, the read's age). node_runner_group_exposure_effect reads one group from the source the overlay names (an in-memory fixture, or the GitHub REST API with a token named by an environment variable and a call budget) and asks the compute node for the reading. A group that cannot be read (denied, over budget, unreadable) or a read past its max age reads UNKNOWN and ends in the typed failure event. The hourly schedule (a systemd user timer, with uninstall as its rollback) and the reading writer (one ledger reading row per run) are added on the stacked branch omn-22860-runner-group-exposure-schedule, proven by AC4 and AC5; a run against the real organization is not part of this ticket.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,6 +15,13 @@ requirements:
     statement: 'AC2: each named break (a public-origin trigger on a group file, a group not restricted to workflows, a group allowing public repositories, a public-origin job) reads NOT_WORKING on its own subject on both overlays, and the same overlay without the break reads WORKING -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute -k injected_break -q --no-cov -p no:cacheprovider'
   - id: AC3
     statement: 'AC3: a denied org read, a broken workflow listing, a call past the budget, a missing token and a stale read each read UNKNOWN with the typed failure, and the run ends in the failure topic for the first four -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute -k error_chain -q --no-cov -p no:cacheprovider'
+- id: req-omn22860-exposure-schedule
+  statement: The exposure reading runs hourly on a declared host and each run appends one reading row, so a reading exists without a person asking for it.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a clean group writes one WORKING row, a public-origin trigger writes a NOT_WORKING row on its own subject, a group that was not read writes an UNKNOWN row and fails the run, and an append that does not land fails the run -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "golden or injected_break or error_chain" -q --no-cov -p no:cacheprovider'
+  - id: AC5
+    statement: 'AC5: schedule install writes the service and timer for a declared host and enables the timer, refuses a unit that names a worktree before writing anything, and uninstall removes both units -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "install or uninstall or undeclared" -q --no-cov -p no:cacheprovider'
 evidence_requirements:
 - kind: tests
   description: The compute node's tests and the effect node's golden chain, error chain and named failing controls on both overlays.
@@ -50,6 +57,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute -k error_chain -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22860-reading-writer
+  description: The reading writer's golden chain, named break and error chain.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "golden or injected_break or error_chain" -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22860-schedule
+  description: The schedule installs, refuses a worktree unit and rolls back.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "install or uninstall or undeclared" -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn22860-integration-proof
   description: Run this pull request's own tests on a lab host at the pushed head (the probe node run on both overlays, the GitHub one against a local fixture server). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
