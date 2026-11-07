@@ -11,7 +11,7 @@
 name: node_andon_threshold_compute
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >-
@@ -52,6 +52,7 @@ descriptor:
   purity: pure
   idempotent: true
   side_effects: []
+  runtime_profiles: []
   timeout_ms: 2000
 event_bus:
   subscribe_topics: []
