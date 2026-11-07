@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib.util
 import os
 import re
 import subprocess
@@ -668,6 +669,29 @@ def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]
     }
     argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
     argv += ["-p", "no:cacheprovider", "-o", "addopts="]
+    # A historical commit's tree may import omnibase_compat, which the project
+    # retired (OMN-22385) and the pinned omnibase-infra no longer installs.
+    # Place it beside the tree for this run alone; the project environment
+    # stays free of it.
+    if importlib.util.find_spec("omnibase_compat") is None:
+        vendored = tree / ".vendored"
+        installed = subprocess.run(
+            [
+                "uv",
+                "pip",
+                "install",
+                "--no-deps",
+                "--target",
+                str(vendored),
+                "omnibase-compat==0.5.7",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if installed.returncode != 0:
+            return installed.returncode, installed.stderr[-800:]
+        env["PYTHONPATH"] = f"{tree / 'src'}{os.pathsep}{vendored}"
     try:
         completed = subprocess.run(
             argv,
