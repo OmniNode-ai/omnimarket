@@ -504,6 +504,17 @@ class ModelFloorHostStatusConfig(BaseModel):
     landing_worker_kind: str = Field(min_length=1)
 
 
+class ModelGoalTicketRoots(BaseModel):
+    """The ``goal_scope_ticket_rule`` overlay as the floor reads it: the tickets whose work the goal keeps.
+
+    The landing tick owns the overlay, so the keys the floor does not read are ignored here and checked there.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    ticket_roots: tuple[str, ...] = ()
+
+
 class ModelFloorStoppedConfig(BaseModel):
     """What makes a lane that ended short a stopped line on the floor (OMN-22934); every value is the contract's."""
 
@@ -669,5 +680,8 @@ class ModelFactoryFloorRequest(BaseModel):
     # The landing goal's scope; None when it could not be read, and then no stopped lane is listed (an unread scope is
     # never everything in scope).
     goal_scope: ModelGoalScope | None = None
+    # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
+    # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
+    scope_ticket_roots: tuple[str, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)

@@ -19,6 +19,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorStoppedConfig,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import pr_key
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFloorStoppedLane,
     ModelFloorStoppedSkip,
@@ -74,7 +75,10 @@ def _in_scope(row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest) -> bo
     scope = request.goal_scope
     if scope is None:
         return False
-    listed = {ticket.upper() for ticket in scope.in_scope_tickets}
+    listed = {
+        ticket.upper()
+        for ticket in (*scope.in_scope_tickets, *request.scope_ticket_roots)
+    }
     return any(ticket.upper() in listed for ticket in row.tickets) or any(
         scope.classify(pr) == "in_scope" for pr in row.prs
     )
@@ -121,6 +125,16 @@ def build_stopped(
     for row in request.ledger:
         if row.lane:
             by_lane.setdefault(row.lane, []).append(row)
+    merged_prs = {
+        pr_key(pr.key) for pr in request.watcher.prs if pr.state == "MERGED"
+    } | {pr_key(merge.key) for merge in request.watcher.merges}
+    merged_branches = {
+        merge.head_ref for merge in request.watcher.merges if merge.head_ref
+    } | {
+        pr.head_ref
+        for pr in request.watcher.prs
+        if pr.state == "MERGED" and pr.head_ref
+    }
     claims = tuple(sorted((r for r in request.ledger if r.kind == "CLAIM"), key=_key))
     umbrella = set(cfg.umbrella_tickets)
     stopped: list[tuple[datetime, ModelFloorStoppedLane]] = []
@@ -152,6 +166,12 @@ def build_stopped(
         names = _names(text, branch, cfg)
         if not names:
             skip("names-no-branch-ask-or-next-step")
+            continue
+        if ended.prs and all(pr_key(pr) in merged_prs for pr in ended.prs):
+            skip("prs-merged")
+            continue
+        if branch and branch in merged_branches:
+            skip("branch-merged")
             continue
         work = frozenset(set(ended.tickets) - umbrella)
         successor = _claimed_since(ended, work, branch, claims, cfg)

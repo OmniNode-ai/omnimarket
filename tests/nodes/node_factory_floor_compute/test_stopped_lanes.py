@@ -19,6 +19,8 @@ from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorLedgerRow,
+    ModelFloorMerge,
+    ModelFloorWatcher,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_stopped import (
     UNREAD_SCOPE_CAUSE,
@@ -139,6 +141,49 @@ def test_a_lane_outside_the_goal_scope_is_not_listed() -> None:
     result = build_stopped(floor_request(scope=narrow))
     assert "pieces-rest-0930" not in lanes(result)
     assert causes(result)["pieces-rest-0930"] == "out-of-scope"
+
+
+def test_a_ticket_root_of_the_goal_rule_puts_its_lanes_in_scope() -> None:
+    bare = ModelGoalScope(ruling="test")
+    made = floor_request(scope=bare).model_copy(
+        update={"scope_ticket_roots": ("OMN-22478",)}
+    )
+    assert lanes(build_stopped(made)) == ["pieces-rest-0930"]
+    assert causes(build_stopped(floor_request(scope=bare)))["pieces-rest-0930"] == (
+        "out-of-scope"
+    )
+
+
+def test_a_lane_whose_branch_merged_is_not_listed() -> None:
+    merge = ModelFloorMerge(
+        key="OmniNode-ai/omnimarket#5300",
+        merged_at=datetime(2026, 11, 7, 12, 0, tzinfo=UTC),
+        head_ref="omn-22478-drift-revision-source",
+    )
+    made = floor_request().model_copy(
+        update={
+            "watcher": ModelFloorWatcher(last_tick=READ_AT, merges=(merge,)),
+        }
+    )
+    result = build_stopped(made)
+    assert "pieces-rest-0930" not in lanes(result)
+    assert causes(result)["pieces-rest-0930"] == "branch-merged"
+
+
+def test_a_lane_whose_named_pull_requests_all_merged_is_not_listed() -> None:
+    merge = ModelFloorMerge(
+        key="omnimarket#5300", merged_at=datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    )
+    named = tuple(
+        r.model_copy(update={"prs": ("OmniNode-ai/omnimarket#5300",)})
+        if r.lane == "pieces-rest-0930" and r.kind == "TERMINAL"
+        else r
+        for r in ledger()
+    )
+    made = floor_request(named).model_copy(
+        update={"watcher": ModelFloorWatcher(last_tick=READ_AT, merges=(merge,))}
+    )
+    assert causes(build_stopped(made))["pieces-rest-0930"] == "prs-merged"
 
 
 def test_error_chain_an_unread_goal_scope_lists_nothing_and_says_why() -> None:

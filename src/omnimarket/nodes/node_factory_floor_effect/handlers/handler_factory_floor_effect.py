@@ -23,6 +23,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLimitsFacts,
     ModelFloorSelection,
     ModelFloorSourceReads,
+    ModelGoalTicketRoots,
 )
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
@@ -206,6 +207,14 @@ class HandlerFactoryFloorEffect:
         except NodeOverlayError:
             # An unread scope lists no stopped lane, and the record says so under floor.stopped_cause.
             goal_scope = None
+        try:
+            scope_roots = load_structured_overlay(
+                rt.goal_ticket_rule_overlay_id,
+                ModelGoalTicketRoots,
+                file_env=rt.goal_ticket_rule_file_env,
+            ).ticket_roots
+        except NodeOverlayError:
+            scope_roots = ()
         contains = request.plan_path_contains or (
             overlay.plan_path_contains if overlay is not None else ()
         )
@@ -291,6 +300,7 @@ class HandlerFactoryFloorEffect:
             watcher=watcher,
             ledger=ledger,
             goal_scope=goal_scope,
+            scope_ticket_roots=scope_roots,
             lane_processes=load_lane_processes(
                 ledger,
                 directory=resolve_dir(
