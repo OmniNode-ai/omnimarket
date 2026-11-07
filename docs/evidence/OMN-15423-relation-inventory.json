@@ -9563,7 +9563,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
       "indexes": [
         "idx_view_seam_readings_read_at"
       ],
