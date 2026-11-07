@@ -28,17 +28,10 @@ handler:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+dependency_ownership:
+  overlay: "Owned by the floor-fill orchestrator, which loads the node overlay and constructs the handler in process."
 runtime_dispatch:
   external_trigger: Direct Python invocation by the floor-fill orchestrator; the chain events go to the floor's emission journal.
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-  - operation: floor_fill_owner_count
-    handler:
-      name: HandlerFloorFillOwnerCount
-      module: omnimarket.nodes.node_floor_fill_owner_count_compute.handlers.handler_floor_fill_owner_count
-    input_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountRequest
-    output_model: omnimarket.nodes.node_floor_fill_owner_count_compute.models.model_floor_fill_owner_count.ModelFloorFillOwnerCountResult
 # Read through omnimarket.handlers.node_overlay_reader.load_structured_overlay: <root>/node_floor_fill_owner_count_compute/overlay.yaml
 # under a root in ONEX_SKILL_OVERLAY_ROOTS. No packaged value; a missing or invalid overlay refuses naming the setting.
 deployment_overlay:
