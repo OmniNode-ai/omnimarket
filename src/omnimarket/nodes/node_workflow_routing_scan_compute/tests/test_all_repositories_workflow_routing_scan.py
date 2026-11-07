@@ -7,7 +7,7 @@ from __future__ import annotations
 from omnimarket.nodes.node_workflow_routing_scan_compute.handlers import (
     HandlerWorkflowRoutingScan,
 )
-from omnimarket.nodes.node_workflow_routing_scan_compute.tests.conftest_support import (
+from tests.nodes.node_workflow_routing_scan_compute.support import (
     EXPECTED,
     HOSTED_WORKFLOW,
     PLANTED_WORKFLOW,

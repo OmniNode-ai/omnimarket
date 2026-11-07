@@ -15,7 +15,7 @@ from omnimarket.nodes.node_workflow_routing_scan_compute.models import (
     EnumRoutingSelection,
     ModelRoutingRoute,
 )
-from omnimarket.nodes.node_workflow_routing_scan_compute.tests.conftest_support import (
+from tests.nodes.node_workflow_routing_scan_compute.support import (
     EXPECTED,
     NAME,
     PLANTED_WORKFLOW,

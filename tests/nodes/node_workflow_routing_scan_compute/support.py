@@ -85,3 +85,19 @@ def request(
 
 def all_hosted_repositories() -> tuple[ModelScannedRepository, ...]:
     return tuple(repository(name, ("ci.yml", HOSTED_WORKFLOW)) for name in EXPECTED)
+
+
+def job_workflow(runs_on: str) -> str:
+    return f"name: x\non: [push]\njobs:\n  j:\n    runs-on: {runs_on}\n    steps: []\n"
+
+
+def with_workflow(workflow: str) -> Any:
+    from omnimarket.nodes.node_workflow_routing_scan_compute.handlers import (
+        HandlerWorkflowRoutingScan,
+    )
+
+    repositories = (
+        repository(EXPECTED[0], ("x.yml", workflow)),
+        *all_hosted_repositories()[1:],
+    )
+    return HandlerWorkflowRoutingScan().handle(request(repositories))
