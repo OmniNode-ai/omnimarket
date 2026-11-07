@@ -638,6 +638,7 @@ node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_co
 node_floor_emission_compute = "omnimarket.nodes.node_floor_emission_compute"
 node_floor_fill_candidates_compute = "omnimarket.nodes.node_floor_fill_candidates_compute"
 node_floor_fill_lines_compute = "omnimarket.nodes.node_floor_fill_lines_compute"
+node_floor_fill_orchestrator = "omnimarket.nodes.node_floor_fill_orchestrator"
 node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
 node_floor_simple_compute = "omnimarket.nodes.node_floor_simple_compute"
 node_floor_simple_effect = "omnimarket.nodes.node_floor_simple_effect"
@@ -1433,7 +1434,7 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261101203942-2080333acfaf" }
-omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261103062530-3580a8d986fd" }
+omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261107135804-4e522a057d9c" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
