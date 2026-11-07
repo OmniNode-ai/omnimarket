@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_idle_slot_fill_effect
-version: 1.1.0
+version: 1.2.0
 description: 'The lab is never idle: from the throughput tick''s live pool hosts and finding lines, choose the lanes that
   fill the free lab slots from the standing pillar backlog, and refuse an orchestrator Stop turn that left free
   headroom or an unowned red with nothing dispatched. Repository names, the cloud backlog declaration and the experiment
   designs come from the idle_slot_fill and repos overlays. The fill reads active repository fixer HOLDs
   from the declared ledger and its archives before selecting work; an unread ledger blocks repository work.
-  Each tick also recovers abandoned blocked, failed or partial ruled work through the same dispatcher, queues repeat
+  Each tick rebuilds the stored backlog from live PR, paginated ticket API and ownership sources before selection and
+  atomically replaces it under the fill lock. Refresh policy is declared in backlog_refresh.yaml with an
+  optional idle_slot_fill overlay override. Each tick also recovers abandoned blocked, failed or partial ruled work through the same dispatcher, queues repeat
   failures for the orchestrator, and reads declared live ruling checks. All admitted engines, including shared
   Codex capacity, are ranked by the lane model policy contract; current limit and auth marks remove capacity.'
 pack: distributed_validation
@@ -22,7 +24,7 @@ capabilities:
   full_runtime: false
   requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: true
   side_effect_class: write
 dependencies:

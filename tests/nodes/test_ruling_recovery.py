@@ -298,7 +298,9 @@ def test_tick_records_one_orchestrator_exception_and_no_third_dispatch(
         result = _tick(tmp_path, monkeypatch, text, capacity=0, record=record)
         assert any(f[1] == "ruling-relaunch-exception:OMN-123" for f in result.found)
     rows = json.loads((tmp_path / "state/ruling-relaunch.exceptions.json").read_text())
-    assert len(rows) == len(records) == 1
+    # Each tick also records its stored-tier count (OMN-22147); this test counts exceptions.
+    exceptions = [row for row in records if row[0] != "lab-fill-backlog-refresh"]
+    assert len(rows) == len(exceptions) == 1
     assert next(iter(rows.values()))["owner"] == "orchestrator-test"
     assert next(iter(rows.values()))["action"] == "EXCEPTION"
     assert len(json.loads((tmp_path / "state/lab-fill.sent.json").read_text())) == 1

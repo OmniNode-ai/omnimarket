@@ -18,6 +18,11 @@ from .model_idle_slot_fill_overlay import (
     ModelIdleSlotFillOverlay,
     ModelReposRoles,
 )
+from .model_pillar_backlog_refresh import (
+    ModelPillarBacklogPolicy,
+    ModelPillarBacklogRefreshRequest,
+    ModelPillarBacklogRefreshResult,
+)
 
 __all__ = [
     "ModelBacklogItem",
@@ -30,5 +35,8 @@ __all__ = [
     "ModelIdleTurnGuardResult",
     "ModelLabFillRequest",
     "ModelLabFillResult",
+    "ModelPillarBacklogPolicy",
+    "ModelPillarBacklogRefreshRequest",
+    "ModelPillarBacklogRefreshResult",
     "ModelReposRoles",
 ]

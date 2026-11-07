@@ -6,16 +6,23 @@ node_type: EFFECT_GENERIC
 runtime_profiles: []
 contract_version:
   major: 1
-  minor: 1
+  minor: 2
   patch: 0
-node_version: 1.1.0
+node_version: 1.2.0
 description: >
   The lab is never idle (RULING 2026-10-14T21:46:25Z, operator 2026-10-18). fill: from the throughput tick's live
   pool hosts, its own finding lines and the lanes the merge sweep places this tick, choose the lanes that fill the
   free slots from the standing pillar backlog (unowned process-fix PRs, unowned shared reds, M4 board reds, queued
   experiment designs), ranking all admitted engines through node_lane_model_policy_compute's declared policy
   (Codex and low-risk GLM before Claude, Sonnet ceiling), each with its brief; keys
-  sent inside the window are skipped. With the file backlog spent it generates items from live state: the operator's
+  sent inside the window are skipped. Before selection, HandlerPillarBacklogRefresh rebuilds the stored process-fix,
+  defect and readback items from the tick's watcher inventory, live ticket API (or DI-injected snapshot binding)
+  and live ownership/readback sources. Live ticket queries paginate to completion or refuse the refresh.
+  It replaces the file atomically under lab-fill.lock, records why previous items left, and reports the stored count
+  even without free slots. Unread or stale sources offer no stored work and leave the previous file intact.
+  State directory and source paths come from the request; policy values come from backlog_refresh.yaml or the
+  idle_slot_fill overlay's backlog_refresh field. Read-only ticks compute without writes.
+  With the file backlog spent it generates items from live state: the operator's
   open delegation-pillar and M4-carrier tickets with no live CLAIM and no open PR (the session's Linear snapshot),
   tickets blocked on a missing readback (the ledger) and the experiment designs of the idle_slot_fill overlay in
   rotation. turn-guard: refuse an orchestrator Stop turn whose tool output showed free lab headroom or an UNOWNED red
@@ -71,6 +78,20 @@ handler_routing:
     handler:
       name: HandlerIdleTurnGuard
       module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
+  - operation: refresh-backlog
+    topic: onex.cmd.omnimarket.pillar-backlog-refresh-requested.v1
+    handler:
+      name: HandlerPillarBacklogRefresh
+      module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_pillar_backlog_refresh
+    input_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_pillar_backlog_refresh.ModelPillarBacklogRefreshRequest
+    output_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_pillar_backlog_refresh.ModelPillarBacklogRefreshResult
+configuration:
+  backlog_refresh:
+    declaration: backlog_refresh.yaml
+    overlay: idle_slot_fill/overlay.yaml
+    field: backlog_refresh
+    state_directory: request.state_dir
+    sources: request.sources
 terminal_event: onex.evt.omnimarket.idle-slot-fill-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.idle-slot-fill-requested.v1

@@ -12,7 +12,10 @@ import pytest
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
     handler_idle_slot_fill as fill,
 )
-from omnimarket.nodes.node_idle_slot_fill_effect.models import ModelLabFillRequest
+from omnimarket.nodes.node_idle_slot_fill_effect.models import (
+    ModelBacklogSources,
+    ModelLabFillRequest,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers import (
     handler_lane_model_policy as policy,
 )
@@ -58,13 +61,22 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
 
     monkeypatch.setattr(fill, "_send", send)
     state = tmp_path / "state"
+    snapshot = tmp_path / "tickets.json"
+    snapshot.write_text('{"captured_at": "2026-10-26T19:59:00Z", "issues": []}')
     result = fill.HandlerLabFill().handle(
         ModelLabFillRequest(
             now="2026-10-26T19:59:00Z",
             request={
+                "watcher_state": {
+                    "schema": 1,
+                    "last_tick": "2026-10-26T19:59:00Z",
+                    "last_full_resync": "2026-10-26T19:59:00Z",
+                    "prs": {},
+                    "repos": {},
+                },
                 "lab_headroom": {
                     "hosts": [{"name": "host-a", "admission": {"claude_slots": 1}}]
-                }
+                },
             },
             lines=["MISSING lab-headroom:host-a | free Claude slots 1"],
             launch=None,
@@ -73,10 +85,18 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
             runner=tmp_path / "unused-runner.py",
             lanes_dir=tmp_path / "receipts",
             record=record,
+            sources=ModelBacklogSources(
+                linear_snapshot=snapshot,
+                ledger_tickets=lambda: (set(), {}),
+                pr_claims=lambda: set(),
+            ),
             out_of_scope={},
         )
     )
     note = next(why for level, loop, why, _ in result.found if loop == "lab-fill")
+    refresh_row = rows.pop(0)
+    assert refresh_row[:2] == ("lab-fill-backlog-refresh", "stored-tier")
+    assert "stored=1" in refresh_row[2]
     if ceiling == "codex":
         assert calls == rows == []
         assert not (state / fill.SENT_FILE).exists()

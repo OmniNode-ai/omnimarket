@@ -30,7 +30,7 @@ from omnimarket.models.stop_gate import ModelStopGateFacts
 
 @dataclass(frozen=True)
 class ModelBacklogSources:
-    """Live state once the file backlog is spent (OMN-17427). ledger_tickets answers (tickets a live CLAIM names,
+    """Live sources for stored refresh and optional spent-file generation. ledger_tickets answers (tickets a live CLAIM names,
     ticket -> TERMINAL triage verdict blocked on a missing readback), raising when the ledger cannot be read.
     experiments answers the experiment designs (the idle_slot_fill overlay), raising when none is configured.
     ticket_rule delegates ticket admission to omnimarket. All None generates nothing."""
@@ -41,6 +41,13 @@ class ModelBacklogSources:
     experiments: Callable[[], list[dict[str, Any]]] | None = None
     ledger_tickets: Callable[[], tuple[set[str], dict[str, str]]] | None = None
     ticket_rule: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    # Live PR registry reader; None uses the caller's declared registry directory.
+    pr_claims: Callable[[], set[str]] | None = None
+    # Default deployment reads ticket state live each tick. Snapshot-only bindings
+    # remain available for replay and the declared two-profile fixture.
+    ticket_post: Callable[[str, Mapping[str, object]], Mapping[str, object]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True)

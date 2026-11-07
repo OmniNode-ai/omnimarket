@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from .model_pillar_backlog_refresh import ModelPillarBacklogPolicy
+
 
 class ModelReposRoles(BaseModel):
     """The role fields of the shared ``repos`` overlay; its other fields belong to other readers."""
@@ -53,3 +55,4 @@ class ModelIdleSlotFillOverlay(BaseModel):
     repo_required_kinds: list[str] | None = None
     cloud_backlog: ModelCloudBacklogOverlay | None = None
     experiment_designs: list[dict[str, Any]] | None = None
+    backlog_refresh: ModelPillarBacklogPolicy | None = None
