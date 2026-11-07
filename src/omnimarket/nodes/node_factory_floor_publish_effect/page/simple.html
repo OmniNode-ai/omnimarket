@@ -113,6 +113,7 @@ function draw(){
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
+  if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
