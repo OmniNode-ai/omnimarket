@@ -37,12 +37,12 @@ def test_fleet_source_is_refreshed_before_the_floor_from_the_declared_producer(
     )
 
     overlay_root = tmp_path / "overlays"
-    health_overlay = overlay_root / "delegation_health/overlay.yaml"
-    health_overlay.parent.mkdir(parents=True)
-    health_overlay.write_text(
-        "ssh_host_env: LAB_SSH\ncompose_project: lab\npostgres_service: postgres\n"
-        "runtime_service: runtime\ndatabase: projection\ndb_user: reader\n"
-        "contract_path: /app/delegation.yaml\n"
+    reads_overlay = overlay_root / "runtime_host_reads/overlay.yaml"
+    reads_overlay.parent.mkdir(parents=True)
+    reads_overlay.write_text(
+        "ssh_host_env: LAB_SSH\ncompose_project: lab\nfleet_service: fleet-runtime\n"
+        "provenance_service: build-runtime\nprovenance_path: /app/build-provenance.json\n"
+        "repo_refs:\n  - {repo: lab_repo, clone_relpath: lab_repo, ref_path: [infra_vcs_ref]}\n"
     )
     request = _refresh_request(tmp_path)
     target = Path(request.home or "") / ".onex_state/runner-fleet/runner-fleet.json"
@@ -79,6 +79,7 @@ def test_fleet_source_is_refreshed_before_the_floor_from_the_declared_producer(
     assert len(reads) == 1
     assert "lab-host" in reads[0][0]
     assert b"node_projection_runner_fleet" in reads[0][1]
+    assert b"label=com.docker.compose.service=fleet-runtime" in reads[0][1]
     assert (
         next(step for step in result.steps if step.name == "runner_fleet").status
         == "ok"
@@ -101,7 +102,7 @@ def test_fleet_read_failure_replaces_old_counts_with_an_unread_cause(
         request, environ={"CLAUDE_PLUGIN_ROOT": "/plugin-root"}
     )
     assert load_runner_fleet(target) is None
-    assert "delegation_health" in runner_fleet_cause(target)
+    assert "runtime_host_reads" in runner_fleet_cause(target)
     assert (
         next(step for step in result.steps if step.name == "runner_fleet").status
         == "failed"
@@ -143,11 +144,12 @@ def test_fleet_refresh_is_concurrent_and_uses_the_floor_input_path() -> None:
 def test_an_invalid_or_unread_producer_never_supplies_fleet_counts(
     payload: bytes,
 ) -> None:
+    from omnimarket.models.model_runtime_host_reads import (
+        ModelRuntimeHostReadOverlay,
+        ModelRuntimeRepoRef,
+    )
     from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
         HandlerFleetObservationSource,
-    )
-    from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
-        ModelDelegationReadOverlay,
     )
     from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
         ModelFleetObservationSourceRequest,
@@ -159,14 +161,17 @@ def test_an_invalid_or_unread_producer_never_supplies_fleet_counts(
         assert timeout == 7
         return subprocess.CompletedProcess(argv, 0, payload, b"")
 
-    overlay = ModelDelegationReadOverlay(
+    overlay = ModelRuntimeHostReadOverlay(
         ssh_host_env="LAB_SSH",
         compose_project="lab",
-        runtime_service="runtime",
-        postgres_service="postgres",
-        database="projection",
-        db_user="reader",
-        contract_path="/app/delegation.yaml",
+        fleet_service="fleet-runtime",
+        provenance_service="build-runtime",
+        provenance_path="/app/build-provenance.json",
+        repo_refs=(
+            ModelRuntimeRepoRef(
+                repo="lab_repo", clone_relpath="lab_repo", ref_path=("infra_vcs_ref",)
+            ),
+        ),
     )
     document = (
         HandlerFleetObservationSource(run)

@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_census_alias_parity_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Compare the census manifest's host aliases with the alarm host aliases using
+  exact equality. Both tables are deployment inputs, so declaring a host needs
+  data changes rather than a Python constant change. No I/O occurs.
+input_model:
+  name: ModelLaneCensusAliasParityRequest
+  module: omnimarket.nodes.node_lane_census_alias_parity_compute.models
+output_model:
+  name: ModelLaneCensusAliasParityResult
+  module: omnimarket.nodes.node_lane_census_alias_parity_compute.models
+handler:
+  module: omnimarket.nodes.node_lane_census_alias_parity_compute.handler
+  class: HandlerLaneCensusAliasParity
+  input_model: omnimarket.nodes.node_lane_census_alias_parity_compute.models.ModelLaneCensusAliasParityRequest
+  output_model: omnimarket.nodes.node_lane_census_alias_parity_compute.models.ModelLaneCensusAliasParityResult
+entrypoint:
+  name: NodeLaneCensusAliasParityCompute
+  module: omnimarket.nodes.node_lane_census_alias_parity_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_census_alias_parity_compute.handler:HandlerLaneCensusAliasParity
+  handlers:
+    - operation: check_alias_parity
+      topic: onex.cmd.omnimarket.lane-census-alias-parity-requested.v1
+      handler:
+        name: HandlerLaneCensusAliasParity
+        module: omnimarket.nodes.node_lane_census_alias_parity_compute.handler
+terminal_event: onex.evt.omnimarket.lane-census-alias-parity-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-census-alias-parity-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lane-census-alias-parity-requested.v1]
+  publish_topics: [onex.evt.omnimarket.lane-census-alias-parity-completed.v1]
+metadata:
+  transport_type: inmemory
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-census-alias-parity-completed.v1

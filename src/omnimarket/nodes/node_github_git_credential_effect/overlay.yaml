@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Packaged settings of node_github_git_credential_effect (OMN-22613). A deployment
+# overlay at <root>/node_github_git_credential_effect/overlay.yaml under
+# ONEX_SKILL_OVERLAY_ROOTS replaces this document whole.
+#
+# git_host: the host the credential helper answers for; git asking about any
+#   other host gets no answer from the helper and falls through.
+# allowed_owners: the owners a token may be minted for; any other owner is refused
+#   before GitHub is asked.
+# denied_repositories: OWNER/NAME rows refused even under an allowed owner.
+# permissions: the one permission set every token is narrowed to. contents write
+#   is a push; workflows write lets a push change a workflow file; metadata read
+#   is the floor GitHub adds to every token. A token GitHub returns with any
+#   permission above these is refused, not issued.
+# *_secret: the contract's declared secret names for the writer App.
+git_host: github.com
+allowed_owners:
+  - OmniNode-ai
+denied_repositories: []
+permissions:
+  contents: write
+  workflows: write
+  metadata: read
+app_id_secret: ONEXBOT_OCC_APP_ID
+private_key_secret: ONEXBOT_OCC_PRIVATE_KEY
+installation_id_secret: ONEXBOT_OCC_INSTALLATION_ID

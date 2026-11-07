@@ -17,6 +17,7 @@ from omnimarket.models.overlay_store import (
     EnumOverlayReadState,
     ModelOverlayStoreReadOverlay,
     ModelOverlayStoreRecord,
+    document_digest,
 )
 from omnimarket.nodes.node_overlay_store_load_effect.handlers import (
     HandlerOverlayStoreLoad,
@@ -79,6 +80,34 @@ async def test_a_document_its_model_refuses_is_not_published(tmp_path: Path) -> 
     broken = {**TABLE, "hosts": [{**TABLE["hosts"][0], "unknown_column": 1}]}
     loader, bus = _loader(tmp_path, broken)
     with pytest.raises(OverlayLoadRefusedError, match="unknown_column"):
+        await loader.handle("lab_hosts")
+    assert bus.published == []
+
+
+@pytest.mark.asyncio
+async def test_a_host_row_carrying_volumes_root_is_loaded_and_published(
+    tmp_path: Path,
+) -> None:
+    """The lab_hosts overlay names a host's external volumes root (hosts.1.volumes_root on overlays main);
+    the loader's model takes it, so the store moves to the new version instead of refusing it (OMN-23021)."""
+    table = {
+        **TABLE,
+        "hosts": [TABLE["hosts"][0], {**TABLE["hosts"][1], "volumes_root": "/Volumes"}],
+    }
+    loader, bus = _loader(tmp_path, table)
+    result = await loader.handle("lab_hosts")
+    assert result.digest == document_digest(table)
+    assert [topic for topic, _key, _value in bus.published] == [LOADED_TOPIC]
+
+
+@pytest.mark.asyncio
+async def test_a_volumes_root_at_the_filesystem_root_is_refused(tmp_path: Path) -> None:
+    table = {
+        **TABLE,
+        "hosts": [TABLE["hosts"][0], {**TABLE["hosts"][1], "volumes_root": "/"}],
+    }
+    loader, bus = _loader(tmp_path, table)
+    with pytest.raises(OverlayLoadRefusedError, match=r"hosts\.1\.volumes_root"):
         await loader.handle("lab_hosts")
     assert bus.published == []
 

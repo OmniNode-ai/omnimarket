@@ -383,6 +383,8 @@ jobs:
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+      - name: Lane census alias parity (OMN-19998)
+        run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate
@@ -1236,7 +1238,7 @@ jobs:
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [repo-evidence-preflight, detect-changes]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
     # (last 30 successful ci.yml runs, 2026-09-15) is 7.8m, which looked like
@@ -1722,7 +1724,7 @@ jobs:
     name: Integration Silent-Skip Guard (OMN-14172)
     needs: [repo-evidence-preflight, zone-filter]
     if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
     services:

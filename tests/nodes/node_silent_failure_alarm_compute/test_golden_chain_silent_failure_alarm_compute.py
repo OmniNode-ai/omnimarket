@@ -720,6 +720,9 @@ def test_registry_installer_points_alarm_unit_at_the_clean_branch(
         home=str(tmp_path / "home"),
         registry_root=str(tmp_path / "registry"),
         workspace_config_root=str(tmp_path / "overlay"),
+        runtime_ssh_host="lab-user@runtime.example.test",
+        appender_root=str(tmp_path / "appender"),
+        host_table_path=str(tmp_path / "hosts.yaml"),
         project_path=str(branch),
         expected_revision=revision,
         path_overrides={

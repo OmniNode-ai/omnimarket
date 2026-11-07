@@ -22,6 +22,9 @@ from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_containers import (
     with_application_containers,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_host_status import (
+    build_host_status,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     build_bays,
     build_cloud,
@@ -479,6 +482,10 @@ def _evidence(
 def _gate(
     task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
 ) -> tuple[ItemState, str] | None:
+    subjects = {task.wave, task.id} - {""}
+    template = request.config.gate_wave_subject_template
+    if template and task.wave:
+        subjects.add(template.format(wave=task.wave))
     row = max(
         (
             row
@@ -486,7 +493,7 @@ def _gate(
             if row.kind == "STATUS"
             and row.state == request.config.gate_state
             and row.subject
-            and row.subject in {task.wave, task.id}
+            and row.subject in subjects
         ),
         key=_row_key,
         default=None,
@@ -636,7 +643,7 @@ def _table_item(
         if kind:
             state, note = _settle(
                 "Linear done" if kind == "linear_done" else "PRs merged",
-                _table_prs(row, index),
+                prs,
                 row.tickets,
                 "",
                 request,
@@ -662,7 +669,7 @@ def _table_item(
         ):
             state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
         else:
-            state, note = "wait", "recorded open PR, no matching open pull request read"
+            state, note = "wait", "recorded open, no matching pull request read"
     elif row.state == "not-started":
         state, note = "prep", "not started"
     else:
@@ -1400,6 +1407,7 @@ def _floor(
         stall_minutes=request.config.stall_minutes,
         lane_window_minutes=request.config.lane_live_window_minutes,
         bays=build_bays(machines),
+        host_status=build_host_status(request, lanes),
         shipped=shipped,
         waiting=waiting,
         stoppages=stoppages,
