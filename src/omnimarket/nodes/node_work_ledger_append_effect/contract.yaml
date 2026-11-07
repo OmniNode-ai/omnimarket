@@ -57,10 +57,6 @@ handler_routing:
       handler:
         name: "HandlerWorkLedgerAppendEffect"
         module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
-    - operation: "join_j5_work_ledger_append"
-      handler:
-        name: "HandlerWorkLedgerJoinJ5"
-        module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5"
 descriptor:
   node_archetype: effect
   purity: effectful
