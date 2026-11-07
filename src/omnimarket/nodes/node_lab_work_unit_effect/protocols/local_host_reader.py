@@ -19,7 +19,7 @@ import re
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -38,9 +38,50 @@ _LOGIN_TTL_SECONDS = 300.0
 #: units in 0 s while staying the freest host). It rides ``tools`` and not a new field, so a caller on an older
 #: omnimarket still parses the advertisement instead of dropping the host.
 LANE_GUARD_TOOL_PREFIX = "lane-guard:"
+#: A pseudo-tool ``cpu-temp-c:<degrees>`` carrying the CPU package temperature (k10temp Tctl, or coretemp Package id)
+#: of a Linux host with such a sensor, one decimal. It rides ``tools`` for the same reason the lane guard does: a
+#: caller on an older omnimarket still parses the advertisement. A host with no sensor (a Mac, a VM) advertises none
+#: and is never judged on temperature. Pool placement reads it against the host row's ``max_cpu_c`` bar.
+CPU_TEMP_TOOL_PREFIX = "cpu-temp-c:"
+_HWMON_ROOT = Path("/sys/class/hwmon")
+_CPU_CHIPS = ("k10temp", "coretemp")
+_CPU_LABELS = ("Tctl", "Package id")
 _GUARD_DIR = Path(".local") / "share" / "onex-lane-guard" / "sha256"
 _GUARD_FILE = "lane_guard_host.py"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def cpu_temp_from_tools(tools: Iterable[str]) -> float | None:
+    """The CPU temperature an advertisement's ``cpu-temp-c:`` pseudo-tool carries, or None when it carries none."""
+    for tool in tools:
+        if tool.startswith(CPU_TEMP_TOOL_PREFIX):
+            try:
+                return float(tool[len(CPU_TEMP_TOOL_PREFIX) :])
+            except ValueError:
+                return None
+    return None
+
+
+def linux_cpu_temp_c(hwmon_root: Path = _HWMON_ROOT) -> float | None:
+    """The hottest CPU package reading under ``hwmon_root`` in degrees C, or None when no such sensor is there."""
+    readings: list[float] = []
+    try:
+        chips = sorted(hwmon_root.iterdir())
+    except OSError:
+        return None
+    for chip in chips:
+        try:
+            if (chip / "name").read_text().strip() not in _CPU_CHIPS:
+                continue
+            for label_file in sorted(chip.glob("temp*_label")):
+                if label_file.read_text().strip().startswith(_CPU_LABELS):
+                    value = (
+                        chip / label_file.name.replace("_label", "_input")
+                    ).read_text()
+                    readings.append(int(value.strip()) / 1000.0)
+        except (OSError, ValueError):
+            continue
+    return max(readings) if readings else None
 
 
 class HostCapacityUnreadableError(RuntimeError):
@@ -134,10 +175,14 @@ class LocalHostReader:
     """Reads the host this process runs on."""
 
     def __init__(
-        self, now: Callable[[], float] = time.monotonic, home: Path | None = None
+        self,
+        now: Callable[[], float] = time.monotonic,
+        home: Path | None = None,
+        hwmon_root: Path = _HWMON_ROOT,
     ) -> None:
         self._now = now
         self._home = home
+        self._hwmon_root = hwmon_root
         self._login: tuple[float, bool] | None = None
 
     def _has_login(self, path: str) -> bool:
@@ -182,20 +227,25 @@ class LocalHostReader:
             f"{LANE_GUARD_TOOL_PREFIX}{sha}"
             for sha in installed_lane_guards(self._home)
         )
+        temp = linux_cpu_temp_c(self._hwmon_root) if system == "Linux" else None
+        heat = () if temp is None else (f"{CPU_TEMP_TOOL_PREFIX}{temp:.1f}",)
         return HostReading(
             cores=cores,
             load1=load1,
             mem_available_bytes=mem,
-            tools=tuple(sorted({*found, *guards})),
+            tools=tuple(sorted({*found, *guards, *heat})),
         )
 
 
 __all__ = [
     "CLAUDE_LOGIN_TOOL",
+    "CPU_TEMP_TOOL_PREFIX",
     "LANE_GUARD_TOOL_PREFIX",
     "HostCapacityUnreadableError",
     "HostReading",
     "LocalHostReader",
     "ProtocolHostReader",
+    "cpu_temp_from_tools",
     "installed_lane_guards",
+    "linux_cpu_temp_c",
 ]

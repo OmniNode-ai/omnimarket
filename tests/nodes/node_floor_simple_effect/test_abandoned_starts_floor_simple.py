@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelFloorSimpleTickRequest,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_floor_simple_effect.handlers import (
 from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
     ABANDONED_CODE,
     abandoned_starts,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     EMIT_CYCLE,
