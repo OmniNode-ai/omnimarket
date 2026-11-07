@@ -41,15 +41,15 @@ from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
     handler_pr_landing_decision as decision_module,
 )
-from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_lab_check import (
-    public_repos_reaching_lab,
-)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8 import (
     HandlerLandingJoinJ8,
     load_join_j8_policy,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
+    public_repos_reaching_lab,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingActionKind,

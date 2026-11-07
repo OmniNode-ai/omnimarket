@@ -27,11 +27,11 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
-from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_lab_check import (
-    read_lab_check,
-)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
+    read_lab_check,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingActionKind,

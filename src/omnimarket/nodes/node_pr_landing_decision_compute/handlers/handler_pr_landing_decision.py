@@ -88,7 +88,7 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
 )
-from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_lab_check import (
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
     SKIP_FOR_VERDICT,
     read_lab_check,
 )
