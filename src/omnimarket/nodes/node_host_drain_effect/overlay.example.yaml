@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_drain_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+profile: in_memory
+jsonl_state_relpath: .onex_state/host-drain/state.jsonl
+drain:
+  piece: 2
+  chain_node: "node_host_drain_effect:drain"
+  hosts: [example-host-a, example-host-b]
+  codes:
+    unknown_host: unknown_host
+    host_draining: host_draining
+    readback_failed: drain_readback_failed
+  injected_fault: Use a drain store that accepts the write and keeps nothing, so the readback finds the host not draining
+runner_stop:
+  piece: 2
+  chain_node: "node_host_drain_effect:runner_stop"
+  runners:
+    - {name: example-runner-1, host: example-host-a, unit: example-runner-1.service, directory: /example/runners/example-runner-1}
+    - {name: example-runner-2, host: example-host-b, unit: example-runner-2.service, directory: /example/runners/example-runner-2}
+  proc_root: /proc
+  worker_process_name: Runner.Worker
+  listener_process_name: Runner.Listener
+  stop_command: [example-service-control, stop, "{unit}"]
+  stop_timeout_seconds: 60
+  codes:
+    runner_busy: runner_busy
+    runner_unreadable: runner_unreadable
+    unknown_runner: unknown_runner
+    still_running: runner_still_running
+    stop_failed: runner_stop_failed
+  injected_fault: Use a stop command that exits 0 and leaves the runner running, so the readback finds it up
+lanes:
+  count_command: [example-lane-count, "{host}"]
+  timeout_seconds: 30
+redpanda:
+  state_topic: onex.evt.omnimarket.host-drain-state.v1
+  bootstrap_servers_env: EXAMPLE_BOOTSTRAP_SERVERS
+  client_id: example-host-drain
+  read_timeout_seconds: 10
+  send_timeout_seconds: 10
+emission:
+  home_env: EXAMPLE_FLOOR_HOME
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl

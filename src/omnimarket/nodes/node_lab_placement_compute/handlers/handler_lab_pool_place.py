@@ -107,7 +107,9 @@ class HandlerLabPoolPlace:
                 reason = "not the requested host"
             else:
                 fresh_seen = True
-                if table is None or not table.eligible:
+                if ad.host_name in request.draining_hosts:
+                    reason = "draining: the drain verb stopped placement on this host"
+                elif table is None or not table.eligible:
                     reason = "host table: " + (
                         table.reason
                         if table
