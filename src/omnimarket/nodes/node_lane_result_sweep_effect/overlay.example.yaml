@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at
+# <root>/node_lane_result_sweep_effect/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+# No key has a default.
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_FILE
+  archive_subdir: archive
+  timeout_seconds: 60
+  row_limit: 200000
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: lane-result-sweep
+  actor: node:node_lane_result_sweep_effect
+  piece: 12
+  action_deadline_seconds: 3600
+source: lane
+producer: remote-lane-runner
+normalizer_facts:
+  configuration:
+    strip_stages:
+    - name: tickets
+      kind: regex
+      pattern: \b[A-Z]{2,8}-\d+\b
+      replacement: <ticket>
+    - name: numbers
+      kind: regex
+      pattern: \b\d+(?:\.\d+)?\b
+      replacement: <number>
+    producer_adapters:
+    - source: lane
+      producer: remote-lane-runner
+      unique_codes: false
+    lane_name_patterns: []
+    max_open_triage: 4
+  hosts: []
+error_rule_document:
+  error_rules:
+  - id: example-rule
+    class_keys:
+    - lane.remote-lane-runner.template.0000000000
+    mode: shadow
+    action:
+      kind: fill-backlog-item

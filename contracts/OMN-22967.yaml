@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22967
+title: 'Rebuild piece 12: the lane result sweep classifies every lane receipt by the error rule table and writes the class row, an action row or a valid park inside one hour'
+summary: node_lane_result_sweep_effect reads lane TERMINAL rows, classifies each by the worse of its claimed outcome and the lane's own result, matches the class key to the error rule table, writes a class row and an action row, and reads NOT WORKING when a class row stands an hour without an action row or a valid park or a park is past its review time.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22967-lane-result-sweep
+  statement: A handed-off TERMINAL whose result was blocked is classified blocked and not done, and a class row without an action row or a valid park at one hour fails the reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a handed-off TERMINAL whose result was blocked is classified blocked and not done -- falsifier: uv run pytest src/omnimarket/nodes/node_lane_result_sweep_effect -q -k handed_off_but_blocked'
+  - id: AC2
+    statement: 'AC2: a class row without an action row or a valid park at one hour fails the reading, and a park past expiry reads NOT WORKING -- falsifier: uv run pytest src/omnimarket/nodes/node_lane_result_sweep_effect -q -k park_expiry'
+evidence_requirements:
+- kind: tests
+  description: Sweep tests of node_lane_result_sweep_effect
+  command: uv run --frozen pytest tests/nodes/node_lane_result_sweep_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22967-handed-off-but-blocked
+  description: A handed-off TERMINAL carrying a blocker, a blocked lane result or a non-zero engine exit is classified blocked or failed, with a clean hand-off as the control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_result_sweep_effect -q --no-cov -k handed_off_but_blocked
+    cwd: .
+- id: dod-omn22967-park-expiry
+  description: A class row with no action row and no valid park at one hour reads NOT WORKING, a park past review_by reads NOT WORKING, and an action row, a valid park and a class row inside the hour read WORKING.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_result_sweep_effect -q --no-cov -k park_expiry
+    cwd: .
