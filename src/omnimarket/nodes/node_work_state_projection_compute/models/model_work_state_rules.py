@@ -11,7 +11,14 @@ declaration and never by a code change.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_state_source import (
+    EnumWorkStateSource,
+)
+from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+    ModelSourceBudget,
+)
 
 
 class ModelPlanParseRules(BaseModel):
@@ -52,6 +59,17 @@ class ModelWorkStateRules(BaseModel):
     # Receipt statuses that mean the lane's engine has ended.
     receipt_ended_statuses: tuple[str, ...] = ()
     plan: ModelPlanParseRules
+    # Each source's read budget, timeout, attempts and oldest servable snapshot. Every source must have a row.
+    source_budgets: dict[EnumWorkStateSource, ModelSourceBudget]
+
+    @model_validator(mode="after")
+    def _every_source_has_a_budget(self) -> ModelWorkStateRules:
+        missing = sorted(set(EnumWorkStateSource) - set(self.source_budgets))
+        if missing:
+            raise ValueError(
+                "source_budgets has no row for: " + ", ".join(s.value for s in missing)
+            )
+        return self
 
 
 class ModelWorkScope(BaseModel):

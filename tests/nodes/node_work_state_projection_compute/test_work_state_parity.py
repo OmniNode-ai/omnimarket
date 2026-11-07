@@ -156,6 +156,38 @@ def golden_scenario() -> list[tuple[str, dict[str, Any]]]:
             ),
         ),
         ("04:error-invalid-request", _request(rules={"ticket_id_pattern": "x"})),
+        (
+            "05:stale-source-marked",
+            _request(
+                tickets=[
+                    {"ticket_id": "ZEP-3", "state_type": "backlog", "project": "Zephyr"}
+                ],
+                source_status=[
+                    {
+                        "source": "linear",
+                        "reading": "stale",
+                        "read_at": (T0 - timedelta(seconds=120)).isoformat(),
+                        "age_seconds": 120.0,
+                        "waited_seconds": 10.0,
+                        "cause": "timed out after 5s",
+                    },
+                    {"source": "ledger", "reading": "fresh", "age_seconds": 0.0},
+                ],
+            ),
+        ),
+        (
+            "06:error-invalid-source-budget",
+            _request(
+                rules=RULES
+                | {
+                    "source_budgets": RULES["source_budgets"]
+                    | {
+                        "ledger": RULES["source_budgets"]["ledger"]
+                        | {"budget_seconds": 0}
+                    }
+                }
+            ),
+        ),
     ]
 
 
@@ -374,3 +406,22 @@ def test_work_state_parity_redpanda_overlay_matches_the_in_memory_overlay() -> N
     assert result.passed, result.first_difference
     assert {row.key: row.content for row in runs[1].rows} == in_process()
     assert len(runs[1].rows) == len(golden_scenario())
+
+
+def test_work_state_parity_stale_source_goes_through_the_bus_marked_with_its_age() -> (
+    None
+):
+    out = json.loads(in_process()["05:stale-source-marked"])["output"]
+    stale = {s["source"]: s for s in out["source_status"]}
+    assert stale["linear"]["reading"] == "stale"
+    assert stale["linear"]["age_seconds"] == 120.0
+    assert stale["ledger"]["reading"] == "fresh"
+    assert (
+        _states(in_process(), "05:stale-source-marked")["ticket:ZEP-3"] == "available"
+    )
+
+
+def test_work_state_parity_error_chain_names_a_zero_source_budget() -> None:
+    reply = json.loads(in_process()["06:error-invalid-source-budget"])
+    assert reply["error"] == "ValidationError"
+    assert reply["count"] > 0

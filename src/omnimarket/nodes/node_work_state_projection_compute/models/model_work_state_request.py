@@ -9,6 +9,9 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+    ModelSourceStatus,
+)
 from omnimarket.nodes.node_work_state_projection_compute.models.model_work_state_rules import (
     ModelWorkScope,
     ModelWorkStateRules,
@@ -37,6 +40,8 @@ class ModelWorkStateRequest(BaseModel):
     receipts: tuple[ModelLaneReceiptSource, ...] = ()
     readings: tuple[ModelReadingSource, ...] = ()
     unread: tuple[str, ...] = ()
+    # How each source stood: fresh, stale with the snapshot's age, or unread.
+    source_status: tuple[ModelSourceStatus, ...] = ()
 
 
 __all__ = ["ModelWorkStateRequest"]

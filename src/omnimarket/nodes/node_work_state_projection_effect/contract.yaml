@@ -56,6 +56,7 @@ descriptor:
   side_effects:
     - reads ledger rows through the reading writer's file ledger row source
     - reads the PR watcher state, plan files under the plans root, the newest Linear snapshot, lane receipts and reading rows
+    - writes each source's last good read as a snapshot file, served stale when that source is over its overlay budget
     - writes the projection JSON atomically to the output path
 # Where the runtime module reads and writes. Paths are relative to the registry home (OMNI_HOME) unless an env var names one.
 runtime:
@@ -86,6 +87,9 @@ runtime:
     relpath: .onex_state/readings/readings.jsonl
     key_field: key
     value_field: value
+  snapshots:
+    dir_env: ONEX_WORK_STATE_SNAPSHOT_DIR
+    relpath: .onex_state/work-state/snapshots
   output:
     relpath: .onex_state/work-state/work-state.json
 metadata:

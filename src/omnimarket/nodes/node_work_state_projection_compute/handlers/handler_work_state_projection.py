@@ -515,6 +515,7 @@ class HandlerWorkStateProjection:
             as_of=request.now,
             items=tuple(items),
             unread=request.unread,
+            source_status=request.source_status,
             counts=counts,
         )
 

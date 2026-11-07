@@ -11,11 +11,22 @@ from omnimarket.nodes.node_work_state_projection_compute.models.enum_lane_state 
 from omnimarket.nodes.node_work_state_projection_compute.models.enum_scope_status import (
     EnumScopeStatus,
 )
+from omnimarket.nodes.node_work_state_projection_compute.models.enum_source_reading import (
+    EnumSourceReading,
+)
 from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_item_kind import (
     EnumWorkItemKind,
 )
 from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_item_state import (
     EnumWorkItemState,
+)
+from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_state_source import (
+    EnumWorkStateSource,
+)
+from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+    ModelSourceBudget,
+    ModelSourceSnapshot,
+    ModelSourceStatus,
 )
 from omnimarket.nodes.node_work_state_projection_compute.models.model_work_item import (
     ModelCriterionPart,
@@ -44,14 +55,19 @@ __all__ = [
     "EnumCriterionReading",
     "EnumLaneState",
     "EnumScopeStatus",
+    "EnumSourceReading",
     "EnumWorkItemKind",
     "EnumWorkItemState",
+    "EnumWorkStateSource",
     "ModelCriterionPart",
     "ModelLaneReceiptSource",
     "ModelPlanParseRules",
     "ModelPlanTaskSource",
     "ModelPullRequestSource",
     "ModelReadingSource",
+    "ModelSourceBudget",
+    "ModelSourceSnapshot",
+    "ModelSourceStatus",
     "ModelTicketSource",
     "ModelWorkItem",
     "ModelWorkScope",

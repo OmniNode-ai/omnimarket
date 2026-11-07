@@ -12,6 +12,10 @@
 #   lane_live_hours          a lane with no closing row is live this long after its newest row
 #   receipt_ended_statuses   lane receipt statuses that mean the engine has ended
 #   plan                     how a plan file spells a task, its ticket, its start criterion and done
+#   source_budgets           one row per source (ledger, pr-watcher, linear, plans, receipts, readings): timeout_seconds
+#                            is the wait for one read attempt, attempts how many are made, budget_seconds the most wall
+#                            time the source may take in a run, and max_stale_age_seconds how old its last snapshot may
+#                            be and still be served (marked stale with its age) when the source is over its budget
 ticket_id_pattern: '^[A-Z][A-Z0-9]+-\d+$'
 ticket_done_state_types: [completed, canceled]
 ticket_requires_pattern: '^\s*(?:Start criterion|Blocked by|Requires):\s*(?P<refs>.+)$'
@@ -29,3 +33,10 @@ plan:
   requires_pattern: '^\s*-\s*\*\*(?:Start criterion|Depends on|Requires):\*\*\s*(?P<refs>.+?)\s*$'
   ticket_pattern: '\*\*Ticket:\*\*\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)'
   done_pattern: '^\s*-\s*\*\*Status:\*\*\s*(?:done|merged)\b'
+source_budgets:
+  ledger: {timeout_seconds: 20, budget_seconds: 30, attempts: 2, max_stale_age_seconds: 1800}
+  pr-watcher: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 900}
+  linear: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 7200}
+  plans: {timeout_seconds: 10, budget_seconds: 15, attempts: 2, max_stale_age_seconds: 21600}
+  receipts: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 1800}
+  readings: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 1800}

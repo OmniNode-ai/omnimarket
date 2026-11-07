@@ -14,6 +14,9 @@ from omnimarket.nodes.node_work_state_projection_compute.models.enum_scope_statu
 from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_item_state import (
     EnumWorkItemState,
 )
+from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+    ModelSourceStatus,
+)
 from omnimarket.nodes.node_work_state_projection_compute.models.model_work_item import (
     ModelWorkItem,
 )
@@ -27,6 +30,7 @@ class ModelWorkStateResult(BaseModel):
     as_of: datetime
     items: tuple[ModelWorkItem, ...]
     unread: tuple[str, ...] = ()
+    source_status: tuple[ModelSourceStatus, ...] = ()
     counts: dict[str, int]
 
     def ready(self) -> tuple[ModelWorkItem, ...]:
