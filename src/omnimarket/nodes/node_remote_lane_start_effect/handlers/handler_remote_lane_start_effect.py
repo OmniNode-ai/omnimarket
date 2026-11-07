@@ -12,7 +12,7 @@ from typing import Literal
 
 from omnibase_spi.protocols.lane import ProtocolLaneHostTransport
 
-from omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call import (
+from omnimarket.models.remote_lane_host_call.model_remote_lane_host_call import (
     EnumLaneHostOperation,
     ModelRemoteLaneHostCall,
     ModelRemoteLaneHostCallResult,

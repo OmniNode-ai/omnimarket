@@ -26,16 +26,16 @@ description: >
   (confirmed false when the engine survives) and read_log_tail. No expected outcome raises.
 input_model:
   name: "ModelRemoteLaneHostCall"
-  module: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call"
+  module: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call"
   description: "The operation and its omnibase_spi request."
 output_model:
   name: "ModelRemoteLaneHostCallResult"
-  module: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call"
+  module: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call"
   description: "The operation and its omnibase_spi result."
 handler:
   module: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect"
   class: "HandlerRemoteLaneStartEffect"
-  input_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCall"
+  input_model: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call.ModelRemoteLaneHostCall"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect:HandlerRemoteLaneStartEffect"
@@ -44,8 +44,8 @@ handler_routing:
       handler:
         name: "HandlerRemoteLaneStartEffect"
         module: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect"
-      input_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCall"
-      output_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCallResult"
+      input_model: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call.ModelRemoteLaneHostCall"
+      output_model: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call.ModelRemoteLaneHostCallResult"
 protocol_dependencies:
 - name: ProtocolLaneHostTransport
   protocol: omnibase_spi.protocols.lane.protocol_lane_host_transport:ProtocolLaneHostTransport

@@ -24,6 +24,10 @@ from omnibase_spi.contracts.services import (
 from omnibase_spi.protocols.lane import ProtocolLaneHostTransport
 from pydantic import ValidationError
 
+from omnimarket.models.remote_lane_host_call.model_remote_lane_host_call import (
+    EnumLaneHostOperation,
+    ModelRemoteLaneHostCall,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
     ScriptedLaneHostTransport,
@@ -34,10 +38,6 @@ from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transpo
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
-)
-from omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call import (
-    EnumLaneHostOperation,
-    ModelRemoteLaneHostCall,
 )
 
 pytestmark = [pytest.mark.unit]
