@@ -651,6 +651,7 @@ node_fsm_single_source_check_compute = "omnimarket.nodes.node_fsm_single_source_
 node_full_triage_orchestrator = "omnimarket.nodes.node_full_triage_orchestrator"
 node_gap_analyzer_compute = "omnimarket.nodes.node_gap_analyzer_compute"
 node_gap_compute = "omnimarket.nodes.node_gap_compute"
+node_gate_store_effect = "omnimarket.nodes.node_gate_store_effect"
 node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_generated_code_validator = "omnimarket.nodes.node_generated_code_validator"
 node_generated_node_publish_effect = "omnimarket.nodes.node_generated_node_publish_effect"
