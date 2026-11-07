@@ -39,10 +39,13 @@ def test_four_lines_start_four_lanes_one_per_line() -> None:
     assert all(s.key.startswith("floor:") for s in starts)
     assert answer.status is EnumFloorFillStatus.OK
     assert answer.exit_code == 0
-    # The reserved place is the line's last (max_fill_lanes_per_line = 1): T1 reads it as AT-CAPACITY.
-    assert [
-        line for line in answer.lines if line.startswith("NOTE line-at-capacity:")
-    ] == [f"NOTE line-at-capacity:{line_id}" for line_id in ("alpha", "bravo", "delta")]
+    # The reserved place is the line's last (max_fill_lanes_per_line = 1): T1 re-reads it as AT-CAPACITY,
+    # but the pass started a lane there, so the lines compute prints the line as filled, not full.
+    filled = [line for line in answer.lines if line.startswith("NOTE line-filled:")]
+    assert [line.split(" | ")[0] for line in filled] == [
+        f"NOTE line-filled:{line_id}" for line_id in ("alpha", "bravo", "delta")
+    ]
+    assert not any(line.startswith("NOTE line-at-capacity:") for line in answer.lines)
     # charlie has one task, now held by its RESERVED entry: nothing left to start on it.
     assert "NOTE line-blocked:charlie | c1=held:RESERVED" in answer.lines
     assert not any(line.startswith("MISSING") for line in answer.lines)
