@@ -21,11 +21,18 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
 )
 from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
+    MergedPrEvidenceUnavailableError,
     git,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
+    PROBE_DEFERRED_PREFIX,
+    PROBE_NEEDS_HUMAN_PREFIX,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolMergedPrReader,
+    ProtocolUnitRootReader,
 )
 
 Operation = Literal["rebase", "merge", "cherry-pick", "bisect"]
@@ -100,14 +107,27 @@ def process_cwds() -> tuple[Path, ...]:
     return found
 
 
-def _fetch_all(clone: Path) -> bool:
-    """Refresh every remote of one clone. False on any failure (the caller keeps)."""
+class ProbeDeferredError(Exception):
+    """A tree's facts could not be read in time; the tree is kept and read again next tick."""
+
+
+class ProbeNeedsHumanError(Exception):
+    """A tree holds a state no later tick resolves; a person decides."""
+
+
+FetchStatus = Literal["ok", "timeout", "failed"]
+
+
+def _fetch_all(clone: Path) -> FetchStatus:
+    """Refresh every remote of one clone. Any status but ``ok`` keeps the clone's trees."""
     try:
         for remote in git(str(clone), "remote").stdout.splitlines():
             git(str(clone), "fetch", "--quiet", "--prune", remote, timeout=300)
+    except subprocess.TimeoutExpired:
+        return "timeout"
     except (OSError, subprocess.SubprocessError, RuntimeError):
-        return False
-    return True
+        return "failed"
+    return "ok"
 
 
 def _linked_activity(
@@ -171,11 +191,22 @@ def repo_slug(url: str) -> str | None:
 
 
 class GitWorktreeFactsProbe:
-    def __init__(self, merged_pr_reader: ProtocolMergedPrReader | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        unit_reader: ProtocolUnitRootReader,
+        merged_pr_reader: ProtocolMergedPrReader | None = None,
+    ) -> None:
         self._merged_pr_reader = merged_pr_reader
+        # What installed units name, read per run and again before each removal. A tree a unit
+        # names is live; a snapshot that cannot be read is a probe error, which keeps every tree.
+        self._unit_reader = unit_reader
+        self._units = UnitRoots()
         # Merged pull request heads per repository, read once per run. None marks a
         # repository whose reader failed: its trees carry that as a probe error.
         self._merged_heads: dict[str, frozenset[str] | None] = {}
+        # Repositories the reader says it has no evidence source for on this host.
+        self._merged_unavailable: set[str] = set()
         self._merged_lock = threading.Lock()
         self._command: ModelWorktreeReconcileCommand | None = None
         self._cwds: tuple[Path, ...] = ()
@@ -183,7 +214,7 @@ class GitWorktreeFactsProbe:
         self._errors: tuple[str, ...] = ()
         # Remote refs are refreshed once per canonical clone per run, not once per
         # worktree: keyed by the clone's common git dir, True when the fetch worked.
-        self._fetched: dict[Path, bool] = {}
+        self._fetched: dict[Path, FetchStatus] = {}
         self._fetch_lock = threading.Lock()
 
     def discover(
@@ -196,6 +227,11 @@ class GitWorktreeFactsProbe:
         except (OSError, subprocess.SubprocessError, RuntimeError):
             self._cwds = ()
             errors.append("process_snapshot_failed")
+        try:
+            self._units = self._unit_reader.read()
+        except Exception:
+            self._units = UnitRoots()
+            errors.append("unit_snapshot_failed")
         # A shared ledger is appended to every few seconds, so a changed ledger is
         # the normal state, not an error: claims are re-read before each removal.
         try:
@@ -320,6 +356,9 @@ class GitWorktreeFactsProbe:
                     self._merged_heads[slug] = self._merged_pr_reader.merged_heads(
                         argv, slug
                     )
+                except MergedPrEvidenceUnavailableError:
+                    self._merged_heads[slug] = None
+                    self._merged_unavailable.add(slug)
                 except (OSError, RuntimeError, subprocess.SubprocessError):
                     self._merged_heads[slug] = None
             heads = self._merged_heads[slug]
@@ -351,6 +390,12 @@ class GitWorktreeFactsProbe:
             claims = self._read_claims(now)
         except OSError:
             errors.append("ledger_unreadable")
+        # A unit may have been installed since discovery: ask again just before removal.
+        try:
+            units = self._unit_reader.read()
+        except Exception:
+            units = UnitRoots()
+            errors.append("unit_revalidation_failed")
         path = Path(facts.path)
         return fresh.model_copy(
             update={
@@ -359,6 +404,7 @@ class GitWorktreeFactsProbe:
                     cwd == path or cwd.is_relative_to(path) for cwd in cwds
                 ),
                 "live_claim": claimed(path, Path(facts.root), claims),
+                "live_unit": units.naming(str(path)),
                 # Size is not re-measured; keep what discovery measured rather
                 # than a 0 that could read as an empty tree.
                 "size_bytes": facts.size_bytes,
@@ -385,6 +431,7 @@ class GitWorktreeFactsProbe:
                 cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
             ),
             live_claim=claimed(path, root, self._claims),
+            live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,
         )
         try:
@@ -408,7 +455,7 @@ class GitWorktreeFactsProbe:
                     and ".git" not in Path(base).relative_to(path).parts
                     and (".git" in dirs or ".git" in files)
                 ):
-                    raise ValueError("nested_repository_requires_human_review")
+                    raise ProbeNeedsHumanError("nested_repository")
                 # Regenerable trees are neither activity nor work, and walking a
                 # .venv or node_modules per tree costs more than the whole scan.
                 dirs[:] = [
@@ -450,7 +497,9 @@ class GitWorktreeFactsProbe:
                     self._fetched[common_dir] = _fetch_all(common_dir)
             # Stale remote-tracking refs could vouch for a branch the remote has
             # already deleted, so no remote evidence is trusted without a refresh.
-            if remotes and not self._fetched[common_dir]:
+            if remotes and self._fetched[common_dir] != "ok":
+                if self._fetched[common_dir] == "timeout":
+                    raise ProbeDeferredError("remote_refresh_timeout")
                 raise ValueError("remote_refresh_failed")
             head = git(str(path), "rev-parse", "HEAD").stdout.strip()
             branch_result = git(
@@ -617,7 +666,12 @@ class GitWorktreeFactsProbe:
                 update={
                     "merged_pr_head": bool(merged_pr_head),
                     "probe_errors": (
-                        (*facts.probe_errors, "merged_pr_read_failed")
+                        (
+                            *facts.probe_errors,
+                            f"{PROBE_NEEDS_HUMAN_PREFIX}merged_pr_evidence_unavailable"
+                            if slug in self._merged_unavailable
+                            else "merged_pr_read_failed",
+                        )
                         if merged_pr_head is None
                         else facts.probe_errors
                     ),
@@ -652,6 +706,34 @@ class GitWorktreeFactsProbe:
                     "commit_subjects": tuple(
                         git(str(path), "log", "-20", "--format=%s").stdout.splitlines()
                     ),
+                }
+            )
+        except subprocess.TimeoutExpired:
+            # Under host load a git command outlives its budget: keep the tree, read it next tick.
+            return facts.model_copy(
+                update={
+                    "probe_errors": (
+                        *facts.probe_errors,
+                        f"{PROBE_DEFERRED_PREFIX}probe_timeout",
+                    )
+                }
+            )
+        except ProbeDeferredError as exc:
+            return facts.model_copy(
+                update={
+                    "probe_errors": (
+                        *facts.probe_errors,
+                        f"{PROBE_DEFERRED_PREFIX}{exc}",
+                    )
+                }
+            )
+        except ProbeNeedsHumanError as exc:
+            return facts.model_copy(
+                update={
+                    "probe_errors": (
+                        *facts.probe_errors,
+                        f"{PROBE_NEEDS_HUMAN_PREFIX}{exc}",
+                    )
                 }
             )
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:

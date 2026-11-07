@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from omnimarket.models.floor_17a import (
@@ -31,6 +32,8 @@ from omnimarket.models.floor_17a import (
 TICKET = re.compile(r"\bOMN-\d+\b")
 SIZE_UNITS = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 TAIL_BYTES = 400_000
+# No admission record given: the lists alone decide. ``None`` instead is a record that could not be read.
+NO_ADMISSIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
 
 class FloorSourceError(Exception):
@@ -95,6 +98,8 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             ticket=str(item.get("ticket") or ""),
             stalled=bool(item.get("stalled", False)),
             pr=str(item.get("pr") or ""),
+            liveness=str(item.get("liveness") or "unread"),
+            owns=tuple(str(o) for o in item.get("owns") or () if o),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
@@ -152,6 +157,39 @@ def record_slots(
 # --- the pull request watcher ------------------------------------------------------------------------------------------
 
 
+def read_admissions(path: Path, tail_bytes: int) -> dict[str, Mapping[str, Any]] | None:
+    """The landing controller's newest admission row per pull request (``repo#number`` to row), or ``None`` when the record
+    cannot be read (OMN-22876).
+
+    The controller appends one ``admission`` row each time its verdict on a pull request is new or changed; the last row of a
+    pull request wins and only the newest ``tail_bytes`` of the file are read. A record not written yet is empty: nothing was
+    admitted off the goal lists. One that cannot be read is ``None``, never an empty record.
+    """
+    try:
+        with path.open("rb") as handle:
+            size = handle.seek(0, 2)
+            handle.seek(max(0, size - tail_bytes))
+            tail = handle.read().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        return None
+    rows: dict[str, Mapping[str, Any]] = {}
+    for line in tail.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if (
+            isinstance(row, dict)
+            and row.get("kind") == "admission"
+            and row.get("event") in ("admitted", "kept_out")
+            and row.get("pr")
+        ):
+            rows[str(row["pr"])] = row
+    return rows
+
+
 @dataclass(frozen=True)
 class WatcherReading:
     """The pull request watcher, read against the landing goal's scope.
@@ -167,6 +205,8 @@ class WatcherReading:
     merges_in_window: int | None
     open_outside: int | None = None
     merges_outside: int | None = None
+    # The merges counted in scope only because the landing controller admitted them (OMN-22876), as ``repo#number``.
+    merges_controller: tuple[str, ...] = ()
     paused_open: int | None = None
     class_counts: dict[str, int] = field(default_factory=dict)
     class_tickets: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -185,6 +225,7 @@ def read_watcher(
     merge_window_minutes: int,
     scope: ModelGoalScope | None,
     conflict_states: tuple[str, ...] = (),
+    admissions: Mapping[str, Mapping[str, Any]] | None = NO_ADMISSIONS,
 ) -> WatcherReading | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -238,6 +279,7 @@ def read_watcher(
                     conflicted.add(str(key))
     cutoff = now - timedelta(minutes=merge_window_minutes)
     recent = recent_outside = 0
+    by_controller: list[str] = []
     for key, value in merges.items():
         try:
             merged_at = parse_time(value.get("merged_at"))
@@ -245,12 +287,16 @@ def read_watcher(
             continue
         if merged_at < cutoff:
             continue
-        if (
-            scope.classify(
-                str(key), str(value.get("title", "")), str(value.get("head_ref", ""))
-            )
-            == "in_scope"
-        ):
+        where = scope.classify(
+            str(key), str(value.get("title", "")), str(value.get("head_ref", ""))
+        )
+        # OMN-22876: a merge on no list that the controller's newest admission row admitted counts in scope. The paused list
+        # overrides, as it does for the controller, which never admits a paused pull request.
+        row = (admissions or {}).get(str(key))
+        if where == "unlisted" and row is not None and row.get("admitted") is True:
+            where = "in_scope"
+            by_controller.append(str(key))
+        if where == "in_scope":
             recent += 1
         else:
             recent_outside += 1
@@ -258,9 +304,10 @@ def read_watcher(
         last_tick=last_tick,
         scoped=True,
         open_prs=open_prs,
-        merges_in_window=recent,
+        merges_in_window=recent if admissions is not None else None,
         open_outside=outside,
         merges_outside=recent_outside,
+        merges_controller=tuple(sorted(by_controller)),
         paused_open=paused,
         class_counts=counts,
         class_tickets={k: tuple(dict.fromkeys(v)) for k, v in tickets.items()},

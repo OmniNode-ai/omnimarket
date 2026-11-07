@@ -198,6 +198,9 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
                 if len(tokens) > 1:
                     remainders.append(" ".join(tokens[1:]))
+            elif sep and key == "owns":
+                # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
+                fields.setdefault("owns", value.split()[0] if value.split() else "")
             elif sep and key in {"reason", "blocker"}:
                 # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
                 fields.setdefault("reason", value.strip()[:300])
@@ -228,6 +231,7 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             actor=fields.get("actor", ""),
             to=fields.get("to", ""),
             run_id=fields.get("run", ""),
+            owns=_csv(fields.get("owns", "")),
         )
         core = row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}
         # Every ask to a recipient and every row that answers one: an ask stays open until an answer names it.
