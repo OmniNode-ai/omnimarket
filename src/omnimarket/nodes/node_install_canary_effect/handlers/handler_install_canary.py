@@ -1211,8 +1211,11 @@ class HandlerInstallCanary:
         """The commit ``ref`` names in ``clone`` now: the caller's ``refresh_clone`` runs first, so a probe never reads
         a head it carried over from an earlier run."""
         refresh = self.runtime.get("refresh_clone")
-        if refresh is not None:
-            refresh(clone, ref)
+        if refresh is None:
+            raise ValueError(
+                "fresh_head needs runtime['refresh_clone']: without it the probe would read a local ref that may be stale"
+            )
+        refresh(clone, ref)
         return resolve(clone, ref)
 
     def install_probe(

@@ -122,3 +122,27 @@ def test_file_list_comparison_pattern_stays_in_one_directory_for_a_single_star()
         "merge-drain/scripts/*.json", "merge-drain/scripts/deep/a.json"
     )
     assert pattern_matches("**/*", "deep/er/a.py")
+
+
+def test_file_list_comparison_names_every_file_of_a_tree_the_copy_lacks_entirely(
+    source: tuple[Path, str], tmp_path: Path
+) -> None:
+    """OMN-22955 review finding: a whole missing tree used to add nothing to ``missing``."""
+    repo, head = source
+    copy = installed_copy(tmp_path)
+    (copy / "scripts/landing_policy.py").unlink()
+    (copy / "scripts").rmdir()
+    expected, missing = file_list_comparison(repo, head, PREFIX, copy)
+    assert expected == 5
+    assert missing == ["scripts/landing_policy.py"]
+
+
+def test_file_list_comparison_does_not_count_a_tree_the_commit_lacks(
+    source: tuple[Path, str], tmp_path: Path
+) -> None:
+    """Control: ``src/`` is in neither the commit nor the copy, so nothing is lost."""
+    repo, head = source
+    copy = installed_copy(tmp_path)
+    assert not (copy / "src").exists()
+    _, missing = file_list_comparison(repo, head, PREFIX, copy)
+    assert missing == []

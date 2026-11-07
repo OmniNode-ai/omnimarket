@@ -383,13 +383,12 @@ def file_list_comparison(
 
     ``tree_differences`` reads the install's own files, so a root data file the copy lost is never
     compared. This reads the commit's file list instead: each file the installer copies that is
-    absent from ``install_dir`` is named. A tree the copy does not have (no ``src/``) is not a lost file.
+    absent from ``install_dir`` is named, so a whole tree the copy lacks names every file of it. A tree the
+    commit does not have (no ``src/``) holds no file to lose.
     """
     expected, missing = (0, [])
     for part, in_repo in install_parts(repo, commit, prefix).items():
         root = install_dir / part
-        if not root.is_dir():
-            continue
         for rel, (mode, _blob) in sorted(ls_tree(repo, commit, in_repo).items()):
             if mode == "120000" or any(s in rel.split("/") for s in SKIPPED):
                 continue

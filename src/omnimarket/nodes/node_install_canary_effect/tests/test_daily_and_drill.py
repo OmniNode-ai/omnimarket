@@ -75,6 +75,10 @@ def host_copy(tmp_path: Path) -> Path:
     return root
 
 
+def _no_refresh(path: Path, ref: str) -> None:
+    """A refresh that has nothing to fetch: the fixture clone already holds ``origin/main``."""
+
+
 def advance(clone: Path, rel: str) -> str:
     """Merge one more file of the plugin to origin/main, as the canonical-clone sync does."""
     write(clone, f"{PREFIX}/{rel}", f"# {rel}\n")
@@ -88,7 +92,7 @@ def advance(clone: Path, rel: str) -> str:
 def test_daily_and_drill_run_the_same_probe_and_the_drill_flips_on_the_lost_file(
     clone: Path, host_copy: Path
 ) -> None:
-    handler = HandlerInstallCanary({})
+    handler = HandlerInstallCanary({"refresh_clone": _no_refresh})
     head = git(clone, "rev-parse", "origin/main")
 
     daily = handler.daily_install_probe(clone, "origin/main", host_copy, PREFIX)
@@ -138,7 +142,7 @@ def test_daily_and_drill_the_daily_probe_reads_a_fresh_head_each_run(
 def test_daily_and_drill_the_typed_boundary_dispatches_both_triggers(
     clone: Path, host_copy: Path
 ) -> None:
-    handler = HandlerInstallCanary({})
+    handler = HandlerInstallCanary({"refresh_clone": _no_refresh})
     daily = handler.handle(
         ModelInstallCanaryRequest(
             "daily_install_probe", (clone, "origin/main", host_copy, PREFIX)
@@ -194,3 +198,16 @@ def test_drill_refuses_a_fault_that_points_outside_the_install(
             )
         assert live.is_file()
         assert outside.is_file()
+
+
+def test_a_probe_with_no_refresh_clone_is_refused_not_read_from_a_stale_local_ref(
+    clone: Path, host_copy: Path
+) -> None:
+    """OMN-22955 review finding: without ``refresh_clone`` the probe silently read the local ref."""
+    handler = HandlerInstallCanary({})
+    with pytest.raises(ValueError, match="refresh_clone"):
+        handler.daily_install_probe(clone, "origin/main", host_copy, PREFIX)
+    with pytest.raises(ValueError, match="refresh_clone"):
+        handler.drill_install_probe(
+            clone, "origin/main", host_copy, PREFIX, delete=ROOT_DATA
+        )
