@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-23032
+title: Every lane and host reads git and pull request state only from our read-only mirrors, which repair themselves
+summary: node_job_log_filler_effect fills the job-log cache from the merge-relevant runs of open pull requests (red jobs of the current head, plus jobs the overlay names), one reader call per run, and a lane's job-log read is cache-only by the gateway contract's declared policy, refusing a miss with the cache path named.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23032-job-log-filler
+  statement: A merge-relevant run with no cached log makes the lane job-log read refuse naming the cache path; after the filler runs the same read answers from the cache with no GitHub call.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: lanes read pull request, check and job-log state from the local mirror (PR watcher state plus stored logs), never from the GitHub API; a direct API read from a lane is refused with the mirror path named -- falsifier: uv run pytest of the read guard with a planted API read'
+evidence_requirements:
+- kind: tests
+  description: The filler tests (selection, a pass, a 404, the cap, the failing control with its injected break) and the golden and error chain tests pass, and the gateway job-log cache tests still pass
+  command: uv run --frozen pytest tests/nodes/node_job_log_filler_effect tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23032-filler-control
+  description: Runs the filler tests; the planted merge-relevant run with no cached log makes the lane job-log read exit 1 naming the cache path, the same read answers after the filler ran, and the injected break (a reader that fetches nothing) leaves it refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23032-filler-chains
+  description: Runs the golden and error chain event tests. The node's contract is wired into the dispatch engine on the in-memory bus and a fill command is answered on the node's terminal topic, completed for the planted state and failed for the planted 404s and for a host with no watcher state.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_golden_chain_node_job_log_filler_effect.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23032-gateway-cache-regression
+  description: The gateway's existing job-log cache tests pass with the refusal now naming the cache path.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly
+    cwd: .

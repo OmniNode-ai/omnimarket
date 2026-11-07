@@ -6,12 +6,17 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+#: What a cache-only read's refusal starts with; the filler reads it to tell a miss from a fault.
+JOB_LOG_CACHE_MISS = "JOB-LOG-CACHE-MISS"
+
 
 class ModelJobLogCachePolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     root: Path | None = None
     ttl_seconds: int = Field(default=86400, gt=0)
+    #: A lane's ``job-log`` read is cache-only; the filler node fills the cache (OMN-23032).
+    lane_reads_cache_only: bool = True
 
 
 class ModelCachedJobLog(BaseModel):

@@ -723,6 +723,7 @@ node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
 node_issuer_overlay_delivery_effect = "omnimarket.nodes.node_issuer_overlay_delivery_effect"
+node_job_log_filler_effect = "omnimarket.nodes.node_job_log_filler_effect"
 node_judge_verdict_parse_compute = "omnimarket.nodes.node_judge_verdict_parse_compute"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_kb_adr_publisher = "omnimarket.nodes.node_kb_adr_publisher"
@@ -1330,6 +1331,8 @@ code-edit = "omnimarket.cli.cli_code_edit:code_edit_group"
 lab-work = "omnimarket.lab_work.cli:lab_work_group"
 # OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
 work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
+# OMN-23032: `onex job-log-fill` -- fill the job-log cache from the merge-relevant runs of open pull requests.
+job-log-fill = "omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler_cli:job_log_fill_group"
 # OMN-20275: `onex bus-binding` -- the binding a command used (durable or the in-memory fallback) and the
 # ledger outbox it holds while degraded.
 bus-binding = "omnimarket.handlers.bus_binding.cli:bus_binding_group"
