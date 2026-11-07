@@ -774,12 +774,16 @@ def read_deploy_lag(
                 )
     lags.sort(key=lambda x: -x[1])
     limit = source.limit if source.limit is not None else 0.0
+    # A merge reads "not running" only for want of evidence; when the count could not read the running build, say so on
+    # the row, so a red that means "not placed" is not read as "not deployed".
+    unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
+    unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
     subjects = [
         ModelLabSubject(
             name=key,
             ok=lag <= limit,
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}",
+            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
         )
         for key, lag in lags[:3]
     ]
