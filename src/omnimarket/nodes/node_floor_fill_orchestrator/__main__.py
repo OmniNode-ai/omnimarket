@@ -62,11 +62,18 @@ def run_entry(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else list(argv)
+    if arguments and arguments[0] == "schedule":
+        from omnimarket.nodes.node_floor_fill_orchestrator.schedule_entry import (
+            main as schedule_main,
+        )
+
+        return schedule_main(arguments[1:])
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--overlay-json", required=True)
     parser.add_argument("--this-host", required=True)
     parser.add_argument("--profile", default="inmemory")
-    known, rest = parser.parse_known_args(sys.argv[1:] if argv is None else list(argv))
+    known, rest = parser.parse_known_args(arguments)
     if known.profile != "inmemory":
         sys.stdout.write(
             f"UNKNOWN fill-state:profile-unbound:{known.profile} (live seams are bound by the lab step)\n"
