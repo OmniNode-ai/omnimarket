@@ -1,0 +1,99 @@
+schema_version: 1.0.0
+ticket_id: OMN-21342
+title: The dashboard's cost and savings figures come from the API, and the frontend only displays them
+summary: The local dashboard API serves its money figures already computed. A run read carries run_manifest_costs, keyed by correlation_id, with the pricing manifest price times the run's recorded tokens for the model that served the final answer, beside the recorded tier or BYOK cost_usd, which is unchanged; a model with no manifest row reads null with a reason. GET /money/window serves the window totals from the metering day rows and, from the usage rows, measured spend per model, per route and per day and cost per run, as exact decimal strings, for the install's tenant held on the server (another tenant answers 422). The ticket is partial. AC1 is claimed here for its API half only, bound to the served-totals item, and the omnidash consumer that deletes the frontend sums, with the render tests and the unit test that the frontend pricing helper is gone, is a separate PR that completes it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21342-manifest-run-cost
+  statement: The API's cost for a run is the pricing manifest price times the recorded tokens for that run's served model, scoped to the install's tenant.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the API''s cost for a run equals the pricing manifest price times the recorded tokens for that run''s served model, scoped to the tenant in the dashboard token -- falsifier: uv run pytest on an API test with a known run and manifest price asserting the returned cost'
+- id: req-omn21342-api-served-figures
+  statement: Every cost and savings figure the dashboard shows is returned by the API already computed, so the frontend multiplies nothing. The criterion below is labeled AC1 so the binding item can claim it through binds_ac; only its API half is claimed here.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every cost and savings figure on Overview, Runs and Usage is returned by the API already computed, and no frontend module multiplies tokens by a price -- falsifier: a grep-free test in omnidash that renders each page from a stubbed API response and asserts the displayed figure equals the API field, plus a unit test that the frontend pricing helper is gone'
+evidence_requirements:
+- kind: tests
+  description: A real SQLite store read through the real onex dashboard app and the contract-declared topic map; the manifest-priced run cost, the window totals, per-model and per-route spend, cost per run and the tenant refusals.
+  command: uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21342-ac2
+  description: AC2 a run read serves the manifest price times the recorded tokens for the served model (an escalated run is priced on the model that answered), null with a reason for a model with no manifest row, and the recorded cost_usd unchanged. At the merge base no run read carries a manifest-priced cost, so these fail.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k "manifest or escalated or no_recorded_tokens"
+    cwd: .
+- id: dod-omn21342-served-totals
+  description: The API half of AC1 (the omnidash half is a separate PR) GET /money/window serves window totals, per-model and per-route spend and cost per run for the install's tenant and refuses another tenant with 422. At the merge base the route does not exist, so these fail.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k "window or spend or tenant"
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn21342-deploy-dashboard-money
+  description: Start the dashboard serving handler on an ephemeral loopback port over seeded SQLite. Use curl to read the window totals and manifest-priced runs with the dashboard token, and assert that missing credentials and another tenant are refused. This hosted-runner probe requires no external service and does not claim a production rollout.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      probe_dir="$(mktemp -d)"
+      uv run python tests/projection/test_dashboard_served_money_omn21342.py "$probe_dir" > "$probe_dir/server.log" 2>&1 &
+      probe_pid=$!
+      trap 'kill "$probe_pid"; wait "$probe_pid" || test "$?" -eq 143; rm -rf "$probe_dir"' EXIT
+      for attempt in $(seq 1 600); do
+        test -s "$probe_dir/port" && break
+        if ! kill -0 "$probe_pid"; then cat "$probe_dir/server.log"; exit 1; fi
+        sleep 0.1
+      done
+      if ! test -s "$probe_dir/port"; then cat "$probe_dir/server.log"; exit 1; fi
+      probe_url="http://127.0.0.1:$(cat "$probe_dir/port")"
+      curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/money/window?start=2026-11-01&end=2026-11-02" > "$probe_dir/money.json"
+      curl --fail --silent --show-error --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/projection/onex.snapshot.projection.delegation.decisions.v1" > "$probe_dir/runs.json"
+      test "$(curl --silent --show-error --max-time 5 -o "$probe_dir/denied.json" -w '%{http_code}' "$probe_url/money/window?start=2026-11-01&end=2026-11-02")" = 401
+      test "$(curl --silent --show-error --max-time 5 -o "$probe_dir/conflict.json" -w '%{http_code}' -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/money/window?start=2026-11-01&end=2026-11-02&tenant=someone-else")" = 422
+      uv run python - "$probe_dir" <<'PY'
+      import json
+      import sys
+      from decimal import Decimal
+      from pathlib import Path
+      from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+      root = Path(sys.argv[1])
+      money = json.loads((root / "money.json").read_text())
+      assert money["tenant"] == "bc08ff01-9d50-442c-aca1-7ad2e687db70", money
+      totals = money["window_totals"]
+      assert totals["spend_usd"] == "1.35", totals
+      assert totals["savings_usd"] == "2.70", totals
+      assert totals["runs_total"] == 5, totals
+      runs = json.loads((root / "runs.json").read_text())
+      priced = runs["run_manifest_costs"]["6a0b5a8c-1d1c-4c43-9a7e-6b0f3f0c2a01"]
+      entry = ModelPricingTable.from_yaml().get_entry("gemini-2.5-flash")
+      assert entry is not None
+      expected = (1200 * Decimal(str(entry.input_cost_per_1k)) + 300 * Decimal(str(entry.output_cost_per_1k))) / 1000
+      assert Decimal(priced["manifest_cost_usd"]) == expected, priced
+      assert json.loads((root / "denied.json").read_text())["error"] == "token_required"
+      assert json.loads((root / "conflict.json").read_text())["error"] == "tenant_conflict"
+      print("dashboard live HTTP deploy probe: PASS")
+      PY
+    cwd: .
+- id: dod-omn21342-integration-proof-dashboard-money
+  description: Run the same live HTTP proof through lab-work at the checked-out revision, using the serving handler, its authentication middleware and the projection reader over seeded SQLite.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21342 -- uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov -n 0 -k deploy_dashboard_money_over_live_http
+    cwd: .
