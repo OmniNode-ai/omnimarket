@@ -8,7 +8,11 @@ carry the drift node. It needs only the standard library, PyYAML and pydantic, a
 imports the drift node.
 
 Input on stdin, one JSON object: ``{"entries": [{"overlay_id", "model", "text"}]}``, where
-``model`` is ``<module>:<class>`` and ``text`` the overlay file's YAML. Output on stdout, one JSON
+``model`` is ``<module>:<class>`` and ``text`` the overlay file's YAML. Optionally ``"src"`` (a
+directory holding an omnimarket source tree, put first on the import path, so the models judged
+are that tree's) and ``"revision"`` (the commit that tree is, reported as the runtime's revision;
+a tree exported from git has no git files to read it from). When ``src`` is given and omnimarket
+does not import from it, the program stops with exit 3 rather than judge with other models. Output on stdout, one JSON
 object: ``{"runtime": {"version", "revision"}, "results": [{"overlay_id", "verdict", "fields",
 "error_class"}]}``. A verdict is ``accepted``, ``rejected`` (the model refused the document;
 ``fields`` names the refused fields), ``model_missing`` (the module or class is not installed
@@ -73,8 +77,16 @@ def git_revision(start: Path) -> str:
     return "unknown"
 
 
-def runtime_identity() -> dict[str, str]:
-    """The installed omnimarket's version and, for a checkout install, its commit."""
+def runtime_identity(
+    src: str | None = None, revision: str | None = None
+) -> dict[str, str]:
+    """The installed omnimarket's version and, for a checkout install, its commit.
+
+    With ``src`` (a tree that was put first on the import path) the version is ``source-tree`` and
+    the revision is the one given, since a tree has no git files to read it from.
+    """
+    if src is not None:
+        return {"version": "source-tree", "revision": revision or "unknown"}
     try:
         version = importlib.metadata.version(PACKAGE)
     except importlib.metadata.PackageNotFoundError:
@@ -142,16 +154,37 @@ def validate_entry(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class TreeNotFirstError(RuntimeError):
+    """``src`` was given but omnimarket does not import from it."""
+
+
+def _use_tree(src: str) -> None:
+    sys.path.insert(0, src)
+    module = importlib.import_module(PACKAGE)
+    location = Path(module.__file__ or ".").resolve()
+    if Path(src).resolve() not in location.parents:
+        raise TreeNotFirstError(src)
+
+
 def run(request: dict[str, Any]) -> dict[str, Any]:
+    src = request.get("src")
+    if src is not None:
+        _use_tree(str(src))
     return {
-        "runtime": runtime_identity(),
+        "runtime": runtime_identity(
+            None if src is None else str(src), request.get("revision")
+        ),
         "results": [validate_entry(entry) for entry in request["entries"]],
     }
 
 
 def main() -> int:
     request = json.loads(sys.stdin.read())
-    sys.stdout.write(json.dumps(run(request), sort_keys=True))
+    try:
+        answer = run(request)
+    except TreeNotFirstError:
+        return 3
+    sys.stdout.write(json.dumps(answer, sort_keys=True))
     return 0
 
 
