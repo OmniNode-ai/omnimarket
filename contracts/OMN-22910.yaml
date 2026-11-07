@@ -40,3 +40,12 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_drift_effect/test_join_j3.py -q --no-cov
         cwd: .
+  - id: dod-omn22910-j3-floor-reading
+    description: After the branch is installed on the dev runtime, the served floor record reads J3 in a state other than broken and unread. The record's address is in the variable named; hosted CI cannot reach the floor, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: 'curl -s "$ONEX_FLOOR_SIMPLE_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)[\"pieces\"][2][\"joins\"][0]; assert j[\"id\"]==\"J3\" and j[\"state\"] not in (\"broken\",\"unread\"), j"'
+        cwd: .
