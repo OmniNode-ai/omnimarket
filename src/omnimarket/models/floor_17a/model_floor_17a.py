@@ -81,6 +81,33 @@ class ModelPieceDef(_Frozen):
     what: str = ""
 
 
+class ModelPieceChains(_Frozen):
+    """The chains of one piece that a join judges, as the node that runs the piece declares them.
+
+    A node can emit chains that belong to its piece but are not the pipeline a join reads: the floor cycle node also
+    emits one chain per lab source row it reads. A row that reads a bad value ends in an error chain, which gives its
+    piece an error receipt, and no downstream piece can answer it with a typed upstream refusal. A join therefore reads
+    only the chains of ``nodes``; every other chain of the piece still counts toward the piece's own receipt.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelJoinEnd(_Frozen):
+    """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
+
+    A join normally ends at its ``to_piece``: when the from piece fails, the to piece must answer with a typed refusal under
+    the same correlation id. Where no node of the to piece can give that refusal, the join is respecified to end at the last
+    node that does emit a typed outcome: ``node``, a node of the from piece. The join is then judged on that node's chain
+    alone: it must end in a success or a typed failure within the chain deadline. A typed failure is the end of the join, not
+    a break, and no answer from the to piece is demanded.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    node: str = Field(min_length=1)
+
+
 class ModelFloorReceiptInput(_Frozen):
     now: datetime
     emissions: tuple[ModelNodeEmission, ...]
@@ -92,6 +119,10 @@ class ModelFloorReceiptInput(_Frozen):
     # The pieces a join may end at and still be judged: admitted pieces and pieces that have emitted. A join into a piece
     # that does not exist yet cannot be broken, so it is not judged. ``None`` judges every join.
     judged_to_pieces: tuple[int, ...] | None = None
+    # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
+    declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]

@@ -24,7 +24,7 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
@@ -43,6 +43,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleTickRequest,
     ModelFloorSimpleTickResult,
     ModelGoalScope,
+    ModelJoinEnd,
     ModelLabSourceRead,
     ModelLabStateAlarmRequest,
     ModelLabStateInput,
@@ -50,6 +51,7 @@ from omnimarket.models.floor_17a import (
     ModelLabStateOverlay,
     ModelNodeEmission,
     ModelOutsideGoal,
+    ModelPieceChains,
     ModelReadingRow,
 )
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
@@ -60,6 +62,9 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple im
 )
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state import (
     HandlerLabState,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
+    abandoned_starts,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
     JsonlEmissionSink,
@@ -190,6 +195,14 @@ class ModelFloorSimpleRuntime(BaseModel):
     served_record_name: str
     served_fetch_timeout_seconds: int
     cycle_deadline_seconds: int
+    # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
+    abandon_after_seconds: int = Field(gt=0)
+    # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
+    # among them, because no downstream piece can answer a row that reads a bad value.
+    pipeline_chains: tuple[str, ...] = Field(min_length=1)
+    # The joins that end at a node of this node's own piece, because no node downstream can emit a typed refusal for them
+    # (OMN-22864). Each names a node among ``pipeline_chains``.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
     # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
@@ -197,6 +210,15 @@ class ModelFloorSimpleRuntime(BaseModel):
     sources: ModelSourcePaths
     output: ModelOutputPaths
     state: ModelStatePaths
+
+    @model_validator(mode="after")
+    def _join_ends_are_pipeline_chains(self) -> ModelFloorSimpleRuntime:
+        for end in self.join_ends:
+            if end.node not in self.pipeline_chains:
+                raise ValueError(
+                    f"join {end.join} ends at {end.node}, which is not among pipeline_chains"
+                )
+        return self
 
 
 def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFloorSimpleRuntime:
@@ -498,6 +520,8 @@ class HandlerFloorSimpleTick:
         request: ModelFloorSimpleTickRequest,
         emitted: Callable[[], int],
     ) -> ModelFloorSimpleTickResult:
+        # A start an earlier process left open (killed, restarted, crashed) gets its typed failure here, before this cycle's work.
+        abandoned = self._close_abandoned(rt, floor_ov, sink)
         if request.canary_only:
             return self._canary_only(
                 rt, env, alarm_ov, home, step, emit, cid, started, emitted
@@ -550,6 +574,7 @@ class HandlerFloorSimpleTick:
                 "pieces": len(doc.pieces),
                 "lab_sources": len(doc.lab_state),
                 "red_rule_violations": len(doc.red_rule.violations),
+                "abandoned_closed": abandoned,
             },
         )
         return ModelFloorSimpleTickResult(
@@ -562,6 +587,26 @@ class HandlerFloorSimpleTick:
             emitted=emitted(),
             canary=canary,
         )
+
+    def _close_abandoned(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        floor_ov: ModelFloorSimpleOverlay,
+        sink: ProtocolEmissionSink,
+    ) -> int:
+        """Close each start of this node's pipeline chains that no process can still close; the count of closures."""
+        now = self._clock()
+        journal = sink.read(now - timedelta(hours=rt.state.emission_window_hours))
+        closing = abandoned_starts(
+            journal,
+            now=now,
+            abandon_after_s=rt.abandon_after_seconds,
+            piece=floor_ov.rebuild.lab_state_piece,
+            nodes=frozenset(rt.pipeline_chains),
+        )
+        for event in closing:
+            sink.emit(event)
+        return len(closing)
 
     def _canary_only(
         self,
@@ -927,6 +972,12 @@ class HandlerFloorSimpleTick:
                 error_max_age_s=ov.error_receipt_max_age_s,
                 chain_deadline_s=ov.chain_deadline_s,
                 judged_to_pieces=judged,
+                declared_chains=(
+                    ModelPieceChains(
+                        piece=ov.rebuild.lab_state_piece, nodes=rt.pipeline_chains
+                    ),
+                ),
+                join_ends=rt.join_ends,
             )
         )
 

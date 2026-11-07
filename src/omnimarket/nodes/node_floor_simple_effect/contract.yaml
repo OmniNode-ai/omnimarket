@@ -93,6 +93,28 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
+  # A start with no terminal older than this is closed by the next cycle with a typed failure (OMN-22864): a process that is
+  # killed cannot close its own start, and the journal is append-only. It is above the publish node's 120 s limit for the cycle
+  # steps, so a cycle that is still running is never closed from under itself, and below the receipts' chain deadline.
+  abandon_after_seconds: 300
+  # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
+  # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
+  # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
+  pipeline_chains:
+    - node_floor_simple_effect:run_floor_simple_cycle
+    - node_floor_simple_effect:read_sources
+    - node_floor_simple_compute:compute_lab_state
+    - node_lab_state_alarm_effect:alarm_lab_state
+    - node_floor_emission_compute:compute_floor_receipts
+    - node_floor_simple_compute:compute_floor_simple
+    - node_lab_state_alarm_effect:publish_canary
+  # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
+  # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
+  # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
+  # it, the cycle: the cycle must end in a success or a typed failure within the chain deadline. Every other join is unchanged.
+  join_ends:
+    - join: J0
+      node: node_floor_simple_effect:run_floor_simple_cycle
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
