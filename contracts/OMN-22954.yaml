@@ -1,0 +1,55 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22954
+title: "The hand-off refusals for want of installed proof are traced by cause, and the first install-canary result is dated"
+summary: >
+  node_install_refusal_trace_compute counts the hand-off's refusal records of a window per stated cause,
+  lists the declared classes no record reached as unread, and names the records no class matches. The
+  install canary gains a first_reading operation that returns the earliest canary result with its date,
+  the string the floor's piece declaration carries as first_reading. Reading the live records of the
+  120-refusal window and putting the reading on the floor overlay are not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-refusal-trace"
+    statement: |-
+      The hand-off refusals of a window are classified by the cause each record states, with a count per class.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every refusal of the window is classified by cause from its record with the count per class, and a class with no record is listed as unread -- falsifier: uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify
+  - id: "req-canary-first-reading"
+    statement: |-
+      The first install-canary result is dated and carried as the floor piece's first_reading.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the first install-canary result is dated and shown on the floor -- falsifier: uv run pytest src/omnimarket/nodes/node_install_canary_effect -q -k first_reading
+evidence_requirements:
+  - kind: tests
+    description: "Refusals are counted per stated cause, unread classes and unmatched records are named"
+    command: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify"
+  - kind: tests
+    description: "The earliest canary result is returned dated and fills the floor piece declaration"
+    command: "uv run pytest src/omnimarket/nodes/node_install_canary_effect -q -k first_reading"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-refusal-trace-classify
+    description: "node_install_refusal_trace_compute classifies refusal records per cause and lists unread classes"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: dod-canary-first-reading
+    description: "the install canary returns the first canary result with its date for the floor"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest src/omnimarket/nodes/node_install_canary_effect -q -k first_reading"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
