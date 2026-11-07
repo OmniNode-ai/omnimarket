@@ -33,7 +33,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py?ref=df9458ef546c40eb6f4fe830bd0ff1954e91ab9d' --jq .content | base64 -d | grep -q 'def _names_a_unit_directory'
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py?ref=df9458ef546c40eb6f4fe830bd0ff1954e91ab9d' --jq .content | base64 -d | grep 'def _names_a_unit_directory' > /dev/null
     binds_ac:
       - AC3
   - id: dod-omn20804-glob-integration-proof
