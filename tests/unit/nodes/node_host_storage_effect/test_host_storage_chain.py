@@ -69,6 +69,7 @@ def test_host_storage_topics_follow_the_naming_rule_and_the_terminal_event() -> 
     assert CMD.endswith(".v1")
     assert EVT.startswith("onex.evt.")
     assert EVT.endswith(".v1")
+    assert EVT == "onex.evt.omnimarket.host-storage-completed.v1"
     assert CONTRACT["terminal_event"] == EVT
 
 

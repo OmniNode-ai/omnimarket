@@ -68,6 +68,7 @@ def test_host_power_topics_follow_the_naming_rule_and_the_terminal_event() -> No
     assert CMD.endswith(".v1")
     assert EVT.startswith("onex.evt.")
     assert EVT.endswith(".v1")
+    assert EVT == "onex.evt.omnimarket.host-power-completed.v1"
     assert CONTRACT["terminal_event"] == EVT
 
 
