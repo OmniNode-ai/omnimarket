@@ -26,6 +26,10 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.emission_sink import (
+    JsonlEmissionSink,
+    ProtocolEmissionSink,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -61,10 +65,6 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple im
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state import (
     HandlerLabState,
 )
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    JsonlEmissionSink,
-    ProtocolEmissionSink,
-)
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
     read_ledger_facts,
@@ -75,6 +75,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     load_record,
     overlay_store_events,
     parse_time,
+    read_admissions,
     read_broker_lag,
     read_deploy_lag,
     read_disk,
@@ -139,6 +140,10 @@ class ModelSourcePaths(BaseModel):
 
     record_relpath: str
     watcher_relpath: str
+    controller_state_dir_env: str
+    controller_state_dir_fallback: str
+    controller_admissions_name: str
+    controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
@@ -670,9 +675,17 @@ class HandlerFloorSimpleTick:
                 record = None
             except FloorSourceError:
                 record = None
+            controller_dir = Path(
+                env.get(rt.sources.controller_state_dir_env, "").strip()
+                or Path.home() / rt.sources.controller_state_dir_fallback
+            )
             watcher = read_watcher(
                 home / rt.sources.watcher_relpath,
                 now,
+                admissions=read_admissions(
+                    controller_dir / rt.sources.controller_admissions_name,
+                    rt.sources.controller_admissions_tail_bytes,
+                ),
                 excluded_classes=floor_ov.numbers.excluded_pr_classes,
                 queue_classes=lab_ov.queue_age_classes,
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,
@@ -814,6 +827,7 @@ class HandlerFloorSimpleTick:
                 home / rt.sources.readings_relpath,
                 home / rt.sources.harness_result_relpath,
                 rt.sources.harness_piece,
+                ledger.facts.readings if ledger.facts is not None else (),
             ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
@@ -1094,15 +1108,24 @@ class HandlerFloorSimpleTick:
 
     @staticmethod
     def _readings(
-        path: Path, harness_path: Path, harness_piece: int
+        path: Path,
+        harness_path: Path,
+        harness_piece: int,
+        ledger_rows: tuple[ModelReadingRow, ...] = (),
     ) -> dict[int, ModelReadingRow] | None:
-        """The newest reading row per piece: the reading writer's rows, and the central test harness's stored result.
+        """The newest reading row per piece: the reading writer's rows (its file and, when the overlay names them, its ledger rows), and the central test harness's stored result.
 
         The harness result is one JSON document the harness node writes after each run; it is the reading of the piece
         the contract names, kept apart from the reading writer's rows. A result that is missing or unreadable adds no
         row, so the piece is drawn as having no reading, never as working.
         """
         newest: dict[int, ModelReadingRow] = {}
+        for ledger_row in ledger_rows:
+            if (
+                ledger_row.piece not in newest
+                or ledger_row.published_at > newest[ledger_row.piece].published_at
+            ):
+                newest[ledger_row.piece] = ledger_row
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError:

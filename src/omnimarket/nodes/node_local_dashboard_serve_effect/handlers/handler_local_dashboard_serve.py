@@ -99,6 +99,13 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeResult,
     is_loopback_host,
 )
+from omnimarket.nodes.node_local_dashboard_serve_effect.money import (
+    WindowError,
+    manifest_run_costs,
+    parse_window,
+    usage_aggregates,
+    window_totals,
+)
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
 )
@@ -279,14 +286,127 @@ def create_dashboard_app(
         if result.ok:
             # The served page's freshness, under the name the local mode declares.
             body["as_of"] = body.get("latest_event_at")
+            if cfg is not None and cfg.table == _RUN_TABLE:
+                # Each run's manifest-priced cost, beside its recorded spend and
+                # keyed by correlation_id: the rows keep their declared columns.
+                body["run_manifest_costs"] = manifest_run_costs(body.get("rows") or [])
         return JSONResponse(status_code=result.http_status, content=body)
 
+    _register_money(app, handler=handler, tenant=tenant, topics=topics)
     _register_model_keys(app)
 
     if pages is not None:
         _register_pages(app, pages)
 
     return app
+
+
+#: The table every run row is served from.
+_RUN_TABLE = "delegation_events"
+#: The tables the money read sums: metering day rows and usage rows.
+_METERING_TABLE = "metering_summary"
+_USAGE_TABLE = "usage_by_model_day"
+#: Pages the money read walks per source before it reports truncation.
+_MONEY_MAX_PAGES = 20
+
+
+def _scoped_topic(topics: dict[str, ProjectionTableConfig], table: str) -> str | None:
+    """The tenant-scoped exposure that serves ``table``, from the contracts."""
+    for cfg in topics.values():
+        if cfg.table == table and cfg.tenant_scoped:
+            return cfg.topic
+    return None
+
+
+async def _read_all(
+    handler: ProtocolProjectionReadNode, topic: str, tenant: str
+) -> tuple[list[dict[str, Any]], bool] | ModelProjectionReadResult:
+    """Every row of one exposure for ``tenant``, walking its cursor pages."""
+    rows: list[dict[str, Any]] = []
+    since: str | None = None
+    for _ in range(_MONEY_MAX_PAGES):
+        result = await handler.handle(
+            ModelProjectionReadRequest(topic=topic, tenant_id=tenant, since=since)
+        )
+        if not result.ok:
+            return result
+        rows.extend(result.rows)
+        if not result.truncated or not result.next_cursor:
+            return rows, False
+        since = result.next_cursor
+    return rows, True
+
+
+def _register_money(
+    app: FastAPI,
+    *,
+    handler: ProtocolProjectionReadNode,
+    tenant: str | None,
+    topics: dict[str, ProjectionTableConfig],
+) -> None:
+    """Serve the dashboard's money figures already computed.
+
+    ``GET /money/window?start=YYYY-MM-DD&end=YYYY-MM-DD`` returns, for this
+    install's tenant, the window's totals from the metering day rows (spend,
+    savings, counterfactual, run and token counts) and, from the usage rows,
+    measured spend per model, per route and per day plus cost per run. The page
+    displays these fields and does no money arithmetic of its own. The tenant
+    is held here, as on ``/projection``: another tenant answers 422.
+    """
+
+    @app.get("/money/window")
+    async def money_window(
+        start: str = Query(...),
+        end: str = Query(...),
+        requested_tenant: str | None = Query(default=None, alias="tenant"),
+    ) -> JSONResponse:
+        route = "money/window"
+        if requested_tenant is not None and requested_tenant != tenant:
+            return _refusal(
+                422,
+                "tenant_conflict",
+                route,
+                "this dashboard serves only this install's tenant",
+            )
+        if tenant is None:
+            return _refusal(
+                422,
+                "tenant_not_configured",
+                route,
+                "this install has no tenant identity; run `onex local init`",
+            )
+        try:
+            days = parse_window(start, end)
+        except WindowError as exc:
+            return _refusal(422, "invalid_window", route, str(exc))
+        sources: dict[str, tuple[list[dict[str, Any]], bool]] = {}
+        for table in (_METERING_TABLE, _USAGE_TABLE):
+            topic = _scoped_topic(topics, table)
+            if topic is None:
+                sources[table] = ([], False)
+                continue
+            read = await _read_all(handler, topic, tenant)
+            if isinstance(read, ModelProjectionReadResult):
+                return JSONResponse(
+                    status_code=read.http_status, content=dict(read.response or {})
+                )
+            sources[table] = read
+        metering_rows, metering_truncated = sources[_METERING_TABLE]
+        usage_rows, usage_truncated = sources[_USAGE_TABLE]
+        totals = window_totals(metering_rows, days)
+        return JSONResponse(
+            {
+                "tenant": tenant,
+                "start": days[0],
+                "end": days[-1],
+                "window_totals": totals,
+                "window_totals_reason": (
+                    None if totals is not None else "no_metering_rows"
+                ),
+                "usage": usage_aggregates(usage_rows, days),
+                "truncated": metering_truncated or usage_truncated,
+            }
+        )
 
 
 def _register_model_keys(app: FastAPI) -> None:
