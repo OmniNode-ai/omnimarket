@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Runner Group Exposure Effect (OMN-22860)
+#
+# Reads one runner group and hands the facts to node_runner_group_exposure_compute. The source
+# (in-memory fixture or the GitHub REST API) and every setting come from the overlay; this
+# contract holds no setting. The probe only reads: it never changes a group, a file or a job. The
+# reading writer appends one ledger reading row per scheduled run and nothing else.
+name: node_runner_group_exposure_effect
+contract_name: node_runner_group_exposure_effect
+node_name: node_runner_group_exposure_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the org settings of one runner group, the workflow files of the group's repositories and
+  the queued and running jobs, from the source the overlay names, then returns the exposure
+  reading of node_runner_group_exposure_compute. A group that cannot be read (denied, over its
+  call budget, unreadable) reads UNKNOWN and ends in the typed failure event.
+
+handler:
+  module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe
+  class: HandlerExposureProbe
+  input_model: omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe.ModelExposureProbeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: runner_group_exposure_probe
+      handler:
+        name: HandlerExposureProbe
+        module: omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe
+
+# HandlerExposureProbe takes the overlay and an http getter as constructor parameters.
+# HandlerExposureReadingWriter (handlers.handler_exposure_reading_writer) takes the reading overlay,
+# the host, the probe and the appender as constructor parameters: the node runs through its own CLI
+# and schedule, so the scheduled run is `python -m omnimarket.nodes.node_runner_group_exposure_effect
+# hourly`. It appends one reading row per run and writes nothing else.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [network-read, ledger-append]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelExposureProbeRequest
+  module: omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe
+  description: The correlation id and the time the read is judged at.
+output_model:
+  name: ModelExposureProbeResult
+  module: omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe
+  description: The backend used, the calls made and the exposure reading.
+
+terminal_event: onex.evt.omnimarket.runner-group-exposure-probed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  probe_requested: onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1
+  probe_completed: onex.evt.omnimarket.runner-group-exposure-probed.v1
+  probe_failed: onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
+  reading_written: onex.evt.omnimarket.runner-group-exposure-reading-written.v1
+  reading_failed: onex.evt.omnimarket.runner-group-exposure-reading-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.runner-group-exposure-probed.v1
+    - onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.runner-group-exposure-probed.v1
+  - onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
+  - onex.evt.omnimarket.runner-group-exposure-reading-written.v1
+  - onex.evt.omnimarket.runner-group-exposure-reading-failed.v1
+
+# The node's own hourly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay's hosts names, removed by `schedule uninstall` (the rollback).
+# `on_calendar` runs at thirty-five minutes past each hour.
+schedule:
+  unit_name: onex-runner-group-exposure-hourly
+  state_directory: .onex_state/runner-group-exposure
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:35:00"
+    randomized_delay: 30s
+    persistent: true
+    description: hourly, thirty-five minutes past
+
+overlay:
+  node: node_runner_group_exposure_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22860
+  transport_type: http
