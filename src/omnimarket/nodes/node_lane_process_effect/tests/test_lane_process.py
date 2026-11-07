@@ -10,6 +10,7 @@ import os
 import re
 import signal
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -294,11 +295,17 @@ def test_run_bounded_timeout_kills_child(
         time.sleep(60)
         """,
     )
+    started = time.monotonic()
     result = adapter.run_bounded(python_spec(script, tmp_path), 1.5)
+    elapsed = time.monotonic() - started
     assert result.state == "timed_out"
     assert result.exit_code is None
     assert result.stdout == ""
     assert result.cause is None
+    # The deadline ends the child: a call that waits out the child's own 60 s sleep ended nothing.
+    assert elapsed < 20, (
+        f"run_bounded returned after {elapsed:.1f}s for a 1.5s deadline"
+    )
     wait_for(grandchild_file.exists, "the grandchild's pid file")
     grandchild = int(grandchild_file.read_text())
     wait_for(lambda: not alive(grandchild), "the grandchild to end")
