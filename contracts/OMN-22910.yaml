@@ -1,0 +1,42 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22910
+title: "Piece 4's first task: the J3 join test: changing one overlay value changes a command-triggered node's behaviour with no code change and the seam reading consumes the change, golden and error"
+summary: >-
+  Join J3 (bus to overlays, plan 4.1). The overlay drift node now emits one chain (a start, then a success or a typed
+  failure naming the overlay and field) under the correlation id of the command that triggered it, into the emission
+  journal an overlay key names, and answers a command that carries an upstream failure with a typed upstream_ refusal
+  that never starts. Its reading row names its piece, so the floor's reading rule reads the row's own freshness bound.
+  The join test changes one overlay value and shows the node's row and the floor's reading change; it plants a key the
+  runtime rejects and shows the typed failure and a NOT WORKING reading. Both new overlay keys are optional: an overlay
+  without them runs as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22910-j3
+    statement: One overlay value changed changes a command-triggered node's behaviour with no code change, and the seam reading consumes the change, golden and error.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: golden join test: one overlay value changed, a node triggered by a command behaves differently, and the seam reading reports the change -- falsifier: uv run pytest tests/unit/nodes/node_overlay_drift_effect/test_join_j3.py -q -k golden'
+      - id: AC2
+        statement: 'AC2: error join test: an overlay value the runtime rejects yields a typed failure naming the key and the seam reading reads NOT WORKING -- falsifier: uv run pytest tests/unit/nodes/node_overlay_drift_effect/test_join_j3.py -q -k error'
+      - id: AC3
+        statement: 'AC3: both run on the dev runtime with a planted value and the floor shows J3 with ages -- falsifier: curl -s the served floor-simple.json and read pieces[2].joins[0].state'
+evidence_requirements:
+  - kind: tests
+    description: The J3 join tests and the overlay drift node's own tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_overlay_drift_effect tests/nodes/node_overlay_drift_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22910-j3-join-tests
+    description: The golden and error join tests pass with the change; with the node's source reverted they fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_drift_effect/test_join_j3.py -q --no-cov
+        cwd: .
