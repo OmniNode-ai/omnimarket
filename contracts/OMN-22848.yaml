@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22848
 title: 'The lane runner''s lab start path becomes nodes: node_remote_lane_start_orchestrator and node_remote_lane_start_effect (first in order)'
-summary: 'Two new omnimarket nodes run the remote-lane runner''s run path for the Claude engine on lab placement: refuse other shapes, place through node_remote_lane_compute, append the CLAIM through node_work_ledger_append_effect with a deduplicated request id, start the engine detached through the spi ProtocolLaneHostTransport, supervise it, and close with one TERMINAL through node_remote_lane_close_compute.'
+summary: 'Two new omnimarket nodes run the remote-lane runner''s run path for the Claude engine on lab placement: refuse other shapes, place through node_remote_lane_compute, append the CLAIM through node_work_ledger_append_effect with a deduplicated request id, start the engine detached through the spi ProtocolLaneHostTransport, supervise it, and close with one TERMINAL through node_remote_lane_close_compute. This omnimarket pull request carries AC2, AC3, AC4, AC5 and AC7; AC1 (the script-against-node parity harness) and AC6 (the runner shim) are carried by the pull request that changes the runner script, with this repository''s overlay check runner_command_names_node kept below as an unbound check.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -9,8 +9,6 @@ requirements:
 - id: req-omn22848-remote-lane-start-nodes
   statement: The lab Claude run path of the remote-lane runner is a sequence of nodes whose leader appends the CLAIM itself before any engine-starting host call, starts the engine in a session of its own, and writes one TERMINAL only when the engine's end is known.
   acceptance:
-  - id: AC1
-    statement: 'AC1: *Parity first.* For each scenario (placed on a lab host and the engine exits 0 with a final message that declares a PR; no host; CLAIM refused; engine fails), the frozen script (through its own scripted seams) and the node (through the scripted transport and a ledger fixture) agree on the placement verdict, the CLAIM and TERMINAL cells (time and run id excluded), the ordered host commands, the receipt''s fields, the printed `REMOTE-LANE-*` lines and the exit code -- falsifier: `-k script_node_parity`, one case per scenario; a scenario either side cannot run fails the harness.'
   - id: AC2
     statement: 'AC2: *CLAIM first.* The first host command that starts the engine comes after the CLAIM append returned; a refused CLAIM and an `already-claimed` replay leave the host-command list empty -- falsifier: `-k claim_before_engine`, `-k claim_refused_starts_nothing` and `-k claim_request_id_dedup`, with the ordered call log of the scripted transport and ledger, and `-k claim_dedup_survives_restart` (against the real ledger effect and a ledger fixture file: append the CLAIM, recreate the effect, replay the request id, and assert one CLAIM row and no host command).'
   - id: AC3
@@ -19,8 +17,6 @@ requirements:
     statement: 'AC4: *Early refusals write nothing.* `no-host` (exit 75) and each unsupported shape (cloud placement, each other engine) write no CLAIM and issue no host command -- falsifier: `-k early_refusals_write_nothing`, one case per refusal.'
   - id: AC5
     statement: 'AC5: *Close.* A SIGTERM while the engine runs gives one TERMINAL with the stopped outcome after `stop_engine` confirmed the exit; an engine that survives the stop, and a start that does not settle, leave the CLAIM open and write no TERMINAL; a lane that wrote its own closing row gets a STATUS and no second TERMINAL -- falsifier: `-k sigterm_closes_once`, `-k sigterm_survivor_no_terminal`, `-k start_unresolved_no_terminal` and `-k no_double_terminal`.'
-  - id: AC6
-    statement: 'AC6: *The script is a shim for this path.* The script''s `run` for this shape calls the node''s entry and passes its exit code through; the functions of the moved steps no longer exist in the script (grep for the names listed in the PR body returns no match); the example overlay''s `floor_fill.runner_command` does not name `onex_remote_lane` -- falsifier: `-k run_is_shim`, `-k moved_steps_deleted` and `-k runner_command_names_node`.'
   - id: AC7
     statement: 'AC7: G-NODE holds for both nodes, and the placed, no-host, CLAIM-refused and engine-fails scenarios give equal decision projections on the in-memory and Redpanda legs with the scripted transport -- falsifier: `-m floor_fill_parity -k remote_lane_start` with the Redpanda receipt in the PR body.'
 evidence_requirements:
