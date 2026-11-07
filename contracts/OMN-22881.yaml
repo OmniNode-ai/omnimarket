@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22881
+title: 'Floor row stoppage:job-exit: the scheduled jobs that exit non-zero are named and fixed'
+summary: A launchd timer job has no run limit, so a hung run (the overlay store refresh job hung 40 minutes at 0% CPU on 2026-11-06) holds the job and no tick follows, which the job-exit alarm reads as a missed interval. A registry unit may now declare run_timeout_s; the rendered unit runs the command under a wrapper that ends the whole process group at the limit and exits 124, while a run that finishes keeps its own exit code. The floor publisher, the lab test harness and the silent failure alarm declare a limit. The other causes in the row are named in the pull request and are not fixed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22881-run-limit
+  statement: A registry unit that declares run_timeout_s runs under a limit that ends a hung run and exits 124, and a bad value is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each job exit in the rollup is named with its job and exit code, and each job''s cause is fixed with a failing control so the row stops recurring -- falsifier: uv run pytest of each fixed job''s test plus the floor row''s count'
+evidence_requirements:
+- kind: tests
+  description: The run-limit wrapper ends a hung run at the limit and exits 124, red without the contract and template change
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22881-run-limit
+  description: The hung-run wrapper test ends a child at a one second limit with exit 124, the finishing runs keep their exit codes, and every declared unit renders the wrapper.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
