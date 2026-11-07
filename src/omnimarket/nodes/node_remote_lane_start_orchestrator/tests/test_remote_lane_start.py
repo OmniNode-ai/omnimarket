@@ -7,6 +7,7 @@ AC2 CLAIM first, AC4 early refusals write nothing, AC5 close, and the overlay's 
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.orchestration.core imp
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_fixtures import (
     DONE_MESSAGE,
+    T0,
     Rig,
     cells,
     request,
@@ -72,7 +74,7 @@ def test_claim_before_engine(tmp_path: Path) -> None:
     assert f"req={claim_request_id('floor-alpha-a1', 1)}" in claim
     [terminal] = rig.ledger_rows("TERMINAL")
     assert cells(terminal)["outcome"] == "handed-off"
-    assert cells(terminal)["closes_claim"] == claim.split(" | ")[0]
+    assert cells(terminal)["closes-CLAIM"] == claim.split(" | ")[0]
 
 
 def test_claim_refused_starts_nothing(tmp_path: Path) -> None:
@@ -104,7 +106,8 @@ def test_claim_dedup_survives_restart(tmp_path: Path) -> None:
         is EnumRemoteLaneStartOutcome.START_UNRESOLVED
     )
     # A new process: a new ledger effect over the same ledger file, the same request id.
-    restarted = Rig(tmp_path, DONE)
+    # The replay comes later, so its row carries a new time stamp.
+    restarted = Rig(tmp_path, DONE, now=T0 + timedelta(minutes=5))
     result = restarted.orchestrator.run(request())
     assert result.outcome is EnumRemoteLaneStartOutcome.ALREADY_CLAIMED
     assert restarted.host_calls() == []
@@ -230,7 +233,7 @@ def test_no_double_terminal(tmp_path: Path) -> None:
     assert result.outcome is EnumRemoteLaneStartOutcome.ENDED
     assert rig.ledger_rows("TERMINAL") == [lane_close]
     [status] = rig.ledger_rows("STATUS")
-    assert cells(status)["runner_outcome"] == "handed-off"
+    assert "ended status=handed-off engine_rc=0" in status
 
 
 def test_engine_fails_closes_failed(tmp_path: Path) -> None:
@@ -239,7 +242,7 @@ def test_engine_fails_closes_failed(tmp_path: Path) -> None:
     assert result.outcome is EnumRemoteLaneStartOutcome.ENDED
     assert result.exit_code == 1
     [terminal] = rig.ledger_rows("TERMINAL")
-    assert cells(terminal)["engine_rc"] == "1"
+    assert "engine_rc=1" in terminal
     assert cells(terminal)["outcome"] != "handed-off"
 
 

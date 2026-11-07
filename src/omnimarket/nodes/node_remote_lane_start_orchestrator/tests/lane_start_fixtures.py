@@ -161,6 +161,7 @@ class Rig:
         stop_after_polls: int | None = None,
         cfg: ModelRemoteLaneStartSettings | None = None,
         calls: list[str] | None = None,
+        now: datetime = T0,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -186,7 +187,7 @@ class Rig:
             host=HandlerRemoteLaneStartEffect(self.transport),
             receipts=self.receipts,
             echo=self.printed.append,
-            clock=lambda: T0,
+            clock=lambda: now,
             stop_requested=stop_requested,
         )
 

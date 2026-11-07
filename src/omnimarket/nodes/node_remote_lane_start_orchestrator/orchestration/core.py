@@ -258,6 +258,13 @@ class RemoteLaneStartOrchestrator:
             ModelRemoteLaneHostCall(operation=operation, **request)
         )
 
+    def _request_seen(self, req_id: uuid.UUID) -> bool:
+        cell = f"req={req_id}"
+        return any(
+            cell in (c.strip() for c in line.split("|"))
+            for line in self._reader.read_text().splitlines()
+        )
+
     def _lane_closed_itself(self, lane: str, claim_req: str) -> bool:
         """True when a TERMINAL of ``lane`` stands after its CLAIM (found by its ``req=`` cell) on the ledger."""
         lines = self._reader.read_text().splitlines()
@@ -343,10 +350,19 @@ class RemoteLaneStartOrchestrator:
 
         # (3) Claim, by the leader itself, before any host call that starts the engine.
         req_id = claim_request_id(request.lane, request.attempt)
+        if self._request_seen(req_id):
+            # A replay carries a new time stamp, so the append effect would answer "different rows";
+            # the id on the ledger is what says this attempt was claimed already.
+            receipt.claim_request_id = str(req_id)
+            self._say(
+                f"REMOTE-LANE-ALREADY-CLAIMED lane={request.lane} req={req_id}: the ledger holds this attempt's CLAIM"
+            )
+            self._state(receipt, EnumRemoteLaneStartOutcome.ALREADY_CLAIMED.value)
+            return self._result(EnumRemoteLaneStartOutcome.ALREADY_CLAIMED, receipt)
         claim_cells = [
             *self._cells(request, host_ref.name)[:2],
             f"actor={self._s.actor}",
-            f"model={request.model}",
+            f"model={request.engine}-{request.model}",
             f"est ~{self._s.est_hours} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
@@ -562,32 +578,47 @@ class RemoteLaneStartOrchestrator:
         close_id = uuid.uuid5(
             CLAIM_NAMESPACE, f"lane-close:{request.lane}:{request.attempt}"
         )
-        base = [
-            *self._cells(request, host_ref.name)[:2],
-            f"actor={self._s.actor}",
-            f"model={request.model}",
-            *self._cells(request, host_ref.name)[2:],
-        ]
+        # The cells the runner script writes for this shape: the STATUS carries the script's actor,
+        # the TERMINAL the lane's own actor, both the ledger's model spelling.
+        lane_model = f"{request.engine}-{request.model}"
+        head = self._cells(request, host_ref.name)
+        status_text = f"ended status={lane_outcome} engine_rc={engine_rc}"
         if self._lane_closed_itself(request.lane, receipt.claim_request_id or ""):
             kind = "STATUS"
-            cells = [*base, f"engine_rc={engine_rc}", f"runner_outcome={lane_outcome}"]
+            cells = [
+                *head[:2],
+                f"actor={self._s.actor}",
+                f"model={lane_model}",
+                *head[2:],
+            ]
         else:
             kind = "TERMINAL"
+            delegation = decided.delegation
             cells = [
-                *base,
-                f"outcome={lane_outcome}",
-                f"closes_claim={claim_stamp}",
+                *head[:2],
+                f"actor={request.engine}:{request.model}:remote-lane",
+                f"model={lane_model}",
                 "friction=none",
-                f"engine_rc={engine_rc}",
+                f"closes-CLAIM={claim_stamp}",
+                f"outcome={lane_outcome}",
+                *head[2:],
                 *(
-                    f"{'delegation_reason' if k == 'reason' else k}={v}"
-                    for k, v in decided.delegation.items()
+                    [
+                        f"delegated={delegation['delegated']} delegation_reason={delegation['reason']}"
+                    ]
+                    if "delegated" in delegation and "reason" in delegation
+                    else [f"{k}={v}" for k, v in delegation.items()]
                 ),
                 *(f"{k}={v}" for k, v in sorted(decided.ledger_cells.items())),
             ]
-        text = decided.problem or message or f"engine exit {engine_rc}"
+            if decided.problem:
+                status_text += f"; {decided.problem}"
         row, appended = self._append(
-            request, close_id, kind, cells, f"remote lane on {host_ref.name}: {text}"
+            request,
+            close_id,
+            kind,
+            cells,
+            f"remote lane on {host_ref.name} {status_text}",
         )
         if appended.status not in (
             EnumWorkLedgerAppendStatus.ACCEPTED,

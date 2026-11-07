@@ -284,7 +284,7 @@ def test_remote_lane_start_parity_the_scenario_decides_what_the_sequence_says() 
     assert rows["01:no-host"]["calls"] == []
     assert rows["02:claim-refused"]["exit_code"] == 70
     assert not [c for c in rows["02:claim-refused"]["calls"] if c.startswith("host:")]
-    assert rows["03:engine-fails"]["rows"]["TERMINAL"][0]["engine_rc"] == "1"
+    assert rows["03:engine-fails"]["rows"]["TERMINAL"][0]["outcome"] == "failed"
 
 
 def test_remote_lane_start_parity_in_memory_bus_matches_the_in_process_decisions() -> (
