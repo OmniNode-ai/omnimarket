@@ -264,7 +264,7 @@ def _granted(body: JsonObject) -> frozenset[str] | None:
     return None
 
 
-class HandlerIloSetup:
+class IloSetupSequence:
     """One request in, one redacted result out. Never raises for a refusal."""
 
     def __init__(
@@ -1324,4 +1324,4 @@ def _host_row(
     }
 
 
-__all__ = ["HandlerIloSetup", "generate_password"]
+__all__ = ["IloSetupSequence", "generate_password"]
