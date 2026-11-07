@@ -32,6 +32,7 @@ RULES: list[dict[str, str]] = yaml.safe_load(OVERLAY.read_text(encoding="utf-8")
     "class_rules"
 ]
 EARLIER_RULES = 6  # the rules of OMN-22563, which stand first in the file and win ties
+RULES_OF_THIS_FIXTURE = 20  # the rules that follow them and name this fixture's 70 rows; later rules name later rows
 FIXTURE_ROWS = 70
 
 # class -> rows the recorded text puts in it (measured from the fixture, not chosen)
@@ -124,7 +125,7 @@ def test_the_host_table_class_is_the_rows_that_name_the_refused_column() -> None
 def test_every_rule_names_at_least_one_fixture_row_or_an_earlier_class() -> None:
     """A rule that matches nothing in the recorded rows is dead weight: only the earlier rules may sit unmatched here."""
     by_name = classes(roll(RULES))
-    for rule in RULES[EARLIER_RULES:]:
+    for rule in RULES[EARLIER_RULES : EARLIER_RULES + RULES_OF_THIS_FIXTURE]:
         assert rule["name"] in by_name, rule["name"]
 
 
