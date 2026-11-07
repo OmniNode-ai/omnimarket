@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_process_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Start the lane runner detached, or run one bounded command in the foreground, through the injected
+  ProtocolLaneProcessRunner. start_detached starts the argv in a session of its own and returns at once with
+  the pid, its output going to the log the adapter names; run_bounded runs the argv to its end or to its
+  deadline and returns the exit code and standard output, or timed_out with no child left running, or failed
+  with the cause. A missing executable and a missing working directory answer failed and start nothing. The
+  effect refuses a spec whose argv names the script runner, for either operation. Called in process by the
+  floor-fill orchestrator, which builds every argv, environment and working directory from its overlay.
+handler:
+  module: omnimarket.nodes.node_lane_process_effect.handlers.handler_lane_process
+  class: HandlerLaneProcess
+  input_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessRequest
+  output_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator with the spec on the request.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: start_detached
+    handler:
+      name: HandlerLaneProcess
+      module: omnimarket.nodes.node_lane_process_effect.handlers.handler_lane_process
+    input_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessRequest
+    output_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessResult
+  - operation: run_bounded
+    handler:
+      name: HandlerLaneProcess
+      module: omnimarket.nodes.node_lane_process_effect.handlers.handler_lane_process
+    input_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessRequest
+    output_model: omnimarket.nodes.node_lane_process_effect.models.model_lane_process.ModelLaneProcessResult
+# The posix adapter reads this key when it is built from the overlay; a key no overlay supplies refuses naming it.
+# The argv, environment and working directory (floor_fill.runner_command, floor_fill.remote_argv,
+# floor_fill.process_environment, floor_fill.process_working_directory) arrive on the request, built by the orchestrator.
+deployment_overlay:
+  name: floor_fill
+  required: true
+  fields:
+  - floor_fill.output_dir
+  description: Directory the started process's log <lane>.log is written to. A key no overlay supplies refuses
+    naming the key.
+protocol_dependencies:
+- name: runner
+  protocol: omnibase_spi.protocols.lane:ProtocolLaneProcessRunner
+  bind_as: runner
+  required: true
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  side_effects:
+  - process-start
+  - process-run
+  - log-write
+  timeout_ms: 600000
+  runtime_profiles: []
+metadata:
+  ticket: OMN-22851
+  origin_tickets:
+  - OMN-17427
+  transport_type: local
+lifecycle: experimental
