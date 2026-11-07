@@ -26,7 +26,7 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.models.model_code_graph import EnumGraphFault
 from omnimarket.nodes.node_code_graph_effect.handlers import code_graph_run
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
-    HandlerCodeGraph,
+    CodeGraphRun,
     answer_command,
     load_topics,
 )
@@ -102,7 +102,7 @@ async def _publish(
     payload: bytes,
     graph_overlay: ModelCodeGraphOverlay | None = None,
 ) -> list[tuple[str, dict[str, object]]]:
-    handler = HandlerCodeGraph(
+    handler = CodeGraphRun(
         overlay=graph_overlay or overlay(),
         host=HOST,
         source=repos,

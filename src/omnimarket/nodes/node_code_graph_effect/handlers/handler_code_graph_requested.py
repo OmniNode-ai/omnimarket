@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Envelope-shaped handlers the runtime binds: each builds the real handler when a command arrives.
 
-HandlerCodeGraph and CodeGraphShadowCheck take the overlay, host, source, appender and clock as
+CodeGraphRun and CodeGraphShadowCheck take the overlay, host, source, appender and clock as
 constructor parameters, which the boot resolver cannot supply. These wrappers take none, read the
 overlay and the environment at the dispatch boundary, and answer the command with the real handler.
 """

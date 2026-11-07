@@ -29,7 +29,7 @@ handler:
   class: HandlerCodeGraphRequested
   input_model: omnimarket.models.model_code_graph.ModelCodeGraphCommand
 
-# HandlerCodeGraph and CodeGraphShadowCheck take the overlay, host, repository source, appender
+# CodeGraphRun and CodeGraphShadowCheck take the overlay, host, repository source, appender
 # and clock as constructor parameters, so the CLI and schedule build them. handler_routing binds the
 # envelope-shaped wrappers, which build them at dispatch, so the boot resolver can construct them.
 handler_routing:

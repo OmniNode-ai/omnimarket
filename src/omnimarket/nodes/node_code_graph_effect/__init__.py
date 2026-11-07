@@ -3,7 +3,7 @@
 """node_code_graph_effect: the nightly code graph and its reading (rebuild piece 1, OMN-22651)."""
 
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
-    HandlerCodeGraph,
+    CodeGraphRun,
 )
 
-__all__ = ["HandlerCodeGraph"]
+__all__ = ["CodeGraphRun"]

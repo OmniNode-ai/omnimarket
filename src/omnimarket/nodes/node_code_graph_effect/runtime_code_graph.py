@@ -41,7 +41,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRepoSource
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
-    HandlerCodeGraph,
+    CodeGraphRun,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
@@ -98,7 +98,7 @@ def _keep(result: ModelCodeGraphResult) -> None:
     staged.replace(target)
 
 
-def build_handler(write: bool) -> tuple[HandlerCodeGraph, str]:
+def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
     """The nightly handler as the overlay and the environment name it, and this host's name."""
     overlay = load_overlay()
     host = os.environ.get(overlay.ledger_append.host_env, "").strip()
@@ -106,7 +106,7 @@ def build_handler(write: bool) -> tuple[HandlerCodeGraph, str]:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
-    handler = HandlerCodeGraph(
+    handler = CodeGraphRun(
         overlay=overlay,
         host=host,
         source=_source(overlay),

@@ -31,7 +31,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import (
     InMemoryRepoSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
-    HandlerCodeGraph,
+    CodeGraphRun,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     ModelCodeGraphOverlay,
@@ -129,7 +129,7 @@ def _overlay(sample: ModelGraphSample) -> ModelCodeGraphOverlay:
 
 def _run(sample: ModelGraphSample) -> tuple[ModelCodeGraphResult, InMemoryLedger]:
     ledger = InMemoryLedger()
-    handler = HandlerCodeGraph(
+    handler = CodeGraphRun(
         overlay=_overlay(sample),
         host=HOST,
         source=InMemoryRepoSource({REPO: {REF: ("c" * 40, _world())}}),
