@@ -1,0 +1,66 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22755
+title: "The silent-failure alarm reads each pool host's event name from the host table, so h051, h053 and h106 stop reading QUIET"
+summary: >-
+  The alarm's options name a host table (host_table) instead of a list of host aliases. The aliases are derived from
+  the table when the configuration loads: each host id with the event labels its machine names carry. A table that
+  cannot be read leaves hook events unattributed and the tick reports why (UNKNOWN), never a pass; naming both a table
+  and a list is refused; a label shared by two hosts is refused. A relative table path is read from the configuration
+  file's own directory.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22755-host-table-aliases
+    statement: The quiet-host reading attributes each hook event to the pool host the host table declares for its machine name, and a change to the table changes the reading.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a host table named in the alarm configuration yields the host aliases, a table change (a host added or a name changed) changes the aliases and the quiet-host reading, and a table without a host leaves that host unattributed -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k host_table, whose control test fails when the derivation is reverted to an empty alias set'
+      - id: AC2
+        statement: 'AC2: a table that cannot be read leaves the hook events unattributed and the tick reports why, never a pass -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k host_table_unreadable'
+      - id: AC3
+        statement: 'AC3: the first alarm run after the cutover names h051, h053 and h106 from their real hook-event state -- falsifier: read the unit last-run.json after its first tick and compare each host reading with its newest hook event in the table the alarm reads'
+evidence_requirements:
+  - kind: tests
+    description: The host table tests, run on a lab host at the pushed head, and the same tests with the derivation reverted.
+    command: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22755-tests
+  description: "The host table yields the aliases, a table change changes them and the quiet-host reading, a table without the host reads it quiet (the control), and an unreadable table is reported and never a pass."
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k host_table
+    cwd: .
+- id: dod-omn22755-ac3-attribution
+  description: "The pool host ids h051, h053 and h106 are attributed from the table's event labels, so a host with a hook event is not read quiet (the hosted counterpart of AC3; the first run itself is read at the local Done gate)."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k "host_table_change_flows_into_the_quiet_host_reading or host_table_without_the_host_reads_it_quiet_control"
+    cwd: .
+- id: dod-omn22755-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22755 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov
+    cwd: .
+- id: dod-omn22755-first-run-after-cutover
+  description: "The first alarm run of the cutover unit names h051, h053 and h106 from their real hook-event state. Runtime evidence read at the local Done gate: the installed unit runs this node's module and its last-run.json is written."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: grep -q node_silent_failure_alarm_effect.runtime_silent_failure_alarm "$HOME/Library/LaunchAgents/ai.omninode.silent-failure-alarm.plist" && test -s "$HOME/.local/state/omni/silent-failure-alarm/last-run.json"
+    cwd: .

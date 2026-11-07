@@ -245,6 +245,120 @@ class HandlerRegistryUnits:
                     )
         return filled
 
+    def config_target(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Path | None:
+        """Where the unit's declared configuration file is written: the value of the environment variable the
+        declaration names, which is the path the installed unit reads (a path override included)."""
+        declared = unit.get("config_file")
+        if not declared:
+            return None
+        name = str(declared["environment"])
+        value = self.environment(request, unit).get(name)
+        if not value:
+            raise ValueError(
+                f"{request.unit} declares a configuration file at ${name}, which the unit does not set"
+            )
+        return Path(value)
+
+    def config_text(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The unit's declared configuration document with every placeholder filled.
+
+        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
+        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        variable of the installing shell, and falls back to the value the unit's last install recorded, so a
+        reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
+        never written with a hole in it.
+        """
+        declared = unit.get("config_file")
+        if not declared:
+            return ""
+        root = Path(request.registry_root)
+        values = {
+            "home": request.home,
+            "registry_root": request.registry_root,
+            "ledger_path": request.ledger_path
+            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
+        }
+        values.update(self.config_inputs(request, unit))
+
+        def fill(node: Any) -> Any:
+            if isinstance(node, str):
+                for key, value in values.items():
+                    node = node.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(node)
+                if left is not None:
+                    raise ValueError(
+                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
+                        "(name it as a request input, export its environment variable, or reinstall once with it)"
+                    )
+                return node
+            if isinstance(node, list):
+                return [fill(item) for item in node]
+            if isinstance(node, dict):
+                return {str(key): fill(item) for key, item in node.items()}
+            return node
+
+        return json.dumps(fill(declared["document"]), indent=1) + "\n"
+
+    def config_inputs(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> dict[str, str]:
+        """The values of the configuration's declared inputs: the request, else the installing shell, else the last install."""
+        declared = (unit.get("config_file") or {}).get("inputs") or {}
+        if not declared:
+            return {}
+        root = Path(request.registry_root)
+        record = root / str(unit["state_directory"]) / f"{request.unit}.installed.json"
+        try:
+            recorded = dict(
+                json.loads(record.read_text(encoding="utf-8")).get("config_inputs")
+                or {}
+            )
+        except (OSError, ValueError, AttributeError, TypeError):
+            recorded = {}
+        found: dict[str, str] = {}
+        for name, source in declared.items():
+            value = (
+                str(getattr(request, str(source["field"]), "")).strip()
+                or os.environ.get(str(source.get("env") or ""), "").strip()
+                or str(recorded.get(str(name)) or "")
+            )
+            if value:
+                found[str(name)] = value
+        return found
+
+    @staticmethod
+    def write_config(target: Path, text: str, mode: int) -> str:
+        """Write ``text`` at ``target`` with ``mode`` and keep a differing file it replaces as ``<name>.previous``.
+
+        Returns the path of the kept copy, or '' when nothing was replaced or the content was the same.
+        """
+        target.parent.mkdir(parents=True, exist_ok=True)
+        kept = ""
+        if target.is_file() and target.read_text(encoding="utf-8") != text:
+            previous = target.with_name(target.name + ".previous")
+            shutil.copyfile(target, previous)
+            previous.chmod(mode)
+            kept = str(previous)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+        try:
+            temporary.chmod(mode)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return kept
+
     def render(
         self,
         request: ModelRegistryUnitsRequest,
@@ -342,15 +456,20 @@ class HandlerRegistryUnits:
             raise ValueError(f"uv is not on PATH; it runs {unit['module']} for {label}")
         python = self.interpreter_for(unit)
         text = self.render(request, unit, project, uv, python)
+        config_path = self.config_target(request, unit)
+        config = self.config_text(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
                 0,
-                out=text,
+                out=text
+                + (f"\nconfiguration {config_path}:\n{config}" if config else ""),
                 rendered=text,
                 project=project,
                 revision=revision,
                 canonical=canonical,
+                config=config,
+                config_path=str(config_path or ""),
             )
         proof = self.run(
             [
@@ -372,6 +491,13 @@ class HandlerRegistryUnits:
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
+        kept_config = ""
+        if config_path is not None:
+            kept_config = self.write_config(
+                config_path,
+                config,
+                int(str(unit["config_file"].get("mode", "0600")), 8),
+            )
         plist.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="registry-units-") as scratch:
             rendered = Path(scratch) / "agent.plist"
@@ -398,6 +524,7 @@ class HandlerRegistryUnits:
                     "project": str(project),
                     "project_is_canonical": canonical,
                     "revision": revision,
+                    "config_inputs": self.config_inputs(request, unit),
                     "installed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 },
                 indent=1,
@@ -410,12 +537,25 @@ class HandlerRegistryUnits:
             request,
             0,
             out=f"installed {label}: {unit['schedule']['description']}, runs {unit['module']} from {project} at {revision}, "
-            f"heartbeat {evidence}, logs in {state}\n",
+            f"heartbeat {evidence}, logs in {state}\n"
+            + (
+                f"wrote configuration {config_path}"
+                + (
+                    f", kept the file it replaced as {kept_config}"
+                    if kept_config
+                    else ""
+                )
+                + "\n"
+                if config_path is not None
+                else ""
+            ),
             rendered=text,
             project=project,
             revision=revision,
             canonical=canonical,
             record=str(record),
+            config=config,
+            config_path=str(config_path or ""),
         )
 
     def head_of(self, project: Path) -> str:
@@ -472,6 +612,8 @@ class HandlerRegistryUnits:
         revision: str = "",
         canonical: bool = True,
         record: str = "",
+        config: str = "",
+        config_path: str = "",
     ) -> ModelRegistryUnitsResult:
         return ModelRegistryUnitsResult(
             unit=request.unit,
@@ -485,6 +627,8 @@ class HandlerRegistryUnits:
             revision=revision,
             project_is_canonical=canonical,
             record=record,
+            config=config,
+            config_path=config_path,
         )
 
     def copied_unit(
