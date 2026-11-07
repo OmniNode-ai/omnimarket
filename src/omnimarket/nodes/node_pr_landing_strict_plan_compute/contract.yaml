@@ -22,18 +22,21 @@ lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 node_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 description: >
   Pure definition-B ordering of one landing tick's merges and branch updates on
   the bases that require branches up to date: a declared cause fix first, then
   the M4 delegation PRs, a PR that yielded the update slot last; the others held
   behind a fix that acts or is pending under an hour; one update a base a tick
-  less its merges; and the strict-slot view the next tick remembers.
+  less its merges; an update of a head that carries a fresh review receipt held
+  back where its base needs no update to merge (read as not strict, or a merge
+  queue), because a receipt is bound to one head (OMN-19998); and the strict-slot
+  view the next tick remembers.
 input_model:
   name: "ModelLandingStrictPlanRequest"
   module: "omnimarket.nodes.node_pr_landing_strict_plan_compute.models.model_landing_strict_plan"

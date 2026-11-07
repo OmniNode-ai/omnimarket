@@ -24,11 +24,16 @@ MAX_STALE_REFRESHES = (
 
 def stale_step(kind: str, mem: Mapping[str, Any] | None, head: str) -> str | None:
     """The next stale-summary action for ``head``: ``rerun`` (once per head), then ``update_branch`` (once per
-    head, ``MAX_STALE_REFRESHES`` per PR), then None (the decision decides). ``refresh_first`` (a provider incident)
+    head, ``MAX_STALE_REFRESHES`` per PR), then None (the decision decides). ``gates_flipped`` (OMN-19998) takes the
+    ``rerun`` only. ``refresh_first`` (a provider incident)
     and ``refresh`` (an unexpanded skip) reverse the two: the update-branch, then the one rerun, which a head the
     update-branch left unchanged needs (omnibase_infra#4745 head 6117d264, OMN-20413)."""
     m = mem or {}
     done = list((m.get("heads") or {}).get(head) or ())
+    if (
+        kind == "gates_flipped"
+    ):  # the rerun, once per head, and never an update-branch: a new head voids the receipt
+        return "rerun" if "rerun" not in done else None
     if kind in ("refresh_first", "refresh"):
         if (
             "update_branch" not in done

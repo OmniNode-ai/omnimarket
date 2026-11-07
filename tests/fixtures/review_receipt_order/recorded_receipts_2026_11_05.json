@@ -1,0 +1,20 @@
+{
+  "source": "Ten review receipts of lane review-batch-inscope-1400 (batches 3 and 4), 2026-11-05. Receipt and head times come from the batch driver log; leases, conflict reads and update-branch actions from the landing controller decision log and worker lease records; head changes and gate flips from the pull requests' commit and check-run histories; dev merges from the omnimarket dev history. Times are UTC.",
+  "dev_merges": ["2026-11-05T12:08:46Z", "2026-11-05T14:13:54Z", "2026-11-05T14:37:56Z"],
+  "base": {"repo_base": "omnimarket:dev", "strict": false, "strict_read_at": "2026-11-04T16:41:07Z"},
+  "receipts": [
+    {"pr": "omnimarket#5131", "head": "54cba79f14b0", "receipt_at": "2026-11-05T13:52:59Z", "fate": "merged", "fate_at": "2026-11-05T14:13:55Z", "gates_success_at": "2026-11-05T13:58:16Z", "summary_green_at": "2026-11-05T14:13:26Z"},
+    {"pr": "omnibase_infra#5683", "head": "689d8dd3c551", "receipt_at": "2026-11-05T13:57:17Z", "fate": "open", "gates_success_at": "2026-11-05T14:01:08Z", "summary_green_at": null},
+    {"pr": "omnimarket#5105", "head": "25a3938657b2", "receipt_at": "2026-11-05T14:01:18Z", "fate": "voided", "fate_at": "2026-11-05T14:35:19Z", "voided_by": "contributor_push", "why": "the dev merge of 14:13:54Z conflicted the head with append-only contract files; a contributor merged dev by hand", "gates_success_at": "2026-11-05T14:06:30Z", "summary_green_at": "2026-11-05T14:31:17Z"},
+    {"pr": "omnimarket#5129", "head": "8889931ba282", "receipt_at": "2026-11-05T14:05:01Z", "fate": "voided", "fate_at": "2026-11-05T14:28:14Z", "voided_by": "contributor_push", "why": "the dev merge of 14:13:54Z conflicted the head with append-only contract files; a contributor merged dev by hand", "gates_success_at": "2026-11-05T14:09:37Z", "summary_green_at": "2026-11-05T14:22:52Z"},
+    {"pr": "omnibase_infra#5585", "head": "687aa98b8ccd", "receipt_at": "2026-11-05T14:09:31Z", "fate": "open", "gates_success_at": "2026-11-05T14:15:11Z", "summary_green_at": null},
+    {"pr": "omnimarket#4988", "head": "e9f654572f88", "receipt_at": "2026-11-05T14:13:16Z", "fate": "merged", "fate_at": "2026-11-05T14:37:57Z", "gates_success_at": "2026-11-05T14:15:15Z", "summary_green_at": "2026-11-05T14:23:52Z"},
+    {"pr": "omnimarket#5076", "head": "99e71b987941", "receipt_at": "2026-11-05T14:16:54Z", "fate": "voided", "fate_at": "2026-11-05T14:39:04Z", "voided_by": "controller_update_branch", "why": "tick 7013 at 14:37:14Z updated the branch of a head whose only red was a CI Summary left red since 12:57:34Z", "gates_success_at": "2026-11-05T14:21:51Z", "summary_green_at": null,
+     "update": {"tick": 7013, "at": "2026-11-05T14:37:14Z", "shared_base": "omnimarket:dev"}},
+    {"pr": "omnimarket#5103", "head": "c40887df9ee2", "receipt_at": "2026-11-05T14:22:04Z", "fate": "voided_pending", "fate_at": null, "voided_by": "controller_conflict_worker", "why": "head conflicts with dev; lease 27510 (head_cap_conflict) from 14:27:16Z; first conflict read 14:27:16Z, the dev merge that can have caused it is 14:13:54Z", "gates_success_at": "2026-11-05T14:39:03Z", "summary_green_at": null,
+     "at_receipt": {"merge_state": "conflicting", "basis": "inferred"}},
+    {"pr": "omnimarket#4997", "head": "fc2c49e438f6", "receipt_at": "2026-11-05T14:29:27Z", "fate": "open", "gates_success_at": "2026-11-05T14:40:51Z", "summary_green_at": "2026-11-05T14:48:24Z"},
+    {"pr": "omnimarket#5097", "head": "7b203dfb777c", "receipt_at": "2026-11-05T14:33:09Z", "fate": "voided", "fate_at": "2026-11-05T14:44:00Z", "fate_at_note": "about, from the lane report", "voided_by": "controller_conflict_worker", "why": "lease 27503 (conflict_mechanical) held this head from 14:20:26Z and force-pushed the rebase db348a3b over it",
+     "at_receipt": {"merge_state": "conflicting", "leased": true, "basis": "measured", "lease": 27503, "lease_spawned_at": "2026-11-05T14:20:26Z"}}
+  ]
+}
