@@ -272,3 +272,18 @@ def test_a_missing_goal_scope_is_an_error(tmp_path: Path) -> None:
     read = _source(projection, environ).read(REQUIREMENTS, RUN_AT)
     assert read.snapshot is None
     assert projection.requests == []
+
+
+def test_the_overlay_document_loads_through_its_model_and_names_the_address(
+    tmp_path: Path,
+) -> None:
+    """The overlays repository pins this model for the overlay file; the address the source asks is its field."""
+    from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+    from omnimarket.models.node_overlays.model_node_overlays import (
+        ModelPrStateReadOverlay,
+    )
+
+    loaded = load_structured_overlay(
+        "node_pr_state_read_effect", ModelPrStateReadOverlay, _environ(tmp_path)
+    )
+    assert loaded.projection_api_url == URL
