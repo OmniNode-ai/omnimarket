@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
@@ -282,6 +283,33 @@ WRITE_ATTESTATION_COLUMNS: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
+def _aggregate_coalesce_window_s_from_contract(
+    contract: Mapping[str, Any],
+) -> float | None:
+    """The contract-declared aggregate republish window, in seconds (OMN-22874).
+
+    ``aggregate_republish.coalesce_window_ms`` is the one place the window is
+    set. A contract that declares no ``aggregate_republish`` block gets ``None``,
+    which keeps the republish inline with the write; a block that declares a
+    window that is not a positive number is a contract error, refused at
+    construction rather than read as "no window".
+    """
+    block = contract.get("aggregate_republish")
+    if block is None:
+        return None
+    window_ms = block.get("coalesce_window_ms") if isinstance(block, Mapping) else None
+    if isinstance(window_ms, bool) or not isinstance(window_ms, int | float):
+        raise ValueError(
+            "aggregate_republish.coalesce_window_ms must be a number of "
+            f"milliseconds, got {window_ms!r}"
+        )
+    if window_ms <= 0:
+        raise ValueError(
+            f"aggregate_republish.coalesce_window_ms must be positive, got {window_ms!r}"
+        )
+    return float(window_ms) / 1000.0
+
+
 class DelegationProjectionRunner(BaseProjectionRunner):
     """Projects task-delegated and delegation-shadow-comparison events.
 
@@ -437,6 +465,25 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # SECOND resolver over the same event -- the "two divergent resolvers"
         # class OMN-15919 and OMN-17422 were each an instance of.
         self._last_delegation_write_tenant: str | None = None
+
+        # OMN-22874: the aggregate republish reads four whole-table views, about
+        # 2.2 s together at the lab's 96,661 rows. Done inline it held every
+        # message's offset commit behind it, so a burst of delegation events
+        # stood as consumer-group lag for seconds and raised the lab's lag
+        # alarm. In the consume loop (``run``) the republish is instead marked
+        # dirty per tenant and flushed once per declared window, off the
+        # commit path. ``None`` window or coalescing not enabled keeps the
+        # inline republish, which is what the per-delivery runtime path needs:
+        # its runner is torn down when the delivery returns.
+        self._aggregate_coalesce_window_s: float | None = (
+            _aggregate_coalesce_window_s_from_contract(self._contract)
+        )
+        self._coalesce_aggregates = False
+        self._dirty_aggregate_tenants: dict[str, MessageMeta] = {}
+        self._aggregate_flush_task: asyncio.Task[None] | None = None
+        self._aggregate_flush_now = asyncio.Event()
+        self._aggregate_draining = False
+        self._drain_callbacks.append(self.drain_aggregates)
 
     def _resolve_aggregate_exposures(
         self, contract_path: Path
@@ -750,6 +797,87 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 tenant_id=tenant,
             )
 
+    def enable_aggregate_coalescing(self) -> None:
+        """Defer the aggregate republish off the commit path (OMN-22874).
+
+        Refused when the contract declares no ``aggregate_republish`` window:
+        the window is a contract setting, never a default in this module.
+        """
+        if self._aggregate_coalesce_window_s is None:
+            raise RuntimeError(
+                "aggregate coalescing needs aggregate_republish.coalesce_window_ms "
+                "declared in the node contract"
+            )
+        self._coalesce_aggregates = True
+
+    async def run(self) -> None:
+        """Consume loop. Coalesces the aggregate republish when the contract says so."""
+        if self._aggregate_coalesce_window_s is not None:
+            self.enable_aggregate_coalescing()
+        await super().run()
+
+    def _mark_aggregates_dirty(self, meta: MessageMeta, *, tenant: str) -> None:
+        """Record that ``tenant``'s aggregates changed and schedule the one flush.
+
+        The newest ``meta`` per tenant wins: the compacted snapshot header names
+        the last source event that changed the view.
+        """
+        self._dirty_aggregate_tenants[tenant] = meta
+        task = self._aggregate_flush_task
+        if task is None or task.done():
+            self._aggregate_flush_task = asyncio.get_running_loop().create_task(
+                self._flush_aggregates_loop()
+            )
+
+    async def _flush_aggregates_loop(self) -> None:
+        window = self._aggregate_coalesce_window_s
+        assert window is not None  # enable_aggregate_coalescing refuses otherwise
+        while self._dirty_aggregate_tenants:
+            if not self._aggregate_draining:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._aggregate_flush_now.wait(), timeout=window
+                    )
+            await self._publish_dirty_aggregates()
+            if self._aggregate_draining:
+                return
+
+    async def _publish_dirty_aggregates(self) -> None:
+        """One pass over the tenants marked dirty; a failed tenant stays dirty.
+
+        A failed read is logged and retried on the next window. It no longer
+        fails the event that marked it: that event's row is already written and
+        its offset committed, and the aggregate is a latest-wins snapshot the
+        next pass republishes whole.
+        """
+        pending = self._dirty_aggregate_tenants
+        self._dirty_aggregate_tenants = {}
+        for tenant, meta in pending.items():
+            try:
+                await self._publish_aggregate_snapshots(meta, tenant=tenant)
+            except Exception as err:
+                logger.error(
+                    "OMN-22874: aggregate republish failed for tenant %s "
+                    "(will retry): %s",
+                    tenant,
+                    err,
+                )
+                self._dirty_aggregate_tenants.setdefault(tenant, meta)
+
+    async def drain_aggregates(self) -> None:
+        """Publish whatever is pending now, one pass, without waiting for the window."""
+        self._aggregate_draining = True
+        self._aggregate_flush_now.set()
+        try:
+            task = self._aggregate_flush_task
+            if task is not None and not task.done():
+                await task
+            elif self._dirty_aggregate_tenants:
+                await self._publish_dirty_aggregates()
+        finally:
+            self._aggregate_draining = False
+            self._aggregate_flush_now.clear()
+
     @property
     def poison_dlq_topics(self) -> list[str]:
         """OMN-13634: base-class safety net routes escaped POISON errors here."""
@@ -904,7 +1032,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                     "recording the tenant that write ran under; refusing to "
                     "republish the aggregates under an unnamed tenant"
                 )
-            await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
+            if self._coalesce_aggregates:
+                self._mark_aggregates_dirty(meta, tenant=write_tenant)
+            else:
+                await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
 
         if ok and self._terminal_topic:
             correlation_id = (

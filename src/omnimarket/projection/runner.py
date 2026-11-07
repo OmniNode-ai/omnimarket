@@ -13,7 +13,7 @@ import signal
 import sys
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -511,6 +511,17 @@ class BaseProjectionRunner(ABC):
         self._producer: AIOKafkaProducer | None = None
         self._health_server: _ProjectionHealthServer | None = None
         self._health_thread: threading.Thread | None = None
+        self._drain_callbacks: list[Callable[[], Awaitable[None]]] = []
+
+    async def _drain_pending_work(self) -> None:
+        """Finish work a subclass deferred off the commit path (OMN-22874).
+
+        Awaited before the database pools close, on every exit of ``run`` and on
+        ``shutdown``. The base runner defers nothing; a subclass that does
+        registers its drain in ``_drain_callbacks``.
+        """
+        for drain in self._drain_callbacks:
+            await drain()
 
     async def project_runtime_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -1044,6 +1055,7 @@ class BaseProjectionRunner(ABC):
                     self._consumer = None
                 if schema_attempts >= SCHEMA_FAULT_MAX_ATTEMPTS:
                     self._stop_health_server()
+                    await self._drain_pending_work()
                     await self._stop_producer()
                     await self._close_standalone_databases()
                     if self._shutdown_requested:
@@ -1068,6 +1080,7 @@ class BaseProjectionRunner(ABC):
                 await asyncio.sleep(delay)
 
         self._stop_health_server()
+        await self._drain_pending_work()
         await self._stop_producer()
         await self._close_standalone_databases()
 
@@ -1095,6 +1108,7 @@ class BaseProjectionRunner(ABC):
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.stop()
+        await self._drain_pending_work()
         await self._stop_producer()
         await self._close_standalone_databases()
 
