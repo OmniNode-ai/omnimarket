@@ -114,6 +114,7 @@ def test_golden_chain_the_terminal_event_is_the_completed_topic() -> None:
     result, _ = _run(good_read(start()))
     topic, body = HandlerJobStartSource.event_for(result)
     assert topic == load_topics()["read_completed"]
+    assert topic == "onex.evt.omnimarket.job-start-read-completed.v1"
     assert body["job_start_count"] == 1
     assert body["reading"]["verdict"] == "WORKING"
     assert "starts" not in body
