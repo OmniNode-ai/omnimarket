@@ -13,6 +13,7 @@ from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
 from omnimarket.models.model_host_reading import ModelCanaryHost, ModelCanaryRun
+from omnimarket.models.model_join_j1 import ModelGraphRunVerdicts
 
 PathKind = Literal["link", "file", "directory", "missing"]
 
@@ -61,10 +62,23 @@ class ProtocolAdvertisementSource(Protocol):
     def read(self) -> tuple[ModelHostCapacityAdvertisement, ...]: ...
 
 
+class ProtocolGraphVerdictSource(Protocol):
+    """The code graph's verdicts for the nodes host discovery and placement depend on, from one graph run.
+
+    ``backend`` names where the run came from, as the emission contract does: ``real`` for a graph built from the
+    repositories, ``in_memory`` for a fixed answer. A run that fails is a result with status ``failed`` and its
+    failure, never an exception; a source that cannot run at all raises OSError."""
+
+    backend: Literal["in_memory", "real"]
+
+    def read(self, correlation_id: str) -> ModelGraphRunVerdicts: ...
+
+
 __all__ = [
     "PathKind",
     "ProtocolAdvertisementSource",
     "ProtocolCanaryRunner",
+    "ProtocolGraphVerdictSource",
     "ProtocolHostFiles",
     "ProtocolHostInventory",
 ]
