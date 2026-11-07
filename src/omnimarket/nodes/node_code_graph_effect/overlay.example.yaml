@@ -74,4 +74,5 @@ schedule_hosts:
 unit_environment:
   EXAMPLE_REPOS_ROOT: $OMNI_HOME
   EXAMPLE_HOST_NAME: example-host
+  EXAMPLE_PR_STATE_PATH: $OMNI_HOME/.onex_state/pr-watcher/state.json
 injected_fault: Stop the timer and advance the clock, or drop the contract links in a drill run

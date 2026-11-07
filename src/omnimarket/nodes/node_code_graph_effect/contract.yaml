@@ -82,7 +82,11 @@ externally_consumed_topics:
 # The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).
 schedule:
+  verb: nightly
   unit_name: onex-code-graph-nightly
+  description: ONEX nightly code graph (piece 1 reading)
+  timer_description: ONEX nightly code graph tick
+  log_stem: code-graph
   state_directory: .onex_state/code-graph
   timeout_seconds: 3600
   cadence:
@@ -90,6 +94,23 @@ schedule:
     randomized_delay: 120s
     persistent: true
     description: nightly at 06:40 UTC, before the 05:30 Eastern daily line
+
+# The pull request check in shadow: its own timer, installed by `schedule install --unit shadow --host <name>` and
+# removed by `schedule uninstall --unit shadow`. The pull request watcher state it reads is refreshed every few minutes, so
+# the unit reads it hourly; the unit's environment names the state file the overlay's shadow block asks for.
+shadow_schedule:
+  verb: shadow
+  unit_name: onex-code-graph-shadow
+  description: ONEX code graph pull request check in shadow (piece 1)
+  timer_description: ONEX code graph pull request check in shadow tick
+  log_stem: code-graph-shadow
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3000
+  cadence:
+    on_calendar: "*-*-* *:20:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: hourly at minute 20 UTC, after the reading writer's window rows of the previous hour
 
 overlay:
   node: node_code_graph_effect
