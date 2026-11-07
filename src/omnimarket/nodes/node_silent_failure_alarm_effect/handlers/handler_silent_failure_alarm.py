@@ -1121,6 +1121,12 @@ class HandlerSilentFailureAlarm:
         nobody declared is left out, and a line that does not parse is a failed read.
         """
         command = self._options.hook_events_command
+        if self._options.host_table_error:
+            return (
+                {},
+                f"host table unreadable, hook-event hosts cannot be attributed: "
+                f"{self._options.host_table_error}",
+            )
         if not self._options.host_aliases:
             return (
                 {},

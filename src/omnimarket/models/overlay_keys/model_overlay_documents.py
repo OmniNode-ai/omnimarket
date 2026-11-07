@@ -70,6 +70,19 @@ SshIdentity = Annotated[
     AfterValidator(_identity_path),
 ]
 
+
+def _volumes_root(value: str) -> str:
+    if not value.strip("/"):
+        raise ValueError("must be a directory, not the filesystem root")
+    return value
+
+
+VolumesRoot = Annotated[
+    str,
+    StringConstraints(pattern=r"^/[A-Za-z0-9._/-]*$"),
+    AfterValidator(_volumes_root),
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -151,6 +164,8 @@ class ModelLabHostRow(_ModelOverlayBase):
         ]
         | None
     ) = None
+    # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
+    volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
