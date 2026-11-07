@@ -28,6 +28,14 @@ dod_evidence:
         cwd: "."
     binds_ac:
       - AC3
+  - id: dod-deploy-omn20804-hermetic-symbol-check
+    description: "Compute-only ticket: the change is a reading rule inside a pure compute node and deploys nothing, so there is no live runtime surface to probe. Per the deploy-gate falsifiability guidance (OMN-14505) for compute-only tickets, this is a hermetic GitHub-content check: it reads the file's real content at a real commit on this repository and asserts the predicate the change introduces is present. It reads no receipt and no contract this pull request authors, and it goes RED if the predicate is ever removed. Pinned to this branch's own head rather than to dev because the Contract Compliance Check executes the command at authoring time, and dev would 404 until after the merge."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py?ref=df9458ef546c40eb6f4fe830bd0ff1954e91ab9d' --jq .content | base64 -d | grep -q 'def _names_a_unit_directory'
+    binds_ac:
+      - AC3
   - id: dod-omn20804-glob-integration-proof
     description: "The pushed head runs the compute node's scan suite on a lab host, where the node's dependencies are the deployed ones rather than this laptop's. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. NOT YET RUN at the time this item was written: the lab is in blackout from the launching host, so the ticket cannot reach Done until a lab host admits the lane. The measurement already in hand is the AC3 item above plus the scan's own command line over every registry clone on the operator host, which reports ten findings at this head against eleven at the merge base, the one that goes being the plugin pruner's."
     source: manual
