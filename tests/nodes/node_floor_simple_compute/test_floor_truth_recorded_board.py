@@ -127,7 +127,9 @@ def test_error_a_stoppage_is_not_work_under_way_because_lanes_share_its_ticket(
     doc, _ = board()
     found = cause(doc, cause_id)
     assert found.lanes == ()
-    assert (found.state, found.work_under_way) == ("red", False)
+    # No lane is on it. It is red while it is occurring and quiet once its own record says it stopped.
+    expected = "quiet" if found.still_occurring is False else "red"
+    assert (found.state, found.work_under_way) == (expected, False)
 
 
 def test_golden_a_pull_request_class_names_only_lanes_on_its_pull_requests() -> None:
@@ -194,8 +196,8 @@ def test_error_a_stoppage_not_seen_for_hours_says_so_instead_of_reading_like_a_l
     assert found.last_seen_age_s is not None
     assert found.last_seen_age_s > 6 * 3600
     assert "no row since in the rollup" in found.detail
-    # It stays listed and red: nobody is on it. Only its description became true.
-    assert (found.state, found.listed) == ("red", True)
+    # It stays listed, never muted, and is not drawn red: its own record says it stopped, and nobody is needed on it.
+    assert (found.state, found.listed, found.work_under_way) == ("quiet", True, False)
 
 
 def test_golden_the_row_names_the_rollup_it_was_read_from() -> None:
@@ -448,3 +450,156 @@ def test_golden_two_succeeding_nodes_of_one_piece_make_no_finding() -> None:
         *node_events("node_b:alarm", "f" * 32, fail=False),
     )
     assert receipts(judged=(1, 17), events=events).findings == ()
+
+
+# --- a stoppage that stopped is not drawn red (OMN-22478, lane floor-owner-0800) ---------------------------------------
+#
+# The served board at 2026-11-07T07:58Z drew ``stoppage:tick-liveness`` (last seen 23:54Z) and ``stoppage:quiet-host``
+# (04:20Z) red with ``still_occurring`` false, while the throughput tick had run all night. The floor plans on main read
+# a stored negative verdict as ending at the first successful read (why-things-keep-breaking plan, invariant A) and a
+# stopped line as one stopped by a failing check now (wall layouts plan, T3), so a stoppage with no row since is a
+# fact about the past: shown with its age, not red.
+
+
+def stopped_ids(doc: ModelFloorSimple) -> list[str]:
+    return [c.id for c in doc.causes if c.still_occurring is False]
+
+
+def test_error_no_stoppage_whose_own_record_says_it_stopped_is_drawn_red() -> None:
+    doc, _ = board()
+    stopped = stopped_ids(doc)
+    assert stopped, "the recorded board has stoppages with no row since"
+    assert [c.id for c in doc.causes if c.id in stopped and c.state == "red"] == []
+    assert {cause(doc, i).state for i in stopped} == {"quiet"}
+    assert all(cause(doc, i).listed for i in stopped)
+
+
+def test_golden_a_stoppage_still_occurring_stays_red_and_counts() -> None:
+    doc, _ = board()
+    found = cause(doc, "stoppage:lab-idle")
+    assert (found.still_occurring, found.state) == (True, "red")
+
+
+def test_error_a_stoppage_that_stopped_is_not_counted_in_the_red_sentence_or_the_red_rows() -> (
+    None
+):
+    doc, request = board()
+    red_ids = [c.id for c in doc.causes if c.listed and c.state == "red"]
+    assert not set(red_ids) & set(stopped_ids(doc))
+    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.red_rows == len(red_ids) + sum(
+        1 for p in doc.pieces if p.draw == "red"
+    ) + sum(1 for line in doc.lab_state if line.draw == "red")
+    assert doc.sentence.startswith(f"{len(red_ids)} things have nobody on them")
+    assert request is not None
+
+
+def test_error_a_stoppage_that_stopped_and_needs_the_operator_stays_red() -> None:
+    _, request = board()
+    causes = request.overlay.causes.model_copy(
+        update={"needs_operator": ("stoppage:lab-enumerate-partial",)}
+    )
+    overlay = request.overlay.model_copy(update={"causes": causes})
+    doc = HandlerFloorSimple().handle(request.model_copy(update={"overlay": overlay}))
+    found = cause(doc, "stoppage:lab-enumerate-partial")
+    assert (found.still_occurring, found.needs_operator, found.state) == (
+        False,
+        True,
+        "red",
+    )
+
+
+def test_error_a_stoppage_that_stopped_with_a_lane_on_it_draws_amber_not_quiet() -> (
+    None
+):
+    _, request = board()
+    causes = request.overlay.causes.model_copy(
+        update={"owners": {"stoppage:lab-enumerate-partial": ("OMN-17427",)}}
+    )
+    overlay = request.overlay.model_copy(update={"causes": causes})
+    lanes = (
+        *request.lanes,
+        ModelFloorLane(lane="lab-fill-owner", ticket="OMN-17427", pr=""),
+    )
+    doc = HandlerFloorSimple().handle(
+        request.model_copy(update={"overlay": overlay, "lanes": lanes})
+    )
+    found = cause(doc, "stoppage:lab-enumerate-partial")
+    assert (found.state, found.work_under_way) == ("amber", True)
+
+
+def test_error_a_stoppage_that_recurs_goes_red_again() -> None:
+    _, request = board()
+    old = next(s for s in request.stoppages if s.id == "stoppage:lab-enumerate-partial")
+    again = old.model_copy(update={"last_seen": request.now - timedelta(minutes=5)})
+    stoppages = tuple(again if s.id == old.id else s for s in request.stoppages)
+    doc = HandlerFloorSimple().handle(
+        request.model_copy(update={"stoppages": stoppages})
+    )
+    found = cause(doc, old.id)
+    assert (found.still_occurring, found.state) == (True, "red")
+
+
+def test_error_with_no_overlay_window_a_stoppage_is_never_called_quiet() -> None:
+    _, request = board()
+    causes = request.overlay.causes.model_copy(
+        update={"still_occurring_within_s": None}
+    )
+    overlay = request.overlay.model_copy(update={"causes": causes})
+    doc = HandlerFloorSimple().handle(request.model_copy(update={"overlay": overlay}))
+    assert not [c for c in doc.causes if c.state == "quiet"]
+    assert cause(doc, "stoppage:lab-enumerate-partial").state == "red"
+
+
+def test_error_the_colour_reader_catches_a_red_stoppage_that_stopped() -> None:
+    """The checker does not share the builder's code path: a document drawn the old way is refused by name."""
+    doc, request = board()
+    stopped = cause(doc, "stoppage:lab-enumerate-partial")
+    drawn_old_way = doc.model_copy(
+        update={
+            "causes": tuple(
+                c.model_copy(update={"state": "red"}) if c.id == stopped.id else c
+                for c in doc.causes
+            )
+        }
+    )
+    reading = check_red_rule(drawn_old_way, request.lanes)
+    assert reading.state == "NOT WORKING"
+    assert any(stopped.id in v and "not occurring" in v for v in reading.violations), (
+        reading.violations
+    )
+
+
+def test_error_quiet_stoppages_sort_after_the_ones_that_need_someone() -> None:
+    doc, _ = board()
+    states = [c.state for c in doc.causes]
+    first_quiet = states.index("quiet")
+    assert "quiet" not in states[:first_quiet]
+    assert set(states[first_quiet:]) == {"quiet"}
+
+
+def test_golden_a_board_with_only_stopped_stoppages_is_not_red() -> None:
+    quiet = ModelFloorCause(
+        id="stoppage:x",
+        title="x",
+        detail="d",
+        size=3,
+        size_unit="occurrences",
+        state="quiet",
+        work_under_way=False,
+        needs_operator=False,
+        still_occurring=False,
+    )
+    assert HandlerFloorSimple._level((quiet,)) == "green"
+    sentence, subline = HandlerFloorSimple._words((quiet,))
+    assert sentence == "Nothing is holding things up."
+    assert "1 earlier stoppage" in subline
+
+
+def test_golden_the_page_draws_the_quiet_state_with_its_own_words() -> None:
+    page = (
+        Path(__file__).parents[3]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+    ).read_text(encoding="utf-8")
+    assert ".dot.quiet" in page
+    assert "Not occurring since" in page

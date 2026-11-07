@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19996: the attempt record accepts secret_ref before it is emitted.
+"""OMN-19996 then OMN-22474: the attempt record carries secret_ref.
 
-The deployed delegation terminal carries no secret_ref, so the key a
-customer-key rung ran on will ride on its attempt record, and the released
-consumer must decode (and drop) that key first under the wire-compatibility
-gate; the declared field and the producers follow in a second change.
+OMN-19996 made secret_ref a forthcoming attempt key, decoded and dropped, so
+the released consumer accepted it first under the wire-compatibility gate.
+OMN-22474 is the second change: the field is declared, kept on decode and
+left out of the dump when absent.
 """
 
 from __future__ import annotations
@@ -40,12 +40,16 @@ def test_an_attempt_carrying_secret_ref_decodes(value: str | None) -> None:
         _ATTEMPT | {"secret_ref": value}
     )
     assert record.backend_id == "openrouter-nemotron-ultra"
-    assert "secret_ref" not in record.model_dump(mode="json")
+    dumped = record.model_dump(mode="json")
+    if value is None:
+        assert "secret_ref" not in dumped
+    else:
+        assert dumped["secret_ref"] == value
 
 
-def test_secret_ref_is_a_forthcoming_attempt_key_only() -> None:
-    assert "secret_ref" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
-    assert "secret_ref" not in ModelDelegateSkillAttemptRecord.model_fields
+def test_secret_ref_is_a_declared_attempt_field() -> None:
+    assert "secret_ref" not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert "secret_ref" in ModelDelegateSkillAttemptRecord.model_fields
     assert "secret_ref" not in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS
 
 
@@ -55,7 +59,7 @@ def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
 
 
 def test_a_terminal_whose_attempts_carry_secret_ref_decodes() -> None:
-    """A whole terminal decodes; its top-level secret_ref stays, the attempt key drops."""
+    """A whole terminal decodes; its top-level and per-attempt secret_ref both stay."""
     ref = "cred_tenant-a_openrouter_" + "a" * 32
     terminal = ModelDelegateSkillCompleted.model_validate(
         {
@@ -67,4 +71,4 @@ def test_a_terminal_whose_attempts_carry_secret_ref_decodes() -> None:
         }
     )
     assert terminal.secret_ref == ref
-    assert "secret_ref" not in terminal.model_dump(mode="json")["attempts"][0]
+    assert terminal.model_dump(mode="json")["attempts"][0]["secret_ref"] == ref

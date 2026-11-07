@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: read_write
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.75,<0.39.0"
   - "fastapi>=0.100"
   - "uvicorn>=0.20"
   - "pydantic>=2.0"
