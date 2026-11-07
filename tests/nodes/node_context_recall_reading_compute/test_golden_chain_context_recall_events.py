@@ -129,6 +129,18 @@ def test_error_chain_eval_without_result_ends_in_a_not_working_reading() -> None
     assert events[1][1]["ended_in_result"] is False
 
 
+def test_contract_publishes_the_four_reading_events_by_name() -> None:
+    assert [
+        TOPICS[r]
+        for r in ("probe_read", "eval_run_read", "reading_completed", "reading_failed")
+    ] == [
+        "onex.evt.omnimarket.context-recall-probe-read.v1",
+        "onex.evt.omnimarket.context-eval-run-read.v1",
+        "onex.evt.omnimarket.context-recall-reading-completed.v1",
+        "onex.evt.omnimarket.context-recall-reading-failed.v1",
+    ]
+
+
 def test_error_chain_bad_payload_gives_a_typed_failure_event() -> None:
     assert_typed_failure(run(payload=b'{"correlation_id": "chain-16"}'), "bad-payload:")
 
