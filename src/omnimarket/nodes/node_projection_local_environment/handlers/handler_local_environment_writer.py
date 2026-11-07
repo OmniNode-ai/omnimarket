@@ -14,16 +14,30 @@ registry does not know, or any other form, is refused, so the runtime
 dead-letters it. The row is stored under the uuid the registry recorded: the
 dashboard reads by the uuid, so a row stored under anything else is never
 served.
+
+After the commit, every alert the write raised or cleared is published to the
+local alert transition topic, derived by the shared transition derivation from
+the mode's rows before and after the write; node_projection_local_alerts folds
+them into one row per (tenant, code, subject). Transitions are published before
+the snapshot deltas. A redelivered report (a publish failed after commit)
+publishes a raise for each alert its mode still holds open: the transition id
+is derived from the transition itself, so the fold ignores the ones it already
+has. A clear whose publish failed is not recovered by a redelivery, because the
+row it cleared is no longer stored; the next report that changes the alert
+supersedes it.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_local_environment_judgement import (
@@ -31,6 +45,12 @@ from omnimarket.handlers.handler_local_environment_judgement import (
 )
 from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
+)
+from omnimarket.handlers.local_alert_fold import (
+    derive_local_alert_transitions,
+)
+from omnimarket.models.model_local_alert_transitioned import (
+    ModelLocalAlertTransitioned,
 )
 from omnimarket.models.model_local_environment_status import (
     ModelLocalEnvironmentStatus,
@@ -53,6 +73,12 @@ from omnimarket.projection.tenant_registry_resolution import (
     async_registry_tenant_uuid,
     is_tenant_slug,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
+
+logger = logging.getLogger(__name__)
+
+# The local alert transition topic: the one declared publish topic with this suffix.
+_TRANSITION_TOPIC_SUFFIX = ".local-alert-transitioned.v1"
 
 # Every column a report writes, in statement order. projection_cursor is the
 # table's own sequence; updated_at is the plan's stamp.
@@ -188,6 +214,48 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
         )
         self._plan = HandlerProjectionLocalEnvironment()
         self._rules = load_local_alert_rules()
+        transition_topics = [
+            topic
+            for topic in self._contract.get("event_bus", {}).get("publish_topics", [])
+            if str(topic).endswith(_TRANSITION_TOPIC_SUFFIX)
+        ]
+        if len(transition_topics) != 1:
+            raise ValueError(
+                "the local environment contract must declare exactly one local "
+                f"alert transition publish topic; found {transition_topics!r}"
+            )
+        self._transition_topic: str = str(transition_topics[0])
+
+    @property
+    def transition_topic(self) -> str:
+        return self._transition_topic
+
+    async def _publish_alert_transitions(
+        self, transitions: tuple[ModelLocalAlertTransitioned, ...]
+    ) -> None:
+        """Publish each transition in an event envelope; a failure raises, so the report is redelivered."""
+        if not transitions:
+            return
+        publish = await self.get_publish_fn()
+        if publish is None:
+            logger.warning(
+                "local environment writer: no publisher for %s; %d alert "
+                "transition(s) not published",
+                self._transition_topic,
+                len(transitions),
+            )
+            return
+        topic = apply_topic_namespace(self._transition_topic)
+        for transition in transitions:
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=transition.model_dump(mode="json"),
+                correlation_id=transition.transition_id,
+                event_type="omnimarket.local-alert-transitioned",
+                tenant_id=transition.tenant_id,
+            )
+            await publish(
+                topic, json.dumps(envelope.model_dump(mode="json")).encode("utf-8")
+            )
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -273,6 +341,13 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
                     _UPSERT_ROW, *(_parameter(name, row.get(name)) for name in _COLUMNS)
                 )
                 written.append(_wire_row(dict(returned[0])))
+        # Derived from the rows around the write, after the commit. A
+        # redelivered report re-raises the alerts its mode still holds open.
+        if written:
+            transitions = derive_local_alert_transitions(stored_rows, written)
+        else:
+            transitions = derive_local_alert_transitions((), replayed)
+        await self._publish_alert_transitions(transitions)
         if self._snapshot_exposure is not None:
             for row in written or replayed:
                 await self.publish_snapshot_delta(
