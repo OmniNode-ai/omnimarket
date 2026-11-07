@@ -21,9 +21,11 @@ from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_entry_state
 )
 
 # ``fullmatch``, not ``match`` with ``$`` (which also accepts one trailing newline), and a closed id
-# charset: an id is ASCII letters, digits, ``_`` and ``-``, so a separator (``|``, ``=``, ``/``, ``.``)
-# cannot reach the lane name minted from the key and one task is exactly one key.
-_FLOOR_KEY = re.compile(r"floor:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)")
+# charset: an id is ASCII letters, digits, ``_`` and ``-``, so a separator (``|``, ``=``, ``/``)
+# cannot reach the lane name minted from the key and one task is exactly one key. A task id may
+# also carry a dot between two non-empty segments (the floor's own ids are ``T0.1``, ``CM.0``); a
+# leading, trailing or doubled dot is no id, and ``lane_name`` writes the dot as ``-``.
+_FLOOR_KEY = re.compile(r"floor:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)")
 
 
 def _floor_key(value: str) -> str:

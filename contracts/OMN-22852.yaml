@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22852
 title: 'node_floor_fill_reducer: the fill''s state as one pure transition function'
-summary: node_floor_fill_reducer (plan task T12 of the stopped-line fill plan) already holds the fill's per-key state as one pure transition function on dev. This change binds each acceptance criterion to the test that reads it, moves the seven tests that read the node's own contract and handler source out of the node package so the core no_io_outside_effects validator (no suppression, no baseline) judges the package clean, and adds the named injected break bus-corrupts-seq that shows the parity reading failing.
+summary: node_floor_fill_reducer (plan task T12 of the stopped-line fill plan) already holds the fill's per-key state as one pure transition function on dev. This change binds each acceptance criterion to the test that reads it, moves the seven tests that read the node's own contract and handler source out of the node package so the core no_io_outside_effects validator (no suppression, no baseline) judges the package clean, adds the named injected break bus-corrupts-seq that shows the parity reading failing, and carries the dotted task id fix of the reducer key (the floor's own ids are T0.1 and CM.0) with its seven tests, red against the old key and green against the fix.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -96,3 +96,19 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_fill_reducer -q --no-cov -m floor_fill_parity -k "reducer"
+- id: dod-omn22852-dotted-task-id
+  description: The reducer key accepts a task id with a dot between two non-empty segments and the lane name writes the dot as a hyphen; the seven tests are red against the old key and green against the fix.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k "dot or bad_keys or separators"
+- id: dod-omn22852-deploy-probe
+  description: 'Deploy probe: the reducer state model read from GitHub at the checked-out commit holds the dotted task id key pattern. The merge base lacks it, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_fill_reducer/models/model_floor_fill_state.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'A-Za-z0-9_-\]+(?:\\.'
+    cwd: ${OMNI_HOME}/omnimarket

@@ -745,7 +745,10 @@ _BAD_KEYS = (
     "floor:..:t",
     "floor:L:..",
     "floor:L:t..x",
-    "floor:L:t.x",
+    "floor:L:.t",
+    "floor:L:t.",
+    "floor:L:.",
+    "floor:L:t.-.x.",
     "floor:L:t\u2028",
     "floor:L:t\u00e9",
     "floor:L:t\x00",
@@ -761,6 +764,41 @@ def test_lane_name_floor_key_refuses_separators_and_trailing_newline(key: str) -
         lane_name(key, 1)
     with pytest.raises(ValueError, match="is not a floor key"):
         line_and_task(key)
+
+
+@pytest.mark.parametrize(
+    ("key", "line_id", "task_id"),
+    [
+        ("floor:L:T0.1", "L", "T0.1"),
+        ("floor:L:CM.0", "L", "CM.0"),
+        ("floor:line-a:W0.10", "line-a", "W0.10"),
+        ("floor:L:a.b.c", "L", "a.b.c"),
+    ],
+)
+def test_a_task_id_with_a_dot_between_segments_is_one_key(
+    key: str, line_id: str, task_id: str
+) -> None:
+    """The floor's own ids are ``T0.1`` and ``CM.0``: they are keys, and the dot stays in the key."""
+    assert line_and_task(key) == (line_id, task_id)
+    assert ModelFloorFillTicketStored(key=key, ticket=TICKET).key == key
+
+
+def test_a_dotted_task_id_names_a_lane_in_the_closed_charset() -> None:
+    name = lane_name("floor:L:T0.1", 1)
+    assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", name)
+    assert name.startswith("floor-L-T0-1-")
+
+
+def test_a_dotted_id_and_the_hyphen_id_it_resembles_are_two_lanes() -> None:
+    assert lane_name("floor:L:T0.1", 1) != lane_name("floor:L:T0-1", 1)
+    assert lane_name("floor:L:T0.1", 1) != lane_name("floor:L:T0.10", 1)
+
+
+def test_a_dotted_task_id_reserves_and_names_its_lane() -> None:
+    rig = Rig().ticketed("floor:L:T0.1")
+    rig.reserved("floor:L:T0.1", now=at(0), capacity=2)
+    assert [e.state for e in rig.state.entries.values()] == [_S.RESERVED]
+    assert next(iter(rig.state.entries.values())).lane == lane_name("floor:L:T0.1", 1)
 
 
 def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> None:
