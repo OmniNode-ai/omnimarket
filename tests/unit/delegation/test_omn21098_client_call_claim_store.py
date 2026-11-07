@@ -35,7 +35,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_client_call_
     ModelClientCallClaimRow,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_client_call_claim import (
-    InMemoryClientCallClaimStore,
+    InMemoryCallClaimStore,
     ProtocolClientCallClaimStore,
 )
 
@@ -61,12 +61,12 @@ class _Clock:
 # -- the named injected breaks ------------------------------------------------
 
 
-class _M1NoFencing(InMemoryClientCallClaimStore):
+class _M1NoFencing(InMemoryCallClaimStore):
     def _writable(self, row: ModelClientCallClaimRow, generation: int) -> bool:
         return True
 
 
-class _M3BlindUpsert(InMemoryClientCallClaimStore):
+class _M3BlindUpsert(InMemoryCallClaimStore):
     def _claim_existing(
         self,
         row: ModelClientCallClaimRow,
@@ -87,14 +87,14 @@ class _M3BlindUpsert(InMemoryClientCallClaimStore):
         return ModelClientCallClaimDecision(action=Action.WON, row=reset)
 
 
-class _M4ResumeBeforeIntent(InMemoryClientCallClaimStore):
+class _M4ResumeBeforeIntent(InMemoryCallClaimStore):
     def _resume_step(self, state: State) -> Resume:
         if state is State.DISPATCH_INTENDED:
             return Resume.PUBLISH_ADMISSION
         return super()._resume_step(state)
 
 
-class _ConflictIgnored(InMemoryClientCallClaimStore):
+class _ConflictIgnored(InMemoryCallClaimStore):
     def _claim_existing(
         self,
         row: ModelClientCallClaimRow,
@@ -105,7 +105,7 @@ class _ConflictIgnored(InMemoryClientCallClaimStore):
         return super()._claim_existing(row, row.request_fingerprint, owner_id, now)
 
 
-class _LiveLeaseIgnored(InMemoryClientCallClaimStore):
+class _LiveLeaseIgnored(InMemoryCallClaimStore):
     def _claim_existing(
         self,
         row: ModelClientCallClaimRow,
@@ -117,14 +117,14 @@ class _LiveLeaseIgnored(InMemoryClientCallClaimStore):
         return super()._claim_existing(expired, request_fingerprint, owner_id, now)
 
 
-StoreFactory = Callable[[Callable[[], datetime]], InMemoryClientCallClaimStore]
+StoreFactory = Callable[[Callable[[], datetime]], InMemoryCallClaimStore]
 
 
-def _real(clock: Callable[[], datetime]) -> InMemoryClientCallClaimStore:
-    return InMemoryClientCallClaimStore(clock=clock, lease_seconds=LEASE_SECONDS)
+def _real(clock: Callable[[], datetime]) -> InMemoryCallClaimStore:
+    return InMemoryCallClaimStore(clock=clock, lease_seconds=LEASE_SECONDS)
 
 
-def _build(cls: type[InMemoryClientCallClaimStore]) -> StoreFactory:
+def _build(cls: type[InMemoryCallClaimStore]) -> StoreFactory:
     return lambda clock: cls(clock=clock, lease_seconds=LEASE_SECONDS)
 
 
@@ -230,7 +230,7 @@ def _check_recorded_intent_is_never_redispatched(factory: StoreFactory) -> None:
 
 
 _INVARIANTS: dict[
-    str, tuple[Callable[[StoreFactory], None], type[InMemoryClientCallClaimStore]]
+    str, tuple[Callable[[StoreFactory], None], type[InMemoryCallClaimStore]]
 ] = {
     "one_winner_under_concurrency__M3_blind_upsert": (
         _check_one_winner_under_concurrency,
@@ -389,7 +389,7 @@ def test_stalled_lists_only_expired_non_terminal_rows() -> None:
 def test_the_store_satisfies_its_protocol_and_refuses_a_non_positive_lease() -> None:
     assert isinstance(_real(_Clock()), ProtocolClientCallClaimStore)
     with pytest.raises(ValueError, match="lease_seconds"):
-        InMemoryClientCallClaimStore(clock=_Clock(), lease_seconds=0)
+        InMemoryCallClaimStore(clock=_Clock(), lease_seconds=0)
 
 
 def test_a_row_refuses_a_key_that_is_not_a_sha256() -> None:

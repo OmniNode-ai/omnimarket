@@ -104,7 +104,7 @@ class ProtocolClientCallClaimStore(Protocol):
         ...
 
 
-class InMemoryClientCallClaimStore:
+class InMemoryCallClaimStore:
     """The default backend: a lock-guarded dict, with an injected clock and lease."""
 
     def __init__(self, *, clock: Callable[[], datetime], lease_seconds: float) -> None:
