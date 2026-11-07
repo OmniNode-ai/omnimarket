@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Secret Rotation Readback Effect (OMN-22913, piece 5 of the base-first rebuild)
+#
+# After a rotation, reads back every consumer the overlay lists: each resolves its key from the
+# store and completes one call with the key it holds. One row per consumer goes through the
+# configured append command. A consumer left on the old key reads NOT_WORKING by name. A rotation
+# with no named approver is refused before any probe and writes nothing. It writes readback rows
+# and nothing else: a reading is never a gate, a stop or an admission. No value, digest or length
+# of a secret is in a row, event or result.
+name: node_secret_rotation_readback_effect
+contract_name: node_secret_rotation_readback_effect
+node_name: node_secret_rotation_readback_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Per-consumer readback after a secret rotation (plan piece 5, figure W18). Each declared
+  consumer's key must resolve in its scope and the consumer must complete one call with the key
+  it holds; a consumer still on the old key is rejected and reads NOT_WORKING, naming it. The
+  in-memory profile holds consumers over the in-memory store; the real profile resolves through
+  the secret store effect and runs each consumer's own probe command.
+
+handler:
+  module: omnimarket.nodes.node_secret_rotation_readback_effect.handlers.handler_rotation_readback
+  class: HandlerRotationReadback
+  input_model: omnimarket.models.model_secret_rotation.ModelRotationReadbackCommand
+
+# HandlerRotationReadback takes the overlay, store, consumer calls, appender, clock and host as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, secret-store-read, consumer-probe-command]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelRotationReadbackCommand
+  module: omnimarket.models.model_secret_rotation
+  description: Which rotation to read back, who approved it, whether it is a drill, whether to write rows.
+output_model:
+  name: ModelRotationReadbackResult
+  module: omnimarket.models.model_secret_rotation
+  description: The verdict, each consumer's readback, the rows written and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.secret-rotation-readback-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  rotation_readback_requested: onex.cmd.omnimarket.secret-rotation-readback-requested.v1
+  rotation_consumer_passed: onex.evt.omnimarket.secret-rotation-consumer-passed.v1
+  rotation_consumer_failed: onex.evt.omnimarket.secret-rotation-consumer-failed.v1
+  rotation_refused: onex.evt.omnimarket.secret-rotation-refused.v1
+  rotation_readback_completed: onex.evt.omnimarket.secret-rotation-readback-completed.v1
+  rotation_readback_failed: onex.evt.omnimarket.secret-rotation-readback-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.secret-rotation-consumer-passed.v1
+  - onex.evt.omnimarket.secret-rotation-consumer-failed.v1
+  - onex.evt.omnimarket.secret-rotation-refused.v1
+  - onex.evt.omnimarket.secret-rotation-readback-completed.v1
+  - onex.evt.omnimarket.secret-rotation-readback-failed.v1
+
+overlay:
+  node: node_secret_rotation_readback_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22913
+  transport_type: inmemory
