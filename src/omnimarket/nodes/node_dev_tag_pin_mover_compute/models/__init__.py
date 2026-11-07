@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Models for node_dev_tag_pin_mover_compute (OMN-19998)."""
 
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_green_verdict import (
+    EnumDevTagGreenVerdict,
+    ModelDevTagCheckRun,
+    ModelDevTagGreenVerdictRequest,
+    ModelDevTagGreenVerdictResult,
+)
 from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover import (
     EnumConsumerTestOutcome,
     EnumPinMoveRefusal,
@@ -26,9 +32,13 @@ from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_tr
 
 __all__ = [
     "EnumConsumerTestOutcome",
+    "EnumDevTagGreenVerdict",
     "EnumPinMoveRefusal",
     "EnumPinSetOutcome",
     "EnumTrainStatus",
+    "ModelDevTagCheckRun",
+    "ModelDevTagGreenVerdictRequest",
+    "ModelDevTagGreenVerdictResult",
     "ModelDevTagPinMoveRequest",
     "ModelDevTagPinMoveResult",
     "ModelPinSetCandidate",

@@ -114,18 +114,23 @@ class HandlerLiveEventsProjectionRunner(BaseProjectionRunner):
         self._contract: dict[str, Any] = load_contract(_path)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
-        _by_role = {t["role"]: t["name"] for t in _tables}
+        _by_role = {t["role"]: t for t in _tables}
 
-        for role, name in _by_role.items():
-            if name not in KNOWN_PROJECTION_TABLES:
+        for role, table in _by_role.items():
+            if table["name"] not in KNOWN_PROJECTION_TABLES:
                 raise ValueError(
-                    f"Unknown table role {role!r} maps to {name!r} which is not in KNOWN_PROJECTION_TABLES"
+                    f"Unknown table role {role!r} maps to {table['name']!r} which is not in KNOWN_PROJECTION_TABLES"
                 )
 
         if "live_events" not in _by_role:
             raise ValueError("Contract missing required table role 'live_events'")
 
-        self._table_live_events: str = _by_role["live_events"]
+        # OMN-22652: name the schema the contract declares. A bare name resolves
+        # through the login's search_path to public.live_events, where the
+        # runtime login holds no grant (it holds INSERT on
+        # omninode_internal.live_events), so every write of the folded writer
+        # was refused from 2026-11-03T14:41Z.
+        self._table_live_events = "{schema}.{name}".format_map(_by_role["live_events"])
 
         # OMN-17427: the contract has declared ``event_bus.dlq_topics`` since
         # OMN-13992, but this runner never handed it to the base class, whose
