@@ -53,5 +53,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/emission_sink.py?ref=omn-22566-probe-floor-emission" --jq .content | base64 -d | grep -q 'class ChainEmitter'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/emission_sink.py?ref=omn-22566-probe-floor-emission" --jq .content | base64 -d | grep -c 'class ChainEmitter' >/dev/null
     cwd: .
