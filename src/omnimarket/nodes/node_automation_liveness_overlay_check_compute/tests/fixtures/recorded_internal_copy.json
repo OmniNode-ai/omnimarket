@@ -1,0 +1,344 @@
+[
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "all_agree_unit_file",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 0,
+   "stderr": [],
+   "stdout": [
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 0 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n",
+   "omnibase_infra/deploy/units/onex-unlisted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "planted_undeclared_unit",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "undeclared_source: omnibase_infra/deploy/units/onex-unlisted.timer: a systemd_unit_file with no overlay entry; declare an entry whose native id is one of ['onex-unlisted.timer', 'onex-unlisted.service'], or list the file in the sources declaration with the units it installs",
+    "automation-liveness overlay: 1 entries, 2 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/ops/odd/place/setup-planted.sh": "#!/bin/bash\nset -euo pipefail\ncp \"$HERE/ai.omninode.planted.plist\" \"$HOME/Library/LaunchAgents/\"\nlaunchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/ai.omninode.planted.plist\"\n"
+  },
+  "internal_only": false,
+  "name": "planted_undeclared_installer",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: launchd-interval, native_id: ai.omninode.planted}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: latest-only\n  evidence: {source: launchd_state, locator: ai.omninode.planted}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/launchd-interval\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "undeclared_source: omnibase_infra/ops/odd/place/setup-planted.sh: installer code writes a launchd agent, systemd unit, crontab or cron.d file; list it in the sources declaration with the units it installs, each declared in the overlay",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/ops/odd/place/setup-planted.sh": "#!/bin/bash\nset -euo pipefail\ncp \"$HERE/ai.omninode.planted.plist\" \"$HOME/Library/LaunchAgents/\"\nlaunchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/ai.omninode.planted.plist\"\n"
+  },
+  "internal_only": false,
+  "name": "declared_installer_agrees",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: launchd-interval, native_id: ai.omninode.planted}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: latest-only\n  evidence: {source: launchd_state, locator: ai.omninode.planted}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/launchd-interval\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 0,
+   "stderr": [],
+   "stdout": [
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 0 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources:\n  - repository: omnibase_infra\n    path: ops/odd/place/setup-planted.sh\n    installs:\n      - ai.omninode.planted\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-other.timer": "[Timer]\n",
+   "omnibase_infra/ops/odd/place/setup-planted.sh": "#!/bin/bash\nset -euo pipefail\ncp \"$HERE/ai.omninode.planted.plist\" \"$HOME/Library/LaunchAgents/\"\nlaunchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/ai.omninode.planted.plist\"\n"
+  },
+  "internal_only": false,
+  "name": "declared_unit_with_no_entry",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/other\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: other.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: other.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "undeclared_source: omnibase_infra/deploy/units/onex-other.timer: a systemd_unit_file with no overlay entry; declare an entry whose native id is one of ['onex-other.timer', 'onex-other.service'], or list the file in the sources declaration with the units it installs",
+    "undeclared_unit: omnibase_infra/ops/odd/place/setup-planted.sh: installs 'ai.omninode.planted', which no overlay entry declares as its native id",
+    "automation-liveness overlay: 1 entries, 2 sources found in 2 repositories, 2 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources:\n  - repository: omnibase_infra\n    path: ops/odd/place/setup-planted.sh\n    installs:\n      - ai.omninode.planted\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "stale_declared_source",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "stale_source: omnibase_infra/ops/gone/install.sh: declared as a source, but the scan finds no unit, template, cron file or installer there; remove the line and retire what it installed",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources:\n  - repository: omnibase_infra\n    path: ops/gone/install.sh\n    installs:\n      - onex-planted.timer\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "entry_without_positive_control",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "overlay_invalid: h201/onex-planted: positive_control: Field required",
+    "automation-liveness overlay: 0 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "class_drill_for_another_kind",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/cron\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "positive_control_mismatch: h201/onex-planted: a class drill for a systemd-timer entry is 'class-drill/systemd-timer', not 'class-drill/cron'",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "broken_deadline",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "overlay_invalid: h201/onex-planted: h201/onex-planted: worst case past alarm_deadline_seconds 1: failed=720 s, missed=1620 s, overrun=720 s, unobservable=420 s",
+    "automation-liveness overlay: 0 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "duplicate_process",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "overlay_invalid: overlay: duplicate process_id h201/onex-planted",
+    "automation-liveness overlay: 0 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {},
+  "internal_only": false,
+  "name": "not_installed_without_installer",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: not_installed\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "not_installed_without_installer: h201/onex-planted: state not_installed, but no installer installs 'onex-planted.timer'; mark it retired",
+    "automation-liveness overlay: 1 entries, 0 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "retired_still_installed",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: retired\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "retired_still_installed: h201/onex-planted: state retired, but an installer still installs 'onex-planted.timer'; delete the installer target in its repository",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "sources_do_not_load",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "sources_invalid: sources: 1 validation error for ModelAutomationLivenessSources",
+    "sources",
+    "  Input should be a valid tuple [type=tuple_type, input_value='nope', input_type=str]",
+    "    For further information visit https://errors.pydantic.dev/2.13/v/tuple_type",
+    "automation-liveness overlay: 1 entries, 0 sources found in 0 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories: [a]\nsources: nope\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "source_in_undeclared_repository",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "sources_invalid: sources: 1 validation error for ModelAutomationLivenessSources",
+    "  Value error, source elsewhere/install.sh names a repository the scan does not cover [type=value_error, input_value={'schema_version': 'autom...'onex-planted.timer']}]}, input_type=dict]",
+    "    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources:\n  - repository: elsewhere\n    path: install.sh\n    installs:\n      - onex-planted.timer\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": false,
+  "name": "repository_not_scanned",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "repository_not_scanned: omniclaude: the declaration covers this repository and the run did not scan it",
+    "automation-liveness overlay: 1 entries, 1 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\n  - omniclaude\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/config/host_drift_manifest.yaml": "roles:\n  linux-lab:\n    units:\n      - name: onex-drift-planted\n        max_age_seconds: 900\n",
+   "omnibase_infra/etc/cron.d/planted-cron": "*/5 * * * * root /bin/true\n",
+   "omnibase_infra/launchd/ai.omninode.planted-plist.plist": "<plist><dict><key>Label</key><string>ai.omninode.planted-plist</string></dict></plist>\n",
+   "omnibase_infra/ops/comment_only.sh": "#!/bin/bash\n# installs nothing: Library/LaunchAgents is only named in this comment\necho done\n",
+   "omnibase_infra/tools/install_planted.py": "import subprocess\nfrom pathlib import Path\nUNIT = Path(\"/etc/systemd/system/onex-planted-py.service\")\nUNIT.write_text(\"[Service]\\n\")\nsubprocess.run([\"systemctl\", \"--user\", \"enable\", \"onex-planted-py.timer\"], check=True)\n"
+  },
+  "internal_only": false,
+  "name": "python_installer_cron_plist_manifest_and_comment",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/planted-py\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted-py.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: planted-py.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "undeclared_source: omnibase_infra/etc/cron.d/planted-cron: a cron_d_file with no overlay entry; declare an entry whose native id is one of ['cron.d:planted-cron'], or list the file in the sources declaration with the units it installs",
+    "undeclared_source: omnibase_infra/launchd/ai.omninode.planted-plist.plist: a launchd_plist with no overlay entry; declare an entry whose native id is one of ['ai.omninode.planted-plist', 'com.omninode.planted-plist', 'com.onex.planted-plist'], or list the file in the sources declaration with the units it installs",
+    "undeclared_source: omnibase_infra/tools/install_planted.py: installer code writes a launchd agent, systemd unit, crontab or cron.d file; list it in the sources declaration with the units it installs, each declared in the overlay",
+    "undeclared_unit: omnibase_infra/config/host_drift_manifest.yaml: the manifest names 'onex-drift-planted', which no overlay entry declares (native id one of ['onex-drift-planted'])",
+    "automation-liveness overlay: 1 entries, 4 sources found in 2 repositories, 4 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-extra.service": "[Service]\n",
+   "omnibase_infra/deploy/units/onex-late.timer": "[Timer]\n",
+   "omnibase_infra/ops/odd/setup-planted.sh": "#!/bin/bash\nset -euo pipefail\ncp \"$HERE/ai.omninode.planted.plist\" \"$HOME/Library/LaunchAgents/\"\nlaunchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/ai.omninode.planted.plist\"\n"
+  },
+  "internal_only": false,
+  "name": "several_findings_at_once",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n- process_id: h201/late\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-late.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: late.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: retired\n- process_id: h201/cold\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-cold.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: cold.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: not_installed\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "not_installed_without_installer: h201/cold: state not_installed, but no installer installs 'onex-cold.timer'; mark it retired",
+    "repository_not_scanned: omniclaude: the declaration covers this repository and the run did not scan it",
+    "retired_still_installed: h201/late: state retired, but an installer still installs 'onex-late.timer'; delete the installer target in its repository",
+    "stale_source: omnibase_infra/ops/gone/install.sh: declared as a source, but the scan finds no unit, template, cron file or installer there; remove the line and retire what it installed",
+    "undeclared_source: omnibase_infra/deploy/units/onex-extra.service: a systemd_unit_file with no overlay entry; declare an entry whose native id is one of ['onex-extra.timer', 'onex-extra.service'], or list the file in the sources declaration with the units it installs",
+    "undeclared_source: omnibase_infra/ops/odd/setup-planted.sh: installer code writes a launchd agent, systemd unit, crontab or cron.d file; list it in the sources declaration with the units it installs, each declared in the overlay",
+    "undeclared_unit: omnibase_infra/ops/gone/install.sh: installs 'onex-ghost.timer', which no overlay entry declares as its native id",
+    "automation-liveness overlay: 3 entries, 3 sources found in 2 repositories, 7 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\n  - omniclaude\nsources:\n  - repository: omnibase_infra\n    path: ops/gone/install.sh\n    installs:\n      - onex-planted.timer\n      - onex-ghost.timer\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n"
+  },
+  "internal_only": true,
+  "name": "partial_run_never_reads_complete",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 0,
+   "stderr": [],
+   "stdout": [
+    "automation-liveness overlay: 1 entries, 0 sources found in 1 repositories, 0 findings, scope PARTIAL (internal only)"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\n  - omniclaude\nsources: []\n"
+ },
+ {
+  "files": {
+   "omnibase_infra/deploy/units/onex-planted.timer": "[Timer]\n",
+   "omnibase_infra/plugins/prune_plugin_store.py": "UNITS = (\"~/Library/LaunchAgents/*.plist\", \"~/.config/systemd/user/*.service\")\nimport shutil\nshutil.copyfile(src, dst)\n"
+  },
+  "internal_only": false,
+  "name": "known_divergence_glob_list_pruner",
+  "overlay": "schema_version: automation-liveness-overlay/v1\nprocesses:\n- process_id: h201/onex-planted\n  owner_repo: omnibase_infra\n  host: h201\n  trigger: {kind: systemd-timer, native_id: onex-planted.timer}\n  expected_interval_seconds: 600\n  max_runtime_seconds: 300\n  alarm_deadline_seconds: 1620\n  emitter: observer\n  run_record: per-run\n  evidence: {source: systemd_journal, locator: onex-planted.service}\n  real_work: units converged\n  demand: none\n  positive_control: {kind: class_drill, ref: \"class-drill/systemd-timer\"}\n  state: active\n",
+  "recorded": {
+   "exit_code": 1,
+   "stderr": [],
+   "stdout": [
+    "undeclared_source: omnibase_infra/plugins/prune_plugin_store.py: installer code writes a launchd agent, systemd unit, crontab or cron.d file; list it in the sources declaration with the units it installs, each declared in the overlay",
+    "automation-liveness overlay: 1 entries, 2 sources found in 2 repositories, 1 findings, scope complete"
+   ]
+  },
+  "sources": "schema_version: automation-liveness-sources/v1\nrepositories:\n  - omnibase_private\n  - omnibase_infra\nsources: []\n"
+ }
+]
