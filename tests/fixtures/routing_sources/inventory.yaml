@@ -178,6 +178,8 @@ not_routing_resolution_sites:
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
     reason: locates the code graph overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the graph schedule and repository set and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_token_pool.py:find_node_overlay(NODE_NAME)"
+    reason: locates the Claude token pool overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the token rotation schedule and pool settings and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
