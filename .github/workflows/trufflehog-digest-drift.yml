@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# TruffleHog digest drift.
+#
+# security-scan.yml runs the TruffleHog scanner by image digest
+# (env.TRUFFLEHOG_IMAGE), so an upstream release never reaches the secret scan
+# by itself. This run resolves ghcr.io/trufflesecurity/trufflehog:latest to its
+# digest, compares it with the pinned one, and when they differ opens (or
+# comments on) one issue and fails the job, so the upgrade is a reviewed PR.
+#
+# A manual run can pass `pinned_digest` to compare against another digest, for
+# example an older one, to prove the job reports a difference.
+name: TruffleHog Digest Drift
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      pinned_digest:
+        description: "Compare against this sha256 digest instead of the one security-scan.yml pins"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  digest-drift:
+    name: TruffleHog digest drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+
+      - name: Compare the pinned digest with :latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OVERRIDE_DIGEST: ${{ inputs.pinned_digest }}
+        run: |
+          set -euo pipefail
+          image=$(sed -nE 's/^[[:space:]]*TRUFFLEHOG_IMAGE:[[:space:]]*(\S+).*$/\1/p' .github/workflows/security-scan.yml)
+          case "$image" in
+            ghcr.io/trufflesecurity/trufflehog@sha256:*) ;;
+            *) echo "::error::security-scan.yml has no digest-pinned TRUFFLEHOG_IMAGE (read: '${image}')"; exit 1 ;;
+          esac
+          pinned="${OVERRIDE_DIGEST:-${image#*@}}"
+          latest=$(docker buildx imagetools inspect ghcr.io/trufflesecurity/trufflehog:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          case "$latest" in
+            sha256:*) ;;
+            *) echo "::error::could not resolve ghcr.io/trufflesecurity/trufflehog:latest to a digest (read: '${latest}')"; exit 1 ;;
+          esac
+          echo "pinned: ${pinned}"
+          echo "latest: ${latest}"
+          if [ "$pinned" == "$latest" ]; then
+            echo "TruffleHog :latest matches the pinned digest."
+            exit 0
+          fi
+
+          title="TruffleHog :latest has moved off the digest security-scan.yml pins"
+          body=$(printf '%s\n' \
+            "ghcr.io/trufflesecurity/trufflehog:latest no longer matches the digest the secret scan runs." \
+            "" \
+            "- pinned: \`${pinned}\`" \
+            "- latest: \`${latest}\`" \
+            "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            "" \
+            "To upgrade, set TRUFFLEHOG_IMAGE in .github/workflows/security-scan.yml to the new digest, update the tag and date in the comment above it, and review the upstream release notes in the PR.")
+          existing=$(gh issue list --state open --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          echo "::error::TruffleHog :latest (${latest}) differs from the pinned digest (${pinned})"
+          exit 1
