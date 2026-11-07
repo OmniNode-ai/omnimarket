@@ -865,6 +865,20 @@ EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
         added="2026-10-17",
         expires="2026-12-20",
     ),
+    "Tessl Reviewer": SweepExclusion(
+        reason=(
+            "The tessl-reviewer app runs in advisory mode here and reports neutral as its "
+            "normal successful outcome: its own check-run says 'Tessl Reviewer completed an "
+            "advisory review' and 'This repository runs Tessl Reviewer in advisory mode, so "
+            "the review does not block merging'. The sweep admits success only, so that "
+            "neutral read as red on 23 open pull requests at once while this gate's own "
+            "verdict one line above was SUCCESS. It is pull_request-only, so the dev head "
+            "never carries it and dev stayed green throughout."
+        ),
+        ticket="OMN-23029",
+        added="2026-11-07",
+        expires="2027-01-09",
+    ),
 }
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
