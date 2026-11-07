@@ -284,7 +284,7 @@ def write_overlay(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_handler_reads_the_overlay_row_and_reports_one_pass(tmp_path: Path) -> None:
     _runs, overlay = write_overlay(tmp_path)
-    handler = HandlerTempRetention(references=lambda: ProcessReferences())
+    handler = HandlerTempRetention(references=ProcessReferences)
     result = handler.handle(
         ModelTempRetentionRequest(
             host_name="pool-a", overlay_file=str(overlay), dry_run=True

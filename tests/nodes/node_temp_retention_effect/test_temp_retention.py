@@ -148,7 +148,7 @@ def test_old_unheld_entry_with_a_read_only_directory_inside_is_removed(
         if old.exists():
             for current, dirs, _files in os.walk(old):
                 for name in dirs:
-                    os.chmod(os.path.join(current, name), 0o755)
+                    os.chmod(os.path.join(current, name), 0o700)
     assert report.errors == ()
     assert not old.exists()
     assert report.removed == (str(old),)
