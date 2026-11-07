@@ -365,6 +365,26 @@ def test_reducer_parity_in_memory_bus_matches_the_in_process_decisions() -> None
     assert {row.key: row.content for row in run.rows} == in_process()
 
 
+class SeqCorruptingBus(InmemoryBus):
+    """The injected break ``bus-corrupts-seq``: the transport raises the row's ``seq`` of one reply."""
+
+    async def call(self, payload: dict[str, Any]) -> dict[str, Any]:
+        reply = await super().call(payload)
+        if reply["output"]["trigger"] == "confirmed":
+            reply["output"]["state"]["seq"] += 1
+        return reply
+
+
+def test_reducer_parity_the_injected_break_bus_corrupts_seq_is_judged_unequal() -> None:
+    """The parity reading can fail: a transport that changes one decision is not equal to the baseline."""
+    baseline = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    broken = asyncio.run(run_over(SeqCorruptingBus(), "redpanda", "inmemory"))
+    assert compare_runs((baseline, baseline)).passed
+    result = compare_runs((baseline, broken))
+    assert not result.passed
+    assert "ReservedChecked" in result.first_difference
+
+
 @pytest.mark.kafka
 @pytest.mark.integration
 def test_reducer_parity_redpanda_overlay_matches_the_in_memory_overlay() -> None:
