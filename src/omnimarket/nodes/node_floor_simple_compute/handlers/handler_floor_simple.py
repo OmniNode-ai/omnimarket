@@ -282,11 +282,17 @@ class HandlerFloorSimple:
         )
         joins = {j.join: j for j in r.receipts.joins} if r.receipts is not None else {}
         rows: list[ModelFloorPieceRow] = []
+        working = self._working_pieces(r, lab)
         for definition in sorted(ov.pieces, key=lambda p: p.piece):
             n = definition.piece
             rc = receipts.get(n)
             go = r.go_given_through
-            admitted = (go is not None and n <= go) or n in ov.rebuild.step0_pieces
+            after = ov.rebuild.start_after.get(n, ())
+            admitted = (
+                (go is not None and n <= go)
+                or n in ov.rebuild.step0_pieces
+                or (bool(after) and all(p in working for p in after))
+            )
             state, age, max_age, why = self._reading(
                 r, n, definition.reading_max_age_s, lab
             )
@@ -423,6 +429,23 @@ class HandlerFloorSimple:
         if age > row.max_age_s:
             return "NOT WORKING", age, row.max_age_s, f"stale, read {_ago(age)}"
         return row.state, age, row.max_age_s, row.reason
+
+    @classmethod
+    def _working_pieces(
+        cls, r: ModelFloorSimpleInput, lab: tuple[ModelLabSourceVerdict, ...]
+    ) -> frozenset[int]:
+        """The pieces whose reading, with the lab sources they stand on folded in, reads WORKING now."""
+        working: set[int] = set()
+        for definition in r.overlay.pieces:
+            state, _age, _max_age, why = cls._reading(
+                r, definition.piece, definition.reading_max_age_s, lab
+            )
+            state, _why, _cause = cls._with_lab_sources(
+                r, definition.piece, lab, state, why
+            )
+            if state == "WORKING":
+                working.add(definition.piece)
+        return frozenset(working)
 
     @staticmethod
     def _with_lab_sources(

@@ -564,6 +564,10 @@ class ModelRebuildOverlay(_Frozen):
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
+    # RULING 2026-11-07T12:20:46Z: a piece starts when its own start criterion reads true, not on a go. piece -> the pieces
+    # whose reading must be WORKING for it to be admitted (the plan's build predecessor, section 2.1). A piece with no entry
+    # is admitted only by the go or as a step 0 piece: the stop, admission and holder work waits for M0 PASS this way.
+    start_after: dict[int, tuple[int, ...]] = Field(default_factory=dict)
     lab_state_piece: int = Field(ge=1, le=18)
     # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
     piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)
