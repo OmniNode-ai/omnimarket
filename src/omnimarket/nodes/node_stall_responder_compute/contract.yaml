@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stall_responder_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-22885. The throughput tick wrote 59 THROUGHPUT STALL MSG rows to the foreground
+  orchestrator in one night and the only reader was a foreground turn; the lab-fill tick wrote
+  30 lab-idle FRICTION rows (7,100 lane-minutes) that nothing summed. This pure node answers
+  both without I/O. Operation decide_stall_responses reads the tick's stall MSG rows into
+  cause keys (class:subject; the MSG cell is cut at 220 characters, so the last finding of a
+  cut row is dropped and counted) and answers one dispatch per distinct key that the tick does
+  not relaunch itself, that was not dispatched inside the redispatch window and that no live
+  lane of its class covers. Operation sum_lab_idle_cost sums the lab-idle FRICTION cost since
+  a start (the last orchestrator CLAIM, else the first row given) and renders the one-line
+  segment the operator's status line carries; a lab-idle row whose cost cannot be read is
+  counted as unreadable, never as zero. The node starts nothing and writes nothing: the
+  caller reads the ledger and the responder's state, starts the lanes and writes the segment.
+
+input_model: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder.ModelStallResponderRequest
+output_model: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder.ModelStallResponderResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: decide_stall_responses
+      handler:
+        name: HandlerStallCauseResponder
+        module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder
+      event_model:
+        name: ModelStallResponderRequest
+        module: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder
+    - operation: sum_lab_idle_cost
+      handler:
+        name: HandlerLabIdleCost
+        module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_lab_idle_cost
+      event_model:
+        name: ModelLabIdleCostRequest
+        module: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder
+
+handler:
+  module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder
+  class: HandlerStallCauseResponder
+  input_model: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder.ModelStallResponderRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.stall-responder-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.stall-responder-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stall-responder-decided.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.stall-responder-requested.v1
+
+dod_evidence:
+  - test: tests/nodes/node_stall_responder_compute/test_stall_responder.py
+    description: "Replaying the 59 THROUGHPUT STALL rows of 2026-11-07T00:08Z to 10:30Z answers one dispatch per distinct cause key (19 keys, two tick-owned findings skipped); replaying the 30 lab-idle FRICTION rows sums to 7,100 lane-minutes"
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: THROUGHPUT STALL rows answered with one cause dispatch per distinct cause key, and lab-idle FRICTION cost summed for the status line"
+  author: "OmniNode Platform Team"
+  created: "2026-11-07"
+  tags:
+    - "compute"
+    - "stall"
+    - "lab-idle"
+    - "deterministic"
