@@ -37,7 +37,6 @@ from omnimarket.models.model_join_j2 import (
     ModelJoinJ2HostResult,
     ModelJoinJ2Settings,
 )
-from omnimarket.nodes.node_lab_placement_compute.models import ModelPlacement
 from omnimarket.nodes.node_lab_work_unit_effect import (
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitReceipt,
@@ -54,6 +53,18 @@ FAIL_UNCORRELATED = "seam_result_uncorrelated"
 FAIL_COMMAND = "seam_command_failed"
 
 
+class ProtocolJoinJ2Placement(Protocol):
+    """What the join reads of a placement: whether it placed, on which host, and why not."""
+
+    @property
+    def placed(self) -> bool: ...
+
+    @property
+    def host_name(self) -> str: ...
+
+    def describe(self) -> str: ...
+
+
 class ProtocolJoinJ2Caller(Protocol):
     """The pool caller: the advertisements it read, the placement and the send. ``LabWorkCaller``."""
 
@@ -66,7 +77,7 @@ class ProtocolJoinJ2Caller(Protocol):
         only_host: str | None = ...,
         repo: str = ...,
         kind: str = ...,
-    ) -> ModelPlacement: ...
+    ) -> ProtocolJoinJ2Placement: ...
 
     async def dispatch(
         self, request: ModelLabWorkUnitRequest

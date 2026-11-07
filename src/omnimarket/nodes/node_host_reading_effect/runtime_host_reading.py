@@ -56,7 +56,7 @@ from omnimarket.nodes.node_host_reading_effect.adapters.host_files import LocalH
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
     HandlerHostReading,
 )
-from omnimarket.nodes.node_host_reading_effect.handlers.handler_join_j2 import (
+from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
     HandlerJoinJ2,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (

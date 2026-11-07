@@ -38,7 +38,7 @@ from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
-from omnimarket.nodes.node_host_reading_effect.handlers.handler_join_j2 import (
+from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
     HandlerJoinJ2,
 )
 from omnimarket.nodes.node_lab_placement_compute.handlers import HandlerLabPoolPlace
