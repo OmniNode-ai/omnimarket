@@ -61,3 +61,10 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fill-ticket-OMN-22954-20261107T1626Z -- uv run --frozen pytest tests/test_golden_chain_install_refusal_trace.py src/omnimarket/nodes/node_install_refusal_trace_compute src/omnimarket/nodes/node_install_canary_effect -q --no-cov"
         cwd: "."
+  - id: "dod-omn22954-deploy-assessment"
+    description: "Deploy assessment: the PR adds the node_install_refusal_trace_compute node and the install canary first_reading operation, both read-only compute/effect paths with no new Kafka topic, no migration and no prod mutation. The node reaches the runtime through the package entry point on the next standard image rebuild and deploy cycle. The check reads the PR's changed files from the live GitHub API and fails when the node's contract is not in the change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/pulls/5339/files --paginate --jq '.[].filename' | grep -q 'nodes/node_install_refusal_trace_compute/contract.yaml'"
+        cwd: "."
