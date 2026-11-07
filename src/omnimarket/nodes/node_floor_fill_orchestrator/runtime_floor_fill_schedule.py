@@ -20,9 +20,9 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
-from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_schedule import (
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
     NODE_NAME,
-    HandlerFloorFillSchedule,
+    FloorFillScheduler,
     Runner,
     run_command,
 )
@@ -65,7 +65,7 @@ def run_schedule(
         config = load_floor_fill_config(overlay.get(OVERLAY_SECTION, {}))
     except FloorFillConfigError as error:
         return ModelFloorFillScheduleResult(exit_code=1, stderr=f"{error}\n")
-    handler = HandlerFloorFillSchedule(
+    handler = FloorFillScheduler(
         schedule=schedule or load_floor_fill_schedule(),
         config=config,
         hosts=hosts,

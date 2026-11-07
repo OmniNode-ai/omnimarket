@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
+    NODE_MODULE,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_schedule import (
-    NODE_MODULE,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EXIT_CODE_BY_STATUS,
@@ -36,7 +36,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports 
 from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import (
     main as runtime_main,
 )
-from omnimarket.nodes.node_floor_fill_orchestrator.schedule_entry import run_schedule
+from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_schedule import (
+    run_schedule,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
     OVERLAY,
     harness,
@@ -359,7 +361,7 @@ def test_no_script_edit_lists_each_changed_file() -> None:
 
 
 def test_no_script_edit_fails_on_a_match_or_a_stray_path() -> None:
-    inside = f"{NODE_DIR}handlers/handler_floor_fill_schedule.py"
+    inside = f"{NODE_DIR}handlers/adapter_floor_fill_schedule.py"
     assert places_violations([inside]) == []
     for stray in (
         f"{NODE_DIR}scripts/throughput_tick.py",

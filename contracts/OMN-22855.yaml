@@ -75,5 +75,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: 'bash -o pipefail -c ''curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN:?}" --header "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_fill_orchestrator/handlers/handler_floor_fill_schedule.py?ref=$(git rev-parse HEAD)" | grep -q "class HandlerFloorFillSchedule"'''
+    check_value: 'bash -o pipefail -c ''curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN:?}" --header "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_fill_orchestrator/handlers/adapter_floor_fill_schedule.py?ref=$(git rev-parse HEAD)" | grep -q "class FloorFillScheduler"'''
     cwd: .

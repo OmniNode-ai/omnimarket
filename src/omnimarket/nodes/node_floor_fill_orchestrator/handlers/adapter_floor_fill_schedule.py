@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerFloorFillSchedule: the fill's own tick unit, rendered, installed and removed by the node.
+"""FloorFillScheduler: the fill's own tick unit, rendered, installed and removed by the node.
 
 The unit runs the node through its runtime module, the census node's form: the dispatch venv's interpreter,
 ``-m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <J> --this-host <H> tick``,
@@ -134,7 +134,7 @@ def render_systemd(
     return service, timer
 
 
-class HandlerFloorFillSchedule:
+class FloorFillScheduler:
     """Install, remove, read and run the tick unit on the fill host."""
 
     def __init__(
@@ -300,7 +300,7 @@ class HandlerFloorFillSchedule:
 __all__: list[str] = [
     "NODE_MODULE",
     "NODE_NAME",
-    "HandlerFloorFillSchedule",
+    "FloorFillScheduler",
     "exec_start",
     "overlay_json",
     "render_systemd",

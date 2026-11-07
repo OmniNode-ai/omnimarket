@@ -68,7 +68,7 @@ def run_entry(
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else list(argv)
     if arguments and arguments[0] == "schedule":
-        from omnimarket.nodes.node_floor_fill_orchestrator.schedule_entry import (
+        from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_schedule import (
             main as schedule_main,
         )
 
