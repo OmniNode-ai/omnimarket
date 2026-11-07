@@ -1,0 +1,212 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""A start whose process was killed gets its typed failure from the next cycle (OMN-22864).
+
+Measured on the served floor record of 2026-11-06 18:38Z, and again on the board of 2026-11-07 10:28Z: the chains row names
+``piece 17 node_floor_simple_effect:run_floor_simple_cycle: start_without_terminal``. The cycle that left it open ran at
+11:09:30Z on 2026-11-06, before every way out of a cycle ended its start (test_cycle_exits_floor_simple.py): the journal is
+append-only and the receipts read 48 hours of it, so one open start stayed red for two days with nothing able to close it.
+
+Golden chain: the open start is closed once, with a typed failure under its own correlation id, and the real receipt reader
+then finds no open chain. Error chain (the failing controls): a start that is still young is left alone, a node outside the
+cycle's pipeline is left alone, a drilled start is closed as a drill, and with the closure dropped (the named injected break)
+the receipt reader still reads the open start.
+"""
+
+from __future__ import annotations
+
+from datetime import timedelta
+from pathlib import Path
+
+import pytest
+import yaml
+
+from omnimarket.models.floor_17a import (
+    ModelFloorSimpleOverlay,
+    ModelFloorSimpleTickRequest,
+    ModelNodeEmission,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers import (
+    handler_floor_simple_tick as tick,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
+    ABANDONED_CODE,
+    abandoned_starts,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
+    EMIT_CYCLE,
+    load_runtime,
+)
+from tests.nodes.node_floor_simple_effect.support import (
+    NOW,
+    OVERLAYS,
+    build_home,
+    environ,
+    overlay_text,
+)
+from tests.nodes.node_floor_simple_effect.test_cycle_exits_floor_simple import (
+    handler,
+    open_chains,
+)
+
+pytestmark = pytest.mark.unit
+
+PIECE = ModelFloorSimpleOverlay.model_validate(
+    overlay_text("node_floor_simple_compute")
+).rebuild.lab_state_piece
+ORPHAN = "812794f4f9e646d4a3f9ec3f81aadfdf"
+CYCLE_SUBJECT = f"piece {PIECE} {EMIT_CYCLE}"
+
+
+def start(
+    node: str, cid: str, age: timedelta, *, drill: bool = False
+) -> ModelNodeEmission:
+    return ModelNodeEmission.model_validate(
+        {
+            "node": node,
+            "piece": PIECE,
+            "correlation_id": cid,
+            "phase": "start",
+            "emitted_at": NOW - age,
+            "backend": "real",
+            "drill": drill,
+        }
+    )
+
+
+def run_cycle(tmp_path: Path, sink: InMemoryEmissionSink) -> tuple[Path, bool]:
+    home = build_home(tmp_path)
+    result = handler(sink).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    return home, result.ok
+
+
+def test_golden_the_next_cycle_closes_the_start_a_killed_process_left_open(
+    tmp_path: Path,
+) -> None:
+    sink = InMemoryEmissionSink()
+    sink.emit(start(EMIT_CYCLE, ORPHAN, timedelta(hours=20)))
+    home = build_home(tmp_path)
+    assert open_chains(sink, home) == [CYCLE_SUBJECT]
+    result = handler(sink).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    closure = [
+        e for e in sink.events if e.correlation_id == ORPHAN and e.phase == "failure"
+    ]
+    assert [(e.node, e.failure_code, e.piece) for e in closure] == [
+        (EMIT_CYCLE, ABANDONED_CODE, PIECE)
+    ]
+    assert open_chains(sink, home) == []
+    success = next(
+        e for e in sink.events if e.node == EMIT_CYCLE and e.phase == "success"
+    )
+    assert success.counters["abandoned_closed"] == 1
+
+
+def test_golden_a_start_is_closed_once_and_a_clean_journal_closes_nothing(
+    tmp_path: Path,
+) -> None:
+    sink = InMemoryEmissionSink()
+    sink.emit(start(EMIT_CYCLE, ORPHAN, timedelta(hours=20)))
+    home = build_home(tmp_path)
+    for _ in range(2):
+        handler(sink).run(
+            ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+        )
+    closures = [e for e in sink.events if e.failure_code == ABANDONED_CODE]
+    assert len(closures) == 1
+    last_success = [
+        e for e in sink.events if e.node == EMIT_CYCLE and e.phase == "success"
+    ][-1]
+    assert last_success.counters["abandoned_closed"] == 0
+
+
+def test_error_a_start_younger_than_the_bound_is_a_cycle_still_running(
+    tmp_path: Path,
+) -> None:
+    bound = load_runtime().abandon_after_seconds
+    sink = InMemoryEmissionSink()
+    sink.emit(start(EMIT_CYCLE, "young", timedelta(seconds=bound - 60)))
+    run_cycle(tmp_path, sink)
+    assert [e for e in sink.events if e.failure_code == ABANDONED_CODE] == []
+
+
+def test_error_a_node_outside_the_cycle_pipeline_is_not_closed(
+    tmp_path: Path,
+) -> None:
+    sink = InMemoryEmissionSink()
+    sink.emit(
+        start("node_code_graph_effect:run_code_graph", "other", timedelta(hours=9))
+    )
+    run_cycle(tmp_path, sink)
+    assert [e for e in sink.events if e.failure_code == ABANDONED_CODE] == []
+
+
+def test_error_a_drilled_start_is_closed_as_a_drill(tmp_path: Path) -> None:
+    sink = InMemoryEmissionSink()
+    sink.emit(start(EMIT_CYCLE, "drilled", timedelta(hours=9), drill=True))
+    run_cycle(tmp_path, sink)
+    closure = [e for e in sink.events if e.failure_code == ABANDONED_CODE]
+    assert [e.drill for e in closure] == [True]
+
+
+def test_error_the_start_stays_open_when_the_closure_is_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The injected break: the cycle never looks for abandoned starts, and the real receipt reader reads the open start."""
+    sink = InMemoryEmissionSink()
+    sink.emit(start(EMIT_CYCLE, ORPHAN, timedelta(hours=20)))
+    monkeypatch.setattr(tick, "abandoned_starts", lambda *_a, **_k: ())
+    home, ok = run_cycle(tmp_path, sink)
+    assert ok
+    assert open_chains(sink, home) == [CYCLE_SUBJECT]
+
+
+def test_error_a_chain_that_has_a_terminal_is_not_closed() -> None:
+    chain = [
+        start(EMIT_CYCLE, "done", timedelta(hours=9)),
+        start(EMIT_CYCLE, "done", timedelta(hours=9)).model_copy(
+            update={"phase": "success"}
+        ),
+    ]
+    assert (
+        abandoned_starts(
+            chain,
+            now=NOW,
+            abandon_after_s=300,
+            piece=PIECE,
+            nodes=frozenset({EMIT_CYCLE}),
+        )
+        == ()
+    )
+
+
+def test_the_bound_is_above_the_publish_limit_and_below_the_chain_deadline() -> None:
+    """A running cycle is never closed from under itself, and the closure comes before the receipts flag the open start."""
+    publish = yaml.safe_load(
+        (
+            Path(tick.__file__).resolve().parents[2]
+            / "node_factory_floor_publish_effect"
+            / "contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    steps = [
+        s
+        for s in publish["runtime"]["steps"] + publish["runtime"]["after_publish_steps"]
+        if s.get("module") == "omnimarket.nodes.node_floor_simple_effect"
+    ]
+    assert steps, "the publish node runs the floor cycle"
+    bound = load_runtime().abandon_after_seconds
+    assert bound > max(s["timeout_seconds"] for s in steps)
+    overlay = yaml.safe_load(
+        (OVERLAYS / "node_floor_simple_compute" / "overlay.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert bound < overlay["chain_deadline_s"]
