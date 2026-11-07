@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.model_friction_rollup_shared import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
     ModelFrictionRollupSource,
 )

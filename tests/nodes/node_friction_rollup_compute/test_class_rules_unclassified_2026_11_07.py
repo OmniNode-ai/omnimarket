@@ -17,11 +17,11 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
+from omnimarket.models.friction_rollup import (
+    ModelFrictionRollupRequest,
+)
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionRollupRequest,
 )
 
 pytestmark = pytest.mark.unit
