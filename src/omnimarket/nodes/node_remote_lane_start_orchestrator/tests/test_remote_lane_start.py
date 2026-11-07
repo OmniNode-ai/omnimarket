@@ -214,7 +214,7 @@ def test_start_unresolved_no_terminal(tmp_path: Path) -> None:
     assert "host:read_engine_exit host=h106" not in rig.calls
 
 
-def test_no_double_terminal(tmp_path: Path) -> None:
+def test_no_double_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rig = Rig(tmp_path, DONE)
     lane_close = "2026-11-07T08:00:30Z | TERMINAL | lane=floor-alpha-a1 | ticket=OMN-22848 | outcome=handed-off | closed by the lane"
     real_read = rig.transport.read_engine_exit
@@ -228,7 +228,7 @@ def test_no_double_terminal(tmp_path: Path) -> None:
                 fh.write(lane_close + "\n")
         return real_read(req)
 
-    rig.transport.read_engine_exit = lane_writes_its_own_terminal
+    monkeypatch.setattr(rig.transport, "read_engine_exit", lane_writes_its_own_terminal)
     result = rig.orchestrator.run(request())
     assert result.outcome is EnumRemoteLaneStartOutcome.ENDED
     assert rig.ledger_rows("TERMINAL") == [lane_close]
