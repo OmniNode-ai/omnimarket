@@ -119,6 +119,14 @@ class ModelIloOverlay(BaseModel):
 _TEMPLATE_FIELDS = re.compile(r"\{(HOST|ROLE|FIELD)\}")
 
 
+# The lane secret resolver covers every host's READ and WRITE account names with one namespace rule (the
+# dev lane's ``secret_resolver.namespaces`` in the lab bus lane declaration), so the setup verb never has
+# to add a host's names to the lane's resolver config: a new host's keys already match this pattern. The
+# lane declaration carries the same text; the test beside the setup verb pins that the key template yields
+# names this pattern covers.
+ILO_ACCOUNT_REF_PATTERN = r"^ILO_[A-Z0-9]+_(READ|WRITE)_(USERNAME|PASSWORD)$"
+
+
 def credential_key(template: str, *, host: str, role: str, field: str) -> str:
     """Expand the contract's key template: ``{HOST}``, ``{ROLE}``, ``{FIELD}``, upper-cased."""
     values = {"HOST": host, "ROLE": role, "FIELD": field}

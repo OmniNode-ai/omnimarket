@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import hashlib
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -34,8 +35,10 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
     SetupStoreError,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+    ILO_ACCOUNT_REF_PATTERN,
     ModelIloHost,
     ModelIloOverlay,
+    credential_key,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     EnumIloSetupRefusal as R,
@@ -847,3 +850,17 @@ def test_the_prompt_adapters_say_no_without_a_terminal(
     assert (
         setup_adapters.confirm_certificate("h9", "192.0.2.1", "AB", "1", 1024) is False
     )
+
+
+@pytest.mark.parametrize("host", ["h051", "h053", "h999", "h201-b"])
+def test_every_hosts_account_names_match_the_lane_resolver_namespace_rule(
+    host: str,
+) -> None:
+    """A host the setup verb adds later needs no new resolver mapping: its keys match the lane's rule."""
+    template = "ILO_{HOST}_{ROLE}_{FIELD}"
+    for role in ("READ", "WRITE"):
+        for field in ("USERNAME", "PASSWORD"):
+            key = credential_key(template, host=host, role=role, field=field)
+            assert re.fullmatch(ILO_ACCOUNT_REF_PATTERN, key) is not None
+    admin = credential_key(template, host=host, role="ADMIN", field="PASSWORD")
+    assert re.fullmatch(ILO_ACCOUNT_REF_PATTERN, admin) is None

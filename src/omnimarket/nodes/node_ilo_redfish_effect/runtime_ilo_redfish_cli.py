@@ -77,6 +77,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
     EnumIloVerb,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+    ILO_ACCOUNT_REF_PATTERN,
     ModelIloHost,
     ModelIloOverlay,
 )
@@ -227,8 +228,10 @@ def _setup(args: argparse.Namespace) -> int:
     if blind:
         print(
             f"NOTE {','.join(blind)}: the accounts are in the store, but the node's own reader "
-            "(the lane secret resolver) does not return them yet; map the ILO_<HOST>_* names in the "
-            "lane's ONEX_SECRET_RESOLVER_CONFIG_PATH before running the other verbs."
+            "(the lane secret resolver) does not return them yet; the lane's declared resolver config "
+            f"must carry a namespace rule for {ILO_ACCOUNT_REF_PATTERN} (the dev lane's secret_resolver in "
+            "the lab bus lane declaration) and ONEX_SECRET_RESOLVER_CONFIG_PATH must name it before "
+            "running the other verbs."
         )
     return 0 if result.all_ready else 2
 
