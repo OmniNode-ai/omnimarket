@@ -1069,6 +1069,7 @@ node_release_pin_guard_compute = "omnimarket.nodes.node_release_pin_guard_comput
 node_remote_lane_close_compute = "omnimarket.nodes.node_remote_lane_close_compute"
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
 node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
+node_remote_lane_guard_limits_compute = "omnimarket.nodes.node_remote_lane_guard_limits_compute"
 node_remote_lane_handoff_compute = "omnimarket.nodes.node_remote_lane_handoff_compute"
 node_remote_lane_stop_effect = "omnimarket.nodes.node_remote_lane_stop_effect"
 node_renderer_capability_projection = "omnimarket.nodes.node_renderer_capability_projection"

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_guard_limits_compute
+version: 1.0.0
+description: >-
+  Resolve the limits a lane's commands run under on a lab host: the lane's own timeout plus the grace, a memory ask (8G, 512M or a byte count) and a CPU quota, each judged against the bounds the caller supplies from its overlay. A runtime past the hard cap, a size that is not a size, a kind the host program does not know, or a limit outside its floor and ceiling is a refusal with the runner script's own text; nothing else is.
+pack: distributed_validation
+node_role: compute
+display_name: Remote Lane Guard Limits Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_remote_lane_guard_limits_compute: omnimarket.nodes.node_remote_lane_guard_limits_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane-guard-limits-compute
+- OMN-22848

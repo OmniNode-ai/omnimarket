@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The guard bounds the caller passes as ModelRemoteLaneGuardLimitsRequest.bounds. Every key is required: a missing one is
+# refused by validation naming it. The values are the lab host guard's own bounds (lane_guard_host.py) as of OMN-22848.
+remote_lane_guard_limits:
+  hard_cap_s: 10800          # 3 h
+  grace_s: 120
+  default_mem_bytes: 8589934592      # 8 GiB
+  mem_floor_bytes: 67108864          # 64 MiB
+  mem_ceiling_bytes: 34359738368     # 32 GiB
+  default_cpu_pct: 400
+  cpu_floor_pct: 10
+  cpu_ceiling_pct: 1600
+  tasks_max: 8192
+  kinds: [lane, tests]

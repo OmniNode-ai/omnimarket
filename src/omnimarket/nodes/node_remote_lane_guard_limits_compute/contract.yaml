@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Remote Lane Guard Limits Compute (OMN-22848, stopped-line fill plan T15)
+#
+# Step of the remote-lane runner's run path that has no node home yet: the guard limits resolved before
+# anything is placed, claimed or shipped (onex_remote_lane.py execute, lane_guard.resolve_limits). Pure: every
+# bound arrives on the request from the caller's overlay (overlay.example.yaml names each key).
+name: node_remote_lane_guard_limits_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Resolve the limits a lane's commands run under on a lab host: the lane's own timeout plus the grace, a memory ask (8G, 512M or a byte count) and a CPU quota, each judged against the bounds the caller supplies from its overlay. A runtime past the hard cap, a size that is not a size, a kind the host program does not know, or a limit outside its floor and ceiling is a refusal with the runner script's own text; nothing else is.
+input_model:
+  name: ModelRemoteLaneGuardLimitsRequest
+  module: omnimarket.nodes.node_remote_lane_guard_limits_compute.models.model_remote_lane_guard_limits
+output_model:
+  name: ModelRemoteLaneGuardLimitsVerdict
+  module: omnimarket.nodes.node_remote_lane_guard_limits_compute.models.model_remote_lane_guard_limits
+handler:
+  module: omnimarket.nodes.node_remote_lane_guard_limits_compute.handlers.handler_remote_lane_guard_limits
+  class: HandlerRemoteLaneGuardLimits
+  input_model: omnimarket.nodes.node_remote_lane_guard_limits_compute.models.model_remote_lane_guard_limits.ModelRemoteLaneGuardLimitsRequest
+  output_model: omnimarket.nodes.node_remote_lane_guard_limits_compute.models.model_remote_lane_guard_limits.ModelRemoteLaneGuardLimitsVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_remote_lane_guard_limits_compute.handlers.handler_remote_lane_guard_limits:HandlerRemoteLaneGuardLimits
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerRemoteLaneGuardLimits
+      module: omnimarket.nodes.node_remote_lane_guard_limits_compute.handlers.handler_remote_lane_guard_limits
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with the lane's timeout, optional memory and CPU asks and the overlay's bounds.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: >-
+    Resolve the limits a lane's commands run under on a lab host: the lane's own timeout plus the grace, a memory ask (8G, 512M or a byte count) and a CPU quota, each judged against the bounds the caller supplies from its overlay. A runtime past the hard cap, a size that is not a size, a kind the host program does not know, or a limit outside its floor and ceiling is a refusal with the runner script's own text; nothing else is.
+  author: OmniNode Team
+  created: '2026-11-07'
+  tags:
+  - compute
+  - remote-lane-guard-limits-compute
+  - OMN-22848
+  related_tickets:
+  - OMN-22848
