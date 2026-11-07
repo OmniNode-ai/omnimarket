@@ -865,16 +865,22 @@ EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
         added="2026-10-17",
         expires="2026-12-20",
     ),
+    # OMN-23029. The tessl-reviewer app runs in advisory mode here and reports
+    # `neutral` as its NORMAL successful outcome: its own check-run carries the
+    # title "Tessl Reviewer completed an advisory review" and the summary "This
+    # repository runs Tessl Reviewer in advisory mode, so the review doesn't
+    # block merging". SWEEP_GOOD_CONCLUSIONS admits `success` alone, so that
+    # neutral read as red on 23 open pull requests at once while this gate's own
+    # verdict one line above was SUCCESS over 56 green jobs and 59 green asserted
+    # contexts (job 128511383807, #5346). The context is pull_request-only, so the
+    # dev head never carries it and dev's CI Summary stayed green throughout,
+    # which is why reading dev could not find this.
+    #
+    # SWEEP_GOOD_CONCLUSIONS is deliberately NOT widened to accept `neutral`:
+    # that relaxes a default-deny control for every swept context at once, and
+    # it is the ruling OMN-18355 carries, not this entry's business.
     "Tessl Reviewer": SweepExclusion(
-        reason=(
-            "The tessl-reviewer app runs in advisory mode here and reports neutral as its "
-            "normal successful outcome: its own check-run says 'Tessl Reviewer completed an "
-            "advisory review' and 'This repository runs Tessl Reviewer in advisory mode, so "
-            "the review does not block merging'. The sweep admits success only, so that "
-            "neutral read as red on 23 open pull requests at once while this gate's own "
-            "verdict one line above was SUCCESS. It is pull_request-only, so the dev head "
-            "never carries it and dev stayed green throughout."
-        ),
+        reason="tessl-reviewer runs in advisory mode here; neutral is its success. See OMN-23029.",
         ticket="OMN-23029",
         added="2026-11-07",
         expires="2027-01-09",
@@ -1965,18 +1971,14 @@ def validate_sweep_exclusions(
     return findings
 
 
-def _validate_exclusion_fields(
-    name: str,
-    entry: SweepExclusion,
-) -> list[str]:
+def _validate_exclusion_fields(name: str, entry: SweepExclusion) -> list[str]:
     """Validate the reason, owner and bounded expiry of a sweep exclusion."""
 
     findings: list[str] = []
     if not isinstance(entry.reason, str) or not entry.reason.strip():
         findings.append(f"{name}: reason is empty")
-    if not isinstance(entry.ticket, str) or not _SWEEP_TICKET_RE.fullmatch(
-        entry.ticket.strip()
-    ):
+    ticket = entry.ticket if isinstance(entry.ticket, str) else ""
+    if not _SWEEP_TICKET_RE.fullmatch(ticket.strip()):
         findings.append(
             f"{name}: ticket {entry.ticket!r} is not an OMN-<number> reference"
         )
@@ -1986,16 +1988,15 @@ def _validate_exclusion_fields(
         findings.append(f"{name}: added {entry.added!r} is not a YYYY-MM-DD date")
     if expires is None:
         findings.append(f"{name}: expires {entry.expires!r} is not a YYYY-MM-DD date")
-    if added is not None and expires is not None:
-        if expires <= added:
-            findings.append(
-                f"{name}: expires {entry.expires} is not after added {entry.added}"
-            )
-        elif (expires - added).days > SWEEP_EXCLUSION_MAX_DAYS:
-            findings.append(
-                f"{name}: window {(expires - added).days}d exceeds the "
-                f"{SWEEP_EXCLUSION_MAX_DAYS}d cap"
-            )
+    if added is None or expires is None:
+        return findings
+    window, cap = (expires - added).days, SWEEP_EXCLUSION_MAX_DAYS
+    if window <= 0:
+        findings.append(
+            f"{name}: expires {entry.expires} is not after added {entry.added}"
+        )
+    elif window > cap:
+        findings.append(f"{name}: window {window}d exceeds the {cap}d cap")
     return findings
 
 
@@ -2023,11 +2024,8 @@ def active_sweep_exclusions(
             expired.append(name)
             continue
         expires = _parse_exclusion_date(entry.expires)
-        if (
-            _validate_exclusion_fields(name, entry)
-            or expires is None
-            or today >= expires
-        ):
+        spent = expires is None or today >= expires
+        if spent or _validate_exclusion_fields(name, entry):
             expired.append(name)
         else:
             active.add(name)
