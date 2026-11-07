@@ -230,7 +230,10 @@ def test_handler_imports_and_calls_stay_pure() -> None:
         "pydantic",
         "omnimarket",
     }
+    # the node's own tests (src/.../tests) read fixtures and import pytest: the check is of its code
     for path in NODE_DIR.rglob("*.py"):
+        if "tests" in path.relative_to(NODE_DIR).parts:
+            continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
