@@ -19,8 +19,8 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
     build_appender,
 )
 from omnimarket.nodes.node_two_backend_suite_effect.adapters.report_sources import (
-    FileReportSource,
-    InMemoryReportSource,
+    ReportRouteError,
+    build_report_source,
 )
 from omnimarket.nodes.node_two_backend_suite_effect.adapters.resolver import (
     ImportResolver,
@@ -32,15 +32,11 @@ from omnimarket.nodes.node_two_backend_suite_effect.handlers.handler_two_backend
     load_topics,
 )
 from omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite import (
-    ModelEffectBackendReport,
     ModelTwoBackendRequest,
 )
 from omnimarket.nodes.node_two_backend_suite_effect.overlay import (
     NODE_NAME,
     load_overlay,
-)
-from omnimarket.nodes.node_two_backend_suite_effect.protocols import (
-    ProtocolEffectBackendReportSource,
 )
 
 
@@ -50,16 +46,7 @@ def main(
     env = os.environ if environ is None else environ
     try:
         overlay = load_overlay(env)
-        source: ProtocolEffectBackendReportSource
-        if overlay.report.route == "file":
-            path = env.get(overlay.report.path_env)
-            if not path:
-                raise NodeOverlayError(
-                    f"{overlay.report.path_env} is not set (overlay report.path_env)"
-                )
-            source = FileReportSource(Path(path))
-        else:
-            source = InMemoryReportSource(ModelEffectBackendReport())
+        source = build_report_source(overlay.report, env)
         workdir_root = env.get(overlay.workdir_env) or tempfile.mkdtemp(
             prefix="two-backend-"
         )
@@ -81,7 +68,13 @@ def main(
             + "\n",
             result.correlation_id,
         )
-    except (NodeOverlayError, LedgerRouteError, OSError, ValueError) as exc:
+    except (
+        NodeOverlayError,
+        LedgerRouteError,
+        ReportRouteError,
+        OSError,
+        ValueError,
+    ) as exc:
         sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
         return 3
     for topic, body in events_of(result, load_topics()):

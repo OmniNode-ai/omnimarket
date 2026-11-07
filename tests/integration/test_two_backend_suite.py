@@ -126,6 +126,7 @@ def test_two_backend_golden_chain_events(tmp_path: Path) -> None:
     ]
     assert all(body["correlation_id"] == "c-1" for _, body in events)
     assert events[-1][1]["failed"] == 0
+    assert events[-1][0] == "onex.evt.omnimarket.two-backend-suite-completed.v1"
 
 
 def test_two_backend_error_chain_events(tmp_path: Path) -> None:
@@ -259,3 +260,26 @@ def test_two_backend_status_row_carries_red_and_the_count_and_passes_the_grammar
         ).cells["red"]
         == "unread"
     )
+
+
+def test_two_backend_report_route_is_chosen_by_the_overlay_schema(
+    tmp_path: Path,
+) -> None:
+    from omnimarket.nodes.node_two_backend_suite_effect.adapters.report_sources import (
+        ReportRouteError,
+        build_report_source,
+    )
+    from omnimarket.nodes.node_two_backend_suite_effect.overlay import (
+        ModelFileReportSettings,
+        ModelInMemoryReportSettings,
+    )
+
+    in_memory = build_report_source(ModelInMemoryReportSettings(route="in_memory"), {})
+    assert in_memory.read().report is not None
+    file_settings = ModelFileReportSettings(route="file", path_env="REPORT_PATH")
+    with pytest.raises(ReportRouteError, match="REPORT_PATH"):
+        build_report_source(file_settings, {})
+    report = tmp_path / "report.json"
+    report.write_text("not json", encoding="utf-8")
+    broken = build_report_source(file_settings, {"REPORT_PATH": str(report)})
+    assert broken.read().error == "report-unreadable:ValidationError"

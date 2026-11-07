@@ -10,7 +10,7 @@ Nothing here has a default: an absent key refuses the load and names it.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,14 +20,26 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppen
 NODE_NAME = "node_two_backend_suite_effect"
 
 
-class ModelReportSettings(BaseModel):
-    """Which backend supplies the effect list: ``in_memory`` (empty) or ``file`` (the validator's JSON)."""
+class ModelInMemoryReportSettings(BaseModel):
+    """Default backend: an empty effect list held in memory."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    route: Literal["in_memory", "file"]
-    #: The environment variable that holds the report file's path when the route is ``file``.
+    route: Literal["in_memory"]
+
+
+class ModelFileReportSettings(BaseModel):
+    """Real backend: the validator's JSON, at the path the named variable holds."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    route: Literal["file"]
     path_env: str = Field(min_length=1)
+
+
+ModelReportSettings = Annotated[
+    ModelInMemoryReportSettings | ModelFileReportSettings, Field(discriminator="route")
+]
 
 
 class ModelSuitePublish(BaseModel):
