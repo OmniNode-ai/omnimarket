@@ -27,6 +27,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRunResult,
 )
 from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -46,10 +47,26 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover im
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile import (
     HandlerWorktreeReconcile,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
+    ProtocolUnitRootReader,
+)
 from tests.test_worktree_reconcile_compute import facts
 
 pytestmark = pytest.mark.unit
 NOW = datetime(2026, 1, 10, tzinfo=UTC)
+
+
+class StaticUnits:
+    """A unit reader that names the same paths on every read."""
+
+    def __init__(self, roots: UnitRoots | None = None) -> None:
+        self.roots = roots or UnitRoots()
+
+    def read(self) -> UnitRoots:
+        return self.roots
+
+
+NO_UNITS = StaticUnits()
 
 
 class Fakes:
@@ -179,7 +196,7 @@ def test_revalidation_does_not_measure_size(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    probe = GitWorktreeFactsProbe()
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
     found = probe.discover(command(roots=(str(root),)), NOW)[0]
     assert found.size_bytes
     calls: list[list[str]] = []
@@ -354,7 +371,7 @@ def test_real_git_merged_removed_dirty_kept(
     monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
     decided, completed = publish_topics()
     handler = HandlerWorktreeReconcile(
-        probe=GitWorktreeFactsProbe(),
+        probe=GitWorktreeFactsProbe(unit_reader=NO_UNITS),
         decider=fake,
         pinner=fake,
         remover=GitWorktreeRemover(),
@@ -388,7 +405,9 @@ def test_probe_ignored_secrets_and_remote_branch(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    items = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        command(roots=(str(root),)), NOW
+    )
     assert len(items) == 1
     assert items[0].facts_complete
     assert items[0].untracked_nonjunk_count == 1
@@ -439,8 +458,11 @@ def test_git_timeout_is_a_probe_error(
 
     monkeypatch.setattr(adapter_facts, "git", timeout_fetch)
     monkeypatch.setattr(adapter_facts, "process_cwds", lambda: ())
-    items = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
-    assert items[0].probe_errors == ("probe_failed:ValueError",)
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        command(roots=(str(root),)), NOW
+    )
+    # A timeout under load is deferred to the next tick, not a failure (OMN-22799).
+    assert items[0].probe_errors == ("probe_deferred:remote_refresh_timeout",)
     fake = Fakes(items)
     result = fake.handler().handle(command())
     assert not fake.removed
@@ -461,7 +483,9 @@ def test_squash_merge_proof(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    fact = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)[0]
+    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        command(roots=(str(root),)), NOW
+    )[0]
     assert fact.facts_complete
     assert fact.content_merged
     assert not fact.head_on_remote
@@ -482,7 +506,7 @@ def test_standalone_depth_canonical_exclusion_and_trash(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    probe = GitWorktreeFactsProbe()
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
     items = probe.discover(
         command(roots=(str(root),), extra_clone_roots=(str(extras), str(clone.parent))),
         datetime(2100, 1, 1, tzinfo=UTC),
@@ -584,7 +608,7 @@ def test_initial_process_snapshot_once_and_ledger_change_refused(
         return (two,)
 
     monkeypatch.setattr(adapter_facts, "process_cwds", snapshot)
-    probe = GitWorktreeFactsProbe()
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
     items = probe.discover(command(roots=(str(root),), ledger_path=str(ledger)), NOW)
     assert len(calls) == 1
     assert items[0].live_claim
@@ -674,7 +698,9 @@ def test_stash_reflog_is_probed_without_stash_commands(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    fact = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)[0]
+    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        command(roots=(str(root),)), NOW
+    )[0]
     assert fact.facts_complete
     # The stash lives in the clone's common git dir and survives removing this
     # worktree, so it is not this worktree's unsaved work.
@@ -709,7 +735,7 @@ def test_a_standalone_clone_counts_its_own_unpushed_stash(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    items = GitWorktreeFactsProbe().discover(
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
         command(roots=(str(root),), extra_clone_roots=(str(extras),)), NOW
     )
     assert [f.path for f in items] == [str(standalone)]
@@ -756,7 +782,9 @@ def test_an_error_with_no_tree_to_carry_it_is_never_a_clean_zero(
     root = tmp_path / "registry" / "trees"
     root.mkdir(parents=True)
     with pytest.raises(RuntimeError, match="process_snapshot_failed"):
-        GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
+        GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+            command(roots=(str(root),)), NOW
+        )
 
 
 def test_an_unreadable_directory_under_a_clone_root_is_skipped(
@@ -774,7 +802,7 @@ def test_an_unreadable_directory_under_a_clone_root_is_skipped(
     try:
         registry = tmp_path / "registry" / "trees"
         registry.mkdir(parents=True)
-        items = GitWorktreeFactsProbe().discover(
+        items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
             command(roots=(str(registry),), extra_clone_roots=(str(home),)), NOW
         )
     finally:
@@ -798,7 +826,7 @@ def test_ignored_caches_are_not_work_but_an_ignored_secret_is(
     (tree / ".hypothesis").mkdir()
     (tree / ".hypothesis" / "cache").write_text("x")
     (tree / ".coverage").write_text("x")
-    probe = GitWorktreeFactsProbe()
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
     items = probe.discover(command(roots=(str(root),)), NOW)
     assert items[0].untracked_nonjunk_count == 0
     (tree / ".env").write_text("TOKEN=x")
@@ -827,7 +855,9 @@ def test_a_remote_of_another_repository_is_not_a_merge_base(
     run_git(clone, "remote", "set-head", "aaa-other", "main")
     tree = root / "task" / "repo"
     run_git(clone, "worktree", "add", "-b", "feature", str(tree))
-    items = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        command(roots=(str(root),)), NOW
+    )
     assert items[0].probe_errors == ()
     assert items[0].content_merged
 
@@ -873,7 +903,9 @@ def squash_merged_then_moved_on(
 
 
 def probe_for(
-    reader: FakeMergedPrReader, monkeypatch: pytest.MonkeyPatch
+    reader: FakeMergedPrReader,
+    monkeypatch: pytest.MonkeyPatch,
+    units: ProtocolUnitRootReader = NO_UNITS,
 ) -> GitWorktreeFactsProbe:
     monkeypatch.setattr(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
@@ -881,9 +913,9 @@ def probe_for(
     )
     monkeypatch.setattr(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts._fetch_all",
-        lambda _clone: True,
+        lambda _clone: "ok",
     )
-    return GitWorktreeFactsProbe(merged_pr_reader=reader)
+    return GitWorktreeFactsProbe(unit_reader=units, merged_pr_reader=reader)
 
 
 def run_with(

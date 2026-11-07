@@ -95,6 +95,8 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
 )
+from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
+from omnimarket.handlers.scm.scm_git_credential import git_credential_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
 from omnimarket.models.model_github_gateway_io import (
@@ -838,6 +840,18 @@ def _carried_claim(
         return None
 
 
+def gateway_open_prs_source(
+    bus_opts: dict[str, object], timeout_s: float
+) -> GatewayOpenPrFactsSource:
+    """The duplicate-fix guard's read of the open pull requests on a host with no PR watcher state (OMN-22654).
+
+    It opens the bus only when the guard asks, which is only when the watcher state could not be read.
+    """
+    return GatewayOpenPrFactsSource(
+        open_bus=_open_bus, bus_opts=bus_opts, timeout_s=timeout_s
+    )
+
+
 def _write_command(spec: ModelScmVerb) -> click.Command:
     pr_scoped = spec.operation not in _REPO_SCOPED_WRITES
 
@@ -879,6 +893,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 body=body,
                 lane=lane,
                 watcher_state=watcher_state,
+                open_prs_source=gateway_open_prs_source(bus_opts, timeout_s),
             )
             if refused is not None:
                 sys.exit(refused)
@@ -1043,6 +1058,7 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+scm_group.add_command(git_credential_command)
 scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))

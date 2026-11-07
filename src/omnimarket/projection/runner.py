@@ -665,9 +665,9 @@ class BaseProjectionRunner(ABC):
         from omnibase_infra.runtime.auto_wiring.standalone_projection_bindings import (
             resolve_standalone_projection_bindings,
         )
-        from omnibase_infra.topology import load_topology_profile
 
         from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+        from omnimarket.handlers.delivery_cache import load_topology_profile_cached
 
         declarations = tuple(
             ModelDbTableDeclaration.model_validate(raw)
@@ -675,7 +675,7 @@ class BaseProjectionRunner(ABC):
         )
         resolved = resolve_standalone_projection_bindings(
             declarations,
-            load_topology_profile(profile),
+            load_topology_profile_cached(profile),
             secret_resolver=await build_topology_secret_resolver(None),
         )
         pools: dict[str, AsyncpgAdapter] = {}

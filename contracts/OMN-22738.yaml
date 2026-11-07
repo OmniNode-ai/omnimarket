@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22738
+title: The floor draws each piece's reading from the reading writer's rows on the ledger
+summary: The floor read a readings file that nothing writes, so every piece had reading_state null while the reading writer wrote its rows to the ledger. The floor overlay now names the writer's rows (ledger_readings) and the floor draws each piece's reading from the newest row of the piece, with its age and bound.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22738-readings-from-ledger
+  statement: The floor draws a piece's reading from the newest reading row of the reading writer on the ledger, marks one past its bound NOT WORKING and stale, and draws no reading when the ledger cannot be read.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the newest reading row of each piece on the ledger is the piece''s reading_state, age and bound on the floor, from the recorded rows of two reading windows -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: with the overlay of before the change the same ledger rows leave every reading null, so the test fails without the change -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: a reading past its bound reads NOT WORKING and stale, a ledger that cannot be read draws no reading and says the ledger is unread, and a matching row that is not a reading is counted and never drawn -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The floor draws each piece's reading from the reading writer's rows on the ledger
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22738-tests
+  description: The floor draws a piece's reading from the newest reading row of the reading writer on the ledger, marks one past its bound NOT WORKING and stale, and draws no reading when the ledger cannot be read.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov
+    cwd: .
+- id: dod-omn22738-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22738 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect -q --no-cov
+    cwd: .

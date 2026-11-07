@@ -15,7 +15,9 @@ description: >-
   beside its state directory, so the installed unit records the revision it runs. A unit may also declare
   environment variables whose value is a path the request may override (the installed overlay tree, for the factory
   floor publisher); an override of any other variable is refused. Declared environment inputs are persisted in
-  the unit. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
+  the unit. A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
+  unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
+  replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -83,6 +85,11 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # Not Background (OMN-22699). Measured 2026-11-06 on the launching Mac at load 19 to 21 on 24 cores: the factory floor
+    # step took 43 s run in the foreground (profiled) and more than 7 minutes as this unit's tick under the Background clamp,
+    # which made one cycle 7 to 10 minutes against a 300 s interval, so a tick was skipped and the page refreshed every 10
+    # to 12 minutes.
+    process_type: Standard
     # Installation prepares and checks this environment once. A timer tick must
     # not rebuild the editable package on every 300 s invocation.
     tick_no_sync: true
@@ -91,6 +98,10 @@ units:
       # The floor's Phoenix trace reading (node_factory_floor_effect runtime.phoenix_url_env). Not required: unset,
       # the floor draws the Phoenix row unread and says so.
       ONEX_FACTORY_FLOOR_PHOENIX_URL: phoenix_url
+      # The lab-state alarm's Slack credentials: the path of the operator's bootstrap env file, from which the alarm reads
+      # the two named keys its overlay refers to. Not required: unset, a Slack alarm is refused with a typed reason and
+      # goes to the second channel.
+      ONEX_ALERT_CHANNEL_ENV_FILE: alert_env_file
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
@@ -106,8 +117,14 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      # A reader cut over to the overlay store names its snapshot of the host table here, and the snapshot's
+      # directory, because the pool read refuses a table outside its declared roots (OMN-22561).
+      - ONEX_LAB_RUN_HOSTS
+      - ONEX_LAB_HOST_TABLE_ROOTS
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LAB_RUN_HOSTS: ""
+      ONEX_LAB_HOST_TABLE_ROOTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
       CLAUDE_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
       ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
@@ -115,6 +132,37 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
+  # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
+  # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
+  # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  lab-test-harness:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lab-test-harness
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lab_test_harness_effect.runtime_lab_test_harness
+    entry_file: src/omnimarket/nodes/node_lab_test_harness_effect/runtime_lab_test_harness.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lab-test-harness/last-run.json
+    state_directory: .onex_state/lab-test-harness
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
@@ -138,5 +186,44 @@ units:
     environment:
       ONEX_SILENT_FAILURE_ALARM_CONFIG: "{home}/.local/state/omni/silent-failure-alarm/config.json"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
+    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
+    # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's
+    # environment variable, else the value the last install recorded. The hosts' event names are not here: the alarm
+    # derives them from host_table (OMN-22755).
+    config_file:
+      environment: ONEX_SILENT_FAILURE_ALARM_CONFIG
+      mode: "0600"
+      inputs:
+        runtime_ssh_host: {field: runtime_ssh_host, env: ONEX_RUNTIME_SSH_HOST}
+        appender_root: {field: appender_root, env: ONEX_ALARM_APPENDER_ROOT}
+        host_table_path: {field: host_table_path, env: ONEX_ALARM_HOST_TABLE}
+      document:
+        registry_root: "{registry_root}"
+        ledger: "{ledger_path}"
+        # The appender that serialises ledger writes, run by the interpreter of the checkout the request names
+        # (appender_root), because launchd's PATH has none.
+        ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
+        python: "{appender_root}/.venv/bin/python"
+        # Prints <hostname>|<newest hook event UTC stamp> for each host that sent one in the last day.
+        hook_events_command:
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=10
+          - "{runtime_ssh_host}"
+          - >-
+            docker exec omnibase-infra-postgres psql -U postgres -d omnidash_analytics -Atc
+            "SELECT host || chr(124) || max(emitted_at) FROM omninode_internal.claude_hook_events
+            WHERE emitted_at > now() - make_interval(days => 1) GROUP BY host"
+        host_table: "{host_table_path}"
+        # The drainer this host watches and reinstalls (the launching Mac is h200).
+        drainer:
+          host: h200
+          state_dir: "{registry_root}/.onex_state"
+          installer: "{registry_root}/omniclaude/scripts/install-hook-emit-drainer.sh"
+          home: "{home}"
+          registry_root: "{registry_root}"
     evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
     state_directory: .onex_state/silent-failure-alarm

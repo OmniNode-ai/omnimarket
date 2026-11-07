@@ -69,6 +69,11 @@ handler_routing:
       handler:
         name: "HandlerDevTagPinTrain"
         module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_train"
+    # OMN-22497: a dev tag's commit is green on dev's required checks only.
+    - operation: "judge_dev_tag_green"
+      handler:
+        name: "HandlerDevTagGreenVerdict"
+        module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_green_verdict"
 
 event_bus:
   subscribe_topics: []

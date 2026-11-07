@@ -9,6 +9,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.lab_host_key import public_key_parts
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 
 
@@ -18,21 +19,6 @@ class EnumPairStatus(StrEnum):
     OK = "ok"
     PLANNED = "planned"
     REFUSED = "refused"
-
-
-class EnumKeyFile(StrEnum):
-    """The only files the transport may append to."""
-
-    AUTHORIZED_KEYS = "authorized_keys"
-    KNOWN_HOSTS = "known_hosts"
-
-
-class EnumLineState(StrEnum):
-    """Whether a requested line exists, was appended or would be appended."""
-
-    PRESENT = "present"
-    ADDED = "added"
-    ABSENT = "absent"
 
 
 class ModelLabHostKeyDistributionRequest(BaseModel):
@@ -90,20 +76,6 @@ class ModelLabHostKeyDistributionRequest(BaseModel):
         ):
             raise ValueError("host key files must be absolute public .pub paths")
         return values
-
-
-def public_key_parts(line: str) -> str:
-    """Return the key type and encoded public key, excluding any comment."""
-    parts = line.split()
-    if (
-        "\n" in line
-        or "\r" in line
-        or len(parts) < 2
-        or not re.fullmatch(r"(?:ssh-|ecdsa-|sk-)[A-Za-z0-9@._+-]+", parts[0])
-        or not re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", parts[1])
-    ):
-        raise ValueError("invalid public key line")
-    return " ".join(parts[:2])
 
 
 class ModelHostKeyMaterial(BaseModel):

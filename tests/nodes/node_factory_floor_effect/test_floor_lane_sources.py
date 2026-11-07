@@ -208,7 +208,12 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
     old = write(tmp_path / "old" / "rlane-old-1.json", receipt_json("old"))
     os.utime(old.parent, (NOW.timestamp() - 90 * 3600, NOW.timestamp() - 90 * 3600))
     receipts = load_receipts(
-        tmp_path, now=NOW, window_hours=24, glob="rlane-*.json", result_chars=600
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=4,
     )
     assert receipts is not None
     by_lane = {r.lane: r for r in receipts}
@@ -236,6 +241,7 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
             window_hours=24,
             glob="rlane-*.json",
             result_chars=600,
+            scan_workers=4,
         )
         is None
     )
@@ -249,7 +255,12 @@ def test_receipt_pid_distinguishes_a_live_quiet_runner_from_an_exited_one(
     for lane, pid in (("pfix-2062-r-1744", child.pid), ("quiet-live", os.getpid())):
         write(tmp_path / lane / f"rlane-{lane}-1.json", receipt_json(lane, pid=pid))
     receipts = load_receipts(
-        tmp_path, now=NOW, window_hours=24, glob="rlane-*.json", result_chars=600
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=1,
     )
     assert receipts is not None
     assert {r.lane: r.runner_alive for r in receipts} == {
@@ -566,3 +577,39 @@ def test_the_host_table_is_the_pinned_file_then_the_floor_overlay_relpath_then_t
         == roots / "lab_hosts" / "overlay.yaml"
     )
     assert resolve_host_table({}, "TABLE", tmp_path, "") is None
+
+
+def test_a_workers_directory_of_thousands_is_read_without_a_stat_per_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The measured slow step of the publish cycle: 28,728 worker directories, one stat each, in the unit's tick (OMN-22699)."""
+    workers = tmp_path / "workers"
+    workers.mkdir()
+    for lease in range(2000):
+        (workers / f"{lease:06d}").mkdir()
+    table = [SimpleNamespace(tags=frozenset(), stat="S")]
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {
+            "read_process_table": lambda: table,
+            "read_lease": lambda *_args: None,
+        },
+    )
+    stats: list[str] = []
+    real_stat = Path.stat
+
+    def counted(self: Path, *args: Any, **kwargs: Any) -> Any:
+        stats.append(str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", counted)
+    claim = ModelFloorLedgerRow(
+        ts=NOW.replace(hour=16), kind="CLAIM", lane="landing-cause-L25919"
+    )
+    result = load_lane_processes(
+        (claim,), directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+    )
+    assert result is not None
+    assert [(p.lane, p.alive) for p in result] == [(claim.lane, False)]
+    assert not [path for path in stats if path.startswith(str(workers))]

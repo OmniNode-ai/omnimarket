@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_broker_load_reading_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   metrics_source   the broker's public metrics, read inside its container over ssh
+#   consumer         the probe consumer: its backend, lane, an existing topic, the granted group prefix and the
+#                    deadline after which the start reads as a timeout
+#   bars             the most partitions one shard may hold and the slowest consumer start that is inside the bar
+#   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+metrics_source:
+  ssh_host_env: EXAMPLE_BROKER_SSH_HOST
+  compose_project: example-project
+  service: example-broker
+  metrics_url: http://localhost:9644/public_metrics
+  read_timeout_seconds: 30
+consumer:
+  backend: inmemory
+  lane: example-lane
+  probe_topic: example.probe.v1
+  group_prefix: local.example.broker_probe.consume.v1.
+  deadline_seconds: 30
+bars:
+  max_partitions_per_shard: 1000
+  max_consumer_start_ms: 5000
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: broker-load
+  actor: node:node_broker_load_reading_effect
+  publish_max_age_seconds: 7200
+injected_fault: Raise the shard's partitions above the bar, or give the probe consumer a deadline it cannot meet

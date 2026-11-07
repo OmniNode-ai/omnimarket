@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_parse_probe_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Render, without I/O, the hook parse probe script a lab host runs under its own python3 and /bin/bash. A directory
+  marketplace whose directory is missing is named by the external volume it resolves onto when that volume is not mounted
+  (volume-not-mounted-<root>/<name>) and by its path otherwise (directory-source-missing-<path>), never as a manifest fault.
+  The host is still refused: the probe prints unknown. The volumes root is the host overlay's, injected by the caller.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: render_hook_parse_probe
+    handler:
+      name: HandlerHookParseProbe
+      module: omnimarket.nodes.node_hook_parse_probe_compute.handlers.handler_hook_parse_probe
+    input_model: omnimarket.nodes.node_hook_parse_probe_compute.models.model_hook_parse_probe.ModelHookParseProbeRequest
+    output_model: omnimarket.nodes.node_hook_parse_probe_compute.models.model_hook_parse_probe.ModelHookParseProbeScript
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.hook-parse-probe-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.hook-parse-probe-rendered.v1
+terminal_event: onex.evt.omnimarket.hook-parse-probe-rendered.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-parse-probe-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.hook-parse-probe-rendered.v1
+metadata:
+  ticket: OMN-22687
+  transport_type: kafka
+lifecycle: experimental
