@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The remote_lane_start section the leader reads (pass it with --overlay). Every key is required:
+# a missing one refuses naming remote_lane_start.<key>. All values here are synthetic; supply your
+# deployment's facts. The PR that adds this node maps each key to the runner script line it replaces.
+remote_lane_start:
+  # The one shape the node runs; the runner script keeps every other one.
+  supported_engines: [claude]
+  supported_placements: [lab]
+  # The engine command; {model}, {brief} and {lane} are filled from the request.
+  engine_argv: [claude, -p, "{brief}", --model, "{model}", --output-format, stream-json, --verbose]
+  engine_environment:
+    EXAMPLE_LANE_MODE: headless
+  start_timeout_seconds: 60
+  prepare_timeout_seconds: 300
+  host_call_timeout_seconds: 60
+  poll_interval_seconds: 5
+  stop_grace_seconds: 30
+  receipt_dir: /var/lib/example/remote-lanes
+  host_run_root: /var/lib/example/lane-runs
+  registry_root_candidates: [/srv/example/registry]
+  ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
+  # Starts the engine in a session of its own; a host with no setsid binary names a shim.
+  detach_argv: [setsid]
+  # The ledger writer's argv prefix; the ledger path from --ledger follows it.
+  ledger_append_argv: [example-ledger-writer]
+  ledger_writer_principal: example-principal
+  # The runner script's CLAIM and STATUS actor, so a row of this node reads as the runner's own row.
+  actor: script:onex-remote-lane
+  displaces: a lane on the busy launching host
+  est_hours: 2
+  priority: other
+  claim_text: "remote lane on {host} via node_remote_lane_start_orchestrator"
+# What the stopped-line fill runs to start a lane: this node's entry, never the runner script.
+floor_fill:
+  runner_command: [onex, run-node, node_remote_lane_start_orchestrator, --]
