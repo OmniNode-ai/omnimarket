@@ -13,6 +13,9 @@ from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
+    cpu_temp_from_tools,
+)
 
 from ..models import (
     LAB_WORK_WEIGHT_ENV,
@@ -120,7 +123,17 @@ class HandlerLabPoolPlace:
                         else request.min_free_bytes
                     )
                     capacity_refused = True
-                    if ad.load_per_core > request.max_load_per_core:
+                    temp = cpu_temp_from_tools(ad.tools)
+                    if (
+                        temp is not None
+                        and table.max_cpu_c is not None
+                        and temp > table.max_cpu_c
+                    ):
+                        reason = (
+                            f"hot: CPU {temp:.1f} C is over this host's "
+                            f"{table.max_cpu_c:.1f} C hold bar (host table max_cpu_c)"
+                        )
+                    elif ad.load_per_core > request.max_load_per_core:
                         reason = (
                             f"over the {request.max_load_per_core:.2f} load/core bar"
                         )
