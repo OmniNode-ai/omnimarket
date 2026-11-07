@@ -38,7 +38,9 @@ def test_a_row_without_volumes_root_still_loads() -> None:
 
 @pytest.mark.parametrize("value", ["Volumes", "/", "//", "./Volumes"])
 def test_a_relative_or_root_volumes_root_is_refused(value: str) -> None:
-    with pytest.raises(ValidationError, match="absolute directory"):
+    with pytest.raises(
+        ValidationError, match=r"string_pattern_mismatch|filesystem root"
+    ):
         ModelLabHostRow.model_validate({**_ROW, "volumes_root": value})
 
 
