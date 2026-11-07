@@ -13,6 +13,12 @@ requirements:
     acceptance:
       - id: AC1
         statement: "AC1: the reading writer reads pull request state through the pr_state projection reader, with its url set by an overlay and not in code -- falsifier: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_projection_source.py -q -k without_the_overlay_address, which fails when the overlay value is removed from the passing case"
+  - id: req-omn23038-floor-start-after
+    statement: >-
+      The floor admits a rebuild piece when the readings its overlay names read WORKING, not only when a contiguous go covers it; a piece with no entry is admitted by the go alone.
+    acceptance:
+      - id: AC2
+        statement: "AC2: a piece whose start_after pieces all read WORKING is admitted with no go, and one whose predecessor reads NOT WORKING, UNKNOWN or unread is not -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_start_after_floor_simple_compute.py -q -k 'golden_a_piece_whose_predecessor or every_named_predecessor or not_working_or_unread'"
 evidence_requirements:
   - kind: tests
     description: >-
@@ -40,4 +46,22 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23038 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_projection_source.py -q --no-cov'
+        cwd: .
+  - id: dod-omn23038-ac2-start-after-admission
+    description: >-
+      With the handler at its previous version the golden admission test and the all-predecessors test fail, because admission read the go and the step 0 list alone; with this change they pass, and the cases that must not admit (predecessor not working, unknown or unread, a piece with no entry) hold.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_start_after_floor_simple_compute.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23038-floor-integration-proof
+    description: The pushed head ran the floor compute and effect tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23038-floor --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_compute -q --no-cov'
         cwd: .
