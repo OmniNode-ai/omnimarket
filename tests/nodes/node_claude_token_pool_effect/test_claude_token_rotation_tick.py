@@ -25,7 +25,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_toke
     HandlerClaudeTokenPool,
     fingerprint,
 )
-from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation import (
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick import (
     HandlerClaudeTokenRotation,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
