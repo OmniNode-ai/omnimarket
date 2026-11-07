@@ -8,9 +8,10 @@ takes readings and ``now`` and reads no clock, network or protocol. The seam nod
 (``node_seam_read_orchestrator``), read through ``contract_section``; an absent key
 refuses the render naming it, never a code default.
 
-A reading is MISSING when any crossing mismatched, whatever else is true. Otherwise it is
-UNKNOWN when it cannot be trusted or proves nothing: an unreadable crossing, an empty window
-or a window under the minimum crossings. Otherwise it is clean (``status=OK``).
+A reading is MISSING when any identity mismatched, whatever else is true. Otherwise it is
+UNKNOWN for the first applicable reason: absent identity evidence, an unreadable identity,
+an unexpected crossing, an empty window or a window under the minimum crossings.
+Otherwise it is clean (``status=OK``). The contract caps the rendered examples.
 """
 
 from __future__ import annotations
@@ -95,8 +96,12 @@ def _seam_line(reading: ModelSeamReading, status: str, window_hours: int) -> str
 
 
 def _unknown_reason(reading: ModelSeamReading, minimum: int) -> str | None:
+    if not reading.has_identity_evidence:
+        return "identity-evidence-absent"
     if reading.unreadable > 0:
         return f"unreadable={reading.unreadable}"
+    if reading.unexpected > 0:
+        return f"unexpected={reading.unexpected}"
     if reading.crossings == 0:
         return "empty-window"
     if reading.crossings < minimum:
@@ -131,7 +136,7 @@ class HandlerSeamReading:
         self, reading: ModelSeamReading, config: ModelSeamReadConfig
     ) -> list[str]:
         if reading.mismatched > 0:
-            examples = ",".join(reading.examples)
+            examples = ",".join(reading.examples[: config.max_examples])
             return [
                 _seam_line(reading, "MISSING", config.window_hours),
                 f"MISSING seam:{reading.seam_id} mismatched={reading.mismatched}"

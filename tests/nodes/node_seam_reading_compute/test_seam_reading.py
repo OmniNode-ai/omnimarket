@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pydantic import ValidationError
 
 from omnimarket.models.seam_reading import (
     EnumSeamCrossingState,
@@ -57,14 +56,26 @@ def _crossings(
 
 
 def _reading(seam_id: str, **counts: int) -> ModelSeamReading:
-    return ModelSeamReading.from_crossings(seam_id, WINDOW, _crossings(**counts), NOW)
+    crossings = _crossings(**counts)
+    return ModelSeamReading.from_crossings(
+        seam_id,
+        WINDOW,
+        crossings,
+        NOW,
+        expected_identities=[c.key for c in crossings],
+        source_cursor="cursor-1",
+    )
 
 
 def _fixture_contract(
-    tmp_path: Path, minimum: int = 20, expected: int | None = 100
+    tmp_path: Path,
+    minimum: int = 20,
+    expected: int | None = 100,
+    max_examples: int = 3,
 ) -> Path:
     raw = yaml.safe_load(ORCHESTRATOR_CONTRACT_PATH.read_text(encoding="utf-8"))
     raw["config"]["seam_read"]["default_minimum_crossings"] = minimum
+    raw["config"]["seam_read"]["max_examples"] = max_examples
     for node in raw["workflow_coordination"]["workflow_definition"]["execution_graph"][
         "nodes"
     ]:
@@ -184,20 +195,27 @@ def test_lines_follow_the_order_of_the_graph(tmp_path: Path) -> None:
     assert ids == ["SM-00", "SM-13"]
 
 
-def test_examples_are_capped_at_three() -> None:
+def test_the_example_cap_is_read_from_the_contract(tmp_path: Path) -> None:
     reading = _reading("SM-02", matched=0, mismatched=5)
     assert reading.mismatched == 5
-    assert len(reading.examples) == 3
-    with pytest.raises(ValidationError):
-        ModelSeamReading(
-            seam_id="SM-02",
-            window=WINDOW,
-            crossings=5,
-            mismatched=5,
-            unreadable=0,
-            examples=("a", "b", "c", "d"),
-            read_at=NOW,
-        )
+    one = _lines_for(
+        _render(_fixture_contract(tmp_path, max_examples=1), reading), "SM-02"
+    )
+    assert any(line.endswith("examples=bad-0") for line in one)
+    assert not any("bad-1" in line for line in one)
+    two = _lines_for(
+        _render(_fixture_contract(tmp_path, max_examples=2), reading), "SM-02"
+    )
+    assert any(line.endswith("examples=bad-0,bad-1") for line in two)
+
+
+def test_no_example_cap_constant_is_left_in_the_source() -> None:
+    hits = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*.py")
+        if "MAX_EXAMPLES" in path.read_text(encoding="utf-8")
+    )
+    assert hits == []
 
 
 def test_the_entry_point_wrapper_renders() -> None:

@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-21508"
+title: "T-S1b: seam reading counts identities, not elements"
+summary: >-
+  Task T-S1b repairs ModelSeamReading.from_crossings: a repeated crossing key is refused naming
+  the key, the adapter supplies the expected identity set and source cursor and the reading
+  reconciles identities before classification, and the example cap is config.seam_read.max_examples
+  with the MAX_EXAMPLES constant deleted.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21508-identities"
+    statement: >-
+      The reading counts identities, not elements, and the example cap comes from the contract.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: see ticket"
+      - id: "AC2"
+        statement: "AC2: see ticket"
+      - id: "AC3"
+        statement: "AC3: see ticket"
+      - id: "AC4"
+        statement: "AC4: see ticket"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused test files."
+    command: "uv run pytest tests/nodes/node_seam_reading_compute tests/nodes/node_seam_classify_compute tests/nodes/node_seam_read_orchestrator -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21508-ac1"
+    description: >-
+      Two crossings of one key are refused by the model naming the key, in the model and in the SM-00 adapter. Fails at the merge base, where the duplicate reads clean.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_two_crossings_of_one_key_are_refused_naming_the_key tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py::test_sm_00_refuses_two_items_of_one_key_naming_it -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21508-ac2"
+    description: >-
+      A defective identity replaced by a distinct healthy one with the total preserved does not read OK, an unexpected crossing cannot raise the count, an expected identity without a crossing is mismatched, and missing identity evidence reads UNKNOWN. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_a_defective_identity_replaced_by_a_distinct_healthy_one_does_not_read_ok tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_an_unexpected_crossing_cannot_raise_the_crossing_count tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_an_expected_identity_without_a_crossing_is_mismatched tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_missing_identity_evidence_reads_unknown tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py::test_sm_00_reconciles_the_supplied_identity_set tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py::test_sm_00_without_readable_identity_evidence_carries_none tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py::test_lanes_reconcile_the_supplied_identity_set -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21508-ac3"
+    description: >-
+      The example cap is config.seam_read.max_examples (a fixture contract with a cap of 1 prints one example) and no MAX_EXAMPLES constant is left in src. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_the_example_cap_is_read_from_the_contract tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_no_example_cap_constant_is_left_in_the_source -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21508-ac3-grep"
+    description: >-
+      A grep for the constant assignment in src/omnimarket prints nothing; the positive control is the same grep for the SEAM verdict word, which prints a hit.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c '! grep -rn \"MAX_EXAMPLES =\" src/omnimarket && grep -rq \"MISSING seam\" src/omnimarket'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21508-ac4"
+    description: >-
+      The seam reading reads byte-identical after a JSON round trip, the model package names no protocol, and the T-S1 request round trip is byte-identical. The parity harness of the plan does not exist in this repository yet; this is the in-repo falsifier. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_a_reading_round_trips_byte_identical tests/nodes/node_seam_reading_compute/test_seam_identities.py::test_the_model_package_depends_on_no_protocol tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_results_are_byte_identical_in_process_and_after_a_request_round_trip -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21508-delegation-join"
+    description: >-
+      The three text runs (commit messages, harness-delegate run directories) and the Codex code thread whose output is in the pull request head each have a receipt that names this ticket or this thread (the DS-6 and DS-7 joins; the delegation_events rows are read
+      by the delegation share line of queue status). Fails at the merge base, which has no such run.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'for r in 99bee03c-472f-441d-98ff-1ce720d312e5 d0d16f01-fc65-480d-8c8c-df259f73468d 22b61b7a-90d9-40a3-8721-bd2ef9c1df2c; do grep -q OMN-21508 \"${OMNI_HOME}/.onex_state/harness-delegate/$r/receipt.json\"; done; grep -q 01a18526-b174-71b0-a869-b6343098dabb \"${OMNI_HOME}/.claude_scratch/delegation-receipts/t-s1b-0035/2026-10-29T005535Z-codex-impl-identities.json\"'"
+  - id: "dod-omn21508-deploy-import"
+    description: >-
+      Hosted deploy check: the model file at the pull request head commit, read through the GitHub
+      contents API, carries the source_cursor field. Fails at the merge base, where the field is absent.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/seam_reading/model_seam_reading.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F source_cursor > /dev/null'"

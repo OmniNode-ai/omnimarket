@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from omnimarket.models.seam_reading import ModelSeamReading
 from omnimarket.nodes.node_seam_classify_compute.handlers.classify_backlog_engine_seams import (
     BACKLOG_ENGINE_OPERATIONS,
     classify_sm_00,
@@ -35,12 +36,24 @@ def _item(key: str, required_engine: str = "claude") -> dict[str, object]:
     }
 
 
-def _facts(name: str, values: object) -> dict[str, object]:
-    return {
+def _facts(
+    name: str, values: object, expected: object = None, cursor: object = "cursor-1"
+) -> dict[str, object]:
+    facts: dict[str, object] = {
         name: values,
         "window_start": "2026-10-27T00:00:00+00:00",
         "window_end": "2026-10-28T00:00:00+00:00",
     }
+    if expected is None and isinstance(values, list):
+        expected = [
+            (v.get("key") if isinstance(v, dict) and v.get("key") else f"item-{i}")
+            for i, v in enumerate(values)
+        ]
+    if expected is not False:
+        facts["expected_keys"] = expected
+    if cursor is not None:
+        facts["source_cursor"] = cursor
+    return facts
 
 
 def test_sm_00_counts_malformed_items_and_reports_their_keys() -> None:
@@ -190,3 +203,62 @@ def test_registered_operations_dispatch_sm_00() -> None:
     assert result.readings[0].seam_id == "SM-00"
     assert result.readings[0].crossings == 1
     assert result.readings[0].mismatched == 0
+
+
+def _sm_00(facts: dict[str, object]) -> ModelSeamReading:
+    return classify_sm_00(
+        ModelSeamClassifyRequest(
+            operation="classify_sm_00",
+            facts=facts,
+            now=datetime(2026, 10, 28, tzinfo=UTC),
+        )
+    ).readings[0]
+
+
+def test_sm_00_refuses_two_items_of_one_key_naming_it() -> None:
+    items = [_item("a"), _item("twin"), _item("twin")]
+    with pytest.raises(ValueError, match="twin"):
+        _sm_00(_facts("items", items, expected=["a", "twin"]))
+
+
+def test_sm_00_reconciles_the_supplied_identity_set() -> None:
+    items = [_item("a"), _item("b"), _item("stand-in")]
+    reading = _sm_00(_facts("items", items, expected=["a", "b", "gone"]))
+    assert reading.crossings == 3
+    assert reading.mismatched == 1
+    assert reading.unexpected == 1
+    assert reading.examples == ("gone",)
+    assert reading.expected == 3
+    assert reading.source_cursor == "cursor-1"
+
+
+@pytest.mark.parametrize(
+    ("expected", "cursor"),
+    [
+        (False, "cursor-1"),
+        ("not-a-sequence", "cursor-1"),
+        ([1, 2], "cursor-1"),
+        (["a"], None),
+        (["a"], 7),
+    ],
+)
+def test_sm_00_without_readable_identity_evidence_carries_none(
+    expected: object, cursor: object
+) -> None:
+    reading = _sm_00(_facts("items", [_item("a")], expected=expected, cursor=cursor))
+    assert reading.expected is None or reading.source_cursor is None
+    assert reading.crossings == 1
+
+
+def test_lanes_reconcile_the_supplied_identity_set() -> None:
+    lane = {"key": "lane-1", "kind": "ticket", "claim_model": "sonnet"}
+    result = classify_sm_02(
+        ModelSeamClassifyRequest(
+            operation="classify_sm_02",
+            facts=_facts("lanes", [lane], expected=["lane-1", "lane-2"]),
+            now=datetime(2026, 10, 28, tzinfo=UTC),
+        )
+    )
+    reading = result.readings[0]
+    assert reading.mismatched == 1
+    assert reading.examples == ("lane-2",)
