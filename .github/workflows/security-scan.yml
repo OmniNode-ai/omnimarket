@@ -58,9 +58,27 @@ jobs:
       - name: Export requirements
         run: uv export --format requirements-txt --no-hashes --output-file requirements.txt
 
+      # Dependency review needs the repository's Dependency graph. When the
+      # graph is off, the action fails every pull request with "Dependency
+      # review is not supported on this repository" whatever the change is.
+      # Probe the graph first and run the review only when it answers; Safety
+      # Check below still gates the dependencies either way.
+      - name: Probe Dependency graph
+        id: depgraph
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/dependency-graph/sbom" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Dependency graph is not enabled; skipping Dependency Review"
+          fi
+
       - name: Run Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.depgraph.outputs.enabled == 'true'
 
       - name: Run Safety Check
         run: |
