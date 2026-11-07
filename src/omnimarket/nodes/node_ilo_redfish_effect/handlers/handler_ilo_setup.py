@@ -414,8 +414,8 @@ class HandlerIloSetup:
 
     def _existing_row(self, name: str) -> dict[str, JsonValue] | None:
         document = self._overlay_document()
-        for row in document.get("hosts", []):
-            if isinstance(row, dict) and row.get("name") == name:
+        for row in _rows(document):
+            if row.get("name") == name:
                 return row
         return None
 
@@ -749,8 +749,10 @@ class HandlerIloSetup:
 
     def _write_overlay(self, row: dict[str, JsonValue]) -> None:
         document = self._overlay_document()
-        rows = [r for r in document.get("hosts", []) if isinstance(r, dict)]
-        merged = [row if r.get("name") == row["name"] else r for r in rows]
+        rows = _rows(document)
+        merged: list[JsonValue] = [
+            row if r.get("name") == row["name"] else r for r in rows
+        ]
         if all(r.get("name") != row["name"] for r in rows):
             merged.append(row)
         document = {
@@ -840,6 +842,13 @@ class HandlerIloSetup:
             )
         except Exception:  # any reader failure means the node cannot read them yet
             return False
+
+
+def _rows(document: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
+    hosts = document.get("hosts")
+    if not isinstance(hosts, list):
+        return []
+    return [r for r in hosts if isinstance(r, dict)]
 
 
 def _host_row(
