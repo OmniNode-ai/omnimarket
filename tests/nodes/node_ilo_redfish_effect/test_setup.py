@@ -24,7 +24,7 @@ from cryptography.x509.oid import NameOID
 from pydantic import JsonValue, SecretStr
 
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
-    IloSetupRunner,
+    HandlerIloSetup,
     generate_password,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
@@ -248,7 +248,7 @@ class Rig:
             self.store_at_fetch.append(frozenset(self.secrets.values))
             return self.der
 
-        self.handler = IloSetupRunner(
+        self.handler = HandlerIloSetup(
             secrets_port=self.secrets,
             fetch_certificate=fetch,
             transport_factory=transport_factory or factory,
