@@ -336,6 +336,10 @@ class ModelFloorLane(_Frozen):
     stalled: bool = False
     # The pull request the lane works on ("repo#number"), the key that ties a lane to a pull request class.
     pr: str = ""
+    # The process reading of the lane ("alive", "unread", "dead", "finished"): a dead or finished lane is on nothing.
+    liveness: str = "unread"
+    # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
+    owns: tuple[str, ...] = ()
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -520,6 +524,29 @@ class ModelPieceEventRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelLedgerReadingRule(_Frozen):
+    """Which ledger rows are the reading writer's reading rows, and which cells hold what the floor needs of one.
+
+    The reading writer appends one row per piece per window (a STATUS row of its own lane). The floor draws a piece's
+    reading from the newest such row of the piece, so the strip, the colour and the staleness rule all read what the
+    writer wrote. Nothing here names a piece: ``piece_cell`` holds it. A verdict is written as WORKING, NOT_WORKING or
+    UNKNOWN; the floor draws NOT_WORKING as ``NOT WORKING``.
+    """
+
+    row_type: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    cells: dict[str, str] = Field(default_factory=dict)
+    piece_cell: str = Field(min_length=1)
+    verdict_cell: str = Field(min_length=1)
+    probed_at_cell: str = Field(min_length=1)
+    published_at_cell: str = Field(min_length=1)
+    max_age_cell: str = Field(min_length=1)
+    # The cell that says why the writer gave the verdict (no producer yet, a source that failed, a stale source); the strip
+    # draws it, so a reader sees whether the writer lacks a piece's source or the piece truly fails. ``None`` draws none.
+    reason_cell: str | None = None
+    lookback_days: int = Field(gt=0)
+
+
 class ModelRebuildOverlay(_Frozen):
     go: ModelGoRule
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
@@ -560,6 +587,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     numbers: ModelNumbersOverlay
     causes: ModelCauseOverlay
     piece_events: tuple[ModelPieceEventRule, ...] = ()
+    # Where the reading writer's rows are on the ledger; ``None`` reads none (the file route of the runtime alone).
+    ledger_readings: ModelLedgerReadingRule | None = None
     freshness_max_age_s: int = Field(gt=0)
     error_receipt_max_age_s: int = Field(gt=0)
     error_drill_after_s: int = Field(gt=0)
@@ -581,6 +610,8 @@ class ModelReadingRow(_Frozen):
     probed_at: datetime
     published_at: datetime
     max_age_s: int
+    # Why the writer gave this verdict, when the row says (the rule's reason cell); empty otherwise.
+    reason: str = ""
 
 
 class ModelFloorSimpleInput(_Frozen):

@@ -461,7 +461,8 @@ def test_git_timeout_is_a_probe_error(
     items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
         command(roots=(str(root),)), NOW
     )
-    assert items[0].probe_errors == ("probe_failed:ValueError",)
+    # A timeout under load is deferred to the next tick, not a failure (OMN-22799).
+    assert items[0].probe_errors == ("probe_deferred:remote_refresh_timeout",)
     fake = Fakes(items)
     result = fake.handler().handle(command())
     assert not fake.removed
@@ -912,7 +913,7 @@ def probe_for(
     )
     monkeypatch.setattr(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts._fetch_all",
-        lambda _clone: True,
+        lambda _clone: "ok",
     )
     return GitWorktreeFactsProbe(unit_reader=units, merged_pr_reader=reader)
 
