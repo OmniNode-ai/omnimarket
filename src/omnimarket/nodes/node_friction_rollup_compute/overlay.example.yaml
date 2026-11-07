@@ -85,6 +85,12 @@ class_rules:
   - name: tool-result-exceeds-context-cap
     owner: "the owner of the read tool named in the row: its page size overflows the tool-result cap"
     pattern: 'tool-result token cap'
+  - name: scm-pr-view-bus-live-read-fails
+    owner: "the owner of the onex scm pr-view bus live read (node_github_repo_gateway_effect and the watcher-state read it falls back to): a comment read of a pull request over the bus failed, so pr-handoff refused with exit 5"
+    pattern: 'pr-view --source bus live read failed'
+  - name: canonical-clone-sync-answers-no-clone-for-a-brief-repository
+    owner: "the clone sync declaration of the lab host (canonical_clone_sync refresh): a lab host that carries no clone, or no branch, of a repository the brief names answers NO_CLONE and the lane cannot read the text"
+    pattern: 'NO_CLONE'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness

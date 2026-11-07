@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-22879
+title: The friction rollup class list names the cause of the last two unclassified FRICTION rows of the 24-hour window, so the floor row stoppage:unclassified reads none
+summary: overlay.example.yaml of node_friction_rollup_compute gains two class rules (data, no code) that name the cause each remaining unclassified row states and who ends it. A replay of the live ledger window ending 2026-11-07T13:26Z with the 28 shipped rules files none under unclassified (51 with the six rules on the base branch, 2 with the 26 rules of the OMN-22865 commit this change stands on).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22879-class-list
+  statement: Each of the two recorded rows that the 26 earlier rules leave unclassified gets a named class with an owner from the shipped rules, and the same replay with only the 26 earlier rules files both under unclassified.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the replay of the two recorded rows files none under unclassified with the shipped rules and both with only the 26 earlier rules -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_unclassified_2026_11_07_c.py -q --no-cov -n 0 -p no:randomly"
+evidence_requirements:
+- kind: tests
+  description: The class rule tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22879-class-list
+  description: The class rule replay tests pass, with the control that shows both rows unclassified under the 26 earlier rules.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_unclassified_2026_11_07_c.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22879-integration-proof
+  description: The pushed head ran the class rule tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22879 -- uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov'
+    cwd: .
