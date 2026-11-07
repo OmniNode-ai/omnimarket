@@ -40,6 +40,9 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
     HandlerLabTestHarnessEffect,
     open_lab_work_runner,
 )
+from omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_harness_effect import (
+    sink_from_overlay,
+)
 
 EXIT_WORKING = 0
 EXIT_NOT_WORKING = 1
@@ -59,6 +62,7 @@ def run_once(
     """Run every case once. Returns the exit code, the run id and the reading state ("" when none was read)."""
     try:
         overlay = load_structured_overlay(NODE_NAME, ModelLabTestHarnessOverlay)
+        sink = sink_from_overlay(overlay)
     except (NodeOverlayError, ValidationError) as exc:
         emit_error(f"overlay refused: {exc}")
         return EXIT_OVERLAY_REFUSED, run_id or "", ""
@@ -68,6 +72,7 @@ def run_once(
         runner_opener=lambda ov: open_lab_work_runner(
             ov, workspace_root=workspace_root
         ),
+        sink=sink,
     )
     request = ModelLabTestHarnessRequested(
         run_id=run_id or f"{trigger}-{now:%Y%m%dT%H%M%SZ}",
