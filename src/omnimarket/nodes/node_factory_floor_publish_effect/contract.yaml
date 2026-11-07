@@ -194,6 +194,21 @@ runtime:
     required: false
     timeout_seconds: 30
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-22478: the friction report with the overlay home's class rules. It runs after the group above (not concurrent with
+  # the copy, which writes the same file): the copy stays the fallback when this step fails, and the status file says so.
+  - name: friction_classed
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 120
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      ledger_path_env: ONEX_LEDGER_PATH
+      archive_subdir: archive
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
   - name: factory_floor
     kind: module
     required: true
