@@ -79,7 +79,7 @@ class _Appender:
 
     def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
         self.calls.append((rows, request_id))
-        return ModelAppendOutcome(status=self.status)  # type: ignore[arg-type]
+        return ModelAppendOutcome.model_validate({"status": self.status})
 
 
 def _writer(
