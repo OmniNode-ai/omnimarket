@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22992
+title: 'node_floor_fill_candidates_compute marks a task ready from its Start when criterion alone, and a task whose prerequisite is not met is not ready'
+summary: The floor fill candidates compute reads the Start when line of each task into prerequisites (a piece reading WORKING on the served pieces list, a merged reference, M0 PASS), marks the task ready when they all read true, names the unmet one otherwise, and has no input that reads an operator go.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22992-start-criterion-readiness
+  statement: The floor fill computes ready from the floor record's own wait state and note, so an operator hold or go decides it rather than the task's start criterion.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a task whose start criterion''s prerequisites all read true is ready, and a task with one unmet prerequisite is not ready and names it -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q -k start_criterion_readiness'
+  - id: AC2
+    statement: 'AC2: no input field of the node reads an operator go, and a task that carried one reads ready only by its criterion -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q -k no_operator_go_field'
+  - id: AC3
+    statement: 'AC3: the criterion parser reads the Start when line of the tickets minted under the stopped-line plan into prerequisites, and an unparseable line reads not ready with the cause named -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q -k parse_start_when_line'
+evidence_requirements:
+- kind: tests
+  description: The node's focused suite and the bus parity scenarios.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_candidates_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22992-ac1
+  description: AC1 all prerequisites true is ready; one unmet is not ready and named; the reading flip is the failing control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q --no-cov --tb=line -k start_criterion_readiness
+    cwd: .
+- id: dod-omn22992-ac2
+  description: AC2 the request has no operator-go field and a task that carried one reads ready only by its criterion.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q --no-cov --tb=line -k no_operator_go_field
+    cwd: .
+- id: dod-omn22992-ac3
+  description: AC3 the parser reads the Start when line into prerequisites and an unparseable line reads not ready with its cause.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_candidates_compute -q --no-cov --tb=line -k parse_start_when_line
+    cwd: .
+- id: dod-omn22992-parity
+  description: The golden (criterion met) and error (criterion unmet, criterion unparseable) scenarios decide the same on the in-memory bus as in process.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_fill_candidates_compute -q --no-cov --tb=line -m 'not kafka' -k floor_fill_candidates_parity
+    cwd: .
+- id: dod-omn22992-deploy-probe
+  description: 'Deploy probe: the contract GitHub serves at the checked-out commit names the node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_fill_candidates_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_floor_fill_candidates_compute" > /dev/null'''
+    cwd: .
+- id: dod-omn22992-integration-proof
+  description: The pushed head ran the node's tests, the bus parity scenarios included, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane rdy-t1-ready-1235 -- uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_candidates_compute -q --no-cov
+    cwd: .
