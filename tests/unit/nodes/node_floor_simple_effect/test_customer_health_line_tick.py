@@ -16,11 +16,17 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.models.floor_17a import ModelFloorSimple
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
+    ModelCustomerHealthOverlay,
+    ModelCustomerHealthRequest,
+    ModelHealthReadingIn,
 )
 from tests.nodes.node_floor_simple_effect.support import (
     NOW,
@@ -94,6 +100,36 @@ def test_golden_the_record_carries_a_health_line_with_the_ages_of_its_own_rows(
     chain = [e for e in sink.events if e.node == STEP]
     assert [e.phase for e in chain] == ["start", "success"]
     assert chain[0].correlation_id == result.correlation_id
+
+
+def test_golden_a_checker_can_repeat_the_line_from_the_records_own_piece_rows(
+    tmp_path: Path,
+) -> None:
+    home = build_home(tmp_path)
+    harness(home, "WORKING", 120)
+    env = own_overlay(home)
+    assert run(home, env=env).ok
+    doc = written(home)
+    overlay = ModelCustomerHealthOverlay.model_validate(
+        yaml.safe_load(Path(env["ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY"]).read_text())
+    )
+    again = HandlerCustomerHealth().handle(
+        ModelCustomerHealthRequest(
+            now=doc.generated_at,
+            readings=tuple(
+                ModelHealthReadingIn(
+                    piece=p.piece,
+                    name=p.name,
+                    reading_state=p.reading_state,
+                    reading_age_s=p.reading_age_s,
+                    reading_max_age_s=p.reading_max_age_s,
+                )
+                for p in doc.pieces
+            ),
+            overlay=overlay,
+        )
+    )
+    assert again == doc.health
 
 
 def test_stale_reading_makes_the_written_line_not_working_and_names_the_piece(
