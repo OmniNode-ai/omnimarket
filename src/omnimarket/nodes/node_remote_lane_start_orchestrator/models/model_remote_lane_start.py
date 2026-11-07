@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -63,6 +63,9 @@ class ModelRemoteLaneStartSettings(BaseModel):
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     ledger_append_argv: tuple[str, ...] = Field(min_length=1)
+    # OMN-22848: "bus" on a host whose ledger of record is the bus, where a direct
+    # file append from anyone but the ledger serve is refused; "local" otherwise.
+    ledger_write_via: Literal["local", "bus"]
     ledger_writer_principal: str = Field(min_length=1)
     actor: str = Field(min_length=1)
     displaces: str = Field(min_length=1)

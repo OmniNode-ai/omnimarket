@@ -24,6 +24,8 @@ remote_lane_start:
   detach_argv: [setsid]
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
+  # bus where the host's ledger of record is the bus (a direct file append is refused there).
+  ledger_write_via: bus
   ledger_writer_principal: example-principal
   # The runner script's CLAIM and STATUS actor, so a row of this node reads as the runner's own row.
   actor: script:onex-remote-lane

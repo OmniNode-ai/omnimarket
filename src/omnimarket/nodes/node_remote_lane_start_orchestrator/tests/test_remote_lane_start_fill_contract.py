@@ -78,6 +78,7 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
         "host_run_root": str(tmp_path / "runs"),
         "detach_argv": SETSID_SHIM,
         "ledger_append_argv": [sys.executable, str(writer)],
+        "ledger_write_via": "local",
         "ledger_writer_principal": PRINCIPAL,
     }
     overlay_path = tmp_path / "overlay.yaml"

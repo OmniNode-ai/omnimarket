@@ -65,6 +65,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "ssh_argv": ["ssh"],
         "detach_argv": ["setsid"],
         "ledger_append_argv": ["fixture-ledger"],
+        "ledger_write_via": "bus",
         "ledger_writer_principal": PRINCIPAL,
         "actor": "script:onex-remote-lane",
         "displaces": "a lane on the busy launching host",

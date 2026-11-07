@@ -82,7 +82,8 @@ def build_real(
         ledger_file = LocalLedgerFile(Path(request.ledger_path))
         ledger = HandlerWorkLedgerAppendEffect(
             runner=LocalLedgerAppendCommand(
-                [*settings.ledger_append_argv, request.ledger_path]
+                [*settings.ledger_append_argv, request.ledger_path],
+                write_via=settings.ledger_write_via,
             ),
             reader=ledger_file,
             writer_principals=[settings.ledger_writer_principal],
