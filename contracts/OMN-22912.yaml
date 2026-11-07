@@ -44,8 +44,6 @@ dod_evidence:
   description: The served floor record named by FLOOR_SIMPLE_JSON_URL shows J4 with a state other than broken and a golden age, after the branch's join has run against the real dev store.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: curl -s "$FLOOR_SIMPLE_JSON_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)['pieces'][3]['joins'][0]; assert j['id']=='J4' and j['state'] in ('golden_only','passed') and j['golden_age_s'] is not None, j['state']"
@@ -54,9 +52,6 @@ dod_evidence:
   description: The lab run at the pushed head against the real dev store, golden and error, with the failing control on the join's scan, is recorded in the pull request body; the local Done gate re-runs the join tests on a lab host at the pushed head.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
-  - AC2
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22912 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov
