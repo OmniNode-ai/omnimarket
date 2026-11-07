@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22898
+title: The read-only principal's credential is named by a secret store reference in its overlay, and the probe resolves the reference before it probes
+summary: The node_read_only_principal_effect overlay model requires a credential block (the declared store, the lane and the reference filed in it, never a value). The probe asks the store whether the reference resolves before any attempt runs and refuses with exit 2 when it does not. The in-memory default resolver and the real onex credential store resolver are both injected.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22898-credential-ref
+  statement: The overlay names the principal's credential by a store reference, the overlay model refuses an overlay without it, and the probe refuses before any attempt when the reference does not resolve.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlay home carries the read-only principal''s overlay, with the credential named by a secret store reference and never a value, and the overlay check exits 1 when the reference is removed -- falsifier: the overlays overlay check command with the reference removed as the control'
+evidence_requirements:
+- kind: tests
+  description: The node's tests, including the golden and error cases for the credential reference.
+  command: uv run --frozen pytest tests/nodes/node_read_only_principal_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22898-ac1-credential-ref
+  description: An overlay without the credential block is refused by the model (the control), a reference the store does not hold refuses the probe before any attempt, and a reference the real store holds resolves.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_read_only_principal_effect -q --no-cov
+    cwd: .
