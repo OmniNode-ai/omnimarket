@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError
 from omnimarket.nodes.node_work_ledger_copy_effect import schedule
 from omnimarket.nodes.node_work_ledger_copy_effect.container.container_work_ledger_copy_effect import (
     create_handler_work_ledger_copy,
@@ -40,11 +41,15 @@ from omnimarket.nodes.node_work_ledger_copy_effect.protocols import CopyStepErro
 def _schedule(verb: str, overlay: ModelCopyOverlay) -> int:
     plan = schedule.load_schedule()
     agents = Path.home() / "Library" / "LaunchAgents"
-    if verb == "schedule-render":
-        sys.stdout.write(schedule.render_plist(overlay, plan).decode("utf-8"))
-        return 0
-    if verb == "schedule-install":
-        return schedule.install(overlay, plan, agents_dir=agents, uid=os.getuid())
+    try:
+        if verb == "schedule-render":
+            sys.stdout.write(schedule.render_plist(overlay, plan).decode("utf-8"))
+            return 0
+        if verb == "schedule-install":
+            return schedule.install(overlay, plan, agents_dir=agents, uid=os.getuid())
+    except UnitRootRefusedError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
     return schedule.uninstall(plan, agents_dir=agents, uid=os.getuid())
 
 
