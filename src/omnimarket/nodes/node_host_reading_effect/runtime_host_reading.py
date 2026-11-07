@@ -40,6 +40,7 @@ from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
 )
+from omnimarket.models.model_join_j2 import ModelJoinJ2HostResult
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRepoSource
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import GraphRules
 from omnimarket.nodes.node_code_graph_effect.overlay import (
@@ -203,6 +204,11 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
     return 1 if failed else 0
 
 
+def all_hosts_golden(results: Sequence[ModelJoinJ2HostResult]) -> bool:
+    """True only when at least one host was read and every host read golden: a run over no hosts checked nothing."""
+    return bool(results) and all(r.ok for r in results)
+
+
 def _join_j2(arguments: Sequence[str]) -> int:
     """Run J2 for each pooled host (or the hosts named) on the bus chosen, and print one line each."""
     parser = argparse.ArgumentParser(prog="join-j2")
@@ -259,7 +265,7 @@ def _join_j2(arguments: Sequence[str]) -> int:
         lines.append(
             f"RUN-J2 hosts={len(results)} golden={golden} failed={len(results) - golden}"
         )
-        return golden == len(results), lines
+        return all_hosts_golden(results), lines
 
     try:
         ok, lines = asyncio.run(main())

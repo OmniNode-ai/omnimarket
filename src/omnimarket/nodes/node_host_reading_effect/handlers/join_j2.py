@@ -108,7 +108,26 @@ class JoinJ2:
         self, hosts: Sequence[str]
     ) -> tuple[ModelJoinJ2HostResult, ...]:
         """One J2 run per host, concurrently; the results come back in the order given."""
-        return tuple(await asyncio.gather(*(self.run_host(host) for host in hosts)))
+        gathered = await asyncio.gather(
+            *(self.run_host(host) for host in hosts), return_exceptions=True
+        )
+        return tuple(
+            self._host_raised(host, outcome)
+            if isinstance(outcome, BaseException)
+            else outcome
+            for host, outcome in zip(hosts, gathered, strict=True)
+        )
+
+    @staticmethod
+    def _host_raised(host: str, exc: BaseException) -> ModelJoinJ2HostResult:
+        """One host's run raised: that host reads a typed failure and the other hosts' results still come back."""
+        return ModelJoinJ2HostResult(
+            host=host,
+            correlation_id=uuid.uuid4().hex,
+            outcome=EnumJoinJ2Outcome.NO_RESULT,
+            failure_code=FAIL_NO_RESULT,
+            detail=f"{type(exc).__name__}: {exc}"[:300],
+        )
 
     async def run_host(self, host: str) -> ModelJoinJ2HostResult:
         s = self._settings
