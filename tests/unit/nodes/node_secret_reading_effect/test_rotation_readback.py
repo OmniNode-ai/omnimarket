@@ -6,7 +6,7 @@ writes one row per consumer, and reads a consumer left on the old key as NOT WOR
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import pytest
 
@@ -177,7 +177,7 @@ def _consumer(argv: tuple[str, ...] | None) -> ModelRotationConsumer:
     )
 
 
-def _runner(code: int | Exception):  # type: ignore[no-untyped-def]
+def _runner(code: int | Exception) -> Callable[[Sequence[str], int], int]:
     def run(argv: Sequence[str], timeout: int) -> int:
         if isinstance(code, Exception):
             raise code
