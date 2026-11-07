@@ -10,6 +10,7 @@ terminal event topic.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -46,7 +47,7 @@ NODE_DIR = (
 )
 
 
-def _contract() -> dict[str, object]:
+def _contract() -> dict[str, Any]:
     loaded = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
@@ -64,10 +65,10 @@ def test_golden_chain_command_json_to_terminal_event_json() -> None:
     assert event.correlation_id == result.correlation_id
     contract = _contract()
     assert contract["terminal_event"] == "onex.evt.omnimarket.pilot-manifest-checked.v1"
-    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]  # type: ignore[index]
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert (
-        contract["runtime_dispatch"]["command_topic"]  # type: ignore[index]
-        in contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+        contract["runtime_dispatch"]["command_topic"]
+        in contract["event_bus"]["subscribe_topics"]
     )
 
 
