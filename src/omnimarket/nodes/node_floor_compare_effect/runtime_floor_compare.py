@@ -32,12 +32,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="read the dated copies into the history and record no tick",
     )
+    ap.add_argument(
+        "--backfill-history",
+        action="store_true",
+        help="also write the dated points the ledger, tick log, git history, landing decisions and alarm histories hold",
+    )
+    ap.add_argument(
+        "--history-days", type=int, help="days to backfill (default: the contract's)"
+    )
     args = ap.parse_args(argv)
     result = HandlerFloorCompare().run(
         ModelFloorCompareRequest(
             home=args.home,
             drill_error=args.drill_error,
             backfill_only=args.backfill_only,
+            backfill_history=args.backfill_history,
+            history_days=args.history_days,
         )
     )
     sys.stdout.write(result.model_dump_json(indent=1) + "\n")

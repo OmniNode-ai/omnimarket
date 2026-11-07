@@ -88,16 +88,40 @@ runtime:
     - {days: 30, label: "30 days", tolerance_hours: 24}
   # Which way is better, per family of keys (longest prefix wins). Colours are ranked by piece_rank, lower is better.
   families:
-    - {prefix: merges, polarity: higher_is_better, unit: merges in the last hour, noun: "In-scope merges"}
-    - {prefix: open_prs, polarity: lower_is_better, unit: open, noun: "Open in-scope pull requests"}
-    - {prefix: slots_busy, polarity: higher_is_better, unit: slots busy, noun: "Lab slots working"}
-    - {prefix: red_rows, polarity: lower_is_better, unit: red rows, noun: "Red rows on the floor"}
-    - {prefix: "cause:", polarity: lower_is_better, unit: occurrences, noun: "Cause"}
-    - {prefix: "stoppage_cost:", polarity: lower_is_better, unit: lane-minutes lost, noun: "Stoppage cost of"}
-    - {prefix: alarms_total, polarity: lower_is_better, unit: alarms, noun: "Alarms raised"}
-    - {prefix: "alarm:", polarity: lower_is_better, unit: alarms, noun: "Alarm"}
-    - {prefix: "piece:", polarity: lower_is_better, unit: colour, noun: "Rebuild piece"}
-    - {prefix: "lab:", polarity: lower_is_better, unit: colour, noun: "Lab state"}
+    - {prefix: merges_all, polarity: higher_is_better, unit: merges in the last hour (every repository), noun: "Merges in the last hour, every repository", source: "throughput tick log: NOTE merges last 60 min (backfilled by its watcher tick time)"}
+    - {prefix: merges, polarity: higher_is_better, unit: merges in the last hour, noun: "In-scope merges", source: "throughput tick log: GOAL merges_60m (only since 2026-11-05, when the goal line began); today from the published floor"}
+    - {prefix: open_prs, polarity: lower_is_better, unit: open, noun: "Open in-scope pull requests", source: "throughput tick log: GOAL open (only since 2026-11-05); today from the published floor"}
+    - {prefix: slots_busy, polarity: higher_is_better, unit: slots busy, noun: "Lab slots working", source: "published floor only; no dated source holds busy slots"}
+    - {prefix: red_rows, polarity: lower_is_better, unit: red rows, noun: "Red rows on the floor", source: "published floor only; red rows are derived from the floor's own state"}
+    - {prefix: "cause:stoppage:", polarity: lower_is_better, unit: occurrences, noun: "Cause", source: "ledger FRICTION rows, classed by the friction rollup node's report over 24 hours; today from the rollup's latest window"}
+    - {prefix: "cause:", polarity: lower_is_better, unit: occurrences, noun: "Cause", source: "published floor only (chains, red pull requests, lab state, rebuild pieces have no dated source)"}
+    - {prefix: "stoppage_cost:", polarity: lower_is_better, unit: lane-minutes lost, noun: "Stoppage cost of", source: "ledger FRICTION rows, cost cell of each row, 24 hours; today from the rollup's latest window"}
+    - {prefix: alarms_total, polarity: lower_is_better, unit: alarms, noun: "Alarms raised", source: "published floor only; the floor's alarm list has no dated copy"}
+    - {prefix: "alarm:", polarity: lower_is_better, unit: alarms, noun: "Alarm", source: "published floor only"}
+    - {prefix: "piece:", polarity: lower_is_better, unit: colour, noun: "Rebuild piece", source: "published floor only; only the dated floor copies backfill it"}
+    - {prefix: "lab:", polarity: lower_is_better, unit: colour, noun: "Lab state", source: "published floor only"}
+    # New lines the dated sources hold and the published floor does not carry. Each counts the 24 hours that end at its time.
+    - {prefix: lanes_started, polarity: higher_is_better, unit: lanes started in 24 h, noun: "Lanes started", source: "work ledger CLAIM rows"}
+    - {prefix: "lanes_ended:done", polarity: higher_is_better, unit: lanes ended done in 24 h, noun: "Lanes that ended done", source: "work ledger TERMINAL rows, outcome=done"}
+    - {prefix: "lanes_ended:handed-off", polarity: higher_is_better, unit: lanes handed off in 24 h, noun: "Lanes that ended handed off", source: "work ledger TERMINAL rows, outcome=handed-off"}
+    - {prefix: "lanes_ended:partial", polarity: lower_is_better, unit: lanes ended partial in 24 h, noun: "Lanes that ended partial", source: "work ledger TERMINAL rows, outcome=partial"}
+    - {prefix: "lanes_ended:blocked", polarity: lower_is_better, unit: lanes ended blocked in 24 h, noun: "Lanes that ended blocked", source: "work ledger TERMINAL rows, outcome=blocked"}
+    - {prefix: "lanes_ended:failed", polarity: lower_is_better, unit: lanes ended failed in 24 h, noun: "Lanes that ended failed", source: "work ledger TERMINAL rows, outcome=failed"}
+    - {prefix: "lanes_ended:skipped-owned", polarity: lower_is_better, unit: lanes skipped as owned in 24 h, noun: "Lanes that ended skipped as owned", source: "work ledger TERMINAL rows, outcome=skipped-owned"}
+    - {prefix: friction_rows, polarity: lower_is_better, unit: friction rows in 24 h, noun: "Friction rows recorded", source: "ledger FRICTION rows through the friction rollup node"}
+    - {prefix: friction_lane_minutes, polarity: lower_is_better, unit: lane-minutes lost in 24 h, noun: "Lane-minutes lost to stoppages", source: "ledger FRICTION rows, summed cost, through the friction rollup node"}
+    - {prefix: refusals, polarity: lower_is_better, unit: refusals in 24 h, noun: "Hook refusals", source: "ledger FRICTION rows of the hook-refusal classes"}
+    - {prefix: git_merges_total, polarity: higher_is_better, unit: merges in 24 h, noun: "Merges to the default branches", source: "canonical clones, git first-parent history of origin/HEAD"}
+    - {prefix: "git_merges:", polarity: higher_is_better, unit: merges in 24 h, noun: "Merges to", source: "canonical clone of that repository, git first-parent history of origin/HEAD"}
+    - {prefix: landing_merged, polarity: higher_is_better, unit: merged by the controller in 24 h, noun: "Pull requests the landing controller merged", source: "landing decisions file, kind merge outcome merged"}
+    - {prefix: landing_armed, polarity: higher_is_better, unit: queued by the controller in 24 h, noun: "Pull requests the landing controller queued to merge", source: "landing decisions file, kind merge outcome enqueued"}
+    - {prefix: landing_merge_failed, polarity: lower_is_better, unit: failed merges in 24 h, noun: "Merges the landing controller tried and failed", source: "landing decisions file, kind merge outcome failed"}
+    - {prefix: landing_refused, polarity: lower_is_better, unit: controller refusals in 24 h, noun: "Refusals by the landing controller", source: "landing decisions file, outcomes refused, claim-refused, claim_refused, refuse"}
+    - {prefix: lab_alarms_total, polarity: lower_is_better, unit: lab alarms in 24 h, noun: "Lab alarms raised", source: "lab alarm history, raised_at"}
+    - {prefix: "lab_alarms:", polarity: lower_is_better, unit: lab alarms in 24 h, noun: "Lab alarm", source: "lab alarm history, raised_at, by condition"}
+    - {prefix: lab_fill_sent_per_tick, polarity: higher_is_better, unit: lanes sent per tick, noun: "Lanes the lab fill sent per tick (mean over 24 h)", source: "throughput tick log: NOTE lab-fill sent=N, mean over the ticks logged"}
+    - {prefix: parked_causes, polarity: lower_is_better, unit: causes parked, noun: "Causes parked by the landing controller", source: "throughput tick log: lines naming a parked cause, per tick"}
+    - {prefix: floor_breaches, polarity: lower_is_better, unit: repositories under their merge floor, noun: "Repositories under their hourly merge floor", source: "floor alarm history, breaches of the latest run"}
   piece_rank: {green: 0, grey: 1, amber: 2, red: 3}
   # The stoppage cost the simple floor prints in a cause's detail ("144 lane-minutes logged").
   stoppage_cost_pattern: '(\d+(?:\.\d+)?) lane-minutes'
@@ -107,6 +131,36 @@ runtime:
     - {kind: floor_simple, glob: ".claude_scratch/factory-floor/history/floor-simple-*.json"}
     - {kind: floor_simple, glob: ".claude_scratch/floor-simple-snapshots/*.json"}
     - {kind: factory_record, glob: ".claude_scratch/factory-floor/history/factory-floor-*.json"}
+  # The dated sources the history is backfilled from (verb --backfill-history) and read again for today's value. Every counted
+  # key is the number of records in the trailing window_hours that end at its time. A source that recorded less than min_alive
+  # records of any kind in that window, or began after the window did, leaves its keys out: that point stays unread.
+  history:
+    window_hours: 24
+    backfill_days: 30
+    grid_hours: 1
+    friction_grid_hours: 2
+    friction_grid_minute: 7
+    min_alive: {ledger: 100, landing-decisions: 100, lab-alarm: 12}
+    min_tick_samples: 12
+    level_max_age_minutes: 90
+    ledger_env: ONEX_LEDGER_PATH
+    ledger_archive_dirname: archive
+    ledger_lane_outcomes: [done, handed-off, partial, blocked, failed, skipped-owned]
+    friction_umbrella_ticket: OMN-17427
+    friction_rules_node: node_friction_rollup_compute
+    friction_rules_file: overlay.example.yaml
+    friction_latest_relpath: .onex_state/friction-rollup/latest.json
+    refusal_class_prefix: "hook-refusal:"
+    throughput_relpath: .onex_state/throughput-tick/throughput-tick.out.log
+    lab_alarms_relpath: .onex_state/lab-alarm/alarms.jsonl
+    lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    floor_alarm_runs_relpath: .onex_state/floor-alarm/runs.jsonl
+    landing_env: LANDING_STATE_DIR
+    landing_decisions_file: decisions.jsonl
+    landing_refusal_outcomes: [refused, claim-refused, claim_refused, refuse]
+    git_timeout_seconds: 60
+    # Every canonical clone directly under the registry home (a directory holding .git); the clones are found, not named.
+    git_clone_glob: "*/.git"
   emission_journal_relpath: .onex_state/floor-simple/emissions.jsonl
   emission_node: "node_floor_compare_effect:run_floor_compare_cycle"
   emission_piece: 17

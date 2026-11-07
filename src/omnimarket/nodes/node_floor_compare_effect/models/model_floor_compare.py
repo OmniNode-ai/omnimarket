@@ -32,6 +32,10 @@ class ModelMetricFamily(_Frozen):
         min_length=1,
         description="What the line calls the thing, for ``{noun}`` of the sentence.",
     )
+    source: str = Field(
+        default="",
+        description="Where the number is read from, now and in the backfilled history (empty: the published floor only).",
+    )
 
 
 class ModelComparisonWindow(_Frozen):
@@ -48,6 +52,52 @@ class ModelBackfillSource(_Frozen):
 
     kind: Literal["floor_simple", "factory_record"]
     glob: str = Field(min_length=1, description="Relative to the registry home.")
+
+
+class ModelHistorySources(_Frozen):
+    """The dated sources the history is backfilled from and the live tick reads again for today's value (OMN-23018 backfill).
+
+    Every count is taken over the trailing ``window_hours`` ending at the point it is stored at, so a backfilled point and
+    today's value are the same measure. A source with no record in that window gives no value at all: unread, never zero.
+    """
+
+    window_hours: int = Field(ge=1)
+    backfill_days: int = Field(ge=1)
+    grid_hours: int = Field(
+        ge=1, description="Distance between stored points of the counted sources."
+    )
+    friction_grid_hours: int = Field(ge=1)
+    friction_grid_minute: int = Field(ge=0, le=59)
+    min_alive: dict[str, int] = Field(
+        description="Per counted source, the records of any kind it must hold in the window, or its counts are unread.",
+    )
+    level_max_age_minutes: int = Field(
+        ge=1,
+        description="The latest logged level counts as today's only when it is this recent.",
+    )
+    min_tick_samples: int = Field(
+        ge=1,
+        description="The throughput tick log needs this many samples in the window for a per-tick mean to count.",
+    )
+    ledger_env: str
+    ledger_archive_dirname: str
+    ledger_lane_outcomes: tuple[str, ...]
+    friction_umbrella_ticket: str
+    friction_rules_node: str
+    friction_rules_file: str
+    friction_latest_relpath: str
+    refusal_class_prefix: str
+    throughput_relpath: str
+    lab_alarms_relpath: str
+    lab_alarm_runs_relpath: str
+    floor_alarm_runs_relpath: str
+    landing_env: str
+    landing_decisions_file: str
+    landing_refusal_outcomes: tuple[str, ...]
+    git_clone_glob: str = Field(
+        description="Canonical clones are found under the registry home by this glob; the key is the directory name."
+    )
+    git_timeout_seconds: int = Field(ge=1)
 
 
 class ModelFloorCompareRuntime(_Frozen):
@@ -67,6 +117,7 @@ class ModelFloorCompareRuntime(_Frozen):
     piece_rank: dict[str, int]
     stoppage_cost_pattern: str
     backfill: tuple[ModelBackfillSource, ...] = ()
+    history: ModelHistorySources
     emission_journal_relpath: str
     emission_node: str
     emission_piece: int = Field(ge=1, le=18)
@@ -79,6 +130,13 @@ class ModelSnapshot(_Frozen):
     source: str
     values: dict[str, float]
     labels: dict[str, str] = Field(default_factory=dict)
+    complete: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Key prefixes this snapshot lists in full: a key under one of them that the snapshot does not hold was "
+            "read as absent from the source, which is zero. Under any other prefix a missing key is unread."
+        ),
+    )
 
 
 class ModelReading(_Frozen):
@@ -128,6 +186,8 @@ class ModelFloorCompareRequest(_Frozen):
     now: datetime | None = None
     drill_error: bool = False
     backfill_only: bool = False
+    backfill_history: bool = False
+    history_days: int | None = None
 
 
 class ModelFloorCompareResult(_Frozen):
@@ -138,3 +198,5 @@ class ModelFloorCompareResult(_Frozen):
     history_points: int = 0
     failure_code: str | None = None
     failure_detail: str = ""
+    history_written: dict[str, int] = Field(default_factory=dict)
+    source_notes: tuple[str, ...] = ()

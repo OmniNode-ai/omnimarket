@@ -29,10 +29,17 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history i
     read_history,
     reading_at,
     rewrite_history,
+    value_in,
 )
 from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_metrics import (
     snapshot_from_factory_record,
     snapshot_from_floor_simple,
+)
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_sources import (
+    backfill_snapshots,
+    live_extension,
+    load_book,
+    load_friction_rules,
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelCompareLine,
@@ -158,7 +165,7 @@ def build_comparison(
                 _line(
                     key,
                     reading.value if reading.read else None,
-                    now.values.get(key),
+                    value_in(now, key),
                     reading.at,
                     window.label,
                     family,
@@ -239,7 +246,7 @@ class HandlerFloorCompare:
         )
         chain.start()
         try:
-            return self._cycle(request, rt, home, now, chain)
+            return self._cycle(request, rt, home, now, chain, env)
         except BaseException as exc:
             if chain.open:
                 chain.failure("cycle_interrupted", f"{type(exc).__name__}: {exc}")
@@ -252,6 +259,7 @@ class HandlerFloorCompare:
         home: Path,
         now: datetime,
         chain: ChainEmitter,
+        env: Mapping[str, str],
     ) -> ModelFloorCompareResult:
         history_path = home / rt.history_relpath
         raw = DRILL_PAYLOAD if request.drill_error else None
@@ -275,9 +283,16 @@ class HandlerFloorCompare:
                 failure_code="simple_payload_invalid",
                 failure_detail=f"{rt.simple_relpath} cannot be read",
             )
+        snapshot, notes = self._with_sources(snapshot, rt, home, env)
         snapshots, skipped = read_history(history_path)
         added = self._backfill(rt, home, history_path, snapshots)
-        if added:
+        written: dict[str, int] = {}
+        if request.backfill_history:
+            written, more = self._backfill_history(
+                request, rt, home, now, env, history_path
+            )
+            notes = (*notes, *more)
+        if added or written:
             snapshots, skipped = read_history(history_path)
         recorded = False
         same_source = [s for s in snapshots if s.source == "tick"]
@@ -303,6 +318,8 @@ class HandlerFloorCompare:
                 "recorded": int(recorded),
                 "skipped_lines": skipped,
                 "unread_lines_1d": comparison.windows[0].counts["unread"],
+                "history_written": sum(written.values()),
+                "source_notes": len(notes),
             }
         )
         return ModelFloorCompareResult(
@@ -311,7 +328,71 @@ class HandlerFloorCompare:
             recorded=recorded,
             backfilled=added,
             history_points=len(snapshots),
+            history_written=written,
+            source_notes=notes,
         )
+
+    @staticmethod
+    def _with_sources(
+        snapshot: ModelSnapshot,
+        rt: ModelFloorCompareRuntime,
+        home: Path,
+        env: Mapping[str, str],
+    ) -> tuple[ModelSnapshot, tuple[str, ...]]:
+        """Today's value of every dated-source key is added to the tick's snapshot; a source that cannot be read adds a note."""
+        hs = rt.history
+        latest: Mapping[str, object] | None = None
+        try:
+            doc = json.loads((home / hs.friction_latest_relpath).read_bytes())
+            latest = doc if isinstance(doc, dict) else None
+        except (OSError, ValueError):
+            latest = None
+        try:
+            values, labels, complete, notes = live_extension(
+                hs, env, home, snapshot.at, latest
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            return snapshot, (
+                f"the dated sources could not be read for today ({type(exc).__name__}: {exc})",
+            )
+        return (
+            snapshot.model_copy(
+                update={
+                    "values": {**snapshot.values, **values},
+                    "labels": {**snapshot.labels, **labels},
+                    "complete": complete,
+                }
+            ),
+            tuple(notes),
+        )
+
+    @staticmethod
+    def _backfill_history(
+        request: ModelFloorCompareRequest,
+        rt: ModelFloorCompareRuntime,
+        home: Path,
+        now: datetime,
+        env: Mapping[str, str],
+        history_path: Path,
+    ) -> tuple[dict[str, int], tuple[str, ...]]:
+        """Write the dated points the sources hold for the days before ``now``; a point already stored (same source and time) is kept."""
+        hs = rt.history
+        days = request.history_days or hs.backfill_days
+        book = load_book(
+            hs, env, home, now - timedelta(hours=days * 24 + hs.window_hours + 1)
+        )
+        points = backfill_snapshots(
+            book, hs, now, days, rt.min_gap_seconds, load_friction_rules(hs)
+        )
+        have = {(s.source, s.at) for s in read_history(history_path)[0]}
+        written: dict[str, int] = {}
+        for point in sorted(points, key=lambda s: s.at):
+            if (point.source, point.at) in have:
+                continue
+            have.add((point.source, point.at))
+            append_snapshot(history_path, point)
+            written[point.source] = written.get(point.source, 0) + 1
+        return written, tuple(book.notes)
 
     @staticmethod
     def _parse(raw: bytes) -> dict[str, Any] | None:

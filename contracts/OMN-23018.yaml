@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: the comparison lists better and worse lines in plain words with old value, new value and which direction counts as better, per 1, 7 and 30 day window, and the compare page draws them -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect/test_compare_page.py -q --no-cov'
   - id: AC3
     statement: 'AC3: the floor publisher serves the compare page and the comparison file and the publisher steps run the comparison node -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_compare_page.py -q --no-cov'
+  - id: AC4
+    statement: 'AC4: the history is backfilled for at least 30 days from the work ledger and its split copies, the throughput tick log, the canonical clones'' git history, the landing decisions file and the lab and floor alarm histories, each point naming its source, a planted ledger day yields the right point and a day the source did not record stays unread -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_backfill_history.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The comparison node and publisher tests pass
@@ -31,6 +33,7 @@ dod_evidence:
   - AC1
   - AC2
   - AC3
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov

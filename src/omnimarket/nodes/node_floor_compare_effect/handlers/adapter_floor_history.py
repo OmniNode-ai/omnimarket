@@ -61,6 +61,16 @@ def prune(
     return tuple(s for s in snapshots if s.at >= cutoff)
 
 
+def value_in(snapshot: ModelSnapshot, key: str) -> float | None:
+    """The value of ``key`` in one snapshot: the number it holds, zero when the snapshot lists the key's prefix in full and
+    the key is not in it, else ``None`` (not read at that moment)."""
+    if key in snapshot.values:
+        return snapshot.values[key]
+    if any(key.startswith(prefix) for prefix in snapshot.complete):
+        return 0.0
+    return None
+
+
 def reading_at(
     snapshots: tuple[ModelSnapshot, ...],
     key: str,
@@ -70,10 +80,10 @@ def reading_at(
     """The value of ``key`` at ``target``: the closest snapshot holding it within the tolerance, else unread."""
     tolerance = timedelta(hours=tolerance_hours)
     near = [s for s in snapshots if abs(s.at - target) <= tolerance]
-    holding = [s for s in near if key in s.values]
+    holding = [s for s in near if value_in(s, key) is not None]
     if holding:
         best = min(holding, key=lambda s: abs(s.at - target))
-        return ModelReading(key=key, read=True, value=best.values[key], at=best.at)
+        return ModelReading(key=key, read=True, value=value_in(best, key), at=best.at)
     reason = (
         f"{len(near)} snapshot(s) within {tolerance_hours:g} h of {target:%Y-%m-%d %H:%MZ} and none read it"
         if near
