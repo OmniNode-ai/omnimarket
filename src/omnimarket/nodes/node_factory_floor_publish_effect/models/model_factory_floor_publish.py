@@ -10,6 +10,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source import (
+    ModelFrictionRollupStepSettings,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
     ModelProcessHealthPayloadPolicy,
 )
@@ -68,7 +71,9 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command", "runner_fleet"]
+StepKind = Literal[
+    "module", "capture", "copy", "command", "runner_fleet", "friction_rollup"
+]
 
 
 class ModelPublishStep(BaseModel):
@@ -84,6 +89,8 @@ class ModelPublishStep(BaseModel):
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
     ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
     a failed read writes an unread cause so old counts cannot masquerade as a new read.
+    ``friction_rollup`` runs the friction rollup node over the ledger named by ``rollup`` with the overlay home's class
+    rules and writes its report to ``output_relpath``; a missing or invalid overlay fails the step and leaves the old file.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -101,6 +108,7 @@ class ModelPublishStep(BaseModel):
     concurrent: bool = False
     fresh_relpath: str | None = None
     fresh_seconds: int | None = Field(default=None, gt=0)
+    rollup: ModelFrictionRollupStepSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
@@ -114,6 +122,7 @@ class ModelPublishStep(BaseModel):
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
             "runner_fleet": bool(self.output_relpath),
+            "friction_rollup": self.rollup is not None and bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
