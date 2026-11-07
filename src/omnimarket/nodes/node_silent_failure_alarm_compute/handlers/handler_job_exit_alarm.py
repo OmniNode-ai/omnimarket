@@ -80,7 +80,9 @@ class HandlerJobExitAlarm:
             advanced = (
                 reading.runs is not None
                 and reading.last_exit is not None
-                and (current.runs is None or reading.runs > current.runs)
+                # A lower count is a unit reload: launchd counts from 1 after every load, and the
+                # run that count names is a run, so only an equal count is no new run.
+                and (current.runs is None or reading.runs != current.runs)
             )
             if advanced:
                 current = current.model_copy(
