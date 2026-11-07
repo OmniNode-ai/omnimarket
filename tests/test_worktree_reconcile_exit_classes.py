@@ -17,13 +17,9 @@ from pathlib import Path
 import pytest
 
 from omnimarket.events.worktree_reconcile import (
-    PROBE_DEFERRED_PREFIX,
-    PROBE_NEEDS_HUMAN_PREFIX,
-    ModelWorktreeFacts,
-)
-from omnimarket.events.worktree_reconcile import (
     EnumWorktreeKind as Kind,
 )
+from omnimarket.events.worktree_reconcile import ModelWorktreeFacts
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     CommandMergedPrReader,
@@ -31,6 +27,11 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
+    PROBE_DEFERRED_PREFIX,
+    PROBE_NEEDS_HUMAN_PREFIX,
+    probe_class,
 )
 from tests.test_worktree_reconcile_compute import facts
 from tests.test_worktree_reconcile_effect import (
@@ -100,8 +101,10 @@ def test_the_recorded_tick_reads_exit_zero_for_load_and_host_facts_only() -> Non
         "probe_failed:ValueError": 11,
         "merged_pr_read_failed": 2,
     }
-    assert done.deferred == 30
-    assert len(done.deferred_paths) == 30
+    deferred = [r for r in result.decided_events if probe_class(r.facts) == "deferred"]
+    assert len(deferred) == 30
+    assert {r.decision.reasons for r in deferred} == {("facts_unreadable",)}
+    assert {r.outcome for r in deferred} == {"kept"}
     assert done.needs_human == 3
     assert done.failures == 10
     assert not fake.removed
@@ -117,8 +120,8 @@ def test_only_load_and_host_facts_leave_a_run_with_no_failure() -> None:
     )
     result = Fakes(items).handler().handle(command())
     done = result.completed_event
-    assert (done.failures, done.deferred, done.needs_human) == (0, 1, 2)
-    assert done.deferred_paths == ("/trees/a",)
+    assert (done.failures, done.needs_human) == (0, 2)
+    assert result.decided_events[0].outcome == "kept"
     assert done.needs_human_paths == ("/trees/b", "/trees/c")
     reasons = {row.facts.path: row.decision.reasons for row in result.decided_events}
     assert reasons["/trees/a"] == ("facts_unreadable",)
@@ -144,7 +147,6 @@ def test_any_other_probe_error_alone_or_beside_a_class_is_a_failure(
         .handle(command())
     )
     assert result.completed_event.failures == 1
-    assert result.completed_event.deferred == 0
     assert result.decided_events[0].decision.reasons == ("facts_unreadable",)
 
 
@@ -179,7 +181,7 @@ def test_a_git_timeout_defers_the_tree_and_a_removable_tree_is_not_removed(
     assert row.facts.probe_errors == (DEFERRED_TIMEOUT,)
     assert row.decision.reasons == ("facts_unreadable",)
     done = result.completed_event
-    assert (done.failures, done.deferred, done.removed) == (0, 1, 0)
+    assert (done.failures, done.removed) == (0, 0)
     assert path.exists()
 
 
@@ -199,7 +201,7 @@ def test_a_clone_refresh_that_timed_out_defers_and_one_that_failed_does_not(
             command(roots=(str(root),)), NOW
         )
         assert item.probe_errors == expected
-        assert item.probe_class == ("deferred" if status == "timeout" else "failed")
+        assert probe_class(item) == ("deferred" if status == "timeout" else "failed")
 
 
 def test_a_nested_repository_is_a_person_s_call_not_a_failure(tmp_path: Path) -> None:
@@ -214,7 +216,7 @@ def test_a_nested_repository_is_a_person_s_call_not_a_failure(tmp_path: Path) ->
     item = probe._probe(task, root, NOW)
     assert item.kind == Kind.ORPHAN_DIR
     assert item.probe_errors == (NESTED,)
-    assert item.probe_class == "needs_human"
+    assert probe_class(item) == "needs_human"
     assert clone.exists()
 
 
@@ -223,11 +225,11 @@ def test_a_reader_with_no_evidence_source_is_needs_human_and_a_broken_one_is_a_f
 ) -> None:
     root, _, _ = squash_merged_then_moved_on(tmp_path)
 
-    class NoSource:
+    class NoSource(FakeMergedPrReader):
         def merged_heads(self, argv: list[str], slug: str) -> frozenset[str]:
             raise MergedPrEvidenceUnavailableError(slug)
 
-    result = run_with(probe_for(NoSource(), monkeypatch), root, monkeypatch)  # type: ignore[arg-type]
+    result = run_with(probe_for(NoSource(), monkeypatch), root, monkeypatch)
     assert result.decided_events[0].facts.probe_errors == (NO_EVIDENCE,)
     assert result.decided_events[0].decision.reasons == (
         "merged_pr_evidence_unavailable",

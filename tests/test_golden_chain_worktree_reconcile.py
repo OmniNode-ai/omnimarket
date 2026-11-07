@@ -40,30 +40,24 @@ def test_golden_chain_worktree_reconcile() -> None:
 
 
 @pytest.mark.unit
-def test_golden_chain_completed_event_reports_no_deferred_work() -> None:
-    fake = Fakes((facts(head_on_remote=True, size_bytes=123),))
-    fake.handler().handle(command())
-    _, completed = fake.events[-1]
-    assert completed.deferred == 0  # type: ignore[attr-defined]
-    assert completed.deferred_paths == ()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-def test_error_chain_a_deferred_tree_reaches_the_event_and_the_projection() -> None:
-    """A probe timeout keeps the tree, is counted as deferred and is no failure; the
-    completed event still reaches the per-host projection with its needs-human list."""
+def test_error_chain_a_deferred_tree_reaches_the_event_and_the_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A probe timeout keeps the tree and is no failure; its decided event carries the
+    deferred error and the completed event still reaches the per-host projection."""
     deferred = facts(
         path="trees/task/slow", probe_errors=("probe_deferred:probe_timeout",)
     )
     fake = Fakes((deferred,))
     result = fake.handler().handle(command())
     assert not fake.removed
-    assert result.decided_events[0].outcome == "kept"
+    decided = result.decided_events[0]
+    assert decided.outcome == "kept"
+    assert decided.facts.probe_errors == ("probe_deferred:probe_timeout",)
+    assert result.completed_event.failures == 0
     topic, completed = fake.events[-1]
-    assert (completed.failures, completed.deferred) == (0, 1)  # type: ignore[attr-defined]
-    assert completed.deferred_paths == ("trees/task/slow",)  # type: ignore[attr-defined]
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
-    writer._db = db  # type: ignore[assignment]
+    monkeypatch.setattr(writer, "_db", db)
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1
