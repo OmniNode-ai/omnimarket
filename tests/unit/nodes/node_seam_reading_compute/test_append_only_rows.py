@@ -61,8 +61,10 @@ def test_append_only_rows_accumulate_and_keep_their_order() -> None:
     first = _row(probed_at=T0)
     second = _row(probed_at=T0.replace(hour=15))
 
-    assert store.append(first) is EnumRowAppendStatus.APPENDED
-    assert store.append(second) is EnumRowAppendStatus.APPENDED
+    first_status = store.append(first)
+    second_status = store.append(second)
+    assert first_status is EnumRowAppendStatus.APPENDED
+    assert second_status is EnumRowAppendStatus.APPENDED
 
     assert store.rows("review-dispatch") == (first, second)
 
@@ -73,7 +75,8 @@ def test_append_only_the_same_row_twice_is_already_appended_not_duplicated() -> 
 
     store.append(row)
 
-    assert store.append(row) is EnumRowAppendStatus.ALREADY_APPENDED
+    status = store.append(row)
+    assert status is EnumRowAppendStatus.ALREADY_APPENDED
     assert store.rows("review-dispatch") == (row,)
 
 
@@ -90,7 +93,8 @@ def test_append_only_a_rewrite_of_an_old_row_is_refused_and_the_old_row_stays() 
         probed_at=old.probed_at,
     )
 
-    assert store.append(rewrite) is EnumRowAppendStatus.REFUSED_REWRITE
+    status = store.append(rewrite)
+    assert status is EnumRowAppendStatus.REFUSED_REWRITE
     assert store.rows("review-dispatch") == (old,)
 
 
