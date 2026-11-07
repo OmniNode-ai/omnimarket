@@ -13,6 +13,7 @@ from omnimarket.models.lab_test_harness.model_lab_test_harness import (
     ModelLabTestHarnessReading,
     ModelLabTestHarnessRequested,
     ModelLabTestHarnessResult,
+    ModelLabTestHarnessScheduleHost,
 )
 from omnimarket.models.lab_test_harness.reading_rules import (
     reading_at,
@@ -30,6 +31,7 @@ __all__: list[str] = [
     "ModelLabTestHarnessReading",
     "ModelLabTestHarnessRequested",
     "ModelLabTestHarnessResult",
+    "ModelLabTestHarnessScheduleHost",
     "reading_at",
     "reading_from_result",
 ]
