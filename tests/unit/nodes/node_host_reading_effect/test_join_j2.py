@@ -39,7 +39,7 @@ from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt
     HandlerFloorReceipt,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
-    HandlerJoinJ2,
+    JoinJ2,
 )
 from omnimarket.nodes.node_lab_placement_compute.handlers import HandlerLabPoolPlace
 from omnimarket.nodes.node_lab_work_unit_effect import (
@@ -137,7 +137,7 @@ class _World:
             await host.start(advertise=False)
         await host.advertise_once()
 
-    async def open(self) -> HandlerJoinJ2:
+    async def open(self) -> JoinJ2:
         topics = load_lab_work_topics()
 
         async def on_command(message: object) -> None:
@@ -152,7 +152,7 @@ class _World:
             placer=HandlerLabPoolPlace(table_source=lambda: TABLE),
         )
         await self.caller.start()
-        return HandlerJoinJ2(
+        return JoinJ2(
             settings=SETTINGS,
             caller=self.caller,
             sink=self.sink,
@@ -319,7 +319,7 @@ def test_error_a_stale_advertisement_is_a_typed_failure_and_nothing_is_sent() ->
         later = datetime.now(UTC) + timedelta(
             seconds=SETTINGS.advert_max_age_seconds * 3
         )
-        stale = HandlerJoinJ2(
+        stale = JoinJ2(
             settings=SETTINGS,
             caller=world.caller,  # type: ignore[arg-type]
             sink=world.sink,

@@ -84,7 +84,7 @@ class ProtocolJoinJ2Caller(Protocol):
     ) -> ModelLabWorkUnitReceipt: ...
 
 
-class HandlerJoinJ2:
+class JoinJ2:
     """Run the J2 join for each host and emit its two chains."""
 
     def __init__(
@@ -316,6 +316,6 @@ __all__ = [
     "FAIL_STALE_ADVERT",
     "FAIL_UNCORRELATED",
     "UPSTREAM_PREFIX",
-    "HandlerJoinJ2",
+    "JoinJ2",
     "ProtocolJoinJ2Caller",
 ]

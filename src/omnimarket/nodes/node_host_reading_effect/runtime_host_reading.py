@@ -57,7 +57,7 @@ from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading imp
     HandlerHostReading,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
-    HandlerJoinJ2,
+    JoinJ2,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (
     HostReadingScheduler,
@@ -221,7 +221,7 @@ def _join_j2(arguments: Sequence[str]) -> int:
             await caller.start()
             try:
                 await caller.collect(join.collect_window_seconds)
-                results = await HandlerJoinJ2(
+                results = await JoinJ2(
                     settings=join.settings,
                     caller=caller,
                     sink=JsonlEmissionSink(Path(home) / join.emission_journal_relpath),
