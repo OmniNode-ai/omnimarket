@@ -7,7 +7,9 @@ keeps what it saw of those answers in a bounded record of its own and reads the 
 with its reason, and how many finished jobs in a row failed. A merge that is not yet running reads as deploy lag; a deploy
 that has failed every time since is a different fact, and this is the reading of it.
 
-An agent that cannot be read leaves the record as it was and marks it unreadable, so the source reads unread and never
+A job the agent ends as ``superseded`` was replaced by a newer build before it ran: it is not a failure and not a
+success, so it is neither recorded nor counted (on 2026-11-06 the agent ended four jobs as superseded in one second
+after a success, and each would have read as a failed deploy). An agent that cannot be read leaves the record as it was and marks it unreadable, so the source reads unread and never
 reads quiet. The count of failures in a row is counted from what the floor recorded: a record that begins at the first
 read cannot count the jobs that failed before it.
 """
@@ -28,6 +30,9 @@ from omnimarket.models.floor_17a import (
     ModelLabSubject,
     ModelNodeEmission,
 )
+
+# The agent's terminal status for a job a newer build replaced before it ran: no verdict on the deploy path itself.
+SUPERSEDED = "superseded"
 
 DEPLOY_AGENT_EMITTER = "node_deploy_agent_read:floor_read"
 
@@ -100,7 +105,9 @@ def record_deploy_agent(
         last = health.get("last_result")
         if isinstance(last, Mapping) and last.get("correlation_id"):
             cid = str(last["correlation_id"])
-            if all(j.get("correlation_id") != cid for j in jobs):
+            if last.get("status") != SUPERSEDED and all(
+                j.get("correlation_id") != cid for j in jobs
+            ):
                 reason = ""
                 if last.get("status") != "success":
                     detail = fetch(f"{base}/job/{cid}")
@@ -136,7 +143,7 @@ def read_deploy_agent(
         record = json.loads(path.read_text(encoding="utf-8"))
         observed = parse_stamp(record["observed_at"])
         readable = bool(record["agent_readable"])
-        jobs = list(record["jobs"])
+        jobs = [j for j in record["jobs"] if j.get("status") != SUPERSEDED]
     except OSError as exc:
         return ModelLabSourceRead(
             id=source.id,
@@ -166,7 +173,7 @@ def read_deploy_agent(
     note = (
         f"last success {last_ok}"
         if last_ok
-        else f"no success among the {len(jobs)} results recorded"
+        else f"no success among the {len(jobs)} results this floor has recorded (its record starts at its first read)"
     )
     if last_bad is not None:
         note += (
