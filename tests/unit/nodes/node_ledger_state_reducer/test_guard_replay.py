@@ -22,6 +22,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_led
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_judge import (
     EnumJudgeVerdict,
     ModelGuardReplayRequest,
+    ModelGuardReplayResult,
     ModelJudgeVerdict,
     ModelRecordedRow,
 )
@@ -86,7 +87,7 @@ def _week() -> list[ModelRecordedRow]:
 
 def _replay(
     entries: list[ModelRecordedRow], handler: HandlerWorkLedgerGuardReplay | None = None
-):  # type: ignore[no-untyped-def]
+) -> ModelGuardReplayResult:
     return (handler or HandlerWorkLedgerGuardReplay()).handle(
         ModelGuardReplayRequest(ledger_name=LEDGER, entries=tuple(entries))
     )

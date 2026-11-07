@@ -33,6 +33,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_
     EnumAcceptedRowSource,
     ModelAcceptedRowEvent,
     ModelRebuildRequest,
+    ModelRebuildResult,
     ModelRebuiltEntity,
     ModelWorkLedgerTable,
 )
@@ -110,7 +111,7 @@ def _live_table(shuffle_seed: int = 7) -> ModelWorkLedgerTable:
 
 def _rebuild(
     events: tuple[ModelAcceptedRowEvent, ...], live: ModelWorkLedgerTable | None = None
-):  # type: ignore[no-untyped-def]
+) -> ModelRebuildResult:
     return HandlerWorkLedgerRebuild().handle(
         ModelRebuildRequest(events=events, live=live)
     )
@@ -124,7 +125,7 @@ def _unlimited_retention(contract: dict[str, Any], topic: str) -> bool:
     if len(declared) != 1:
         return False
     config = declared[0].get("topic_config", {}).get("kafka_config", {})
-    return (
+    return bool(
         config.get("retention.ms") == "-1"
         and config.get("retention.bytes") == "-1"
         and config.get("cleanup.policy") == "delete"

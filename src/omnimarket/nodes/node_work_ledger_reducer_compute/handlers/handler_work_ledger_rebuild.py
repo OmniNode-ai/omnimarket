@@ -122,7 +122,7 @@ class HandlerWorkLedgerRebuild:
                 )
             ),
             state=tuple(
-                ModelRebuiltEntity(entity_key=key, **values)  # type: ignore[arg-type]
+                ModelRebuiltEntity(entity_key=key, **values)
                 for key, values in sorted(state.items())
             ),
         )
