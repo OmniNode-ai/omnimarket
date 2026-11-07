@@ -32,6 +32,9 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
     ModelFloorStationRef,
 )
 
+# A lane owns a floor holdup by an ``owns=floor:<holdup id>`` cell, the explicit rule the ledger MSG uses for pull requests.
+FLOOR_OWNS_PREFIX = "floor:"
+
 
 def _stamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -268,6 +271,16 @@ def build_lanes(
             if claim.text
             else ("", "unread")
         )
+        owned = tuple(
+            dict.fromkeys(
+                token.removeprefix(FLOOR_OWNS_PREFIX)
+                for r in rows
+                if r.kind in {"CLAIM", "STATUS"} and r.ts >= claim.ts
+                for token in r.owns
+                if token.startswith(FLOOR_OWNS_PREFIX)
+                and len(token) > len(FLOOR_OWNS_PREFIX)
+            )
+        )
         with_prs = [r for r in rows if r.prs and r.ts >= claim.ts]
         pr = pr_key(max(with_prs, key=_key).prs[0]) if with_prs else ""
         if not pr and receipt is not None and receipt.pr_heads:
@@ -311,6 +324,7 @@ def build_lanes(
                 claim_full=claim.text,
                 liveness=liveness,
                 liveness_detail=detail,
+                owns=owned,
             )
         )
     ordered = sorted(

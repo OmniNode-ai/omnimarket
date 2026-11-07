@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger Reader Effect (OMN-22478, piece 6: ledger readers off the file)
+#
+# A ledger reader the overlay names as moved answers from node_work_ledger_query_effect over the
+# bus, with the answer's watermark age read against a bound and, on request, the window parity
+# from the daily parity receipts. A failed read is unreadable, never empty and never the file.
+name: node_work_ledger_reader_effect
+contract_name: node_work_ledger_reader_effect
+node_name: node_work_ledger_reader_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers one read by one named ledger reader (inbox, holds, open-claims) from the bus-fed work
+  ledger query node. A reader named in the overlay's moved_readers never reads the file: the
+  node's answer is ok when its watermark is within max_watermark_age_seconds, stale when older,
+  and unreadable when the node does not answer. A reader not named there is told not-moved and
+  keeps its own read, which is that reader's rollback. Every read emits a golden (answered) or
+  error (refused) event.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_reader_effect.handlers.handler_work_ledger_reader
+  class: HandlerWorkLedgerReader
+  input_model: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader.ModelReaderRequest
+
+# HandlerWorkLedgerReader takes the overlay, the read port, the event sink and the clock as
+# constructor parameters, so a reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [bus-read, event-journal]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelReaderRequest
+  module: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader
+  description: The reader's name, its point query, its lane, and whether to read parity.
+output_model:
+  name: ModelReaderResult
+  module: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader
+  description: Status, the verb lines, the watermark age against its bound, parity, and the event.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  reader_answered: onex.evt.omnimarket.work-ledger-reader-answered.v1
+  reader_refused: onex.evt.omnimarket.work-ledger-reader-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-reader-answered.v1
+  - onex.evt.omnimarket.work-ledger-reader-refused.v1
+
+overlay:
+  node: node_work_ledger_reader_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

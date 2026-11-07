@@ -125,8 +125,11 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # OMN-22224 adds ``duration_ms``: how long a rung took, 0 for a rung never
 # sent. This consumer-first step 1 of 2 accepts and drops it; a later change
 # declares the field once omniclaude's pin carries this consumer.
+#
+# OMN-22474 declared ``secret_ref`` below (step 2 of OMN-19996's two-PR
+# delivery), so it is no longer listed here.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"backend_pinned", "duration_ms", "gate_record", "secret_ref"}
+    {"backend_pinned", "duration_ms", "gate_record"}
 )
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
@@ -254,6 +257,14 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     provider_code: str | None = Field(
         default=None,
         description="Provider-native error code (z.ai 1302, RESOURCE_EXHAUSTED).",
+    )
+    # OMN-22474: the customer key this rung ran on, so a run that used keys X
+    # then Y moves both keys' last_used_at. A reference, never a value; left out
+    # of the dump when absent, so a run with no customer key serialises as before.
+    secret_ref: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Minted tenant key reference this rung ran on; absent otherwise.",
     )
     # OMN-16932: the accept/climb verdict for this rung, carried onto the
     # CONSUMER-facing terminal rather than left in orchestrator-internal state.
