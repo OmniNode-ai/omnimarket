@@ -322,6 +322,8 @@ class HandlerFactoryFloorPublish:
         simple_page = (NODE_DIR / rt.simple_page_relpath).read_bytes()
         simple_data = self._read_simple(home / rt.simple_data_relpath)
         simple_reads = self._read_simple(home / rt.simple_reads_relpath)
+        compare_page = (NODE_DIR / rt.compare_page_relpath).read_bytes()
+        compare_data = self._read_simple(home / rt.compare_data_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
@@ -357,6 +359,7 @@ class HandlerFactoryFloorPublish:
             "published_at": now.astimezone(UTC).isoformat(),
             "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
             "simple_floor": "published" if simple_data is not None else "absent",
+            "floor_compare": "published" if compare_data is not None else "absent",
             "process_health": "published" if health is not None else "absent",
             "process_health_reason": health_payload.reason,
             "delegation": "published" if delegation is not None else "absent",
@@ -371,12 +374,15 @@ class HandlerFactoryFloorPublish:
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.simple_page, simple_page),
+            (rt.names.compare_page, compare_page),
             (rt.names.status, status),
         ]
         if simple_reads is not None:
             files.append((rt.names.simple_reads, simple_reads))
         if simple_data is not None:
             files.append((rt.names.simple_data, simple_data))
+        if compare_data is not None:
+            files.append((rt.names.compare_data, compare_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))

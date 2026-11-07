@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Running Comparison Effect (OMN-23018)
+#
+# One cycle, run as a step of the factory floor publish after the simple floor is written: keep the floor's published
+# numbers (merges, open pull requests, slots busy, red rows, each cause and alarm, each rebuild piece, stoppage costs) as a
+# dated history, read each number at now minus 1, 7 and 30 days, and write the better and worse lines the floor's compare
+# page shows. A missing point is unread and is never zero. Paths are relative to the registry home (OMNI_HOME).
+name: node_floor_compare_effect
+contract_name: node_floor_compare_effect
+node_name: node_floor_compare_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Keeps the floor's published numbers as a dated history and writes what is better and worse than 1, 7 and 30 days ago,
+  each line with its old value, its new value and the direction that counts as better.
+
+handler:
+  module: omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare
+  class: HandlerFloorCompare
+  input_model: omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare.ModelFloorCompareRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_floor_compare_cycle
+      handler:
+        name: HandlerFloorCompare
+        module: omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare
+      input_model: omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare.ModelFloorCompareRequest
+      output_model: omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare.ModelFloorCompareResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  side_effects:
+    - reads the simple floor and the dated copies the backfill globs name under the registry home
+    - appends snapshots to the history file and rewrites it without the snapshots past the retention window
+    - appends emission events to the floor's journal under the state directory
+    - writes the comparison file the publish copies to the serving host
+
+input_model:
+  name: ModelFloorCompareRequest
+  module: omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare
+  description: The flags of one cycle.
+output_model:
+  name: ModelFloorCompareResult
+  module: omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare
+  description: Whether the cycle wrote the comparison, and the history it read.
+
+terminal_event: onex.evt.omnimarket.floor-compare-written.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-compare-cycle-requested.v1
+  external_trigger: python -m omnimarket.nodes.node_floor_compare_effect, and as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.floor-compare-written.v1
+    # The emission contract: a start, then a success or a typed failure, through the sink.
+    - onex.evt.omnimarket.floor-node-started.v1
+    - onex.evt.omnimarket.floor-node-succeeded.v1
+    - onex.evt.omnimarket.floor-node-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-compare-written.v1
+
+runtime:
+  home_env: OMNI_HOME
+  simple_relpath: .claude_scratch/factory-floor/floor-simple.json
+  record_relpath: .claude_scratch/factory-floor/factory-floor.json
+  history_relpath: .onex_state/floor-compare/history.jsonl
+  output_relpath: .claude_scratch/factory-floor/floor-compare.json
+  # The history is kept 35 days so the 30-day read has its point and a margin.
+  retention_days: 35
+  # The tick runs every few minutes; a snapshot is stored when it is at least this far from the previous tick snapshot.
+  min_gap_seconds: 1500
+  max_lines_per_window: 40
+  # A snapshot is the reading at now minus N days only inside the tolerance; outside it the number is unread.
+  windows:
+    - {days: 1, label: "1 day", tolerance_hours: 3}
+    - {days: 7, label: "7 days", tolerance_hours: 12}
+    - {days: 30, label: "30 days", tolerance_hours: 24}
+  # Which way is better, per family of keys (longest prefix wins). Colours are ranked by piece_rank, lower is better.
+  families:
+    - {prefix: merges, polarity: higher_is_better, unit: merges in the last hour, noun: "In-scope merges"}
+    - {prefix: open_prs, polarity: lower_is_better, unit: open, noun: "Open in-scope pull requests"}
+    - {prefix: slots_busy, polarity: higher_is_better, unit: slots busy, noun: "Lab slots working"}
+    - {prefix: red_rows, polarity: lower_is_better, unit: red rows, noun: "Red rows on the floor"}
+    - {prefix: "cause:", polarity: lower_is_better, unit: occurrences, noun: "Cause"}
+    - {prefix: "stoppage_cost:", polarity: lower_is_better, unit: lane-minutes lost, noun: "Stoppage cost of"}
+    - {prefix: alarms_total, polarity: lower_is_better, unit: alarms, noun: "Alarms raised"}
+    - {prefix: "alarm:", polarity: lower_is_better, unit: alarms, noun: "Alarm"}
+    - {prefix: "piece:", polarity: lower_is_better, unit: colour, noun: "Rebuild piece"}
+    - {prefix: "lab:", polarity: lower_is_better, unit: colour, noun: "Lab state"}
+  piece_rank: {green: 0, grey: 1, amber: 2, red: 3}
+  # The stoppage cost the simple floor prints in a cause's detail ("144 lane-minutes logged").
+  stoppage_cost_pattern: '(\d+(?:\.\d+)?) lane-minutes'
+  # Dated copies read once into the history at the first cycle that finds them. Nothing here is a guess about a host: a glob
+  # that matches nothing backfills nothing, and the result says how many snapshots it added.
+  backfill:
+    - {kind: floor_simple, glob: ".claude_scratch/factory-floor/history/floor-simple-*.json"}
+    - {kind: floor_simple, glob: ".claude_scratch/floor-simple-snapshots/*.json"}
+    - {kind: factory_record, glob: ".claude_scratch/factory-floor/history/factory-floor-*.json"}
+  emission_journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  emission_node: "node_floor_compare_effect:run_floor_compare_cycle"
+  emission_piece: 17
