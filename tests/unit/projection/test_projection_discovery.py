@@ -1022,7 +1022,9 @@ class TestOmn15800ExposureParity:
         # credential and routing overlay registries' compacted sources.
         # 80 after OMN-19486: onex.snapshot.projection.pr-state.v1, the
         # pr_state rows the `onex pr-state` read surface judges.
-        assert len(topic_map) == 80
+        # 81 after OMN-22020: onex.snapshot.projection.view-seam-readings.v1,
+        # the seam reducer's compacted readings.
+        assert len(topic_map) == 81
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",
