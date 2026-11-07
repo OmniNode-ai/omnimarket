@@ -24,8 +24,8 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.model_code_graph import EnumGraphFault
-from omnimarket.nodes.node_code_graph_effect.handlers import handler_code_graph
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
+from omnimarket.nodes.node_code_graph_effect.handlers import code_graph_run
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     HandlerCodeGraph,
     answer_command,
     load_topics,
@@ -272,7 +272,7 @@ def test_mutation_drop_run_started_event_turns_the_golden_chain_red(
     repos: ProtocolRepoSource, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mutation drop-run-started-event: the handler stops publishing its first event."""
-    real = handler_code_graph.events_of
+    real = code_graph_run.events_of
 
     def mutated(result: Any, topics: dict[str, str]) -> Any:
         return [
@@ -283,7 +283,7 @@ def test_mutation_drop_run_started_event_turns_the_golden_chain_red(
 
     ledger = InMemoryLedger()
     assert_golden_chain(asyncio.run(_publish(repos, ledger, _payload())))
-    monkeypatch.setattr(handler_code_graph, "events_of", mutated)
+    monkeypatch.setattr(code_graph_run, "events_of", mutated)
     events = asyncio.run(_publish(repos, InMemoryLedger(), _payload()))
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
@@ -293,7 +293,7 @@ def test_mutation_failed_run_published_as_completed_turns_the_error_chain_red(
     repos: ProtocolRepoSource, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mutation failed-run-published-as-completed: a failure is announced on the success topic."""
-    real = handler_code_graph.events_of
+    real = code_graph_run.events_of
     fault = _payload(EnumGraphFault.UNREADABLE_REPO)
     assert_failed_chain(asyncio.run(_publish(repos, InMemoryLedger(), fault)))
 
@@ -304,7 +304,7 @@ def test_mutation_failed_run_published_as_completed_turns_the_error_chain_red(
             events[-1] = (topics["code_graph_run_completed"], body)
         return events
 
-    monkeypatch.setattr(handler_code_graph, "events_of", mutated)
+    monkeypatch.setattr(code_graph_run, "events_of", mutated)
     events = asyncio.run(_publish(repos, InMemoryLedger(), fault))
     with pytest.raises(AssertionError):
         assert_failed_chain(events)
@@ -314,7 +314,7 @@ def test_mutation_failed_run_reports_working_turns_the_error_chain_red(
     repos: ProtocolRepoSource, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mutation failed-run-reports-working: the failure event carries a WORKING verdict."""
-    real = handler_code_graph.events_of
+    real = code_graph_run.events_of
     fault = _payload(EnumGraphFault.UNREADABLE_REPO)
 
     def mutated(result: Any, topics: dict[str, str]) -> Any:
@@ -323,7 +323,7 @@ def test_mutation_failed_run_reports_working_turns_the_error_chain_red(
         events[-1] = (topic, {**body, "verdict": "WORKING"})
         return events
 
-    monkeypatch.setattr(handler_code_graph, "events_of", mutated)
+    monkeypatch.setattr(code_graph_run, "events_of", mutated)
     events = asyncio.run(_publish(repos, InMemoryLedger(), fault))
     with pytest.raises(AssertionError):
         assert_failed_chain(events)

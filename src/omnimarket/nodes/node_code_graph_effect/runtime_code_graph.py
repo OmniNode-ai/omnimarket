@@ -40,12 +40,12 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
     WatcherStatePullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRepoSource
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
+    HandlerCodeGraph,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     check_added,
-)
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
-    HandlerCodeGraph,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.schedule import (
     CodeGraphScheduler,

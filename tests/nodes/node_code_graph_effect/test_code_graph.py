@@ -22,13 +22,13 @@ from omnimarket.models.model_reading import (
     ModelReadingComputeRequest,
     ModelReadingSourceRows,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
+    HandlerCodeGraph,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     build_graph,
     glob_regex,
-)
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
-    HandlerCodeGraph,
 )
 from omnimarket.nodes.node_code_graph_effect.protocols import ProtocolRepoSource
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (

@@ -30,7 +30,7 @@ from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import (
     InMemoryRepoSource,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     HandlerCodeGraph,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
