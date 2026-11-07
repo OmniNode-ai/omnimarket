@@ -22,6 +22,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
     ModelFloorReceipts,
@@ -36,9 +39,6 @@ from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers import (
     handler_floor_simple_tick as tick_module,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     EMIT_CYCLE,
