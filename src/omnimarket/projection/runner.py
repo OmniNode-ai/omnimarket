@@ -36,7 +36,6 @@ from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
-    correlation_id_from_payload,
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
@@ -1259,12 +1258,10 @@ class BaseProjectionRunner(ABC):
                 err,
             )
             return False
-        correlation_id = correlation_id_from_payload(data, fallback=meta.fallback_id)
         envelope = build_dlq_envelope(
             original_message=data,
             failure_reason=f"poison projection error: {err}",
             handler=type(self).__name__,
-            correlation_id=correlation_id,
             source=meta,
         )
         value = json.dumps(envelope, default=str).encode("utf-8")
@@ -1278,7 +1275,7 @@ class BaseProjectionRunner(ABC):
                 "Failed to route POISON event on %s to DLQ %s (correlation_id=%s): %s",
                 topic,
                 dlq_topics[0],
-                correlation_id,
+                envelope["correlation_id"],
                 publish_err,
             )
             return False

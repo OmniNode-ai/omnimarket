@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 from collections.abc import Mapping
@@ -80,7 +81,7 @@ class PostgresDlqBacklog:
     ) -> list[ModelDlqBacklogEntry]:
         """Oldest first. The source-topic filter is applied here, not in SQL, so a
         poison row whose value is not JSON cannot fail the whole select."""
-        import psycopg2  # type: ignore[import-untyped]
+        psycopg2: Any = importlib.import_module("psycopg2")  # untyped package
 
         out: list[ModelDlqBacklogEntry] = []
         conn = psycopg2.connect(self._dsn)
