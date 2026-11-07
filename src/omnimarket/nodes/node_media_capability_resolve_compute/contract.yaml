@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_media_capability_resolve_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Resolve, without I/O, a typed media capability (tts, stt, embed, decide, video) to the one backend serving it, from
+  the backends the caller read from the lab's media overlay and injects. A node asks for a capability and carries no
+  host or port. A backend whose capability and endpoint path disagree, two serving backends for one capability, a
+  capability outside the typed set, and a capability no backend serves are each refused with a typed reason that
+  names the backends.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: resolve_media_capability
+    handler:
+      name: HandlerMediaCapabilityResolve
+      module: omnimarket.nodes.node_media_capability_resolve_compute.handlers.handler_media_capability_resolve
+    input_model: omnimarket.nodes.node_media_capability_resolve_compute.models.model_media_capability.ModelMediaCapabilityRequest
+    output_model: omnimarket.nodes.node_media_capability_resolve_compute.models.model_media_capability.ModelMediaCapabilityResolution
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.media-capability-resolve-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.media-capability-resolved.v1
+terminal_event: onex.evt.omnimarket.media-capability-resolved.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.media-capability-resolve-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.media-capability-resolved.v1
+metadata:
+  ticket: OMN-22774
+  transport_type: kafka
+lifecycle: experimental

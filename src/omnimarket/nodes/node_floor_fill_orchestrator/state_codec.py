@@ -9,9 +9,7 @@ unreadable, never read as empty.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_floor_fill_reducer.handlers import (
-    ModelFloorFillState,
-)
+from omnimarket.models.floor_fill import ModelFloorFillState
 
 
 class StateIoCodec:

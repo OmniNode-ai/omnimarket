@@ -77,6 +77,15 @@ MERGED_PR_TIMEOUT_SECONDS = 300
 _COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
+class MergedPrEvidenceUnavailableError(RuntimeError):
+    """The reader names no evidence source for this repository on this host."""
+
+
+# What `onex scm pr-heads --source local` prints when the host has no canonical clone of the
+# repository: a standing fact about the host, not a broken reader.
+NO_EVIDENCE_SOURCE_MARKER = "no canonical clone of"
+
+
 class CommandMergedPrReader:
     """Run the configured reader and return the head commits of merged pull requests.
 
@@ -94,6 +103,8 @@ class CommandMergedPrReader:
             check=False,
         )
         if proc.returncode != 0:
+            if NO_EVIDENCE_SOURCE_MARKER in proc.stderr:
+                raise MergedPrEvidenceUnavailableError(slug)
             raise RuntimeError(f"merged pull request reader failed ({proc.returncode})")
         return frozenset(
             line for line in proc.stdout.split() if _COMMIT.fullmatch(line)

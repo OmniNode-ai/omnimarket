@@ -19,7 +19,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorTaskPayloadVerdict,
 )

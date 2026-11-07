@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidate,
     ModelFloorFillCandidatesRequest,
@@ -30,7 +30,7 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
     ModelFloorTaskPayloadVerdict,
     parse_stamp,
 )
-from omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates import (
+from omnimarket.models.floor_fill.model_floor_fill_candidates import (
     ModelRecordItem,
     ModelRecordLine,
     UnreadCause,

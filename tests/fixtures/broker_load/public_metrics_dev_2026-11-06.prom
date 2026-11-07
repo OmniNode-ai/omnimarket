@@ -1,0 +1,12 @@
+# recorded from the dev broker 2026-11-06T22:36Z over ssh; counts kept, trimmed: the full output held 30896 lines (cluster_partitions and topics are the real totals; six of the max_offset lines are kept)
+redpanda_cluster_partitions{} 2894.000000
+redpanda_cluster_topics{} 2858.000000
+redpanda_cpu_busy_seconds_total{shard="0"} 2998.276317
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="5",redpanda_topic="onex.cmd.omniclaude.dev-head-monitor.v1"} 306.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="4",redpanda_topic="onex.evt.platform.validator-run.v1"} 2.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="4",redpanda_topic="onex.evt.omniclaude.dev-head-monitor-completed.v1"} 332.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="5",redpanda_topic="onex.evt.platform.validator-triggered.v1"} 0.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="3",redpanda_topic="onex.evt.platform.validator-run.v1"} 0.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="0",redpanda_topic="tenant-onex-prepr2.onex.evt.omnimarket.tool-output-captured.v1"} 0.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="0",redpanda_topic="tenant-onex-prepr2.onex.evt.omnimarket.delegate-skill-completed.v1"} 0.000000
+redpanda_kafka_max_offset{redpanda_namespace="kafka",redpanda_partition="7",redpanda_topic="__consumer_offsets"} 82372704.000000

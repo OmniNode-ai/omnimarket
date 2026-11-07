@@ -97,6 +97,8 @@ class ModelHostTableVerdict(BaseModel):
     reason: str
     #: The row's own memory admission bar in GB, replacing the caller's bar; None: the caller's.
     min_free_gb: float | None = None
+    #: The row's own CPU hold bar in degrees C (``max_cpu_c``): new heavy work is held on a host above it; None: no bar.
+    max_cpu_c: float | None = None
     speed: float = 1.0
 
 
