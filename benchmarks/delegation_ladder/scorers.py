@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import importlib.util
 import os
 import re
 import subprocess
@@ -35,7 +34,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore, vendor_compat
 
 TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
@@ -662,36 +661,12 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
 
 def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
     """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
-    env = {
-        **os.environ,
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": str(tree / "src"),
-    }
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
     argv += ["-p", "no:cacheprovider", "-o", "addopts="]
-    # A historical commit's tree may import omnibase_compat, which the project
-    # retired (OMN-22385) and the pinned omnibase-infra no longer installs.
-    # Place it beside the tree for this run alone; the project environment
-    # stays free of it.
-    if importlib.util.find_spec("omnibase_compat") is None:
-        vendored = tree / ".vendored"
-        installed = subprocess.run(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--no-deps",
-                "--target",
-                str(vendored),
-                "omnibase-compat==0.5.7",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if installed.returncode != 0:
-            return installed.returncode, installed.stderr[-800:]
-        env["PYTHONPATH"] = f"{tree / 'src'}{os.pathsep}{vendored}"
+    failure = vendor_compat(tree, env)
+    if failure is not None:
+        return failure
     try:
         completed = subprocess.run(
             argv,
