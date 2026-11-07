@@ -14,10 +14,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
+
+from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
 )
-
 from omnimarket.models.floor_17a import (
     ModelFloorSimple,
     ModelFloorSimpleOverlay,
