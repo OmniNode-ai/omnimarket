@@ -1530,6 +1530,7 @@
   "tests/nodes/node_shadow_review_effect/test_shadow_review_selection.py": 0.06,
   "tests/nodes/node_shim_scanner/test_handler_shim_scanner.py": 0.05,
   "tests/nodes/node_shim_scanner/test_shim_scanner_no_arg_default.py": 0.04,
+  "tests/nodes/node_sibling_pin_hook_revs_compute/test_apply_sibling_pin_hook_revs.py": 0.1,
   "tests/nodes/node_sibling_pin_hook_revs_compute/test_error_chain_sibling_pin_hook_revs.py": 0.05,
   "tests/nodes/node_sibling_pin_hook_revs_compute/test_golden_chain_sibling_pin_hook_revs.py": 0.03,
   "tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py": 0.01,
