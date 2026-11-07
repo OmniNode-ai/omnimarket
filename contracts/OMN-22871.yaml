@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22871
+title: "The broker load overlay loads: node_broker_load_reading_effect accepts its overlay's schedule_hosts field and installs its hourly timer"
+summary: >-
+  The overlay of node_broker_load_reading_effect (overlays repository, already merged) carries a schedule_hosts
+  field that the node on dev refuses (extra_forbidden), so the overlay drift reading rejects it. This pull request
+  adds the node's hourly schedule verb (install, uninstall, status, run-now), the schedule contract block and the
+  schedule_hosts overlay model, so the overlay is accepted and the drift reading no longer fails on it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22871-broker-load-overlay
+    statement: The broker load overlay is accepted by the node's overlay model, and the hourly schedule installs from it and rolls back.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the broker load overlay data validates through the node overlay model with its schedule_hosts field, the model on dev refuses it, and the hourly timer installs from the overlay and uninstalls as its rollback -- falsifier: uv run pytest tests/nodes/node_broker_load_reading_effect -q --no-cov, plus the overlay data validated against the dev copy of the model, which refuses it'
+evidence_requirements:
+  - kind: tests
+    description: The schedule tests (install, uninstall, undeclared host refused, dry run, unsafe root refused) and the existing node tests, with the golden and error chain event tests.
+    command: uv run --frozen pytest tests/nodes/node_broker_load_reading_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22871-broker-load-overlay-tests
+    description: The node tests pass with the change; the schedule tests fail without the schedule handler and the overlay field.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_broker_load_reading_effect -q --no-cov
+        cwd: .
