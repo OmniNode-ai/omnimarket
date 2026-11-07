@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_synthetic_probe_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Rebuild piece 15's hourly synthetic delegated task, judged. Takes what the task came back with
+  (the terminal event type, its result text and cost, when it was issued and observed) and returns
+  PASS or FAIL with a reason and the ledger row the piece 15 reading selects. A task passes when a
+  terminal came back inside the bound with the expected answer and a cost; no terminal, a terminal
+  over the bound, a dropped result, a wrong answer and a missing cost each FAIL with their own reason
+  and still write a row. The prompt, expected answer, bound, cadence and row cells are the
+  probe_rules below. No I/O other than loading this contract, no clock and no randomness.
+input_model:
+  name: ModelSyntheticProbeRequest
+  module: omnimarket.nodes.node_delegation_synthetic_probe_compute.models.model_delegation_synthetic_probe
+output_model:
+  name: ModelSyntheticProbeResult
+  module: omnimarket.nodes.node_delegation_synthetic_probe_compute.models.model_delegation_synthetic_probe
+handler:
+  module: omnimarket.nodes.node_delegation_synthetic_probe_compute.handlers.handler_delegation_synthetic_probe
+  class: HandlerDelegationSyntheticProbe
+  input_model: omnimarket.nodes.node_delegation_synthetic_probe_compute.models.model_delegation_synthetic_probe.ModelSyntheticProbeRequest
+  output_model: omnimarket.nodes.node_delegation_synthetic_probe_compute.models.model_delegation_synthetic_probe.ModelSyntheticProbeResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_synthetic_probe_compute.handlers.handler_delegation_synthetic_probe:HandlerDelegationSyntheticProbe
+  handlers:
+    - operation: judge_delegation_synthetic_probe
+      handler:
+        name: HandlerDelegationSyntheticProbe
+        module: omnimarket.nodes.node_delegation_synthetic_probe_compute.handlers.handler_delegation_synthetic_probe
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier of the synthetic task.}
+  task_id: {type: str, required: true, description: Identifier of the synthetic task.}
+  issued_at: {type: datetime, required: true, description: When the task was issued.}
+  observed_at: {type: datetime, required: false, description: When the terminal event was observed; absent when none came.}
+  terminal_event_type: {type: str, required: false, description: Class name of the terminal event.}
+  result_text: {type: str, required: false, description: The terminal's response content.}
+  cost_usd: {type: float, required: false, description: The terminal's cumulative attempt cost in US dollars.}
+outputs:
+  correlation_id: {type: str}
+  task_id: {type: str}
+  verdict: {type: str, enum: [PASS, FAIL]}
+  reason: {type: str, enum: [ok, no_terminal, over_bound, result_dropped, wrong_answer, cost_missing]}
+  failure_reason: {type: str, required: false, description: The reason code when the task failed.}
+  elapsed_seconds: {type: int}
+  cost_usd: {type: float}
+  row_cells: {type: object, description: Cells of the ledger row the reading selects.}
+  row_text: {type: str}
+  row_stamp: {type: datetime}
+terminal_event: onex.evt.omnimarket.delegation-synthetic-probe-judged.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-synthetic-probe-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-synthetic-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-synthetic-probe-judged.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-synthetic-probe-judged.v1
+metadata:
+  transport_type: inmemory
+  description: Piece 15 synthetic delegated task verdict compute
+  author: OmniNode Team
+  created: "2026-11-07"
+  related_tickets: [OMN-22977]
+# The rules the handler reads. Change a value here and the verdict changes with no code change.
+probe_rules:
+  task_class: document
+  prompt: "Reply with exactly the word: pong"
+  expected_substring: pong
+  # No result and cost within this bound is a FAIL (the piece 15 table's "bound").
+  bound_seconds: 600
+  # One synthetic task per hour; the reading's source max_age is this plus one tick of the writer.
+  cadence_seconds: 3600
+  require_cost: true
+  row_lane: delegation-synthetic
+  row_source: synthetic
+  row_piece: 15
