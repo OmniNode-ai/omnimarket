@@ -193,6 +193,12 @@ class HandlerGateAccept:
                 EnumGateAcceptReason.VOTER_RESULT_UNREADABLE,
             )
         verdict, voters = read
+        if verdict is None:
+            return self._result(
+                EnumGateAcceptDecision.REFUSE,
+                EnumGateAcceptReason.VERDICT_UNREAD,
+                voters=voters,
+            )
         if verdict == _PASSED:
             return self._result(
                 EnumGateAcceptDecision.UNCHANGED,
@@ -205,6 +211,12 @@ class HandlerGateAccept:
                 EnumGateAcceptReason.CI_BLOCKED,
                 voters=voters,
             )
+        if verdict not in self._bind()[0].degraded_verdicts:
+            return self._result(
+                EnumGateAcceptDecision.REFUSE,
+                EnumGateAcceptReason.VERDICT_UNRECOGNISED,
+                voters=voters,
+            )
         ineligible = self._ineligible(voters)
         if ineligible is not None:
             return self._result(
@@ -212,7 +224,9 @@ class HandlerGateAccept:
             )
         return self._receipts(request, voters)
 
-    def _read_attempt(self, path: str) -> tuple[str, list[ModelVoterStatus]] | None:
+    def _read_attempt(
+        self, path: str
+    ) -> tuple[str | None, list[ModelVoterStatus]] | None:
         try:
             document: Any = json.loads(self._files.read_text(path))
         except (OSError, ValueError):
@@ -225,14 +239,15 @@ class HandlerGateAccept:
         if not all(isinstance(entry, dict) for entry in entries):
             return None
         voters = [self._voter(entry) for entry in entries]
-        quorum = document.get("quorum")
-        verdict = ""
-        if isinstance(quorum, dict):
-            verdict = str(quorum.get("verdict", ""))
-        if not verdict:
+        if "quorum" not in document:
+            # Older all-voter-failure results omit quorum entirely. Keep that
+            # recorded shape; an explicit malformed quorum never uses this path.
             succeeded = document.get("models_succeeded")
             verdict = _PASSED if succeeded else "degraded"
-        return verdict, voters
+            return verdict, voters
+        quorum = document["quorum"]
+        value = quorum.get("verdict") if isinstance(quorum, dict) else None
+        return value if isinstance(value, str) and value else None, voters
 
     def _voter(self, entry: dict[str, Any]) -> ModelVoterStatus:
         succeeded = entry.get("success") is True

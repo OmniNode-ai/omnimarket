@@ -129,6 +129,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the recorded completed session with rejected weekly telemetry and 167 credit remains eligible; the recorded weekly-limit error session closes limited and records a hold; zero recorded credit excludes an account, while rate-only readings and migrated inferred holds do not -- falsifier: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect'
+  - id: req-omn19998-review-verdict-refusal
+    statement: The review acceptance handler refuses unknown and malformed explicit quorum verdicts before reading reviews.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: unknown verdict strings and malformed explicit quorum objects refuse with typed reasons and make no review or verifier call; supported degraded verdicts and the recorded legacy result remain compatible -- falsifier: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-process-range
     statement: The Process page plots a chosen measure and recalculates details for the selected range against the immediately preceding equal-length window.
     acceptance:
@@ -716,7 +721,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect -k recorded_session_reader
         cwd: .
-
+  - id: dod-omn19998-review-verdict-refusal
+    description: Scoped review acceptance regression. New refusal cases failed before the handler change; both bus profiles include passing exact-head receipt controls. The original landing controller timer criteria and the live six-case review proof remain unproven by this check.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-process-range
     description: The shipped browser reducer is exercised against typed compute fixtures over four selected ranges, including source gaps, ratios, medians and duplicate records. This focused proof does not assert the unrelated controller timer criteria.
     source: manual
