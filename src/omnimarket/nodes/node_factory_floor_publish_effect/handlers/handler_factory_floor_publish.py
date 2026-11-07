@@ -283,6 +283,10 @@ class HandlerFactoryFloorPublish:
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
             for name in rt.names.theme_css
         ]
+        icons = [
+            (name, (NODE_DIR / rt.icons_relpath / name).read_bytes())
+            for name in rt.names.icons
+        ]
         health_payload = HandlerProcessHealthPayload().handle(
             ModelProcessHealthPayloadRequest(
                 source_path=str(home / rt.process_health_relpath)
@@ -317,6 +321,7 @@ class HandlerFactoryFloorPublish:
         # The record goes last: a reader that gets the new record always finds a page that reads it.
         files: list[tuple[str, bytes]] = [
             *theme_css,
+            *icons,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.simple_page, simple_page),
