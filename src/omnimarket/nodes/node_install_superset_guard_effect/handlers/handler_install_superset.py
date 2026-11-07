@@ -11,6 +11,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
@@ -268,6 +269,14 @@ class HandlerInstallSuperset:
             for c in shas
         )
 
+    @staticmethod
+    def lost_message(commit: str, origin: str, lost: list[str]) -> str:
+        """The refusal text for a live tree that lacks files the installed commit's copy holds."""
+        return (
+            f"LIVE-TREE-MISSING: the live tree lacks {len(lost)} file(s) {commit[:12]} ({origin}) installs: "
+            f"{', '.join(lost[:8])}. Reinstall it before building on it"
+        )
+
 
 def blob_sha(path: Path) -> str:
     data = path.read_bytes()
@@ -390,3 +399,19 @@ def file_list_comparison(
             if not (root / rel).is_file():
                 missing.append(f"{part}/{rel}")
     return (expected, missing)
+
+
+def tree_state(
+    repo: Path, commit: str, prefix: str, install_dir: Path, superset: dict[str, Any]
+) -> tuple[int, list[str], list[str]]:
+    """``(files compared, files that differ, files the install lacks)`` for the live tree.
+
+    The prefix is the one the live install's own record names (``superset["prefix"]``), else ``prefix``.
+    """
+    live_prefix = str(superset.get("prefix") or prefix)
+    compared, differ = tree_differences(repo, commit, live_prefix, install_dir)
+    return (
+        compared,
+        differ,
+        file_list_comparison(repo, commit, live_prefix, install_dir)[1],
+    )
