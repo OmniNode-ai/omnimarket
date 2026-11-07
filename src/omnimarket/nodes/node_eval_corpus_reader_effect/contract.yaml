@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Eval Corpus Reader Effect (OMN-22978)
+#
+# Piece 16's first task. The corpus holds one entry per delegated run: the result, and its cost row or the typed
+# word that the cost is missing. This node reads it (read_corpus) and runs the J15 join of the rebuild plan,
+# piece 15 to piece 16 (join_j15). Like the other join handlers it declares no event_bus block until the runtime
+# attaches it; the join is run from the join test and, later, by the floor's cycle.
+name: "node_eval_corpus_reader_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Reads the eval corpus from an injected corpus port (in memory by default, a JSON-lines journal by overlay).
+  Each entry is a delegated result with its cost row, or typed missing when no cost row exists; nothing is
+  dropped. The join_j15 operation joins delegated runs into the corpus and answers piece 16's chain on the
+  floor's emission contract.
+input_model:
+  name: "ModelCorpusReadRequest"
+  module: "omnimarket.models.eval_corpus.model_eval_corpus"
+  description: "Run ids to read; none reads every entry."
+output_model:
+  name: "ModelCorpusReadResult"
+  module: "omnimarket.models.eval_corpus.model_eval_corpus"
+  description: "Entries, run ids typed cost-missing, requested run ids with no entry, and unreadable journal lines."
+handler:
+  module: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader"
+  class: "HandlerEvalCorpusReader"
+  input_model: "omnimarket.models.eval_corpus.model_eval_corpus.ModelCorpusReadRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader:HandlerEvalCorpusReader"
+  handlers:
+    - operation: "read_corpus"
+      handler:
+        name: "HandlerEvalCorpusReader"
+        module: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader"
+    - operation: "join_j15_eval_corpus"
+      handler:
+        name: "HandlerJoinJ15"
+        module: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_join_j15"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+# OMN-22978, rebuild plan 4.1 join J15 (piece 15 to piece 16): a delegated result and its cost land in the eval
+# corpus. The handler answers piece 16's chain on the floor's emission contract under piece 15's correlation id: a
+# typed failure with no start when piece 15 holds no result or holds a result with no cost row (piece 15's own chain
+# failed there; the codes keep the floor's `upstream_` prefix; a cost-less result is still written to the corpus typed
+# missing), and a start then a success or a typed failure otherwise. Nothing of this is spelled in code.
+join_j15:
+  join_id: "J15"
+  from_piece: 15
+  to_piece: 16
+  emission_node: "node_eval_corpus_reader_effect"
+  no_result_failure_code: "upstream_delegated_result_missing"
+  cost_missing_failure_code: "upstream_delegation_cost_missing"
+  entry_dropped_failure_code: "corpus_entry_dropped"
