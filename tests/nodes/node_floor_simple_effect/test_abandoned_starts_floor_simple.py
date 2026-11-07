@@ -102,6 +102,10 @@ def test_golden_the_next_cycle_closes_the_start_a_killed_process_left_open(
     assert [(e.node, e.failure_code, e.piece) for e in closure] == [
         (EMIT_CYCLE, ABANDONED_CODE, PIECE)
     ]
+    assert closure[0].emitted_at == NOW - timedelta(hours=20) + timedelta(
+        seconds=load_runtime().abandon_after_seconds
+    )
+    assert closure[0].failure_detail.startswith("the process that emitted this start")
     assert open_chains(sink, home) == []
     success = next(
         e for e in sink.events if e.node == EMIT_CYCLE and e.phase == "success"
