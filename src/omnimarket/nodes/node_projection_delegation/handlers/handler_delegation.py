@@ -105,7 +105,6 @@ from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
 )
 from omnimarket.projection.dlq import (
-    correlation_id_from_payload,
     dlq_topics_from_contract,
     route_to_dlq,
 )
@@ -840,15 +839,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         True so the consumer still commits the offset (the message is durably
         captured on the DLQ, not reprocessed in a hot loop).
         """
-        fallback = meta.fallback_id if meta is not None else ""
-        correlation_id = correlation_id_from_payload(data, fallback=fallback)
         await route_to_dlq(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
             original_message=data,
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
-            correlation_id=correlation_id,
+            source=meta,
         )
         return True
 

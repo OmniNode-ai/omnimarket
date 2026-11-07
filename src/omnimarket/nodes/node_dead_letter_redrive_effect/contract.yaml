@@ -1,0 +1,102 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dead_letter_redrive_effect
+contract_name: node_dead_letter_redrive_effect
+node_name: node_dead_letter_redrive_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Dead-letter redrive (OMN-22811). A projection dead-letter envelope names the
+  topic, partition and offset of the record it refused. For each backlog entry
+  that names its source, this node reads that exact record back from the source
+  topic with a group-less, commit-free read and publishes it again to the same
+  topic, once the cause (a tenant joining the mirror) is fixed. It resets and
+  commits no consumer group offset. An entry with no source coordinates, one
+  whose source is a dead-letter topic, one already redriven and one whose
+  source record retention removed are skipped and named. Dry run (the default)
+  reads and lists and publishes nothing; the first publish failure stops the run.
+
+handler:
+  module: omnimarket.nodes.node_dead_letter_redrive_effect.handlers.handler_dead_letter_redrive
+  class: HandlerDeadLetterRedrive
+  input_model: omnimarket.nodes.node_dead_letter_redrive_effect.models.ModelDeadLetterRedriveRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dead_letter_redrive
+      handler:
+        name: HandlerDeadLetterRedrive
+        module: omnimarket.nodes.node_dead_letter_redrive_effect.handlers.handler_dead_letter_redrive
+      handler_module: omnimarket.nodes.node_dead_letter_redrive_effect.handlers.handler_dead_letter_redrive
+      event_model: omnimarket.nodes.node_dead_letter_redrive_effect.models.ModelDeadLetterRedriveRequest
+
+input_model:
+  name: ModelDeadLetterRedriveRequest
+  module: omnimarket.nodes.node_dead_letter_redrive_effect.models
+  description: Optional source topic filter, record cap and dry-run override.
+
+output_model:
+  name: ModelDeadLetterRedriveResult
+  module: omnimarket.nodes.node_dead_letter_redrive_effect.models
+  description: Backlog counts, one status per entry and a verdict.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.dead-letter-redrive-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.dead-letter-redrive-completed.v1"
+    - "onex.evt.omnimarket.dead-letter-redrive-failed.v1"
+
+terminal_event: onex.evt.omnimarket.dead-letter-redrive-completed.v1
+
+published_events:
+  - event_type: ModelDeadLetterRedriveResult
+    topic: onex.evt.omnimarket.dead-letter-redrive-completed.v1
+    description: "One redrive run: backlog counts, one status per entry and a verdict."
+
+config:
+  dead_letter_redrive:
+    dlq_topic_like: "onex.dlq.%"  # onex-topic-allow: SQL LIKE pattern over event_ledger.topic, not a topic name
+    dlq_topic_prefix: "onex.dlq."  # onex-topic-allow: prefix that marks a dead-letter topic
+    # Bounds one run. A larger backlog takes several runs, oldest first.
+    max_records: 100
+    # A run publishes only when the request says dry_run: false.
+    dry_run: true
+    # The real-backend overlay. Names of environment variables and a path,
+    # never values: a missing name or an unset variable stops the run before
+    # any read or publish.
+    binding:
+      database_url_env: null
+      bootstrap_servers_env: null
+      redrive_log_path: null
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dead-letter-redrive-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dead-letter-redrive-completed.v1
+    failure: onex.evt.omnimarket.dead-letter-redrive-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "golden and error chain tests of the redrive"
+    command: "uv run pytest tests/test_golden_chain_dead_letter_redrive_effect.py -q --no-cov"
+    pass_criteria: >
+      an entry with a source and a retained record is published once to its
+      source topic; a dry run publishes nothing; entries with no source, a
+      dead-letter source, an earlier redrive or a removed record are skipped;
+      the first publish failure stops the run and records nothing for it
+
+metadata:
+  transport_type: kafka

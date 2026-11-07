@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-22811
+title: Projection dead letters name their source record, and a redrive node re-publishes them to the source topic
+summary: The projection dead-letter envelope records the source topic, partition and offset of the refused record, and node_dead_letter_redrive_effect re-reads it from its source (group-less, commit-free) and publishes it again, without resetting any consumer group's offset.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22811-dlq-envelope-source-coordinates
+  statement: Both projection DLQ routing paths record where the refused record came from.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a dead-letter envelope built from a MessageMeta carries source_topic, source_partition and source_offset, and one built without a source keeps its earlier keys -- falsifier: uv run pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov fails"
+  - id: AC2
+    statement: "AC2: the runner poison path and the delegation malformed path pass the MessageMeta they hold -- falsifier: the same pytest run with source=meta removed from the runner fails two tests"
+- id: req-omn22811-redrive-node
+  statement: A redrive node re-publishes a dead letter's source record to its source topic without touching any consumer group offset.
+  acceptance:
+  - id: AC3
+    statement: "AC3: a dead letter that names a retained source record is published once to its source topic, a dry run publishes nothing, and a rerun publishes nothing -- falsifier: uv run pytest tests/test_golden_chain_dead_letter_redrive_effect.py -q --no-cov fails with the earlier-redrive check removed"
+  - id: AC4
+    statement: "AC4: an entry with no source, a dead-letter source topic or a removed source record is skipped and named, and the first publish failure stops the run with nothing recorded for it -- falsifier: the same pytest run with the dead-letter-source check removed"
+evidence_requirements:
+- kind: tests
+  description: The source-coordinate tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22811-source-coordinates
+  description: The source-coordinate tests pass on a lab host from the branch; with source=meta removed from the runner's poison path two of them fail.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn22811-redrive-chain
+  description: The redrive golden and error chain tests pass from the branch; with the earlier-redrive check removed the golden test fails, and with the dead-letter-source check removed the skip test fails.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_dead_letter_redrive_effect.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn22811-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22811 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/projection/test_dlq_source_coordinates_omn21288.py tests/test_golden_chain_dead_letter_redrive_effect.py -q --no-cov
+    cwd: .
