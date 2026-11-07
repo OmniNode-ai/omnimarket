@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -26,12 +27,18 @@ from omnimarket.nodes.node_lab_fill_plan_compute.handlers import (
     HandlerLabFillDispatchPlan,
     HandlerLabFillLaneRender,
 )
-from omnimarket.nodes.node_lab_fill_plan_compute.models import (
-    ModelLabFillCapacityRequest,
-    ModelLabFillDispatchItem,
-    ModelLabFillDispatchPlanRequest,
-    ModelLabFillLaneRenderRequest,
-)
+
+
+def _request(handler: Any, payload: dict[str, Any]) -> Any:
+    """Validate a payload into the request type the handler's own `handle` declares.
+
+    Reading the type from the handler keeps this test off the plan-compute node's
+    private models package.
+    """
+    return typing.get_type_hints(type(handler).handle)["request"].model_validate(
+        payload
+    )
+
 
 FIXTURE = Path(__file__).parent / "fixtures" / "recorded_ticks.json"
 TICKS: list[dict[str, Any]] = json.loads(FIXTURE.read_text(encoding="utf-8"))["ticks"]
@@ -73,28 +80,32 @@ def node_config(args: dict[str, Any]) -> dict[str, Any]:
 def node_answer(tick: dict[str, Any]) -> dict[str, Any]:
     """What the packaged handlers answer for one recorded tick."""
     if "readings" in tick:
-        request = ModelLabFillCapacityRequest.model_validate(
+        capacity = HandlerLabFillCapacity()
+        request = _request(
+            capacity,
             {
                 "readings": tick["readings"],
                 "policy": tick["policy"],
                 "max_lanes": tick["args"]["config"]["maxLanes"],
-            }
+            },
         )
-        result = HandlerLabFillCapacity().handle(request)
+        result = capacity.handle(request)
         return {
             "capacity": result.model_dump(
                 mode="json", by_alias=True, exclude_unset=True
             )
         }
-    plan = ModelLabFillDispatchPlanRequest.model_validate(
+    planner = HandlerLabFillDispatchPlan()
+    plan = _request(
+        planner,
         {
             "candidates": tick["candidates"],
             "capacity": tick["capacity"],
             "config": node_config(tick["args"]),
             "fenced": tick["fenced"],
-        }
+        },
     )
-    selection = HandlerLabFillDispatchPlan().handle(plan)
+    selection = planner.handle(plan)
     dumped = selection.model_dump(mode="json", by_alias=True, exclude_unset=True)
     return {
         "selection": dumped,
@@ -141,11 +152,9 @@ def js_send_flags(command: str) -> dict[str, str]:
 
 def node_send_flags(item: dict[str, Any], tick: dict[str, Any]) -> dict[str, str]:
     """The runner flags the node's lane render and launch build for one planned lane."""
-    rendered = HandlerLabFillLaneRender().handle(
-        ModelLabFillLaneRenderRequest(
-            item=ModelLabFillDispatchItem.model_validate(item),
-            config=render_config(tick["args"]),
-        )
+    render = HandlerLabFillLaneRender()
+    rendered = render.handle(
+        _request(render, {"item": item, "config": render_config(tick["args"])})
     )
     argv = runner_args(rendered.launch, f"$BRIEF_DIR/{item['lane']}.md")
     flags: dict[str, str] = {}
