@@ -812,7 +812,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for the delegation_budget_readings projection relation = 119.
     # +1 for OMN-19991's local_alerts (same PR as its CREATE) = 120.
     # +1 for OMN-19986's local_identity (same PR as its CREATE) = 121.
-    assert census["source_declared_tables"] == 121
+    # +1 for OMN-21970's projection_delegation_daily view (0066), which the
+    # census counts with the other delegation views = 122.
+    assert census["source_declared_tables"] == 122
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

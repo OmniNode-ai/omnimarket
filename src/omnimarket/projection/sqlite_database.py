@@ -42,16 +42,7 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
-from omnimarket.models.model_local_install_schema import (
-    _LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL,
-    _LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED,
-    _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS,
-    _LOCAL_ENVIRONMENT_DDL,
-    _LOCAL_IDENTITY_CURSOR_SEQ_DDL,
-    _LOCAL_IDENTITY_CURSOR_SEQ_SEED,
-    _LOCAL_IDENTITY_CURSOR_TRIGGERS,
-    _LOCAL_IDENTITY_DDL,
-)
+from omnimarket.models.model_local_install_schema import _CURSOR_TABLE_STEPS
 from omnimarket.nodes.node_projection_tenant_credentials.stores import (
     _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
 )
@@ -626,6 +617,10 @@ _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
     "projection_delegation_model_routing",
     "sqlite/delegation_model_routing_view_v2.sql",
 )
+# OMN-21970: the counterpart of node_projection_delegation migration 0066, all of
+# a tenant's days in one row (migration 0065's cursor is a cursor-table step).
+_DAILY_VIEW_STEP = "omn21970_delegation_daily_view"
+_DAILY_VIEW_SQL = ("projection_delegation_daily", "sqlite/delegation_daily_view.sql")
 # OMN-20008: the counterpart of node_projection_savings migration 090's savings
 # view, serving the local exposure with each run's stored call provenance.
 _DELEGATION_SAVINGS_VIEW_STEP = "omn20008_delegation_savings_view"
@@ -646,13 +641,6 @@ _DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view_measured.sql",
 )
-# OMN-19988: the local environment table, its cursor sequence and triggers. A
-# store step, not a statement on every connect: the sequence seed is a write, so
-# a read-only store, or a reader on a busy one, must not run it.
-_LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
-# OMN-19986: the local identity table, its cursor sequence and triggers; a store
-# step for the same reason as the local environment's.
-_LOCAL_IDENTITY_STEP = "omn19986_local_identity"
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -946,26 +934,17 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             pending.append(
                 (
                     _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP,
-                    cls._replace_delegation_model_routing_view,
+                    cls._replace_delegation_view,
                     "listed each tier's models in the delegation model-routing view",
                 )
             )
-        if not cls._store_step_recorded(conn, _LOCAL_ENVIRONMENT_STEP):
-            pending.append(
-                (
-                    _LOCAL_ENVIRONMENT_STEP,
-                    cls._create_local_environment,
-                    "created the local environment table and its cursor",
-                )
-            )
-        if not cls._store_step_recorded(conn, _LOCAL_IDENTITY_STEP):
-            pending.append(
-                (
-                    _LOCAL_IDENTITY_STEP,
-                    cls._create_local_identity,
-                    "created the local identity table and its cursor",
-                )
-            )
+        if not cls._store_step_recorded(conn, _DAILY_VIEW_STEP):
+            daily = partial(cls._replace_delegation_view, relation=_DAILY_VIEW_SQL)
+            pending.append((_DAILY_VIEW_STEP, daily, "created the per-day view"))
+        for step, note, ddl in _CURSOR_TABLE_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                create = partial(cls._create_cursor_table, ddl=ddl)
+                pending.append((step, create, f"created {note} and its cursor"))
         if not cls._store_step_recorded(conn, _CLAIMS_DELIVERY_ID_SHAPE_STEP):
             pending.append(
                 (
@@ -995,6 +974,11 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute(_STORE_STEPS_DDL)
+                # OMN-21970: another process may have applied it since the list
+                # was read; a step such as ADD COLUMN is not safe to run twice.
+                if cls._store_step_recorded(conn, step):
+                    conn.rollback()
+                    continue
                 apply(conn)
                 conn.execute(
                     f"INSERT OR IGNORE INTO {_STORE_STEPS_TABLE} (step, applied_at) "
@@ -1129,22 +1113,10 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             conn.execute(ddl)
 
     @staticmethod
-    def _create_local_environment(conn: sqlite3.Connection) -> None:
-        """OMN-19988: the local environment table, its cursor sequence and triggers."""
-        conn.execute(_LOCAL_ENVIRONMENT_DDL)
-        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
-        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
-        for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
-            conn.execute(trigger)
-
-    @staticmethod
-    def _create_local_identity(conn: sqlite3.Connection) -> None:
-        """OMN-19986: the local identity table, its cursor sequence and triggers."""
-        conn.execute(_LOCAL_IDENTITY_DDL)
-        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_DDL)
-        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_SEED)
-        for trigger in _LOCAL_IDENTITY_CURSOR_TRIGGERS:
-            conn.execute(trigger)
+    def _create_cursor_table(conn: sqlite3.Connection, ddl: tuple[str, ...]) -> None:
+        """OMN-19988, OMN-19986: a local table, its cursor sequence, seed and triggers."""
+        for statement in ddl:
+            conn.execute(statement)
 
     @classmethod
     def _migrate_claims_table_to_delivery_id(cls, conn: sqlite3.Connection) -> None:
@@ -1188,14 +1160,18 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         conn.execute(_CLAIMS_CORRELATION_INDEX_DDL)
 
     @staticmethod
-    def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:
-        """OMN-21015 AC2: the model-routing view whose tiers list their models.
+    def _replace_delegation_view(
+        conn: sqlite3.Connection,
+        relation: tuple[str, str] = _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL,
+    ) -> None:
+        """Drop one delegation view and create it from its node's SQL file.
 
-        Runs after the OMN-20754 step, which created the first definition; this
-        one drops it and creates the revision. A later revision is a new step.
+        OMN-21015 AC2 (the default): the model-routing view whose tiers list
+        their models, after the OMN-20754 step created the first definition.
+        OMN-21970: the per-day view. A later revision is a new step.
         """
         package, _ = _DELEGATION_SUMMARY_VIEW_SQL
-        view, resource = _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL
+        view, resource = relation
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute(f"DROP VIEW IF EXISTS {view}")
         conn.execute(ddl)
