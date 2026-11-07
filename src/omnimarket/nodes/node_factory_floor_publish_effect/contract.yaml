@@ -49,6 +49,11 @@ handler_routing:
       name: HandlerFleetObservationSource
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
   - operation: prepare_process_health
     handler:
       name: HandlerProcessHealthPayload

@@ -28,6 +28,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     load_runtime,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
+    ModelFactoryFloorPublishOverlay,
     ModelPublishStep,
 )
 
@@ -110,9 +111,16 @@ def run_step(tmp_path: Path, env: dict[str, str]) -> tuple[str, str, Path]:
     result = handler._run_step(
         step,
         home,
-        object(),
+        ModelFactoryFloorPublishOverlay(
+            ssh_target="lab-web",
+            remote_dir=str(home / "site"),
+            serve_url="http://example.invalid:8088/",
+            bus_lane="lane-x",
+            history_root=str(home / "kept"),
+            owner_login="owner@example.invalid",
+        ),
         "CLAUDE_PLUGIN_ROOT",
-        env,  # type: ignore[arg-type]
+        env,
     )
     assert step.output_relpath is not None
     return result.status, result.detail, home / step.output_relpath
