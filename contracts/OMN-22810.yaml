@@ -40,12 +40,18 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
+- id: dod-omn22810-ac3
+  description: The page carries the parts the served page's open and close paths run on (the browser run itself is recorded in the pull request body).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
 - id: dod-omn22810-integration-proof
   description: The browser run (desktop and phone, dev against the branch) is recorded with its screenshots in the pull request body; the local Done gate re-runs the page and compute tests on a lab host at the pushed head.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22810 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_compute tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
