@@ -16,6 +16,7 @@ readers are spelled here; omniclaude's copy can shrink onto them later.
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import shutil
@@ -29,6 +30,14 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_green_verdict import (
+    HandlerDevTagGreenVerdict,
+)
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_green_verdict import (
+    EnumDevTagGreenVerdict,
+    ModelDevTagCheckRun,
+    ModelDevTagGreenVerdictRequest,
+)
 from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_set import (
     ModelPinSetCandidate,
     ModelPinSetRequest,
@@ -47,7 +56,18 @@ _OMNINODE_GIT = re.compile(
 _URL_LINE = re.compile(r"^\s*-\s+(?P<url>https?://\S+)\s*$", re.MULTILINE)
 # Tags examined per sibling, newest first: bounds the CI reads a night costs.
 MAX_CANDIDATES = 15
-_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+_PROTECTION_JQ = ".protection.required_status_checks.contexts[]?"
+_RULES_JQ = (
+    '.[] | select(.type == "required_status_checks")'
+    " | .parameters.required_status_checks[].context"
+)
+_RUNS_JQ = r'.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion // "")"'
+Runner = Callable[..., "subprocess.CompletedProcess[str]"]
+_VERDICT_OF: dict[EnumDevTagGreenVerdict, bool | None] = {
+    EnumDevTagGreenVerdict.GREEN: True,
+    EnumDevTagGreenVerdict.RED: False,
+    EnumDevTagGreenVerdict.UNREAD: None,
+}
 
 
 def _env() -> dict[str, str]:
@@ -106,40 +126,58 @@ def dev_tags_newest_first(clone: Path) -> list[tuple[str, str]]:
     return sorted(tags, key=lambda t: (stamp(t[0]), t[0]), reverse=True)
 
 
-def check_runs_verdict(runs: list[tuple[str, str]]) -> bool | None:
-    """Green, red, or None (unread) from (status, conclusion) pairs of one commit."""
-    if not runs:
+def _gh_lines(run: Runner, path: str, jq: str) -> list[str] | None:
+    """Non-blank lines of one paginated gh api read, or None when it fails or hangs."""
+    try:
+        result = run(
+            ["gh", "api", "--paginate", path, "--jq", jq],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, OSError):
         return None
-    if any(c and c not in _GREEN_CONCLUSIONS for _, c in runs):
-        return False
-    if any(status != "completed" for status, _ in runs):
-        return None
-    return True
-
-
-def github_check_runs_green(repo: str, sha: str) -> bool | None:
-    """The workflow's oracle: every check run on the dev commit, read with gh."""
-    result = subprocess.run(
-        [
-            "gh",
-            "api",
-            "--paginate",
-            f"repos/OmniNode-ai/{repo}/commits/{sha}/check-runs?per_page=100",
-            "--jq",
-            r'.check_runs[] | "\(.status) \(.conclusion // "")"',
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
     if result.returncode != 0:
         return None
-    runs = []
-    for line in result.stdout.splitlines():
-        status, _, conclusion = line.partition(" ")
-        runs.append((status, conclusion.strip()))
-    return check_runs_verdict(runs)
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def required_contexts(repo: str, run: Runner = subprocess.run) -> frozenset[str] | None:
+    """dev's required contexts, branch protection and rulesets together; None if unreadable."""
+    base = f"repos/OmniNode-ai/{repo}"
+    protection = _gh_lines(run, f"{base}/branches/dev", _PROTECTION_JQ)
+    rules = _gh_lines(run, f"{base}/rules/branches/dev", _RULES_JQ)
+    if protection is None or rules is None:
+        return None
+    return frozenset(protection + rules) or None
+
+
+@functools.cache
+def _required_contexts_cached(repo: str) -> frozenset[str] | None:
+    return required_contexts(repo)
+
+
+def github_check_runs_green(
+    repo: str, sha: str, run: Runner | None = None
+) -> bool | None:
+    """The workflow's oracle: the dev commit's check runs, judged on dev's required checks."""
+    required = (
+        _required_contexts_cached(repo) if run is None else required_contexts(repo, run)
+    )
+    path = f"repos/OmniNode-ai/{repo}/commits/{sha}/check-runs?per_page=100"
+    lines = _gh_lines(run or subprocess.run, path, _RUNS_JQ)
+    if lines is None:
+        return None
+    fields = [[*line.split("\t"), "", ""][:3] for line in lines]
+    request = ModelDevTagGreenVerdictRequest(
+        runs=tuple(
+            ModelDevTagCheckRun(name=name, status=status, conclusion=done)
+            for name, status, done in fields
+        ),
+        required_contexts=required,
+    )
+    return _VERDICT_OF[HandlerDevTagGreenVerdict().handle(request).verdict]
 
 
 def assume_unread(repo: str, sha: str) -> bool | None:
