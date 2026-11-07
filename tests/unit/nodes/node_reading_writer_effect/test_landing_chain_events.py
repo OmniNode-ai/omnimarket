@@ -34,7 +34,10 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     answer_command,
     load_topics,
 )
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLandingRead
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLandingRead,
+    ProtocolLandingSource,
+)
 from tests.nodes.node_reading_writer_effect.reading_support import RUN_AT, START
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
     HEAD_LIMIT,
@@ -69,7 +72,7 @@ COMMAND = json.dumps(
 
 async def _publish(
     ledger: InMemoryLedger,
-    landing: object,
+    landing: ProtocolLandingSource,
     compute: HandlerReadingCompute | None = None,
 ) -> list[tuple[str, dict[str, object]]]:
     writer = HandlerReadingWriter(
@@ -77,7 +80,7 @@ async def _publish(
         source=ledger,
         appender=ledger,
         clock=lambda: RUN_AT,
-        landing=landing,  # type: ignore[arg-type]
+        landing=landing,
         compute=compute,
     )
     bus = EventBusInmemory()

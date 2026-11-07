@@ -19,6 +19,7 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     HandlerReadingWriter,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
+from omnimarket.nodes.node_reading_writer_effect.protocols import ProtocolLandingSource
 from tests.nodes.node_reading_writer_effect.reading_support import (
     RUN_AT,
     START,
@@ -102,12 +103,12 @@ def canary_row(*, landed: bool = True, at_offset_hours: int = 5) -> str:
 
 
 def writer(
-    ledger: InMemoryLedger, landing: object | None, *, at=RUN_AT
+    ledger: InMemoryLedger, landing: ProtocolLandingSource | None, *, at=RUN_AT
 ) -> HandlerReadingWriter:
     return HandlerReadingWriter(
         overlay=landing_overlay(),
         source=ledger,
         appender=ledger,
         clock=lambda: at,
-        landing=landing,  # type: ignore[arg-type]
+        landing=landing,
     )
