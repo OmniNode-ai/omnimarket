@@ -83,12 +83,15 @@ dependencies:
     description: "T4: the tick's lines."
     required: true
 runtime_dispatch:
-  external_trigger: "onex run-node node_floor_fill_orchestrator -- <command>, called by the fill's tick unit and by the prompt-submit hook entry."
+  external_trigger: "the runtime module (python -m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <J> --this-host <H> <command>), called by the fill's tick unit and by the prompt-submit hook entry."
 # The tick unit: installed by `schedule install` as a systemd user timer on floor_fill.host_id, removed by
-# `schedule uninstall` (the rollback). The interval (floor_fill.tick_interval_seconds) is the overlay's.
+# `schedule uninstall` (the rollback). The unit runs the dispatch venv's interpreter on this node's runtime module
+# (-m ...runtime_floor_fill_orchestrator --overlay-json <the floor_fill section> --this-host <host> tick), the
+# census node's form. The interval (floor_fill.tick_interval_seconds) is the overlay's.
 schedule:
   unit_name: onex-floor-fill-tick
   timeout_seconds: 900
+  dispatch_venv: .onex-dispatch-venv
 
 overlay:
   example: "overlay.example.yaml"

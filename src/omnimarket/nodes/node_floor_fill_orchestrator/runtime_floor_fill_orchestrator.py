@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Entry: ``onex run-node node_floor_fill_orchestrator -- <command> [key]``.
+"""Entry: ``python -m <this module> --overlay-json <J> --this-host <H> <command> [key]``.
+
+This is the node's runtime-module form (the census node's form): the tick unit and the prompt-submit hook entry
+both run it with the dispatch venv's interpreter. ``J`` is the overlay's ``floor_fill`` section wrapped as
+``{"floor_fill": {...}}``; an empty or unreadable ``J`` prints ``UNKNOWN fill-state:overlay:unreadable`` and fails.
 
 The entry holds no I/O of its own: the handler it builds takes every seam in its constructor. The
 shipped profile is ``inmemory`` (scripted seams over an in-memory conditional store); the live bindings of
@@ -79,7 +83,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"UNKNOWN fill-state:profile-unbound:{known.profile} (live seams are bound by the lab step)\n"
         )
         return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
-    overlay = json.loads(known.overlay_json)
+    try:
+        overlay = json.loads(known.overlay_json)
+    except json.JSONDecodeError:
+        overlay = None
+    if not isinstance(overlay, dict):
+        sys.stdout.write("UNKNOWN fill-state:overlay:unreadable\n")
+        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
     from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
         build_inmemory_handler,
     )

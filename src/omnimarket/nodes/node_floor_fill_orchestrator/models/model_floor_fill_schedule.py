@@ -13,12 +13,13 @@ CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 class ModelFloorFillSchedule(BaseModel):
-    """The contract's ``schedule`` block: the unit's name and its deadline. The interval is the overlay's."""
+    """The contract's ``schedule`` block: the unit's name, its deadline and the dispatch venv it runs in."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit_name: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1)
+    dispatch_venv: str = Field(min_length=1)
 
 
 class ModelFloorFillScheduleResult(BaseModel):

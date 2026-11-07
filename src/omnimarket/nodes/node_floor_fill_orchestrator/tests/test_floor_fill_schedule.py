@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+import shlex
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,8 +15,13 @@ import pytest
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_schedule import (
+    NODE_MODULE,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
+    EXIT_CODE_BY_STATUS,
     EnumFloorFillCommand,
+    EnumFloorFillStatus,
     ModelFloorFillCommandRequest,
     ModelFloorFillConfig,
     ModelFloorFillSchedule,
@@ -26,6 +33,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
     ScriptedCommandForward,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import (
+    main as runtime_main,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.schedule_entry import run_schedule
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
     OVERLAY,
@@ -35,10 +45,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
 
 pytestmark = pytest.mark.unit
 
-EXEC_START = "ExecStart=/usr/bin/env onex run-node node_floor_fill_orchestrator -- tick"
+VENV_PYTHON = f"{'/srv/example/registry'}/.onex-dispatch-venv/bin/python"
 HOSTS = [("fill-host", True), ("other-host", True), ("away-host", False)]
 OMNI_ROOT = Path("/srv/example/registry")
-OVERLAY_ROOT = Path("/srv/example/overlays")
 NODE_DIR = "src/omnimarket/nodes/node_floor_fill_orchestrator/"
 # The repository's receipt gate reads the ticket's own contract from this one path; it is the only path
 # outside the node the pull request carries and it is named here, not matched by a pattern.
@@ -53,6 +62,7 @@ def _install(
     hosts: list[tuple[str, bool]] | None = None,
     this_host: str = "fill-host",
     run: object = None,
+    omni_root: Path = OMNI_ROOT,
 ) -> tuple[int, str, str]:
     result = run_schedule(
         [
@@ -60,17 +70,32 @@ def _install(
             "--this-host",
             this_host,
             "--workspace-root",
-            str(OMNI_ROOT),
+            str(omni_root),
             *extra,
         ],
         {"floor_fill": section},
         hosts=HOSTS if hosts is None else hosts,
-        overlay_root=OVERLAY_ROOT,
         home=home,
         run=run or _ok,  # type: ignore[arg-type]
-        on_path=lambda _name, _path: True,
     )
     return result.exit_code, result.stdout, result.stderr
+
+
+def _registry(tmp_path: Path) -> Path:
+    """A registry root whose dispatch venv holds an interpreter file, so a real install passes its check."""
+    root = tmp_path / "registry"
+    python = root / ".onex-dispatch-venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    return root
+
+
+def exec_words(rendered: str) -> list[str]:
+    """The words of the unit's one ExecStart line, as systemd reads them (``%%`` and ``$$`` unescaped)."""
+    lines = [line for line in rendered.splitlines() if line.startswith("ExecStart=")]
+    assert len(lines) == 1
+    text = lines[0].removeprefix("ExecStart=").replace("%%", "%").replace("$$", "$")
+    return shlex.split(text)
 
 
 def _ok(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -95,8 +120,8 @@ def test_floor_fill_schedule_interval_from_overlay(tmp_path: Path) -> None:
     assert "120s" not in out_a
     assert "300s" not in out_b
     for out in (out_a, out_b):
-        assert EXEC_START in out
         assert out.count("ExecStart=") == 1
+        assert exec_words(out)[-1] == "tick"
 
 
 def test_floor_fill_schedule_unit_name_and_deadline_are_the_contracts(
@@ -109,8 +134,66 @@ def test_floor_fill_schedule_unit_name_and_deadline_are_the_contracts(
     assert schedule.timeout_seconds > OVERLAY["command_timeout_seconds"]
 
 
+def test_floor_fill_schedule_exec_is_the_runtime_module_form(tmp_path: Path) -> None:
+    """AC1: the unit runs the dispatch venv's python on the runtime module with the overlay as JSON and the host."""
+    _, out, _ = _install(OVERLAY, tmp_path, "--dry-run")
+    words = exec_words(out)
+    assert words[:3] == [VENV_PYTHON, "-m", NODE_MODULE]
+    assert words[3] == "--overlay-json"
+    assert json.loads(words[4]) == {"floor_fill": OVERLAY}
+    assert words[5:] == ["--this-host", OVERLAY["host_id"], "tick"]
+    assert "run-node" not in out
+    assert "/usr/bin/env" not in out
+
+
+def test_floor_fill_schedule_exec_start_runs_the_runtime_module(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The rendered words are accepted by the runtime module itself (its argv after ``-m <module>``)."""
+    _, out, _ = _install(OVERLAY, tmp_path, "--dry-run")
+    arguments = exec_words(out)[3:]
+    code = runtime_main([*arguments[:-1], "lines"])
+    printed = capsys.readouterr().out
+    assert printed.startswith("UNKNOWN floor-fill-answer-absent")
+    assert runtime_main([*arguments[:-1], "lines"]) == code
+
+
+@pytest.mark.parametrize("bad", ["", "not json", "[1]", "null"])
+def test_floor_fill_runtime_unreadable_overlay_json_is_a_loud_unknown(
+    bad: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = runtime_main(["--overlay-json", bad, "--this-host", "fill-host", "lines"])
+    assert code == EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    assert capsys.readouterr().out == "UNKNOWN fill-state:overlay:unreadable\n"
+
+
+def test_floor_fill_schedule_install_refused_without_the_dispatch_venv(
+    tmp_path: Path,
+) -> None:
+    code, _, err = _install(OVERLAY, tmp_path)
+    assert code == 1
+    assert "no dispatch venv interpreter at" in err
+    assert not (tmp_path / ".config/systemd/user").exists()
+
+
+def test_floor_fill_schedule_install_refused_when_the_module_does_not_import(
+    tmp_path: Path,
+) -> None:
+    def run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        if command[1:2] == ["-c"]:
+            return subprocess.CompletedProcess(list(command), 1, "", "No module")
+        return _ok(command)
+
+    code, _, err = _install(OVERLAY, tmp_path, run=run, omni_root=_registry(tmp_path))
+    assert code == 1
+    assert NODE_MODULE in err
+    assert not (tmp_path / ".config/systemd/user").exists()
+
+
 def test_floor_fill_schedule_deadline_above_the_command_timeout(tmp_path: Path) -> None:
-    tight = ModelFloorFillSchedule(unit_name="u", timeout_seconds=60)
+    tight = ModelFloorFillSchedule(
+        unit_name="u", timeout_seconds=60, dispatch_venv=".onex-dispatch-venv"
+    )
     result = run_schedule(
         [
             "install",
@@ -122,7 +205,6 @@ def test_floor_fill_schedule_deadline_above_the_command_timeout(tmp_path: Path) 
         ],
         {"floor_fill": OVERLAY},
         hosts=HOSTS,
-        overlay_root=OVERLAY_ROOT,
         home=tmp_path,
         schedule=tight,
     )
@@ -173,9 +255,10 @@ def test_floor_fill_schedule_installed_unit_equals_dry_run(tmp_path: Path) -> No
         calls.append(list(command))
         return _ok(command)
 
-    _, dry, _ = _install(OVERLAY, tmp_path, "--dry-run", run=run)
+    root = _registry(tmp_path)
+    _, dry, _ = _install(OVERLAY, tmp_path, "--dry-run", run=run, omni_root=root)
     assert calls == []
-    code, _, _ = _install(OVERLAY, tmp_path, run=run)
+    code, _, _ = _install(OVERLAY, tmp_path, run=run, omni_root=root)
     assert code == 0
     schedule = load_floor_fill_schedule()
     unit_dir = tmp_path / ".config/systemd/user"
@@ -189,65 +272,23 @@ def test_floor_fill_schedule_installed_unit_equals_dry_run(tmp_path: Path) -> No
         "--now",
         f"{schedule.unit_name}.timer",
     ]
-    _, again, _ = _install(OVERLAY, tmp_path, run=run)
+    _, again, _ = _install(OVERLAY, tmp_path, run=run, omni_root=root)
     assert "unchanged" in again
 
 
-def test_floor_fill_schedule_unit_path_holds_the_dispatch_venv_bin(
-    tmp_path: Path,
-) -> None:
-    _, dry, _ = _install(OVERLAY, tmp_path, "--dry-run")
-    path_line = next(
-        line for line in dry.splitlines() if line.startswith('Environment="PATH=')
-    )
-    assert path_line.startswith(
-        f'Environment="PATH={OMNI_ROOT}/.onex-dispatch-venv/bin:{tmp_path}/.local/bin:'
-    )
-
-
-def test_floor_fill_schedule_install_refused_when_onex_not_on_the_unit_path(
-    tmp_path: Path,
-) -> None:
-    searched: list[str] = []
-
-    def on_path(name: str, path: str) -> bool:
-        searched.append(path)
-        return False
-
-    result = run_schedule(
-        [
-            "install",
-            "--this-host",
-            "fill-host",
-            "--workspace-root",
-            str(OMNI_ROOT),
-        ],
-        {"floor_fill": OVERLAY},
-        hosts=HOSTS,
-        overlay_root=OVERLAY_ROOT,
-        home=tmp_path,
-        run=_ok,
-        on_path=on_path,
-    )
-    assert result.exit_code == 1
-    assert "onex is not on the unit's PATH" in result.stderr
-    assert str(OMNI_ROOT / ".onex-dispatch-venv/bin") in searched[0]
-    assert not (tmp_path / ".config/systemd/user").exists()
-
-
 def test_floor_fill_schedule_uninstall_is_the_rollback(tmp_path: Path) -> None:
-    _install(OVERLAY, tmp_path)
+    _install(OVERLAY, tmp_path, omni_root=_registry(tmp_path))
     schedule = load_floor_fill_schedule()
+    unit_dir = tmp_path / ".config/systemd/user"
+    assert (unit_dir / f"{schedule.unit_name}.timer").exists()
     result = run_schedule(
         ["uninstall", "--this-host", "fill-host"],
         {"floor_fill": OVERLAY},
         hosts=HOSTS,
-        overlay_root=OVERLAY_ROOT,
         home=tmp_path,
         run=_ok,
     )
     assert result.exit_code == 0
-    unit_dir = tmp_path / ".config/systemd/user"
     assert not (unit_dir / f"{schedule.unit_name}.timer").exists()
     assert not (unit_dir / f"{schedule.unit_name}.service").exists()
 
@@ -266,7 +307,6 @@ def test_floor_fill_schedule_refuses_a_unit_that_runs_from_a_worktree(
         ],
         {"floor_fill": OVERLAY},
         hosts=HOSTS,
-        overlay_root=OVERLAY_ROOT,
         home=tmp_path,
     )
     assert result.exit_code == 1

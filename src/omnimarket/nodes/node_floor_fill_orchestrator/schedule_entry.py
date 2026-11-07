@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``onex run-node node_floor_fill_orchestrator -- schedule <install|uninstall|status|run-now> --this-host <host>``.
+"""``python -m <runtime module> schedule <install|uninstall|status|run-now> --this-host <host>``.
 
 Reads the overlay's ``floor_fill`` section from ``<root>/node_floor_fill_orchestrator/overlay.yaml`` under
 ``ONEX_SKILL_OVERLAY_ROOTS`` and the lab host table, then hands both to the schedule handler. A refused overlay or
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -24,7 +23,6 @@ from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_schedule import (
     NODE_NAME,
     HandlerFloorFillSchedule,
-    OnPath,
     Runner,
     run_command,
 )
@@ -40,20 +38,14 @@ OVERLAY_SECTION = "floor_fill"
 VERBS = ("install", "uninstall", "status", "run-now")
 
 
-def _which(name: str, path: str) -> bool:
-    return shutil.which(name, path=path) is not None
-
-
 def run_schedule(
     argv: Sequence[str],
     overlay: Mapping[str, Any],
     *,
     hosts: Iterable[tuple[str, bool]],
-    overlay_root: Path,
     home: Path,
     schedule: ModelFloorFillSchedule | None = None,
     run: Runner = run_command,
-    on_path: OnPath | None = _which,
 ) -> ModelFloorFillScheduleResult:
     """Parse the verb, build the handler from the overlay and run it."""
     parser = argparse.ArgumentParser(prog="schedule")
@@ -79,7 +71,6 @@ def run_schedule(
         hosts=hosts,
         home=home,
         run=run,
-        on_path=on_path,
     )
     if args.verb == "install":
         if not args.workspace_root:
@@ -90,7 +81,6 @@ def run_schedule(
         return handler.install(
             this_host=args.this_host,
             omni_root=Path(args.workspace_root),
-            overlay_root=overlay_root,
             dry_run=args.dry_run,
         )
     if args.verb == "uninstall":
@@ -113,7 +103,6 @@ def main(argv: Sequence[str]) -> int:
         argv,
         overlay if isinstance(overlay, dict) else {},
         hosts=[(row.name, row.available) for row in table.hosts],
-        overlay_root=found.parent.parent,
         home=Path.home(),
     )
     sys.stdout.write(result.stdout)

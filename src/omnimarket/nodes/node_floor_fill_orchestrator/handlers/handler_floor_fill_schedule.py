@@ -2,14 +2,18 @@
 # SPDX-License-Identifier: MIT
 """HandlerFloorFillSchedule: the fill's own tick unit, rendered, installed and removed by the node.
 
-The unit runs exactly ``onex run-node node_floor_fill_orchestrator -- tick`` on ``floor_fill.host_id`` every
-``floor_fill.tick_interval_seconds``. The unit's name and deadline are the contract's ``schedule`` block; the host and
-the interval are the overlay's. The host must be an available row of the lab host table: any other value is refused
-naming ``floor_fill.host_id``. ``uninstall`` is the rollback: it stops the timer and removes its unit files.
+The unit runs the node through its runtime module, the census node's form: the dispatch venv's interpreter,
+``-m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <J> --this-host <H> tick``,
+on ``floor_fill.host_id`` every ``floor_fill.tick_interval_seconds``. ``J`` is the overlay's ``floor_fill`` section
+as validated JSON and ``H`` is ``floor_fill.host_id``. The unit's name, deadline and dispatch venv are the contract's
+``schedule`` block; the host and the interval are the overlay's. The host must be an available row of the lab host
+table: any other value is refused naming ``floor_fill.host_id``. ``uninstall`` is the rollback: it stops the timer and
+removes its unit files.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Sequence
@@ -24,13 +28,13 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
 )
 
 NODE_NAME = "node_floor_fill_orchestrator"
-TICK_ARGV: tuple[str, ...] = ("onex", "run-node", NODE_NAME, "--", "tick")
-OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
-DISPATCH_VENV_BIN = ".onex-dispatch-venv/bin"
+NODE_MODULE = (
+    "omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator"
+)
+OVERLAY_SECTION = "floor_fill"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
-OnPath = Callable[[str, str], bool]
 
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -56,9 +60,40 @@ def _assignment(name: str, value: str) -> str:
     return f'Environment="{name}={escaped}"\n'
 
 
-def unit_path(home: Path, omni_root: Path) -> str:
-    """The unit's PATH: the dispatch venv's bin first, where ``onex`` lives on a fill host (as for the census unit)."""
-    return f"{omni_root}/{DISPATCH_VENV_BIN}:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+def _quote(value: str) -> str:
+    """One systemd command-line word: quoted, with the backslash, quote, ``%`` and ``$`` escaped."""
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("%", "%%")
+        .replace("$", "$$")
+    )
+    return f'"{escaped}"'
+
+
+def overlay_json(config: ModelFloorFillConfig) -> str:
+    """``J``: the overlay's ``floor_fill`` section, validated, as one compact JSON line."""
+    return json.dumps(
+        {OVERLAY_SECTION: config.model_dump(mode="json")},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def dispatch_python(schedule: ModelFloorFillSchedule, omni_root: Path) -> Path:
+    """The dispatch venv's interpreter under the registry root: what the unit runs."""
+    return omni_root / schedule.dispatch_venv / "bin" / "python"
+
+
+def exec_start(
+    schedule: ModelFloorFillSchedule, config: ModelFloorFillConfig, omni_root: Path
+) -> str:
+    """The unit's command line: the runtime module, the overlay as JSON, this host, and ``tick``."""
+    python = _safe(dispatch_python(schedule, omni_root), "dispatch venv interpreter")
+    return (
+        f"{_quote(python)} -m {NODE_MODULE} --overlay-json {_quote(overlay_json(config))} "
+        f"--this-host {_quote(config.host_id)} tick"
+    )
 
 
 def render_systemd(
@@ -67,7 +102,6 @@ def render_systemd(
     *,
     omni_root: Path,
     home: Path,
-    overlay_root: Path,
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
@@ -75,8 +109,7 @@ def render_systemd(
     environment = {
         "HOME": user_home,
         "OMNI_HOME": root,
-        OVERLAY_ROOTS_ENV: _safe(overlay_root, "overlay root"),
-        "PATH": unit_path(home, omni_root),
+        "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
     }
     interval = f"{config.tick_interval_seconds}s"
     service = (
@@ -88,7 +121,7 @@ def render_systemd(
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart=/usr/bin/env {' '.join(TICK_ARGV)}\n"
+        f"ExecStart={exec_start(schedule, config, omni_root)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
     )
     timer = (
@@ -112,14 +145,12 @@ class HandlerFloorFillSchedule:
         hosts: Iterable[tuple[str, bool]],
         home: Path,
         run: Runner = run_command,
-        on_path: OnPath | None = None,
     ) -> None:
         self.schedule = schedule
         self.config = config
         self.hosts = tuple(hosts)
         self.home = home
         self.run = run
-        self.on_path = on_path
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
         self.unit_dir = home / ".config/systemd/user"
@@ -153,7 +184,6 @@ class HandlerFloorFillSchedule:
         *,
         this_host: str,
         omni_root: Path,
-        overlay_root: Path,
         dry_run: bool = False,
     ) -> ModelFloorFillScheduleResult:
         refused = self._refusal(this_host)
@@ -165,7 +195,6 @@ class HandlerFloorFillSchedule:
                 self.config,
                 omni_root=omni_root,
                 home=self.home,
-                overlay_root=overlay_root,
             )
             refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
@@ -178,14 +207,18 @@ class HandlerFloorFillSchedule:
             return ModelFloorFillScheduleResult(
                 exit_code=0, stdout="".join(body + "\n" for _, body in files)
             )
-        if self.on_path is not None and not self.on_path(
-            TICK_ARGV[0], unit_path(self.home, omni_root)
-        ):
+        python = dispatch_python(self.schedule, omni_root)
+        if not python.is_file():
+            return ModelFloorFillScheduleResult(
+                exit_code=1, stderr=f"no dispatch venv interpreter at {python}\n"
+            )
+        started = self.run([str(python), "-c", f"import {NODE_MODULE}"])
+        if started.returncode:
             return ModelFloorFillScheduleResult(
                 exit_code=1,
                 stderr=(
-                    f"{TICK_ARGV[0]} is not on the unit's PATH {unit_path(self.home, omni_root)}; "
-                    "the tick would not start\n"
+                    f"{python} cannot import {NODE_MODULE} (exit {started.returncode}); "
+                    f"the tick would not start\n{started.stderr}"
                 ),
             )
         output = ""
@@ -265,9 +298,11 @@ class HandlerFloorFillSchedule:
 
 
 __all__: list[str] = [
+    "NODE_MODULE",
     "NODE_NAME",
-    "TICK_ARGV",
     "HandlerFloorFillSchedule",
+    "exec_start",
+    "overlay_json",
     "render_systemd",
     "run_command",
 ]

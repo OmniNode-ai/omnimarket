@@ -1,20 +1,20 @@
 schema_version: 1.0.0
 ticket_id: OMN-22855
 title: The fill's own tick unit (the orchestrator installs its own systemd user timer) and the prompt-submit hook entry
-summary: node_floor_fill_orchestrator renders, installs and removes its own systemd user timer (schedule install|uninstall|status|run-now) that runs `onex run-node node_floor_fill_orchestrator -- tick` on floor_fill.host_id every floor_fill.tick_interval_seconds; the host must be an available row of the lab host table. The prompt-submit hook entry in the omni plugin is the plain node command `lines`.
+summary: node_floor_fill_orchestrator renders, installs and removes its own systemd user timer (schedule install|uninstall|status|run-now) that runs the node through its runtime module, the dispatch venv's interpreter on `omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <the overlay's floor_fill section> --this-host <floor_fill.host_id> tick`, every floor_fill.tick_interval_seconds; the host must be an available row of the lab host table. The prompt-submit hook entry in the omni plugin is the same module's `lines` command.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn22855-floor-fill-tick-unit
-  statement: 'The fill owns its schedule: the node renders and installs the unit that runs its own tick at the overlay''s interval on the overlay''s host, and the hook entry is its plain `lines` command.'
+  statement: 'The fill owns its schedule: the node renders and installs the unit that runs its own tick at the overlay''s interval on the overlay''s host, and the hook entry is its runtime module''s `lines` command.'
   acceptance:
   - id: AC1
-    statement: 'AC1: The unit runs exactly `onex run-node node_floor_fill_orchestrator -- tick` on the overlay''s host at the overlay''s interval: two overlay values give two rendered intervals, a key left out is refused naming it, and an overlay naming a host that is not an available row of the lab host table is refused naming `floor_fill.host_id` -- falsifier: `-k floor_fill_schedule_interval_from_overlay`, `-k floor_fill_schedule_missing_key_refused` and `-k floor_fill_schedule_host_must_be_available`, over `schedule install --dry-run`; the dry-run render on the host in the lab step equals the installed unit.'
+    statement: 'AC1: The unit runs exactly `<dispatch venv>/bin/python -m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <the overlay''s floor_fill section as JSON> --this-host <floor_fill.host_id> tick` on the overlay''s host at the overlay''s interval: two overlay values give two rendered intervals, a key left out is refused naming it, and an overlay naming a host that is not an available row of the lab host table is refused naming `floor_fill.host_id` -- falsifier: `-k floor_fill_schedule_interval_from_overlay`, `-k floor_fill_schedule_exec_is_the_runtime_module_form`, `-k floor_fill_schedule_missing_key_refused` and `-k floor_fill_schedule_host_must_be_available`, over `schedule install --dry-run`; the dry-run render on the host in the lab step equals the installed unit.'
   - id: AC2
     statement: 'AC2: Nothing outside the permitted places changes. The omnimarket PR''s changed files are all under `src/omnimarket/nodes/node_floor_fill_orchestrator/`; the sibling plugin PR''s are `plugins/omni/hooks/hooks.json` and its test. No file is named `throughput_tick`, `queue_status`, `hook.sh` or `onex_remote_lane` and no path is outside those places. Falsifier: `-k no_script_edit`, which lists each PR''s changed files and fails on a match or a path outside those places.'
   - id: AC3
-    statement: 'AC3: The hook entry is its plain node command: the entry''s command string equals `onex run-node node_floor_fill_orchestrator -- lines` exactly and contains no `bash`, `sh -c`, `python`, `|` or `;` -- falsifier: `-k hook_entry_plain_node_command`.'
+    statement: 'AC3: The hook entry is the node''s plain runtime-module command: the entry''s command string equals `"${OMNI_HOME}/.onex-dispatch-venv/bin/python" -m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json "${ONEX_FLOOR_FILL_OVERLAY_JSON}" --this-host "${ONEX_LEDGER_HOST_NAME}" lines` exactly and contains no `bash`, `sh -c`, `|`, `;`, `$(`, backtick, `run-node` or `python3`, and `python` only once, in the interpreter path -- falsifier: `-k hook_entry_plain_node_command`.'
   - id: AC4
     statement: 'AC4: The entry prints the stored lines, the stale line and the absent line as T13 criterion 10 says, and an orchestrator that does not answer makes it print `UNKNOWN floor-fill-unreachable` and exit 75 -- falsifier: `-k lines_entry_prints_stored_answer` and `-k lines_entry_unreachable_prints_diagnostic`.'
 evidence_requirements:
@@ -33,7 +33,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "floor_fill_schedule"
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "floor_fill_schedule or floor_fill_runtime"
     cwd: .
 - id: dod-omn22855-ac2
   description: 'AC2: the commits of this pull request change only files under the node directory, and the checker fails on each forbidden name and on a stray path.'
@@ -45,7 +45,7 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "no_script_edit"
     cwd: .
 - id: dod-omn22855-ac3
-  description: 'AC3: the entry''s exact command string is asserted in the sibling plugin pull request''s test; here the node answers that command, `lines`, from another host by forwarding and relaying.'
+  description: 'AC3: the entry''s exact command string is asserted in the sibling plugin pull request''s test; here the runtime module answers that command, `lines`, from another host by forwarding and relaying, and refuses an empty or unreadable overlay JSON with a named line.'
   source: manual
   binds_ac:
   - AC3
