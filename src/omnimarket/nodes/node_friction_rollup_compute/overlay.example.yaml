@@ -91,6 +91,12 @@ class_rules:
   - name: canonical-clone-sync-answers-no-clone-for-a-brief-repository
     owner: "the clone sync declaration of the lab host (canonical_clone_sync refresh): a lab host that carries no clone, or no branch, of a repository the brief names answers NO_CLONE and the lane cannot read the text"
     pattern: 'NO_CLONE'
+  - name: host-install-binds-drive-over-live-ram-filesystem
+    owner: "the host installer of the lab drive (the h053 drive install step): a bind of the drive over a live RAM filesystem propagated the mount through a shared root and ended running workers"
+    pattern: 'bind of the drive over'
+  - name: criterion-falsifier-names-a-new-code-file-the-src-freeze-gate-refuses
+    owner: "the ticket author and the create-ticket gate: a falsifier that needs a new code file is refused by the src-freeze gate, so the criterion cannot be proven where it is written"
+    pattern: 'src-freeze gate refuses'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness

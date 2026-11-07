@@ -66,7 +66,9 @@ def classes(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def test_the_rules_this_change_adds_are_the_two_after_the_earlier_twenty_six() -> None:
-    assert [rule["name"] for rule in RULES[RULES_BEFORE:]] == list(EXPECTED_ROWS)
+    assert [
+        rule["name"] for rule in RULES[RULES_BEFORE : RULES_BEFORE + FIXTURE_ROWS]
+    ] == list(EXPECTED_ROWS)
 
 
 def test_with_only_the_earlier_rules_both_rows_are_unclassified() -> None:
