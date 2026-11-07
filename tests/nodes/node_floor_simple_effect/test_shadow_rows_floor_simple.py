@@ -14,13 +14,22 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.models.floor_17a import ModelFloorShadowLine, ModelFloorSimple
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.models.floor_17a import (
+    ModelFloorShadowLine,
+    ModelFloorSimple,
+    ModelFloorSimpleOverlay,
+    ModelFloorSimpleTickRequest,
+)
 from omnimarket.models.model_code_graph import EnumGraphFault, ModelShadowCommand
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     InMemoryPullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.handler_shadow_check import (
     HandlerCodeGraphShadow,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
+    HandlerFloorSimpleTick,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     read_ledger_facts,
@@ -29,12 +38,11 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
     InMemoryLedger,
 )
 from tests.nodes.node_code_graph_effect.code_graph_support import HOST, overlay
-from tests.nodes.node_floor_simple_effect.support import build_home
-from tests.nodes.node_floor_simple_effect.test_ledger_readings_floor_simple import (
-    overlay as floor_overlay,
-)
-from tests.nodes.node_floor_simple_effect.test_ledger_readings_floor_simple import (
-    run_tick,
+from tests.nodes.node_floor_simple_effect.support import (
+    OVERLAYS,
+    build_home,
+    environ,
+    overlay_text,
 )
 from tests.unit.nodes.node_code_graph_effect.pr_support import (
     CLEAN_SHA,
@@ -48,6 +56,31 @@ from tests.unit.nodes.node_code_graph_effect.pr_support import (
 pytestmark = pytest.mark.unit
 
 WROTE = datetime(2026, 11, 6, 18, 0, tzinfo=UTC)
+
+
+def floor_overlay() -> ModelFloorSimpleOverlay:
+    return ModelFloorSimpleOverlay.model_validate(
+        overlay_text("node_floor_simple_compute")
+    )
+
+
+def run_tick(home: Path, ledger: InMemoryLedger, *, at: datetime) -> ModelFloorSimple:
+    env = {**environ(home), "ONEX_SKILL_OVERLAY_ROOTS": str(OVERLAYS)}
+    handler = HandlerFloorSimpleTick(
+        sink=InMemoryEmissionSink(),
+        clock=lambda: at,
+        served_alarm_ids=lambda: None,
+        ledger_source=ledger,
+    )
+    result = handler.run(
+        ModelFloorSimpleTickRequest(home=str(home), now=at), environ=env
+    )
+    assert result.ok
+    return ModelFloorSimple.model_validate_json(
+        (home / ".claude_scratch/factory-floor/floor-simple.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
 
 def write_shadow_row(
