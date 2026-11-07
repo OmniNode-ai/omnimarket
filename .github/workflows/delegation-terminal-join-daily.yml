@@ -82,6 +82,13 @@ jobs:
       # uv.lock. cramjam is aiokafka's codec library: the terminal topics are
       # snappy-compressed, and without it every terminal read fails (measured
       # 2026-09-24; the script reported it as indeterminate, as designed).
+      - name: Fetch the private CI bus lanes
+        uses: ./.github/actions/fetch-lane-table
+        with:
+          overlay-repo: ${{ vars.OMNI_CI_OVERLAY_REPO }}
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+
       - name: Join commands to terminals
         run: |
           set -euo pipefail

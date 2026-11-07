@@ -919,7 +919,9 @@ def test_committed_overlay_declares_a_concrete_dev_lane_broker(
     inmemory/from-secret, the trusted publisher would stop publishing, so this
     asserts the committed file, not a fixture.
     """
-    overlay = publisher_module.load_lane_overlay()  # type: ignore[attr-defined]
+    overlay = publisher_module.load_lane_overlay(
+        SCRIPT_PATH.parent.parent / "tests/fixtures/ci_bus_lanes.yaml"
+    )  # type: ignore[attr-defined]
     mode, broker = publisher_module.resolve_lane_broker(overlay, "dev")  # type: ignore[attr-defined]
     assert mode == "concrete"
     assert ":" in broker

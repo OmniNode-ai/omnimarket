@@ -58,10 +58,10 @@ import yaml
 pytestmark = [pytest.mark.unit]
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-OVERLAY_PATH = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+OVERLAY_PATH = REPO_ROOT / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 
 #: The lane key the CI publishers will select once the cutover happens.
-CI_BUS_LANE = "ci-bus"
+CI_BUS_LANE = "example-bus"
 
 #: Host ports bound by a RUNTIME lane's Redpanda on .201, read off the host
 #: read-only on 2026-09-18 (`ss -ltn`) and cross-checked against

@@ -30,7 +30,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECKER = REPO_ROOT / "scripts" / "ci" / "check_ci_bus_overlay_parity.py"
-LIVE_OVERLAY = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+LIVE_OVERLAY = REPO_ROOT / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 PARITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci-bus-overlay-parity.yml"
 
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
