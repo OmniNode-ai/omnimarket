@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelRedpandaSettings
 
@@ -130,6 +131,16 @@ class AiokafkaStateTopicClient:
         finally:
             await producer.stop()
 
+    @staticmethod
+    async def _behind(
+        consumer: Any, assigned: list[Any], ends: Mapping[Any, int]
+    ) -> bool:
+        """True while some partition's position is short of its end offset read at the start."""
+        for tp in assigned:
+            if await consumer.position(tp) < ends[tp]:
+                return True
+        return False
+
     async def read_all(self, topic: str) -> list[tuple[str, bytes]]:
         from aiokafka import AIOKafkaConsumer, TopicPartition
         from omnibase_infra.event_bus.kafka_auth import (
@@ -151,7 +162,7 @@ class AiokafkaStateTopicClient:
             ends = await consumer.end_offsets(assigned)
             rows: list[tuple[str, bytes]] = []
             deadline = self._settings.read_timeout_seconds * 1000
-            while any(await consumer.position(tp) < ends[tp] for tp in assigned):
+            while await self._behind(consumer, assigned, ends):
                 batch = await consumer.getmany(timeout_ms=deadline)
                 if not batch:
                     raise TimeoutError("the state topic did not reach its end offsets")
