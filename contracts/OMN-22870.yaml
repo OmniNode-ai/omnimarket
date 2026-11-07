@@ -10,9 +10,16 @@ requirements:
   statement: One run of the setup verb leaves every named host with two least-privilege accounts, their keys in the store, a pinned certificate, a live overlay row and a recorded serial, and a rerun creates nothing again.
   acceptance:
   - id: AC1
-    statement: 'AC1: a scripted-Redfish run sets up two hosts with one password prompt, creates exactly a read account (Login) and a write account (Login, Virtual Media, Virtual Power and Reset), writes the overlay with live true and the serial, and prints no password -- falsifier: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup.py -q --no-cov, which fails on dev where the setup verb does not exist'
+    statement: 'AC1: a scripted-Redfish run sets up two hosts asking each host''s administrator password once (stored before any iLO contact), creates exactly a read account (Login) and a write account (Login, Virtual Media, Virtual Power and Reset), writes the overlay with live true and the serial, and prints no password -- falsifier: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup.py -q --no-cov, which fails on dev where the setup verb does not exist'
   - id: AC2
-    statement: 'AC2: a certificate whose serial or SHA-256 differs from what the iLO reports refuses before any account, store key, pin or overlay row is written, and an existing account is reused and never duplicated -- falsifier: the same test file, tests test_a_fingerprint_mismatch_refuses_before_anything_is_created_or_written and test_a_rerun_reuses_the_accounts_and_creates_nothing_again'
+    statement: 'AC2: a certificate whose serial or SHA-256 differs from what the iLO reports refuses before any account, account store key, pin or overlay row is written, and an existing account is reused and never duplicated -- falsifier: the same test file, tests test_a_fingerprint_mismatch_refuses_before_anything_is_created_or_written and test_a_rerun_reuses_the_accounts_and_creates_nothing_again'
+- id: req-omn22870-weak-certificate
+  statement: A host whose iLO presents an RSA key under 2048 bits ends the setup ready with a lab-CA-signed 2048-bit certificate that the overlay pins and verifies, after the operator confirmed the exact SHA-256, and no run asks for an administrator password it has already stored.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the weak certificate is replaced only after an exact-fingerprint confirmation, over a legacy connection that refuses a different SHA-256 before sending a byte and carries only the sign-in and the two certificate actions; the CSR comes from the iLO''s own listed GenerateCSR action, the lab CA key lives only in the store, and the connection after the reset verifies the lab CA -- falsifier: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup_certificate.py -q --no-cov, which fails on dev where the replacement does not exist'
+  - id: AC4
+    statement: 'AC4: each host is asked its own administrator password with a same-as-previous shortcut, and the typed password is in the store before the first iLO contact, so a rerun asks nothing -- falsifier: tests test_each_host_is_asked_for_its_own_password_and_it_is_stored_before_any_ilo_contact and test_a_typed_password_survives_a_failed_run_and_the_rerun_asks_nothing in tests/nodes/node_ilo_redfish_effect/test_setup.py'
 evidence_requirements:
 - kind: tests
   description: The setup verb tests over a scripted Redfish transport and a dict-backed secret store.
@@ -28,9 +35,18 @@ dod_evidence:
   binds_ac:
   - AC1
   - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup.py -q --no-cov
+- id: dod-omn22870-ac3
+  description: The weak-certificate replacement tests pass on the branch and cannot run on the dev source, where the replacement does not exist.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup_certificate.py -q --no-cov
 - id: dod-omn22870-integration-proof
   description: Run the iLO Redfish node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual

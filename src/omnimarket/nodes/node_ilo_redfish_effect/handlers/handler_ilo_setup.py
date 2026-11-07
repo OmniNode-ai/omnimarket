@@ -3,14 +3,18 @@
 """The iLO setup verb: the five hand steps of the skill, in one run, for one or more hosts (OMN-22870).
 
 Per host, in order: find the iLO address; read the administrator credential from the lab secret store
-(key names are listed first, a value is read only for a name that is there) or take the one hidden
-prompt of the run; fetch the certificate and, over a connection pinned to exactly that certificate, log
-in and compare it with what the iLO reports about its own certificate (a mismatch refuses before
-anything is created or written); read the generation from the Redfish product; create the read account
-(Login only) and the write account (Login, Virtual Media, Virtual Power and Reset) unless they exist,
-with generated passwords written to the store first and create-only, so a rerun reuses and never
-duplicates; pin the certificate; write the overlay row; set it live; run ``discover`` and ``identity``
-and record the serial.
+(key names are listed first, a value is read only for a name that is there) or take that host's hidden
+prompt (with a "same as the previous host?" shortcut) and write it to the store at once, before any
+contact with the iLO, so no later run asks for it again; fetch the certificate. An RSA key under 2048
+bits is replaced first: the operator confirms its SHA-256 against the iLO's own certificate page (the
+only bootstrap trust), the iLO generates a CSR, the lab CA (created once, its key only in the store)
+signs it, the iLO imports it and resets, and the setup reconnects verifying the lab CA. Then, over a
+connection pinned to exactly the certificate, log in and compare it with what the iLO reports about
+its own certificate (a mismatch refuses before anything is created or written); read the generation
+from the Redfish product; create the read account (Login only) and the write account (Login, Virtual
+Media, Virtual Power and Reset) unless they exist, with generated passwords written to the store first
+and create-only, so a rerun reuses and never duplicates; pin the certificate; write the overlay row;
+set it live; run ``discover`` and ``identity`` and record the serial.
 
 No credential is printed, logged, returned or put in a file or argument: passwords are ``SecretStr``
 values that only the store port and the Redfish body see.
@@ -18,6 +22,7 @@ values that only the store port and the Redfish body see.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import secrets
@@ -30,9 +35,14 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from pydantic import JsonValue, SecretStr, ValidationError
 
-from omnimarket.nodes.node_ilo_redfish_effect.handlers import setup_certificate as cert
+from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
+    setup_certificate as cert,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.handlers import setup_lab_ca as lab_ca
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish import (
     HandlerIloRedfish,
 )
@@ -54,6 +64,8 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
     odata_ids,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
+    AskSamePassword,
+    ConfirmCertificate,
     Emit,
     FetchCertificate,
     PasswordGenerator,
@@ -115,6 +127,65 @@ _REFUSAL_FROM_NODE = {
     "insufficient_privilege": Refusal.INSUFFICIENT_PRIVILEGE,
     "endpoint_missing": Refusal.ENDPOINT_MISSING,
 }
+
+
+CSR_COUNTRY = "US"
+CSR_STATE = "Lab"
+CSR_CITY = "Lab"
+CSR_ORGANIZATION = "OmniNode"
+CSR_UNIT = "Lab infrastructure"
+CSR_POLLS = 60
+CSR_POLL_SECONDS = 10.0
+RESET_POLLS = 60
+RESET_POLL_SECONDS = 10.0
+
+
+class _LegacyScope:
+    """What the weak-key connection may carry: reads, the sign-in, and the two certificate actions.
+
+    Everything else (a PATCH, a DELETE of anything but a session, a POST to any other path) never
+    reaches the device.
+    """
+
+    def __init__(self, inner: ProtocolRedfishTransport) -> None:
+        self._inner = inner
+        self._posts: set[str] = set()
+
+    @staticmethod
+    def _norm(path: str) -> str:
+        return path.lower().rstrip("/")
+
+    def allow_post(self, path: str) -> None:
+        self._posts.add(self._norm(path))
+
+    def request(
+        self,
+        method: Literal["GET", "POST", "PATCH", "DELETE"],
+        path: str,
+        *,
+        body: JsonValue = None,
+        token: SecretStr | None = None,
+    ) -> ModelRedfishResponse:
+        target = self._norm(path)
+        in_sessions = target.endswith("/sessions") or "/sessions/" in target + "/"
+        allowed = (
+            method == "GET"
+            or (
+                method == "POST"
+                and (target in self._posts or target.endswith("/sessions"))
+            )
+            or (method == "DELETE" and in_sessions and not target.endswith("/sessions"))
+        )
+        if not allowed:
+            raise RedfishTransportError("protocol", request_sent=False)
+        return self._inner.request(method, path, body=body, token=token)
+
+
+def _read_csr(pem: str) -> x509.CertificateSigningRequest:
+    try:
+        return lab_ca.read_csr(pem)
+    except lab_ca.LabCaError as exc:
+        raise _StopError(Refusal.CSR_FAILED, str(exc)) from None
 
 
 class _StopError(Exception):
@@ -202,6 +273,11 @@ class HandlerIloSetup:
         secrets_port: ProtocolSetupSecrets,
         fetch_certificate: FetchCertificate,
         transport_factory: Callable[[ModelIloHost, Path], ProtocolRedfishTransport],
+        legacy_transport_factory: Callable[
+            [ModelIloHost, Path], ProtocolRedfishTransport
+        ],
+        ask_same_password: AskSamePassword,
+        confirm_certificate: ConfirmCertificate,
         prompt_admin_password: PromptAdminPassword,
         prompt_address: PromptAddress,
         host_table_addresses: Mapping[str, str],
@@ -217,6 +293,9 @@ class HandlerIloSetup:
         self._secrets = secrets_port
         self._fetch = fetch_certificate
         self._transport_factory = transport_factory
+        self._legacy_factory = legacy_transport_factory
+        self._ask_same = ask_same_password
+        self._confirm = confirm_certificate
         self._prompt_password = prompt_admin_password
         self._prompt_address = prompt_address
         self._table = host_table_addresses
@@ -228,8 +307,8 @@ class HandlerIloSetup:
         self._sleeper = sleeper
         self._emit = emit
         self._generate = password_generator
-        self._prompted: SecretStr | None = None
-        self._asked = False
+        # The previous host's administrator password of this run, for the "same as previous?" shortcut.
+        self._last_admin: tuple[str, SecretStr] | None = None
         self._address_source = ""
         self._candidate_transport: ProtocolRedfishTransport | None = None
 
@@ -292,9 +371,39 @@ class HandlerIloSetup:
 
         der = self._fetch_cert(address)
         seen = cert.presented(der)
+        issuer_pem: str | None = None
+        if cert.is_weak(seen):
+            try:
+                der, issuer_pem = self._replace_weak_certificate(
+                    name,
+                    request,
+                    address,
+                    seen,
+                    admin_user,
+                    admin_password,
+                    stored,
+                    steps,
+                )
+            except IloRefusalError as exc:
+                raise _StopError(
+                    _REFUSAL_FROM_NODE.get(exc.refusal.value, Refusal.READ_FAILED),
+                    exc.detail,
+                ) from None
+            except RedfishTransportError as exc:
+                raise _StopError(
+                    Refusal.TLS_FAILED if exc.kind == "tls" else Refusal.CONNECT_FAILED,
+                    exc.kind,
+                ) from None
+            seen = cert.presented(der)
+        elif not seen.self_signed:
+            issuer_pem = self._lab_issuer_pem(der, stored)
         with tempfile.TemporaryDirectory(prefix="ilo-candidate-") as candidate_dir:
             pem = ssl.DER_cert_to_PEM_cert(der)
             Path(candidate_dir, "candidate.pem").write_text(pem, encoding="ascii")
+            if issuer_pem is not None:
+                Path(candidate_dir, lab_ca.LAB_CA_FILE).write_text(
+                    issuer_pem, encoding="ascii"
+                )
             candidate = ModelIloHost.model_validate(
                 _host_row(
                     name,
@@ -304,6 +413,7 @@ class HandlerIloSetup:
                     seen.sha256,
                     "candidate.pem",
                     False,
+                    issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
                 )
             )
             self._candidate_transport = self._transport_factory(
@@ -323,6 +433,7 @@ class HandlerIloSetup:
                     admin_user,
                     admin_password,
                     stored,
+                    issuer_pem,
                 )
             except IloRefusalError as exc:
                 raise _StopError(
@@ -350,6 +461,7 @@ class HandlerIloSetup:
         admin_user: str,
         admin_password: SecretStr,
         stored: frozenset[str],
+        issuer_pem: str | None,
     ) -> ModelIloSetupHostResult:
         root = session.read_root()
         session.login(root, SecretStr(admin_user), admin_password)
@@ -366,11 +478,14 @@ class HandlerIloSetup:
 
         ca_file = f"{name}-ilo.pem"
         self._write_pem(ca_file, pem)
+        if issuer_pem is not None:
+            self._write_pem(lab_ca.LAB_CA_FILE, issuer_pem)
         self._note(
             steps,
             "certificate pin",
             "done",
-            f"sha256 {seen.sha256[:16]}... saved as {ca_file}",
+            f"sha256 {seen.sha256[:16]}... saved as {ca_file}"
+            + (" (signed by the lab CA, chain verified)" if issuer_pem else ""),
         )
         row = _host_row(
             name,
@@ -381,6 +496,7 @@ class HandlerIloSetup:
             ca_file,
             False,
             existing=existing,
+            issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
         )
         self._write_overlay(row)
         self._note(
@@ -477,34 +593,67 @@ class HandlerIloSetup:
         stored: frozenset[str],
         steps: list[ModelIloSetupStep],
     ) -> tuple[str, SecretStr]:
+        """This host's administrator credential: the store first, else typed once and stored at once.
+
+        A typed password is written to the store before any iLO call, so a run that stops later never
+        makes the operator type it again; the next run finds it in the store and asks nothing.
+        """
         user_key = self._key(host, "ADMIN", "USERNAME")
         pass_key = self._key(host, "ADMIN", "PASSWORD")
         if pass_key in stored:
             try:
-                password = self._secrets.get(pass_key)
+                stored_secret = self._secrets.get(pass_key)
                 user = self._secrets.get(user_key) if user_key in stored else None
             except SetupStoreError as exc:
                 raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
-            if password is not None:
+            if stored_secret is not None:
+                name = user.get_secret_value() if user else request.admin_user
                 self._note(
                     steps,
                     "administrator credential",
                     "reused",
                     f"from the store ({pass_key})",
                 )
-                return (
-                    user.get_secret_value() if user else request.admin_user
-                ), password
-        if not self._asked:
-            self._asked = True
-            self._prompted = self._prompt_password(request.admin_user)
-        if self._prompted is None:
+                self._last_admin = (host, stored_secret)
+                return name, stored_secret
+        typed, how = self._typed_admin_password(host, request)
+        if typed is None:
             raise _StopError(
                 Refusal.ADMIN_CREDENTIAL_MISSING,
                 f"no {pass_key} in the store and no terminal to ask on",
             )
-        self._note(steps, "administrator credential", "done", "from the hidden prompt")
-        return request.admin_user, self._prompted
+        try:
+            created = self._secrets.create(pass_key, typed)
+            if user_key not in stored:
+                self._secrets.create(user_key, SecretStr(request.admin_user))
+        except SetupStoreError as exc:
+            raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
+        if not created:
+            raise _StopError(
+                Refusal.STORE_INCONSISTENT,
+                f"{pass_key} appeared in the store during this run",
+            )
+        self._note(
+            steps,
+            "administrator credential",
+            "done",
+            f"{how}; stored as {pass_key}, so no later run asks again",
+        )
+        self._last_admin = (host, typed)
+        return request.admin_user, typed
+
+    def _typed_admin_password(
+        self, host: str, request: ModelIloSetupRequest
+    ) -> tuple[SecretStr | None, str]:
+        """One host's password from the operator: the previous host's on a yes, else the hidden prompt."""
+        previous = self._last_admin
+        if (
+            previous is not None
+            and previous[0] != host
+            and self._ask_same(host, previous[0])
+        ):
+            return previous[1], f"same as {previous[0]}"
+        return self._prompt_password(host, request.admin_user), "from the hidden prompt"
 
     # -- certificate ------------------------------------------------------------------------
 
@@ -518,21 +667,28 @@ class HandlerIloSetup:
         except OSError:
             raise _StopError(Refusal.CONNECT_FAILED, "connect") from None
 
+    def _https_cert(
+        self, session: RedfishSession, manager: JsonObject
+    ) -> tuple[str, JsonObject]:
+        """The iLO's own HttpsCert resource: its path and body."""
+        security = _find_link(manager, "SecurityService")
+        security_body = session.get_optional(security)
+        https_cert = _find_link(security_body or {}, "HttpsCert")
+        body = session.get_optional(https_cert)
+        if https_cert is None or body is None:
+            raise _StopError(
+                Refusal.FINGERPRINT_UNCONFIRMED, "the iLO offers no HttpsCert resource"
+            )
+        return https_cert, body
+
     def _check_certificate(
         self,
         session: RedfishSession,
         manager: JsonObject,
         seen: cert.PresentedCertificate,
         steps: list[ModelIloSetupStep],
-    ) -> None:
-        security = _find_link(manager, "SecurityService")
-        security_body = session.get_optional(security)
-        https_cert = _find_link(security_body or {}, "HttpsCert")
-        body = session.get_optional(https_cert)
-        if body is None:
-            raise _StopError(
-                Refusal.FINGERPRINT_UNCONFIRMED, "the iLO offers no HttpsCert resource"
-            )
+    ) -> tuple[str, JsonObject]:
+        path, body = self._https_cert(session, manager)
         told = cert.reported(body)
         for line in cert.side_by_side(seen, told):
             self._emit(line)
@@ -552,6 +708,291 @@ class HandlerIloSetup:
             "certificate check",
             "done",
             f"presented and reported agree on {basis}",
+        )
+        return path, body
+
+    # -- weak certificate replacement -------------------------------------------------------
+
+    def _lab_issuer_pem(self, der: bytes, stored: frozenset[str]) -> str:
+        """The lab CA's PEM for a certificate that is not self-signed, or a refusal.
+
+        Only a certificate the lab CA signed is trusted this way; any other issuer is refused.
+        """
+        ca = self._existing_lab_ca(stored)
+        if ca is None or not lab_ca.issued_by(x509.load_der_x509_certificate(der), ca):
+            raise _StopError(
+                Refusal.ISSUER_UNKNOWN,
+                "the certificate is not self-signed and the lab CA did not sign it; nothing was pinned",
+            )
+        return ca.certificate_pem
+
+    def _existing_lab_ca(self, stored: frozenset[str]) -> lab_ca.LabCa | None:
+        if lab_ca.LAB_CA_STORE_KEY not in stored:
+            return None
+        try:
+            value = self._secrets.get(lab_ca.LAB_CA_STORE_KEY)
+        except SetupStoreError as exc:
+            raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
+        if value is None:
+            raise _StopError(Refusal.LAB_CA_UNAVAILABLE, "the stored lab CA is empty")
+        try:
+            return lab_ca.load_lab_ca(value)
+        except lab_ca.LabCaError as exc:
+            raise _StopError(Refusal.LAB_CA_UNAVAILABLE, str(exc)) from None
+
+    def _lab_ca(
+        self, stored: frozenset[str], steps: list[ModelIloSetupStep]
+    ) -> lab_ca.LabCa:
+        """The lab CA from the store; created once, its key kept nowhere else."""
+        existing = self._existing_lab_ca(stored)
+        if existing is not None:
+            self._note(
+                steps, "lab CA", "reused", f"from the store ({lab_ca.LAB_CA_STORE_KEY})"
+            )
+            return existing
+        fresh = lab_ca.create_lab_ca(self._clock())
+        try:
+            created = self._secrets.create(lab_ca.LAB_CA_STORE_KEY, fresh.bundle())
+        except SetupStoreError as exc:
+            raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
+        if not created:
+            # another run created it first: use that one and never ours
+            raced = self._existing_lab_ca(frozenset({lab_ca.LAB_CA_STORE_KEY}))
+            if raced is None:
+                raise _StopError(Refusal.LAB_CA_UNAVAILABLE, "lab CA vanished")
+            return raced
+        self._note(
+            steps,
+            "lab CA",
+            "done",
+            f"created; its key is kept only in the store ({lab_ca.LAB_CA_STORE_KEY})",
+        )
+        return fresh
+
+    def _replace_weak_certificate(
+        self,
+        name: str,
+        request: ModelIloSetupRequest,
+        address: str,
+        seen: cert.PresentedCertificate,
+        admin_user: str,
+        admin_password: SecretStr,
+        stored: frozenset[str],
+        steps: list[ModelIloSetupStep],
+    ) -> tuple[bytes, str]:
+        """Replace an RSA key too weak for a modern client: the new certificate's DER and the CA's PEM.
+
+        The only trust on the weak connection is the SHA-256 the operator confirmed against the iLO's
+        own certificate page, enforced by the legacy transport before any request byte; that
+        connection serves only the sign-in, the HttpsCert reads and the two certificate actions.
+        """
+        del request
+        fingerprint = cert.colon_fingerprint(seen.sha256)
+        for line in (
+            f"   {name}'s iLO presents an RSA {seen.rsa_bits}-bit certificate, too weak for a modern client.",
+            f"   SHA-256 {fingerprint}",
+            f"   serial  {seen.serial}",
+            "   Open the iLO's own certificate page (Administration, Security, SSL Certificate)",
+            "   and compare. Only an exact match lets the setup replace it.",
+        ):
+            self._emit(line)
+        if not self._confirm(
+            name, address, fingerprint, seen.serial, seen.rsa_bits or 0
+        ):
+            raise _StopError(
+                Refusal.FINGERPRINT_UNCONFIRMED,
+                "the certificate fingerprint was not confirmed; nothing was sent to the iLO",
+            )
+        self._note(
+            steps,
+            "weak certificate",
+            "done",
+            f"RSA {seen.rsa_bits}-bit; sha256 confirmed by the operator against the iLO's page",
+        )
+        ca = self._lab_ca(stored, steps)
+        with tempfile.TemporaryDirectory(prefix="ilo-legacy-") as work:
+            legacy_host = ModelIloHost.model_validate(
+                _host_row(
+                    name,
+                    "gen9",
+                    address,
+                    "unverified",
+                    seen.sha256,
+                    "legacy.pem",
+                    False,
+                )
+            )
+            scope = _LegacyScope(self._legacy_factory(legacy_host, Path(work)))
+            session = RedfishSession(scope)
+            try:
+                root = session.read_root()
+                session.login(root, SecretStr(admin_user), admin_password)
+                endpoints = discover(session, root)
+                manager = session.get(endpoints.manager)
+                path, body = self._check_certificate(session, manager, seen, steps)
+                csr_pem = self._generate_csr(
+                    session, scope, name, address, path, body, steps
+                )
+                leaf = lab_ca.sign_csr(
+                    ca, _read_csr(csr_pem), address=address, now=self._clock()
+                )
+                leaf_pem = leaf.public_bytes(serialization.Encoding.PEM).decode("ascii")
+                self._import_certificate(session, scope, path, body, leaf_pem, steps)
+            finally:
+                session.logout()
+            leaf_der = leaf.public_bytes(serialization.Encoding.DER)
+            self._await_verified(
+                name, address, leaf_der, leaf_pem, ca, Path(work), steps
+            )
+        return leaf_der, ca.certificate_pem
+
+    def _generate_csr(
+        self,
+        session: RedfishSession,
+        scope: _LegacyScope,
+        name: str,
+        address: str,
+        resource: str,
+        body: JsonObject,
+        steps: list[ModelIloSetupStep],
+    ) -> str:
+        action = cert.find_action(body, resource, "GenerateCSR")
+        if action is None:
+            raise _StopError(
+                Refusal.CSR_UNSUPPORTED,
+                "the iLO's HttpsCert resource lists no GenerateCSR action; actions it lists: "
+                + (", ".join(cert.action_names(body)) or "none"),
+            )
+        scope.allow_post(action.target)
+        parameters: JsonObject = {
+            "Country": CSR_COUNTRY,
+            "State": CSR_STATE,
+            "City": CSR_CITY,
+            "OrgName": CSR_ORGANIZATION,
+            "OrgUnit": CSR_UNIT,
+            "CommonName": f"{name}-ilo",
+        }
+        response = session.send_write(
+            "POST", action.target, action.body("GenerateCSR", parameters)
+        )
+        self._expect_certificate_call(response, Refusal.CSR_FAILED, "GenerateCSR")
+        pem = cert.signing_request_of(response.body)
+        for _ in range(CSR_POLLS):
+            if pem is not None:
+                break
+            self._sleeper(CSR_POLL_SECONDS)
+            pem = cert.signing_request_of(session.get(resource))
+        if pem is None:
+            raise _StopError(
+                Refusal.CSR_FAILED, "the iLO produced no signing request in time"
+            )
+        self._note(
+            steps, "signing request", "done", f"generated by the iLO for {address}"
+        )
+        return pem
+
+    def _import_certificate(
+        self,
+        session: RedfishSession,
+        scope: _LegacyScope,
+        resource: str,
+        body: JsonObject,
+        leaf_pem: str,
+        steps: list[ModelIloSetupStep],
+    ) -> None:
+        action = cert.find_action(body, resource, "ImportCertificate")
+        if action is None:
+            raise _StopError(
+                Refusal.CSR_UNSUPPORTED,
+                "the iLO's HttpsCert resource lists no ImportCertificate action; actions it lists: "
+                + (", ".join(cert.action_names(body)) or "none"),
+            )
+        scope.allow_post(action.target)
+        try:
+            response = session.send_write(
+                "POST",
+                action.target,
+                action.body("ImportCertificate", {"Certificate": leaf_pem}),
+            )
+        except RedfishTransportError as exc:
+            if not exc.request_sent:
+                raise
+            # The iLO may drop the connection as it resets; the verified reconnect decides.
+            self._note(
+                steps,
+                "certificate import",
+                "done",
+                "sent; the iLO closed the connection to reset",
+            )
+            return
+        self._expect_certificate_call(
+            response, Refusal.CERTIFICATE_IMPORT_FAILED, "ImportCertificate"
+        )
+        self._note(
+            steps, "certificate import", "done", "signed by the lab CA; the iLO resets"
+        )
+
+    @staticmethod
+    def _expect_certificate_call(
+        response: ModelRedfishResponse, refusal: Refusal, what: str
+    ) -> None:
+        if response.status in (200, 201, 202):
+            return
+        if response.status == 401:
+            raise _StopError(Refusal.AUTH_FAILED, what)
+        if response.status == 403:
+            raise _StopError(
+                Refusal.INSUFFICIENT_PRIVILEGE,
+                f"{what}: {message_id(response.body) or 'refused'}",
+            )
+        raise _StopError(
+            refusal,
+            f"{what}: http {response.status} {message_id(response.body) or ''}".strip(),
+        )
+
+    def _await_verified(
+        self,
+        name: str,
+        address: str,
+        leaf_der: bytes,
+        leaf_pem: str,
+        ca: lab_ca.LabCa,
+        work: Path,
+        steps: list[ModelIloSetupStep],
+    ) -> None:
+        """Wait out the iLO's reset: connect normally, verifying the lab CA and the new fingerprint."""
+        Path(work, "leaf.pem").write_text(leaf_pem, encoding="ascii")
+        Path(work, lab_ca.LAB_CA_FILE).write_text(ca.certificate_pem, encoding="ascii")
+        verified_host = ModelIloHost.model_validate(
+            _host_row(
+                name,
+                "gen9",
+                address,
+                "unverified",
+                hashlib.sha256(leaf_der).hexdigest(),
+                "leaf.pem",
+                False,
+                issuer_file=lab_ca.LAB_CA_FILE,
+            )
+        )
+        transport = self._transport_factory(verified_host, work)
+        for attempt in range(RESET_POLLS):
+            try:
+                RedfishSession(transport).read_root()
+            except IloRefusalError:
+                self._sleeper(RESET_POLL_SECONDS)
+                continue
+            self._note(
+                steps,
+                "certificate replaced",
+                "done",
+                f"verified against the lab CA after {attempt + 1} connection attempt(s); "
+                f"new sha256 {hashlib.sha256(leaf_der).hexdigest()[:16]}...",
+            )
+            return
+        raise _StopError(
+            Refusal.ILO_RESET_TIMEOUT,
+            "the iLO did not come back with the new certificate in time; run the setup again",
         )
 
     # -- generation -------------------------------------------------------------------------
@@ -865,16 +1306,20 @@ def _host_row(
     live: bool,
     *,
     existing: dict[str, JsonValue] | None = None,
+    issuer_file: str | None = None,
 ) -> dict[str, JsonValue]:
     """The overlay row; a column the setup does not own (port, media prefixes, key names) is kept."""
     kept = dict(existing or {})
+    tls: dict[str, JsonValue] = {"ca_file": ca_file, "sha256": sha256}
+    if issuer_file is not None:
+        tls["issuer_file"] = issuer_file
     return {
         **kept,
         "name": name,
         "generation": generation,
         "address": address,
         "expected_product": product,
-        "tls": {"ca_file": ca_file, "sha256": sha256},
+        "tls": tls,
         "live": live,
     }
 

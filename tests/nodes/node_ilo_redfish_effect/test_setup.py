@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -170,6 +171,11 @@ class DictSecrets:
         return True
 
 
+def _account_keys(rig: Rig) -> list[str]:
+    """Keys created for the read and write accounts; the administrator's own are stored earlier."""
+    return [k for k in rig.secrets.created if "_ADMIN_" not in k]
+
+
 class Rig:
     def __init__(
         self,
@@ -179,24 +185,52 @@ class Rig:
         secrets_values: dict[str, str] | None = None,
         table: dict[str, str] | None = None,
         password: str | None = ADMIN_PASSWORD,
+        passwords: dict[str, str] | None = None,
+        same_as_previous: bool = False,
+        confirm: bool = True,
         typed_address: str | None = None,
         reader_ready: bool | None = True,
+        der: bytes | None = None,
+        transport_factory: Callable[[ModelIloHost, Path], ProtocolRedfishTransport]
+        | None = None,
+        legacy_factory: Callable[[ModelIloHost, Path], ProtocolRedfishTransport]
+        | None = None,
+        sleeper: Callable[[float], None] = no_sleep,
     ) -> None:
         self.devices = devices
         self.secrets = DictSecrets(secrets_values)
-        self.der = make_certificate("ilo-test")
+        self.der = der if der is not None else make_certificate("ilo-test")
         self.lines: list[str] = []
-        self.password_prompts = 0
+        self.password_prompts: list[str] = []
+        self.same_asked: list[tuple[str, str]] = []
+        self.confirmations: list[tuple[str, str, str, str, int]] = []
         self.fetches: list[tuple[str, int]] = []
+        # the store's key names as they stood at each certificate fetch (the first contact with an iLO)
+        self.store_at_fetch: list[frozenset[str]] = []
         self.overlay_dir = tmp_path / "overlays" / "node_ilo_redfish_effect"
         self.journal_dir = tmp_path / "journal"
         self.reader_ready = reader_ready
         self._password = password
+        self._passwords = passwords or {}
+        self._same = same_as_previous
+        self._confirm = confirm
         self._typed = typed_address
 
-        def prompt_password(user: str) -> SecretStr | None:
-            self.password_prompts += 1
-            return SecretStr(self._password) if self._password else None
+        def prompt_password(host: str, user: str) -> SecretStr | None:
+            del user
+            self.password_prompts.append(host)
+            value = self._passwords.get(host, self._password)
+            return SecretStr(value) if value else None
+
+        def ask_same(host: str, previous: str) -> bool:
+            self.same_asked.append((host, previous))
+            return self._same
+
+        def confirm_certificate(
+            host: str, address: str, sha256: str, serial: str, bits: int
+        ) -> bool:
+            self.confirmations.append((host, address, sha256, serial, bits))
+            return self._confirm
 
         def factory(host: ModelIloHost, directory: Path) -> ProtocolRedfishTransport:
             del directory
@@ -204,13 +238,17 @@ class Rig:
 
         def fetch(address: str, port: int) -> bytes:
             self.fetches.append((address, port))
+            self.store_at_fetch.append(frozenset(self.secrets.values))
             return self.der
 
         self.handler = HandlerIloSetup(
             secrets_port=self.secrets,
             fetch_certificate=fetch,
-            transport_factory=factory,
+            transport_factory=transport_factory or factory,
+            legacy_transport_factory=legacy_factory or factory,
             prompt_admin_password=prompt_password,
+            ask_same_password=ask_same,
+            confirm_certificate=confirm_certificate,
             prompt_address=lambda _host: self._typed,
             host_table_addresses=table
             if table is not None
@@ -224,7 +262,7 @@ class Rig:
                 else (lambda _key: object() if self.reader_ready else None)
             ),
             clock=lambda: NOW,
-            sleeper=no_sleep,
+            sleeper=sleeper,
             emit=self.lines.append,
             password_generator=generate_password,
         )
@@ -244,13 +282,13 @@ class Rig:
         return "\n".join(self.lines) + result.model_dump_json()
 
 
-def test_one_run_sets_up_two_hosts_and_asks_for_the_password_once(
+def test_one_run_sets_up_two_hosts_and_asks_for_each_hosts_password_once(
     tmp_path: Path,
 ) -> None:
     rig = Rig(tmp_path, {"h8": SetupDevice("gen8"), "h9": SetupDevice("gen9")})
     result = rig.run()
     assert [h.status for h in result.hosts] == ["ready", "ready"]
-    assert rig.password_prompts == 1
+    assert rig.password_prompts == ["h8", "h9"]
     document = rig.overlay()
     ModelIloOverlay.model_validate(document)
     rows = {r["name"]: r for r in document["hosts"]}
@@ -270,7 +308,7 @@ def test_one_run_sets_up_two_hosts_and_asks_for_the_password_once(
     assert sorted(rig.secrets.created) == sorted(
         f"ILO_H{n}_{role}_{field}"
         for n in (8, 9)
-        for role in ("READ", "WRITE")
+        for role in ("ADMIN", "READ", "WRITE")
         for field in ("USERNAME", "PASSWORD")
     )
 
@@ -295,7 +333,9 @@ def test_accounts_are_least_privilege_and_no_password_is_ever_shown(
     secrets_in_store = [
         v for k, v in rig.secrets.values.items() if k.endswith("PASSWORD")
     ]
-    assert len(secrets_in_store) == 2
+    assert (
+        len(secrets_in_store) == 3
+    )  # the administrator's, typed once, and the two generated
     for value in [*secrets_in_store, ADMIN_PASSWORD]:
         assert value not in shown
     # the stored password is the one the iLO was given
@@ -326,7 +366,7 @@ def test_a_fingerprint_mismatch_refuses_before_anything_is_created_or_written(
     assert result.hosts[0].status == "refused"
     assert result.hosts[0].refusal is R.FINGERPRINT_MISMATCH
     assert device.account_posts == []
-    assert rig.secrets.created == []
+    assert _account_keys(rig) == []
     assert not (rig.overlay_dir / "overlay.yaml").exists()
     assert not (rig.overlay_dir / "h9-ilo.pem").exists()
     assert any("presented on the connection" in line for line in rig.lines)
@@ -394,7 +434,7 @@ def test_an_account_the_ilo_already_has_with_a_stored_password_is_reused(
     result = rig.run("h9")
     assert result.hosts[0].status == "ready"
     assert device.account_posts == []
-    assert rig.secrets.created == []
+    assert _account_keys(rig) == []
 
 
 def test_a_stored_credential_with_no_account_creates_the_account_with_that_password(
@@ -423,7 +463,7 @@ def test_an_account_with_no_stored_password_is_refused_not_duplicated_or_reset(
     result = rig.run("h9")
     assert result.hosts[0].refusal is R.ACCOUNT_EXISTS_NO_CREDENTIAL
     assert device.account_posts == []
-    assert rig.secrets.created == []
+    assert _account_keys(rig) == []
 
 
 def test_an_existing_account_with_wider_privileges_is_refused(tmp_path: Path) -> None:
@@ -480,7 +520,7 @@ def test_the_administrator_credential_comes_from_the_store_when_it_is_there(
     )
     result = rig.run("h9")
     assert result.hosts[0].status == "ready"
-    assert rig.password_prompts == 0
+    assert rig.password_prompts == []
     assert "ILO_H1_ADMIN_PASSWORD" not in rig.secrets.read
     assert "stored-admin-pw" not in rig.everything_printed(result)
 
@@ -626,4 +666,176 @@ def test_the_lab_host_table_row_accepts_an_ilo_address() -> None:
     assert (
         ModelLabHostRow.model_validate({"name": "h9", "target": "h9"}).ilo_address
         is None
+    )
+
+
+# -- per-host administrator passwords (OMN-22870) ---------------------------------------------------
+
+
+def test_each_host_is_asked_for_its_own_password_and_it_is_stored_before_any_ilo_contact(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(
+        tmp_path,
+        {"h8": SetupDevice("gen8"), "h9": SetupDevice("gen9")},
+        passwords={"h8": "pw-for-h8", "h9": "pw-for-h9"},
+    )
+    result = rig.run()
+    assert [h.status for h in result.hosts] == ["ready", "ready"]
+    assert rig.password_prompts == ["h8", "h9"]
+    assert rig.secrets.values["ILO_H8_ADMIN_PASSWORD"] == "pw-for-h8"
+    assert rig.secrets.values["ILO_H9_ADMIN_PASSWORD"] == "pw-for-h9"
+    assert rig.secrets.values["ILO_H8_ADMIN_USERNAME"] == "Administrator"
+    # the first contact with each iLO (its certificate fetch) already finds that host's password stored
+    assert "ILO_H8_ADMIN_PASSWORD" in rig.store_at_fetch[0]
+    assert "ILO_H9_ADMIN_PASSWORD" not in rig.store_at_fetch[0]
+    assert "ILO_H9_ADMIN_PASSWORD" in rig.store_at_fetch[1]
+    # each iLO was signed in to with its own password: a device that wants another one refuses
+    shown = rig.everything_printed(result)
+    assert "pw-for-h8" not in shown
+    assert "pw-for-h9" not in shown
+
+
+def test_a_host_whose_password_is_wrong_is_not_given_the_previous_hosts_password(
+    tmp_path: Path,
+) -> None:
+    class PasswordedDevice(SetupDevice):
+        def __init__(self, generation: Literal["gen8", "gen9"], password: str) -> None:
+            super().__init__(generation)
+            self.password = password
+
+        def request(self, method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if method == "POST" and path == "/redfish/v1/sessions/":
+                assert isinstance(body, dict)
+                if (
+                    body.get("UserName") != "Administrator"
+                    or body.get("Password") == self.password
+                ):
+                    return super().request(method, path, body=body, token=token)
+                self.calls.append((method, path, body, False))
+                return ModelRedfishResponse(status=401)
+            return super().request(method, path, body=body, token=token)
+
+    rig = Rig(
+        tmp_path,
+        {
+            "h8": PasswordedDevice("gen8", "pw-for-h8"),
+            "h9": PasswordedDevice("gen9", "pw-for-h9"),
+        },
+        passwords={"h8": "pw-for-h8", "h9": "pw-for-h9"},
+    )
+    first = rig.run()
+    assert [(h.status, h.refusal, h.detail) for h in first.hosts] == [
+        ("ready", None, None)
+    ] * 2
+    rig2 = Rig(
+        tmp_path / "b",
+        {
+            "h8": PasswordedDevice("gen8", "pw-for-h8"),
+            "h9": PasswordedDevice("gen9", "pw-for-h9"),
+        },
+        passwords={"h8": "pw-for-h8", "h9": "pw-for-h8"},
+    )
+    assert [h.refusal for h in rig2.run().hosts] == [None, R.AUTH_FAILED]
+
+
+def test_the_same_as_previous_shortcut_reuses_the_previous_password_for_the_next_host(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(
+        tmp_path,
+        {"h8": SetupDevice("gen8"), "h9": SetupDevice("gen9")},
+        same_as_previous=True,
+    )
+    assert [h.status for h in rig.run().hosts] == ["ready", "ready"]
+    assert rig.password_prompts == ["h8"]
+    assert rig.same_asked == [("h9", "h8")]
+    assert rig.secrets.values["ILO_H9_ADMIN_PASSWORD"] == ADMIN_PASSWORD
+    assert rig.secrets.values["ILO_H8_ADMIN_PASSWORD"] == ADMIN_PASSWORD
+
+
+def test_declining_the_shortcut_asks_for_that_hosts_own_password(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(
+        tmp_path,
+        {"h8": SetupDevice("gen8"), "h9": SetupDevice("gen9")},
+        same_as_previous=False,
+        passwords={"h8": "one", "h9": "two"},
+    )
+    rig.run()
+    assert rig.password_prompts == ["h8", "h9"]
+    assert rig.same_asked == [("h9", "h8")]
+    assert rig.secrets.values["ILO_H9_ADMIN_PASSWORD"] == "two"
+
+
+def test_the_first_host_is_never_offered_the_shortcut(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+    rig.run("h9")
+    assert rig.same_asked == []
+
+
+def test_a_typed_password_survives_a_failed_run_and_the_rerun_asks_nothing(
+    tmp_path: Path,
+) -> None:
+    broken = SetupDevice(
+        "gen9", reported_serial="00:11:22:33"
+    )  # stops after the password
+    rig = Rig(tmp_path, {"h9": broken})
+    assert rig.run("h9").hosts[0].refusal is R.FINGERPRINT_MISMATCH
+    assert rig.secrets.values["ILO_H9_ADMIN_PASSWORD"] == ADMIN_PASSWORD
+    rig.devices["h9"] = SetupDevice("gen9")
+    rig._password = None  # no terminal and nothing to type: the store must answer
+    again = rig.run("h9")
+    assert again.hosts[0].status == "ready"
+    assert rig.password_prompts == ["h9"]  # only the first run asked
+    steps = {s.step: s for s in again.hosts[0].steps}
+    assert steps["administrator credential"].state == "reused"
+
+
+def test_a_store_that_refuses_the_admin_password_stops_before_any_ilo_contact(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+
+    def failing_create(key: str, value: SecretStr) -> bool:
+        raise SetupStoreError("the lab secret store did not answer")
+
+    rig.secrets.create = failing_create  # type: ignore[method-assign]
+    result = rig.run("h9")
+    assert result.hosts[0].refusal is R.SECRET_STORE_UNAVAILABLE
+    assert rig.fetches == []
+    assert rig.devices["h9"].calls == []
+
+
+def test_the_password_prompt_adapter_asks_twice_and_refuses_a_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    from omnimarket.nodes.node_ilo_redfish_effect.handlers import setup_adapters
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = iter(["abc", "abd", "abc", "abc"])
+    monkeypatch.setattr(setup_adapters, "getpass", lambda _prompt: next(answers))
+    typed = setup_adapters.prompt_admin_password("h9", "Administrator")
+    assert typed is not None
+    assert typed.get_secret_value() == "abc"
+    assert (
+        list(answers) == []
+    )  # mismatched pair was discarded, the second pair accepted
+
+
+def test_the_prompt_adapters_say_no_without_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    from omnimarket.nodes.node_ilo_redfish_effect.handlers import setup_adapters
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    assert setup_adapters.prompt_admin_password("h9", "Administrator") is None
+    assert setup_adapters.ask_same_password("h9", "h8") is False
+    assert (
+        setup_adapters.confirm_certificate("h9", "192.0.2.1", "AB", "1", 1024) is False
     )

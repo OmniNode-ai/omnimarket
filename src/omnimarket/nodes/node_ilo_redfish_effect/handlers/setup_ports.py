@@ -34,8 +34,16 @@ class ProtocolSetupSecrets(Protocol):
 
 # DER bytes of the certificate the iLO at (address, port) presents. Nothing is sent to the device.
 FetchCertificate = Callable[[str, int], bytes]
-# The hidden prompt for the iLO administrator password; ``None`` when no terminal can ask.
-PromptAdminPassword = Callable[[str], SecretStr | None]
+# The hidden prompt for one host's iLO administrator password: (host, admin user). ``None`` when no
+# terminal can ask. The adapter asks twice and returns only a value typed the same both times.
+PromptAdminPassword = Callable[[str, str], SecretStr | None]
+# "Is this host's administrator password the same as the previous host's?": (host, previous host).
+# ``False`` when the operator says no or no terminal can ask.
+AskSamePassword = Callable[[str, str], bool]
+# Shows one weak certificate's fingerprint and asks the operator to confirm it matches the iLO's own
+# certificate page: (host, address, SHA-256 as AB:CD:..., serial, RSA bits). ``False`` when the operator
+# declines or no terminal can ask.
+ConfirmCertificate = Callable[[str, str, str, str, int], bool]
 # The visible prompt for an iLO address; ``None`` when no terminal can ask.
 PromptAddress = Callable[[str], str | None]
 PasswordGenerator = Callable[[], SecretStr]

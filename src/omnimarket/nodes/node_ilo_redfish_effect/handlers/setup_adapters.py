@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import socket
 import ssl
 import sys
 from collections.abc import Callable, Coroutine
@@ -28,6 +29,9 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish impor
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
     SetupStoreError,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
+    legacy_context,
 )
 from omnimarket.nodes.node_secret_store_effect.adapters.handler_infisical_http import (
     HandlerInfisicalHttp,
@@ -103,9 +107,21 @@ def read_identity(env_file: str, ambient: dict[str, str]) -> dict[str, str]:
 
 
 def fetch_certificate_der(address: str, port: int) -> bytes:
-    """The DER certificate the iLO presents. A handshake only: no request is sent."""
-    pem = ssl.get_server_certificate((address, port), timeout=10.0)
-    return ssl.PEM_cert_to_DER_cert(pem)
+    """The DER certificate the iLO presents. A handshake only: no request is sent.
+
+    The handshake runs at the weak-key security level, because an iLO 4 on firmware 2.82 presents an
+    RSA 1024-bit certificate that the default level refuses before it can be read. Nothing is trusted
+    from it: a modern certificate is checked against the iLO's own report, and a weak one is only ever
+    used after the operator confirms its fingerprint.
+    """
+    with (
+        socket.create_connection((address, port), timeout=10.0) as sock,
+        legacy_context().wrap_socket(sock) as tls,
+    ):
+        der = tls.getpeercert(binary_form=True)
+    if der is None:
+        raise ssl.SSLError("the iLO presented no certificate")
+    return der
 
 
 class InfisicalSetupSecrets:
@@ -166,18 +182,55 @@ class InfisicalSetupSecrets:
         )
 
 
-def prompt_admin_password(admin_user: str) -> SecretStr | None:
-    """One hidden prompt for the run. ``None`` when no terminal can ask."""
+def prompt_admin_password(host: str, admin_user: str) -> SecretStr | None:
+    """One hidden prompt for one host, asked twice so a typo is never stored. ``None`` without a terminal.
+
+    The setup stores the value at once, and the store never updates a key, so a mistyped password
+    would stay; the second entry is what prevents that.
+    """
     if not sys.stdin.isatty():
         return None
     try:
-        value = getpass(
-            f"iLO administrator password for '{admin_user}' "
-            "(input hidden; asked once for every host without a stored one): "
-        )
+        for _ in range(3):
+            first = getpass(
+                f"iLO administrator password for '{admin_user}' on {host} "
+                "(input hidden; stored in the lab secret store, asked once ever): "
+            )
+            if first and first == getpass("  again to confirm: "):
+                return SecretStr(first)
+            sys.stderr.write("  empty or the two entries differ; try again\n")
     except (EOFError, KeyboardInterrupt):
         return None
-    return SecretStr(value) if value else None
+    return None
+
+
+def ask_same_password(host: str, previous: str) -> bool:
+    """``y`` only: anything else, or no terminal, is no."""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        answer = input(
+            f"Is the administrator password of {host} the same as {previous}'s? [y/N] "
+        )
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def confirm_certificate(
+    host: str, address: str, sha256: str, serial: str, bits: int
+) -> bool:
+    """Ask whether the fingerprint on screen equals the one on the iLO's own certificate page."""
+    del address, serial, bits
+    if not sys.stdin.isatty():
+        return False
+    try:
+        answer = input(
+            f"Does the SHA-256 above exactly match the one {host}'s iLO certificate page shows? [y/N] "
+        )
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer.strip().lower() in ("y", "yes")
 
 
 def prompt_address(host: str) -> str | None:

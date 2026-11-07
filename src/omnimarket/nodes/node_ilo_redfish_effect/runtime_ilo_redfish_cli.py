@@ -54,6 +54,8 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_adapters import (
     InfisicalSetupSecrets,
+    ask_same_password,
+    confirm_certificate,
     fetch_certificate_der,
     load_store_target,
     prompt_address,
@@ -63,6 +65,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
     SetupStoreError,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
+    build_legacy_pinned_transport,
     build_pinned_transport,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
@@ -116,7 +119,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--admin-user",
         default="Administrator",
-        help="setup: the iLO administrator account name (the password is stored or prompted)",
+        help="setup: the iLO administrator account name (each host's password is stored, or prompted once and then stored)",
     )
     parser.add_argument(
         "--overlay-root",
@@ -204,6 +207,9 @@ def _setup(args: argparse.Namespace) -> int:
         secrets_port=store,
         fetch_certificate=fetch_certificate_der,
         transport_factory=build_pinned_transport,
+        legacy_transport_factory=build_legacy_pinned_transport,
+        ask_same_password=ask_same_password,
+        confirm_certificate=confirm_certificate,
         prompt_admin_password=prompt_admin_password,
         prompt_address=prompt_address,
         host_table_addresses=table,

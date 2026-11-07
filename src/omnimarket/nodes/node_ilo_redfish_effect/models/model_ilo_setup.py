@@ -47,6 +47,12 @@ class EnumIloSetupRefusal(StrEnum):
     IDENTITY_MISMATCH = "identity_mismatch"
     OVERLAY_INVALID = "overlay_invalid"
     OVERLAY_WRITE_FAILED = "overlay_write_failed"
+    LAB_CA_UNAVAILABLE = "lab_ca_unavailable"
+    CSR_UNSUPPORTED = "csr_unsupported"
+    CSR_FAILED = "csr_failed"
+    CERTIFICATE_IMPORT_FAILED = "certificate_import_failed"
+    ILO_RESET_TIMEOUT = "ilo_reset_timeout"
+    ISSUER_UNKNOWN = "issuer_unknown"
 
 
 class ModelIloSetupRequest(BaseModel):
