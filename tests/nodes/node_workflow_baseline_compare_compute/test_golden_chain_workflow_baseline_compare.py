@@ -49,10 +49,9 @@ def test_golden_contract_declares_the_bus_route_and_compute_shape() -> None:
         == contract["event_bus"]["publish_topics"][0]
         == "onex.evt.omnimarket.workflow-baseline-compared.v1"
     )
-    assert (
-        "onex.cmd.omnimarket.workflow-baseline-cause-lane-requested.v1"
-        in contract["event_bus"]["publish_topics"]
-    )
+    # A pure compute node publishes nothing itself: the cause-lane request rides
+    # in the receipt, so the contract declares only the terminal topic.
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
 
 
 def test_golden_a_held_run_round_trips_through_json_as_a_working_receipt() -> None:

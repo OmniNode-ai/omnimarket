@@ -38,13 +38,11 @@ event_bus:
   - onex.evt.omnimarket.workflow-baseline-run-observed.v1
   publish_topics:
   - onex.evt.omnimarket.workflow-baseline-compared.v1
-  - onex.cmd.omnimarket.workflow-baseline-cause-lane-requested.v1
 terminal_event: onex.evt.omnimarket.workflow-baseline-compared.v1
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.workflow-baseline-run-observed.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.workflow-baseline-compared.v1
-- onex.cmd.omnimarket.workflow-baseline-cause-lane-requested.v1
 metadata:
   ticket: OMN-22959
   transport_type: kafka
