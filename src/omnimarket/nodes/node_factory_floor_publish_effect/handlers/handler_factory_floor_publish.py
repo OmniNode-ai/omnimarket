@@ -46,6 +46,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegat
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
     HandlerFleetObservationSource,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source import (
+    HandlerFrictionRollupSource,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
     HandlerProcessHealthPayload,
 )
@@ -219,9 +222,11 @@ class HandlerFactoryFloorPublish:
         self,
         runner: Runner = run_process,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._run = runner
         self._clock = clock
+        self._wall_clock = wall_clock
 
     def handle(
         self,
@@ -541,6 +546,19 @@ class HandlerFactoryFloorPublish:
                 write_atomic(home / step.output_relpath, json.dumps(reading).encode())
                 if reading["status"] != "read":
                     return failed("producer unread", str(reading["reason"]))
+                return ModelPublishStepResult(name=step.name, status="ok")
+            if step.kind == "friction_rollup":
+                if step.rollup is None or step.output_relpath is None:
+                    raise ValueError(
+                        "a friction rollup step names its settings and an output"
+                    )
+                report = HandlerFrictionRollupSource().handle(
+                    step.rollup, now=self._wall_clock(), environ=env
+                )
+                write_atomic(
+                    home / step.output_relpath,
+                    json.dumps(report, sort_keys=True).encode("utf-8"),
+                )
                 return ModelPublishStepResult(name=step.name, status="ok")
             if step.kind == "copy":
                 if step.source_relpath is None or step.output_relpath is None:
