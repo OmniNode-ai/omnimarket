@@ -34,3 +34,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23000-integration-proof"
+    description: "Run the rotation tick's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23000 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect -q --no-cov"
+        cwd: "."
