@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-22891
+title: omnimarket moves its omnibase_core and omnibase_infra dev tags together to ones that carry the chain scenario model
+summary: omnimarket's lock holds omnibase-core 0.47.62, so importing the chain scenario subcontract model raises ModuleNotFoundError. The change moves the core and infra dev tags together to a pair whose infra pin names a core carrying the model (omnibase_core#2269), which needs the omnibase_infra dev tag that follows omnibase_infra#5707. This draft carries the import test, red at origin/dev, until that tag exists.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22891-pin-chain-model
+  statement: omnimarket's locked environment imports the chain scenario subcontract model, and core and infra moved together.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: importing omnibase_core.models.*.model_chain_scenario_subcontract succeeds in omnimarket''s locked environment and raises ModuleNotFoundError with the old lock -- falsifier: uv run pytest of a test that imports it, red at origin/dev'
+  - id: AC2
+    statement: 'AC2: the sibling pin tests accept core and infra moved together -- falsifier: uv run pytest of omnimarket''s sibling pin tests at the new lock'
+evidence_requirements:
+- kind: tests
+  description: The chain scenario model import test and the sibling pin tests at the new lock.
+  command: uv run --frozen pytest tests/ci/test_chain_scenario_model_import_omn22891.py tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22891-ac1
+  description: The chain scenario model import test passes at the new lock.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_chain_scenario_model_import_omn22891.py -q --no-cov
+- id: dod-omn22891-ac2
+  description: The sibling pin tests pass at the new lock.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci -q --no-cov -k "pin_pair or sibling"
