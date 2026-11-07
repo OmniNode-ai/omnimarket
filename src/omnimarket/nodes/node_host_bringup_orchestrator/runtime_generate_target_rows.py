@@ -244,6 +244,22 @@ handler_routing:
       handler:
         name: "HandlerHostDeclarationDerive"
         module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_declaration_derive"
+    - operation: "probe_host_target"
+      handler:
+        name: "HandlerShellTargetProbe"
+        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
+    - operation: "actuate_host_target"
+      handler:
+        name: "HandlerShellTargetActuator"
+        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
+    - operation: "run_host_shell"
+      handler:
+        name: "HandlerHostShellTransport"
+        module: "omnimarket.handlers.handler_host_shell_transport"
+    - operation: "run_host_shell_scripted"
+      handler:
+        name: "HandlerHostShellScripted"
+        module: "omnimarket.handlers.handler_host_shell_scripted"
 runtime_dispatch:
   external_trigger: "Direct Python invocation: run_host_bringup drives one host toward one top target with the injected probe, actuator, lease, bus and clock; derive_host_declaration derives every copy of the host table from the declaration and names each difference."
 descriptor:

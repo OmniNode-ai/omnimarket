@@ -92,7 +92,8 @@ def render_probe(step: ModelDeclaredShellStep) -> str:
             '  [ -e "$f" ] && exit 1\n'
             "done\nexit 0\n"
         )
-    else:  # pragma: no cover - the enum is closed
+    else:
+        # The enum is closed: a primitive with no probe is a declaration error.
         raise ValueError(f"no probe for {p.value}")
     return _header(step, "probe") + body
 
