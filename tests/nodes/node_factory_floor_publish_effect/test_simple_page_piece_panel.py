@@ -77,6 +77,6 @@ def test_golden_the_panel_reads_only_cells_of_the_record_the_page_already_loads(
         "doc.causes",
     ):
         assert cell in PAGE
-    assert (
-        PAGE.count("fetch(") == 2
-    )  # floor-simple.json and factory-floor.json, no new source
+    # The panel's own code (from its section comment to the tabs section) reads nothing: no fetch, no new source.
+    panel_code = PAGE.split("// ---- The rebuild strip:")[1].split("// ---- Tabs.")[0]
+    assert "fetch(" not in panel_code
