@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23033
+title: One bus workflow answers every repository state query from the mirror, pulling first only when the mirror is behind
+summary: node_repo_state_query_effect answers refs, a branch head, files at a revision, and pull request, check and job state from this host's mirror (the canonical clone and the PR watcher state), comparing the mirror with the latest state the bus holds first and pulling only when it is behind; concurrent queries of one stale repository share one pull.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23033-repo-state-query
+  statement: A repository state query on a current mirror returns from the mirror with no GitHub call; on a stale mirror it pulls once and then returns; concurrent queries for the same stale repository cause one pull.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a state query on a current mirror returns from the mirror with no GitHub call; on a stale mirror it pulls once and then returns, and both paths are tested with a planted stale mirror and a planted current one -- falsifier: uv run pytest of the workflow''s handler tests with GitHub calls counted'
+  - id: AC3
+    statement: 'AC3: concurrent queries for the same stale repository cause one pull, not one per query -- falsifier: uv run pytest of the coalescing test'
+evidence_requirements:
+- kind: tests
+  description: The handler tests (planted current and stale mirrors, GitHub-bound git commands counted) and the coalescing test pass
+  command: uv run --frozen pytest tests/nodes/node_repo_state_query_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23033-handler-paths
+  description: Runs the handler tests; a current planted mirror answers with zero GitHub-bound git commands and a stale one with exactly one pull.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_query_handler.py -q --no-cov
+    cwd: .
+- id: dod-omn23033-coalescing
+  description: Runs the coalescing test; eight concurrent queries of one stale planted repository make one pull, and the injected break without the in-flight table makes eight.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_query_coalescing.py -q --no-cov
+    cwd: .
