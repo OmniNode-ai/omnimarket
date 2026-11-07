@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 from uuid import UUID
 
 import yaml
-from omnibase_infra.handlers.models.infisical import ModelInfisicalHandlerConfig
+from omnibase_infra.models.security import ModelInfisicalConfig
 from omnibase_infra.runtime.models.model_secret_resolver_config import (
     ModelSecretResolverConfig,
 )
@@ -309,7 +309,7 @@ def _infisical_declared_folder(source_path: str) -> str | None:
     return folder or "/"
 
 
-def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig:
+def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalConfig:
     """Build the typed handler config from the lane's bootstrap env, or raise.
 
     Raises:
@@ -329,7 +329,7 @@ def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig
             f"{list(_INFISICAL_BOOTSTRAP_VARS)}."
         )
     try:
-        return ModelInfisicalHandlerConfig(
+        return ModelInfisicalConfig(
             host=values["INFISICAL_ADDR"],
             client_id=SecretStr(values["INFISICAL_CLIENT_ID"]),
             client_secret=SecretStr(values["INFISICAL_CLIENT_SECRET"]),
@@ -346,7 +346,7 @@ def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig
         ) from exc
 
 
-def _build_infisical_handler(config: ModelInfisicalHandlerConfig) -> HandlerInfisical:
+def _build_infisical_handler(config: ModelInfisicalConfig) -> HandlerInfisical:
     """Construct and initialize ``HandlerInfisical`` for this lane.
 
     ``HandlerInfisical.initialize`` is declared ``async`` but performs no

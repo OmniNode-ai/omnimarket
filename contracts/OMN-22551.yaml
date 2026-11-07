@@ -1,0 +1,54 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22551"
+title: "omnimarket's secret-store resolver imports the Infisical config model from omnibase_infra.models.security, and the pins move with it"
+summary: "omnibase_infra#5683 moved ModelInfisicalHandlerConfig out of omnibase_infra.handlers.models.infisical and renamed it ModelInfisicalConfig in omnibase_infra.models.security. The resolver imported the old path at module scope and the ledger append loads the resolver, so every dispatch venv that took omnibase_infra from a moving clone stopped writing ledger rows. The resolver now imports the new name from the new path, and the infra, core and spi pins move together to the infra dev merge that carries the move."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22551-resolver-new-import"
+    statement: |-
+      The secret-store resolver loads in an interpreter where omnibase_infra.handlers.models.infisical cannot be imported, and no module under src names the removed path or the old class name. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: secret_store_resolver imports ModelInfisicalConfig from omnibase_infra.models.security, a new interpreter that blocks omnibase_infra.handlers.models.infisical loads it, and no module under src names the removed path
+      - id: "AC2"
+        statement: |-
+          AC2: omnimarket pins omnibase-infra dev-20261106014959-37056eb724f1 with the core and spi tags that infra names, recorded in the sibling pin pair table, and the lock resolves
+evidence_requirements:
+  - kind: "tests"
+    description: "A new interpreter that blocks the removed module imports the resolver; on dev 3e37ae668 the same test fails with ImportError. The source scan finds no use of the removed path, and a synthetic old import is named by the scan."
+    command: "uv run pytest tests/unit/inference/test_secret_store_resolver_infisical_import_omn22478.py -q"
+  - kind: "tests"
+    description: "The lock and pyproject name the same infra, core and spi tags, the core tag is the one infra's pyproject names, and the newest recorded pair is infra 37056eb724f1 with core 74e0b0f12767."
+    command: "uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22551-ac1-resolver-import"
+    description: "AC1. The resolver imports with the removed infra module blocked, no module under src names the removed path, and the negative control (the old import) is refused by the scan and by the blocked interpreter."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_secret_store_resolver_infisical_import_omn22478.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22551-ac2-pin-pair"
+    description: "AC2. pyproject.toml and uv.lock name the same infra, core and spi tags and the sibling pin pair table records infra 37056eb724f1 beside core 74e0b0f12767."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22551-integration-proof"
+    description: "The pushed head runs the resolver import test and the pin pair test on a lab host through onex lab-work and exits 0, so the new import loads against the pinned omnibase_infra on a live surface. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22551 -- uv run --frozen pytest tests/unit/inference/test_secret_store_resolver_infisical_import_omn22478.py tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
