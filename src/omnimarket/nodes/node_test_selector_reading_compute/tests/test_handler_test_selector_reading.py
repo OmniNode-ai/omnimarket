@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -14,6 +15,7 @@ from omnimarket.models.test_selector_reading import (
     EnumSelectorReadingState,
     ModelSelectorRepoObservation,
     ModelSelectorShadowComparison,
+    ModelTestSelectorReading,
     ModelTestSelectorReadingRequest,
 )
 from omnimarket.nodes.node_test_selector_reading_compute.handlers import (
@@ -48,7 +50,9 @@ def _obs(
     )
 
 
-def _read(*obs: ModelSelectorRepoObservation, expected: tuple[str, ...] | None = None):  # type: ignore[no-untyped-def]
+def _read(
+    *obs: ModelSelectorRepoObservation, expected: tuple[str, ...] | None = None
+) -> ModelTestSelectorReading:
     return HandlerTestSelectorReading().handle(
         ModelTestSelectorReadingRequest(
             observations=obs,
@@ -86,10 +90,10 @@ def test_activation_readback_all_four_active_reads_working() -> None:
     ],
 )
 def test_activation_readback_each_source_alone_disables(
-    override: dict[str, object], why: str
+    override: dict[str, Any], why: str
 ) -> None:
     repo = SELECTOR_REPOSITORIES[0]
-    reading = _read(_obs(repo, **override))  # type: ignore[arg-type]
+    reading = _read(_obs(repo, **override))
     assert reading.repos[0].activation is EnumSelectorActivation.DISABLED
     assert why in reading.repos[0].reason
     assert reading.state is EnumSelectorReadingState.NOT_WORKING
