@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
+from omnimarket.events.friction_rollup import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
 )

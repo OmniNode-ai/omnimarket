@@ -17,6 +17,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.events.friction_rollup import (
+    ModelFrictionRollupRequest,
+    ModelFrictionRollupSource,
+)
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
     PublishRefusedError,
@@ -27,10 +31,6 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_ro
 )
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionRollupRequest,
-    ModelFrictionRollupSource,
 )
 
 
