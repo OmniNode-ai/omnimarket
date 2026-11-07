@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
     ModelFrictionRollupSource,

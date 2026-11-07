@@ -8,7 +8,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
     ModelFrictionRollupResult,
     ModelFrictionRollupSource,

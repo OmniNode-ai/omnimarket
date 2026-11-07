@@ -18,7 +18,7 @@ import yaml
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
 )
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (

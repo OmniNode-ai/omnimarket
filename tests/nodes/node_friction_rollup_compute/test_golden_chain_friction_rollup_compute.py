@@ -17,7 +17,7 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
     ModelFrictionRollupResult,
 )

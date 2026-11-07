@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
     ModelFrictionRollupResult,
 )

@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
     ModelFrictionRollupRequest,
