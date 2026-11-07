@@ -1642,7 +1642,6 @@
   "tests/nodes/test_dep_health_handler.py": 0.06,
   "tests/nodes/test_dep_health_handler_stub.py": 0.03,
   "tests/nodes/test_dep_health_models.py": 0.1,
-  "tests/nodes/test_dispatch_standing_rules.py": 3.69,
   "tests/nodes/test_file_retention_archive_safety.py": 0.5,
   "tests/nodes/test_graphify_preflight.py": 0.05,
   "tests/nodes/test_host_installer_lane_readers.py": 0.17,
