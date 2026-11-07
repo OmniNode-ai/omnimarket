@@ -152,6 +152,7 @@ class DictSecrets:
         self.created: list[str] = []
         self.read: list[str] = []
         self.down = False
+        self.create_down = False
 
     def names(self) -> frozenset[str]:
         if self.down:
@@ -164,6 +165,8 @@ class DictSecrets:
         return SecretStr(value) if value is not None else None
 
     def create(self, key: str, value: SecretStr) -> bool:
+        if self.create_down:
+            raise SetupStoreError("the lab secret store did not answer")
         if key in self.values:
             return False
         self.values[key] = value.get_secret_value()
@@ -183,6 +186,7 @@ class Rig:
         devices: dict[str, SetupDevice],
         *,
         secrets_values: dict[str, str] | None = None,
+        shared_secrets: DictSecrets | None = None,
         table: dict[str, str] | None = None,
         password: str | None = ADMIN_PASSWORD,
         passwords: dict[str, str] | None = None,
@@ -198,7 +202,7 @@ class Rig:
         sleeper: Callable[[float], None] = no_sleep,
     ) -> None:
         self.devices = devices
-        self.secrets = DictSecrets(secrets_values)
+        self.secrets = shared_secrets or DictSecrets(secrets_values)
         self.der = der if der is not None else make_certificate("ilo-test")
         self.lines: list[str] = []
         self.password_prompts: list[str] = []
@@ -704,7 +708,14 @@ def test_a_host_whose_password_is_wrong_is_not_given_the_previous_hosts_password
             super().__init__(generation)
             self.password = password
 
-        def request(self, method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+        def request(
+            self,
+            method: Literal["GET", "POST", "PATCH", "DELETE"],
+            path: str,
+            *,
+            body: JsonValue = None,
+            token: SecretStr | None = None,
+        ) -> ModelRedfishResponse:
             if method == "POST" and path == "/redfish/v1/sessions/":
                 assert isinstance(body, dict)
                 if (
@@ -798,10 +809,7 @@ def test_a_store_that_refuses_the_admin_password_stops_before_any_ilo_contact(
 ) -> None:
     rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
 
-    def failing_create(key: str, value: SecretStr) -> bool:
-        raise SetupStoreError("the lab secret store did not answer")
-
-    rig.secrets.create = failing_create  # type: ignore[method-assign]
+    rig.secrets.create_down = True
     result = rig.run("h9")
     assert result.hosts[0].refusal is R.SECRET_STORE_UNAVAILABLE
     assert rig.fetches == []

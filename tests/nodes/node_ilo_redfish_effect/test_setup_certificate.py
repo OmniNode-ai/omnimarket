@@ -19,14 +19,14 @@ import ssl
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from pydantic import JsonValue
+from pydantic import JsonValue, SecretStr
 
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     setup_certificate as cert,
@@ -45,8 +45,10 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_adapters import (
     fetch_certificate_der,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
+    PinnedHttpsTransport,
     build_legacy_pinned_transport,
     build_pinned_transport,
+    pinned_context,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
     ModelIloHost,
@@ -64,6 +66,7 @@ from tests.nodes.node_ilo_redfish_effect.test_setup import (
 
 pytestmark = pytest.mark.unit
 
+Method = Literal["GET", "POST", "PATCH", "DELETE"]
 HTTPS = "/redfish/v1/managers/1/securityservice/httpscert/"
 GENERATE = f"{HTTPS}actions/hpehttpscert.generatecsr/"
 IMPORT = f"{HTTPS}actions/hpehttpscert.importcertificate/"
@@ -140,8 +143,13 @@ class WeakDevice(SetupDevice):
             ]
 
     # the resource the iLO reports about its own certificate follows the certificate it holds
-    def request(  # type: ignore[no-untyped-def]
-        self, method, path, *, body=None, token=None
+    def request(
+        self,
+        method: Method,
+        path: str,
+        *,
+        body: JsonValue = None,
+        token: SecretStr | None = None,
     ) -> ModelRedfishResponse:
         if method == "GET" and path == HTTPS:
             current = self.imported or x509.load_der_x509_certificate(self.weak_der)
@@ -199,10 +207,9 @@ class WeakDevice(SetupDevice):
             )
         leaf = x509.load_pem_x509_certificate(str(body["Certificate"]).encode("ascii"))
         assert self.csr_key is not None
-        assert (
-            leaf.public_key().public_numbers()
-            == self.csr_key.public_key().public_numbers()
-        )  # type: ignore[attr-defined]
+        leaf_key = leaf.public_key()
+        assert isinstance(leaf_key, rsa.RSAPublicKey)
+        assert leaf_key.public_numbers() == self.csr_key.public_key().public_numbers()
         self.imported = leaf
         self.state = "resetting"
         self.reset_left = self.reset_polls
@@ -220,8 +227,13 @@ class _View:
         self._device = device
         self._kind = kind
 
-    def request(  # type: ignore[no-untyped-def]
-        self, method, path, *, body=None, token=None
+    def request(
+        self,
+        method: Method,
+        path: str,
+        *,
+        body: JsonValue = None,
+        token: SecretStr | None = None,
     ) -> ModelRedfishResponse:
         device = self._device
         if self._kind == "legacy":
@@ -244,7 +256,7 @@ class _View:
 class WeakRig(Rig):
     """A rig whose factories model the two connection kinds, verifying what the real ones verify."""
 
-    def __init__(self, tmp_path: Path, device: WeakDevice, **kwargs: object) -> None:
+    def __init__(self, tmp_path: Path, device: WeakDevice, **kwargs: Any) -> None:
         self.device = device
         self.verified_dirs: list[Path] = []
         self.sleeps: list[float] = []
@@ -282,12 +294,10 @@ class WeakRig(Rig):
             transport_factory=factory,
             legacy_factory=legacy_factory,
             sleeper=self.sleeps.append,
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
 
     def ca_bundle(self) -> lab_ca.LabCa:
-        from pydantic import SecretStr
-
         return lab_ca.load_lab_ca(
             SecretStr(self.secrets.values[lab_ca.LAB_CA_STORE_KEY])
         )
@@ -334,15 +344,15 @@ def test_a_weak_certificate_is_confirmed_replaced_and_the_setup_goes_on_to_ready
     assert isinstance(key, rsa.RSAPublicKey)
     assert key.key_size == 2048
     # the overlay pins the NEW certificate and names the lab CA as its issuer
-    row = rig.overlay()["hosts"][0]  # type: ignore[index]
+    row = rig.overlay()["hosts"][0]
     ModelIloOverlay.model_validate(rig.overlay())
     new_sha = hashlib.sha256(device.imported.public_bytes(serialization.Encoding.DER))
-    assert row["tls"] == {  # type: ignore[index]
+    assert row["tls"] == {
         "ca_file": "h9-ilo.pem",
         "sha256": new_sha.hexdigest(),
         "issuer_file": lab_ca.LAB_CA_FILE,
     }
-    assert row["live"] is True  # type: ignore[index]
+    assert row["live"] is True
     # the connection after the reset was made verifying the lab CA (the factory raises otherwise)
     assert rig.verified_dirs
     assert Path(rig.overlay_dir, lab_ca.LAB_CA_FILE).read_text() == ca.certificate_pem
@@ -368,9 +378,7 @@ def test_the_lab_ca_key_lives_only_in_the_store_and_is_created_once(
     assert ADMIN_PASSWORD not in shown
     # a second host with a weak certificate reuses the same CA and creates no other
     second = WeakDevice(_weak_der(0x55AA55AA))
-    again = WeakRig(tmp_path / "b", second)
-    again.secrets = rig.secrets  # type: ignore[assignment]
-    again.handler._secrets = rig.secrets  # type: ignore[attr-defined]
+    again = WeakRig(tmp_path / "b", second, shared_secrets=rig.secrets)
     assert again.run("h9").hosts[0].status == "ready"
     assert rig.secrets.created.count(lab_ca.LAB_CA_STORE_KEY) == 1
     assert second.imported is not None
@@ -464,8 +472,13 @@ def test_the_legacy_scope_lets_through_only_reads_the_sign_in_and_allowed_action
         def __init__(self) -> None:
             self.seen: list[tuple[str, str]] = []
 
-        def request(  # type: ignore[no-untyped-def]
-            self, method, path, *, body=None, token=None
+        def request(
+            self,
+            method: Method,
+            path: str,
+            *,
+            body: JsonValue = None,
+            token: SecretStr | None = None,
         ) -> ModelRedfishResponse:
             self.seen.append((method, path))
             return ModelRedfishResponse(status=200)
@@ -475,7 +488,7 @@ def test_the_legacy_scope_lets_through_only_reads_the_sign_in_and_allowed_action
     scope.request("GET", "/redfish/v1/anything/")
     scope.request("POST", "/redfish/v1/sessions/", body={})
     scope.request("DELETE", "/redfish/v1/sessions/abc/")
-    refused = [
+    refused: list[tuple[Method, str]] = [
         ("POST", "/redfish/v1/accountservice/accounts/"),
         ("POST", GENERATE),  # not yet allowed
         ("PATCH", HTTPS),
@@ -485,7 +498,7 @@ def test_the_legacy_scope_lets_through_only_reads_the_sign_in_and_allowed_action
     ]
     for method, path in refused:
         with pytest.raises(RedfishTransportError):
-            scope.request(method, path, body={})  # type: ignore[arg-type]
+            scope.request(method, path, body={})
     scope.allow_post(GENERATE)
     scope.request("POST", GENERATE, body={})
     assert len(spy.seen) == 4
@@ -575,7 +588,7 @@ def test_a_rerun_after_the_replacement_makes_no_csr_and_trusts_only_the_lab_ca(
     assert rig.confirmations == []
     assert device.csr_gets > 0
     assert not [p for p in _post_paths(device)[generated:] if p in (GENERATE, IMPORT)]
-    assert rig.overlay()["hosts"][0]["tls"]["issuer_file"] == lab_ca.LAB_CA_FILE  # type: ignore[index]
+    assert rig.overlay()["hosts"][0]["tls"]["issuer_file"] == lab_ca.LAB_CA_FILE
 
 
 def test_a_certificate_signed_by_someone_else_is_refused_not_trusted(
@@ -841,10 +854,11 @@ def test_the_normal_transport_verifies_the_lab_ca_chain_and_the_pin(
             wrong.request("GET", "/redfish/v1/")
         assert excinfo.value.kind == "tls"
         # control: the right CA but another pin refuses
-        pinned_elsewhere = build_pinned_transport(
-            _host(server.port, pin, "leaf.pem", "ca.pem"), overlay
+        other_pin = _host(server.port, "f" * 64, "leaf.pem", "ca.pem")
+        pinned_elsewhere = PinnedHttpsTransport(
+            other_pin,
+            pinned_context(_host(server.port, pin, "leaf.pem", "ca.pem"), overlay),
         )
-        pinned_elsewhere._host = _host(server.port, "f" * 64, "leaf.pem", "ca.pem")  # type: ignore[misc]
         with pytest.raises(RedfishTransportError):
             pinned_elsewhere.request("GET", "/redfish/v1/")
     finally:
