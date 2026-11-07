@@ -648,6 +648,17 @@ def test_omnidash_host_floor_page_has_no_links_area(page_name: str) -> None:
     assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
 
 
+def test_omnidash_host_floor_main_page_tab_bar_is_a_div_with_both_tabs() -> None:
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+    )
+    text = page.read_text(encoding="utf-8")
+    assert re.search(r"<div class=\"tabs\" role=\"tablist\"", text)
+    assert 'href="#process"' in text
+    assert 'href="#machines"' in text
+
+
 @pytest.mark.parametrize(
     ("system", "machine", "suffix"),
     [
