@@ -56,6 +56,9 @@ COMPUTE_CONTRACT = (
 WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
+#: The row type and source cell of every reading row; other handlers of this node import them.
+ROW_TYPE = _ROW_TYPE
+ROW_SOURCE_CELL = _ROW_SOURCE_CELL
 
 
 def load_revision(path: Path = COMPUTE_CONTRACT) -> str:
