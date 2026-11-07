@@ -27,6 +27,7 @@ from ..models.model_install_superset import (
 from .handler_install_superset import (
     HandlerInstallSuperset,
     SupersetError,
+    file_list_comparison,
     git,
     resolve,
     text,
@@ -114,11 +115,15 @@ def live_commit(
     commit, origin = named_live_commit(a, record, superset)
     try:
         commit = resolve(repo, commit)
-        compared, differ = tree_differences(
-            repo, commit, str(superset.get("prefix") or prefix), install_dir
-        )
+        live_prefix = str(superset.get("prefix") or prefix)
+        compared, differ = tree_differences(repo, commit, live_prefix, install_dir)
+        _, lost = file_list_comparison(repo, commit, live_prefix, install_dir)
     except SupersetError as exc:
         raise RefusalError(f"LIVE-COMMIT-UNKNOWN: {exc}") from exc
+    if lost:
+        raise RefusalError(
+            f"LIVE-TREE-MISSING: the live tree lacks {len(lost)} file(s) {commit[:12]} ({origin}) installs: {', '.join(lost[:8])}. Reinstall it before building on it"
+        )
     if not compared or differ:
         detail = f"{len(differ)} of {compared} file(s) differ: {', '.join(differ[:8])}"
         raise RefusalError(

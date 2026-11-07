@@ -323,6 +323,22 @@ COPIED = {
 }
 
 
+def pattern_matches(pattern: str, rel: str) -> bool:
+    """True when ``rel`` is a path an install copies under ``pattern``: ``*`` stays in one directory, ``**/*`` goes deep."""
+    regex = re.escape(pattern).replace("\\*\\*/\\*", ".*").replace("\\*", "[^/]*")
+    return re.fullmatch(regex, rel) is not None
+
+
+def install_parts(repo: Path, commit: str, prefix: str) -> dict[str, str]:
+    """``{install directory: repository path}`` for the three trees the installer copies."""
+    plugin = posixpath.dirname(prefix.rstrip("/"))
+    return {
+        "skills": prefix,
+        "scripts": posixpath.join(plugin, "scripts"),
+        "src": linked_dir(repo, commit, posixpath.join(plugin, "src")),
+    }
+
+
 def tree_differences(
     repo: Path, commit: str, prefix: str, install_dir: Path
 ) -> tuple[int, list[str]]:
@@ -332,14 +348,8 @@ def tree_differences(
     ``<prefix>/../src`` to ``src/``. A file the commit does not have is not compared, nor one no
     install copies.
     """
-    plugin = posixpath.dirname(prefix.rstrip("/"))
-    parts = {
-        "skills": prefix,
-        "scripts": posixpath.join(plugin, "scripts"),
-        "src": linked_dir(repo, commit, posixpath.join(plugin, "src")),
-    }
     compared, differ = (0, [])
-    for part, in_repo in parts.items():
+    for part, in_repo in install_parts(repo, commit, prefix).items():
         root = install_dir / part
         if not root.is_dir():
             continue
@@ -355,3 +365,28 @@ def tree_differences(
             if blob_sha(path) != entry[1]:
                 differ.append(f"{part}/{path.relative_to(root).as_posix()}")
     return (compared, differ)
+
+
+def file_list_comparison(
+    repo: Path, commit: str, prefix: str, install_dir: Path
+) -> tuple[int, list[str]]:
+    """``(files the commit holds that an install copies, those the install's copy lacks)``.
+
+    ``tree_differences`` reads the install's own files, so a root data file the copy lost is never
+    compared. This reads the commit's file list instead: each file the installer copies that is
+    absent from ``install_dir`` is named. A tree the copy does not have (no ``src/``) is not a lost file.
+    """
+    expected, missing = (0, [])
+    for part, in_repo in install_parts(repo, commit, prefix).items():
+        root = install_dir / part
+        if not root.is_dir():
+            continue
+        for rel, (mode, _blob) in sorted(ls_tree(repo, commit, in_repo).items()):
+            if mode == "120000" or any(s in rel.split("/") for s in SKIPPED):
+                continue
+            if not any(pattern_matches(pat, rel) for pat in COPIED[part]):
+                continue
+            expected += 1
+            if not (root / rel).is_file():
+                missing.append(f"{part}/{rel}")
+    return (expected, missing)
