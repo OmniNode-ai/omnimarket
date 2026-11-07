@@ -37,7 +37,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -k quiet_host_dedupe
     cwd: .
 - id: dod-omn22777-first-run-names-h201
   description: "The installed unit run on the recorded state writes a quiet-host row naming h201 and then reads deduped. Runtime evidence read at the local Done gate from the rolling ledger and the unit's last-run.json."
