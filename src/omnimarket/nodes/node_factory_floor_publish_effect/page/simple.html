@@ -110,6 +110,7 @@ function draw(){
   for (const p of doc.pieces) {
     const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
     h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n">${p.piece}</span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+    for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;

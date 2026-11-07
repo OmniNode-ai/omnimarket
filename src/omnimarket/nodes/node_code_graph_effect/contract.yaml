@@ -19,8 +19,10 @@ description: >
   Reads each declared repository's committed files at its ref, builds the import graph across
   repositories, computes what the roots reach, judges the graph against the frozen sample and
   the known-used controls, and appends one row. The check verb compares a pull request's head with
-  its base and names the modules the head adds that no root reaches. An unreadable repository and
-  an append that does not land are typed failures.
+  its base and names the modules the head adds that no root reaches, and names every allowlist entry
+  past its date as a finding. The shadow verb runs that check over every open pull request of the
+  declared repositories, appends one row of what it would refuse, and holds no merge. An unreadable
+  repository, pull request source or an append that does not land are typed failures.
 
 handler:
   module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph
@@ -59,6 +61,10 @@ topics:
   code_graph_repo_read: onex.evt.omnimarket.code-graph-repo-read.v1
   code_graph_run_completed: onex.evt.omnimarket.code-graph-run-completed.v1
   code_graph_run_failed: onex.evt.omnimarket.code-graph-run-failed.v1
+  code_graph_shadow_requested: onex.cmd.omnimarket.code-graph-shadow-requested.v1
+  code_graph_shadow_pr_checked: onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
+  code_graph_shadow_completed: onex.evt.omnimarket.code-graph-shadow-completed.v1
+  code_graph_shadow_failed: onex.evt.omnimarket.code-graph-shadow-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -69,6 +75,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-repo-read.v1
   - onex.evt.omnimarket.code-graph-run-completed.v1
   - onex.evt.omnimarket.code-graph-run-failed.v1
+  - onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
+  - onex.evt.omnimarket.code-graph-shadow-completed.v1
+  - onex.evt.omnimarket.code-graph-shadow-failed.v1
 
 # The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).

@@ -816,6 +816,7 @@ class HandlerFloorSimpleTick:
                 rt.sources.harness_piece,
                 ledger.facts.readings if ledger.facts is not None else (),
             ),
+            shadows=ledger.facts.shadows if ledger.facts is not None else (),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
             sources_read={
