@@ -130,3 +130,45 @@ db_io:
 
 metadata:
   transport_type: kafka
+
+# OMN-19998: typed scenarios the golden and error chain tests are generated from. The
+# writer returns the count of rows it wrote and the runtime publishes that on the applied
+# event; a database failure makes the writer raise, which the runtime turns into silence,
+# so the error half is a refusal that says why.
+chain_scenarios:
+  schema_version: 1
+  success_topic: onex.evt.omnimarket.projection-work-ledger-applied.v1
+  failures:
+    - name: write_failed
+      topic: onex.dlq.omnimarket.projection-work-ledger-malformed.v1
+  bindings:
+    - name: ledger_db
+      target: ATTRIBUTE
+      attribute: _db
+      role: REDUCER_STATE
+      in_memory_factory: omnimarket.chain_scenarios.doubles:recording_ledger_db
+  cases:
+    - case_name: golden_claim_event_is_folded_into_state
+      kind: GOLDEN
+      input:
+        topic: onex.evt.omnimarket.work-ledger-claim.v1
+        payload:
+          _topic: onex.evt.omnimarket.work-ledger-claim.v1
+          raw_row: "2026-09-28T10:00:00Z | CLAIM | lane=alpha | ticket=OMN-1 | est ~1 lane-hours; displaces x; (OMN-1) | work"
+      expected_events:
+        - topic: onex.evt.omnimarket.projection-work-ledger-applied.v1
+          fields: {rows_upserted: 2}
+      state_updates:
+        - binding: ledger_db
+          target: work_ledger_state
+          key: "claim:alpha"
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: One CLAIM row is one log row plus one open-claim entity keyed claim:alpha, so two rows are written and reported on the applied event.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID, SKIPPED_REDUCER_UPDATE]
+  refusals:
+    - applies_to: ERROR
+      subject: write_failed
+      kind: FAILURE_NOT_TYPED
+      reason: WorkLedgerProjectionWriter lets a database error propagate out of handle(), and the runtime adapter reports a raised handler as no event at all, so no typed failure event, ledger row or reading can be asserted.
+      unblocked_by: OMN-19998
