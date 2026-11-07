@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_host_reading_effect.overlay import (
     NODE_NAME,
     ModelHostReadingHost,
@@ -235,6 +236,9 @@ class HostReadingScheduler:
                     (self.unit_dir / self.service_name, service.encode("utf-8")),
                     (self.unit_dir / self.timer_name, timer.encode("utf-8")),
                 ]
+            refuse_worktree_roots(
+                {target.name: body.decode("utf-8") for target, body in files}
+            )
         except ValueError as exc:
             return ModelHostScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:
