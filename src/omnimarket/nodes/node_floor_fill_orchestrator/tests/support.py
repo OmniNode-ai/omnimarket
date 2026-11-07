@@ -22,6 +22,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
     FloorFillOrchestrator,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
+    ModelStateRead,
     ProtocolFloorStateStore,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
@@ -140,7 +141,7 @@ class CrashAfterWrites:
         self.remaining = writes
         self.landed = 0
 
-    def load(self, key: str):  # type: ignore[no-untyped-def]
+    def load(self, key: str) -> ModelStateRead:
         return self.inner.load(key)
 
     def compare_and_set(
@@ -162,7 +163,7 @@ class CountingStore:
         self.inner = inner
         self.writes: list[str] = []
 
-    def load(self, key: str):  # type: ignore[no-untyped-def]
+    def load(self, key: str) -> ModelStateRead:
         return self.inner.load(key)
 
     def compare_and_set(
@@ -186,7 +187,7 @@ class SynchronizedSnapshot:
         self.scope = scope
         self.barrier = threading.Barrier(parties, timeout=10)
 
-    def load(self, key: str):  # type: ignore[no-untyped-def]
+    def load(self, key: str) -> ModelStateRead:
         read = self.inner.load(key)
         if key == self.scope:
             self.barrier.wait()
