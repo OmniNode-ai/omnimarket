@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_launchd_drift_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Local host-drift fold and escalation operations. This slice provides pure
+  transitions over supplied observations and open items; the host check effect
+  and its bus subscriptions move in a later slice.
+input_model:
+  name: ModelHostDriftFoldRequest
+  module: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_fold_request
+output_model:
+  name: ModelHostDriftFoldResult
+  module: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_fold_result
+handler:
+  module: omnimarket.nodes.node_launchd_drift_effect.handlers.handler_host_drift_fold
+  class: HandlerHostDriftFold
+  input_model: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_fold_request.ModelHostDriftFoldRequest
+  output_model: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_fold_result.ModelHostDriftFoldResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: fold
+      handler:
+        name: HandlerHostDriftFold
+        module: omnimarket.nodes.node_launchd_drift_effect.handlers.handler_host_drift_fold
+      event_model:
+        name: ModelHostDriftFoldRequest
+        module: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_fold_request
+    - operation: escalate
+      handler:
+        name: HandlerHostDriftEscalate
+        module: omnimarket.nodes.node_launchd_drift_effect.handlers.handler_host_drift_escalate
+      event_model:
+        name: ModelHostDriftEscalateRequest
+        module: omnimarket.nodes.node_launchd_drift_effect.models.model_host_drift_escalate_request
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with supplied observations or open items.
+descriptor:
+  node_archetype: effect
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: []
+metadata:
+  transport_type: local
