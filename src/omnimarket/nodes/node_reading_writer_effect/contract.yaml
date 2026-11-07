@@ -61,6 +61,9 @@ topics:
   reading_piece_failed: onex.evt.omnimarket.reading-piece-failed.v1
   reading_window_completed: onex.evt.omnimarket.reading-window-completed.v1
   reading_window_failed: onex.evt.omnimarket.reading-window-failed.v1
+  relation_map_requested: onex.cmd.omnimarket.relation-map-reading-requested.v1
+  relation_map_written: onex.evt.omnimarket.relation-map-reading-written.v1
+  relation_map_failed: onex.evt.omnimarket.relation-map-reading-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -71,6 +74,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.reading-piece-failed.v1
   - onex.evt.omnimarket.reading-window-completed.v1
   - onex.evt.omnimarket.reading-window-failed.v1
+  - onex.evt.omnimarket.relation-map-reading-written.v1
+  - onex.evt.omnimarket.relation-map-reading-failed.v1
 
 # The node's own hourly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on each host the overlay's schedule_hosts names, removed by `schedule uninstall`.
