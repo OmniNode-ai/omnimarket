@@ -191,6 +191,7 @@ workflow_coordination:
 # demands the command, reads the correlated result by the seam's deadline and detaches.
 handler_routing:
   routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_seam_read_plan:HandlerSeamReadPlan
   handlers:
     - operation: attach_on_demand
       topic: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
