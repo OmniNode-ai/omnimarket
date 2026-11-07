@@ -16,6 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorSimple,
     ModelFloorSimpleOverlay,
@@ -23,9 +26,6 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
-)
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
 )

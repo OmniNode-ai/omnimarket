@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
@@ -22,6 +23,10 @@ class PinHistoryError(RuntimeError):
 
 class RuntimeValidatorError(RuntimeError):
     """The runtime could not answer: no interpreter, a timeout, or an answer that is not typed."""
+
+
+class RuntimeRevisionError(RuntimeError):
+    """The runtime's revision could not be read, or its source tree could not be exported."""
 
 
 class ProtocolOverlayHome(Protocol):
@@ -53,7 +58,11 @@ class ProtocolRuntimeValidator(Protocol):
 __all__ = [
     "OverlayHomeError",
     "ProtocolOverlayHome",
+    "ProtocolPinHistory",
+    "ProtocolRevisionTree",
+    "ProtocolRuntimeRevision",
     "ProtocolRuntimeValidator",
+    "RuntimeRevisionError",
     "RuntimeValidatorError",
 ]
 
@@ -63,4 +72,23 @@ class ProtocolPinHistory(Protocol):
 
     def unmerged(self, revisions: tuple[str, ...]) -> frozenset[str]:
         """The subset of ``revisions`` that is not an ancestor of the merged branch."""
+        ...
+
+
+class ProtocolRuntimeRevision(Protocol):
+    """The omnimarket revision the running runtime says it was built from."""
+
+    def read(self) -> str:
+        """A full commit id; raises ``RuntimeRevisionError`` when the runtime does not say."""
+        ...
+
+
+class ProtocolRevisionTree(Protocol):
+    """Omnimarket's source tree at one revision."""
+
+    def materialize(self, revision: str, into: Path) -> Path:
+        """Put ``src`` of ``revision`` under ``into`` and return its path.
+
+        Raises ``RuntimeRevisionError`` when the revision is not held or cannot be exported.
+        """
         ...
