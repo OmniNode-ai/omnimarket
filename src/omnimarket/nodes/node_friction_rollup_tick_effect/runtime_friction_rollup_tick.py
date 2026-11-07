@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Run one friction rollup tick from a launchd unit (OMN-22987).
 
-The host installer's ``registry_module_tick`` runs ``python -m omnimarket.nodes.node_friction_rollup_tick_effect
+The host installer's ``registry_module_tick`` runs
+``python -m omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick
 --omni-home <root> --state-dir <evidence dir>`` with ``ONEX_LEDGER_PATH`` (an absolute path, no default) and
 ``ONEX_LEDGER_COMMAND`` (the proven ``onex-ledger`` command line) in the environment. The reports go under the registry
 root, where the factory floor reads ``latest.json``; ``--state-dir`` is only where ``last-run.json`` is written.

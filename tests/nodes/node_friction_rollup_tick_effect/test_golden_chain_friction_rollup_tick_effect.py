@@ -20,7 +20,6 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_tick_effect as node_package
-import omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick as handler_module
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
     compute_trend,
     needs_ticket,
@@ -207,7 +206,10 @@ async def test_error_chain_class_rules_absent_over_bus_is_exit_3_and_still_compl
     overlay["class_rules_path"] = "no-such-rules.yaml"
     overlay_path = tmp_path / "overlay.yaml"
     overlay_path.write_text(yaml.safe_dump(overlay), encoding="utf-8")
-    monkeypatch.setattr(handler_module, "DEFAULT_OVERLAY", overlay_path)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick.DEFAULT_OVERLAY",
+        overlay_path,
+    )
     ledger = install_ledger(tmp_path)
     runtime = await _run(tmp_path, _payload(tmp_path, ledger, dry_run=True))
     result = runtime.handler_result

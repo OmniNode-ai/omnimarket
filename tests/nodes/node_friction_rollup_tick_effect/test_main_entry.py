@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_friction_rollup_tick_effect.__main__ import main
+from omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick import (
+    main,
+)
 from tests.nodes.node_friction_rollup_tick_effect.tick_support import FIXTURES
 
 pytestmark = pytest.mark.unit

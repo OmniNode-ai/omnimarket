@@ -38,7 +38,8 @@ def without_additive(json_text: str) -> str:
     document = json.loads(json_text)
     for window in document["windows"].values():
         for key in ADDITIVE_TOTALS_KEYS:
-            assert window["totals"].pop(key) == 0
+            removed = window["totals"].pop(key)
+            assert removed == 0
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 

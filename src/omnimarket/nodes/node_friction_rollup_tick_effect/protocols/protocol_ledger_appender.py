@@ -20,7 +20,8 @@ class ModelAppendOutcome(BaseModel):
 
 
 class ProtocolLedgerAppender(Protocol):
-    def append(self, ledger: Path, row: str) -> ModelAppendOutcome: ...
+    def append(self, ledger: Path, row: str) -> ModelAppendOutcome:
+        """Append one row to the ledger and report whether it was accepted."""
 
 
 class SubprocessLedgerAppender:
