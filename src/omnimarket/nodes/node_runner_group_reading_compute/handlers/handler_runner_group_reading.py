@@ -10,7 +10,7 @@ read UNKNOWN and never WORKING.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_runner_group_reading_compute.models import (
@@ -81,12 +81,13 @@ class HandlerRunnerGroupReading:
                 failing.add(group.group_id)
         canary = self._canary(request, lab_ids, {g.group_id for g in groups})
         subjects.append(canary)
-        failing.update(
-            run.picked_up_by_group_id
-            for run in (request.canary.runs if request.canary else ())
-            if run.picked_up_by_group_id in lab_ids
-            and run.picked_up_by_group_id is not None
-        )
+        if canary.verdict is _N:
+            failing.update(
+                run.picked_up_by_group_id
+                for run in (request.canary.runs if request.canary else ())
+                if run.picked_up_by_group_id in lab_ids
+                and run.picked_up_by_group_id is not None
+            )
         age = self._read_age(request)
         subjects.append(age)
 
@@ -249,15 +250,16 @@ class HandlerRunnerGroupReading:
 
     @staticmethod
     def _read_age(request: ModelRunnerGroupReadingRequest) -> ModelReadingSubject:
-        age = _age(request.now, request.read_at)
+        elapsed = request.now - request.read_at
         limit = request.settings.max_age_seconds
-        if age < 0:
+        age = int(elapsed.total_seconds())
+        if elapsed < timedelta(0):
             return ModelReadingSubject(
                 name=SUBJECT_READ_AGE,
                 verdict=_U,
                 reason="the read is dated after the time it is judged at",
             )
-        if age > limit:
+        if elapsed > timedelta(seconds=limit):
             return ModelReadingSubject(
                 name=SUBJECT_READ_AGE,
                 verdict=_U,
@@ -270,10 +272,6 @@ class HandlerRunnerGroupReading:
             count=age,
             reason=f"the read is {age} s old, inside the {limit} s limit",
         )
-
-
-def _age(now: datetime, read_at: datetime) -> int:
-    return int((now - read_at).total_seconds())
 
 
 __all__: list[str] = [
