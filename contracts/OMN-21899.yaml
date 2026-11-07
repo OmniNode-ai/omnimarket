@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21899"
 title: "Host bring-up automation units: overlay delivery, issuer build, ledger-copy check, standing reconcile, cap in config"
-summary: "Unit 1 of the principal-issuer bring-up: the overlay delivery effect node. Units 2 to 5 and the gated recreate, mint and host-row flip are not in this pull request."
+summary: "Unit 1 of the principal-issuer bring-up: the overlay delivery effect node. Units 2 to 5 and the gated recreate, mint and host-row flip are not in this pull request. A later change adds the omnidash host copy as the graph target omnidash-host (OMN-22478)."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,10 +13,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: one command delivers the overlay to the issuer host and the env file carries PRINCIPAL_ISSUER_OVERLAY_FILE, read back from the host -- falsifier: uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q"
+  - id: "req-omn21899-omnidash-host-step"
+    statement: "The always-latest dashboard copy on a ProLiant is a declared bring-up target, installed by the omnidash host node's install verb and ordered after the host units and the tailnet."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the graph declares omnidash-host in stage F, a host_unit_install target needing host-units and tailnet that verify needs, and a host whose checks all read ok except that target acts on it alone, while the same host against a graph with no row for it plans no act -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q -k omnidash fails against the graph without the target and passes with it"
 evidence_requirements:
   - kind: "tests"
     description: "The focused node tests pass."
     command: "uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q --no-cov"
+  - kind: "tests"
+    description: "The bring-up graph rows and golden chain tests, with the error chain that drops the omnidash step."
+    command: "uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_orchestrator.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -36,4 +44,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_issuer_overlay_delivery_effect/models/model_overlay_delivery.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"PRINCIPAL_ISSUER_OVERLAY_FILE\")' | grep -qx true"
+        cwd: "."
+  - id: "dod-omn21899-omnidash-host-step"
+    description: "The omnidash host step tests pass on the branch and fail against the graph without the target."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov -k omnidash"
         cwd: "."
