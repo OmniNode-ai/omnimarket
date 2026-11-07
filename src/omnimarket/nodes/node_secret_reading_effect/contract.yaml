@@ -23,18 +23,6 @@ description: >
   else, a store that cannot be reached included, reads NOT_WORKING. The in-memory backend carries
   scopes, so revoking one consumer's scope is the failing control.
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: secret_reading
-      handler:
-        name: HandlerSecretReading
-        module: omnimarket.nodes.node_secret_reading_effect.handlers.handler_secret_reading
-    - operation: secret_join_j4
-      handler:
-        name: HandlerSecretJoinJ4
-        module: omnimarket.nodes.node_secret_reading_effect.handlers.handler_secret_join_j4
-
 handler:
   module: omnimarket.nodes.node_secret_reading_effect.handlers.handler_secret_reading
   class: HandlerSecretReading
