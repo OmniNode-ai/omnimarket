@@ -18,6 +18,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    field_validator,
     model_validator,
 )
 
@@ -170,6 +171,16 @@ class ModelLabHostRow(_ModelOverlayBase):
     max_weight: NonEmptyStr | None = None
     # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
     speed: float | None = Field(default=None, gt=0)
+    # ``volumes_root``: the directory under which the host mounts its external volumes (OMN-22688). The hook parse
+    # probe reads it to name an unmounted volume; absolute, never the filesystem root. Omitted: the host declares none.
+    volumes_root: str | None = None
+
+    @field_validator("volumes_root")
+    @classmethod
+    def _volumes_root_is_absolute(cls, value: str | None) -> str | None:
+        if value is not None and not (value.startswith("/") and value.strip("/")):
+            raise ValueError("volumes_root must be an absolute directory, not the root")
+        return value
 
     @model_validator(mode="after")
     def _roles_are_compatible(self) -> "ModelLabHostRow":
