@@ -28,6 +28,7 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelFloorPieceRow,
     ModelFloorReceiptInput,
     ModelFloorReceipts,
+    ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
     ModelFloorSimpleOverlay,
@@ -47,6 +48,7 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelLabStateOverlay,
     ModelLabSubject,
     ModelLedgerReadingRule,
+    ModelLedgerShadowRule,
     ModelNodeEmission,
     ModelNumbersOverlay,
     ModelOpenAlarm,
@@ -60,6 +62,8 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelRedRule,
     ModelRowMatch,
     ModelRunnerPlanRule,
+    ModelShadowField,
+    ModelShadowReading,
     ReadingState,
 )
 
@@ -87,6 +91,7 @@ __all__ = [
     "ModelFloorPieceRow",
     "ModelFloorReceiptInput",
     "ModelFloorReceipts",
+    "ModelFloorShadowLine",
     "ModelFloorSimple",
     "ModelFloorSimpleInput",
     "ModelFloorSimpleOverlay",
@@ -106,6 +111,7 @@ __all__ = [
     "ModelLabStateOverlay",
     "ModelLabSubject",
     "ModelLedgerReadingRule",
+    "ModelLedgerShadowRule",
     "ModelNodeEmission",
     "ModelNumbersOverlay",
     "ModelOpenAlarm",
@@ -119,5 +125,7 @@ __all__ = [
     "ModelRedRule",
     "ModelRowMatch",
     "ModelRunnerPlanRule",
+    "ModelShadowField",
+    "ModelShadowReading",
     "ReadingState",
 ]

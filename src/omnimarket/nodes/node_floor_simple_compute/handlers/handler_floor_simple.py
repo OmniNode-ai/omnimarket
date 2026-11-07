@@ -27,12 +27,14 @@ from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorNumber,
     ModelFloorPieceRow,
+    ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
     ModelJoinReceipt,
     ModelLabSourceVerdict,
     ModelRebuild,
     ModelRedRule,
+    ModelShadowReading,
 )
 
 
@@ -365,6 +367,11 @@ class HandlerFloorSimple:
                             for j in ov.joins
                             if j.from_piece == n
                         ),
+                        "shadows": tuple(
+                            self._shadow_line(s, r.now)
+                            for s in r.shadows
+                            if s.piece == n
+                        ),
                     }
                 )
             )
@@ -399,6 +406,18 @@ class HandlerFloorSimple:
         if status == "not_working":
             return "Clear what the reading names, then it reads working again."
         return "Measured against the old way for 7 days, then kept or rolled back."
+
+    @staticmethod
+    def _shadow_line(shadow: ModelShadowReading, now: datetime) -> ModelFloorShadowLine:
+        """A shadow row as the piece's line: its cells as the rule labels them, and its age against the age it declared."""
+        age = max(0, int((now - shadow.published_at).total_seconds()))
+        return ModelFloorShadowLine(
+            label=shadow.label,
+            text=", ".join(f"{label} {value}" for label, value in shadow.values),
+            age_s=age,
+            max_age_s=shadow.max_age_s,
+            stale=age > shadow.max_age_s,
+        )
 
     @staticmethod
     def _reading(

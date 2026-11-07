@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-22902
+title: Piece 1's graph check builds the graph at a pull request head and its base, goes red on a planted unreachable module in a test repository, then runs in shadow in the declared public repositories
+summary: The code graph node's check verb judges a pull request head against its base, names an added module no root reaches, and now names every allowlist entry past its date as a finding. A new shadow verb runs that check over every open pull request of the repositories the overlay declares, appends one row of what it would refuse with its age cells, and holds no merge. The allowlist for not-yet-wired nodes is overlay data with an expiry date per entry. No bound is changed and nothing is muted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22902-pr-check
+  statement: The check goes red on a planted unreachable module and green on the same head without it, runs in shadow over the declared repositories without holding a merge, and an allowlist entry reads as a finding from its date.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test repository pull request that plants one unreachable module is judged red by the check and the same head without it is judged green -- falsifier: uv run pytest tests/unit/nodes/node_code_graph_effect/test_pr_check.py -q'
+  - id: AC2
+    statement: 'AC2: the check runs in shadow in every repository the overlay''s declared list names, logs what it would refuse, and holds no merge -- falsifier: uv run pytest tests/unit/nodes/node_code_graph_effect/test_pr_check_shadow.py -q'
+  - id: AC3
+    statement: 'AC3: the overlay allowlist for not-yet-wired nodes expires on its date and an expired entry reads as a finding -- falsifier: uv run pytest tests/unit/nodes/node_code_graph_effect/test_allowlist_expiry.py -q'
+evidence_requirements:
+- kind: tests
+  description: The check, shadow and allowlist tests, and the golden and error chain event tests of the shadow.
+  command: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect tests/nodes/node_code_graph_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22902-ac1
+  description: The planted module is red and the same head without it is green, with the failing control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect/test_pr_check.py -q --no-cov
+- id: dod-omn22902-ac2
+  description: The shadow logs what it would refuse over the declared repositories and holds no merge.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect/test_pr_check_shadow.py tests/unit/nodes/node_code_graph_effect/test_pr_check_shadow_chain_events.py -q --no-cov
+- id: dod-omn22902-ac3
+  description: An allowlist entry holds until its date and reads as a finding from it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect/test_allowlist_expiry.py -q --no-cov
+- id: dod-omn22902-floor-shadow
+  description: The floor shows piece 1's shadow results with their ages, read from the rows the shadow handler writes.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_shadow_rows_floor_simple.py tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py -q --no-cov
+- id: dod-omn22902-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22902 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_code_graph_effect tests/nodes/node_code_graph_effect -q --no-cov
