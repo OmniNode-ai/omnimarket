@@ -1116,6 +1116,7 @@ node_rsd_migration_orchestrator = "omnimarket.nodes.node_rsd_migration_orchestra
 node_rsd_offline_c0_validate_compute = "omnimarket.nodes.node_rsd_offline_c0_validate_compute"
 node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owed_compute"
 node_runner_orchestrator = "omnimarket.nodes.node_runner_orchestrator"
+node_runner_pool_canary_compute = "omnimarket.nodes.node_runner_pool_canary_compute"
 node_runner_workspace_retention_effect = "omnimarket.nodes.node_runner_workspace_retention_effect"
 node_runtime_closeout_orchestrator = "omnimarket.nodes.node_runtime_closeout_orchestrator"
 node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
