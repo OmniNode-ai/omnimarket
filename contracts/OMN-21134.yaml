@@ -1,0 +1,87 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21134"
+title: "TC.12 additive latency qualification (omnimarket tabulation node slice)"
+summary: "A pure compute node, node_context_additive_latency_compute, tabulates recorded additive-profile round trips (session_start, agent_spawn, per_prompt) into p50, p95 and max (nearest rank) per profile, host and temperature, proposes each profile's latency_budget_ms as the worst p95 of the hosts that can carry the row (rounded up, never above the profile's decision-D8 cap, read from ADDITIVE_BUDGET_CAPS_MS), lists a host whose p95 exceeds the cap as not promotable there with the section 10 warming remedy, and withholds every proposal when a profile, a host or a cell of 20 round trips is missing. This slice does not measure anything: the round trips through the adapter from the launching Mac and a lab host are not recorded, because the installed onex on the lab host answers 'Unknown skill context_pack' (the dispatch skill TA.8 names is not wired), so the ticket's own AC1 and AC2 are not claimed by this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-additive-latency-qualification-node"
+    statement: "The tabulation node of plan task TC.12: the per-cell table, the proposed latency_budget_ms per profile, the per-host promotable verdict, and the falsifiers that withhold or reject them."
+    acceptance:
+      - id: "DoD1"
+        statement: "DoD1: per profile, host and temperature the node reports the round-trip count and nearest-rank p50, p95 and max -- falsifier: a percentile that differs from the sorted-sample nearest rank, or a missing or merged cell."
+      - id: "DoD2"
+        statement: "DoD2: the proposed budget is the worst p95 of the promotable hosts rounded up, never below that p95 and never above the profile's cap, and is withheld for an incomplete table -- falsifier: a proposal below the worst p95, above the cap, or for a table missing a profile, a host or a cell of 20 round trips."
+      - id: "DoD3"
+        statement: "DoD3: a host whose p95 exceeds the cap is reported not promotable there and names the section 10 warming remedy, and a profile over its cap on every host proposes no budget -- falsifier: such a host reported promotable."
+      - id: "DoD4"
+        statement: "DoD4: a candidate budget below the measured p95 or above the cap is listed as a falsifier, a duplicate round_trip_id, a profile with no cap or a negative or non-finite duration is refused -- falsifier: a padded or invalid table accepted."
+      - id: "DoD5"
+        statement: "DoD5: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its handler and models, the node is an onex.nodes entry point, and the golden chain and the error chain each end in the completed event -- falsifier: a contract test failure."
+evidence_requirements:
+  - kind: "tests"
+    description: "DoD1 to DoD5 in the node tests and the golden chain."
+    command: "uv run pytest tests/nodes/node_context_additive_latency_compute tests/test_golden_chain_context_additive_latency_compute.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21134-n1"
+    description: "DoD1: nearest-rank percentiles, one cell per profile, host and temperature."
+    binds_ac: ["DoD1"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_additive_latency_compute/test_additive_latency.py -q -p no:randomly --no-cov -k 'nearest_rank or one_cell_per or deterministic_for'"
+  - id: "dod-omn21134-n2"
+    description: "DoD2: the budget is the worst p95 rounded up, inside the cap, withheld for an incomplete table."
+    binds_ac: ["DoD2"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_additive_latency_compute/test_additive_latency.py -q -p no:randomly --no-cov -k 'worst_p95_rounded_up or missing_profile or missing_host or too_few_warm'"
+  - id: "dod-omn21134-n3"
+    description: "DoD3: a host over the cap is not promotable and names the warming remedy; a profile over its cap everywhere proposes nothing."
+    binds_ac: ["DoD3"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_additive_latency_compute/test_additive_latency.py -q -p no:randomly --no-cov -k 'not_promotable or over_its_cap_on_every_host'"
+  - id: "dod-omn21134-n4"
+    description: "DoD4: candidates outside the bounds are listed, padded or invalid input is refused."
+    binds_ac: ["DoD4"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_additive_latency_compute/test_additive_latency.py -q -p no:randomly --no-cov -k 'candidate or duplicate_round_trip or non_finite or without_a_cap or fewer_than_twenty or one_required_host'"
+  - id: "dod-omn21134-n5"
+    description: "DoD5: contract topics, handler and model resolution, entry point, golden chain and error chain."
+    binds_ac: ["DoD5"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_additive_latency_compute.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21134-deploy-hosted-qualify"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sends one table of 20 cold and 20 warm round trips for the three additive profiles on two hosts through the product handler, asserting the table is complete with 12 cells and the proposed budgets are 950, 570 and 95 ms, then makes one per_prompt cell 900 ms and asserts that host is not promotable for per_prompt, then removes one profile and asserts every proposal is withheld with the profile listed. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnimarket.nodes.node_context_additive_latency_compute.handlers import HandlerAdditiveLatency as H
+          from omnimarket.nodes.node_context_additive_latency_compute.models import ModelAdditiveLatencyRequest as R
+          caps = {"session_start": 5000, "agent_spawn": 3000, "per_prompt": 500}
+          trips = [{"round_trip_id": f"{p}-{h}-{t}-{i}", "profile": p, "host": h, "temperature": t, "duration_ms": c / 100 * i} for p, c in caps.items() for h in ("mac", "lab") for t in ("cold", "warm") for i in range(1, 21)]
+          body = {"round_trips": trips, "required_profiles": list(caps), "required_hosts": ["mac", "lab"]}
+          r = H().handle(R.model_validate(body))
+          assert r.complete and len(r.cells) == 12 and [p.proposed_budget_ms for p in r.proposals] == [950, 570, 95], r
+          slow = [dict(t, duration_ms=900.0) if (t["profile"], t["host"], t["temperature"]) == ("per_prompt", "lab", "cold") else t for t in trips]
+          s = H().handle(R.model_validate(dict(body, round_trips=slow)))
+          pp = [p for p in s.proposals if p.profile == "per_prompt"][0]
+          assert [v.promotable for v in pp.hosts] == [True, False] and "section 10" in pp.hosts[1].remedy, pp
+          body["round_trips"] = [t for t in trips if t["profile"] != "per_prompt"]
+          q = H().handle(R.model_validate(body))
+          assert not q.complete and all(p.proposed_budget_ms is None for p in q.proposals) and q.falsifiers == ("profile per_prompt missing",), q
+          print([p.proposed_budget_ms for p in r.proposals], pp.hosts[1].promotable, q.falsifiers)'
