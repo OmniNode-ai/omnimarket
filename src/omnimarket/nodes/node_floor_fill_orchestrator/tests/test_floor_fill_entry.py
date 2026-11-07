@@ -30,7 +30,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ModelRunOutcome,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
-    ScriptedCommandRunner,
+    ScriptedCommandForward,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
     OVERLAY,
@@ -48,7 +48,7 @@ ANSWER_KEY = OVERLAY["scope"] + ":answer"
 
 
 def _handler(
-    runner: ScriptedCommandRunner, **scripted: Any
+    runner: ScriptedCommandForward, **scripted: Any
 ) -> tuple[HandlerFloorFillCommand, Harness]:
     h = harness(**scripted)
     return (
@@ -115,7 +115,7 @@ def test_older_snapshot_cannot_publish() -> None:
 
 
 def test_tick_wrong_host_refused() -> None:
-    runner = ScriptedCommandRunner(
+    runner = ScriptedCommandForward(
         ModelRunOutcome(state="exited", exit_code=0, stdout="x\n")
     )
     handler, h = _handler(runner)
@@ -135,7 +135,7 @@ def test_tick_wrong_host_refused() -> None:
     ],
 )
 def test_forward_to_fill_host(command: EnumFloorFillCommand) -> None:
-    runner = ScriptedCommandRunner(
+    runner = ScriptedCommandForward(
         ModelRunOutcome(state="exited", exit_code=3, stdout="remote line\n")
     )
     handler, h = _handler(runner)
@@ -155,7 +155,7 @@ def test_forward_to_fill_host(command: EnumFloorFillCommand) -> None:
 
 def test_forward_send_key_preserves_argument() -> None:
     key = "floor:alpha-b:a1"
-    runner = ScriptedCommandRunner(
+    runner = ScriptedCommandForward(
         ModelRunOutcome(state="exited", exit_code=0, stdout="")
     )
     handler, _h = _handler(runner)
@@ -183,7 +183,7 @@ def test_forward_send_key_preserves_argument() -> None:
     ],
 )
 def test_forward_failure_unreachable(outcome: ModelRunOutcome) -> None:
-    handler, _ = _handler(ScriptedCommandRunner(outcome))
+    handler, _ = _handler(ScriptedCommandForward(outcome))
     result = handler.handle(_request(EnumFloorFillCommand.INSPECT, "orchestrator-mac"))
     assert result.stdout == "UNKNOWN floor-fill-unreachable\n"
     assert result.exit_code == 75
@@ -249,7 +249,7 @@ def test_entry_exits_process_at_timeout() -> None:
                 clock=ScriptedClock(T0),
                 candidates=HandlerFloorFillCandidates(), reducer=HandlerFloorFillReducer(), lines=HandlerFloorFillLines())
             return HandlerFloorFillCommand(config=config, orchestrator=orch,
-                runner=ScriptedCommandRunner(ModelRunOutcome(state="failed", cause="x")))
+                runner=ScriptedCommandForward(ModelRunOutcome(state="failed", cause="x")))
 
         result = run_entry(["tick"], {"floor_fill": dict(OVERLAY, command_timeout_seconds=1, reserved_timeout_seconds=5)},
                            host_id=OVERLAY["host_id"], build_handler=build)
