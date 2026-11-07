@@ -248,7 +248,7 @@ class ScriptedStarter:
         return ModelRunOutcome(state="failed", cause="not-a-command-runner")
 
 
-class ScriptedCommandRunner:
+class ScriptedCommandForward:
     """The process effect for the forward: records argv and timeout, answers from a script."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -307,7 +307,7 @@ def floor_record(
 
 __all__: list[str] = [
     "ScriptedClock",
-    "ScriptedCommandRunner",
+    "ScriptedCommandForward",
     "ScriptedFacts",
     "ScriptedLedger",
     "ScriptedPool",

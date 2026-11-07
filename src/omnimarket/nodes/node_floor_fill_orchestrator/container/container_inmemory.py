@@ -24,7 +24,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
     ScriptedClock,
-    ScriptedCommandRunner,
+    ScriptedCommandForward,
     ScriptedFacts,
     ScriptedLedger,
     ScriptedPool,
@@ -55,7 +55,7 @@ def build_inmemory_handler(config: ModelFloorFillConfig) -> HandlerFloorFillComm
     return HandlerFloorFillCommand(
         config=config,
         orchestrator=orchestrator,
-        runner=ScriptedCommandRunner(ModelRunOutcome(state="failed", cause="unbound")),
+        runner=ScriptedCommandForward(ModelRunOutcome(state="failed", cause="unbound")),
     )
 
 

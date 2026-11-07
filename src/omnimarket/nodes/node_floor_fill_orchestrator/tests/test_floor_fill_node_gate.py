@@ -27,7 +27,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ModelStateRead,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
-    ScriptedCommandRunner,
+    ScriptedCommandForward,
     ScriptedFacts,
     ScriptedStarter,
 )
@@ -159,7 +159,7 @@ def test_config_variation_behaviour_follows_each_key() -> None:
             is unread
         )
     # host_id, remote_argv, command_timeout_seconds: the forward.
-    runner = ScriptedCommandRunner(
+    runner = ScriptedCommandForward(
         ModelRunOutcome(state="exited", exit_code=0, stdout="")
     )
     h = harness(
