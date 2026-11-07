@@ -85,6 +85,16 @@ class ModelReadingScheduleHost(BaseModel):
     venv: str = Field(min_length=1)
 
 
+class ModelTwoBackendReading(BaseModel):
+    """The piece whose row carries the count of effects not yet on both backends (OMN-22911)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    #: The variable that holds the path of the core effect-backends validator's report file.
+    report_path_env: str = Field(min_length=1)
+
+
 class ModelReadingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -101,6 +111,8 @@ class ModelReadingOverlay(BaseModel):
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
     #: Environment the installed unit carries (the routes' commands and their roots).
     unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: The piece whose row also carries the two-backend count; absent, no row does.
+    two_backend: ModelTwoBackendReading | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelReadingOverlay:
@@ -109,6 +121,8 @@ class ModelReadingOverlay(BaseModel):
             raise ValueError("a piece is declared twice")
         if sorted(self.order) != sorted(ids):
             raise ValueError("order must list exactly the declared pieces, once each")
+        if self.two_backend is not None and self.two_backend.piece not in ids:
+            raise ValueError("two_backend names a piece that is not declared")
         names = [host.name for host in self.schedule_hosts]
         if len(names) != len(set(names)):
             raise ValueError("a schedule host is declared twice")

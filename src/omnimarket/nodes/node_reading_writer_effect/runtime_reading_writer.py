@@ -45,6 +45,9 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     load_schedule,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import NODE_NAME, load_overlay
+from omnimarket.nodes.node_two_backend_suite_effect.adapters.report_sources import (
+    FileReportSource,
+)
 
 
 def _stamp_arg(text: str) -> datetime:
@@ -63,11 +66,14 @@ def _run_window(arguments: argparse.Namespace, write: bool) -> int:
             now, overlay.window.length_seconds, overlay.window.close_delay_seconds
         )[0]
     )
+    two_backend = overlay.two_backend
+    report_path = os.environ.get(two_backend.report_path_env) if two_backend else None
     handler = HandlerReadingWriter(
         overlay=overlay,
         source=source,
         appender=appender,
         clock=lambda: datetime.now(UTC),
+        two_backend_source=FileReportSource(Path(report_path)) if report_path else None,
     )
     result = handler.handle(
         ModelReadingWindowCommand(

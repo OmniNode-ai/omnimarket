@@ -14,6 +14,8 @@
 #                    names the fault injected on purpose
 #   schedule_hosts   hosts that install the hourly systemd user timer
 #   unit_environment environment the installed unit carries (the routes' variables)
+#   two_backend      optional: the piece whose row also carries the count of effects not yet on both
+#                    backends, and the variable that holds the path of the core validator's report
 ledger_read:
   route: file
   path_env: EXAMPLE_LEDGER_FILE
@@ -86,3 +88,6 @@ unit_environment:
   EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
   EXAMPLE_HOST_NAME: host-a
   EXAMPLE_LEDGER_FILE: /var/lib/example/ledger.md
+two_backend:
+  piece: 6
+  report_path_env: EXAMPLE_EFFECT_BACKEND_REPORT
