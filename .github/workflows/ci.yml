@@ -2201,7 +2201,16 @@ jobs:
         # those import omnibase_core and sibling omnimarket modules. A missing
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
-        run: uv sync --locked
+        #
+        # The released v0.4.133 tree's evidence_pipeline wire types import
+        # omnibase_compat, which this repository retired (OMN-22385: pyproject
+        # names no omnibase-compat requirement) and which the pinned
+        # omnibase-infra no longer declares. It is installed into this job's
+        # venv alone, after the locked sync, so the lock and the pyproject stay
+        # free of it; the `uv run` steps below keep what is installed.
+        run: |
+          uv sync --locked
+          uv pip install 'omnibase-compat==0.5.7'
       - name: Every changed wire payload must decode on every pinned consumer's dev-merge tag (OMN-18868, OMN-21901)
         # OMN-21901 (operator ruling 2026-11-01T17:05:10Z): releases are
         # optional and internal consumers run from dev-merge tags. The baseline
