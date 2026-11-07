@@ -21,7 +21,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 
@@ -37,11 +37,14 @@ from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models impo
 from omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers import (
     HandlerAutomationLivenessOverlayCheckRun,
 )
-from omnimarket.nodes.node_automation_liveness_overlay_check_effect.models import (
-    ModelAutomationLivenessOverlayCheckRunRequest,
-)
 
 pytestmark = pytest.mark.unit
+
+# The run handler's own request type, read from its signature: the effect node's models package is
+# another node's, and the cross-node reach-in ratchet refuses a test here importing from it.
+ModelAutomationLivenessOverlayCheckRunRequest = get_type_hints(
+    HandlerAutomationLivenessOverlayCheckRun.handle
+)["request"]
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "recorded_internal_copy.json"
 _PRIVATE = "omnibase_private"
