@@ -51,6 +51,9 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
+from omnimarket.nodes.node_two_backend_suite_effect.protocols import (
+    ProtocolEffectBackendReportSource,
+)
 
 COMPUTE_CONTRACT = (
     Path(__file__).resolve().parents[2] / "node_reading_compute" / "contract.yaml"
@@ -58,6 +61,7 @@ COMPUTE_CONTRACT = (
 WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
+_UNREAD = "unread"
 
 
 def load_revision(path: Path = COMPUTE_CONTRACT) -> str:
@@ -99,6 +103,7 @@ def build_reading_row(
     probed_at: datetime,
     max_age_seconds: int,
     attempt: str | None = None,
+    two_backend_pending: str | None = None,
 ) -> str:
     """The reading row the floor draws: one STATUS row, every cell one token."""
     cells = [
@@ -127,6 +132,10 @@ def build_reading_row(
         f"revision={result.revision}",
         f"manifest={result.manifest_hash[:12]}",
         f"rows_read={result.rows_read}",
+    ]
+    if two_backend_pending is not None:
+        cells.append(f"two_backend_pending={two_backend_pending}")
+    cells += [
         _clean(f"injected fault: {result.injected_fault}"),
     ]
     return f"{stamp_text(published_at)} | {_ROW_TYPE} | " + " | ".join(cells)
@@ -145,8 +154,10 @@ class HandlerReadingWriter:
         compute: HandlerReadingCompute | None = None,
         revision: str | None = None,
         landing: ProtocolLandingSource | None = None,
+        two_backend_source: ProtocolEffectBackendReportSource | None = None,
     ) -> None:
         self._landing = landing
+        self._two_backend_source = two_backend_source
         self._overlay = overlay
         self._source = source
         self._appender = appender
@@ -207,6 +218,18 @@ class HandlerReadingWriter:
         )
 
     # -- one piece --------------------------------------------------------------------------
+
+    def _two_backend_pending(self, piece: int) -> str | None:
+        """The count of effects not yet on both backends for the piece that carries it; ``unread`` if the list is."""
+        setting = self._overlay.two_backend
+        if setting is None or setting.piece != piece:
+            return None
+        if self._two_backend_source is None:
+            return _UNREAD
+        read = self._two_backend_source.read()
+        if read.report is None:
+            return _UNREAD
+        return str(read.report.not_on_both_count)
 
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
@@ -288,6 +311,22 @@ class HandlerReadingWriter:
             )
         )
 
+        pending = self._two_backend_pending(spec.piece)
+        token = (
+            None
+            if pending is None
+            else "two-backend-unread"
+            if pending == _UNREAD
+            else f"two-backend-pending-{pending}"
+        )
+
+        def tagged(final: ModelReadingComputeResult) -> ModelReadingComputeResult:
+            if token is None or token in final.reasons:
+                return final
+            return final.model_copy(update={"reasons": (*final.reasons, token)})
+
+        result = tagged(result)
+
         def outcome(
             final: ModelReadingComputeResult, ledger: str, row: str | None = None
         ) -> ModelReadingPieceOutcome:
@@ -329,8 +368,10 @@ class HandlerReadingWriter:
                         ),
                     }
                 )
+                result = tagged(result)
         row = build_reading_row(
             result,
+            two_backend_pending=pending,
             lane=self._overlay.publish.lane,
             actor=self._overlay.publish.actor,
             published_at=now,
