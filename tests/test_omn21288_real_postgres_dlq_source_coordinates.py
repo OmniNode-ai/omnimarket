@@ -67,14 +67,16 @@ def _base_dsn() -> str:
 
 async def _connect_or_skip() -> asyncpg.Connection:
     if not _resolve_db_secret():
-        pytest.skip(
+        raise pytest.skip.Exception(
             "no database credential in the environment -- skipping the "
             "OMN-21288 real-Postgres dead-letter source gate"
         )
     try:
         return await asyncpg.connect(_base_dsn())
     except (OSError, asyncpg.PostgresError) as exc:
-        pytest.skip(f"no reachable Postgres for the OMN-21288 gate: {exc}")
+        raise pytest.skip.Exception(
+            f"no reachable Postgres for the OMN-21288 gate: {exc}"
+        ) from exc
 
 
 class _RefusedWriteRunner(BaseProjectionRunner):
