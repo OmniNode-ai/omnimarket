@@ -10,7 +10,9 @@ is the check a floor test holds a board to. The control is the same board with o
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,9 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple im
     check_red_rule,
 )
 from tests.nodes.node_factory_floor_compute.support import NOW
+from tests.nodes.node_floor_simple_compute import (
+    test_floor_truth_recorded_board as recorded_board,
+)
 from tests.nodes.node_floor_simple_effect.support import overlay_text
 
 pytestmark = pytest.mark.unit
@@ -136,3 +141,62 @@ def test_golden_the_reading_does_not_change_the_colour_rule() -> None:
     assert again.state == doc.red_rule.state
     assert again.red_rows == doc.red_rule.red_rows
     assert again.violations == doc.red_rule.violations
+
+
+# --- the recorded board 0254 against the owners the floor overlay declares (OMN-22928) ---------------------------------
+
+OWNERS_0254 = json.loads(
+    (Path(__file__).parent / "fixtures" / "owners_recorded_board_0254.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def recorded_board_with_owners(
+    monkeypatch: pytest.MonkeyPatch, owners: dict[str, list[str]]
+) -> ModelFloorSimple:
+    declared = overlay_text("node_floor_simple_compute")
+    declared["causes"] = {**declared["causes"], "owners": owners}
+    monkeypatch.setattr(recorded_board, "overlay_text", lambda _node: declared)
+    doc, _ = recorded_board.board()
+    return doc
+
+
+def test_golden_every_red_cause_of_the_recorded_board_has_an_owner_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    doc = recorded_board_with_owners(monkeypatch, OWNERS_0254["owners"])
+    assert_every_red_cause_owned(doc)
+    assert doc.red_rule.unowned_red == ()
+
+
+def test_error_the_recorded_board_names_the_causes_whose_owner_entry_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The failing control: the same owners with the entries this change declared taken away.
+    without = {
+        k: v
+        for k, v in OWNERS_0254["owners"].items()
+        if k not in OWNERS_0254["declared_by_this_change"]
+    }
+    doc = recorded_board_with_owners(monkeypatch, without)
+    unowned = set(doc.red_rule.unowned_red)
+    assert unowned
+    assert unowned <= set(OWNERS_0254["declared_by_this_change"])
+    with pytest.raises(AssertionError, match="red causes with no declared owner"):
+        assert_every_red_cause_owned(doc)
+
+
+def test_golden_the_served_document_and_page_carry_the_unowned_red_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    doc = recorded_board_with_owners(monkeypatch, {})
+    served = doc.model_dump(mode="json")["red_rule"]["unowned_red"]
+    assert served
+    assert served == list(doc.red_rule.unowned_red)
+    page = (
+        Path(__file__).parents[3]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+    ).read_text(encoding="utf-8")
+    assert "r.unowned_red" in page
+    assert "red with no declared owner" in page
