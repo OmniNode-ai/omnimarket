@@ -33,32 +33,34 @@ output_model:
   description: "Planned steps in need order with skip or act per target, or the refusals."
 handler_routing:
   routing_strategy: "operation_match"
+  # The run handler takes its probe, actuator, lease, bus and clock from the caller,
+  # so it is the node's default handler and is not a boot-resolved routing entry.
   default_handler: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_bringup_run:HandlerHostBringupRun"
   handlers:
-    - operation: "run_host_bringup"
-      handler:
-        name: "HandlerHostBringupRun"
-        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_bringup_run"
     - operation: "derive_host_declaration"
       handler:
         name: "HandlerHostDeclarationDerive"
         module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_host_declaration_derive"
-    - operation: "probe_host_target"
-      handler:
-        name: "HandlerShellTargetProbe"
-        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
-    - operation: "actuate_host_target"
-      handler:
-        name: "HandlerShellTargetActuator"
-        module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
-    - operation: "run_host_shell"
-      handler:
-        name: "HandlerHostShellTransport"
-        module: "omnimarket.handlers.handler_host_shell_transport"
-    - operation: "run_host_shell_scripted"
-      handler:
-        name: "HandlerHostShellScripted"
-        module: "omnimarket.handlers.handler_host_shell_scripted"
+# Adapters the run handler is given by its caller. Each takes constructor
+# arguments (a shell, an overlay, ssh options) the boot resolver cannot inject, so
+# none is a dispatched routing entry; each is bound here as the adapter of one port.
+injected_ports:
+  - port: "ProtocolTargetProbe"
+    handler:
+      name: "HandlerShellTargetProbe"
+      module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
+  - port: "ProtocolTargetActuator"
+    handler:
+      name: "HandlerShellTargetActuator"
+      module: "omnimarket.nodes.node_host_bringup_orchestrator.handlers.handler_shell_target_backends"
+  - port: "ProtocolHostShell"
+    handler:
+      name: "HandlerHostShellTransport"
+      module: "omnimarket.handlers.handler_host_shell_transport"
+  - port: "ProtocolHostShell"
+    handler:
+      name: "HandlerHostShellScripted"
+      module: "omnimarket.handlers.handler_host_shell_scripted"
 runtime_dispatch:
   external_trigger: "Direct Python invocation: run_host_bringup drives one host toward one top target with the injected probe, actuator, lease, bus and clock; derive_host_declaration derives every copy of the host table from the declaration and names each difference."
 descriptor:
