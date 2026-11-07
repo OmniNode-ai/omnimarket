@@ -256,6 +256,7 @@ class HandlerLinearCommentsSweep:
             degraded=cast(bool, tally["degraded"]),
             control=collected.positive_control,
             written=written,
+            held_drafts=held,
         )
 
     def _report_path(self, request: ModelLinearCommentsSweepRequest) -> str:
@@ -313,19 +314,26 @@ class HandlerLinearCommentsSweep:
         prompt: str,
         max_tokens: int,
         suffix: str,
+        backend_id: str | None = None,
     ) -> ModelSweepPhaseReply:
-        return await self.gateway.run(
-            request,
-            ModelSweepPhaseRequest(
-                label=f"delegate:{_text(item.get('ticket'))}:{_text(item.get('comment_id'))}{suffix}",
-                phase="Draft",
-                task_type=request.task_type,
-                prompt=prompt,
-                max_tokens=max_tokens,
-                timeout_seconds=300,
-                schema_definition=self._schema("DRAFT"),
-            ),
-        )
+        try:
+            return await self.gateway.run(
+                request,
+                ModelSweepPhaseRequest(
+                    label=f"delegate:{_text(item.get('ticket'))}:{_text(item.get('comment_id'))}{suffix}",
+                    phase="Draft",
+                    task_type=request.task_type,
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    timeout_seconds=300,
+                    schema_definition=self._schema("DRAFT"),
+                    backend_id=backend_id,
+                ),
+            )
+        except (TimeoutError, ConnectionError) as exc:
+            return ModelSweepPhaseReply(
+                ok=False, failure=f"{type(exc).__name__}: {exc}"
+            )
 
     async def _cut_off(
         self, request: ModelLinearCommentsSweepRequest, reply: ModelSweepPhaseReply
@@ -357,6 +365,8 @@ class HandlerLinearCommentsSweep:
     ) -> dict[str, JsonValue]:
         """One item through delegate, source check and verifier; a loss is a held entry, never a gap."""
 
+        candidate: dict[str, JsonValue] | None = None
+
         def lost(
             stage: str, reason: str, truncated: bool = False
         ) -> dict[str, JsonValue]:
@@ -370,6 +380,23 @@ class HandlerLinearCommentsSweep:
                     "reason": reason,
                     "truncated": truncated,
                     "asks": cast(list[JsonValue], item.get("asks") or []),
+                    "fallback_draft": {
+                        "ticket": _text(item.get("ticket")),
+                        "comment_id": _text(item.get("comment_id")),
+                        "label": "UNVERIFIED DRAFT",
+                        "verified": False,
+                        "accepted": False,
+                        "their_summary": _text((candidate or {}).get("their_summary")),
+                        "proposed_reply": _text(
+                            (candidate or {}).get("proposed_reply")
+                        ),
+                        "facts_cited": (candidate or {}).get("facts_cited") or [],
+                        "open_points_for_operator": (candidate or {}).get(
+                            "open_points_for_operator"
+                        )
+                        or item.get("asks")
+                        or ["Reply to the collected comment after checking the facts."],
+                    },
                 }
             }
 
@@ -397,6 +424,46 @@ class HandlerLinearCommentsSweep:
                         f"--max-tokens {RETRY_MAX_TOKENS}; there is no complete draft",
                         True,
                     )
+            elif (
+                not reply.ok
+                and self.overlay.retry_backend_id
+                and reply.backend_id != self.overlay.retry_backend_id
+            ):
+                decision = await self.decisions.decide(
+                    request,
+                    {
+                        "kind": "classify_held",
+                        "held": [{"stage": "delegate", "reason": reply.failure}],
+                    },
+                )
+                if decision.get("retryable") == [True]:
+                    first_failure = reply.failure
+                    reply = await self._draft_call(
+                        request,
+                        item,
+                        prompt,
+                        DRAFT_MAX_TOKENS,
+                        ":transport-retry",
+                        backend_id=self.overlay.retry_backend_id,
+                    )
+                    signals = await self._cut_off(request, reply)
+                    if signals:
+                        loss = lost(
+                            "delegate",
+                            "the transport retry returned a cut off draft "
+                            f"({', '.join(signals)})",
+                            True,
+                        )
+                        cast(dict[str, JsonValue], loss["held"])["first_failure"] = (
+                            first_failure
+                        )
+                        return loss
+                    if not reply.ok:
+                        loss = lost("delegate", reply.failure)
+                        cast(dict[str, JsonValue], loss["held"])["first_failure"] = (
+                            first_failure
+                        )
+                        return loss
             if not reply.ok:
                 return lost("delegate", reply.failure)
             draft = parse_draft(reply.content)
@@ -405,6 +472,7 @@ class HandlerLinearCommentsSweep:
                     "delegate",
                     "the delegated response did not parse as the requested JSON object",
                 )
+            candidate = draft
             citation = cast(
                 dict[str, JsonValue],
                 (
@@ -537,14 +605,21 @@ class HandlerLinearCommentsSweep:
                     requested_engine="claude", lane_kind="linear-comments"
                 ),
                 effort="medium",
-                prompt=self._render(
-                    self.overlay.templates["linear-comments-write"],
-                    {
-                        **slots,
-                        "metrics_path": self.overlay.values["metrics_path"],
-                        "payload_json": json.dumps(payload),
-                        "metrics_json": json.dumps(metrics),
-                    },
+                prompt=(
+                    self._render(
+                        self.overlay.templates["linear-comments-write"],
+                        {
+                            **slots,
+                            "metrics_path": self.overlay.values["metrics_path"],
+                            "payload_json": json.dumps(payload),
+                            "metrics_json": json.dumps(metrics),
+                        },
+                    )
+                    + "\n\nFor every held item, render its fallback_draft under the literal "
+                    "heading UNVERIFIED DRAFT, including its reason and open operator "
+                    "points. It has not passed verification: never list it among "
+                    "accepted replies or describe it as ready to post. Keep refusal "
+                    "reasons verbatim. Posting requires per-message operator approval."
                 ),
                 timeout_seconds=1800,
                 schema_definition=self._schema("WRITE"),

@@ -1,5 +1,6 @@
 # Public test overlay of node_linear_comments_sweep_orchestrator: synthetic briefs, paths and rules.
 briefs: briefs.md
+retry_backend_id: recorded-next-draft
 values:
   report_dir: drafts
   metrics_path: metrics/linear-comments.jsonl

@@ -134,6 +134,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: selected ranges change counts; browser values match the typed compute for counts, shares, durations and medians; partial coverage and sub-bucket ranges remain unmeasured; custom times use Eastern across clock changes -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov'
+  - id: req-omn19998-hourly-sweep-held-drafts
+    statement: The canonical hourly comment sweep retains visibly unverified held drafts and retries only measured drafting transport failures on a declared next backend.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: every held ask retains an UNVERIFIED DRAFT candidate in the writer payload and typed terminal; source and verifier failures remain held; only measured connection, timeout and absent-consumer failures retry once on the overlay-declared backend, sharing a two-attempt budget with truncation -- falsifier: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_held_drafts_and_retry.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-capture-provenance
     statement: The work-event projection retains supplied capture attribution and explicit causal edges alongside the governed directory shape.
     acceptance:
@@ -437,6 +442,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line -k canonical_runtime_bus
+        cwd: .
+  - id: dod-omn19998-hourly-sweep-held-drafts
+    description: Scoped sweep regression. The initial 18-case file produced 11 failures and 7 passing controls before the change. Covers retained candidates, refusal boundaries, typed retry routing and the shared retry budget. Does not assert the original controller timer or live host installation criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_held_drafts_and_retry.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-hourly-sweep-bus-smoke
+    description: Hosted wiring smoke discovers and auto-wires the real sweep and decision contracts on an in-memory bus. Recorded delegation terminals exercise recovery on the declared next backend and exhausted retries emitting labelled held drafts. No live external tracker or inference call is asserted.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-morning-readme-heading
     description: Focused registered-tool regressions cover exact-match precedence, ambiguity refusal, unique substring fallback, missing headings, heading listing and section boundaries. They do not assert the controller timer criteria.

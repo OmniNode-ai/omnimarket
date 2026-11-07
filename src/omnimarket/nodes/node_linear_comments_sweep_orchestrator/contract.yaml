@@ -9,7 +9,11 @@ description: >
   Hourly Linear-comments sweep: collect every comment addressed to the operator since an
   exact cutoff, ask node_linear_comments_decision_compute which get a draft, draft each
   through the delegation orchestrator, check the draft's citations, verify it against the
-  facts table, then write the report and the metrics rows. Model calls reuse the canonical
+  facts table, then write the report and the metrics rows. Every held ask retains a labelled
+  unverified fallback in the terminal and report payload. Measured drafting transport failures
+  may retry once on the overlay's explicit retry_backend_id; transport and truncation share
+  a two-attempt budget, and source or verifier refusals never trigger redrafting.
+  Model calls reuse the canonical
   delegation orchestrator and infra request-response wiring; every decision is asked of the
   decision compute node over the bus. The deployment's briefs, report directory and standing
   rules come from an overlay; the node holds none of them. Read-only on Linear.
