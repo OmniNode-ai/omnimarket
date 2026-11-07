@@ -220,3 +220,33 @@ def test_a_declaration_for_a_seam_the_overlay_does_not_run_as_a_demand_is_refuse
     ]
     with pytest.raises(ValueError, match="on-demand"):
         ModelSeamDeadlineOverlay.model_validate(raw)
+
+
+def test_the_probe_command_prints_the_seam_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_seam_deadline_probe_effect.runtime_seam_deadline import (
+        main,
+    )
+
+    raw = yaml.safe_load(_EXAMPLE.read_text(encoding="utf-8"))
+    raw["seam_declarations"] = [
+        {"seam": "example-query", "trigger": "automatic", "required": True}
+    ]
+    node_dir = tmp_path / "node_seam_deadline_probe_effect"
+    node_dir.mkdir()
+    (node_dir / "overlay.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.setenv("EXAMPLE_HOST_NAME", "test-host")
+
+    main(["probe"])
+
+    out = capsys.readouterr().out
+    assert (
+        "COUNTS automatic=1 on_demand=0 required_without_sender=1 "
+        "working=0 not_working=1 unknown=0" in out
+    )
+    assert (
+        "reason=example-query:no-result-by-deadline,example-query:no-bound-sender"
+        in out
+    )

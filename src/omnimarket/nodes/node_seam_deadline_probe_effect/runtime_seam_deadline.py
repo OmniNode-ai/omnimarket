@@ -92,6 +92,13 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
             + (f" detail={reading.detail}" if reading.detail else "")
             + "\n"
         )
+    if result.counts is not None:
+        sys.stdout.write(
+            f"COUNTS automatic={result.counts.automatic} on_demand={result.counts.on_demand} "
+            f"required_without_sender={result.counts.required_without_sender} "
+            f"working={result.counts.working} not_working={result.counts.not_working} "
+            f"unknown={result.counts.unknown}\n"
+        )
     sys.stdout.write(
         f"RUN host={host} verdict={result.verdict.value} outcome={result.outcome.value} "
         f"status={result.status} fault={result.fault.value} ledger={result.ledger} "
