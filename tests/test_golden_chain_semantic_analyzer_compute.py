@@ -25,6 +25,8 @@ from omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_c
 )
 
 _EMBEDDING_DIM = 4
+_EMBEDDING_MODEL = "stub-embedding"
+_LLM_MODEL = "stub-llm"
 
 
 class _StubEmbeddingProvider:
@@ -85,6 +87,10 @@ async def handler() -> HandlerSemanticCompute:
     config = ModelHandlerSemanticComputeConfig(
         policy_config=ModelSemanticComputePolicyConfig(
             entity_extraction_mode=EnumEntityExtractionMode.DETERMINISTIC,
+            allowed_embedding_models=[_EMBEDDING_MODEL],
+            default_embedding_model=_EMBEDDING_MODEL,
+            allowed_llm_models=[_LLM_MODEL],
+            default_llm_model=_LLM_MODEL,
         )
     )
     h = HandlerSemanticCompute(container=container)
