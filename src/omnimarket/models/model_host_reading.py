@@ -21,6 +21,8 @@ class EnumHostProbe(StrEnum):
     LEDGER_OUTBOX = "ledger-outbox"
     LEDGER_OLD_NAMES = "ledger-old-names"
     HOST_CANARY = "host-canary"
+    #: Join J1: the code graph's verdict for the nodes host discovery and placement depend on.
+    JOIN_J1 = "join-j1"
 
 
 class EnumCanaryEnding(StrEnum):
