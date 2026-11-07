@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Remote Lane Start Orchestrator (OMN-22848, stopped-line fill plan T15)
+#
+# The remote-lane runner's run path for the Claude engine on lab placement, as a sequence of
+# nodes: (1) refuse an unsupported shape before any read; (2) place through
+# node_remote_lane_compute from ProtocolLaneHostPool readings (no host: exit 75, nothing
+# written); (3) append the CLAIM through node_work_ledger_append_effect with the request id of
+# lane-claim:<lane>:<attempt>, deduplicated durably by that effect; (4) start the engine detached
+# through node_remote_lane_start_effect; (5) supervise its log and exit; (6) close through
+# node_remote_lane_close_compute with one TERMINAL, or a STATUS when the lane closed itself.
+#
+# WHAT THE FILL RELIES ON. The CLAIM is appended by the leader process itself, after placement
+# and before any host call that starts the engine, and carries the lane name and key=<key> it was
+# given; the engine is not in the leader's process group; the leader's exit code is diagnostic
+# only (the ledger decides what happened).
+#
+# WHO HOSTS THIS NODE. The entry (__main__) is the lane's leader process and lives as long as the
+# lane. Shared runtimes must NOT attach it: runtime_dispatch and NO event_bus block.
+name: "node_remote_lane_start_orchestrator"
+lifecycle: experimental
+node_type: "ORCHESTRATOR_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Starts one lab lane on the Claude engine: refuses any other shape (unsupported-shape) before
+  any placement or CLAIM, places it (no-host, exit 75), appends its CLAIM (claim-refused or
+  already-claimed, exit 70, before any host call), starts the engine detached (start-unresolved:
+  no TERMINAL, exit 1), supervises it and appends one TERMINAL. A stop request ends the engine and
+  closes the lane only when the stop is confirmed (exit 143); a survivor leaves the CLAIM open.
+input_model:
+  name: "ModelRemoteLaneStartRequest"
+  module: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start"
+  description: "Lane, key, ticket, engine, placement, model, ledger path, brief, run id and attempt."
+output_model:
+  name: "ModelRemoteLaneStartResult"
+  module: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start"
+  description: "The outcome, the diagnostic exit code, the printed REMOTE-LANE-* lines and the final receipt."
+handler:
+  module: "omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.handler_remote_lane_start"
+  class: "HandlerRemoteLaneStart"
+  input_model: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start.ModelRemoteLaneStartRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.handler_remote_lane_start:HandlerRemoteLaneStart"
+  handlers:
+    - operation: "start_remote_lane"
+      handler:
+        name: "HandlerRemoteLaneStart"
+        module: "omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.handler_remote_lane_start"
+      input_model: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start.ModelRemoteLaneStartRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start.ModelRemoteLaneStartResult"
+protocol_dependencies:
+- name: ProtocolLaneHostPool
+  protocol: omnibase_spi.protocols.lane.protocol_lane_host_pool:ProtocolLaneHostPool
+  required: true
+  bind_as: host_pool
+- name: ProtocolLaneHostTransport
+  protocol: omnibase_spi.protocols.lane.protocol_lane_host_transport:ProtocolLaneHostTransport
+  required: true
+  bind_as: transport
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.remote-lane-start-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.remote-lane-start-completed.v1"
+    failure: "onex.evt.omnimarket.remote-lane-start-failed.v1"
+published_events:
+  - event_type: ModelRemoteLaneStartResult
+    topic: onex.evt.omnimarket.remote-lane-start-completed.v1
+    description: "The outcome of one lane start, answered whatever happened."
+metadata:
+  transport_type: kafka
+  ticket: OMN-22848
+  description: "Remote-lane orchestration: the lab Claude run path as nodes"
+  author: "OmniNode Team"
+  tags: ["orchestrator", "lab", "remote-lane", "OMN-22848"]
+  related_tickets: ["OMN-22848"]

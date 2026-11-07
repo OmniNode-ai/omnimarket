@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Remote Lane Start Effect (OMN-22848)
+#
+# The host calls of a lane start: prepare the worktree at an exact sha, start the engine
+# detached in a session of its own, read the engine's log tail and its exit, stop it. Each call
+# is one omnibase_spi ProtocolLaneHostTransport call; the transport is injected (the ssh adapter
+# for a real host, the scripted adapter in memory).
+#
+# WHO HOSTS THIS NODE. The lane's leader process (node_remote_lane_start_orchestrator's entry) on
+# the host that leads the lane. Shared runtimes must NOT attach it, so the contract declares
+# runtime_dispatch and NO event_bus block, as node_remote_lane_stop_effect does.
+name: "node_remote_lane_start_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Makes one host call of a lane start through the injected ProtocolLaneHostTransport:
+  prepare_worktree, start_engine_detached (returns only when the engine started or failed, or
+  unresolved when it did not settle within the request's timeout), read_engine_exit, stop_engine
+  (confirmed false when the engine survives) and read_log_tail. No expected outcome raises.
+input_model:
+  name: "ModelRemoteLaneHostCall"
+  module: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call"
+  description: "The operation and its omnibase_spi request."
+output_model:
+  name: "ModelRemoteLaneHostCallResult"
+  module: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call"
+  description: "The operation and its omnibase_spi result."
+handler:
+  module: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect"
+  class: "HandlerRemoteLaneStartEffect"
+  input_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCall"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect:HandlerRemoteLaneStartEffect"
+  handlers:
+    - operation: "remote_lane_host_call"
+      handler:
+        name: "HandlerRemoteLaneStartEffect"
+        module: "omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect"
+      input_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCall"
+      output_model: "omnimarket.nodes.node_remote_lane_start_effect.models.model_remote_lane_host_call.ModelRemoteLaneHostCallResult"
+protocol_dependencies:
+- name: ProtocolLaneHostTransport
+  protocol: omnibase_spi.protocols.lane.protocol_lane_host_transport:ProtocolLaneHostTransport
+  required: true
+  bind_as: transport
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.remote-lane-host-call-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.remote-lane-host-call-completed.v1"
+    failure: "onex.evt.omnimarket.remote-lane-host-call-failed.v1"
+published_events:
+  - event_type: ModelRemoteLaneHostCallResult
+    topic: onex.evt.omnimarket.remote-lane-host-call-completed.v1
+    description: "The typed result of one host call."
+metadata:
+  transport_type: kafka
+  ticket: OMN-22848
+  description: "Remote-lane I/O: the host calls of a lab lane start"
+  author: "OmniNode Team"
+  tags: ["effect", "lab", "remote-lane", "OMN-22848"]
+  related_tickets: ["OMN-22848"]

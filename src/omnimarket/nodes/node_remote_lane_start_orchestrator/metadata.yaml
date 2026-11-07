@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_start_orchestrator
+version: "0.1.0"
+description: "Orchestrator: the lab Claude run path of the remote-lane runner as nodes. Places a lane, appends its CLAIM, starts the engine detached on the placed host, supervises it and closes it with one TERMINAL."
+pack: operator_tooling
+node_role: orchestrator
+display_name: "Remote Lane Start Orchestrator"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_remote_lane_start_orchestrator: "omnimarket.nodes.node_remote_lane_start_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["orchestrator", "lab", "remote-lane"]
