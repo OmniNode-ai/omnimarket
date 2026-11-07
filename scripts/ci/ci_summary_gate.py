@@ -865,6 +865,14 @@ EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
         added="2026-10-17",
         expires="2026-12-20",
     ),
+    # RULING 2026-11-05T20:27:56Z (OMN-22478): the automated reviewer app posts a
+    # neutral row on every pull request and takes no part in what blocks a merge.
+    "Tessl Reviewer": SweepExclusion(
+        reason="Automated reviewer app posts a neutral row on every pull request; the operator ruling takes it out of what blocks a merge.",
+        ticket="OMN-22478",
+        added="2026-11-07",
+        expires="2026-12-20",
+    ),
 }
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")

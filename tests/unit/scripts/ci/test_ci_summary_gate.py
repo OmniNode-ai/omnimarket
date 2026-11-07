@@ -2001,6 +2001,70 @@ class TestExternalDefaultDenySweep:
         assert gate.evaluate_external_sweep([], now=self.NOW)[0] == EXIT_SUCCESS
 
 
+# The check-run name of the automated reviewer app (OMN-22478): it posts a
+# ``neutral`` row on every pull request, and RULING 2026-11-05T20:27:56Z takes
+# it out of what blocks a merge.
+AUTOMATED_REVIEWER = "Tessl Reviewer"
+
+
+class TestAutomatedReviewerDoesNotBlockOmn22478:
+    """Only the named reviewer row is excluded; every other red still fails."""
+
+    NOW = datetime(2026, 11, 7, 18, 8, tzinfo=UTC)
+
+    @pytest.mark.parametrize(
+        ("conclusion", "status"),
+        [
+            ("neutral", "completed"),
+            (None, "in_progress"),
+            ("failure", "completed"),
+            ("skipped", "completed"),
+        ],
+    )
+    def test_reviewer_row_in_any_state_does_not_fail_the_sweep(
+        self, conclusion: str | None, status: str
+    ) -> None:
+        rows = [_check_run(AUTOMATED_REVIEWER, status=status, conclusion=conclusion)]
+        code, report = gate.evaluate_external_sweep(rows, now=self.NOW)
+        assert code == EXIT_SUCCESS, report
+        assert f"exclusions applied: {AUTOMATED_REVIEWER}" in report
+
+    def test_control_a_red_test_row_still_fails_beside_the_reviewer_row(
+        self,
+    ) -> None:
+        rows = [
+            _check_run(AUTOMATED_REVIEWER, conclusion="neutral"),
+            _check_run("Unit Tests (shard 3)", conclusion="failure"),
+        ]
+        code, report = gate.evaluate_external_sweep(rows, now=self.NOW)
+        assert code == EXIT_FAILURE, report
+        assert "Unit Tests (shard 3) (failure)" in report
+        assert f"{AUTOMATED_REVIEWER} (neutral)" not in report
+
+    def test_control_the_same_neutral_row_under_another_name_still_fails(
+        self,
+    ) -> None:
+        rows = [_check_run("Another Reviewer", conclusion="neutral")]
+        code, report = gate.evaluate_external_sweep(rows, now=self.NOW)
+        assert code == EXIT_FAILURE, report
+        assert "Another Reviewer (neutral)" in report
+
+    def test_control_without_the_exclusion_the_reviewer_row_fails(self) -> None:
+        rows = [_check_run(AUTOMATED_REVIEWER, conclusion="neutral")]
+        code, report = gate.evaluate_external_sweep(
+            rows, sweep_exclusions={}, now=self.NOW
+        )
+        assert code == EXIT_FAILURE, report
+        assert f"{AUTOMATED_REVIEWER} (neutral)" in report
+
+    def test_exclusion_is_unexpired_at_the_pinned_read_time(self) -> None:
+        active, expired = gate.active_sweep_exclusions(
+            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
+        )
+        assert AUTOMATED_REVIEWER in active
+        assert expired == ()
+
+
 class TestExternalSweepExclusions:
     """OMN-17427: every exception is bounded, validated and reported."""
 
@@ -2016,6 +2080,7 @@ class TestExternalSweepExclusions:
         assert set(gate.EXTERNAL_SWEEP_EXCLUSIONS) == {
             "AC1 exact revision row on PostgreSQL 16",
             "auto-tag",
+            AUTOMATED_REVIEWER,
         }
         assert gate.validate_sweep_exclusions(gate.EXTERNAL_SWEEP_EXCLUSIONS) == []
         active, expired = gate.active_sweep_exclusions(
@@ -2024,16 +2089,21 @@ class TestExternalSweepExclusions:
         assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
-        for entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.values():
+        for name, entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.items():
             assert entry.reason.strip()
-            assert entry.ticket == "OMN-17427"
-            assert entry.added == "2026-10-17"
+            if name == AUTOMATED_REVIEWER:
+                assert entry.ticket == "OMN-22478"
+                assert entry.added == "2026-11-07"
+            else:
+                assert entry.ticket == "OMN-17427"
+                assert entry.added == "2026-10-17"
             assert entry.expires == "2026-12-20"
         with pytest.raises(FrozenInstanceError):
             self._entry().reason = "changed"
 
     @pytest.mark.parametrize(
-        "name", ["AC1 exact revision row on PostgreSQL 16", "auto-tag"]
+        "name",
+        ["AC1 exact revision row on PostgreSQL 16", "auto-tag", AUTOMATED_REVIEWER],
     )
     def test_shipped_exclusions_admit_skips_and_report_them(self, name: str) -> None:
         rows = [_check_run(name, conclusion="skipped")]
