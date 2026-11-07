@@ -172,13 +172,8 @@ def test_alarm_config_loads_as_options(tmp_path: Path) -> None:
 
 def test_alarm_config_names_no_home_directory_or_person() -> None:
     document = json.dumps(load_units()[UNIT]["config_file"]["document"])
-    forbidden_literals = (
-        "/Users/",  # test-literal-ok: asserts the config names no home path
-        "/home/",
-        "@192.",
-    )
-    for forbidden in forbidden_literals:
-        assert forbidden not in document
+    forbidden = re.compile(r"/(?:Users|home)/|@192\.")
+    assert forbidden.search(document) is None
 
 
 def test_alarm_config_install_writes_the_file_at_0600_and_keeps_the_one_it_replaced(
