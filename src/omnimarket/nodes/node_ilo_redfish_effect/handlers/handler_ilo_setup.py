@@ -598,12 +598,12 @@ class HandlerIloSetup:
         A typed password is written to the store before any iLO call, so a run that stops later never
         makes the operator type it again; the next run finds it in the store and asks nothing.
         """
-        user_key = self._key(host, "ADMIN", "USERNAME")
-        pass_key = self._key(host, "ADMIN", "PASSWORD")
-        if pass_key in stored:
+        user_entry = self._key(host, "ADMIN", "USERNAME")
+        pw_entry = self._key(host, "ADMIN", "PASSWORD")
+        if pw_entry in stored:
             try:
-                stored_secret = self._secrets.get(pass_key)
-                user = self._secrets.get(user_key) if user_key in stored else None
+                stored_secret = self._secrets.get(pw_entry)
+                user = self._secrets.get(user_entry) if user_entry in stored else None
             except SetupStoreError as exc:
                 raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
             if stored_secret is not None:
@@ -612,7 +612,7 @@ class HandlerIloSetup:
                     steps,
                     "administrator credential",
                     "reused",
-                    f"from the store ({pass_key})",
+                    f"from the store ({pw_entry})",
                 )
                 self._last_admin = (host, stored_secret)
                 return name, stored_secret
@@ -620,24 +620,24 @@ class HandlerIloSetup:
         if typed is None:
             raise _StopError(
                 Refusal.ADMIN_CREDENTIAL_MISSING,
-                f"no {pass_key} in the store and no terminal to ask on",
+                f"no {pw_entry} in the store and no terminal to ask on",
             )
         try:
-            created = self._secrets.create(pass_key, typed)
-            if user_key not in stored:
-                self._secrets.create(user_key, SecretStr(request.admin_user))
+            created = self._secrets.create(pw_entry, typed)
+            if user_entry not in stored:
+                self._secrets.create(user_entry, SecretStr(request.admin_user))
         except SetupStoreError as exc:
             raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
         if not created:
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"{pass_key} appeared in the store during this run",
+                f"{pw_entry} appeared in the store during this run",
             )
         self._note(
             steps,
             "administrator credential",
             "done",
-            f"{how}; stored as {pass_key}, so no later run asks again",
+            f"{how}; stored as {pw_entry}, so no later run asks again",
         )
         self._last_admin = (host, typed)
         return request.admin_user, typed
@@ -1041,17 +1041,17 @@ class HandlerIloSetup:
         steps: list[ModelIloSetupStep],
     ) -> None:
         label = f"{role.lower()} account"
-        user_key = self._key(host, role, "USERNAME")
-        pass_key = self._key(host, role, "PASSWORD")
-        has_user, has_pass = user_key in stored, pass_key in stored
+        user_entry = self._key(host, role, "USERNAME")
+        pw_entry = self._key(host, role, "PASSWORD")
+        has_user, has_pass = user_entry in stored, pw_entry in stored
         if has_user != has_pass:
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"the store holds only one of {user_key} and {pass_key}",
+                f"the store holds only one of {user_entry} and {pw_entry}",
             )
         try:
-            stored_user = self._secrets.get(user_key) if has_user else None
-            password = self._secrets.get(pass_key) if has_pass else None
+            stored_user = self._secrets.get(user_entry) if has_user else None
+            password = self._secrets.get(pw_entry) if has_pass else None
         except SetupStoreError:
             raise _StopError(
                 Refusal.SECRET_STORE_UNAVAILABLE, "read of an account key"
@@ -1070,7 +1070,7 @@ class HandlerIloSetup:
             if password is None:
                 raise _StopError(
                     Refusal.ACCOUNT_EXISTS_NO_CREDENTIAL,
-                    f"{label} exists in the iLO and {pass_key} is not in the store; "
+                    f"{label} exists in the iLO and {pw_entry} is not in the store; "
                     "remove the account in the iLO or store its password, then run again",
                 )
             granted = _granted(present)
@@ -1103,24 +1103,24 @@ class HandlerIloSetup:
     def _store_new_account(
         self, host: str, role: str, username: str, steps: list[ModelIloSetupStep]
     ) -> SecretStr:
-        user_key = self._key(host, role, "USERNAME")
-        pass_key = self._key(host, role, "PASSWORD")
+        user_entry = self._key(host, role, "USERNAME")
+        pw_entry = self._key(host, role, "PASSWORD")
         password = self._generate()
         try:
-            created_user = self._secrets.create(user_key, SecretStr(username))
-            created_pass = self._secrets.create(pass_key, password)
+            created_user = self._secrets.create(user_entry, SecretStr(username))
+            created_pass = self._secrets.create(pw_entry, password)
         except SetupStoreError as exc:
             raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
         if not (created_user and created_pass):
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"{user_key} or {pass_key} appeared in the store during this run",
+                f"{user_entry} or {pw_entry} appeared in the store during this run",
             )
         self._note(
             steps,
             f"{role.lower()} store keys",
             "done",
-            f"{user_key}, {pass_key} created",
+            f"{user_entry}, {pw_entry} created",
         )
         return password
 

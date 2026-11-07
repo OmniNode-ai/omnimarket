@@ -31,24 +31,32 @@ handler:
   module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish
   class: HandlerIloRedfish
   input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
+  output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
 
 # handler_routing binds both handlers to the node (the canonical-file-shape ratchet reads it). There is
-# no event_bus block: the node is called in process by the operator's lab tooling, not by a bus
+# empty event_bus topics: the node is called in process by the operator's lab tooling, not by a bus
 # command, so runtime auto-wiring must not attach it.
+runtime_dispatch:
+  external_trigger: the operator's lab tooling calls the node in process through its CLI
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
 handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: ilo_redfish
       handler:
-        name: HandlerIloRedfish
-        module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish
+        name: HandlerIloRedfishEnvelope
+        module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope
       event_model:
         name: ModelIloRedfishRequest
         module: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request
     - operation: ilo_setup
       handler:
-        name: HandlerIloSetup
-        module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_setup
+        name: HandlerIloSetupEnvelope
+        module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope
       event_model:
         name: ModelIloSetupRequest
         module: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup
@@ -59,8 +67,7 @@ descriptor:
   # A write is made idempotent by the action journal, not by the device: see the design note.
   idempotent: false
   timeout_ms: 300000
-  runtime_profiles:
-    - effects
+  runtime_profiles: []
 
 config:
   # The secret-store key names for a host without explicit names in its overlay row.
@@ -91,5 +98,5 @@ config:
     description: "The operator env file that holds the machine identity (INFISICAL_ADDR, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET). It wins over the shell, which can be older than the file."
 
 metadata:
-  transport_type: in_process
+  transport_type: local
   ticket: OMN-21835
