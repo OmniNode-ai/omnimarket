@@ -75,12 +75,12 @@ class HandlerWorkLedgerJoinJ5:
     def __init__(
         self,
         *,
-        append: HandlerWorkLedgerAppendEffect,
-        ledger: ProtocolLedgerReader,
-        identities: ProtocolStoreIdentities,
-        projection: ProtocolProjectedRows,
-        sink: ProtocolEmissionSink,
-        policy: ModelJoinJ5Policy,
+        append: HandlerWorkLedgerAppendEffect | None = None,
+        ledger: ProtocolLedgerReader | None = None,
+        identities: ProtocolStoreIdentities | None = None,
+        projection: ProtocolProjectedRows | None = None,
+        sink: ProtocolEmissionSink | None = None,
+        policy: ModelJoinJ5Policy | None = None,
         clock: Callable[[], datetime] | None = None,
         backend: Literal["in_memory", "real"] = "real",
     ) -> None:
@@ -89,7 +89,7 @@ class HandlerWorkLedgerJoinJ5:
         self._identities = identities
         self._projection = projection
         self._sink = sink
-        self._policy = policy
+        self._policy = policy or load_join_j5_policy()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._backend = backend
 
@@ -101,10 +101,40 @@ class HandlerWorkLedgerJoinJ5:
     def handler_category(self) -> Literal["EFFECT"]:
         return "EFFECT"
 
+    def _wired(
+        self,
+    ) -> tuple[
+        HandlerWorkLedgerAppendEffect,
+        ProtocolLedgerReader,
+        ProtocolStoreIdentities,
+        ProtocolProjectedRows,
+        ProtocolEmissionSink,
+    ]:
+        # Every collaborator defaults to None so the boot resolver can construct the handler from
+        # injectable params alone; a handler built without one refuses at the call that needs it.
+        if (
+            self._append is None
+            or self._ledger is None
+            or self._identities is None
+            or self._projection is None
+            or self._sink is None
+        ):
+            raise RuntimeError(
+                "HandlerWorkLedgerJoinJ5 is not wired: append, ledger, identities, projection and sink are required"
+            )
+        return (
+            self._append,
+            self._ledger,
+            self._identities,
+            self._projection,
+            self._sink,
+        )
+
     def handle(self, request: ModelJoinJ5Request) -> ModelJoinJ5Result:
         policy = self._policy
+        append, ledger, identities, projection, sink = self._wired()
         chain = ChainEmitter(
-            self._sink,
+            sink,
             node=policy.emission_node,
             piece=policy.to_piece,
             clock=self._clock,
@@ -112,7 +142,7 @@ class HandlerWorkLedgerJoinJ5:
             backend=self._backend,
         )
         try:
-            principal = self._identities.resolve(request.identity_ref)
+            principal = identities.resolve(request.identity_ref)
         except StoreIdentityUnresolvedError as exc:
             code = policy.identity_unresolved_failure_code
             chain.refuse(code, str(exc))
@@ -124,7 +154,7 @@ class HandlerWorkLedgerJoinJ5:
             )
 
         chain.start()
-        receipt = self._append.handle(request.append, writer_principal=principal)
+        receipt = append.handle(request.append, writer_principal=principal)
         if receipt.status not in _DURABLE or not receipt.ledger_lines:
             code = policy.append_not_accepted_failure_code
             chain.failure(code, f"{receipt.status.value}: {receipt.message}")
@@ -137,8 +167,8 @@ class HandlerWorkLedgerJoinJ5:
             )
 
         ledger_seq = receipt.ledger_lines[0]
-        durable = self._ledger.read_text().splitlines()[ledger_seq - 1]
-        projected = self._projection.read_row(
+        durable = ledger.read_text().splitlines()[ledger_seq - 1]
+        projected = projection.read_row(
             ledger_id=request.append.ledger_id, ledger_seq=ledger_seq
         )
         if projected is None or projected.raw_row != durable:
