@@ -115,7 +115,8 @@ handler_routing:
   # OMN-22413: the machinery tier. The effect side reads the rolling ledger window, the throughput
   # tick log, the tickets carrying a Class line and the live CLAIMs; this operation decides which
   # recurring FRICTION classes, tick keys and machinery tickets become candidates, and skips what
-  # a live CLAIM owns. The dispatch plan ranks the machinery kind by config.lab_fill_plan.machinery.
+  # a live CLAIM owns, and a deploy-drift tick key whose daemon a live scope=retired-units HOLD
+  # (hold_rows) names. The dispatch plan ranks the machinery kind by config.lab_fill_plan.machinery.
   - operation: classify_lab_fill_machinery_candidates
     topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
