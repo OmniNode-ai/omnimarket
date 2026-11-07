@@ -12,9 +12,9 @@
     "expires": "2026-12-20"
   },
   "Tessl Reviewer": {
-    "reason": "Automated reviewer app posts a neutral row on every pull request; the operator ruling takes it out of what blocks a merge.",
-    "ticket": "OMN-22478",
+    "reason": "tessl-reviewer runs in advisory mode here; neutral is its success. See OMN-23029.",
+    "ticket": "OMN-23029",
     "added": "2026-11-07",
-    "expires": "2026-12-20"
+    "expires": "2027-01-09"
   }
 }

@@ -2031,15 +2031,18 @@ class TestExternalSweepExclusions:
         assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
+        # OMN-23029: the shape of every entry is pinned, not the literal values of
+        # whichever entries happen to be shipped. Pinning ticket, added and expires
+        # to one tuple made the registry unextendable: a second owner's exception
+        # could not be added without editing an assertion that was never about it.
+        # What must hold of EVERY entry is that it is reasoned, carries a real
+        # ticket, is dated, and expires after it was added.
         for name, entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.items():
-            assert entry.reason.strip()
-            if name == AUTOMATED_REVIEWER:
-                assert entry.ticket == "OMN-22478"
-                assert entry.added == "2026-11-07"
-            else:
-                assert entry.ticket == "OMN-17427"
-                assert entry.added == "2026-10-17"
-            assert entry.expires == "2026-12-20"
+            assert entry.reason.strip(), name
+            assert gate._SWEEP_TICKET_RE.match(entry.ticket), (name, entry.ticket)
+            assert gate._SWEEP_DATE_RE.match(entry.added), (name, entry.added)
+            assert gate._SWEEP_DATE_RE.match(entry.expires), (name, entry.expires)
+            assert entry.expires > entry.added, (name, entry.added, entry.expires)
         with pytest.raises(FrozenInstanceError):
             self._entry().reason = "changed"
 
