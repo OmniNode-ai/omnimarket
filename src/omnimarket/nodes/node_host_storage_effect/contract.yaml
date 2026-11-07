@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Storage Effect (OMN-22906)
+#
+# Runs one DECLARED storage command on a lab host and returns a typed result with the free bytes on
+# the command's measured path before and after. Commands, the hosts that may run them, the timeouts
+# and the backend are all in the node's overlay. A host or command the overlay does not declare is
+# refused with a typed result, and a command never runs when the free bytes before it cannot be read.
+# The backend is chosen by the overlay: in_memory (simulated hosts) or subprocess (an argv list run
+# behind the host's transport prefix, no shell).
+name: node_host_storage_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Run one declared storage command on a lab host and return the free bytes before and after as a
+  typed result; in-memory backend by default, a subprocess backend chosen by overlay.
+input_model:
+  name: ModelHostStorageRequest
+  module: omnimarket.nodes.node_host_storage_effect.models.model_host_storage
+output_model:
+  name: ModelHostStorageResult
+  module: omnimarket.nodes.node_host_storage_effect.models.model_host_storage
+handler:
+  module: omnimarket.nodes.node_host_storage_effect.handlers.handler_host_storage
+  class: HandlerHostStorage
+  input_model: omnimarket.nodes.node_host_storage_effect.models.model_host_storage.ModelHostStorageRequest
+  output_model: omnimarket.nodes.node_host_storage_effect.models.model_host_storage.ModelHostStorageResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostStorage
+      module: omnimarket.nodes.node_host_storage_effect.handlers.handler_host_storage
+    event_model:
+      name: ModelHostStorageRequest
+      module: omnimarket.nodes.node_host_storage_effect.models.model_host_storage
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-storage-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-storage-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-storage-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+# OVERLAY KEYS (overlay.yaml under node_host_storage_effect): backend (in_memory | subprocess),
+# free_bytes_argv with a {path} placeholder, free_bytes_timeout_seconds, commands (name, argv,
+# measured_path, timeout_seconds, simulated_effect_bytes) and hosts (name, transport_prefix, commands,
+# simulated_free_bytes). Profiles ship in overlays/: in_memory.yaml and subprocess.example.yaml.
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+  real: overlays/subprocess.example.yaml
+metadata:
+  transport_type: kafka
+  ticket: OMN-22906
+  description: Run one declared storage command on a lab host; return free bytes before and after.
+  created: '2026-11-07'
+  tags:
+  - host-storage
+terminal_event: onex.evt.omnimarket.host-storage-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-storage-completed.v1
+  event_type: ModelHostStorageResult
+externally_consumed_topics:
+- onex.evt.omnimarket.host-storage-completed.v1
