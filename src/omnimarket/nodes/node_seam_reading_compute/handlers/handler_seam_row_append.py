@@ -10,6 +10,9 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.nodes.contract_topics import contract_section
+from omnimarket.nodes.node_seam_reading_compute.adapters.inmemory_seam_row_store import (
+    InMemorySeamRowStore,
+)
 from omnimarket.nodes.node_seam_reading_compute.models.model_seam_row import (
     EnumRowAppendStatus,
     ModelSeamRowAppendRequest,
@@ -31,8 +34,10 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
 class HandlerSeamRowAppend:
     """Append every row of a request; report each row's status, refusing none silently."""
 
-    def __init__(self, *, store: ProtocolSeamRowStore) -> None:
-        self._store = store
+    def __init__(self, *, store: ProtocolSeamRowStore | None = None) -> None:
+        self._store: ProtocolSeamRowStore = (
+            store if store is not None else InMemorySeamRowStore()
+        )
 
     def handle(self, request: ModelSeamRowAppendRequest) -> ModelSeamRowAppendResult:
         statuses = tuple(self._store.append(row) for row in request.rows)
