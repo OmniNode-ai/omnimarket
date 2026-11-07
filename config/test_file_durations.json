@@ -1537,6 +1537,7 @@
   "tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py": 0.06,
   "tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py": 0.01,
   "tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py": 0.2,
+  "tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py": 5.46,
   "tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_dedupe_omn22777.py": 4.79,
   "tests/nodes/node_skill_contract_validate_compute/test_golden_chain_skill_contract_validate_compute.py": 9.66,
   "tests/nodes/node_skill_contract_validate_compute/test_registration.py": 0.01,
