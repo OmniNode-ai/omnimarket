@@ -184,10 +184,14 @@ def test_no_verb_can_reach_storage_accounts_licenses_firmware_or_log_clearing() 
     }
 
 
-def test_contract_declares_no_bus_and_no_secret_values() -> None:
+def test_contract_declares_no_bus_binds_handlers_and_no_secret_values() -> None:
     raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     assert "event_bus" not in raw
-    assert "handler_routing" not in raw
+    modules = {h["handler"]["module"] for h in raw["handler_routing"]["handlers"]}
+    assert modules == {
+        "omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish",
+        "omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_setup",
+    }
     assert raw["node_type"] == "effect"
     assert (
         "secrets" not in raw
