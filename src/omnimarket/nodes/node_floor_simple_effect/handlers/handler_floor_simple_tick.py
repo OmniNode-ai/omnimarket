@@ -95,6 +95,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent imp
     record_deploy_agent,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
+    CanaryPublishError,
     GitCanaryPublisher,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
@@ -1050,12 +1051,20 @@ class HandlerFloorSimpleTick:
         if times is None:
             # Nothing new is published: the canary then reads the old status as silent once it is older than its bound.
             return "unpublished_served_page_unread"
-        publisher = (
+        publish_status = (
             self._canary_publisher
             or GitCanaryPublisher(
                 canary, home / rt.state.dir_relpath / rt.state.canary_clone
             ).publish
         )
+
+        def publisher(status: ModelCanaryStatus) -> None:
+            # A failed push is its own typed code, never the generic unexpected-error code of a step (OMN-22924, AC2).
+            try:
+                publish_status(status)
+            except CanaryPublishError as exc:
+                raise FloorSourceError("canary_push_failed", str(exc)) from exc
+
         status = ModelCanaryStatus(
             floor_generated_at=times[0],
             alarm_heartbeat_at=times[1],

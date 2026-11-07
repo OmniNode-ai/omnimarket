@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22924
+title: The lab pushes one canary status file (floor age, alarm heartbeat, publication time) to the floor-canary repository's canary-status branch on every publication, so the outside job has something to judge
+summary: The publish node's after-publish canary step already writes the three-field status file and pushes it to the canary-status branch (OMN-19998). This pull request proves it end to end against a real git remote, gives a failed push its own typed code instead of the generic unexpected-error code, and scrubs credentials from git's words in the failure, with a failing control for each.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22924-canary-push
+  statement: Every publication pushes a status file with the floor generation time, the alarm heartbeat time and the publication time to the canary-status branch, a failed push is a typed failure, and no credential is ever in the file or the failure.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: after each floor publication the publisher writes the status file with the three fields and pushes it through the source-control node, and a test reads the pushed content back -- falsifier: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_push.py -q'
+  - id: AC2
+    statement: 'AC2: a failed push is a typed failure on the floor record and never a silent skip -- falsifier: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_push.py -q -k failed_push'
+  - id: AC3
+    statement: 'AC3: the file never holds a credential, shown by a scan of the written content -- falsifier: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_no_secret.py -q'
+evidence_requirements:
+- kind: tests
+  description: The canary status push and no-secret tests, and the existing golden and error chain tests of the alarm node, the simple floor and the publish node.
+  command: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect tests/nodes/node_lab_state_alarm_effect tests/nodes/node_floor_simple_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22924-ac1
+  description: The push test reads the three fields back from a real bare git remote, and the named break_no_push control is caught by the read-back.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_push.py -q
+- id: dod-omn22924-ac2
+  description: A push to a missing remote ends in the typed code canary_push_failed on the result and on the emission chain, and the named break_swallow_push_error control shows no failure.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_push.py -q -k failed_push
+- id: dod-omn22924-ac3
+  description: The scan of the pushed content and of the failure records finds no credential shape, git words that echo a credentialed remote are scrubbed, and the named break_leak_token control is flagged by the scan.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_no_secret.py -q
