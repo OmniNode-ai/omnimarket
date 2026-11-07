@@ -59,8 +59,6 @@ dod_evidence:
 - id: dod-omn22755-first-run-after-cutover
   description: "The first alarm run of the cutover unit names h051, h053 and h106 from their real hook-event state. Runtime evidence read at the local Done gate: the installed unit runs this node's module and its last-run.json is written."
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command
