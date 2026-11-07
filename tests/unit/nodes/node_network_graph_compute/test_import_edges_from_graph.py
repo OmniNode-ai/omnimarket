@@ -9,6 +9,7 @@ import pytest
 
 from omnimarket.models.model_code_graph import ModelRepoSnapshot
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
+    Graph,
     GraphRules,
     build_graph,
     import_edges,
@@ -29,7 +30,7 @@ def _snapshot(repo: str, files: dict[str, str]) -> ModelRepoSnapshot:
     return ModelRepoSnapshot(repo=repo, ref="main", head=repo[0] * 40, files=files)
 
 
-def _graph(*, back_import: bool) -> object:
+def _graph(*, back_import: bool) -> Graph:
     rules = GraphRules(roots=overlay().graph_roots)
     one = _snapshot(
         "repo_one",
@@ -51,7 +52,7 @@ def _graph(*, back_import: bool) -> object:
 
 
 def test_the_graph_hands_both_directions_of_a_pair_to_the_relation_report() -> None:
-    edges = import_edges(_graph(back_import=True))  # type: ignore[arg-type]
+    edges = import_edges(_graph(back_import=True))
     pairs = {(e.importer_repo, e.imported_repo) for e in edges}
     assert pairs == {("repo_one", "repo_two"), ("repo_two", "repo_one")}
     # an edge out of a test file is not an import of the code
@@ -63,7 +64,7 @@ def test_the_graph_hands_both_directions_of_a_pair_to_the_relation_report() -> N
 
 
 def test_control_without_the_back_import_reads_no_cycle() -> None:
-    edges = import_edges(_graph(back_import=False))  # type: ignore[arg-type]
+    edges = import_edges(_graph(back_import=False))
     report = HandlerImportRelationCompute().handle(request(edges, bare_overlay()))
     assert report.cycles == ()
     assert [(r.key.source, r.key.target) for r in report.relations] == [
