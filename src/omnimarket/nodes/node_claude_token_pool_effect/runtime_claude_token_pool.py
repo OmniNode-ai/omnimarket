@@ -14,6 +14,13 @@ Usage, on the lab host whose pool it is:
     python -m omnimarket.nodes.node_claude_token_pool_effect reorder --labels <a>,<b>,...
         draws these labels first, in this order, then every other token as it stands
     python -m omnimarket.nodes.node_claude_token_pool_effect status [--json]
+    python -m omnimarket.nodes.node_claude_token_pool_effect tick --host <name> [--dry-run]
+        the rotation tick (OMN-23000): re-syncs the pool's marks from the overlay's one source, sets this
+        host's draw order, and swaps the host's login to a usable token when the one in use is limited
+        or revoked; prints one line per result, labels only. Exit 0 on kept or swapped, 4 when nothing
+        usable is left, 3 when the overlay, the source or the pool cannot be read.
+    python -m omnimarket.nodes.node_claude_token_pool_effect schedule check|install|uninstall|status|run-now
+        the tick's own timer on a host the overlay declares (install --host <name> [--dry-run]).
 
 Exit 0 on success, 2 on a refusal, 3 when ``resolve`` finds an empty pool and 4
 when every token is limited or revoked (``resolve`` chose nothing;
@@ -25,17 +32,42 @@ revokes it. No output names a token's value.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from collections.abc import Sequence
 from getpass import getpass
+from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    find_node_overlay,
+    load_structured_overlay,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
+    FileTokenFile,
+    MirrorMarksSource,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     ClaudeTokenPoolRefusedError,
     HandlerClaudeTokenPool,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation import (
+    HandlerClaudeTokenRotation,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.schedule import (
+    NODE_NAME,
+    RotationScheduler,
+    load_schedule,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolRequest,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
+    ModelClaudeTokenRotationRequest,
+    ModelClaudeTokenRotationResult,
+    ModelRotationOverlay,
 )
 
 EXIT_REFUSED = 2
@@ -70,6 +102,12 @@ def _parser() -> argparse.ArgumentParser:
         "reorder", help="draw --labels first, in order, then every other token"
     )
     order.add_argument("--labels", required=True, help="comma-separated labels")
+    tick = verbs.add_parser(
+        "tick",
+        help="re-sync marks, spread the draw order, swap a limited or revoked login",
+    )
+    tick.add_argument("--host", required=True, help="this host's name in the overlay")
+    tick.add_argument("--dry-run", action="store_true")
     status = verbs.add_parser("status", help="print the pool status line")
     status.add_argument(
         "--json", action="store_true", help="the whole result as JSON (no token)"
@@ -85,10 +123,124 @@ def _pasted() -> str:
     return sys.stdin.read()
 
 
+def load_overlay() -> ModelRotationOverlay:
+    return load_structured_overlay(NODE_NAME, ModelRotationOverlay)
+
+
+def run_tick(
+    host: str,
+    *,
+    dry_run: bool = False,
+    overlay: ModelRotationOverlay | None = None,
+    home: Path | None = None,
+    pool: HandlerClaudeTokenPool | None = None,
+    registry_root: Path | None = None,
+) -> ModelClaudeTokenRotationResult:
+    """One tick for ``host`` with the production ports: its login file, the source's mirror, its pool."""
+    declared = overlay or load_overlay()
+    row = declared.host(host)
+    if row is None:
+        raise ValueError(f"{host} is not a host of the {NODE_NAME} overlay")
+    user_home = home or Path.home()
+    root = registry_root or Path(os.environ.get("OMNI_HOME", ""))
+    if not str(root):
+        raise ValueError(
+            "OMNI_HOME is not set; the tick keeps its rotation record under it"
+        )
+    source = declared.marks_source
+    handler = HandlerClaudeTokenRotation(
+        pool=pool or HandlerClaudeTokenPool(host=host),
+        token_file=FileTokenFile(user_home / row.token_file),
+        marks_source=MirrorMarksSource(
+            home=user_home,
+            mirror_path=source.mirror_path,
+            ssh_target=None if source.host == host else source.ssh_target,
+        ),
+        overlay=declared,
+        host=host,
+        events_path=root / load_schedule().state_directory / declared.events_file,
+    )
+    return handler.handle(ModelClaudeTokenRotationRequest(host=host, dry_run=dry_run))
+
+
+def _tick(args: argparse.Namespace) -> int:
+    result = run_tick(args.host, dry_run=args.dry_run)
+    sync = result.marks_sync
+    sys.stdout.write(
+        f"claude-pool-tick host={result.host} rank={result.rank} outcome={result.outcome} "
+        f"in_use={result.in_use_state} from={result.from_label or 'none'} to={result.to_label or 'none'} "
+        f"marks={sync.state}"
+        + (f" changed={','.join(sync.changed)}" if sync.changed else "")
+        + (f" ({sync.detail})" if sync.detail else "")
+        + "\n"
+    )
+    if result.alarm:
+        sys.stderr.write(result.alarm + "\n")
+    return EXIT_ALL_LIMITED if result.outcome == "no_usable" else 0
+
+
+def _schedule(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="schedule")
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    verbs.add_parser("check")
+    for verb in ("install", "uninstall", "status", "run-now"):
+        sub = verbs.add_parser(verb)
+        sub.add_argument("--host", required=True, help="the host's name in the overlay")
+        if verb == "install":
+            sub.add_argument(
+                "--workspace-root",
+                dest="workspace_root",
+                default=os.environ.get("OMNI_HOME", ""),
+            )
+            sub.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(list(arguments))
+    scheduler = RotationScheduler(
+        schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
+    )
+    if args.verb == "check":
+        done = scheduler.check()
+    elif args.verb == "install":
+        if not args.workspace_root:
+            raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
+        found = find_node_overlay(NODE_NAME)
+        if found is None:
+            raise NodeOverlayError(
+                "the overlay file cannot be found to pin its root in the unit"
+            )
+        done = scheduler.install(
+            args.host,
+            omni_root=Path(args.workspace_root),
+            overlay_root=found.parent.parent,
+            dry_run=args.dry_run,
+        )
+    elif args.verb == "uninstall":
+        done = scheduler.uninstall(args.host)
+    elif args.verb == "status":
+        done = scheduler.status(args.host)
+    else:
+        done = scheduler.run_now(args.host)
+    sys.stdout.write(done.stdout)
+    sys.stderr.write(done.stderr)
+    return done.exit_code
+
+
 def main(
     argv: list[str] | None = None, handler: HandlerClaudeTokenPool | None = None
 ) -> int:
-    args = _parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "schedule":
+        try:
+            return _schedule(arguments[1:])
+        except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
+            sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+            return EXIT_EMPTY
+    args = _parser().parse_args(arguments)
+    if args.verb == "tick":
+        try:
+            return _tick(args)
+        except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
+            sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+            return EXIT_EMPTY
     if args.verb == "resolve" and sys.stdout.isatty():
         sys.stderr.write(
             'refusing to write a token to a terminal; capture it: export X="$(... resolve)"\n'

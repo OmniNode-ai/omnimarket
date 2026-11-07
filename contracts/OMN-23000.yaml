@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23000"
+title: "The Claude token pool rotates by itself: a tick swaps any host off a limited or revoked token and keeps every host's pool marks in sync"
+summary: "node_claude_token_pool_effect gains a tick it schedules itself (a systemd user timer on a lab host, a launchd agent on the Mac, installed by its own schedule verb from the overlay's host list). Each tick re-syncs the pool's limited and revoked marks from the one source the overlay names (refusing an unreadable or stale source), sets a different draw order on every host, reads which pool token the host's login is, and swaps the login to a usable token when the one in use is limited or revoked or absent, spreading hosts across the usable tokens by their rank in the overlay. One event is appended per rotation and one when nothing usable is left. No result, event or file carries a token."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23000-rotation-tick"
+    statement: |-
+      A host whose login is a limited or revoked token is moved to a usable token by the scheduled tick with no person, hosts spread across the usable tokens, marks come from one source, and the host's login is untouched when it is usable.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a scheduled tick reads each host's pool, swaps the host's login to a usable token when the token in use is limited or revoked, spreads hosts across usable tokens, and re-syncs limited and revoked marks from one source, proven by a limited token swapped with no person and a failing control without the tick -- falsifier: uv run pytest of the rotation tick's tests plus a read of a host's token label after a planted limit"
+evidence_requirements:
+  - kind: "tests"
+    description: "The rotation tick, its marks source, its schedule and the existing pool cases."
+    command: "uv run pytest tests/nodes/node_claude_token_pool_effect tests/test_market_node_runtime_dogfood.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23000-rotation-tick"
+    description: "A planted limit on the token in use is swapped by the tick with no person, the failing control (no tick) leaves the host on the limited token, the named break (swap removed) turns the swap assertion red, hosts spread across usable tokens, a stale revoked mark is cleared from the source, an unreadable or stale source leaves the marks, and no token appears in any output."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_rotation_tick.py tests/nodes/node_claude_token_pool_effect/test_claude_token_rotation_schedule.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
