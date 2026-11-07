@@ -22,6 +22,7 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
+from omnimarket.models.model_gateway_node_skew import GatewayReadError, failure_error
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
@@ -44,10 +45,6 @@ DEFAULT_GATEWAY_TIMEOUT_S: Final[float] = 45.0
 _RESULT: Final[TypeAdapter[GithubGatewayResult]] = TypeAdapter(GithubGatewayResult)
 
 GatewayRoute = Callable[[ModelGithubGatewayRequest], GithubGatewayResult]
-
-
-class GatewayReadError(RuntimeError):
-    """The gateway gave no typed result for a request."""
 
 
 def _resolve_token_off_loop() -> str:
@@ -117,10 +114,7 @@ def read_over_bus(
         # status=failed and the reason; a gateway that predates an operation
         # refuses the request that way.
         if terminal.failed or terminal.payload.get("status") == "failed":
-            reason = str(terminal.payload.get("failure_reason") or "no reason")
-            raise GatewayReadError(
-                f"gateway {request.operation.value} failed: {reason[:300]}"
-            )
+            raise failure_error(request.operation.value, terminal.payload)
         return terminal.payload
 
     def run_call() -> dict[str, JsonValue]:

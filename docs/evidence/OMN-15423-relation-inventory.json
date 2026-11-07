@@ -4812,6 +4812,7 @@
         "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
         "node_llm_delegation_call_effect",
+        "node_local_dashboard_serve_effect",
         "node_measured_model_selection_compute",
         "node_metering_summary_compute",
         "node_plugin_walk_evidence_effect",
@@ -5987,6 +5988,7 @@
         "node_compaction_arm_assignment_compute",
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
+        "node_hook_events_by_correlation_read_effect",
         "node_lab_job_check_effect",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
@@ -7170,6 +7172,7 @@
       "partitioning": [],
       "producer": "node_projection_metering_summary",
       "readers": [
+        "node_local_dashboard_serve_effect",
         "node_projection_metering_summary",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -9746,6 +9749,7 @@
       "partitioning": [],
       "producer": "node_projection_usage_by_model_day",
       "readers": [
+        "node_local_dashboard_serve_effect",
         "node_projection_usage_by_model_day",
         "service:omnimarket_projection_migration_runner"
       ],

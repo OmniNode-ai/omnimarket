@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Test Harness Reading Compute
+#
+# Pure definition-B compute: handle(ModelLabTestHarnessFreshnessRequest) -> ModelLabTestHarnessReading.
+# The caller (the floor's reading source) supplies the stored reading and the time. A stale
+# reading is NOT WORKING, a missing one is UNKNOWN, and anything but WORKING blocks admission.
+# The max age travels on the request, from the harness overlay; this contract holds none.
+name: node_lab_test_harness_reading_compute
+contract_name: node_lab_test_harness_reading_compute
+node_name: node_lab_test_harness_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The central test harness's reading at a read time. WORKING while the stored reading is
+  inside its max age and every case ended as its kind requires; NOT WORKING when stale,
+  future-dated, for another piece or tag, or when a case did not end as required; UNKNOWN
+  when no reading exists. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_test_harness_reading
+      handler:
+        name: HandlerLabTestHarnessReading
+        module: omnimarket.nodes.node_lab_test_harness_reading_compute.handlers.handler_lab_test_harness_reading
+
+handler:
+  module: omnimarket.nodes.node_lab_test_harness_reading_compute.handlers.handler_lab_test_harness_reading
+  class: HandlerLabTestHarnessReading
+  input_model: omnimarket.models.lab_test_harness.ModelLabTestHarnessFreshnessRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_model:
+  name: ModelLabTestHarnessFreshnessRequest
+  module: omnimarket.models.lab_test_harness
+  description: The stored reading, or none, and the time to read it at.
+output_model:
+  name: ModelLabTestHarnessReading
+  module: omnimarket.models.lab_test_harness
+  description: The reading at that time.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.lab-test-harness-read-requested.v1"
+    operation: "lab_test_harness_reading"
+
+terminal_event: onex.evt.omnimarket.lab-test-harness-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-test-harness-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-test-harness-read.v1
+
+# The floor's reading source sends the request and reads the result; neither is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.lab-test-harness-read-requested.v1
+    producer: "the floor's reading source, which asks for the reading at a read time; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-test-harness-read.v1
+
+metadata:
+  description: "Central test harness reading with the staleness rule"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-05"
+  tags: [compute, lab-test-harness, reading, pure]
+  related_tickets: ["OMN-22478"]

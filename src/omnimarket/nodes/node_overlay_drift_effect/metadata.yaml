@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_drift_effect
+version: 1.0.0
+description: Daily read of every pinned overlay in the overlay home through the models the runtime has installed, appended as an overlay drift reading row.
+pack: operator_tooling
+node_role: effect
+display_name: Overlay Drift Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_overlay_drift_effect: omnimarket.nodes.node_overlay_drift_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- overlay

@@ -65,6 +65,14 @@ work_ledger_query:
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
     parity_receipt_lane: work-ledger-parity
+  # Every answer travels as one record on the completed topic. The producer
+  # refuses a record over its max_request_size (1,048,588 on the dev bus), and
+  # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An
+  # answer over max_answer_bytes is replaced by a typed refusal.
+  answer_bound:
+    broker_max_request_size: 1048588
+    envelope_headroom_bytes: 131072
+    max_answer_bytes: 917516
 db_io:
   db_tables:
     - name: work_ledger_rows

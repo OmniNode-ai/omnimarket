@@ -180,8 +180,10 @@ from omnimarket.inference.provider_quota_observation import (
     ProtocolProviderQuotaObservationSink,
 )
 from omnimarket.inference.provider_quota_state import (
+    HOST_UNREACHABLE_DISPOSITION,
     ModelProviderQuotaSnapshot,
     ProtocolProviderQuotaReader,
+    quota_block_for_backend,
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
@@ -987,6 +989,8 @@ def _local_rung_attempt(
         "error_message": failure_message,
         "acceptance_decision": EnumDelegationAcceptanceDecision.CLIMB.value,
         "acceptance_reason": EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value,
+        # OMN-22474: the key this call ran on; the handler keeps a customer key only.
+        "secret_ref": result.secret_ref,
     }
 
 
@@ -2269,10 +2273,12 @@ class LocalDelegationDispatchPort:
             if pinned_backend_id is None and probe_walk is None
             else None
         )
-        scope_skips: list[dict[str, object]] = []
+        route_skips: list[dict[str, object]] = []
 
-        def next_in_scope(
+        def next_available(
             skipped: ModelResolvedDelegationBackend,
+            *,
+            quota_skip: bool = False,
         ) -> ModelResolvedDelegationBackend | None:
             """The model the run would have tried after ``skipped``, had it failed."""
             local_next = next_local_rung(skipped)
@@ -2280,7 +2286,9 @@ class LocalDelegationDispatchPort:
                 return local_next
             if _is_customer_byok_route(skipped) and model is None:
                 chosen_next = next_chosen_model_byok_route(
-                    skipped, tried_models=frozenset(tried_byok_models)
+                    skipped,
+                    tried_models=frozenset(tried_byok_models),
+                    quota_state=self._quota_snapshot(quota_observations),
                 )
                 if chosen_next is not None:
                     return chosen_next
@@ -2296,7 +2304,7 @@ class LocalDelegationDispatchPort:
             if sibling is not None:
                 return sibling
             excluded_tiers.add(skipped_tier)
-            return self._resolve_next_backend(
+            next_backend = self._resolve_next_backend(
                 current_tier=skipped_tier,
                 task_type=task_type,
                 excluded_tiers=frozenset(excluded_tiers),
@@ -2305,6 +2313,20 @@ class LocalDelegationDispatchPort:
                 spread_key=str(correlation_id),
                 quota_state=quota,
             )
+            if (
+                next_backend is None
+                and quota_skip
+                and _is_customer_byok_route(skipped)
+                and skipped_tier != registered_byok_tier_name()
+            ):
+                # The same next-key fallback a failed attempt takes when no
+                # declared house rung can offer the customer's next provider.
+                return next_registered_byok_route(
+                    skipped,
+                    tried_backend_ids=frozenset(excluded_backend_refs),
+                    quota_state=quota,
+                )
+            return next_backend
 
         while True:
             # OMN-19987: a backend chosen for this pass is a routing decision;
@@ -2322,29 +2344,63 @@ class LocalDelegationDispatchPort:
             scope_reason = model_scope_skip_reason(
                 backend, scope_rule, is_local_rung=_is_local_ladder_rung
             )
-            if scope_rule is not None and scope_reason is not None:
-                scope_skip: dict[str, object] = {
+            quota_block = quota_block_for_backend(
+                self._quota_snapshot(quota_observations),
+                endpoint_url=backend.endpoint_ref,
+                api_key_ref=backend.secret_ref,
+                model_name=backend.model_id,
+            )
+            # A pin may probe an unreachable host, as before, but never spend
+            # a provider quota known to be exhausted. Check the resolved key:
+            # house-rung selection can precede local credential substitution.
+            if (
+                quota_block is not None
+                and quota_block.disposition == HOST_UNREACHABLE_DISPOSITION
+                and (pinned_backend_id is not None or probe_walk is not None)
+            ):
+                quota_block = None
+            skip_rule = scope_rule if scope_reason is not None else "provider_quota"
+            route_skip_reason = scope_reason
+            if route_skip_reason is None and quota_block is not None:
+                route_skip_reason = (
+                    f"provider quota exhausted: {quota_block.provider_id}; "
+                    f"blocked_until={quota_block.blocked_until}; {quota_block.reason}"
+                )
+            if skip_rule is not None and route_skip_reason is not None:
+                route_skip: dict[str, object] = {
                     "tier": _routing_tier_name(backend),
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
-                    "rule": scope_rule,
-                    "reason": scope_reason,
+                    "rule": skip_rule,
+                    "reason": route_skip_reason,
                 }
-                scope_skips.append(scope_skip)
-                skipped_rungs.append(scope_skip)
+                route_skips.append(route_skip)
+                skipped_rungs.append(route_skip)
                 logger.info(
                     "LocalDelegationDispatch: %s task_type=%s correlation=%s",
-                    scope_reason,
+                    route_skip_reason,
                     task_type,
                     correlation_id,
                 )
                 excluded_backend_refs.add(backend.backend_id)
                 tried_byok_models.add((backend.backend_id, backend.model_id))
-                scope_next = next_in_scope(backend) if len(scope_skips) < 64 else None
-                if scope_next is not None:
-                    backend = _with_model_choice(scope_next)
+                may_skip = len(route_skips) < 64 and (
+                    skip_rule != "provider_quota"
+                    or (pinned_backend_id is None and not no_escalation)
+                )
+                next_route = (
+                    next_available(backend, quota_skip=skip_rule == "provider_quota")
+                    if may_skip
+                    else None
+                )
+                if next_route is not None:
+                    backend = _with_model_choice(next_route)
                     continue
-                scope_refused = model_scope_refusal(scope_rule, scope_skips)
+                route_refused = (
+                    model_scope_refusal(skip_rule, route_skips)
+                    if skip_rule != "provider_quota"
+                    else ProtocolConfigurationError(route_skip_reason)
+                )
                 if not attempts:
                     self._project_refusal(
                         correlation_id=correlation_id,
@@ -2354,13 +2410,13 @@ class LocalDelegationDispatchPort:
                         prompt=prompt,
                         source_session_id=source_session_id,
                         tenant_id=resolved_tenant_id,
-                        failure_message=str(scope_refused),
+                        failure_message=str(route_refused),
                         attribution=attribution,
                         trace_id=trace_id,
                         queue_wait_ms=queue_wait_ms,
                         started_monotonic=dispatch_started,
                     )
-                    raise scope_refused
+                    raise route_refused
                 _settle_final_rung_as_terminate(attempts)
                 run_steps.terminal(
                     succeeded=False,
@@ -2374,8 +2430,8 @@ class LocalDelegationDispatchPort:
                     "model_name": backend.model_id,
                     "quality_gate_passed": False,
                     "quality_score": 0.0,
-                    "quality_gates_failed": [str(scope_refused)],
-                    "error_message": str(scope_refused),
+                    "quality_gates_failed": [str(route_refused)],
+                    "error_message": str(route_refused),
                     "delegation_latency_ms": 0,
                     "input_tokens": 0,
                     "output_tokens": 0,
@@ -2757,7 +2813,19 @@ class LocalDelegationDispatchPort:
                 rung_retry_budget = 0
                 if customer_route:
                     budget = byok_backend_max_retries(backend.backend_id) or 0
-                    if spent < budget and redraft_leaves_reserve():
+                    quota_block = quota_block_for_backend(
+                        self._quota_snapshot(quota_observations),
+                        endpoint_url=backend.endpoint_ref,
+                        api_key_ref=backend.secret_ref,
+                        model_name=backend.model_id,
+                    )
+                    # A declared retry budget does not create capacity before
+                    # the provider's reset. Spend no retry on a blocked route.
+                    if (
+                        quota_block is None
+                        and spent < budget
+                        and redraft_leaves_reserve()
+                    ):
                         rung_retry_budget = budget
                 transport_transition = self._decide_transition(
                     transport_cause,
@@ -2819,7 +2887,9 @@ class LocalDelegationDispatchPort:
                 next_chosen_model: ModelResolvedDelegationBackend | None = None
                 if customer_route and may_move_on and model is None:
                     next_chosen_model = next_chosen_model_byok_route(
-                        backend, tried_models=frozenset(tried_byok_models)
+                        backend,
+                        tried_models=frozenset(tried_byok_models),
+                        quota_state=self._quota_snapshot(quota_observations),
                     )
 
                 # OMN-13640: exclude the BACKEND first, and only give up on the
@@ -2881,7 +2951,9 @@ class LocalDelegationDispatchPort:
                     and next_chosen_model is None
                 ):
                     next_customer_key = next_registered_byok_route(
-                        backend, tried_backend_ids=frozenset(excluded_backend_refs)
+                        backend,
+                        tried_backend_ids=frozenset(excluded_backend_refs),
+                        quota_state=self._quota_snapshot(quota_observations),
                     )
 
                 # A transport failure never runs the quality gate, so bank its
@@ -2902,6 +2974,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
+                        # OMN-22474: the key this call ran on (customer keys only survive).
+                        "secret_ref": transport_result.secret_ref,
                         # OMN-22224: the call's measured time (a timeout carries
                         # the time spent before the bound ended it).
                         "duration_ms": transport_result.latency_ms,
@@ -3363,6 +3437,8 @@ class LocalDelegationDispatchPort:
                     "quality_score": gate_result.quality_score,
                     "error_message": "; ".join(gate_result.failure_reasons),
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-22474: the key this call ran on (customer keys only survive).
+                    "secret_ref": result.secret_ref,
                     # OMN-22224: the call's measured time.
                     "duration_ms": result.latency_ms,
                     # OMN-20717: whether this rung's cost was measured.
@@ -3686,7 +3762,9 @@ class LocalDelegationDispatchPort:
                 and _is_customer_byok_route(backend)
             ):
                 next_chosen_model_after_gate = next_chosen_model_byok_route(
-                    backend, tried_models=frozenset(tried_byok_models)
+                    backend,
+                    tried_models=frozenset(tried_byok_models),
+                    quota_state=self._quota_snapshot(quota_observations),
                 )
             if next_chosen_model_after_gate is not None:
                 logger.info(
@@ -3797,7 +3875,9 @@ class LocalDelegationDispatchPort:
                 and current_tier != registered_byok_tier_name()
             ):
                 next_backend = next_registered_byok_route(
-                    backend, tried_backend_ids=frozenset(excluded_backend_refs)
+                    backend,
+                    tried_backend_ids=frozenset(excluded_backend_refs),
+                    quota_state=self._quota_snapshot(quota_observations),
                 )
 
             if next_backend is None:

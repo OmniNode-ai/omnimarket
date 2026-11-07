@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Host configuration of the alarm tick: paths and executables (OMN-19998)."""
 
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..host_table import HostTableError, read_host_aliases
 from .model_drainer_watch_options import ModelDrainerWatchOptions
 from .model_quiet_host_repair import ModelHostDrainerCommand
 
@@ -61,7 +64,14 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # configured none, which the tick reports as UNCONFIGURED and never treats as a pass.
     drainer: ModelDrainerWatchOptions | None = None
     # Alias/host and remote execution bindings come from deployment data, never from a request.
-    host_aliases: dict[str, str] = Field(default_factory=dict)
+    # A host id maps to the event label (or labels) its hook events carry. Name a ``host_table``
+    # instead of listing them: the aliases are then derived from that table at load time, so the
+    # two cannot disagree (OMN-22755). Naming both is refused.
+    host_aliases: dict[str, str | tuple[str, ...]] = Field(default_factory=dict)
+    host_table: Path | None = None
+    # Why ``host_table`` could not be read ('' when it was, or none is named); set by the
+    # validator below. Hook events are then unattributable, which the tick reports as UNKNOWN.
+    host_table_error: str = ""
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (
@@ -101,8 +111,27 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     job_intervals: dict[str, int] = Field(
         default_factory=lambda: dict(CALENDAR_JOB_INTERVALS)
     )
+    # Exit codes a job declares as its own finding, by label (OMN-19998): a floor job exiting 1 for
+    # floors under is working, so its episode briefs a lane to act on the finding, not the job.
+    job_finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
     bash: str = "bash"
     python: str = Field(default_factory=lambda: sys.executable)
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_host_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not data.get("host_table"):
+            return data
+        if data.get("host_aliases"):
+            raise ValueError("name host_table or host_aliases, not both")
+        try:
+            aliases: dict[str, str | tuple[str, ...]] = dict(
+                read_host_aliases(Path(data["host_table"]))
+            )
+            error = ""
+        except HostTableError as exc:
+            aliases, error = {}, str(exc)
+        return {**data, "host_aliases": aliases, "host_table_error": error}
 
     @model_validator(mode="after")
     def declared_hosts(self) -> "ModelSilentFailureAlarmOptions":
@@ -119,7 +148,13 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     def from_environment(cls) -> "ModelSilentFailureAlarmOptions":
         config = os.environ.get("ONEX_SILENT_FAILURE_ALARM_CONFIG")
         if config:
-            return cls.model_validate_json(Path(config).read_text())
+            path = Path(config)
+            document = json.loads(path.read_text())
+            table = document.get("host_table") if isinstance(document, dict) else None
+            if table and not Path(table).is_absolute():
+                # A relative table path is read from the configuration file's own directory.
+                document["host_table"] = str(path.resolve().parent / table)
+            return cls.model_validate(document)
         root = os.environ.get("OMNI_HOME")
         if not root:
             raise ValueError(

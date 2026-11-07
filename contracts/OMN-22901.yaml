@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22901
+title: Piece 1's frozen sample is hashed as a full sha256 with integrity checks, flipped labels read NOT WORKING, and the golden and error chain tests each turn red under a named mutation
+summary: The code graph overlay already holds the 30 labelled entities, the 4 known-used controls and a bar of 27 (frozen under a 16 character prefix of the content hash). The sample model now freezes under the full sha256 through one method, refuses a sample that labels a module twice or names a control twice, and refuses a control labelled unused. A 30 and 4 sample spelled in the tests shows the reading read NOT WORKING when two labels flip under a bar of 29, three flips pass and four fail the deployed bar of 27, and an unreached control fails with every label agreeing. The chain event test file records each named mutation with the chain it turns red, including three mutations of the events the handler publishes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22901-frozen-sample
+  statement: The frozen sample is one full sha256 over thirty labelled entities, four controls and the bar, and a changed or self-contradicting sample is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a 30 entity and 4 control sample freezes under the full sha256 of its canonical content, one changed label changes it, a label changed after the freeze refuses the load, and a duplicate label or a control labelled unused is refused -- falsifier: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the reading compares the graph verdicts with the labels and reads NOT WORKING when the agreement is under the frozen bar, shown by a test that flips two labels -- falsifier: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov -k flipped'
+  - id: AC3
+    statement: 'AC3: the golden and error chain event tests exist and each turns red under a named mutation recorded in NAMED_MUTATIONS -- falsifier: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov -k chain'
+evidence_requirements:
+- kind: tests
+  description: The frozen sample tests, the flipped label tests and the chain event tests with their mutations
+  command: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22901-frozen-sample
+  description: The freeze, its integrity checks and the flipped label reading pass.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov
+    cwd: .
+- id: dod-omn22901-chain-mutations
+  description: The golden and error chain event tests and their named mutations pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov -k chain
+    cwd: .
+- id: dod-omn22901-integration-proof
+  description: Run this pull request's node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22901 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
+    cwd: .

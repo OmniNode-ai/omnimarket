@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_lane_join_compute
+version: 0.1.0
+description: Join lane names to the agents that ran them and count events per reporting host, without I/O.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_hook_lane_join_compute: omnimarket.nodes.node_hook_lane_join_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- hook-events
+- queue-status
+pack: operator_tooling
+display_name: Hook Lane Join Compute
+node_role: compute

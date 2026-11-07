@@ -167,6 +167,12 @@ def test_automation_liveness_installer_scan_refuses_a_run_that_did_not_scan_a_re
             _Class.INSTALLER_CODE,
         ),
         ("a/tool", "#!/bin/sh\nlaunchctl load x\n", _Class.INSTALLER_CODE),
+        (
+            "a/w.py",
+            'target = Path("/etc/systemd/system")\nsrc = staging / "x.service"\n'
+            "shutil.copyfile(src, target)\n",
+            _Class.INSTALLER_CODE,
+        ),
     ],
 )
 def test_automation_liveness_installer_scan_vocabulary_finds(
@@ -192,6 +198,15 @@ def test_automation_liveness_installer_scan_vocabulary_finds(
         ("a/boot.sh.tmpl", "systemctl link x\nlaunchctl load y\n"),
         ("a/notes.md", "launchctl load x\n"),
         ("a/unit.conf", "[Service]\n"),
+        # A long module that only NAMES unit directories, with its write verbs far away: the
+        # shape of a plugin pruner in a sibling repository, which reads the unit globs so it
+        # can spare a referenced plugin tree and whose copies are 1537 lines off (OMN-20804).
+        (
+            "a/prune.py",
+            'UNITS = ("~/Library/LaunchAgents/*.plist", "~/.config/systemd/user/*.timer")\n'
+            + "value = 1\n" * 40
+            + "shutil.copytree(source, destination)\n",
+        ),
     ],
 )
 def test_automation_liveness_installer_scan_vocabulary_ignores(

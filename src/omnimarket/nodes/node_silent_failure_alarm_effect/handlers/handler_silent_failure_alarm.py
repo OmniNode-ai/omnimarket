@@ -132,6 +132,20 @@ def _entry_hosts(entry: dict[str, object] | None) -> set[str]:
     return {str(item) for item in raw} if isinstance(raw, list) else set()
 
 
+def _covered_hosts(
+    entry: dict[str, object] | None, newest_row: set[str] | None
+) -> set[str]:
+    """The hosts an open alarm already raised on: its recorded hosts that the newest row names.
+
+    The recorded set alone is not the record: it only ever grew over an episode that never ended, so
+    a host that recovered, or one the alarm could not attribute before, stayed "raised" for days
+    with no row naming it (OMN-22777). The newest row on the ledger is what was raised last; when
+    the ledger holds none (it rolled), the recorded set stands.
+    """
+    recorded = _entry_hosts(entry)
+    return recorded if newest_row is None else recorded & newest_row
+
+
 def _episode_id(name: str, entry: dict[str, object]) -> str:
     started = _parse_stamp(str(entry.get("started") or ""))
     return f"al-{started.strftime('%Y%m%dT%H%MZ') if started else 'unknown'}-{name}"
@@ -235,7 +249,9 @@ class HandlerSilentFailureAlarm:
                 summary="",
                 warnings=(f"silent_failure_alarm: ledger could not be read: {detail}",),
             )
-        runs, refusals, raised, raised_hosts = self._read_ledger(text, now)
+        runs, refusals, raised, raised_hosts, newest_row_hosts = self._read_ledger(
+            text, now
+        )
         pending, delivered_log, opened, delivery_problem = self._read_deliveries()
         host_stamps = self._read_host_lane_stamps(text, now)
         host_claims = self._read_host_lane_stamps(text, now, kinds=("CLAIM",))
@@ -414,9 +430,14 @@ class HandlerSilentFailureAlarm:
                 }
                 opened[name] = current
             escalating = False
-            if current is not None and not (hosts or set()) - _entry_hosts(current):
+            covered = _covered_hosts(current, newest_row_hosts.get(name))
+            if current is not None and not (hosts or set()) - covered:
                 # Still the same condition: it is open, and only a first two-hour hold raises again.
                 held = _open_minutes(now, current)
+                if hosts is not None:
+                    # A host that read healthy since is no longer covered: it raises a row if it goes
+                    # quiet again, whatever the episode's age (OMN-22777).
+                    current["hosts"] = sorted(hosts)
                 if (
                     current.get("escalated") is not None
                     or held < ESCALATE_AFTER.total_seconds() / 60
@@ -466,7 +487,7 @@ class HandlerSilentFailureAlarm:
                     "started": current["started"]
                     if current is not None
                     else _stamp(now),
-                    "hosts": sorted(_entry_hosts(current) | (hosts or set())),
+                    "hosts": sorted(hosts if hosts is not None else set()),
                     "escalated": _stamp(now)
                     if escalating
                     else (current or {}).get("escalated"),
@@ -514,6 +535,7 @@ class HandlerSilentFailureAlarm:
                 threshold=options.job_exit_threshold,
                 lanes=options.job_lanes,
                 intervals=options.job_intervals,
+                finding_exits=options.job_finding_exits,
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
             )
@@ -886,12 +908,20 @@ class HandlerSilentFailureAlarm:
                 if episode.cause == "missed-interval"
                 else "exits nonzero"
             )
+            task = (
+                f"{episode.label} is working: exit {episode.last_exit} is its declared "
+                "finding, not a crash. Read what its log reports and act on that condition "
+                "(for a floor job, the floors it names as under); never change the job so "
+                "the finding exits 0"
+                if episode.cause == "finding-exit"
+                else f"Find why {episode.label} {what} and fix the cause through a pull request"
+            )
             brief.write_text(
                 f"Job-exit alarm\n\nEpisode: {episode.episode}\nLabel: {episode.label}\n"
                 f"Cause: {episode.cause}\n"
                 f"streak: {episode.streak}\nlast exit: {episode.last_exit}\n\n"
                 f"{_log_tails(episode, options.uid)}\n"
-                f"Find why {episode.label} {what} and fix the cause through a pull request; "
+                f"{task}; "
                 f"cite episode={episode.episode} in your CLAIM. A cause that lives only on the "
                 f"operator host (a credential, a login, a missing file) is reported in your final "
                 f"message with this log as evidence, not worked around.\n",
@@ -936,15 +966,18 @@ class HandlerSilentFailureAlarm:
         tuple[ModelLaneRefusal, ...],
         dict[str, datetime],
         dict[str, set[str]],
+        dict[str, set[str]],
     ]:
-        """The lab-fill runs, the lane refusals, the alarms already raised and the hosts the
-        quiet-host alarms inside the dedupe window named, as of ``now``."""
+        """The lab-fill runs, the lane refusals, the alarms already raised, the hosts the
+        host-keyed alarms inside the dedupe window named, and the hosts each host-keyed alarm's
+        newest row named (whatever its age), as of ``now``."""
         floor = _stamp(now - LOOKBACK)
         ceiling = _stamp(now)
         runs: list[ModelPlacementRun] = []
         refusals: list[ModelLaneRefusal] = []
         raised: dict[str, datetime] = {}
         raised_hosts: dict[str, set[str]] = {}
+        newest_row: dict[str, tuple[datetime, set[str]]] = {}
         for line in text.splitlines():
             head = line[:20]
             if head > ceiling or ("lab-fill" not in line and LANE not in line):
@@ -994,7 +1027,20 @@ class HandlerSilentFailureAlarm:
                     raised_hosts.setdefault(family, set()).update(
                         (row.token("hosts") or "").split(",")
                     )
-        return tuple(runs), tuple(refusals), raised, raised_hosts
+                if family in (QUIET, DRAINER) and (
+                    family not in newest_row or stamp >= newest_row[family][0]
+                ):
+                    newest_row[family] = (
+                        stamp,
+                        {h for h in (row.token("hosts") or "").split(",") if h},
+                    )
+        return (
+            tuple(runs),
+            tuple(refusals),
+            raised,
+            raised_hosts,
+            {family: named for family, (_, named) in newest_row.items()},
+        )
 
     def _drainer_host(self) -> str:
         return self._options.drainer.host if self._options.drainer is not None else ""
@@ -1075,6 +1121,12 @@ class HandlerSilentFailureAlarm:
         nobody declared is left out, and a line that does not parse is a failed read.
         """
         command = self._options.hook_events_command
+        if self._options.host_table_error:
+            return (
+                {},
+                f"host table unreadable, hook-event hosts cannot be attributed: "
+                f"{self._options.host_table_error}",
+            )
         if not self._options.host_aliases:
             return (
                 {},

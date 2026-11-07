@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_dev_merge_redeploy_trigger_effect/overlay.yaml and set
+# ONEX_SKILL_OVERLAY_ROOTS to that root. All values here are synthetic; supply your
+# deployment's facts. No key has a default.
+repos:
+  - repo: OmniNode-ai/example-sibling
+    # The key the lane's /app/build-provenance.json records this repository under
+    # (per_repo_vcs_provenance.siblings.<source_repo>.vcs_ref).
+    source_repo: example-sibling
+    base_branches: [dev]
+    clone_dir: $OMNI_HOME/example-sibling
+    # The repository whose tip is the ref the deploy agent rebuilds at.
+    build_context_clone_dir: $OMNI_HOME/example-build-context
+    build_context_branch: dev
+    # siblings: a repository the lane vendors; build_context: the repository the lane is built in.
+    provenance_section: siblings
+# The CI deploy gate's classifier module, loaded by path.
+classifier_path: $OMNI_HOME/example-gate-repo/.github/actions/deploy-gate/validate_pr_deploy_required.py
+# Prints the lane's build-provenance manifest as JSON. The deployment's own way to reach it.
+lane_probe_argv: [ssh, example-lane-host, docker, exec, example-effects-container, cat, /app/build-provenance.json]
+requested_by: lab-node
+# observe: read the lane after a merge another trigger redeploys and publish no command.
+# publish: publish the redeploy-start command and wait for the orchestrator's terminal event.
+mode: observe
+# Seconds between lane reads while observing one merge.
+observe_poll_seconds: 30
+verify_deadline_seconds: 3000

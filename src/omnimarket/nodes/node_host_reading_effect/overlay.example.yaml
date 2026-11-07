@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_reading_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: host-reading
+  actor: node:node_host_reading_effect
+  publish_max_age_seconds: 7200
+outbox:
+  ledger_path_env: ONEX_LEDGER_PATH
+  lock_dirname: .ledger_locks
+  outbox_suffix: .bus-outbox
+  refused_dirname: refused
+  pending_glob: "*.json"
+  queued_at_field: queued_at
+  oldest_max_seconds: 900
+  refused_max: 0
+  injected_fault: Plant a queued request older than the bound or a refused file in a sandbox outbox
+# Removed with its probe at the bus cutover; see handlers/probe_ledger_old_names.py.
+old_names:
+  root_env: OMNI_HOME
+  ledger_path_env: ONEX_LEDGER_PATH
+  links:
+    - name: docs/old/LEDGER.md
+      ledger_relative: LEDGER.md
+    - name: docs/old/archive
+      ledger_relative: archive
+  injected_fault: Replace an old name with a regular file in a sandbox copy
+# Piece 2's hourly canary: one lane per host the lab host table pools, through the route lanes
+# take. run_command_env names the variable holding the route's words; {host} is the host's name.
+canary:
+  run_command_env: EXAMPLE_CANARY_ROUTE
+  canary_interpreter: python3
+  run_timeout_seconds: 150
+  busy_exit_codes: [75]
+  result_marker: HOST-CANARY-RESULT
+  wrapper_end_marker: EXAMPLE-WRAPPER-END
+  pool_admitted_marker: "admitted ("
+  pool_unreadable_marker: unreadable
+  disk_paths: ["~", /tmp]
+  disk_floor_gb: 10
+  advertisements_command_env: EXAMPLE_ADVERTISEMENTS_COMMAND
+  advertisements_timeout_seconds: 60
+  advert_max_age_seconds: 900
+  # A drill overlay sets drill: true, so its rows carry drill=yes and never count as operational.
+  drill: false
+  injected_fault: Kill the canary's wrapper so its result is not typed
+# Join J1, the code graph to hosts and capacity: the nodes host discovery and placement depend on, and the
+# emission journal the floor reads its receipts from.
+join_j1:
+  join: J1
+  from_piece: 1
+  to_piece: 2
+  graph_chain_node: "node_code_graph_effect:graph_run"
+  host_chain_node: "node_host_reading_effect:join_j1"
+  nodes:
+    - {name: node_lane_host_discovery_compute, repo: example_app, package_dir: src/example_app/nodes/node_lane_host_discovery_compute}
+    - {name: node_lab_placement_compute, repo: example_app, package_dir: src/example_app/nodes/node_lab_placement_compute}
+  emission:
+    home_env: EXAMPLE_FLOOR_HOME
+    journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  injected_fault: Remove a required node's package from the repository the graph reads
+hosts:
+  - name: example-ledger-host
+    scheduler: launchd
+    probes: [ledger-outbox, ledger-old-names]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_PATH: /example/ledger/LEDGER.md
+      ONEX_LEDGER_HOST_NAME: example-ledger-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+  - name: example-writing-host
+    scheduler: systemd-user
+    probes: [ledger-outbox]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_PATH: /example/old/LEDGER.md
+      ONEX_LEDGER_HOST_NAME: example-writing-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+  - name: example-canary-host
+    scheduler: launchd
+    probes: [host-canary]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_HOST_NAME: example-canary-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_CANARY_ROUTE: /example/route --lane host-canary --host {host} --
+  - name: example-join-host
+    scheduler: launchd
+    probes: [join-j1]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_HOST_NAME: example-join-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_REPOS_ROOT: /example/clones
+      EXAMPLE_FLOOR_HOME: /example/floor-home

@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -38,9 +38,11 @@ from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_pu
 
 pytestmark = pytest.mark.unit
 
-# The only links the page may carry: the empty icon and the vendored theme files published beside it.
+# The only links the page may carry: the site's icons and the vendored theme files published beside it.
 _ICON_AND_THEME_LINKS = [
-    '<link rel="icon" href="data:,">',
+    '<link rel="icon" type="image/svg+xml" href="favicon.svg">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">',
+    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
     '<link rel="stylesheet" href="onex.theme.light.css">',
     '<link rel="stylesheet" href="onex.theme.dark.css">',
     '<link rel="stylesheet" href="onex.theme.warm.css">',
@@ -146,6 +148,7 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
             serve_url="u",
@@ -158,6 +161,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
             serve_url="u",
@@ -184,7 +188,11 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     site = tmp_path / "site"
     assert sorted(p.name for p in site.iterdir()) == [
+        "apple-touch-icon.png",
+        "detail.html",
         "factory-floor.json",
+        "favicon-32.png",
+        "favicon.svg",
         "floor",
         "index.html",
         "onex.theme.dark.css",
@@ -193,12 +201,19 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
+    for icon in ("favicon.svg", "favicon-32.png", "apple-touch-icon.png"):
+        assert (site / icon).read_bytes() == (
+            NODE_DIR / "page/icons" / icon
+        ).read_bytes()
     assert (
         json.loads((site / "factory-floor.json").read_text())["generated_at"]
         == RECORD["generated_at"]
     )
+    assert (site / "detail.html").read_bytes() == (
+        NODE_DIR / "page/detail.html"
+    ).read_bytes()
     assert (site / "index.html").read_bytes() == (
-        NODE_DIR / "page/index.html"
+        NODE_DIR / "page/simple.html"
     ).read_bytes()
     assert (site / "floor/index.html").read_bytes() == (
         NODE_DIR / "page/floor/index.html"
@@ -207,13 +222,23 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
+        "detail.html",
         "index.html",
         "publish-status.json",
         "factory-floor.json",
     )
     # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
-    assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+    assert [
+        c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
+    ] == [
+        False,
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -303,6 +328,7 @@ class Scripted(LocalSsh):
 
 
 FACTORY = "omnimarket.nodes.node_factory_floor_effect"
+FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
 
@@ -335,8 +361,13 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
     calls = _program_calls(runner)
-    assert sorted(calls[:-1]) == sorted(["hosts", "pool", HEALTH_MODULE])
-    assert calls[-1] == FACTORY
+    # The canary status is published after the page is served: the last call is the floor node's canary step.
+    assert calls[-1] == FLOOR_SIMPLE
+    calls = calls[:-1]
+    assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE])
+    assert calls[-2] == FACTORY
+    # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
+    assert calls[-1] == FLOOR_SIMPLE
     pool = next(c[0] for c in runner.calls if any("onex_lab_run.py" in w for w in c[0]))
     assert pool == [
         "python3",
@@ -380,7 +411,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
         def __call__(
             self, argv: Sequence[str], stdin: bytes | None, timeout: int
         ) -> subprocess.CompletedProcess[bytes]:
-            if argv[0] != "ssh" and FACTORY not in argv:
+            if argv[0] != "ssh" and FACTORY not in argv and FLOOR_SIMPLE not in argv:
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)
 
@@ -529,7 +560,11 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
+        "detail.html",
         "index.html",
         "publish-status.json",
         "process-health.json",
@@ -605,14 +640,15 @@ def test_cli_refusal_exits_two(
 
 
 PAGE = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
-SHELL = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+SHELL = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 
 
 def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None:
     assert 'DATA_FILE = "factory-floor.json"' in PAGE
     runtime = load_runtime()
     assert runtime.names.data == "factory-floor.json"
-    assert runtime.names.page == "index.html"
+    assert runtime.names.page == "detail.html"
+    assert runtime.names.simple_page == "index.html"
     for field in (
         "generated_at", "lines", "floor", "sources", "line_id", "condition", "blocker", "progress", "gates", "line_evidence", "evidence_kind", "stations",
         "reason", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
@@ -645,8 +681,11 @@ def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", PAGE, re.IGNORECASE
     )
-    assert PAGE.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in PAGE
+    assert re.findall(r"<link[^>]*>", PAGE) == [
+        '<link rel="icon" type="image/svg+xml" href="../favicon.svg">',
+        '<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">',
+        '<link rel="apple-touch-icon" href="../apple-touch-icon.png">',
+    ]
     assert "src=" not in PAGE
 
 
@@ -701,7 +740,7 @@ FLOOR_HARNESS = textwrap.dedent(
     """
 )
 
-FLOOR_RECORD = {
+FLOOR_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -862,7 +901,7 @@ def machine_cells(**cells: object) -> dict[str, object]:
     return {**base, **cells}
 
 
-BAYS_RECORD = {
+BAYS_RECORD: dict[str, Any] = {
     **FLOOR_RECORD,
     "floor": {
         **FLOOR_RECORD["floor"],
@@ -1141,7 +1180,7 @@ SHELL_HARNESS = textwrap.dedent(
 )
 
 SHELL_NOW = "2099-01-01T00:10:00Z"
-SHELL_RECORD = {
+SHELL_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -1236,7 +1275,7 @@ SHELL_MANIFEST = {
     ],
 }  # fmt: skip
 
-SHELL_FILES = {
+SHELL_FILES: dict[str, object] = {
     "factory-floor.json": SHELL_RECORD,
     "publish-status.json": SHELL_STATUS,
     "process-health.json": SHELL_HEALTH,
@@ -1255,7 +1294,7 @@ def _run_shell(
             node,
             "-e",
             SHELL_HARNESS,
-            str(NODE_DIR / "page/index.html"),
+            str(NODE_DIR / "page/detail.html"),
             json.dumps({k: json.dumps(v) for k, v in files.items()}),
             json.dumps(opts),
         ],
@@ -1278,17 +1317,18 @@ def _shell_out(result: dict[str, object]) -> dict[str, str]:
     return cast("dict[str, str]", result["out"])
 
 
-def test_page_tabs_the_site_is_one_page_with_four_tabs_and_the_dashboard_first() -> (
+def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first() -> (
     None
 ):
     labels = re.findall(r'\{id: "(\w+)", label: "([^"]+)"', SHELL)
     assert labels == [
         ("dashboard", "Dashboard"),
         ("floor", "Factory floor"),
+        ("machines", "Machines"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
     ]
-    for pane in ("dashboard", "floor", "process", "map"):
+    for pane in ("dashboard", "floor", "machines", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
     assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL
@@ -1602,10 +1642,11 @@ def test_the_record_step_keeps_its_place_among_the_refresh_steps_when_it_is_flag
     env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "plugin")
     result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
     names = [s.name for s in result.steps]
-    assert names[-1] == load_runtime().record_step
+    assert names[-2] == load_runtime().record_step
+    assert names[-1] == "floor_simple"
     assert names.count(load_runtime().record_step) == 1
-    assert result.steps[-1].status == "failed"
-    assert "alpha-plan" in result.steps[-1].detail
+    assert result.steps[-2].status == "failed"
+    assert "alpha-plan" in result.steps[-2].detail
 
 
 def test_nothing_is_flagged_when_the_overlay_declares_nothing_readable(
@@ -1764,3 +1805,68 @@ def test_page_headline_open_count_is_the_sum_of_the_drawn_accounts() -> None:
     )
     assert headline is not None
     assert (int(headline.group(1)), int(headline.group(2))) == (sum(per_account), 2)
+
+
+def _canary_calls(ssh: LocalSsh) -> list[int]:
+    return [
+        index
+        for index, (argv, _stdin) in enumerate(ssh.calls)
+        if argv[0] != "ssh" and "--publish-canary" in argv
+    ]
+
+
+def test_canary_is_published_after_the_last_file_of_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh()
+    result = HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert [(s.name, s.status) for s in result.after_publish] == [
+        ("floor_canary", "ok")
+    ]
+    canary = _canary_calls(ssh)
+    assert len(canary) == 1
+    served = [
+        index for index, (argv, _stdin) in enumerate(ssh.calls) if argv[0] == "ssh"
+    ]
+    assert served
+    assert max(served) < canary[0]
+    assert canary[0] == len(ssh.calls) - 1  # nothing follows it
+
+
+def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
+    steps = {step.name: step for step in load_runtime().steps}
+    assert "--defer-canary" in steps["floor_simple"].args
+    after = {step.name: step for step in load_runtime().after_publish_steps}
+    assert after["floor_canary"].required
+    assert "--publish-canary" in after["floor_canary"].args
+
+
+def test_a_failed_page_upload_publishes_no_canary_so_the_failure_stays_visible(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh(fail_name="factory-floor.json")
+    with pytest.raises(PublishRefusedError):
+        HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert _canary_calls(ssh) == []
+
+
+def test_a_canary_that_cannot_be_published_fails_the_run_after_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    class CanaryFails(LocalSsh):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] != "ssh" and "--publish-canary" in argv:
+                self.calls.append((list(argv), stdin))
+                return subprocess.CompletedProcess(list(argv), 2, b"", b"push refused")
+            return super().__call__(argv, stdin, timeout)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    with pytest.raises(PublishRefusedError, match="floor_canary"):
+        HandlerFactoryFloorPublish(CanaryFails()).handle(
+            _request(tmp_path, state_dir=str(state)), environ={}
+        )
+    assert (tmp_path / "site" / "factory-floor.json").is_file()  # the page is served
+    assert (state / load_runtime().evidence_file).is_file()  # and the run says so

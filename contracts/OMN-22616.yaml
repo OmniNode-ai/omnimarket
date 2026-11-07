@@ -1,0 +1,45 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22616
+title: "A queued outbox file that is not UTF-8 reads as an unreadable queued file, not as a failed host read"
+summary: >-
+  The outbox probe of the host reading node read each queued file outside any guard. A queued file with bytes
+  that are not UTF-8 raised UnicodeDecodeError, which the handler does not catch, so the whole run ended
+  INDETERMINATE and wrote no rows. The probe now counts such a file as an unreadable queued file, the same
+  reason it already gives for a file whose JSON or stamp cannot be read.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22616-outbox-not-utf8
+    statement: A queued outbox file that is not UTF-8 makes the outbox reading NOT_WORKING with the reason queued-file-unreadable and never fails the run.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a queued outbox file that is not UTF-8 makes the outbox reading NOT_WORKING with the reason queued-file-unreadable and does not fail the run -- falsifier: uv run --frozen pytest tests/nodes/node_host_reading_effect/test_host_readings.py -k not_utf8 -q --no-cov'
+      - id: AC2
+        statement: 'AC2: the same test fails on the handler without the change, with UnicodeDecodeError -- falsifier: git checkout origin/dev -- src/omnimarket/nodes/node_host_reading_effect/handlers/probe_ledger_outbox.py then uv run --frozen pytest tests/nodes/node_host_reading_effect/test_host_readings.py -k not_utf8 -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The outbox probe reads a queued file of other bytes as an unreadable queued file.
+    command: uv run --frozen pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22616-outbox-not-utf8
+    description: The host reading node's tests pass, including the queued file of other bytes read as unreadable and not as a failed run.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov
+        cwd: .
+  - id: dod-omn22616-outbox-not-utf8-integration-proof
+    description: The pushed head ran the node's suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22616 -- uv run --frozen pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov'
+        cwd: .

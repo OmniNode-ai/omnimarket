@@ -70,6 +70,19 @@ SshIdentity = Annotated[
     AfterValidator(_identity_path),
 ]
 
+
+def _volumes_root(value: str) -> str:
+    if not value.strip("/"):
+        raise ValueError("must be a directory, not the filesystem root")
+    return value
+
+
+VolumesRoot = Annotated[
+    str,
+    StringConstraints(pattern=r"^/[A-Za-z0-9._/-]*$"),
+    AfterValidator(_volumes_root),
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -99,6 +112,11 @@ class ModelLabHostRow(_ModelOverlayBase):
     ssh_user: SshUser | None = None
     proxy_jump: SshJump | None = None
     ssh_identity: SshIdentity | None = None
+    # The same three cells for the ``fallback_targets`` destinations, which a machine off the lab LAN
+    # reaches by a different route than ``target``. Omitted: the row-level cell applies. Same rules as above.
+    fallback_ssh_user: SshUser | None = None
+    fallback_proxy_jump: SshJump | None = None
+    fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
     available: bool = True
@@ -136,6 +154,15 @@ class ModelLabHostRow(_ModelOverlayBase):
     tenant_id: str | None = None
     ledger_bus_lane: str | None = None
     ledger_bus_python: str | None = None
+    # The ledger a lane on this host is configured with: absolute or ``$OMNI_HOME/`` form, filled on the host.
+    ledger_path: (
+        Annotated[
+            str, StringConstraints(pattern=r"^(?:/|\$OMNI_HOME/)[A-Za-z0-9._/-]+$")
+        ]
+        | None
+    ) = None
+    # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
+    volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False

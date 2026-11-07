@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_tree_install_effect
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install the complete declared source directory, including root data, dotfiles,
+  nested directories and future files. Preserve destination-only generated files;
+  source paths always win. Stage and compare every entry before
+  replacement; retain the previous tree and restore it on failed readback.
+  The default overlay maps a source skills tree to a controller's merge-drain
+  installation. Roots come from the caller. This first installer slice does not
+  install host units or restart services. Invoke it before subsequent host installs.
+input_model:
+  name: ModelTreeInstallRequest
+  module: omnimarket.nodes.node_host_tree_install_effect.models.model_tree_install
+output_model:
+  name: ModelTreeInstallResult
+  module: omnimarket.nodes.node_host_tree_install_effect.models.model_tree_install
+handler:
+  module: omnimarket.nodes.node_host_tree_install_effect.handlers.handler_tree_install
+  class: HandlerTreeInstall
+  input_model: omnimarket.nodes.node_host_tree_install_effect.models.model_tree_install.ModelTreeInstallRequest
+  output_model: omnimarket.nodes.node_host_tree_install_effect.models.model_tree_install.ModelTreeInstallResult
+entrypoint:
+  name: NodeHostTreeInstallEffect
+  module: omnimarket.nodes.node_host_tree_install_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_tree_install_effect.handlers.handler_tree_install:HandlerTreeInstall
+  handlers:
+    - operation: install
+      topic: onex.cmd.omnimarket.host-tree-install-requested.v1
+      handler:
+        name: HandlerTreeInstall
+        module: omnimarket.nodes.node_host_tree_install_effect.handlers.handler_tree_install
+terminal_event: onex.evt.omnimarket.host-tree-install-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-tree-install-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-tree-install-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-tree-install-completed.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-tree-install-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: inmemory

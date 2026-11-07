@@ -52,6 +52,13 @@ class ModelLedgerTailClaim(BaseModel):
     at: datetime | None = None
     ts: str | None = None
     text: str = ""
+    type: str | None = Field(
+        default=None,
+        description=(
+            "The row's type when the caller knows it. Only a CLAIM owns a PR: a MSG "
+            "or any other typed row naming the PR is never ownership."
+        ),
+    )
 
 
 class ModelLedgerTailLease(BaseModel):

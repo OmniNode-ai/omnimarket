@@ -1,0 +1,399 @@
+{
+ "source": "h053 onex-worktree-reconcile tick 7ad1c20a, 2026-11-06T22:15:26Z to 22:37:44Z, installed revision dbe39912bb, receipt latest.json",
+ "recorded_completed": {
+  "scanned": 517,
+  "removed": 0,
+  "kept": 512,
+  "needs_human": 5,
+  "failures": 43
+ },
+ "rows": [
+  {
+   "tree": "OMN-21700/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-21898/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-21920/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-21934/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22108/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22297/control",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22337/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22339/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22342/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22345/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22379/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22385/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22425/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22478-host-readings/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22537-redeploy-serve/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22643/overlays",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22651/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22651/overlays",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22659/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22661-canary/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22661-canary/omnimarket-int",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22661-canary/overlays",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22661-canary/overlays-int",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22662/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22662/overlays",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "OMN-22663/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "agent-review-t3-gate-accept-2150/omniclaude",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "cloud-gate-fix-1605/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "declare-host-net-1935/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "declare-host-net-1935/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "floor-cm-links-1102/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "floor-reds-1300-r/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "hourly-sweep-2230/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "labfill-envelope-2230/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "market-claim-acct-1102/slice-b",
+   "kind": "orphan_dir",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "one-rt-t18b-1205/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "merged_pr_read_failed"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "one-rt-t18b-r-1340/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "merged_pr_read_failed"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "pf-drive-omnibase_infra-5600/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "pr-4988-0920/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "pr-5120-fix-0315/omnimarket",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "pr-5619-1606/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "queue-unmergeable-1355-r/private-repo",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:ValueError"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  },
+  {
+   "tree": "venv-churn-1355-r/omnibase_infra",
+   "kind": "linked_worktree",
+   "probe_errors": [
+    "probe_failed:TimeoutExpired"
+   ],
+   "decision": "facts_unreadable",
+   "outcome": "kept"
+  }
+ ]
+}
