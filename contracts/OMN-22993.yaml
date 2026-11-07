@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-22993
+title: The host bring-up graph declares the move of the run volume onto a host's drive as a step of its own
+summary: The bring-up graph had no target that reads unsatisfied while a mounted drive sits idle under a run volume that is still the RAM filesystem. Its storage stage read the RAM filesystem install as done, so a host whose drive arrived after its first bring-up (h053 on 2026-11-05, h051 next) kept its run volume in RAM; h053 refused new work on "disk free 9.9G of 64.0G < 10G" with 14 of 24 slots used on 2026-11-07. The graph gains the target run-volume-on-drive in stage G, after data-moved, acting through the host installer's disk-backed mount, and storage-verified needs it. The plan row is the same row in the host bring-up dependency graph plan; the contract is regenerated from it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22993-run-volume-step
+  statement: A host with a drive reaches its drive-backed run volume through one declared bring-up target, ordered after the data move and before the storage measurement, and the same target serves every host with a drive.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the graph declares run-volume-on-drive in stage G, a host_unit_install target needing data-moved and ram-filesystem, and storage-verified needs it, and a host whose checks all read ok except that target acts on that target alone -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q -k "run_volume or drive_host" fails against the graph without the target and passes with it'
+  - id: AC2
+    statement: 'AC2: the committed contract equals what the generator writes from the plan with the new row, 58 targets as 4, 7, 15, 8, 7, 9 and 8, and the same host with no row for the step plans no act -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_orchestrator.py -q'
+evidence_requirements:
+- kind: tests
+  description: The bring-up graph rows and golden chain tests, with the error chain that drops the step.
+  command: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_orchestrator.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22993-ac1
+  description: The run-volume step tests pass on the branch and fail against the graph without the target.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q -k "run_volume or drive_host"
+- id: dod-omn22993-ac2
+  description: The 58-row graph and the golden chain pass, and the error chain that drops the step plans no act.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_orchestrator.py -q
