@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-22813
+title: The floor's join from the lab state piece to the code graph reads only the pipeline chains the floor cycle node declares
+summary: The floor cycle node's contract declares runtime.pipeline_chains, the cycle and its six steps. ModelFloorReceiptInput carries declared_chains, the floor tick binds the declaration to the overlay's lab_state_piece, and the receipt handler builds a join's per-piece view only from declared chains for a piece that has a declaration. The chains the node emits for each lab source row it reads are no longer counted by join J0, which no downstream piece could ever answer with a typed upstream failure. The piece's own receipt and chain findings still use every chain, and no verdict is relaxed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22813-declared-chains
+  statement: Join J0 judges only the chains its piece's node declares, so a lab source row that read a bad value no longer reads as a broken pipeline, while a real pipeline failure and a malformed chain still do.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: of the 93 broken chains measured on the served floor record, the 64 row chains stop being counted by J0 and the 29 others still fail, a real pipeline failure under J0 still breaks it, and a malformed row chain is still named by its own finding -- falsifier: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_declared_chains_join_input.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the declaration lives in the cycle node contract and equals the node names the cycle emits, and the tick hands it to the receipt -- falsifier: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_declared_chains_join_input.py tests/nodes/node_floor_simple_effect -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The declared chains tests and the floor receipt tests.
+  command: uv run --frozen pytest tests/nodes/node_floor_emission_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22813-ac1
+  description: The declared chain tests pass, with the failing controls.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_declared_chains_join_input.py -q --no-cov
+- id: dod-omn22813-ac2
+  description: The contract declaration and the tick binding tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_declared_chains_join_input.py tests/nodes/node_floor_simple_effect -q --no-cov
+- id: dod-omn22813-integration-proof
+  description: The lab run at the pushed head, with the failing control on the dev revision of the receipt handler, is recorded in the pull request body; the local Done gate re-runs the floor emission tests on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22813 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_emission_compute -q --no-cov
+    cwd: .

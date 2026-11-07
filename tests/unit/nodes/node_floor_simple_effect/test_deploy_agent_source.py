@@ -217,3 +217,62 @@ def test_control_the_old_floor_reads_working_on_the_same_failures(
     states = {v.id: v.state for v in new.verdicts}
     assert states["deploy_agent"] == "NOT WORKING"
     assert states["deploy_lag"] == "WORKING"
+
+
+def test_golden_jobs_the_agent_superseded_are_neither_failures_nor_successes(
+    tmp_path: Path,
+) -> None:
+    """The shape on 2026-11-06: a success, a failure, then the agent ended four queued jobs as superseded within one
+    second. The row stays at one failure (red at 2) and the superseded jobs take no place in the bounded record."""
+    path = tmp_path / "deploy-agent.json"
+    agent = _Agent()
+    agent.finished("good", "success", NOW - timedelta(minutes=40))
+    _cycle(path, agent, NOW - timedelta(minutes=39))
+    agent.finished("interrupted", "failed", NOW - timedelta(minutes=30), ESTIMATOR)
+    _cycle(path, agent, NOW - timedelta(minutes=29))
+    for n in range(4):
+        agent.finished(f"superseded-{n}", "superseded", NOW - timedelta(minutes=20))
+        _cycle(path, agent, NOW - timedelta(minutes=19 - n))
+    read = read_deploy_agent(path, OVERLAY, NOW)
+    assert read.status == "read"
+    assert read.subjects[0].ok
+    assert read.subjects[0].value == 1.0
+    assert read.summary == "1 failed in a row, 1 of 2 recorded results failed"
+    assert [e.phase for e in deploy_agent_events(read, 17, NOW, "c4")] == [
+        "start",
+        "success",
+    ]
+
+
+def test_error_failures_stay_red_across_a_superseded_job_and_a_success_after_it_clears(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deploy-agent.json"
+    agent = _Agent()
+    for n in range(2):
+        agent.finished(f"bad-{n}", "failed", NOW - timedelta(minutes=30 - n), ESTIMATOR)
+        _cycle(path, agent, NOW - timedelta(minutes=29 - n))
+    agent.finished("replaced", "superseded", NOW - timedelta(minutes=10))
+    _cycle(path, agent, NOW - timedelta(minutes=9))
+    red = read_deploy_agent(path, OVERLAY, NOW)
+    assert not red.subjects[0].ok
+    assert red.subjects[0].value == 2.0
+    agent.finished("good", "success", NOW - timedelta(minutes=2))
+    _cycle(path, agent, NOW - timedelta(minutes=1))
+    assert read_deploy_agent(path, OVERLAY, NOW).subjects[0].ok
+
+
+def test_a_record_written_before_the_change_with_superseded_jobs_is_read_without_them(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deploy-agent.json"
+    path.write_text(
+        '{"observed_at": "2026-11-06T10:39:00Z", "agent_readable": true, "error": "", "state": "idle", "jobs": ['
+        '{"correlation_id": "a", "status": "success", "completed_at": "2026-11-06T10:00:00Z", "reason": ""},'
+        '{"correlation_id": "b", "status": "superseded", "completed_at": "2026-11-06T10:01:00Z", "reason": ""},'
+        '{"correlation_id": "c", "status": "superseded", "completed_at": "2026-11-06T10:02:00Z", "reason": ""}]}',
+        encoding="utf-8",
+    )
+    read = read_deploy_agent(path, OVERLAY, NOW)
+    assert read.subjects[0].ok
+    assert read.subjects[0].value == 0.0
