@@ -9800,7 +9800,8 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_pr_landing_orchestrator",
-        "node_work_ledger_query_effect"
+        "node_work_ledger_query_effect",
+        "node_work_ledger_reducer_compute"
       ],
       "target_schema": "omninode_internal",
       "writers": [

@@ -18,7 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_host_reading import EnumHostProbe
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+    ModelLedgerAppendRoute,
+)
 
 NODE_NAME = "node_host_reading_effect"
 
@@ -108,6 +111,28 @@ class ModelHostCanaryProbeSettings(BaseModel):
     injected_fault: str = Field(min_length=1)
 
 
+class ModelDurabilityProbeSettings(BaseModel):
+    """One probe row appended through the bus and read back from the durable store by a deadline.
+
+    The probe row has its own append route so a drill can break that route alone (an append that
+    answers accepted and publishes nothing) while the reading row still lands. The read route is
+    the lab read node over the database projection: the durable store, never the file.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    append: ModelLedgerAppendRoute
+    read: ModelCommandLedgerReadRoute
+    #: The lane of the probe rows, apart from the reading rows' lane.
+    probe_lane: str = Field(min_length=1)
+    #: A probe row not read back from the durable store by then reads NOT WORKING.
+    deadline_seconds: int = Field(ge=1)
+    poll_interval_seconds: int = Field(ge=1)
+    #: A drill overlay sets this, so its rows carry drill=yes and never count as operational.
+    drill: bool
+    injected_fault: str = Field(min_length=1)
+
+
 class ModelJoinJ1Node(BaseModel):
     """One node the host stage needs the graph's verdict for, and where its modules sit."""
 
@@ -178,6 +203,7 @@ class ModelHostReadingOverlay(BaseModel):
     publish: ModelHostReadingPublish
     outbox: ModelOutboxProbeSettings
     old_names: ModelOldNamesProbeSettings | None
+    durability: ModelDurabilityProbeSettings | None
     #: Absent means no host declares the host-canary probe.
     canary: ModelHostCanaryProbeSettings | None = None
     #: Absent means no host declares the join-j1 probe.
@@ -195,6 +221,10 @@ class ModelHostReadingOverlay(BaseModel):
             if EnumHostProbe.LEDGER_OLD_NAMES in host.probes and not self.old_names:
                 raise ValueError(
                     f"host {host.name} declares ledger-old-names with no old_names settings"
+                )
+            if EnumHostProbe.LEDGER_DURABILITY in host.probes and not self.durability:
+                raise ValueError(
+                    f"host {host.name} declares ledger-durability with no durability settings"
                 )
             if EnumHostProbe.HOST_CANARY in host.probes and not self.canary:
                 raise ValueError(
@@ -217,6 +247,11 @@ class ModelHostReadingOverlay(BaseModel):
                 "old_names": self.old_names.model_dump(mode="json")
                 if self.old_names
                 else None,
+                **(
+                    {"durability": self.durability.model_dump(mode="json")}
+                    if self.durability
+                    else {}
+                ),
                 **(
                     {"canary": self.canary.model_dump(mode="json")}
                     if self.canary
