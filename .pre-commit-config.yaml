@@ -854,12 +854,17 @@ repos:
       # predicate runs in CI through tests/test_delegation_nightly_placement.py
       # inside the required pytest job, calling this module's own check_repo,
       # so a local pass and a CI pass cannot disagree.
+      # OMN-22478: the same script also refuses, in EVERY workflow, a job on a
+      # floating hosted image (ubuntu-latest, macos-latest, windows-latest) whose
+      # steps install a versioned system package (postgresql-16, python3.12,
+      # openssl@3). ubuntu-latest became Ubuntu 26.04 on 2026-11-06, which has no
+      # postgresql-16, and every full-suite shard failed.
       - id: lane-job-placement
-        name: Lane-bound CI jobs pin literal runner labels
+        name: Lane-bound CI jobs pin literal runner labels; no floating hosted image with a versioned install
         language: system
         entry: uv run python scripts/ci/check_lane_job_placement.py
         pass_filenames: false
-        files: ^(\.github/workflows/delegation-(regression-nightly|terminal-join-daily|rung-eval-nightly)\.yml|scripts/ci/check_lane_job_placement\.py)$
+        files: ^(\.github/workflows/[^/]+\.ya?ml|scripts/ci/check_lane_job_placement\.py|tests/ci/test_hosted_image_pin_omn22478\.py)$
         stages: [pre-commit]
 
       # OMN-18349. The Layer-2 golden corpus is data the nightly publishes

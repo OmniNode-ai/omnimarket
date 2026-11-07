@@ -74,7 +74,8 @@ jobs:
   shard:
     name: Full Suite Shard ${{ matrix.split }} (nightly)
     needs: resolve-head
-    runs-on: ubuntu-latest
+    # OMN-22478: ubuntu-latest became Ubuntu 26.04 on 2026-11-06 and has no postgresql-16.
+    runs-on: ubuntu-24.04
     # Measured serial full-suite time is ~45m on this runner class; a tenth of
     # it per shard, with count-balancing slack when no durations cache exists.
     timeout-minutes: 30
