@@ -48,3 +48,10 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute src/omnimarket/nodes/node_floor_fill_lines_compute src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_reducer -q --no-cov
+- id: dod-omn22931-integration-proof
+  description: Run the tests of the three floor fill nodes, the shared-models import test and the cross-node reach-in test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22931 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute src/omnimarket/nodes/node_floor_fill_lines_compute src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_candidates_compute tests/nodes/node_floor_fill_reducer tests/test_floor_fill_shared_models.py tests/test_no_cross_node_reach_in.py -q --no-cov
