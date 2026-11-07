@@ -1,3 +1,4 @@
+name: node_host_drain_effect
 contract_name: node_host_drain_effect
 node_name: node_host_drain_effect
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -33,6 +34,17 @@ handlers:
     module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
     input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopRequest
     output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: idle_runner_stop
+      handler:
+        name: HandlerIdleRunnerStop
+        module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
+      event_model:
+        name: ModelIdleRunnerStopRequest
+        module: omnimarket.nodes.node_host_drain_effect.models.model_host_drain
 
 descriptor:
   node_archetype: effect
