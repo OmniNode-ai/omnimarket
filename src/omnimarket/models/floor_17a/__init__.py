@@ -60,6 +60,7 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelRedRule,
     ModelRowMatch,
     ModelRunnerPlanRule,
+    ModelStartCriterion,
     ReadingState,
 )
 
@@ -119,5 +120,6 @@ __all__ = [
     "ModelRedRule",
     "ModelRowMatch",
     "ModelRunnerPlanRule",
+    "ModelStartCriterion",
     "ReadingState",
 ]

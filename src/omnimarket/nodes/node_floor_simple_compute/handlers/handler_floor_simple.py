@@ -282,11 +282,18 @@ class HandlerFloorSimple:
         )
         joins = {j.join: j for j in r.receipts.joins} if r.receipts is not None else {}
         rows: list[ModelFloorPieceRow] = []
+        criteria = {c.piece: c for c in ov.rebuild.start_criteria}
+        working = self._working_pieces(r, lab) if criteria else frozenset[int]()
         for definition in sorted(ov.pieces, key=lambda p: p.piece):
             n = definition.piece
             rc = receipts.get(n)
             go = r.go_given_through
-            admitted = (go is not None and n <= go) or n in ov.rebuild.step0_pieces
+            # A piece starts on a go, as step 0, or when its own start criterion reads true (RULING 2026-11-07T12:20:46Z).
+            admitted = (
+                (go is not None and n <= go)
+                or n in ov.rebuild.step0_pieces
+                or (n in criteria and set(criteria[n].after_working) <= working)
+            )
             state, age, max_age, why = self._reading(
                 r, n, definition.reading_max_age_s, lab
             )
@@ -399,6 +406,22 @@ class HandlerFloorSimple:
         if status == "not_working":
             return "Clear what the reading names, then it reads working again."
         return "Measured against the old way for 7 days, then kept or rolled back."
+
+    @classmethod
+    def _working_pieces(
+        cls, r: ModelFloorSimpleInput, lab: tuple[ModelLabSourceVerdict, ...]
+    ) -> frozenset[int]:
+        """The pieces whose reading reads WORKING now, as the strip would draw them (lab sources folded in)."""
+        out: set[int] = set()
+        for definition in r.overlay.pieces:
+            n = definition.piece
+            state, _age, _max, why = cls._reading(
+                r, n, definition.reading_max_age_s, lab
+            )
+            state, _why, _cause = cls._with_lab_sources(r, n, lab, state, why)
+            if state == "WORKING":
+                out.add(n)
+        return frozenset(out)
 
     @staticmethod
     def _reading(

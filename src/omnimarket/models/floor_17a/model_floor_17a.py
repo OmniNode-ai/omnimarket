@@ -559,11 +559,34 @@ class ModelLedgerReadingRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelStartCriterion(_Frozen):
+    """When a rebuild piece starts without the operator's say (RULING 2026-11-07T12:20:46Z): its prerequisites read true.
+
+    The piece is admitted when every piece in ``after_working`` reads WORKING on the floor's own readings. The criterion
+    is data of the overlay; no piece number is named in code.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    after_working: tuple[int, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _prerequisites(self) -> ModelStartCriterion:
+        if self.piece in self.after_working or any(
+            not 1 <= p <= 18 for p in self.after_working
+        ):
+            raise ValueError(
+                "a start criterion names other pieces between 1 and 18 as its prerequisites"
+            )
+        return self
+
+
 class ModelRebuildOverlay(_Frozen):
     go: ModelGoRule
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
+    # A piece with a start criterion is admitted as soon as its prerequisites read WORKING, with or without a go.
+    start_criteria: tuple[ModelStartCriterion, ...] = ()
     lab_state_piece: int = Field(ge=1, le=18)
     # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
     piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)

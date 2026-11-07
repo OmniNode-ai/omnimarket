@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22932
+title: The floor admits a rebuild piece when its own start criterion reads true, not only on a go under one ticket
+summary: >-
+  The floor admitted a piece only by a contiguous go from piece 1 (the go rule's RULING rows) or as a step 0 piece. The RULING of 2026-11-07T12:20:46Z replaced the go with start criteria, so a piece beyond the go, such as piece 9, could never leave "not started". The overlay now carries start_criteria, each naming a piece and the pieces that must read WORKING on the floor's own readings; the compute node admits a piece when its criterion reads true. The go path and the step 0 path are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22932-start-criterion-admits
+    statement: >-
+      A piece with a start criterion whose prerequisites read WORKING is admitted with no go covering it, and stays not started while a prerequisite does not read WORKING.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a planted piece with a true start criterion and no go is admitted, and the same piece with a prerequisite reading NOT WORKING or UNKNOWN, or with the criterion dropped, is not started -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_start_criteria_floor_simple_compute.py -q -n 0 --no-cov"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The start criterion tests of this change and the floor compute's existing golden and error chain tests.
+    command: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_start_criteria_floor_simple_compute.py tests/nodes/node_floor_simple_compute/test_golden_and_error_chain_floor_simple_compute.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22932-ac1-criterion-admits
+    description: >-
+      The golden test admits a planted piece 9 whose prerequisite piece 8 reads WORKING with the go at 6. The error tests leave it not started with the prerequisite NOT WORKING or UNKNOWN, and the named break criteria-dropped (the overlay without the criterion) leaves it not started, which is the state at the merge base.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_start_criteria_floor_simple_compute.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
