@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Literal
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
@@ -80,7 +81,7 @@ def emit_join_chains(
     result: ModelJoinJ1Result,
     sink: ProtocolEmissionSink,
     *,
-    backend: str,
+    backend: Literal["in_memory", "real"],
     clock: Callable[[], datetime],
 ) -> None:
     """Publish the two chains of the join under the graph run's correlation id, in the order the floor judges them."""
@@ -114,7 +115,7 @@ def emit_join_chains(
             correlation_id=result.correlation_id,
             phase="failure",
             emitted_at=clock(),
-            backend="in_memory" if backend == "in_memory" else "real",
+            backend=backend,
             failure_code=f"{UPSTREAM_PREFIX}{result.failure_code}",
             failure_detail=result.failure_detail,
         )

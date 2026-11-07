@@ -15,6 +15,7 @@ a host stage that starts on a missing verdict is named by the floor as a break.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from omnimarket.models.floor_17a import (
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
+    ModelProbeReading,
 )
 from omnimarket.models.model_join_j1 import (
     EnumGraphNodeVerdict,
@@ -49,6 +51,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import (
     InMemoryRepoSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import GraphRules
+from omnimarket.nodes.node_code_graph_effect.protocols import ProtocolRepoSource
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -73,6 +76,9 @@ from omnimarket.nodes.node_host_reading_effect.overlay import (
     ModelHostReadingOverlay,
     ModelJoinJ1Settings,
 )
+from omnimarket.nodes.node_host_reading_effect.protocols import (
+    ProtocolGraphVerdictSource,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
@@ -96,7 +102,7 @@ BACKENDS = ("memory", "real")
 JOIN_HOST = "example-join-host"
 
 
-def _clock() -> object:
+def _clock() -> Callable[[], datetime]:
     ticks = iter(range(10_000))
     return lambda: RUN_AT + timedelta(seconds=next(ticks))
 
@@ -155,6 +161,7 @@ class JoinWorld:
 
     def source(self) -> GraphBuildingVerdictSource:
         cfg = graph_overlay()
+        repos: ProtocolRepoSource
         if self.backend == "memory":
             clones = {"example_core": {REF: ("c" * 40, CORE)}}
             if not self.unreadable:
@@ -219,13 +226,13 @@ def floor_fold(
 
 def run_join(
     world: JoinWorld, sink: InMemoryEmissionSink, correlation: str = CORRELATION
-) -> tuple[ModelJoinJ1Result, object]:
+) -> tuple[ModelJoinJ1Result, ModelProbeReading]:
     return read_join_j1(
         settings(),
         world.source(),
         sink,
         correlation_id=correlation,
-        clock=_clock(),  # type: ignore[arg-type]
+        clock=_clock(),
     )
 
 
@@ -248,10 +255,10 @@ def test_golden_graph_run_with_every_verdict_gives_one_typed_result_under_its_co
     }
     assert result.missing == ()
     assert result.failure_code == ""
-    assert reading.verdict is EnumReadingVerdict.WORKING  # type: ignore[attr-defined]
-    assert reading.outcome is EnumReadingOutcome.READ  # type: ignore[attr-defined]
-    assert reading.cells["correlation"] == CORRELATION  # type: ignore[attr-defined]
-    assert reading.cells["started"] == "yes"  # type: ignore[attr-defined]
+    assert reading.verdict is EnumReadingVerdict.WORKING
+    assert reading.outcome is EnumReadingOutcome.READ
+    assert reading.cells["correlation"] == CORRELATION
+    assert reading.cells["started"] == "yes"
 
 
 def test_golden_an_unused_verdict_is_a_verdict_and_the_join_passes(
@@ -315,10 +322,10 @@ def test_error_graph_run_with_a_verdict_missing_gives_a_typed_failure_and_no_sta
     assert result.failure_code == VERDICT_MISSING
     assert result.missing == (PLACEMENT,)
     assert PLACEMENT in result.failure_detail
-    assert reading.verdict is EnumReadingVerdict.NOT_WORKING  # type: ignore[attr-defined]
-    assert reading.reasons == (f"{UPSTREAM_PREFIX}{VERDICT_MISSING}",)  # type: ignore[attr-defined]
-    assert reading.cells["started"] == "no"  # type: ignore[attr-defined]
-    assert reading.cells["missing"] == PLACEMENT  # type: ignore[attr-defined]
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert reading.reasons == (f"{UPSTREAM_PREFIX}{VERDICT_MISSING}",)
+    assert reading.cells["started"] == "no"
+    assert reading.cells["missing"] == PLACEMENT
 
 
 def test_error_the_host_stage_emits_a_typed_upstream_failure_and_never_a_start(
@@ -420,7 +427,7 @@ def test_golden_and_error_chains_land_in_the_floors_journal_file(
             run,
             journal,
             correlation_id=correlation,
-            clock=_clock(),  # type: ignore[arg-type]
+            clock=_clock(),
         )
     events = journal.read(RUN_AT)
     assert journal.skipped_lines == 0
@@ -429,16 +436,18 @@ def test_golden_and_error_chains_land_in_the_floors_journal_file(
 
 
 def _handler(
-    source: object, ledger: InMemoryLedger, sink: InMemoryEmissionSink | None
+    source: ProtocolGraphVerdictSource | None,
+    ledger: InMemoryLedger,
+    sink: InMemoryEmissionSink | None,
 ) -> HandlerHostReading:
     return HandlerHostReading(
         overlay=overlay(),
         host=JOIN_HOST,
         files=InMemoryHostFiles(),
         appender=ledger,
-        clock=_clock(),  # type: ignore[arg-type]
+        clock=_clock(),
         environ={},
-        graph_source=source,  # type: ignore[arg-type]
+        graph_source=source,
         sink=sink,
         nonce_for=lambda _host: "n1",
     )
@@ -518,7 +527,7 @@ def test_the_overlay_refuses_a_join_that_joins_a_piece_to_itself() -> None:
 
 
 def _host_stage_that_starts_on_a_missing_verdict(
-    sink: InMemoryEmissionSink, correlation: str, clock: object
+    sink: InMemoryEmissionSink, correlation: str, clock: Callable[[], datetime]
 ) -> None:
     """The named break: the graph run fails, and the host stage starts and succeeds anyway."""
     cfg = settings()
@@ -526,7 +535,7 @@ def _host_stage_that_starts_on_a_missing_verdict(
         sink,
         node=cfg.graph_chain_node,
         piece=cfg.from_piece,
-        clock=clock,  # type: ignore[arg-type]
+        clock=clock,
         correlation_id=correlation,
     )
     graph.start()
@@ -535,7 +544,7 @@ def _host_stage_that_starts_on_a_missing_verdict(
         sink,
         node=cfg.host_chain_node,
         piece=cfg.to_piece,
-        clock=clock,  # type: ignore[arg-type]
+        clock=clock,
         correlation_id=correlation,
     )
     host.start()
