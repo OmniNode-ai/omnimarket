@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict
@@ -214,60 +215,79 @@ def reading_rows(
 
 
 def read_ledger_facts(
-    source: ProtocolLedgerRowSource, overlay: ModelFloorSimpleOverlay, now: datetime
+    source: ProtocolLedgerRowSource,
+    overlay: ModelFloorSimpleOverlay,
+    now: datetime,
+    parallel_reads: int = 1,
 ) -> ModelLedgerFloorRead:
-    """Read the go rulings and the piece event rows. Any read that fails fails the whole read, with its reason."""
+    """Read the go rulings and the piece event rows. Any read that fails fails the whole read, with its reason.
+
+    The reads are independent, so up to ``parallel_reads`` of them run at once: over the bus each one is a
+    round trip to the query node, and run one after another they outlast the cycle's deadline.
+    """
     until = now + _FUTURE_SLACK
     go_rule = overlay.rebuild.go
-    rulings = source.read(
-        ModelLedgerQuery(
-            since=now - timedelta(days=go_rule.lookback_days),
-            until=until,
-            row_type=RULING_ROW_TYPE,
-            lane=go_rule.lane,
-        )
-    )
-    if rulings.error is not None:
-        return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
     # One read per (row type, lane) of the rules; a row two rules would both read is one row.
     wanted: dict[tuple[str, str], int] = {}
     for rule in overlay.piece_events:
         for match in (rule.golden, rule.error):
             key = (match.row_type, match.lane)
             wanted[key] = max(wanted.get(key, 0), rule.lookback_days)
-    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
-    for (row_type, lane), days in sorted(wanted.items()):
-        read = source.read(
+    reading_rule = overlay.ledger_readings
+    # (label for a failed read, query), in the order a failure is reported.
+    planned: list[tuple[str, ModelLedgerQuery]] = [
+        (
+            "go rulings",
+            ModelLedgerQuery(
+                since=now - timedelta(days=go_rule.lookback_days),
+                until=until,
+                row_type=RULING_ROW_TYPE,
+                lane=go_rule.lane,
+            ),
+        )
+    ]
+    planned.extend(
+        (
+            f"{row_type} rows of {lane}",
             ModelLedgerQuery(
                 since=now - timedelta(days=days),
                 until=until,
                 row_type=row_type,
                 lane=lane,
+            ),
+        )
+        for (row_type, lane), days in sorted(wanted.items())
+    )
+    if reading_rule is not None:
+        planned.append(
+            (
+                f"{reading_rule.row_type} rows of {reading_rule.lane}",
+                ModelLedgerQuery(
+                    since=now - timedelta(days=reading_rule.lookback_days),
+                    until=until,
+                    row_type=reading_rule.row_type,
+                    lane=reading_rule.lane,
+                ),
             )
         )
-        if read.error is not None:
-            return ModelLedgerFloorRead(
-                error=f"{row_type} rows of {lane} unread: {read.error}"
-            )
-        for row in read.rows:
+    queries = [query for _, query in planned]
+    if parallel_reads > 1 and len(queries) > 1:
+        with ThreadPoolExecutor(max_workers=min(parallel_reads, len(queries))) as pool:
+            answers = list(pool.map(source.read, queries))
+    else:
+        answers = [source.read(query) for query in queries]
+    for (label, _), answer in zip(planned, answers, strict=True):
+        if answer.error is not None:
+            return ModelLedgerFloorRead(error=f"{label} unread: {answer.error}")
+    rulings = answers[0]
+    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
+    for answer in answers[1 : 1 + len(wanted)]:
+        for row in answer.rows:
             event_rows[row.raw] = row
     readings: tuple[ModelReadingRow, ...] = ()
     rejected = 0
-    reading_rule = overlay.ledger_readings
     if reading_rule is not None:
-        read = source.read(
-            ModelLedgerQuery(
-                since=now - timedelta(days=reading_rule.lookback_days),
-                until=until,
-                row_type=reading_rule.row_type,
-                lane=reading_rule.lane,
-            )
-        )
-        if read.error is not None:
-            return ModelLedgerFloorRead(
-                error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
-            )
-        readings, rejected = reading_rows(list(read.rows), reading_rule)
+        readings, rejected = reading_rows(list(answers[-1].rows), reading_rule)
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(

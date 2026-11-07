@@ -199,6 +199,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
     )
+    # How many of the floor's ledger reads run at once (each is one round trip to the query node over the bus).
+    ledger_parallel_reads: int = Field(default=1, ge=1, le=16)
     sources: ModelSourcePaths
     output: ModelOutputPaths
     state: ModelStatePaths
@@ -905,7 +907,7 @@ class HandlerFloorSimpleTick:
             source = self._ledger_source or build_row_source(rt.ledger, env)
         except LedgerRouteError as exc:
             return ModelLedgerFloorRead(error=f"ledger route not configured: {exc}")
-        return read_ledger_facts(source, ov, now)
+        return read_ledger_facts(source, ov, now, rt.ledger_parallel_reads)
 
     @staticmethod
     def _receipts(

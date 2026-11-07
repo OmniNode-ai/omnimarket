@@ -93,14 +93,17 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
-  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
-  # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
+  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the bus-fed work ledger projection,
+  # through the read command the environment names (node_work_ledger_query_effect over the bus; OMN-19609, the ledger
+  # file is no longer read here). A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
-    route: file
-    path_env: ONEX_LEDGER_PATH
-    archive_subdir: archive
+    route: command
+    command_env: ONEX_LEDGER_BUS_READ_COMMAND
     timeout_seconds: 60
     row_limit: 100000
+  # The reads are independent bus round trips (18 s to 32 s each, measured 2026-11-07 on h053); run one after another
+  # they outlast cycle_deadline_seconds, so they run at once.
+  ledger_parallel_reads: 8
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
