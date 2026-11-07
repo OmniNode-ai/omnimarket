@@ -11,7 +11,7 @@ import copy
 import datetime as dt
 import hashlib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 import pytest
 import yaml
@@ -102,9 +102,9 @@ class SetupDevice(FakeIloTransport):
         root["AccountService"] = _ref("/redfish/v1/accountservice/")
         resources["/redfish/v1/accountservice/"] = {"Accounts": _ref(ACCOUNTS)}
         resources[ACCOUNTS] = {"Members": []}
-        manager = resources["/redfish/v1/managers/1/"]
-        hp = manager["Oem"]["Hp"]  # type: ignore[index]
-        hp["links"]["SecurityService"] = _ref("/redfish/v1/managers/1/securityservice/")  # type: ignore[index]
+        manager = cast("dict[str, Any]", resources["/redfish/v1/managers/1/"])
+        hp = manager["Oem"]["Hp"]
+        hp["links"]["SecurityService"] = _ref("/redfish/v1/managers/1/securityservice/")
         resources["/redfish/v1/managers/1/securityservice/"] = {
             "links": {
                 "HttpsCert": _ref("/redfish/v1/managers/1/securityservice/httpscert/")
@@ -138,8 +138,8 @@ class SetupDevice(FakeIloTransport):
         if method == "POST" and path == ACCOUNTS:
             assert isinstance(body, dict)
             self.account_posts.append(copy.deepcopy(body))
-            hp = body["Oem"]["Hp"]  # type: ignore[index]
-            granted = {k for k, v in hp["Privileges"].items() if v}  # type: ignore[index]
+            hp = cast("dict[str, Any]", body)["Oem"]["Hp"]
+            granted = {k for k, v in hp["Privileges"].items() if v}
             self._add_account(str(body["UserName"]), granted)
             return ModelRedfishResponse(status=201, body={})
         return super()._write(method, path, body)
@@ -229,13 +229,16 @@ class Rig:
             password_generator=generate_password,
         )
 
-    def run(self, *hosts: str, **kwargs: object) -> ModelIloSetupResult:
+    def run(self, *hosts: str, **kwargs: Any) -> ModelIloSetupResult:
         return self.handler.handle(
-            ModelIloSetupRequest(hosts=hosts or tuple(self.devices), **kwargs)  # type: ignore[arg-type]
+            ModelIloSetupRequest(hosts=hosts or tuple(self.devices), **kwargs)
         )
 
-    def overlay(self) -> dict[str, object]:
-        return yaml.safe_load((self.overlay_dir / "overlay.yaml").read_text())
+    def overlay(self) -> dict[str, Any]:
+        return cast(
+            "dict[str, Any]",
+            yaml.safe_load((self.overlay_dir / "overlay.yaml").read_text()),
+        )
 
     def everything_printed(self, result: ModelIloSetupResult) -> str:
         return "\n".join(self.lines) + result.model_dump_json()
@@ -250,7 +253,7 @@ def test_one_run_sets_up_two_hosts_and_asks_for_the_password_once(
     assert rig.password_prompts == 1
     document = rig.overlay()
     ModelIloOverlay.model_validate(document)
-    rows = {r["name"]: r for r in document["hosts"]}  # type: ignore[index, union-attr]
+    rows = {r["name"]: r for r in document["hosts"]}
     assert rows["h8"]["generation"] == "gen8"
     assert rows["h9"]["generation"] == "gen9"
     assert rows["h9"]["live"] is True
@@ -280,7 +283,11 @@ def test_accounts_are_least_privilege_and_no_password_is_ever_shown(
     posts = rig.devices["h9"].account_posts
     assert len(posts) == 2
     granted = {
-        str(p["UserName"]): {k for k, v in p["Oem"]["Hp"]["Privileges"].items() if v}  # type: ignore[index]
+        str(p["UserName"]): {
+            k
+            for k, v in cast("dict[str, Any]", p)["Oem"]["Hp"]["Privileges"].items()
+            if v
+        }
         for p in posts
     }
     assert granted == {"onex-ilo-read": READ_PRIVS, "onex-ilo-write": WRITE_PRIVS}
@@ -307,7 +314,7 @@ def test_the_first_read_records_the_serial_and_runs_discover_and_identity(
     assert steps["discover"].state == "done"
     assert GEN9_SERIAL in steps["identity"].note
     assert result.hosts[0].node_reader_ready is True
-    assert rig.overlay()["hosts"][0]["expected_serial"] == GEN9_SERIAL  # type: ignore[index]
+    assert rig.overlay()["hosts"][0]["expected_serial"] == GEN9_SERIAL
 
 
 def test_a_fingerprint_mismatch_refuses_before_anything_is_created_or_written(
@@ -365,7 +372,7 @@ def test_a_rerun_reuses_the_accounts_and_creates_nothing_again(tmp_path: Path) -
     states = {s.step: s.state for s in second.hosts[0].steps}
     assert states["read account"] == "reused"
     assert states["write account"] == "reused"
-    assert len(rig.overlay()["hosts"]) == 1  # type: ignore[arg-type]
+    assert len(rig.overlay()["hosts"]) == 1
 
 
 def test_an_account_the_ilo_already_has_with_a_stored_password_is_reused(
@@ -563,7 +570,7 @@ def test_a_serial_that_differs_from_the_recorded_one_is_refused_on_a_rerun(
     # re-pin evidence is unchanged, so only the identity check can stop this
     result = rig.run("h9")
     assert result.hosts[0].refusal is R.IDENTITY_MISMATCH
-    assert rig.overlay()["hosts"][0]["expected_serial"] == GEN9_SERIAL  # type: ignore[index]
+    assert rig.overlay()["hosts"][0]["expected_serial"] == GEN9_SERIAL
 
 
 def test_a_node_reader_that_cannot_see_the_accounts_is_reported(tmp_path: Path) -> None:
@@ -582,7 +589,7 @@ def test_columns_the_setup_does_not_own_survive_a_rerun(tmp_path: Path) -> None:
     document["hosts"][0]["media_url_prefixes"] = ["http://192.0.2.10/iso/"]
     path.write_text(yaml.safe_dump(document))
     rig.run("h9")
-    assert rig.overlay()["hosts"][0]["media_url_prefixes"] == ["http://192.0.2.10/iso/"]  # type: ignore[index]
+    assert rig.overlay()["hosts"][0]["media_url_prefixes"] == ["http://192.0.2.10/iso/"]
 
 
 def test_generated_passwords_are_long_and_mixed() -> None:

@@ -609,16 +609,19 @@ class HandlerIloSetup:
                 f"the store holds only one of {user_key} and {pass_key}",
             )
         try:
-            username = (
-                self._secrets.get(user_key).get_secret_value()  # type: ignore[union-attr]
-                if has_user
-                else (READ_ACCOUNT_NAME if role == "READ" else WRITE_ACCOUNT_NAME)
-            )
+            stored_user = self._secrets.get(user_key) if has_user else None
             password = self._secrets.get(pass_key) if has_pass else None
-        except (SetupStoreError, AttributeError):
+        except SetupStoreError:
             raise _StopError(
                 Refusal.SECRET_STORE_UNAVAILABLE, "read of an account key"
             ) from None
+        if has_user and stored_user is None:
+            raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, "read of an account key")
+        username = (
+            stored_user.get_secret_value()
+            if stored_user is not None
+            else (READ_ACCOUNT_NAME if role == "READ" else WRITE_ACCOUNT_NAME)
+        )
         accounts = self._existing_accounts(session, collection)
         wanted = _WANTED[role]
         present = accounts.get(username)
