@@ -16,6 +16,10 @@ class OverlayHomeError(RuntimeError):
     """The home could not be read (its pins, its overlay list or one overlay file)."""
 
 
+class PinHistoryError(RuntimeError):
+    """The pin history could not be read (no clone, or git could not answer)."""
+
+
 class RuntimeValidatorError(RuntimeError):
     """The runtime could not answer: no interpreter, a timeout, or an answer that is not typed."""
 
@@ -52,3 +56,11 @@ __all__ = [
     "ProtocolRuntimeValidator",
     "RuntimeValidatorError",
 ]
+
+
+class ProtocolPinHistory(Protocol):
+    """Which pinned omnimarket revisions the merged branch does not hold."""
+
+    def unmerged(self, revisions: tuple[str, ...]) -> frozenset[str]:
+        """The subset of ``revisions`` that is not an ancestor of the merged branch."""
+        ...
