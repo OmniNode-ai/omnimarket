@@ -64,3 +64,15 @@ dod_evidence:
   - check_type: command
     check_value: grep -q node_silent_failure_alarm_effect.runtime_silent_failure_alarm "$HOME/Library/LaunchAgents/ai.omninode.silent-failure-alarm.plist" && test -s "$HOME/.local/state/omni/silent-failure-alarm/last-run.json"
     cwd: .
+- id: dod-omn22755-test-duration-recorded
+  description: "The host table test file carries a recorded duration in the shard plan, so the test shards place it, and the file's tests still pass."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: grep -q '"tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py"' config/test_file_durations.json
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py -q --no-cov
+    cwd: .
