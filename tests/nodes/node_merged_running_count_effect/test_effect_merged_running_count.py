@@ -293,3 +293,49 @@ def test_adopted_rows_rolled_into_the_archive_are_still_evidence(
     day = next(d for d in result.count.days if d.local_date == "2026-11-01")
     assert (day.merged, day.running, day.not_running) == (4, 3, 1)
     assert result.evidence_records_read == 3
+
+
+ROLL_HEADER = [
+    "<!-- rolled: 2026-11-01 split to archive -->",
+    "> 2026-11-01T22:30:00Z | CLAIM | lane=quoted-lane | principal=p | ticket=OMN-4 | actor=a | model=m | host=h053 | run=r",
+]
+
+
+def test_golden_a_roll_header_in_the_live_file_leaves_the_count_unchanged(
+    tmp_path: Path,
+) -> None:
+    plain_dir = tmp_path / "plain"
+    plain_dir.mkdir()
+    plain = _run(plain_dir)
+    headed_ledger = "\n".join(ROLL_HEADER) + "\n" + LEDGER
+    headed_dir = tmp_path / "headed"
+    headed_dir.mkdir()
+    headed = _run(headed_dir, headed_ledger)
+    assert headed.count == plain.count
+    assert headed.evidence_records_read == plain.evidence_records_read
+
+
+def test_error_a_claim_quoted_in_a_roll_header_is_not_a_live_lane(
+    tmp_path: Path,
+) -> None:
+    sources = _sources(tmp_path, "\n".join(ROLL_HEADER) + "\n" + LEDGER)
+    lanes = sources.read_live_lanes()
+    assert "quoted-lane" not in {lane.lane for lane in lanes}
+    assert {lane.lane for lane in lanes} == {
+        "floor-fix-1101",
+        "merged-running-count-1101",
+    }
+
+
+def test_error_a_roll_header_in_an_archive_does_not_raise(tmp_path: Path) -> None:
+    rows = LEDGER.splitlines()
+    _roll(tmp_path, ROLL_HEADER + rows, rows)
+    sources = SourceLocalFiles(
+        watcher_state=tmp_path / "state.json",
+        ledger=tmp_path / "ledger.md",
+        labels=LABELS,
+        hosts_table=tmp_path / "hosts.yaml",
+        placement_read=tmp_path / "absent-hosts.json",
+        now=NOW,
+    )
+    assert "quoted-lane" not in {lane.lane for lane in sources.read_live_lanes()}
