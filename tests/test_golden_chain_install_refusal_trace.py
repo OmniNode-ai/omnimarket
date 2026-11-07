@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Golden and error chains for the install refusal trace."""
 
+from pathlib import Path
+
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_install_refusal_trace_compute.handlers import (
@@ -35,8 +38,21 @@ def test_golden_chain_refusal_records_to_counts_per_cause() -> None:
     )
     assert isinstance(result, ModelInstallRefusalTraceResult)
     assert [(c.cause, c.count) for c in result.classes] == [("no-installed-claim", 2)]
+    assert result.total == 2
     assert result.install_proof_total == 2
     assert "observation-names-no-run" in result.unread_classes
+
+
+def test_golden_chain_contract_publishes_the_computed_event() -> None:
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_install_refusal_trace_compute/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    computed = "onex.evt.omnimarket.install-refusal-trace-computed.v1"
+    assert contract["terminal_event"] == computed
+    assert contract["event_bus"]["publish_topics"] == [computed]
 
 
 def test_error_chain_malformed_request_never_reaches_the_handler() -> None:
