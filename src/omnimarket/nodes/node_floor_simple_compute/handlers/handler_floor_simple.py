@@ -49,11 +49,12 @@ def live_lanes(
     lanes: tuple[ModelFloorLane, ...],
     owners: tuple[str, ...],
     prs: tuple[str, ...] = (),
+    cause_id: str = "",
 ) -> tuple[str, ...]:
-    """The lanes that are really on a cause and are not stalled.
+    """The lanes that are really on a cause: not stalled, and not dead or finished by the process reading.
 
-    A lane is on a cause when it works on one of the cause's pull requests, or its ticket is one the overlay or a lab
-    source declares as owning the cause. A ticket that merely appears among the places a problem was seen is not
+    A lane is on a cause when its CLAIM or a STATUS row says ``owns=floor:<cause id>``, or it works on one of the
+    cause's pull requests, or its ticket is one the overlay or a lab source declares as owning the cause. A ticket that merely appears among the places a problem was seen is not
     ownership: many unrelated lanes share an umbrella ticket, so matching on it names lanes that are not on the cause.
     """
     wanted_owners = set(owners)
@@ -63,9 +64,11 @@ def live_lanes(
             lane.lane
             for lane in lanes
             if not lane.stalled
+            and lane.liveness not in {"dead", "finished"}
             and (
                 (lane.ticket and lane.ticket in wanted_owners)
                 or (lane.pr and lane.pr in wanted_prs)
+                or (cause_id and cause_id in lane.owns)
             )
         )
     )
@@ -88,7 +91,7 @@ def check_red_rule(
                     f"{cause.id} draws {cause.state} but its members say {expected}"
                 )
             continue
-        on_it = live_lanes(lanes, cause.owners, cause.prs)
+        on_it = live_lanes(lanes, cause.owners, cause.prs, cause.id)
         under_way = bool(on_it)
         if cause.state == "red" and under_way and not cause.needs_operator:
             with_work += 1
@@ -108,7 +111,10 @@ def check_red_rule(
             violations.append(f"{name} draws red with no cause behind it")
         elif owner.state != "red":
             violations.append(f"{name} draws red but its cause {owner.id} is amber")
-        elif live_lanes(lanes, owner.owners, owner.prs) and not owner.needs_operator:
+        elif (
+            live_lanes(lanes, owner.owners, owner.prs, owner.id)
+            and not owner.needs_operator
+        ):
             with_work += 1
             violations.append(f"{name} draws red with work under way on {owner.id}")
     return ModelRedRule.model_validate(
@@ -564,7 +570,7 @@ class HandlerFloorSimple:
     ) -> tuple[ModelFloorCause, ...]:
         causes: list[ModelFloorCause] = []
         for c in candidates:
-            lanes = live_lanes(r.lanes, c.owners, c.prs)
+            lanes = live_lanes(r.lanes, c.owners, c.prs, c.id)
             red = c.needs_operator or not lanes
             age = (
                 max(int((r.now - c.last_seen).total_seconds()), 0)
