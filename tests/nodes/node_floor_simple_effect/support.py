@@ -20,10 +20,11 @@ def iso(moment: datetime) -> str:
 
 
 def environ(home: Path) -> dict[str, str]:
-    """The environment of a cycle: the overlay root, the lane directory under the home and no pinned files."""
+    """The environment of a cycle: the overlay root, the lane and landing controller directories under the home and no pinned files."""
     return {
         "ONEX_SKILL_OVERLAY_ROOTS": str(OVERLAYS),
         "ONEX_REMOTE_LANE_DIR": str(home / "lanes"),
+        "LANDING_STATE_DIR": str(home / "landing"),
     }
 
 
