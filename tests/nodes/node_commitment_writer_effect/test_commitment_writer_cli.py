@@ -64,3 +64,43 @@ def test_the_writer_refuses_with_no_overlay(
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     assert main(_argv(tmp_path, ASK)) == 3
     assert "refused" in capsys.readouterr().err
+
+
+def test_the_writer_prints_a_withdrawal_row_for_a_commitment_id(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("ONEX_COMMITMENT_OVERLAY", str(EXAMPLE))
+    cid = "2026-11-07T09:00:00Z-orchestrator-31d9"
+    assert main(["--lane", "orchestrator-31d9", "--withdraw", cid]) == 0
+    (line,) = capsys.readouterr().out.splitlines()
+    assert f"commitment={cid}" in line
+    assert "status=withdrawn" in line
+    assert grammar.row_refusals(line) == []
+
+
+def test_failing_control_a_withdrawal_of_no_commitment_prints_no_row(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("ONEX_COMMITMENT_OVERLAY", str(EXAMPLE))
+    assert main(["--lane", "orchestrator-31d9", "--withdraw", "not-an-id"]) == 65
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not a commitment id" in captured.err
+
+
+def test_the_writer_finds_the_ledger_nodes_overlay_under_the_overlay_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The rules are node_commitment_ledger_compute's overlay, found by that id, not by this node's name."""
+    root = tmp_path / "roots"
+    (root / "node_commitment_ledger_compute").mkdir(parents=True)
+    (root / "node_commitment_ledger_compute" / "overlay.yaml").write_text(
+        EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.delenv("ONEX_COMMITMENT_OVERLAY", raising=False)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    assert (
+        main(["--lane", "orchestrator-31d9", "--withdraw", "2026-11-07T09:00:00Z-x"])
+        == 0
+    )
+    assert "status=withdrawn" in capsys.readouterr().out

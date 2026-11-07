@@ -34,40 +34,54 @@ from omnimarket.nodes.node_commitment_ledger_compute.models import (
 
 LEDGER_NODE = "node_commitment_ledger_compute"
 NODE = "node_commitment_writer_effect"
+LEDGER_NODE = "node_commitment_ledger_compute"
 OVERLAY_ENV = "ONEX_COMMITMENT_OVERLAY"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"python -m omnimarket.nodes.{NODE}")
     parser.add_argument("--lane", required=True, help="the lane writing the row")
-    parser.add_argument("--owner", required=True, help="the lane that owes the ask")
+    parser.add_argument("--owner", default="", help="the lane that owes the ask")
     parser.add_argument(
-        "--check", required=True, help="the runnable acceptance check, one argv line"
+        "--check", default="", help="the runnable acceptance check, one argv line"
     )
-    parser.add_argument(
-        "--ask-file", required=True, help="the ask verbatim; - is stdin"
-    )
+    parser.add_argument("--ask-file", default=None, help="the ask verbatim; - is stdin")
     parser.add_argument("--ticket", default=None)
     parser.add_argument(
         "--requires",
         default="",
         help="comma separated references that must be done first",
     )
+    parser.add_argument(
+        "--withdraw",
+        default=None,
+        help="print the row that withdraws this commitment id instead of recording an ask",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.withdraw is None and arguments.ask_file is None:
+        parser.error("--ask-file is required unless --withdraw names a commitment")
     try:
         rules = load_structured_overlay(
-            NODE, ModelCommitmentRules, file_env=OVERLAY_ENV
+            LEDGER_NODE, ModelCommitmentRules, file_env=OVERLAY_ENV
         )
     except NodeOverlayError as exc:
         sys.stderr.write(f"commitment: refused ({type(exc).__name__}: {exc})\n")
         return 3
-    ask = (
-        sys.stdin.read()
-        if arguments.ask_file == "-"
-        else Path(arguments.ask_file).read_text(encoding="utf-8")
-    )
-    result = HandlerCommitmentLedger().handle(
-        ModelCommitmentLedgerRequest(
+    if arguments.withdraw is not None:
+        request = ModelCommitmentLedgerRequest(
+            operation="build_withdraw_row",
+            rules=rules,
+            now=datetime.now(UTC),
+            lane=arguments.lane,
+            commitment_id=arguments.withdraw,
+        )
+    else:
+        ask = (
+            sys.stdin.read()
+            if arguments.ask_file == "-"
+            else Path(arguments.ask_file).read_text(encoding="utf-8")
+        )
+        request = ModelCommitmentLedgerRequest(
             operation="build_open_row",
             rules=rules,
             now=datetime.now(UTC),
@@ -80,7 +94,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 p.strip() for p in arguments.requires.split(",") if p.strip()
             ),
         )
-    )
+    result = HandlerCommitmentLedger().handle(request)
     if result.row is None:
         for reason in result.refusals:
             sys.stderr.write(f"commitment: refused: {reason}\n")
