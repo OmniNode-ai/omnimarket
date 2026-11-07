@@ -5,11 +5,17 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
+
+import pytest
+import yaml
 
 from omnimarket.models.model_lane_result_sweep import (
     EnumLaneResultClass,
     EnumSweepState,
     ModelLaneResultSweepCommand,
+    ModelLaneResultSweepResult,
+    ModelReceiptVerdict,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from tests.nodes.node_lane_result_sweep_effect.lane_result_sweep_support import (
@@ -32,7 +38,7 @@ def _command(write: bool = False) -> ModelLaneResultSweepCommand:
     )
 
 
-def _only(result):  # type: ignore[no-untyped-def]
+def _only(result: ModelLaneResultSweepResult) -> ModelReceiptVerdict:
     assert len(result.verdicts) == 1
     return result.verdicts[0]
 
@@ -245,7 +251,9 @@ def test_park_expiry_unmatched_class_writes_class_row_only() -> None:
     assert not any("action=lane-result-action" in line for line in ledger.lines)
 
 
-def test_cli_without_an_overlay_exits_3_naming_the_fact(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+def test_cli_without_an_overlay_exits_3_naming_the_fact(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from omnimarket.nodes.node_lane_result_sweep_effect.runtime_lane_result_sweep import (
         main,
     )
@@ -289,3 +297,19 @@ def test_park_expiry_an_append_that_does_not_land_fails_the_run_and_writes_no_re
     assert result.failure == "append-failed:pending"
     assert result.verdict is None
     assert not any("action=lane-result-reading" in line for line in ledger.lines)
+
+
+def test_contract_names_the_completed_event_as_its_terminal_and_a_declared_sink() -> (
+    None
+):
+    """The sweep's result leaves the node graph on its completed topic (OMN-22967)."""
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src/omnimarket/nodes/node_lane_result_sweep_effect/contract.yaml"
+        ).read_text("utf-8")
+    )
+    completed = "onex.evt.omnimarket.lane-result-sweep-completed.v1"
+    assert contract["terminal_event"] == completed
+    assert contract["topics"]["lane_result_sweep_completed"] == completed
+    assert completed in contract["externally_consumed_topics"]
