@@ -1221,6 +1221,8 @@
   "tests/nodes/node_manifest_fetch_effect/test_golden_chain_manifest_fetch_effect.py": 0.08,
   "tests/nodes/node_manifest_fetch_effect/test_handler_manifest_fetch.py": 0.22,
   "tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py": 0.23,
+  "tests/nodes/node_media_capability_resolve_compute/test_error_chain_media_capability_resolve.py": 0.05,
+  "tests/nodes/node_media_capability_resolve_compute/test_golden_chain_media_capability_resolve.py": 0.05,
   "tests/nodes/node_memory_pilot_effect/test_baseline_and_frozen_files.py": 0.02,
   "tests/nodes/node_memory_pilot_effect/test_cognee_telemetry_and_environment.py": 0.01,
   "tests/nodes/node_memory_pilot_effect/test_error_chain_memory_pilot.py": 0.1,

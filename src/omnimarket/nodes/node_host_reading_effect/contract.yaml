@@ -18,8 +18,10 @@ runtime_profiles: [effects]
 description: >
   Runs the probes the overlay declares for this host: ledger-outbox reads queued and refused rows
   beside the host's ledger, ledger-old-names reads that the old ledger names are links to the
-  configured ledger. A source that cannot be read gives UNKNOWN; an append that does not land and
-  a bad command are typed failures.
+  configured ledger, host-canary (piece 2, hosts and capacity) sends one canary lane to every host
+  the lab host table pools through the route lanes take and reads its typed ending and free disk.
+  A source that cannot be read gives UNKNOWN; an append that does not land and a bad command are
+  typed failures.
 
 handler:
   module: omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading

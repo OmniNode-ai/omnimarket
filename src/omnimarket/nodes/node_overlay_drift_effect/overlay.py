@@ -33,14 +33,46 @@ class ModelOverlayHomeSettings(BaseModel):
     pins_file: str = Field(min_length=1)
 
 
+class ModelRuntimeRevisionSource(BaseModel):
+    """Where the running runtime says which omnimarket revision it was built from.
+
+    The runtime's build provenance file names that revision. The read asks the runtime host for
+    the file over ssh (the container found by its compose labels), takes the revision at
+    ``ref_path``, and exports omnimarket's source tree at exactly that revision from the clone
+    named by ``clone_env``. The overlays are then judged through that tree, so the reading is
+    about the code the runtime runs and not about whichever interpreter the unit holds.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ssh_host_env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    compose_project: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    service: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    provenance_path: str = Field(pattern=r"^/[A-Za-z0-9_./-]+$")
+    #: Keys from the top of the provenance document to the revision string.
+    ref_path: tuple[str, ...] = Field(min_length=1)
+    #: The variable naming the omnimarket clone the revision's tree is exported from.
+    clone_env: str = Field(min_length=1)
+    #: The ssh read's bound.
+    read_timeout_seconds: int = Field(ge=1)
+    #: Each git call's bound (revision check and tree export).
+    git_timeout_seconds: int = Field(ge=1)
+
+
 class ModelRuntimeSettings(BaseModel):
-    """The runtime whose installed models judge the overlays: its interpreter, by variable."""
+    """The runtime whose models judge the overlays: its interpreter, by variable.
+
+    With ``revision_source`` set, the interpreter only runs the check; the models judged are the
+    omnimarket source tree at the revision the runtime's build provenance names. Without it the
+    models are the ones installed in the interpreter.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     python_env: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1)
+    revision_source: ModelRuntimeRevisionSource | None = None
 
 
 class ModelOverlayDriftPublish(BaseModel):
@@ -126,6 +158,7 @@ __all__ = [
     "ModelOverlayDriftPublish",
     "ModelOverlayDriftScheduleHost",
     "ModelOverlayHomeSettings",
+    "ModelRuntimeRevisionSource",
     "ModelRuntimeSettings",
     "load_overlay",
 ]
