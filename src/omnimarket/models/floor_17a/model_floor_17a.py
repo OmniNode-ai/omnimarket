@@ -364,7 +364,8 @@ class ModelFloorCause(_Frozen):
     detail: str
     size: int
     size_unit: str
-    state: Literal["red", "amber"]
+    # ``quiet``: a stoppage whose own record says it is not occurring and nobody is needed on it. Listed, never muted.
+    state: Literal["red", "amber", "quiet"]
     work_under_way: bool
     needs_operator: bool
     lanes: tuple[str, ...] = ()
