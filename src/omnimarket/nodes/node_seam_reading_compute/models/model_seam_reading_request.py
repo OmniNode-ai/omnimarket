@@ -26,6 +26,7 @@ class ModelSeamReadConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     default_minimum_crossings: int = Field(ge=0)
+    max_examples: int = Field(ge=1)
     consecutive_clean_windows: int = Field(ge=1)
     window_hours: int = Field(ge=1)
     freshness_ticks: int = Field(ge=0)
