@@ -1069,6 +1069,16 @@ repos:
         files: '(?i)(\.(yaml|yml|json|toml|env|template)$|(^|/)\.env($|\.)|\.env\.|(^|/)(docker[-.]compose|compose)([^/]*$)|^src/omnimarket/validators/no_coding_plan_endpoint\.py$)'
         stages: [manual]
 
+      # OMN-22917: the no-file census ratchet (plan 4.3, reading 2). Executable readers and writers of the
+      # ledger file's name or path variable may not grow past .onex_ratchets/ledger_file_census_baseline.yaml.
+      - id: ledger-file-census
+        name: Ledger file census ratchet
+        language: system
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        pass_filenames: false
+        files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
+        stages: [pre-commit]
+
       - id: event-registry-drift
         name: Event registry drift validator
         language: system
