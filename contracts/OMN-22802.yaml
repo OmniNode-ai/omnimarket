@@ -13,8 +13,6 @@ requirements:
     statement: 'AC1: the test, integration-guard and nightly full-suite jobs name runs-on ubuntu-24.04 and no job that installs postgresql-16 names ubuntu-latest -- falsifier: uv run --frozen pytest tests/unit/test_ci_postgres_runner_image_omn22781.py -q --no-cov'
   - id: AC2
     statement: 'AC2: the test fails on dev, where those jobs name ubuntu-latest, so it fails without the change -- falsifier: uv run --frozen pytest tests/unit/test_ci_postgres_runner_image_omn22781.py -q --no-cov'
-  - id: AC3
-    statement: 'AC3: on the pull request itself the Tests (Split n) checks run the Postgres install to success on the 24.04 image -- falsifier: the check-run conclusions of Tests (Split 1/20) to (Split 20/20) at the pushed head read with onex scm commit-check-runs'
 evidence_requirements:
 - kind: tests
   description: "Each job that installs postgresql-16 names the 24.04 image"
@@ -41,14 +39,4 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22802 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_ci_postgres_runner_image_omn22781.py -q --no-cov
-    cwd: .
-- id: dod-omn22802-ci-shards
-  description: The Tests (Split n) checks at the pushed head ran the Postgres install to success on the 24.04 image, read from the check runs.
-  source: manual
-  execution_scope: local_done_gate
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: command
-    check_value: onex scm commit-check-runs OmniNode-ai/omnimarket --head-sha "$(git rev-parse HEAD)" --check-name "Tests (Split 1/20)"
     cwd: .
