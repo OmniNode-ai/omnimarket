@@ -229,3 +229,169 @@ def test_every_declared_copy_is_read_and_the_example_overlay_declares_no_more_th
 ):
     assert [copy.name for copy in overlay().copies] == list(COPIES)
     assert table_text([{"name": "h"}]).startswith("hosts:")
+
+
+# Intentional differences (OMN-22878): declared exactly, never widening the read ---------------------
+
+
+def _declared_overlay(*declarations: dict[str, object]):
+    from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
+        ModelHostTableCopiesDriftOverlay,
+    )
+
+    document = overlay_document()
+    document["intentional_differences"] = list(declarations)
+    return ModelHostTableCopiesDriftOverlay.model_validate(document)
+
+
+def _handler_for(world: World, declared_overlay):
+    return HandlerHostTableCopiesDrift(
+        overlay=declared_overlay,
+        host=HOST,
+        source=world.source(),
+        appender=None,
+        clock=lambda: RUN_AT,
+    )
+
+
+def _declaration(absent_in: list[str], field: str = "unit_slots") -> dict[str, object]:
+    return {
+        "host": "host-b",
+        "field": field,
+        "absent_in": absent_in,
+        "reason": "carried by the source copies only, by design",
+    }
+
+
+def test_a_field_absent_from_exactly_the_declared_copy_reads_working_and_is_listed_as_declared() -> (
+    None
+):
+    world = World()
+    for name in ("config", "overlays"):
+        world.hosts[name][1]["unit_slots"] = 2
+    result = _handler_for(world, _declared_overlay(_declaration(["packaged"]))).handle(
+        COMMAND
+    )
+    assert result.verdict.value == "WORKING"
+    assert result.differences == ()
+    assert [(item.host, item.field) for item in result.declared] == [
+        ("host-b", "unit_slots")
+    ]
+    assert result.reasons == ("copies-agree-3-copies-2-hosts-declared-1",)
+
+
+def test_the_same_difference_without_its_declaration_reads_not_working() -> None:
+    world = World()
+    for name in ("config", "overlays"):
+        world.hosts[name][1]["unit_slots"] = 2
+    result = world.handler(None).handle(COMMAND)
+    assert result.verdict.value == "NOT_WORKING"
+    assert [(item.host, item.field) for item in result.differences] == [
+        ("host-b", "unit_slots")
+    ]
+
+
+def test_a_declaration_naming_the_wrong_copy_does_not_cover_the_difference() -> None:
+    world = World()
+    for name in ("config", "overlays"):
+        world.hosts[name][1]["unit_slots"] = 2
+    result = _handler_for(world, _declared_overlay(_declaration(["config"]))).handle(
+        COMMAND
+    )
+    assert result.verdict.value == "NOT_WORKING"
+    assert [(item.host, item.field) for item in result.differences] == [
+        ("host-b", "unit_slots")
+    ]
+    assert result.stale_declarations == ("host-b.unit_slots",)
+
+
+def test_a_declared_field_whose_value_differs_among_the_other_copies_stays_drift() -> (
+    None
+):
+    world = World()
+    world.hosts["config"][1]["unit_slots"] = 2
+    world.hosts["overlays"][1]["unit_slots"] = 3
+    result = _handler_for(world, _declared_overlay(_declaration(["packaged"]))).handle(
+        COMMAND
+    )
+    assert result.verdict.value == "NOT_WORKING"
+    assert [(item.host, item.field) for item in result.differences] == [
+        ("host-b", "unit_slots")
+    ]
+
+
+def test_a_declaration_that_matches_no_difference_reads_not_working_as_stale() -> None:
+    world = World()
+    result = _handler_for(world, _declared_overlay(_declaration(["packaged"]))).handle(
+        COMMAND
+    )
+    assert result.verdict.value == "NOT_WORKING"
+    assert result.differences == ()
+    assert result.stale_declarations == ("host-b.unit_slots",)
+    assert result.reasons == ("declared-difference-not-observed-1",)
+
+
+def test_the_declaration_never_covers_another_field_of_the_host() -> None:
+    world = World()
+    for name in ("config", "overlays"):
+        world.hosts[name][1]["unit_slots"] = 2
+    world.break_change_a_cap(copy="config", host="host-b", cap=9)
+    result = _handler_for(world, _declared_overlay(_declaration(["packaged"]))).handle(
+        COMMAND
+    )
+    assert result.verdict.value == "NOT_WORKING"
+    assert [(item.host, item.field) for item in result.differences] == [
+        ("host-b", "cap")
+    ]
+    assert [(item.host, item.field) for item in result.declared] == [
+        ("host-b", "unit_slots")
+    ]
+
+
+def test_the_row_counts_declared_and_stale_declarations() -> None:
+    world = World()
+    for name in ("config", "overlays"):
+        world.hosts[name][1]["unit_slots"] = 2
+    ledger = InMemoryLedger()
+    handler = HandlerHostTableCopiesDrift(
+        overlay=_declared_overlay(_declaration(["packaged"])),
+        host=HOST,
+        source=world.source(),
+        appender=ledger,
+        clock=lambda: RUN_AT,
+    )
+    handler.handle(ModelHostTableDriftCommand(correlation_id="c-2", write=True))
+    (row,) = ledger.lines
+    assert "declared_fields=1" in row
+    assert "stale_declarations=none" in row
+    assert "verdict=WORKING" in row
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        _declaration(["nowhere"]),
+        _declaration(["packaged", "config", "overlays"]),
+    ],
+)
+def test_overlay_refuses_a_declaration_naming_an_undeclared_copy_or_every_copy(
+    declaration: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="intentional difference"):
+        _declared_overlay(declaration)
+
+
+def test_overlay_refuses_the_same_difference_declared_twice() -> None:
+    with pytest.raises(ValueError, match="declared twice"):
+        _declared_overlay(_declaration(["packaged"]), _declaration(["packaged"]))
+
+
+def test_overlay_without_the_intentional_differences_key_is_refused_naming_it() -> None:
+    from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
+        ModelHostTableCopiesDriftOverlay,
+    )
+
+    document = overlay_document()
+    del document["intentional_differences"]
+    with pytest.raises(ValueError, match="intentional_differences"):
+        ModelHostTableCopiesDriftOverlay.model_validate(document)

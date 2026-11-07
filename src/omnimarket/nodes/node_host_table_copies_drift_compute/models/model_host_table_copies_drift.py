@@ -55,6 +55,10 @@ class ModelHostTableDriftResult(BaseModel):
     hosts_compared: int = 0
     differing_hosts: int = 0
     differences: tuple[ModelFieldDifference, ...] = ()
+    #: Differences the overlay declares intentional and that match their declaration exactly.
+    declared: tuple[ModelFieldDifference, ...] = ()
+    #: Declarations (host.field) that match no difference in the copies: a declaration gone stale.
+    stale_declarations: tuple[str, ...] = ()
     row_key: str = ""
     ledger: str = "not-written"
     row: str | None = None

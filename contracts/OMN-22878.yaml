@@ -1,0 +1,37 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22878
+title: "The host table copies drift node takes a declaration of intentional differences from its overlay and never lets one cover more than it names"
+summary: >-
+  node_host_table_copies_drift_compute reads a difference as intentional only when its overlay declares the host, the field and
+  the copies the field is absent from, and the field is equal in every other copy that holds it. Such a difference is listed as
+  declared and does not turn the reading NOT WORKING. A declaration that matches no difference reads NOT WORKING as stale, and a
+  different value, another field or another set of copies stays drift.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22878-declared-differences
+    statement: The drift read honours exactly the differences its overlay declares intentional and nothing wider.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a field absent from exactly the declared copy reads WORKING and is listed as declared, and the same difference without its declaration reads NOT WORKING -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov -k "declared or declaration"'
+      - id: AC2
+        statement: 'AC2: a declaration naming the wrong copy, a value that differs among the other copies, another field of the host, or a difference that no longer exists stays drift or reads stale, and an overlay that declares an unknown copy, every copy, the same difference twice or no intentional_differences key is refused -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov -k "declaration or intentional"'
+evidence_requirements:
+  - kind: tests
+    description: The node's focused tests, golden and error chain event tests, and the named breaks.
+    command: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22878-declared-tests
+    description: The node tests pass with the change, including the declaration tests and the same-difference-without-its-declaration control.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+        cwd: .

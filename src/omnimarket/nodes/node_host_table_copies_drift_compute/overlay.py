@@ -53,6 +53,22 @@ class ModelDriftPublish(BaseModel):
     value_chars: int = Field(ge=1)
 
 
+class ModelIntentionalDifference(BaseModel):
+    """A difference the owners declare on purpose: one field of one host, absent from named copies only.
+
+    It is declared exactly: the field must be absent from exactly the copies named in ``absent_in``
+    and equal in every other copy that holds it. A different value, a different set of copies, or a
+    declaration that no longer matches any difference is not covered and reads as drift.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    field: str = Field(min_length=1)
+    absent_in: tuple[str, ...] = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
 class ModelHostTableCopiesDriftOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -63,12 +79,30 @@ class ModelHostTableCopiesDriftOverlay(BaseModel):
     ledger_append: ModelLedgerAppendRoute
     publish: ModelDriftPublish
     injected_fault: str = Field(min_length=1)
+    #: Differences declared intentional; the key is required and may be an empty list.
+    intentional_differences: tuple[ModelIntentionalDifference, ...]
 
     @model_validator(mode="after")
     def _shape(self) -> ModelHostTableCopiesDriftOverlay:
         names = [copy.name for copy in self.copies]
         if len(names) != len(set(names)):
             raise ValueError("a copy is declared twice")
+        declared: set[tuple[str, str]] = set()
+        for item in self.intentional_differences:
+            if (item.host, item.field) in declared:
+                raise ValueError(
+                    f"intentional difference {item.host}.{item.field} is declared twice"
+                )
+            declared.add((item.host, item.field))
+            unknown = sorted(set(item.absent_in) - set(names))
+            if unknown:
+                raise ValueError(
+                    f"intentional difference {item.host}.{item.field} names undeclared copies {unknown}"
+                )
+            if set(item.absent_in) == set(names):
+                raise ValueError(
+                    f"intentional difference {item.host}.{item.field} is absent from every copy"
+                )
         return self
 
     def overlay_hash(self) -> str:
@@ -80,6 +114,10 @@ class ModelHostTableCopiesDriftOverlay(BaseModel):
                 "absent_token": self.absent_token,
                 "host_row_field": self.host_row_field,
                 "publish": self.publish.model_dump(mode="json"),
+                "intentional_differences": [
+                    item.model_dump(mode="json")
+                    for item in self.intentional_differences
+                ],
             },
             sort_keys=True,
             separators=(",", ":"),

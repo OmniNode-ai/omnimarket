@@ -85,12 +85,18 @@ def _run(write: bool) -> int:
         f"READING host={result.host} verdict={result.verdict.value} "
         f"outcome={result.outcome.value} copies={','.join(result.copies)} "
         f"hosts={result.hosts_compared} differing_hosts={result.differing_hosts} "
-        f"differing_fields={len(result.differences)} ledger={result.ledger} "
+        f"differing_fields={len(result.differences)} "
+        f"declared_fields={len(result.declared)} ledger={result.ledger} "
         f"key={result.row_key} reason={','.join(result.reasons)}\n"
     )
     for item in result.differences:
         shown = " ".join(f"{value.copy_name}={value.value}" for value in item.values)
         sys.stdout.write(f"DIFF host={item.host} field={item.field} {shown}\n")
+    for item in result.declared:
+        shown = " ".join(f"{value.copy_name}={value.value}" for value in item.values)
+        sys.stdout.write(f"DECLARED host={item.host} field={item.field} {shown}\n")
+    for name in result.stale_declarations:
+        sys.stdout.write(f"STALE-DECLARATION {name}\n")
     return 1 if result.failed else 0
 
 

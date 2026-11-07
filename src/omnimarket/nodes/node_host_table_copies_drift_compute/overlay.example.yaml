@@ -13,6 +13,10 @@
 #   publish         the rows' lane and actor, how long a row stays fresh, how many differences a row names,
 #                   and how many characters of a value a row shows
 #   injected_fault  the fault injected on purpose that must turn the reading NOT WORKING
+#   intentional_differences  differences the owners declare on purpose, each a host, a field, the copies the
+#                   field is absent from (and only those) and the reason. A declaration covers a difference only
+#                   when the field is absent from exactly those copies and equal in every other copy; a declaration
+#                   that matches no difference reads NOT WORKING as stale. The key is required; [] declares none.
 copies:
 - name: copy-a
   path: $EXAMPLE_COPY_A
@@ -34,3 +38,4 @@ publish:
   max_named: 12
   value_chars: 24
 injected_fault: A cap changed in one copy of the host table
+intentional_differences: []

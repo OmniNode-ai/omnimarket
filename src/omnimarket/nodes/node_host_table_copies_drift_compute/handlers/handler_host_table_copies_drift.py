@@ -34,6 +34,7 @@ from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
     ModelHostTableCopiesDriftOverlay,
+    ModelIntentionalDifference,
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.protocols import (
     CopyReadError,
@@ -123,6 +124,41 @@ def compare_copies(
     return tuple(differences), len(hosts), len(differing)
 
 
+def split_declared(
+    differences: tuple[ModelFieldDifference, ...],
+    declarations: tuple[ModelIntentionalDifference, ...],
+    *,
+    absent_token: str,
+) -> tuple[
+    tuple[ModelFieldDifference, ...], tuple[ModelFieldDifference, ...], tuple[str, ...]
+]:
+    """(declared, undeclared, stale declarations).
+
+    A difference is declared only when a declaration names its host and field, the copies that show
+    ``absent_token`` are exactly the declaration's ``absent_in``, and every other copy shows one
+    value. Anything else stays drift. A declaration that covers no difference is returned as stale.
+    """
+    by_key = {(item.host, item.field): item for item in declarations}
+    declared: list[ModelFieldDifference] = []
+    undeclared: list[ModelFieldDifference] = []
+    used: set[tuple[str, str]] = set()
+    for difference in differences:
+        item = by_key.get((difference.host, difference.field))
+        absent = {v.copy_name for v in difference.values if v.value == absent_token}
+        present = {v.value for v in difference.values if v.value != absent_token}
+        if item is not None and absent == set(item.absent_in) and len(present) == 1:
+            declared.append(difference)
+            used.add((item.host, item.field))
+        else:
+            undeclared.append(difference)
+    stale = tuple(
+        f"{item.host}.{item.field}"
+        for item in declarations
+        if (item.host, item.field) not in used
+    )
+    return tuple(declared), tuple(undeclared), stale
+
+
 class HandlerHostTableCopiesDrift:
     """Run the drift read of one host's declared copies of the lab host table."""
 
@@ -191,21 +227,33 @@ class HandlerHostTableCopiesDrift:
                 tables[copy.name] = self._table(copy.name)
             except CopyReadError as exc:
                 return self._unknown(correlation_id, f"copy-unreadable-{exc}")
-        differences, compared, differing = compare_copies(
+        found, compared, _ = compare_copies(
             tables,
             absent_token=self._overlay.absent_token,
             host_row_field=self._overlay.host_row_field,
         )
+        declared, differences, stale = split_declared(
+            found,
+            self._overlay.intentional_differences,
+            absent_token=self._overlay.absent_token,
+        )
+        differing = len({item.host for item in differences})
         names = tuple(tables)
         if compared == 0:
             verdict = EnumReadingVerdict.UNKNOWN
             reasons: tuple[str, ...] = ("no-host-in-any-copy",)
-        elif differences:
+        elif differences or stale:
             verdict = EnumReadingVerdict.NOT_WORKING
-            reasons = (f"drift-{len(differences)}-fields-{differing}-hosts",)
+            parts = []
+            if differences:
+                parts.append(f"drift-{len(differences)}-fields-{differing}-hosts")
+            if stale:
+                parts.append(f"declared-difference-not-observed-{len(stale)}")
+            reasons = tuple(parts)
         else:
             verdict = EnumReadingVerdict.WORKING
-            reasons = (f"copies-agree-{len(names)}-copies-{compared}-hosts",)
+            agree = f"copies-agree-{len(names)}-copies-{compared}-hosts"
+            reasons = (f"{agree}-declared-{len(declared)}" if declared else agree,)
         return ModelHostTableDriftResult(
             correlation_id=correlation_id,
             status="completed",
@@ -217,6 +265,8 @@ class HandlerHostTableCopiesDrift:
             hosts_compared=compared,
             differing_hosts=differing,
             differences=differences,
+            declared=declared,
+            stale_declarations=stale,
         )
 
     def _named(self, result: ModelHostTableDriftResult) -> str:
@@ -243,6 +293,8 @@ class HandlerHostTableCopiesDrift:
             "hosts": str(result.hosts_compared),
             "differing_hosts": str(result.differing_hosts),
             "differing_fields": str(len(result.differences)),
+            "declared_fields": str(len(result.declared)),
+            "stale_declarations": ",".join(result.stale_declarations) or "none",
             "differing": self._named(result),
         }
         content = _sha(
@@ -316,6 +368,8 @@ def events_of(
         "copies": list(result.copies),
         "hosts_compared": result.hosts_compared,
         "differences": [item.model_dump(mode="json") for item in result.differences],
+        "declared": [item.model_dump(mode="json") for item in result.declared],
+        "stale_declarations": list(result.stale_declarations),
         "row_key": result.row_key,
         "ledger": result.ledger,
     }
@@ -369,4 +423,5 @@ __all__ = [
     "answer_command",
     "compare_copies",
     "events_of",
+    "split_declared",
 ]
