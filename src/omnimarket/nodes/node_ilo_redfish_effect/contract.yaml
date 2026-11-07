@@ -28,8 +28,8 @@ input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_r
 output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
 
 handler:
-  module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish
-  class: HandlerIloRedfish
+  module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope
+  class: HandlerIloRedfishEnvelope
   input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
   output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
 
