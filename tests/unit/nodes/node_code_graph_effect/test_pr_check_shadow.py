@@ -12,7 +12,7 @@ that says so.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from omnimarket.models.model_code_graph import (
     EnumGraphFault,
     EnumShadowOutcome,
+    ModelRepoSnapshot,
     ModelShadowCommand,
     ModelShadowResult,
 )
@@ -301,6 +302,26 @@ def test_the_shadow_verb_without_a_declared_shadow_is_indeterminate(
     assert main(["shadow", "--probe"]) == 3
 
 
-def test_the_run_stamp_is_a_utc_instant() -> None:
-    assert RUN_AT.tzinfo is UTC
-    assert isinstance(RUN_AT, datetime)
+def test_a_run_reads_each_base_once_however_many_pull_requests_target_it() -> None:
+    reads: list[tuple[str, str]] = []
+    source = memory_source({CLEAN_SHA: WIRED, PLANTED_SHA: PLANTED})
+    original = source.snapshot
+
+    def counting(
+        repo: str, ref: str, wanted: Callable[[str], bool]
+    ) -> ModelRepoSnapshot:
+        reads.append((repo, ref))
+        return original(repo, ref, wanted)
+
+    source.snapshot = counting  # type: ignore[method-assign]
+    handler = HandlerCodeGraphShadow(
+        overlay=overlay(),
+        host=HOST,
+        source=source,
+        pull_requests=_pulls(),
+        appender=None,
+        clock=lambda: RUN_AT,
+    )
+    handler.handle(_command(write=False))
+    assert reads.count(("example_app", "origin/main")) == 1
+    assert len(reads) == 1 + 3  # the base once, and each of the three heads

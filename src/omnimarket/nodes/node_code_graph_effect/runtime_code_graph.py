@@ -6,7 +6,7 @@
 ``probe``    the same build and verdict, appending nothing.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``schedule`` install | uninstall | status | run-now, for a host in the overlay.
+``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
 
@@ -70,6 +70,8 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 )
 
 LATEST_RESULT = "code-graph-latest.json"
+#: The contract block each ``schedule --unit`` names.
+SCHEDULE_BLOCKS = {"nightly": "schedule", "shadow": "shadow_schedule"}
 
 
 def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
@@ -230,6 +232,12 @@ def _schedule(arguments: Sequence[str]) -> int:
     for verb in ("install", "uninstall", "status", "run-now"):
         sub = verbs.add_parser(verb)
         sub.add_argument("--host", required=True, help="the host's name in the overlay")
+        sub.add_argument(
+            "--unit",
+            choices=sorted(SCHEDULE_BLOCKS),
+            default="nightly",
+            help="the nightly graph (default) or the pull request check in shadow",
+        )
         if verb == "install":
             sub.add_argument(
                 "--workspace-root",
@@ -239,7 +247,9 @@ def _schedule(arguments: Sequence[str]) -> int:
             sub.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(list(arguments))
     scheduler = CodeGraphScheduler(
-        schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
+        schedule=load_schedule(block=SCHEDULE_BLOCKS[args.unit]),
+        overlay=load_overlay(),
+        home=Path.home(),
     )
     if args.verb == "install":
         if not args.workspace_root:

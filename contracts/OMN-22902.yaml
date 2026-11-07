@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The check, shadow and allowlist tests, and the golden and error chain event tests of the shadow.
-  command: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect tests/nodes/node_code_graph_effect -q --no-cov
+  command: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect tests/nodes/node_code_graph_effect tests/nodes/node_floor_simple_effect -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -48,6 +48,12 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_code_graph_effect/test_allowlist_expiry.py -q --no-cov
+- id: dod-omn22902-shadow-timer
+  description: The shadow has its own timer unit rendered from the contract, and the nightly unit text is unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_code_graph_schedule.py -q --no-cov
 - id: dod-omn22902-floor-shadow
   description: The floor shows piece 1's shadow results with their ages, read from the rows the shadow handler writes.
   source: manual

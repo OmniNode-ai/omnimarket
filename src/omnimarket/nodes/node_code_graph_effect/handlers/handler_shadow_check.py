@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from omnimarket.models.model_code_graph import (
     EnumGraphFault,
     EnumShadowOutcome,
+    ModelRepoSnapshot,
     ModelShadowCommand,
     ModelShadowPullRequest,
     ModelShadowResult,
@@ -94,6 +95,8 @@ class HandlerCodeGraphShadow:
         self._pull_requests = pull_requests
         self._appender = appender
         self._clock = clock
+        # One run reads each repository's base once, however many pull requests target it.
+        self._bases: dict[tuple[str, str], ModelRepoSnapshot] = {}
 
     def _shadow(self) -> ModelCodeGraphShadow:
         shadow = self._overlay.shadow
@@ -108,9 +111,12 @@ class HandlerCodeGraphShadow:
         today: datetime,
     ) -> ModelShadowVerdict:
         try:
-            base_snapshot = self._source.snapshot(
-                pull_request.repo, pull_request.base_ref, rules.wanted
-            )
+            base_key = (pull_request.repo, pull_request.base_ref)
+            if base_key not in self._bases:
+                self._bases[base_key] = self._source.snapshot(
+                    pull_request.repo, pull_request.base_ref, rules.wanted
+                )
+            base_snapshot = self._bases[base_key]
             head_snapshot = self._source.snapshot(
                 pull_request.repo, pull_request.head_sha, rules.wanted
             )
@@ -155,6 +161,7 @@ class HandlerCodeGraphShadow:
                 repos=shadow.repos,
                 failure="no-appender-for-a-writing-run",
             )
+        self._bases.clear()
         rules = GraphRules(
             roots=self._overlay.graph_roots,
             contract_links=command.fault is not EnumGraphFault.DROP_CONTRACT_LINKS,
