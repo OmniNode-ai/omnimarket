@@ -11,9 +11,11 @@ contract says.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_dead_letter_redrive_effect.handlers.handler_dead_letter_redrive import (
     HandlerDeadLetterRedrive,
@@ -226,3 +228,21 @@ async def test_control_a_log_that_forgets_republishes_the_same_record() -> None:
     await handler.handle(LIVE)
     await handler.handle(LIVE)
     assert len(pub.published) == 2
+
+
+def test_contract_declares_the_completed_and_failed_destinations() -> None:
+    """A finished run lands on the completed topic and a stopped run on the failed one."""
+    raw = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_dead_letter_redrive_effect/contract.yaml"
+        ).read_text()
+    )
+    completed = "onex.evt.omnimarket.dead-letter-redrive-completed.v1"
+    failed = "onex.evt.omnimarket.dead-letter-redrive-failed.v1"
+    assert raw["terminal_event"] == completed
+    assert raw["event_bus"]["publish_topics"] == [completed, failed]
+    assert raw["runtime_dispatch"]["terminal_events"] == {
+        "success": completed,
+        "failure": failed,
+    }
