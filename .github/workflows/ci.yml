@@ -397,7 +397,9 @@ jobs:
       - name: CI Summary external producer trigger parity
         run: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
       - name: Stub implementation check
-        run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
+        # OMN-22848: omnibase_core#2236 replaced scripts/validation/check_stub_implementations.py
+        # with this validator (the check-stub-implementations hook entry); same rules.
+        run: uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_stub_implementations:ValidatorStubImplementations src/ --report-json "${RUNNER_TEMP}/stub-implementations.json"
       - name: TODO format check
         run: |
           # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
