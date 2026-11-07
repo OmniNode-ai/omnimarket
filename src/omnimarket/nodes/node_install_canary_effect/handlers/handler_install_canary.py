@@ -1248,7 +1248,17 @@ class HandlerInstallCanary:
         """The drill: the same probe on demand, against a scratch copy of ``install_dir`` with ``delete`` (a path below
         it, such as a root data file) removed. The install itself is never touched. The probe's own verdict is the
         drill's reading: it flips to not-ok when the probe sees the loss."""
-        if not (install_dir / delete).is_file():
+        # The fault is a path below the install and nothing else: an absolute path or
+        # one that climbs out (or runs through a link out) would address a file of the
+        # live host, and ``copy / delete`` would then unlink that file, not the copy's.
+        fault = Path(delete)
+        target = install_dir / fault
+        if (
+            fault.is_absolute()
+            or ".." in fault.parts
+            or not target.parent.resolve().is_relative_to(install_dir.resolve())
+            or not target.is_file()
+        ):
             raise ValueError(f"drill fault {delete} is no file of {install_dir}")
         with tempfile.TemporaryDirectory(prefix="install-drill-") as scratch:
             copy = Path(scratch) / "install"

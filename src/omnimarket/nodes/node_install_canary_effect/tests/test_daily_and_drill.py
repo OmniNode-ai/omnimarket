@@ -166,3 +166,31 @@ def test_daily_and_drill_refuse_a_trigger_nobody_declared_and_a_fault_the_copy_l
         handler.drill_install_probe(
             clone, "origin/main", host_copy, PREFIX, delete="skills/nope.json"
         )
+
+
+def test_drill_refuses_a_fault_that_points_outside_the_install(
+    clone: Path, host_copy: Path, tmp_path: Path
+) -> None:
+    """A fault path that reaches past the install must not delete the live file it names (review finding)."""
+    handler = HandlerInstallCanary({})
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    elsewhere = tmp_path / "linked"
+    elsewhere.symlink_to(outside.parent, target_is_directory=True)
+    (host_copy / "skills" / "escape").symlink_to(
+        outside.parent, target_is_directory=True
+    )
+    live = host_copy / ROOT_DATA
+
+    for fault in (
+        str(live),
+        str(outside),
+        "../../outside.json",
+        "skills/escape/outside.json",
+    ):
+        with pytest.raises(ValueError, match="is no file of"):
+            handler.drill_install_probe(
+                clone, "origin/main", host_copy, PREFIX, delete=fault
+            )
+        assert live.is_file()
+        assert outside.is_file()
