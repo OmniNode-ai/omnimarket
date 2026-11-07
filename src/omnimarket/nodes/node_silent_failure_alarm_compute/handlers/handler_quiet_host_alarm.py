@@ -20,7 +20,7 @@ must not pass because the capture's own store was unreachable.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 
 from ..models import (
@@ -47,13 +47,18 @@ FUTURE_SLACK = timedelta(minutes=5)
 __all__ = ["HandlerQuietHostAlarm", "ModelQuietHostResult", "host_id"]
 
 
-def host_id(hostname: str, aliases: Mapping[str, str]) -> str | None:
+def host_id(hostname: str, aliases: Mapping[str, str | Sequence[str]]) -> str | None:
     """The pool host id for a hook event's ``host`` value, or None for a host nobody declared.
 
-    ``aliases`` maps a host id to the lowercased first DNS label its hook events carry. The map is
-    deployment data: the caller reads it from its overlay and passes it in.
+    ``aliases`` maps a host id to the lowercased first DNS label its hook events carry, or to
+    several labels. The map is deployment data: the caller reads it from its overlay and passes
+    it in.
     """
-    by_alias = {alias: host for host, alias in aliases.items()}
+    by_alias = {
+        alias: host
+        for host, declared in aliases.items()
+        for alias in ((declared,) if isinstance(declared, str) else declared)
+    }
     return by_alias.get(hostname.strip().lower().split(".", 1)[0])
 
 
