@@ -25,7 +25,10 @@ class ModelFloorFillOwnerCountOverlay(BaseModel):
     @field_validator("liveness_kinds")
     @classmethod
     def _kinds_are_names(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if any(not kind.strip() or kind != kind.upper() for kind in value):
+        if any(
+            not kind.strip() or kind != kind.strip() or kind != kind.upper()
+            for kind in value
+        ):
             raise ValueError("a liveness kind is a non-empty upper-case row kind")
         return value
 
