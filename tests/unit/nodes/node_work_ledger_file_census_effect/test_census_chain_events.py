@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
     ModelCensusRequest,
 )
@@ -38,8 +39,8 @@ class RaisingSource:
         raise OSError("disk read failed")
 
 
-def phases(sink: object) -> list[tuple[str, str | None]]:
-    return [(e.phase, e.failure_code) for e in sink.events]  # type: ignore[attr-defined]
+def phases(sink: InMemoryEmissionSink) -> list[tuple[str, str | None]]:
+    return [(e.phase, e.failure_code) for e in sink.events]
 
 
 def test_golden_chain_ends_in_success_under_one_correlation_id() -> None:

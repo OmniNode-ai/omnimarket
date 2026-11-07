@@ -8,6 +8,8 @@ that world, and exactly that reading turns NOT_WORKING while the other six stay 
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from omnimarket.models.model_reading import EnumReadingVerdict
@@ -172,7 +174,9 @@ def test_more_than_one_break_turns_each_of_their_readings_red() -> None:
 def test_reading_one_also_fails_on_a_receipt_without_a_seq_or_with_a_file_line(
     change: dict[str, object], number: int
 ) -> None:
-    probe = ModelFileProbeFacts(paths_present=(), receipt=change["receipt"])  # type: ignore[arg-type]
+    probe = ModelFileProbeFacts(
+        paths_present=(), receipt=cast(ModelAppendReceipt, change["receipt"])
+    )
     assert verdicts(planted(file_probe=probe))[number] is EnumReadingVerdict.NOT_WORKING
 
 

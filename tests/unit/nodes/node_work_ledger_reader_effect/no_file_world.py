@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -29,6 +30,9 @@ from omnimarket.nodes.node_work_ledger_no_file_readings_effect.models import (
     ModelReceiptFacts,
     ModelRestoreFacts,
     ModelRowKey,
+)
+from omnimarket.nodes.node_work_ledger_no_file_readings_effect.protocols import (
+    ProtocolNoFileFacts,
 )
 
 PACKAGE = (
@@ -75,17 +79,22 @@ def clean_world() -> ModelNoFileFacts:
 
 
 class RecordingAppender:
-    def __init__(self, status: str = "accepted") -> None:
+    def __init__(
+        self,
+        status: Literal[
+            "accepted", "duplicate", "refused", "pending", "error"
+        ] = "accepted",
+    ) -> None:
         self.rows: list[str] = []
         self._status = status
 
     def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
         self.rows.append(rows)
-        return ModelAppendOutcome(status=self._status)  # type: ignore[arg-type]
+        return ModelAppendOutcome(status=self._status)
 
 
 def readings(
-    facts: object,
+    facts: ProtocolNoFileFacts,
     sink: InMemoryEmissionSink | None = None,
     appender: RecordingAppender | None = None,
 ) -> tuple[HandlerNoFileReadings, InMemoryEmissionSink]:
@@ -93,7 +102,7 @@ def readings(
     return (
         HandlerNoFileReadings(
             overlay(),
-            facts,  # type: ignore[arg-type]
+            facts,
             out,
             appender,
             clock=lambda: NOW,

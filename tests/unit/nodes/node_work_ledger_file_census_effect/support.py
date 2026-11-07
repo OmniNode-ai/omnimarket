@@ -20,6 +20,9 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
     ModelCensusOverlay,
 )
+from omnimarket.nodes.node_work_ledger_file_census_effect.protocols import (
+    ProtocolRepositorySource,
+)
 
 PACKAGE = (
     Path(__file__).resolve().parents[4]
@@ -58,13 +61,13 @@ def handler(
     repos: dict[str, dict[str, str]],
     ratchet: dict[str, int] | None,
     sink: InMemoryEmissionSink | None = None,
-    source: object | None = None,
+    source: ProtocolRepositorySource | None = None,
 ) -> tuple[HandlerFileCensus, InMemoryEmissionSink]:
     out = sink or InMemoryEmissionSink()
     return (
         HandlerFileCensus(
             overlay(),
-            source or InMemoryRepositorySource(repos),  # type: ignore[arg-type]
+            source or InMemoryRepositorySource(repos),
             InMemoryRatchetStore(ratchet),
             out,
             clock=lambda: NOW,

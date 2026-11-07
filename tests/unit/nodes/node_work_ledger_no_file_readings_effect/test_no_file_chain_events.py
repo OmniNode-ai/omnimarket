@@ -10,9 +10,12 @@ a probe that cannot run (UNKNOWN, never WORKING) and a command route with no pro
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_work_ledger_no_file_readings_effect.adapters import (
@@ -38,8 +41,8 @@ pytestmark = pytest.mark.unit
 NODE = "node_work_ledger_no_file_readings_effect"
 
 
-def phases(sink: object) -> list[tuple[str, str | None]]:
-    return [(e.phase, e.failure_code) for e in sink.events]  # type: ignore[attr-defined]
+def phases(sink: InMemoryEmissionSink) -> list[tuple[str, str | None]]:
+    return [(e.phase, e.failure_code) for e in sink.events]
 
 
 def test_golden_chain_writes_seven_rows_and_ends_in_success() -> None:
@@ -101,11 +104,31 @@ def test_error_chain_an_append_that_does_not_land() -> None:
 
 
 class DeadProbe:
-    def __getattr__(self, name: str) -> object:
-        def fail() -> None:
-            raise OSError("probe host unreachable")
+    """Every probe raises, as a host that cannot be reached does."""
 
-        return fail
+    def _dead(self) -> NoReturn:
+        raise OSError("probe host unreachable")
+
+    def file_probe(self) -> NoReturn:
+        self._dead()
+
+    def census(self) -> NoReturn:
+        self._dead()
+
+    def absence(self) -> NoReturn:
+        self._dead()
+
+    def rebuild(self) -> NoReturn:
+        self._dead()
+
+    def restore(self) -> NoReturn:
+        self._dead()
+
+    def publish(self) -> NoReturn:
+        self._dead()
+
+    def receipt(self) -> NoReturn:
+        self._dead()
 
 
 def test_error_chain_unrunnable_probes_read_unknown_never_working() -> None:
@@ -149,13 +172,13 @@ def test_command_backend_bad_json_is_a_value_error_and_reads_unknown() -> None:
 
 
 def test_cli_prints_seven_lines_and_exits_one_when_a_reading_is_red(
-    capsys: pytest.CaptureFixture[str], tmp_path: object
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     import yaml
 
     from tests.unit.nodes.node_work_ledger_reader_effect.no_file_world import PACKAGE
 
-    path = tmp_path / "overlay.yaml"  # type: ignore[operator]
+    path = tmp_path / "overlay.yaml"
     path.write_text((PACKAGE / "overlay.example.yaml").read_text())
     env = {"ONEX_LEDGER_NO_FILE_OVERLAY": str(path)}
     assert main([], environ=env, facts=world_source(clean_world())) == 0
