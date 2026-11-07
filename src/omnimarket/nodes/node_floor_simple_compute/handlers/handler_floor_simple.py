@@ -15,6 +15,7 @@ builder that gets the rule wrong is caught by a reader that does not share its c
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from omnimarket.models.floor_17a import (
     ModelFloorCause,
@@ -284,6 +285,7 @@ class HandlerFloorSimple:
                 if admitted and not started:
                     status = "unknown" if status == "working" else status
                     text += "; no golden and error event yet"
+            reason = text
             if rc is not None and rc.last_emission_at is not None:
                 text += (
                     f" · golden {_ago(rc.golden_age_s)}, error {_ago(rc.error_age_s)}"
@@ -311,6 +313,16 @@ class HandlerFloorSimple:
                         "golden_age_s": rc.golden_age_s if rc else None,
                         "error_age_s": rc.error_age_s if rc else None,
                         "freshness": rc.freshness if rc else "none",
+                        "what": definition.what,
+                        "reason": reason,
+                        "next_text": self._next_text(status),
+                        "window_s": ov.rebuild.event_window_s,
+                        "golden_in_window": self._chains_in_window(
+                            r, n, "golden", ov.rebuild.event_window_s
+                        ),
+                        "error_in_window": self._chains_in_window(
+                            r, n, "error", ov.rebuild.event_window_s
+                        ),
                         "joins": tuple(
                             self._join_row(j, joins.get(j.id), r.now)
                             for j in ov.joins
@@ -320,6 +332,36 @@ class HandlerFloorSimple:
                 )
             )
         return rows
+
+    @staticmethod
+    def _chains_in_window(
+        r: ModelFloorSimpleInput,
+        piece: int,
+        kind: Literal["golden", "error"],
+        window_s: int,
+    ) -> int | None:
+        """How many chains of ``piece`` ended as ``kind`` inside the window; ``None`` when the receipts were not read."""
+        if r.receipts is None:
+            return None
+        return sum(
+            1
+            for c in r.receipts.chains
+            if c.piece == piece
+            and c.kind == kind
+            and c.ended_at is not None
+            and 0 <= (r.now - c.ended_at).total_seconds() <= window_s
+        )
+
+    @staticmethod
+    def _next_text(status: str) -> str:
+        """The step a piece's state calls for, in words for the side panel."""
+        if status == "not_started":
+            return "Waits for the go. Nothing of it runs yet."
+        if status in ("unknown", "started"):
+            return "Needs a fresh reading and a golden and an error event from it."
+        if status == "not_working":
+            return "Clear what the reading names, then it reads working again."
+        return "Measured against the old way for 7 days, then kept or rolled back."
 
     @staticmethod
     def _reading(
