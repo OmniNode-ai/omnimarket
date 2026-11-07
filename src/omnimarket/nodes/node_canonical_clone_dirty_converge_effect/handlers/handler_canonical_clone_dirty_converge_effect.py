@@ -14,9 +14,15 @@ no tar (operator ruling 2026-10-31 about 20:00Z; the work is redone from its tic
 converge-canonical-clone.sh writes the one ledger row, which names the dropped paths and local commits
 and the head the clone was converged to (``--note``).
 
+A clean clone whose branch has diverged from its upstream (local commits the upstream never took,
+while the upstream moved on) is refused by the engine as well, and was left behind for weeks: a
+registry clone logged "main and origin/main have diverged" for 24.3 days. It converges the same way
+past the same age; the row names the dropped local commits and the head they diverged at.
+
 Left alone: a clone a live lane is using (an open CLAIM naming its path, or a process whose working
 directory is inside it, or a host where that cannot be told), a clone off a tracking branch, one with
-an operation in progress, and one with no tracked changes.
+an operation in progress, a clean clone only ahead of its upstream, and a clean one with no local
+commits.
 """
 
 from __future__ import annotations
@@ -313,8 +319,19 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             ).splitlines()
             if c
         ]
+        diverged = False
         if not dirty:
-            return outcome(skipped, "no tracked changes: the refusal has another cause")
+            if not commits:
+                return outcome(
+                    skipped, "no tracked changes: the refusal has another cause"
+                )
+            ahead, _ = self._git(clone, "merge-base", "--is-ancestor", target, "HEAD")
+            if ahead == 0:
+                return outcome(
+                    skipped,
+                    f"only ahead of {upstream[13:]}: unpushed commits are not dropped",
+                )
+            diverged = True
         lane = self._open_claim_naming(clone)
         if lane:
             return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
@@ -328,9 +345,15 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             more = f" and {len(items) - listed} more" if len(items) > listed else ""
             return ", ".join(items[:listed]) + more
 
-        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
-        if commits:
-            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+        if diverged:
+            dropped = (
+                f"{len(commits)} local commit(s) ({named(commits)}) "
+                f"diverged at {before[:12]}"
+            )
+        else:
+            dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+            if commits:
+                dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
         note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
