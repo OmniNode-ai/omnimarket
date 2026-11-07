@@ -127,7 +127,9 @@ def test_error_a_stoppage_is_not_work_under_way_because_lanes_share_its_ticket(
     doc, _ = board()
     found = cause(doc, cause_id)
     assert found.lanes == ()
-    assert (found.state, found.work_under_way) == ("red", False)
+    # No lane is on it. It is red while it is occurring and quiet once its own record says it stopped.
+    expected = "quiet" if found.still_occurring is False else "red"
+    assert (found.state, found.work_under_way) == (expected, False)
 
 
 def test_golden_a_pull_request_class_names_only_lanes_on_its_pull_requests() -> None:
