@@ -76,19 +76,19 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
     ProtocolSetupSecrets,
     SetupStoreError,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloOutcome,
     EnumIloVerb,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
     ModelIloHost,
     ModelIloOverlay,
     credential_key,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
     ModelIloRedfishRequest,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (

@@ -7,12 +7,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_host_power_effect.handlers.backend_in_memory import (
+    BackendHostPowerInMemory,
+)
 from omnimarket.nodes.node_host_power_effect.handlers.handler_host_power import (
     HandlerHostPower,
     select_backend,
@@ -49,7 +53,7 @@ HOST = "h9"
 NO_ROUTE_HOST = "h-no-route"
 
 
-def overlay_doc(backend: str, route: str) -> dict[str, object]:
+def overlay_doc(backend: str, route: str) -> dict[str, Any]:
     doc: dict[str, object] = {
         "backend": backend,
         "writes_need_approval": True,
@@ -78,11 +82,13 @@ class Rig:
 def make_rig(kind: str) -> Rig:
     if kind == "in_memory":
         overlay = ModelHostPowerOverlay.model_validate(overlay_doc(kind, "simulated"))
-        backend = select_backend(overlay)
+        backend = BackendHostPowerInMemory(
+            {h.name: h.initial_state for h in overlay.hosts}
+        )
         return Rig(
             HandlerHostPower(overlay, backend),
             kind,
-            lambda: backend.state_of(HOST).value,  # type: ignore[attr-defined]
+            lambda: backend.state_of(HOST).value,
         )
     ilo = build(
         "gen9",
@@ -283,7 +289,7 @@ def test_host_power_overlay_refuses_a_missing_setting_and_a_repeated_host() -> N
     with pytest.raises(ValidationError):
         ModelHostPowerOverlay.model_validate(doc)
     doc = overlay_doc("in_memory", "simulated")
-    doc["hosts"] = [doc["hosts"][0], doc["hosts"][0]]  # type: ignore[index]
+    doc["hosts"] = [doc["hosts"][0], doc["hosts"][0]]
     with pytest.raises(ValidationError):
         ModelHostPowerOverlay.model_validate(doc)
     doc = overlay_doc("ilo_redfish", "ilo_redfish")

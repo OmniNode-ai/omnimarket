@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -51,7 +52,7 @@ FREE_SCRIPT = (
 DELETE_BIG = "import os,sys;os.remove(os.path.join(sys.argv[1],'big.bin'))"
 
 
-def overlay_doc(backend: str, work: str) -> dict[str, object]:
+def overlay_doc(backend: str, work: str) -> dict[str, Any]:
     sim = backend == "in_memory"
     return {
         "backend": backend,
@@ -204,7 +205,9 @@ def test_host_storage_runs_nothing_when_free_bytes_before_cannot_be_read(
     else:
         rig.make_unreadable()
         result = rig.handler.handle(ask("prune_big"))
-        assert rig.handler._backend.ran == []  # type: ignore[attr-defined]
+        backend = rig.handler._backend
+        assert isinstance(backend, BackendHostStorageInMemory)
+        assert backend.ran == []
     assert result.outcome is EnumHostStorageOutcome.REFUSED
     assert result.refusal is EnumHostStorageRefusal.FREE_BYTES_UNREADABLE
     assert result.free_bytes_before is None
@@ -226,7 +229,7 @@ def test_host_storage_refuses_what_the_overlay_does_not_declare(rig: Rig) -> Non
 
 def test_host_storage_subprocess_timeout_is_a_typed_failure(tmp_path: Path) -> None:
     doc = overlay_doc("subprocess", str(tmp_path))
-    doc["commands"][0].update(  # type: ignore[index, union-attr]
+    doc["commands"][0].update(
         {
             "argv": [sys.executable, "-c", "import time;time.sleep(30)"],
             "timeout_seconds": 0.3,
@@ -247,7 +250,7 @@ def test_host_storage_subprocess_puts_the_transport_prefix_before_every_argv(
 ) -> None:
     """The prefix wraps the command and the free-bytes reading: a prefix that cannot start refuses."""
     doc = overlay_doc("subprocess", str(tmp_path))
-    doc["hosts"][0]["transport_prefix"] = ["/nonexistent-transport-binary"]  # type: ignore[index]
+    doc["hosts"][0]["transport_prefix"] = ["/nonexistent-transport-binary"]
     overlay = ModelHostStorageOverlay.model_validate(doc)
     (tmp_path / "big.bin").write_bytes(b"x" * BIG)
     result = HandlerHostStorage(overlay, select_backend(overlay)).handle(
@@ -307,7 +310,7 @@ def test_host_storage_overlay_refuses_inconsistent_documents(tmp_path: Path) -> 
     with pytest.raises(ValidationError, match="placeholder"):
         ModelHostStorageOverlay.model_validate(doc)
     doc = overlay_doc("in_memory", work)
-    doc["hosts"][0]["commands"] = ["not_declared"]  # type: ignore[index]
+    doc["hosts"][0]["commands"] = ["not_declared"]
     with pytest.raises(ValidationError, match="undeclared"):
         ModelHostStorageOverlay.model_validate(doc)
     doc = overlay_doc("in_memory", work)

@@ -50,7 +50,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https im
     build_pinned_transport,
     pinned_context,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
     ModelIloHost,
     ModelIloOverlay,
 )

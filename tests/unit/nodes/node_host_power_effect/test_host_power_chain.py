@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -47,13 +48,13 @@ async def chain(request_json: bytes) -> list[ModelHostPowerResult]:
     await bus.start()
     seen: list[ModelHostPowerResult] = []
 
-    async def node(msg: object) -> None:
-        request = ModelHostPowerRequest.model_validate_json(msg.value)  # type: ignore[attr-defined]
+    async def node(msg: Any) -> None:
+        request = ModelHostPowerRequest.model_validate_json(msg.value)
         result = handler.handle(request)
         await bus.publish(EVT, key=None, value=result.model_dump_json().encode())
 
-    async def floor(msg: object) -> None:
-        seen.append(ModelHostPowerResult.model_validate_json(msg.value))  # type: ignore[attr-defined]
+    async def floor(msg: Any) -> None:
+        seen.append(ModelHostPowerResult.model_validate_json(msg.value))
 
     await bus.subscribe(CMD, on_message=node, group_id="host-power-node")
     await bus.subscribe(EVT, on_message=floor, group_id="host-power-reader")
@@ -105,10 +106,10 @@ async def test_host_power_error_chain_reading_has_teeth_with_the_result_event_dr
     await bus.start()
     seen: list[object] = []
 
-    async def floor(msg: object) -> None:
+    async def floor(msg: Any) -> None:
         seen.append(msg)
 
-    async def silent_node(msg: object) -> None:
+    async def silent_node(msg: Any) -> None:
         return None
 
     await bus.subscribe(CMD, on_message=silent_node, group_id="host-power-node")

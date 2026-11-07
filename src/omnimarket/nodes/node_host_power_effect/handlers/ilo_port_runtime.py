@@ -14,6 +14,10 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+    ModelIloOverlay,
+)
 from omnimarket.nodes.node_host_power_effect.handlers.backend_ilo_redfish import (
     IloPort,
 )
@@ -36,10 +40,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
     build_pinned_transport,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
-    ModelIloOverlay,
 )
 
 ILO_NODE = "node_ilo_redfish_effect"

@@ -10,6 +10,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloOutcome,
+    EnumIloPowerAction,
+    EnumIloVerb,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
+    ModelIloRedfishRequest,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
+    ModelIloRedfishResult,
+)
 from omnimarket.nodes.node_host_power_effect.models.model_host_power import (
     EnumHostPowerAction,
     EnumHostPowerOutcome,
@@ -17,17 +28,6 @@ from omnimarket.nodes.node_host_power_effect.models.model_host_power import (
     EnumHostPowerState,
     ModelHostPowerBackendReply,
     ModelHostPowerRequest,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloOutcome,
-    EnumIloPowerAction,
-    EnumIloVerb,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
-    ModelIloRedfishRequest,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
-    ModelIloRedfishResult,
 )
 
 IloPort = Callable[[ModelIloRedfishRequest], ModelIloRedfishResult]

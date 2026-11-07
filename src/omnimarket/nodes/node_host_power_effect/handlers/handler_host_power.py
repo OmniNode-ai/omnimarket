@@ -9,12 +9,16 @@ typed result. The handler holds no host, address or credential.
 
 from __future__ import annotations
 
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_host_power_effect.handlers.backend_ilo_redfish import (
     BackendHostPowerIloRedfish,
     IloPort,
 )
 from omnimarket.nodes.node_host_power_effect.handlers.backend_in_memory import (
     BackendHostPowerInMemory,
+)
+from omnimarket.nodes.node_host_power_effect.handlers.ilo_port_runtime import (
+    build_ilo_port,
 )
 from omnimarket.nodes.node_host_power_effect.handlers.protocols import (
     ProtocolHostPowerBackend,
@@ -28,6 +32,7 @@ from omnimarket.nodes.node_host_power_effect.models.model_host_power import (
     ModelHostPowerResult,
 )
 from omnimarket.nodes.node_host_power_effect.models.model_host_power_overlay import (
+    NODE_NAME,
     ModelHostPowerOverlay,
 )
 
@@ -46,11 +51,36 @@ def select_backend(
 
 
 class HandlerHostPower:
+    """Both parts are injected by tests and the CLI; the runtime boots it bare and the handler
+    reads the overlay and builds the backend it names on the first request."""
+
     def __init__(
-        self, overlay: ModelHostPowerOverlay, backend: ProtocolHostPowerBackend
+        self,
+        overlay: ModelHostPowerOverlay | None = None,
+        backend: ProtocolHostPowerBackend | None = None,
     ) -> None:
-        self._overlay = overlay
-        self._backend = backend
+        self._overlay_value = overlay
+        self._backend_value = backend
+
+    @property
+    def _overlay(self) -> ModelHostPowerOverlay:
+        if self._overlay_value is None:
+            self._overlay_value = load_structured_overlay(
+                NODE_NAME, ModelHostPowerOverlay
+            )
+        return self._overlay_value
+
+    @property
+    def _backend(self) -> ProtocolHostPowerBackend:
+        if self._backend_value is None:
+            overlay = self._overlay
+            port = (
+                build_ilo_port(overlay)
+                if overlay.backend is EnumHostPowerBackend.ILO_REDFISH
+                else None
+            )
+            self._backend_value = select_backend(overlay, port)
+        return self._backend_value
 
     def handle(self, request: ModelHostPowerRequest) -> ModelHostPowerResult:
         row = self._overlay.host(request.host)

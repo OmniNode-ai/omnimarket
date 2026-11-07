@@ -9,6 +9,7 @@ process starts; a command never runs when the free bytes before it cannot be rea
 
 from __future__ import annotations
 
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_host_storage_effect.handlers.backend_in_memory import (
     BackendHostStorageInMemory,
 )
@@ -26,6 +27,7 @@ from omnimarket.nodes.node_host_storage_effect.models.model_host_storage import 
     ModelHostStorageResult,
 )
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage_overlay import (
+    NODE_NAME,
     ModelHostStorageOverlay,
 )
 
@@ -40,11 +42,30 @@ def select_backend(overlay: ModelHostStorageOverlay) -> ProtocolHostStorageBacke
 
 
 class HandlerHostStorage:
+    """Both parts are injected by tests and the CLI; the runtime boots it bare and the handler
+    reads the overlay and builds the backend it names on the first request."""
+
     def __init__(
-        self, overlay: ModelHostStorageOverlay, backend: ProtocolHostStorageBackend
+        self,
+        overlay: ModelHostStorageOverlay | None = None,
+        backend: ProtocolHostStorageBackend | None = None,
     ) -> None:
-        self._overlay = overlay
-        self._backend = backend
+        self._overlay_value = overlay
+        self._backend_value = backend
+
+    @property
+    def _overlay(self) -> ModelHostStorageOverlay:
+        if self._overlay_value is None:
+            self._overlay_value = load_structured_overlay(
+                NODE_NAME, ModelHostStorageOverlay
+            )
+        return self._overlay_value
+
+    @property
+    def _backend(self) -> ProtocolHostStorageBackend:
+        if self._backend_value is None:
+            self._backend_value = select_backend(self._overlay)
+        return self._backend_value
 
     def handle(self, request: ModelHostStorageRequest) -> ModelHostStorageResult:
         host = self._overlay.host(request.host)

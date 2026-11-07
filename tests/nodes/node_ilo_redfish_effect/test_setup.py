@@ -34,7 +34,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
     SetupStoreError,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
     ILO_ACCOUNT_REF_PATTERN,
     ModelIloHost,
     ModelIloOverlay,

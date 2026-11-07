@@ -34,6 +34,22 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloBootTarget,
+    EnumIloLogKind,
+    EnumIloMediaAction,
+    EnumIloOutcome,
+    EnumIloPowerAction,
+    EnumIloVerb,
+)
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ILO_ACCOUNT_REF_PATTERN,
+    ModelIloHost,
+    ModelIloOverlay,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
+    ModelIloRedfishRequest,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.credential_store import (
     StoreCredentialSource,
 )
@@ -67,22 +83,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
     build_legacy_pinned_transport,
     build_pinned_transport,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloBootTarget,
-    EnumIloLogKind,
-    EnumIloMediaAction,
-    EnumIloOutcome,
-    EnumIloPowerAction,
-    EnumIloVerb,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ILO_ACCOUNT_REF_PATTERN,
-    ModelIloHost,
-    ModelIloOverlay,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
-    ModelIloRedfishRequest,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     ModelIloSetupRequest,

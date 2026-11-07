@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -48,15 +49,13 @@ async def chain(
     await bus.start()
     seen: list[ModelHostStorageResult] = []
 
-    async def node(msg: object) -> None:
-        result = handler.handle(
-            ModelHostStorageRequest.model_validate_json(msg.value)  # type: ignore[attr-defined]
-        )
+    async def node(msg: Any) -> None:
+        result = handler.handle(ModelHostStorageRequest.model_validate_json(msg.value))
         if not drop_result:
             await bus.publish(EVT, key=None, value=result.model_dump_json().encode())
 
-    async def floor(msg: object) -> None:
-        seen.append(ModelHostStorageResult.model_validate_json(msg.value))  # type: ignore[attr-defined]
+    async def floor(msg: Any) -> None:
+        seen.append(ModelHostStorageResult.model_validate_json(msg.value))
 
     await bus.subscribe(CMD, on_message=node, group_id="host-storage-node")
     await bus.subscribe(EVT, on_message=floor, group_id="host-storage-reader")
