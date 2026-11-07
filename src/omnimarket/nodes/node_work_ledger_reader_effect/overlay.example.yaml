@@ -1,0 +1,16 @@
+# The in-memory default. The real overlay (deployment data, kept outside this repository and
+# found under ONEX_SKILL_OVERLAY_ROOTS or at the file ONEX_LEDGER_READER_OVERLAY names) sets
+# route.kind: command with command_env naming the bus read command (onex ledger query --stdin).
+# A reader named in moved_readers is answered from the query node and never from the file;
+# removing it from the list is that reader's rollback.
+moved_readers: [inbox]
+max_watermark_age_seconds: 900
+page_size: 200
+max_pages: 50
+route:
+  kind: inmemory
+parity:
+  receipt_lane: work-ledger-parity
+  window_hours: 48
+events:
+  journal_env: ONEX_LEDGER_READER_JOURNAL

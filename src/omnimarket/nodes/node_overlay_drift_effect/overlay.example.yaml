@@ -5,8 +5,11 @@
 #
 #   home             the overlay home clone: the variable holding its path, the overlays directory,
 #                    the overlay file name, and the pins file (<id> <revision> <module>:<class>)
-#   runtime          the runtime whose installed models judge the overlays: the variable holding its
-#                    interpreter's path, and how long it may take
+#   runtime          the runtime whose models judge the overlays: the variable holding its
+#                    interpreter's path, and how long it may take. With revision_source set the
+#                    models are omnimarket's source tree at the revision the runtime's build
+#                    provenance file names (read over ssh from its container, exported from the
+#                    clone the clone_env variable holds); without it, the interpreter's own
 #   ledger_append    the command in command_env appends rows; host_env holds the host name
 #   publish          the rows' lane and actor, how long a row stays fresh, how many failing overlays
 #                    a row names
@@ -22,6 +25,15 @@ runtime:
   name: example-runtime
   python_env: EXAMPLE_RUNTIME_PYTHON
   timeout_seconds: 120
+  revision_source:
+    ssh_host_env: EXAMPLE_RUNTIME_SSH_HOST
+    compose_project: example-project
+    service: example-runtime-service
+    provenance_path: /app/build-provenance.json
+    ref_path: [per_repo_vcs_provenance, siblings, omnimarket, vcs_ref]
+    clone_env: EXAMPLE_OMNIMARKET_CLONE
+    read_timeout_seconds: 30
+    git_timeout_seconds: 60
 ledger_append:
   command_env: EXAMPLE_LEDGER_APPEND_COMMAND
   host_env: EXAMPLE_HOST_NAME

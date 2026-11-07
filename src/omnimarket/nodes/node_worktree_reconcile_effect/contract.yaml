@@ -56,6 +56,15 @@ schedule:
   interval_seconds: 1800
   on_boot_seconds: 120
   timeout_seconds: 3600
+  # The tick runs behind lane work, so it yields CPU, but it must still read its disk: at the
+  # idle IO class one git read took 5 to 10 s on a lab host that served it in 0.1 s (OMN-22799),
+  # and the 60 s git budget then fired on most trees. The installer writes these into the
+  # unit's drop-in; nothing outside the installer sets them.
+  resources:
+    nice: 19
+    io_scheduling_class: best-effort
+    io_scheduling_priority: 7
+    cpu_weight: 10
 handler_routing:
   routing_strategy: operation_match
   # The reconcile handler is the node's canonical handler (handler: above). It is
