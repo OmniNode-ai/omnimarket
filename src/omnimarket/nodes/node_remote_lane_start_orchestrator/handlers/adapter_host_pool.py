@@ -18,7 +18,7 @@ from omnibase_spi.contracts.services import (
 )
 
 
-class AdapterInMemoryHostPool:
+class InMemoryLaneHostPool:
     """Answer every read with the snapshot it was given."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -32,7 +32,7 @@ class AdapterInMemoryHostPool:
         return self._snapshot
 
 
-class AdapterSnapshotFileHostPool:
+class SnapshotFileLaneHostPool:
     """Read the snapshot from a JSON file at each read."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -46,4 +46,4 @@ class AdapterSnapshotFileHostPool:
         )
 
 
-__all__ = ["AdapterInMemoryHostPool", "AdapterSnapshotFileHostPool"]
+__all__ = ["InMemoryLaneHostPool", "SnapshotFileLaneHostPool"]

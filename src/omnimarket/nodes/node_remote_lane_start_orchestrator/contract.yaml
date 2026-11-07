@@ -15,7 +15,7 @@
 # given; the engine is not in the leader's process group; the leader's exit code is diagnostic
 # only (the ledger decides what happened).
 #
-# WHO HOSTS THIS NODE. The entry (__main__) is the lane's leader process and lives as long as the
+# WHO HOSTS THIS NODE. The entry (runtime_remote_lane_start.py) is the lane's leader process and lives as long as the
 # lane. Shared runtimes must NOT attach it: runtime_dispatch and NO event_bus block.
 name: "node_remote_lane_start_orchestrator"
 lifecycle: experimental

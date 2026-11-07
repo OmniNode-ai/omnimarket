@@ -17,7 +17,7 @@ from typing import Literal
 from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
-    AdapterSshTransport,
+    SshLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
@@ -87,7 +87,7 @@ def build_real(
             reader=ledger_file,
             writer_principals=[settings.ledger_writer_principal],
         )
-        transport = AdapterSshTransport(
+        transport = SshLaneHostTransport(
             ssh_argv=settings.ssh_argv,
             host_run_root=settings.host_run_root,
             call_timeout_seconds=settings.host_call_timeout_seconds,

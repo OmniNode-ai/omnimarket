@@ -89,7 +89,7 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "omnimarket.nodes.node_remote_lane_start_orchestrator",
+            "omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start",
             "--overlay",
             str(overlay_path),
             "--ledger",

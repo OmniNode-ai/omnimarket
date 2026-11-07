@@ -45,7 +45,7 @@ class ModelScriptedTransportScript(BaseModel):
     stop_exit_code: int | None = 143
 
 
-class AdapterScriptedTransport:
+class ScriptedLaneHostTransport:
     """Answer each host call from the script; record it in ``calls``."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -134,6 +134,6 @@ class AdapterScriptedTransport:
 
 __all__ = [
     "ENGINE_START_CALLS",
-    "AdapterScriptedTransport",
     "ModelScriptedTransportScript",
+    "ScriptedLaneHostTransport",
 ]

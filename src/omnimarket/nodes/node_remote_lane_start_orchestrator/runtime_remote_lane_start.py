@@ -7,7 +7,7 @@ engine detached in a session of its own on the placed host, supervises it and ap
 TERMINAL (or a STATUS when the lane closed itself). A SIGTERM stops the engine and closes the
 lane only once the stop is confirmed. The exit code is diagnostic only; the ledger decides.
 
-    python -m omnimarket.nodes.node_remote_lane_start_orchestrator --overlay <overlay.yaml> \\
+    python -m omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start --overlay <overlay.yaml> \\
         --ledger <ledger.md> --pool-snapshot <pool.json> --lane <lane> --key <key> \\
         --ticket OMN-<n> --model <model> --brief <brief.md> --run-id <run> [--attempt N] \\
         [--engine claude] [--placement lab] [--parent <lane>] [--repo R --owner O --sha S]
@@ -27,7 +27,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
-    AdapterSnapshotFileHostPool,
+    SnapshotFileLaneHostPool,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.handler_remote_lane_start import (
     build_real,
@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("requested", True))
     handler = build_real(
         settings,
-        AdapterSnapshotFileHostPool(Path(args.pool_snapshot)),
+        SnapshotFileLaneHostPool(Path(args.pool_snapshot)),
         stop_requested=lambda: stop["requested"],
         sleep=time.sleep,
         echo=_say,

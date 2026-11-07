@@ -25,12 +25,12 @@ from omnibase_spi.protocols.lane import ProtocolLaneHostTransport
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
-    AdapterScriptedTransport,
     ModelScriptedTransportScript,
+    ScriptedLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
-    AdapterSshTransport,
     ModelHostCommandResult,
+    SshLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
@@ -51,8 +51,8 @@ SETSID_SHIM = (
 )
 
 
-def _ssh(tmp: Path) -> AdapterSshTransport:
-    return AdapterSshTransport(
+def _ssh(tmp: Path) -> SshLaneHostTransport:
+    return SshLaneHostTransport(
         ssh_argv=("ssh",),
         host_run_root=str(tmp / "runs"),
         call_timeout_seconds=30,
@@ -61,7 +61,7 @@ def _ssh(tmp: Path) -> AdapterSshTransport:
 
 
 def _start(
-    transport: AdapterSshTransport, tmp: Path, argv: tuple[str, ...], run: str = "r1"
+    transport: SshLaneHostTransport, tmp: Path, argv: tuple[str, ...], run: str = "r1"
 ) -> ModelLaneStartEngineResult:
     return transport.start_engine_detached(
         ModelLaneStartEngineRequest(
@@ -77,7 +77,7 @@ def _start(
 
 
 def _wait_exit(
-    transport: AdapterSshTransport, run: str = "r1", budget: float = 20.0
+    transport: SshLaneHostTransport, run: str = "r1", budget: float = 20.0
 ) -> ModelLaneReadEngineExitResult:
     end = time.monotonic() + budget
     while time.monotonic() < end:
@@ -92,7 +92,7 @@ def _wait_exit(
 
 def test_both_transports_satisfy_the_spi_protocol(tmp_path: Path) -> None:
     assert isinstance(
-        AdapterScriptedTransport(ModelScriptedTransportScript()),
+        ScriptedLaneHostTransport(ModelScriptedTransportScript()),
         ProtocolLaneHostTransport,
     )
     assert isinstance(_ssh(tmp_path), ProtocolLaneHostTransport)
@@ -101,7 +101,7 @@ def test_both_transports_satisfy_the_spi_protocol(tmp_path: Path) -> None:
 def test_handler_routes_each_operation_to_the_transport() -> None:
     calls: list[str] = []
     handler = HandlerRemoteLaneStartEffect(
-        AdapterScriptedTransport(ModelScriptedTransportScript(), calls)
+        ScriptedLaneHostTransport(ModelScriptedTransportScript(), calls)
     )
     result = handler.handle(
         ModelRemoteLaneHostCall(
@@ -190,7 +190,7 @@ def test_ssh_transport_start_that_does_not_settle_is_unresolved(tmp_path: Path) 
         ) -> ModelHostCommandResult:
             return ModelHostCommandResult(exit_code=124, stderr="timed out")
 
-    transport = AdapterSshTransport(
+    transport = SshLaneHostTransport(
         ssh_argv=("ssh",),
         host_run_root=str(tmp_path),
         call_timeout_seconds=1,
@@ -210,7 +210,7 @@ def test_ssh_transport_remote_host_goes_through_the_ssh_argv(tmp_path: Path) -> 
             seen.append(list(argv))
             return ModelHostCommandResult(exit_code=0, stdout="RUNNING\n")
 
-    transport = AdapterSshTransport(
+    transport = SshLaneHostTransport(
         ssh_argv=("ssh", "-o", "BatchMode=yes"),
         host_run_root="/runs",
         call_timeout_seconds=1,

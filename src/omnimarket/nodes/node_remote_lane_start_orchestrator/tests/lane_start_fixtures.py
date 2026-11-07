@@ -15,14 +15,14 @@ from omnibase_spi.contracts.services import (
 )
 
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
-    AdapterScriptedTransport,
     ModelScriptedTransportScript,
+    ScriptedLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
-    AdapterInMemoryHostPool,
+    InMemoryLaneHostPool,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartRequest,
@@ -111,7 +111,7 @@ def request(**overrides: Any) -> ModelRemoteLaneStartRequest:
     return ModelRemoteLaneStartRequest.model_validate(values | overrides)
 
 
-class FixtureLedgerRunner:
+class FixtureLedgerExecutor:
     """Append rows to a ledger fixture file, as the ledger writer would; log each append in ``calls``."""
 
     def __init__(self, path: Path, calls: list[str], refuse: bool = False) -> None:
@@ -138,7 +138,7 @@ def ledger_effect(
     if not path.exists():
         path.write_text("# fixture ledger\n", encoding="utf-8")
     return HandlerWorkLedgerAppendEffect(
-        runner=FixtureLedgerRunner(path, calls, refuse),
+        runner=FixtureLedgerExecutor(path, calls, refuse),
         reader=LocalLedgerFile(path),
         writer_principals=[PRINCIPAL],
     )
@@ -165,7 +165,7 @@ class Rig:
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
-        self.transport = AdapterScriptedTransport(
+        self.transport = ScriptedLaneHostTransport(
             script or ModelScriptedTransportScript(), self.calls
         )
         self.receipts = InMemoryReceiptSink()
@@ -181,7 +181,7 @@ class Rig:
 
         self.orchestrator = RemoteLaneStartOrchestrator(
             settings=cfg or settings(),
-            host_pool=AdapterInMemoryHostPool(pool or snapshot()),
+            host_pool=InMemoryLaneHostPool(pool or snapshot()),
             ledger=ledger_effect(self.ledger_path, self.calls, refuse_ledger),
             ledger_reader=LocalLedgerFile(self.ledger_path),
             host=HandlerRemoteLaneStartEffect(self.transport),

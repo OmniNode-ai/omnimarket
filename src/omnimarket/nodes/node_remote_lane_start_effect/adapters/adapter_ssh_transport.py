@@ -56,7 +56,7 @@ class ProtocolHostCommandRunner(Protocol):
     ) -> ModelHostCommandResult: ...
 
 
-class SubprocessHostCommandRunner:
+class SubprocessHostCommandExecutor:
     """Run an argv without a shell; a timeout is exit 124."""
 
     def run(
@@ -80,7 +80,7 @@ class SubprocessHostCommandRunner:
         )
 
 
-class AdapterSshTransport:
+class SshLaneHostTransport:
     """Prepare, start, read and stop a lane's engine on a host with one shell script per call."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -102,7 +102,7 @@ class AdapterSshTransport:
         self._root = host_run_root.rstrip("/")
         self._detach = " ".join(shlex.quote(a) for a in detach_argv)
         self._timeout = call_timeout_seconds
-        self._runner = runner or SubprocessHostCommandRunner()
+        self._runner = runner or SubprocessHostCommandExecutor()
 
     def run_dir(self, run_id: str) -> str:
         return f"{self._root}/{run_id}"
@@ -238,8 +238,8 @@ class AdapterSshTransport:
 
 __all__ = [
     "SIGNALLED_EXIT",
-    "AdapterSshTransport",
     "ModelHostCommandResult",
     "ProtocolHostCommandRunner",
-    "SubprocessHostCommandRunner",
+    "SshLaneHostTransport",
+    "SubprocessHostCommandExecutor",
 ]
