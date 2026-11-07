@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from omnimarket.handlers.work_ledger_text import ledger_order_key
 from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerParityStatus,
     ModelWorkLedgerHoldCounts,
@@ -30,6 +31,7 @@ from omnimarket.models.work_ledger_query import (
     ModelWorkLedgerParity,
     ModelWorkLedgerParityDay,
     ModelWorkLedgerRowRecord,
+    ModelWorkLedgerStaleHold,
 )
 
 _STAMP = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
@@ -85,6 +87,20 @@ class LedgerRow:
                 words = cell[len(key) + 1 :].split()
                 return words[0] if words else ""
         return ""
+
+
+def in_contract_order(
+    records: Iterable[ModelWorkLedgerRowRecord],
+) -> list[ModelWorkLedgerRowRecord]:
+    """Records in the one ordering contract: no sequence first by ``legacy_ordinal`` (file
+    order), then by ``ledger_seq``. A stable sort: equal keys keep the order they came in.
+
+    The markdown reader folds in arrival order, not stamp order, so a database read must
+    too: a TERMINAL that arrived before a CLAIM stamped earlier does not close it in the file.
+    """
+    return sorted(
+        records, key=lambda r: ledger_order_key(r.ledger_seq, r.legacy_ordinal)
+    )
 
 
 def parse_rows(records: Iterable[ModelWorkLedgerRowRecord]) -> list[LedgerRow]:
@@ -159,6 +175,86 @@ def _expired(until: str | None, now: datetime) -> bool:
         return False
 
 
+STALE_HOLD_AGE = timedelta(days=14)
+_HOLD_ID = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z-[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+)
+_PR_VALUE = re.compile(r"^[A-Za-z0-9_.-]+#[0-9]+$")
+
+
+def _pr_refs(row: LedgerRow, key: str) -> frozenset[str]:
+    """The ``repo#n`` handles in every ``key=`` cell, lower-cased and comma-split."""
+    return frozenset(
+        item.strip().lower()
+        for value in row.fields.get(key, [])
+        for item in value.split(",")
+        if item.strip()
+    )
+
+
+def _release_scope(release: LedgerRow) -> frozenset[str] | None:
+    """The PRs a RELEASE frees, or None when it frees the whole hold named by ``re=``.
+
+    The reader's rule (OMN-20956): only a RELEASE of a hold id that carries ``pr=`` and no
+    ``surface=`` is scoped. A scoped release naming nothing readable frees no PR.
+    """
+    if release.row_type != "RELEASE" or release.value("surface") is not None:
+        return None
+    re_value = release.token("re")
+    if re_value is None or _HOLD_ID.match(re_value) is None:
+        return None
+    if release.value("pr") is None:
+        return None
+    return frozenset(ref for ref in _pr_refs(release, "pr") if _PR_VALUE.match(ref))
+
+
+def _hold_release_state(
+    hold: LedgerRow, releases: Sequence[LedgerRow]
+) -> tuple[bool, frozenset[str]]:
+    """``(released, freed)``: a plain release ends the hold; scoped releases covering every PR
+    of the hold's own ``pr=`` list end it; otherwise they only free those PRs."""
+    hold_id = hold.token("id")
+    if hold_id is None:
+        return False, frozenset()
+    freed: set[str] = set()
+    for release in releases:
+        if release.token("re") != hold_id:
+            continue
+        scope = _release_scope(release)
+        if scope is None:
+            return True, frozenset(freed)
+        freed |= scope
+    covered = _pr_refs(hold, "pr")
+    return bool(covered) and covered <= freed, frozenset(freed)
+
+
+def _is_stale(row: LedgerRow, freed: frozenset[str], now: datetime) -> bool:
+    """An ``until=open`` hold with no release (not even a scoped one) older than 14 days.
+
+    RULING 2026-10-29T23:39:54Z: "A hold order, then 14 days counts as stale."
+    """
+    until = row.token("until")
+    return (
+        (until is None or until == "open")
+        and not freed
+        and now - _moment(row.stamp) > STALE_HOLD_AGE
+    )
+
+
+def _hold_view(row: LedgerRow, freed: frozenset[str]) -> ModelWorkLedgerHoldInForce:
+    return ModelWorkLedgerHoldInForce(
+        hold_id=row.token("id") or "",
+        by=row.token("lane") or row.token("from") or "unknown",
+        to=row.token("to"),
+        repo=row.token("repo"),
+        pr=row.token("pr"),
+        surface=row.token("surface"),
+        until=row.token("until"),
+        freed=tuple(sorted(freed)),
+        row=row.record,
+    )
+
+
 def holds_in_force(
     rows: Sequence[LedgerRow],
     *,
@@ -167,53 +263,70 @@ def holds_in_force(
     repo: str | None = None,
     surface: str | None = None,
     to: str | None = None,
-) -> tuple[list[ModelWorkLedgerHoldInForce], ModelWorkLedgerHoldCounts]:
-    """The ``holds`` verb: HOLD rows with an id, no RELEASE re=<id>, not expired."""
+) -> tuple[
+    list[ModelWorkLedgerHoldInForce],
+    ModelWorkLedgerHoldCounts,
+    list[ModelWorkLedgerStaleHold],
+]:
+    """The ``holds`` verb: HOLD rows with an id, not released (fully), not expired, not stale.
+
+    Returns the holds in force, the counts and, apart, the stale holds with their age.
+    A scoped RELEASE frees only the PRs it names (``freed``); the hold stands for the rest.
+    """
     held = [row for row in rows if row.row_type in _HOLD_TYPES]
-    releases = {row.token("re") for row in rows if row.row_type == "RELEASE"}
-    active: list[LedgerRow] = []
+    releases: dict[str | None, list[LedgerRow]] = {}
+    for row in rows:
+        if row.row_type == "RELEASE":
+            releases.setdefault(row.token("re"), []).append(row)
+    active: list[tuple[LedgerRow, frozenset[str]]] = []
+    stale: list[tuple[LedgerRow, frozenset[str]]] = []
     released = expired = legacy = 0
     for row in held:
         identifier = row.token("id")
         if not identifier:
             legacy += 1
-        elif identifier in releases:
+            continue
+        fully, freed = _hold_release_state(row, releases.get(identifier, ()))
+        if fully:
             released += 1
         elif row.token("surface") and _expired(row.token("until"), now):
             expired += 1
+        elif _is_stale(row, freed, now):
+            stale.append((row, freed))
         else:
-            active.append(row)
-    shown = []
-    for row in active:
-        if (
-            pr
-            and row.token("pr") != pr
-            and not (row.token("pr") is None and row.token("repo") == pr.split("#")[0])
-        ):
-            continue
+            active.append((row, freed))
+
+    def wanted(row: LedgerRow, freed: frozenset[str]) -> bool:
+        if pr:
+            named = {ref.lower() for ref in (row.token("pr") or "").split(",") if ref}
+            if pr.lower() in freed:
+                return False
+            if pr.lower() not in named and not (
+                not named and row.token("repo") == pr.split("#")[0]
+            ):
+                return False
         if repo and row.token("repo") != repo:
-            continue
+            return False
         if surface and row.token("surface") != surface:
-            continue
+            return False
         addressed = (row.token("to") or "").split(",")
-        if to and to not in addressed and "all" not in addressed:
-            continue
-        shown.append(
-            ModelWorkLedgerHoldInForce(
-                hold_id=row.token("id") or "",
-                by=row.token("lane") or row.token("from") or "unknown",
-                to=row.token("to"),
-                repo=row.token("repo"),
-                pr=row.token("pr"),
-                surface=row.token("surface"),
-                until=row.token("until"),
-                row=row.record,
-            )
+        return not (to and to not in addressed and "all" not in addressed)
+
+    shown = [_hold_view(row, freed) for row, freed in active if wanted(row, freed)]
+    listed_stale = [
+        ModelWorkLedgerStaleHold(
+            hold=_hold_view(row, freed), age_days=(now - _moment(row.stamp)).days
         )
+        for row, freed in stale
+        if wanted(row, freed)
+    ]
     counts = ModelWorkLedgerHoldCounts(
-        checked=len(held), released=released, expired=expired, legacy_no_id=legacy
+        checked=len(held),
+        released=released,
+        expired=expired,
+        legacy_no_id=legacy,
     )
-    return shown, counts
+    return shown, counts, listed_stale
 
 
 def inbox(rows: Sequence[LedgerRow], lane: str) -> ModelWorkLedgerInbox:

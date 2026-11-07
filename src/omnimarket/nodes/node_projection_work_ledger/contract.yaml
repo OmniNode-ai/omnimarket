@@ -107,6 +107,10 @@ db_io:
       access: write
       role: work_ledger_state
 
+  # The standalone history importer opens its own connection and writes
+  # ledger_line_citation. Its ownership is declared in the migration service
+  # manifest; the live projection writer only writes the two tables above.
+
   # work_ledger_rows is keyed on the row's content hash (ON CONFLICT DO NOTHING);
   # work_ledger_state is keyed on the entity, each op guarded on (at, row_id).
   idempotency_key: "event_id"
