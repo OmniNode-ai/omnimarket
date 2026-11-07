@@ -157,6 +157,15 @@ class ModelLandingPrFacts(BaseModel):
         ),
     )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
+    lacks_base_head: bool = Field(
+        default=False,
+        description=(
+            "The head does not contain its base branch's newest head, read from "
+            "the clone's ancestry (never GitHub's merge state, which reads a PR "
+            "BLOCKED, not BEHIND, on a base that is not strict). False when "
+            "unread: an unread head is never updated on this evidence."
+        ),
+    )
     merge_queue: bool = Field(
         default=False,
         description=(
@@ -577,6 +586,16 @@ class ModelLandingFacts(BaseModel):
     )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
+    )
+    base_green_checks: tuple[ModelLandingRepoChecks, ...] = Field(
+        default=(),
+        description=(
+            "Checks whose newest copy at each repo's newest base head "
+            "(``base_heads``) is green. A red head whose every fixable red check "
+            "is listed here, and which lacks that base head, is red from an older "
+            "base: its branch is updated, never a worker sent. A repo missing "
+            "here is unread, never green."
+        ),
     )
     base_heads: tuple[ModelLandingRepoHead, ...] = Field(
         default=(),
