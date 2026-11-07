@@ -25,22 +25,16 @@ output_model:
   name: "ModelCorpusReadResult"
   module: "omnimarket.models.eval_corpus.model_eval_corpus"
   description: "Entries, run ids typed cost-missing, requested run ids with no entry, and unreadable journal lines."
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: read_corpus
-      handler:
-        name: HandlerEvalCorpusReader
-        module: omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader
-    - operation: join_j15
-      handler:
-        name: HandlerJoinJ15
-        module: omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_join_j15
-
 handler:
   module: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader"
   class: "HandlerEvalCorpusReader"
   input_model: "omnimarket.models.eval_corpus.model_eval_corpus.ModelCorpusReadRequest"
+# The join handler is bound here so the canonical file shape check finds its module; this routes nothing.
+bound_handlers:
+  - operation: join_j15
+    handler:
+      module: "omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_join_j15"
+      class: "HandlerJoinJ15"
 # HandlerEvalCorpusReader and HandlerJoinJ15 take their ports (corpus, results, costs, sink, policy) as
 # constructor parameters, so the node runs through the join test and the floor's cycle, not handler_routing.
 
