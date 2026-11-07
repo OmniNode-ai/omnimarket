@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-22852
+title: 'node_floor_fill_reducer: the fill''s state as one pure transition function'
+summary: node_floor_fill_reducer (plan task T12 of the stopped-line fill plan) already holds the fill's per-key state as one pure transition function on dev. This change binds each acceptance criterion to the test that reads it, moves the seven tests that read the node's own contract and handler source out of the node package so the core no_io_outside_effects validator (no suppression, no baseline) judges the package clean, and adds the named injected break bus-corrupts-seq that shows the parity reading failing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22852-floor-fill-reducer
+  statement: The fill's state transitions are one pure function whose rows, invariants, drops, lane names, reservation resolution and window rules are each read by a test that fails when the rule is broken.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: Every row of the transition table is taken by its fixture and no other transition exists -- falsifier: `-k transition_conformance`, which reads the contract''s `state_machine` block and the fixture and fails on a missing, extra or differently-guarded row; the `check-fsm-handler-drift` and `analyze_fsm` hooks pass.'
+  - id: AC2
+    statement: 'AC2: I1 to I6 hold over generated observation sequences (duplicates, reorderings and late answers of earlier attempts included) -- falsifier: `-k invariants`, fixed seed, at least 200 sequences, zero violations.'
+  - id: AC3
+    statement: 'AC3: A dropped observation leaves state and `seq` unchanged and names the reason -- falsifier: `-k admission_drops`, cases for a late answer of an earlier attempt, a wrong lane, a wrong state (`ReservedChecked`, `StartFailed` and `SentChecked` each against an entry in the other state) and a `ReserveRequested` against a `RESERVED` entry and against a live `SENT` entry (typed refusal `held`) and against an ended `SENT` entry past its window (`uncleared`), `seq` unchanged in each.'
+  - id: AC4
+    statement: 'AC4: The lane name is a function of the key and the attempt: replay gives the same name, attempt 2 differs from attempt 1, and the keys `floor:a-b:c` and `floor:a:b-c` get different names -- falsifier: `-k lane_name_deterministic` and `-k lane_name_concatenation_pair`.'
+  - id: AC4b
+    statement: 'AC4b: A late `ReservedChecked` with no CLAIM that arrives after the same attempt became `SENT` is dropped and the entry stays `SENT` -- falsifier: `-k late_check_after_confirm_dropped`.'
+  - id: AC5
+    statement: 'AC5: A `RESERVED` entry past the timeout with no CLAIM is cleared, keeps its ticket and attempt, and is offered again as attempt n+1; with the CLAIM it is `SENT`; with an unreadable ledger it is untouched; a `StartFailed` clears it at once -- falsifier: `-k reserved_resolution`, four cases.'
+  - id: AC6
+    statement: 'AC6: An `ended` `SENT` entry inside the window holds its own key but uses no capacity, so a different ready task on the line is reserved; a `SENT` entry whose lane has not ended stays and counts toward capacity even past the window; once the window has passed and the lane has ended only the dispatch state is removed, and a reoffer is attempt n+1 that a historical CLAIM does not match -- falsifier: `-k ended_entry_holds_key_not_capacity`, `-k sent_entry_outlives_window_while_live` and `-k reoffer_after_expiry_new_attempt`.'
+  - id: AC7
+    statement: 'AC7: G-NODE holds, the node reads no clock and does no I/O (the core `no_io_outside_effects` and `contracts_and_di` hooks pass), and the in-memory and Redpanda legs are equal on the golden scenario -- falsifier: `-m floor_fill_parity -k reducer` with the Redpanda receipt in the PR body.'
+evidence_requirements:
+- kind: tests
+  description: The node's own tests, the tests that read its contract and handler source, and the parity tests.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_reducer -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22852-ac1
+  description: The transition conformance tests read the contract's state_machine block, the handler table and the fixture.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer tests/nodes/node_floor_fill_reducer -q --no-cov -k transition_conformance
+- id: dod-omn22852-ac2
+  description: The invariants hold over 250 generated sequences at a fixed seed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k invariants
+- id: dod-omn22852-ac3
+  description: Every dropped observation leaves the row and seq unchanged and names its reason.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k admission_drops
+- id: dod-omn22852-ac4
+  description: The lane name is a function of the key and the attempt.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k "lane_name_deterministic or lane_name_concatenation_pair"
+- id: dod-omn22852-ac4b
+  description: A late check after the confirm is dropped and the entry stays SENT (criterion AC4b; the binding label grammar takes no letter suffix, so it binds AC4).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k late_check_after_confirm_dropped
+- id: dod-omn22852-ac5
+  description: The four reservation resolutions.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k reserved_resolution
+- id: dod-omn22852-ac6
+  description: An ended entry holds its key and not capacity, a live entry outlives the window, and a reoffer after expiry is a new attempt.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k "ended_entry_holds_key_not_capacity or sent_entry_outlives_window_while_live or reoffer_after_expiry_new_attempt"
+- id: dod-omn22852-ac7
+  description: The node's contract loads, no key is read from a clock or a file in the handler, the parity tests run on the in-memory bus, and the injected break bus-corrupts-seq is judged unequal. The Redpanda leg runs where FLOOR_FILL_PARITY_BOOTSTRAP names a lab broker and its receipt is in the pull request body.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_reducer -q --no-cov -m floor_fill_parity -k "reducer"
