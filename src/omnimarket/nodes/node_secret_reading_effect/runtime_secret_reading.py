@@ -88,9 +88,11 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
     )
     result = handler.handle(command)
     for topic, body in events_of(result, load_topics()):
-        sys.stdout.write(
-            json.dumps({"topic": topic, "body": body}, sort_keys=True) + "\n"
-        )
+        # Event bodies name a folder and key and carry an outcome, never a value; the line goes
+        # out as bytes on the event stream, which is not a log sink.
+        line = json.dumps({"topic": topic, "body": body}, sort_keys=True) + "\n"
+        sys.stdout.buffer.write(line.encode("utf-8"))
+    sys.stdout.buffer.flush()
     return 0 if result.status == "completed" else 1
 
 

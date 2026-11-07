@@ -27,6 +27,8 @@ class ModelFactoryFloorSources(BaseModel):
     friction_report_relpath: str = Field(min_length=1)
     linear_titles_glob: str = Field(min_length=1)
     runner_fleet_relpath: str = Field(min_length=1)
+    # The host-drift fleet projection node_host_drift_fleet folds (OMN-21867); the Machines tab reads each host's heartbeat from it.
+    host_drift_relpath: str = Field(min_length=1)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):

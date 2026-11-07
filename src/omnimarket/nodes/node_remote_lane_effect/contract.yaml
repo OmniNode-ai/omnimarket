@@ -28,6 +28,8 @@ description: >
   canonical clone or public URL. Archives final run artifacts before host closeout
   removes working directories and expires managed report archives. Publishes finished
   lane commits with recovery refs, clean replay onto moved PR heads and pinned pushes.
+  Builds one venv per plugin lock hash in the lab plugin store, links each plugin tree to it
+  with a small venv of its own, and prunes the shared venvs no tree links to (OMN-22740).
 input_model:
   name: "ModelRemoteLaneRefRequest"
   module: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect"
@@ -62,6 +64,18 @@ handler_routing:
         module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_publish"
       input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_publish.ModelRemoteLanePublishRequest"
       output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_publish.ModelRemoteLanePublishResult"
+    - operation: "ensure_shared_plugin_venv"
+      handler:
+        name: "HandlerRemoteLaneSharedVenv"
+        module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_shared_venv"
+      input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_shared_venv.ModelRemoteLaneSharedVenvRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_shared_venv.ModelRemoteLaneSharedVenvResult"
+    - operation: "prune_shared_plugin_venvs"
+      handler:
+        name: "HandlerRemoteLaneSharedVenvPrune"
+        module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_shared_venv"
+      input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_shared_venv.ModelRemoteLaneSharedVenvPruneRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_shared_venv.ModelRemoteLaneSharedVenvPruneResult"
 descriptor:
   node_archetype: effect
   purity: effectful
