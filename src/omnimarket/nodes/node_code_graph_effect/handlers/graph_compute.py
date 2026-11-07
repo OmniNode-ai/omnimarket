@@ -79,10 +79,11 @@ def _matches(path: str, patterns: Iterable[str]) -> bool:
 
 @dataclass(frozen=True)
 class GraphRules:
-    """The overlay's root rules, with the drill switch that drops the contract links."""
+    """The overlay's root rules, with the drill switches that drop the contract links or the entry points."""
 
     roots: ModelGraphRoots
     contract_links: bool = True
+    entry_points: bool = True
 
     def wanted(self, path: str) -> bool:
         return (
@@ -328,7 +329,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                     else name.split(".")[:-1]
                 )
                 scans[entity] = _scan(tree, package)
-            elif path == _PYPROJECT and rules.roots.entry_points:
+            elif path == _PYPROJECT and rules.entry_points and rules.roots.entry_points:
                 for module in _entry_point_modules(text):
                     roots.update(index.resolve(module, repo))
             elif rules.contract_links and _matches(path, rules.roots.contract_globs):
