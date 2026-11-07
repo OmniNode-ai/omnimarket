@@ -9,7 +9,7 @@ the load and names it.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -57,11 +57,13 @@ def build_corpus(
     overlay: ModelEvalCorpusOverlay, environ: Mapping[str, str]
 ) -> ProtocolEvalCorpus:
     """The corpus the overlay selects: in memory, or the journal under the floor's state directory."""
-    if overlay.backend == "in_memory":
-        return InMemoryEvalCorpus()
-    return JsonlEvalCorpus(
-        state_home(overlay, environ) / overlay.corpus_journal_relpath
-    )
+    builders: dict[str, Callable[[], ProtocolEvalCorpus]] = {
+        "in_memory": InMemoryEvalCorpus,
+        "jsonl": lambda: JsonlEvalCorpus(
+            state_home(overlay, environ) / overlay.corpus_journal_relpath
+        ),
+    }
+    return builders[overlay.backend]()
 
 
 __all__ = ["ModelEvalCorpusOverlay", "build_corpus", "load_overlay", "state_home"]
