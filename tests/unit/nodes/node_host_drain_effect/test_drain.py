@@ -26,19 +26,20 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     ModelHostDrainRequest,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverlay
+from omnimarket.nodes.node_host_drain_effect.protocols import ProtocolDrainStore
 
 NOW = datetime(2026, 11, 7, 15, 0, tzinfo=UTC)
 
 
 def _handler(
     overlay: ModelHostDrainOverlay,
-    store: object,
+    store: ProtocolDrainStore,
     lanes: FixedLaneSource,
     sink: InMemoryEmissionSink,
 ) -> HandlerHostDrain:
     return HandlerHostDrain(
         overlay.drain,
-        store=store,  # type: ignore[arg-type]
+        store=store,
         lanes=lanes,
         sink=sink,
         clock=lambda: NOW,

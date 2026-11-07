@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -78,10 +79,8 @@ def test_overlay_runner_on_an_undeclared_host_is_refused() -> None:
         ModelHostDrainOverlay.model_validate(document)
 
 
-class _Done:
-    def __init__(self, code: int, out: str = "") -> None:
-        self.returncode = code
-        self.stdout = out
+def _done(code: int, out: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=code, stdout=out)
 
 
 def test_command_stopper_runs_the_overlay_argv_with_the_unit(
@@ -89,13 +88,13 @@ def test_command_stopper_runs_the_overlay_argv_with_the_unit(
 ) -> None:
     seen: list[list[str]] = []
 
-    def run(argv: list[str], **_: object) -> _Done:
+    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         seen.append(argv)
-        return _Done(0)
+        return _done(0)
 
-    assert CommandRunnerStopper(overlay.runner_stop, run=run).stop("example-runner-1")  # type: ignore[arg-type]
+    assert CommandRunnerStopper(overlay.runner_stop, run=run).stop("example-runner-1")
     assert seen == [["example-service-control", "stop", "example-runner-1.service"]]
-    failing = CommandRunnerStopper(overlay.runner_stop, run=lambda *_a, **_k: _Done(3))  # type: ignore[arg-type]
+    failing = CommandRunnerStopper(overlay.runner_stop, run=lambda *_a, **_k: _done(3))
     assert failing.stop("example-runner-1") is False
     assert failing.stop("not-a-runner") is False
 
@@ -103,7 +102,7 @@ def test_command_stopper_runs_the_overlay_argv_with_the_unit(
 def test_command_lane_source_reads_the_integer_the_command_prints(
     overlay: ModelHostDrainOverlay,
 ) -> None:
-    lanes = CommandLaneSource(overlay.lanes, run=lambda *_a, **_k: _Done(0, "3\n"))  # type: ignore[arg-type]
+    lanes = CommandLaneSource(overlay.lanes, run=lambda *_a, **_k: _done(0, "3\n"))
     assert lanes.running("example-host-a") == 3
 
 
@@ -121,8 +120,8 @@ def test_command_probe_reads_busy_idle_and_unknown_from_the_argv_output(
 
     def probe_with(code: int, out: str) -> CommandRunnerProbe:
         return CommandRunnerProbe(
-            overlay.runner_stop, run=lambda *_a, **_k: _Done(code, out)
-        )  # type: ignore[arg-type]
+            overlay.runner_stop, run=lambda *_a, **_k: _done(code, out)
+        )
 
     assert (
         probe_with(0, probe_settings.busy_token + "\n").activity("example-runner-1")

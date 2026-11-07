@@ -20,6 +20,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
@@ -123,7 +124,9 @@ def run(
         for host in store.draining_hosts():
             print(host)
         return 0
-    label = "in_memory" if backend == "in_memory" else "real"
+    label: Literal["in_memory", "real"] = (
+        "in_memory" if backend == "in_memory" else "real"
+    )
     if args.verb == "runner-stop":
         stopper = HandlerIdleRunnerStop(
             overlay.runner_stop,
@@ -135,7 +138,7 @@ def run(
             stopper=CommandRunnerStopper(overlay.runner_stop),
             sink=sink,
             clock=lambda: datetime.now(UTC),
-            backend=label,  # type: ignore[arg-type]
+            backend=label,
         )
         stopped = stopper.handle(
             ModelIdleRunnerStopRequest(
@@ -150,7 +153,7 @@ def run(
         lanes=CommandLaneSource(overlay.lanes),
         sink=sink,
         clock=lambda: datetime.now(UTC),
-        backend=label,  # type: ignore[arg-type]
+        backend=label,
     )
     result = drain.handle(
         ModelHostDrainRequest(

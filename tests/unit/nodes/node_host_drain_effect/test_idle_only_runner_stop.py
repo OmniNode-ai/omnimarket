@@ -25,20 +25,24 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     ModelIdleRunnerStopRequest,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverlay
+from omnimarket.nodes.node_host_drain_effect.protocols import (
+    ProtocolRunnerProbe,
+    ProtocolRunnerStopper,
+)
 
 NOW = datetime(2026, 11, 7, 15, 0, tzinfo=UTC)
 
 
 def _handler(
     overlay: ModelHostDrainOverlay,
-    probe: object,
-    stopper: object,
+    probe: ProtocolRunnerProbe,
+    stopper: ProtocolRunnerStopper,
     sink: InMemoryEmissionSink,
 ) -> HandlerIdleRunnerStop:
     return HandlerIdleRunnerStop(
         overlay.runner_stop,
-        probe=probe,  # type: ignore[arg-type]
-        stopper=stopper,  # type: ignore[arg-type]
+        probe=probe,
+        stopper=stopper,
         sink=sink,
         clock=lambda: NOW,
         backend="in_memory",
