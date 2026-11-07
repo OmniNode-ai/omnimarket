@@ -23,7 +23,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    pinned_overlay_root,
+)
 from omnimarket.nodes.node_landing_canary_effect.adapters.canary_repo import (
     InMemoryCanaryRepo,
     ScmCanaryRepo,
@@ -140,15 +143,10 @@ def _schedule(arguments: Sequence[str]) -> int:
     elif args.verb == "install":
         if not args.workspace_root:
             raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
-        found = find_node_overlay(NODE_NAME)
-        if found is None:
-            raise NodeOverlayError(
-                "the overlay file cannot be found to pin its root in the unit"
-            )
         result = scheduler.install(
             args.host,
             omni_root=Path(args.workspace_root),
-            overlay_root=found.parent.parent,
+            overlay_root=pinned_overlay_root(NODE_NAME),
             dry_run=args.dry_run,
         )
     elif args.verb == "uninstall":
