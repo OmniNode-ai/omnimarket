@@ -10,6 +10,7 @@ from omnimarket.nodes.node_runner_group_reading_compute.handlers import (
 )
 from omnimarket.nodes.node_runner_group_reading_compute.models import (
     EnumGroupVisibility,
+    ModelGroupFact,
 )
 from tests.nodes.node_runner_group_reading_compute.support import (
     LAB_GROUP_ID,
@@ -23,9 +24,9 @@ _SUBJECT = f"public_sees_lab:{LAB_GROUP_ID}"
 
 
 def _verdict(
-    groups: tuple[object, ...],
+    groups: tuple[ModelGroupFact, ...],
 ) -> tuple[EnumReadingVerdict, EnumReadingVerdict]:
-    result = _HANDLER.handle(request(groups))  # type: ignore[arg-type]
+    result = _HANDLER.handle(request(groups))
     subject = next(s for s in result.subjects if s.name == _SUBJECT)
     return result.verdict, subject.verdict
 
