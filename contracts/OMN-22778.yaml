@@ -57,3 +57,12 @@ dod_evidence:
   - check_type: command
     check_value: test -s "$HOME/.local/state/omni/silent-failure-alarm/config.json"
     cwd: .
+- id: dod-omn22778-ac4-rendered-document
+  description: "The document the installer renders for a request equals the declared document with every placeholder filled (the hosted counterpart of AC4; the comparison with the Mac's live file is read at the local Done gate)."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k "alarm_config_dry_run_renders_the_declared_document or alarm_config_control_declaration_without_a_document_renders_none"
+    cwd: .
