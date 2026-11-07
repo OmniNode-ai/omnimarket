@@ -26,6 +26,7 @@ the stopped outcome (exit 143). An engine that survives leaves the CLAIM open, t
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -85,6 +86,11 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_appe
     ProtocolLedgerReader,
 )
 
+#: The zero reasons a TERMINAL's delegation cell may carry (the runner script's own list, landing_text).
+DELEGATION_REASON_RE = re.compile(
+    r"no-text-or-code|read-only-lane|not-attempted:[A-Za-z0-9._-]+|route-refused:[A-Za-z0-9._-]+|route-unavailable:[A-Za-z0-9._:-]+"
+)
+
 #: Namespace of the CLAIM request id: uuid5 of ``lane-claim:<lane>:<attempt>`` is the same id on
 #: every replay, which the ledger append effect deduplicates by its ``req=`` cell.
 CLAIM_NAMESPACE = uuid.UUID("5b0f6c1e-2848-4d15-9a6e-6c616e652d73")
@@ -92,6 +98,20 @@ CLAIM_NAMESPACE = uuid.UUID("5b0f6c1e-2848-4d15-9a6e-6c616e652d73")
 
 def claim_request_id(lane: str, attempt: int) -> uuid.UUID:
     return uuid.uuid5(CLAIM_NAMESPACE, f"lane-claim:{lane}:{attempt}")
+
+
+def script_status(outcome: EnumRemoteLaneStartOutcome, exit_code: int) -> str:
+    """The receipt ``status`` the runner script writes for this ending.
+
+    The script's statuses for the four endings it shares with the node: ``done`` and ``lane-error``
+    (engine ended, by exit code), ``no-host`` and ``ledger-refused`` (a refused CLAIM). An ending the
+    script words differently or not at all keeps the node's own outcome value.
+    """
+    if outcome is EnumRemoteLaneStartOutcome.ENDED:
+        return "done" if exit_code == 0 else "lane-error"
+    if outcome is EnumRemoteLaneStartOutcome.CLAIM_REFUSED:
+        return "ledger-refused"
+    return outcome.value
 
 
 class ProtocolReceiptSink(Protocol):
@@ -175,6 +195,7 @@ class RemoteLaneStartOrchestrator:
         self._stop_requested = stop_requested
         self._requesting_host = requesting_host
         self._lines: list[str] = []
+        self._started_at = self._clock()
 
     # -------------------------------------------------------------- helpers
 
@@ -200,12 +221,33 @@ class RemoteLaneStartOrchestrator:
         receipt: ModelRemoteLaneStartReceipt,
         exit_code: int | None = None,
     ) -> ModelRemoteLaneStartResult:
+        code = EXIT_CODES[outcome] if exit_code is None else exit_code
+        if outcome not in (
+            EnumRemoteLaneStartOutcome.START_UNRESOLVED,
+            EnumRemoteLaneStartOutcome.STOP_REFUSED,
+        ):
+            # Every ending that writes no TERMINAL-less open CLAIM is final, as the script's one exit is.
+            receipt.final = True
+        receipt.status = script_status(outcome, code)
+        self._finish_line(receipt, code)
+        self._receipts.write(receipt)
         return ModelRemoteLaneStartResult(
             outcome=outcome,
-            exit_code=EXIT_CODES[outcome] if exit_code is None else exit_code,
+            exit_code=code,
             host=receipt.host,
             lines=tuple(self._lines),
             receipt=receipt.model_copy(deep=True),
+        )
+
+    def _finish_line(self, receipt: ModelRemoteLaneStartReceipt, code: int) -> None:
+        """The script's two closing lines: where the receipt is, then OK or FAILED with the status."""
+        located = getattr(self._receipts, "path", None)
+        if callable(located):
+            self._say(f"RECEIPT {located(receipt)}")
+        elapsed = (self._clock() - self._started_at).total_seconds()
+        self._say(
+            f"{'OK' if code == 0 else 'FAILED'} remote-lane lane={receipt.lane} host={receipt.host or 'none'} "
+            f"status={receipt.status} exit={code} duration_s={elapsed:.1f}"
         )
 
     def _cells(self, request: ModelRemoteLaneStartRequest, host: str) -> list[str]:
@@ -213,14 +255,49 @@ class RemoteLaneStartOrchestrator:
             f"lane={request.lane}",
             f"ticket={request.ticket}",
             f"host={host}",
-            f"key={request.key}",
             f"run={request.run_id}",
         ]
+        if request.key:  # the fill's cell; a lane started by hand has no key
+            cells.insert(3, f"key={request.key}")
         if request.parent:
             cells.append(f"parent={request.parent}")
         if request.escalation_reason:
             cells.append(f"escalation_reason={request.escalation_reason}")
         return cells
+
+    @staticmethod
+    def _delegation_cell(decided: Any, status: str, engine_rc: int | None) -> str:
+        """The TERMINAL's delegation cell, as the script's ``delegation_cells`` writes it.
+
+        A declared count above zero stands with its backing cells; a zero stands with its declared reason,
+        unless the engine failed (then, as the script does, the reason is the lane's status). A lane that
+        declared nothing reached no delegate call the runner can see: ``not-attempted:<status>``.
+        """
+        declared = decided.delegation
+        reason = ""
+        if decided.problem is None and "delegated" in declared:
+            count = int(declared["delegated"])
+            if count > 0:
+                backing = "".join(
+                    f" {key}={declared[key]}"
+                    for key in ("runs", "codex", "jev")
+                    if declared.get(key, "") not in {"", "none"}
+                )
+                return f"delegated={count}{backing}"
+            reason = declared.get("reason", "")
+            if engine_rc and not reason.startswith("route-unavailable:"):
+                reason = ""
+        why = "" if status in ("", "done") else status
+        named = why or (f"engine-{engine_rc}" if engine_rc else "no-delegation-line")
+        if not DELEGATION_REASON_RE.fullmatch(reason):
+            slug = re.sub(r"[^A-Za-z0-9._-]+", "-", named).strip("-")[:60].strip("-")
+            reason = f"not-attempted:{slug or 'no-delegation-line'}"
+        return f"delegated=0 delegation_reason={reason}"
+
+    def _est_hours(self, request: ModelRemoteLaneStartRequest) -> int:
+        if request.timeout_min is None:
+            return self._s.est_hours
+        return max(1, round(request.timeout_min / 60))
 
     def _append(
         self,
@@ -287,6 +364,7 @@ class RemoteLaneStartOrchestrator:
 
     def run(self, request: ModelRemoteLaneStartRequest) -> ModelRemoteLaneStartResult:
         self._lines = []
+        self._started_at = self._clock()
         receipt = ModelRemoteLaneStartReceipt(
             lane=request.lane,
             run_id=request.run_id,
@@ -347,6 +425,9 @@ class RemoteLaneStartOrchestrator:
             name=reading.name, target=reading.target, local=reading.local
         )
         receipt.host = host_ref.name
+        self._say(
+            f"placed lane={request.lane} host={host_ref.name} ({host_ref.target or 'launching host'})"
+        )
 
         # (3) Claim, by the leader itself, before any host call that starts the engine.
         req_id = claim_request_id(request.lane, request.attempt)
@@ -363,7 +444,7 @@ class RemoteLaneStartOrchestrator:
             *self._cells(request, host_ref.name)[:2],
             f"actor={self._s.actor}",
             f"model={request.engine}-{request.model}",
-            f"est ~{self._s.est_hours} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
+            f"est ~{self._est_hours(request)} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
         ]
@@ -392,7 +473,7 @@ class RemoteLaneStartOrchestrator:
             )
             return self._result(EnumRemoteLaneStartOutcome.CLAIM_REFUSED, receipt)
         self._say(
-            f"REMOTE-LANE-CLAIMED lane={request.lane} host={host_ref.name} key={request.key} run={request.run_id}"
+            f"CLAIM {claim_row.split(' | ', 1)[0]} lane={request.lane} host={host_ref.name}"
         )
         self._state(receipt, "claimed", claim_row=claim_row)
 
@@ -462,9 +543,6 @@ class RemoteLaneStartOrchestrator:
                 message=f"engine did not start: {started.error}",
                 outcome=EnumRemoteLaneStartOutcome.START_FAILED,
             )
-        self._say(
-            f"REMOTE-LANE-STARTED lane={request.lane} host={host_ref.name} session={started.session_id}"
-        )
         self._state(receipt, "running", session_id=started.session_id, workdir=workdir)
 
         # (5) Supervise.
@@ -575,6 +653,12 @@ class RemoteLaneStartOrchestrator:
             else decided.outcome
         )
         claim_stamp = claim_row.split(" | ", 1)[0]
+        final_status = script_status(
+            outcome,
+            (0 if engine_rc == 0 and decided.outcome in ("done", "handed-off") else 1)
+            if outcome is EnumRemoteLaneStartOutcome.ENDED
+            else EXIT_CODES[outcome],
+        )
         close_id = uuid.uuid5(
             CLAIM_NAMESPACE, f"lane-close:{request.lane}:{request.attempt}"
         )
@@ -593,7 +677,6 @@ class RemoteLaneStartOrchestrator:
             ]
         else:
             kind = "TERMINAL"
-            delegation = decided.delegation
             cells = [
                 *head[:2],
                 f"actor={request.engine}:{request.model}:remote-lane",
@@ -602,13 +685,7 @@ class RemoteLaneStartOrchestrator:
                 f"closes-CLAIM={claim_stamp}",
                 f"outcome={lane_outcome}",
                 *head[2:],
-                *(
-                    [
-                        f"delegated={delegation['delegated']} delegation_reason={delegation['reason']}"
-                    ]
-                    if "delegated" in delegation and "reason" in delegation
-                    else [f"{k}={v}" for k, v in delegation.items()]
-                ),
+                self._delegation_cell(decided, final_status, engine_rc),
                 *(f"{k}={v}" for k, v in sorted(decided.ledger_cells.items())),
             ]
             if decided.problem:
@@ -627,9 +704,6 @@ class RemoteLaneStartOrchestrator:
             self._say(
                 f"REMOTE-LANE-LEDGER-REFUSED lane={request.lane} kind={kind} rc={appended.exit_code}: {appended.message[-300:]}"
             )
-        self._say(
-            f"REMOTE-LANE-{kind} lane={request.lane} host={host_ref.name} outcome={lane_outcome} rc={engine_rc}"
-        )
         self._state(
             receipt,
             outcome.value,

@@ -25,7 +25,8 @@ remote_lane_start:
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
   ledger_writer_principal: example-principal
-  actor: node:remote-lane-start
+  # The runner script's CLAIM and STATUS actor, so a row of this node reads as the runner's own row.
+  actor: script:onex-remote-lane
   displaces: a lane on the busy launching host
   est_hours: 2
   priority: other

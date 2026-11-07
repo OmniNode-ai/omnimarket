@@ -171,7 +171,10 @@ def test_early_refusals_write_nothing(
     assert result.exit_code == code
     assert rig.calls == []
     assert rig.ledger_rows() == []
-    assert rig.receipts.written == []
+    # The runner script writes one final receipt for a refusal (no CLAIM, no host call); so does the node.
+    assert [(r.state, r.final, r.status) for r in rig.receipts.written] == [
+        (outcome.value, True, outcome.value)
+    ], name
 
 
 # ------------------------------------------------------------------ AC5 close

@@ -66,7 +66,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "detach_argv": ["setsid"],
         "ledger_append_argv": ["fixture-ledger"],
         "ledger_writer_principal": PRINCIPAL,
-        "actor": "node:remote-lane-start",
+        "actor": "script:onex-remote-lane",
         "displaces": "a lane on the busy launching host",
         "est_hours": 2,
         "priority": "other",
@@ -118,9 +118,13 @@ class FixtureLedgerExecutor:
         self._path = path
         self._calls = calls
         self._refuse = refuse
+        self.attempts: list[
+            str
+        ] = []  # every row handed to the writer, a refused one too
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         kind = rows.split(" | ")[1]
+        self.attempts.append(rows.rstrip("\n"))
         if self._refuse:
             self._calls.append(f"ledger:refused {kind}")
             return ModelAppendCommandResult(
@@ -133,12 +137,15 @@ class FixtureLedgerExecutor:
 
 
 def ledger_effect(
-    path: Path, calls: list[str], refuse: bool = False
+    path: Path,
+    calls: list[str],
+    refuse: bool = False,
+    executor: FixtureLedgerExecutor | None = None,
 ) -> HandlerWorkLedgerAppendEffect:
     if not path.exists():
         path.write_text("# fixture ledger\n", encoding="utf-8")
     return HandlerWorkLedgerAppendEffect(
-        runner=FixtureLedgerExecutor(path, calls, refuse),
+        runner=executor or FixtureLedgerExecutor(path, calls, refuse),
         reader=LocalLedgerFile(path),
         writer_principals=[PRINCIPAL],
     )
@@ -179,10 +186,15 @@ class Rig:
             self._polls += 1
             return self._polls > self._stop_after
 
+        self.executor = FixtureLedgerExecutor(
+            self.ledger_path, self.calls, refuse_ledger
+        )
         self.orchestrator = RemoteLaneStartOrchestrator(
             settings=cfg or settings(),
             host_pool=InMemoryLaneHostPool(pool or snapshot()),
-            ledger=ledger_effect(self.ledger_path, self.calls, refuse_ledger),
+            ledger=ledger_effect(
+                self.ledger_path, self.calls, refuse_ledger, self.executor
+            ),
             ledger_reader=LocalLedgerFile(self.ledger_path),
             host=HandlerRemoteLaneStartEffect(self.transport),
             receipts=self.receipts,
@@ -195,6 +207,10 @@ class Rig:
         text = self.ledger_path.read_text(encoding="utf-8")
         rows = [line for line in text.splitlines() if " | " in line]
         return [r for r in rows if kind is None or r.split(" | ")[1] == kind]
+
+    def attempted_rows(self, kind: str) -> list[str]:
+        """Rows of ``kind`` handed to the ledger writer, a refused one included."""
+        return [r for r in self.executor.attempts if r.split(" | ")[1] == kind]
 
     def host_calls(self) -> list[str]:
         return [c for c in self.calls if c.startswith("host:")]

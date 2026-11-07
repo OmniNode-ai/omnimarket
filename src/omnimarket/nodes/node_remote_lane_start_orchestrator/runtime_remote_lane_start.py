@@ -55,7 +55,7 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--pool-snapshot", required=True)
     p.add_argument("--lane", required=True)
-    p.add_argument("--key", required=True)
+    p.add_argument("--key", help="the fill's key; no key writes no key= cell")
     p.add_argument("--ticket", required=True)
     p.add_argument("--model", required=True)
     p.add_argument("--brief", required=True)
@@ -69,6 +69,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--repo")
     p.add_argument("--owner")
     p.add_argument("--sha")
+    p.add_argument(
+        "--timeout-min",
+        type=int,
+        help="the lane's runtime limit; the CLAIM's est hours follow it",
+    )
     return p
 
 
@@ -94,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             repo=args.repo,
             owner=args.owner,
             sha=args.sha,
+            timeout_min=args.timeout_min,
         )
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"node_remote_lane_start_orchestrator: refused: {exc}\n")

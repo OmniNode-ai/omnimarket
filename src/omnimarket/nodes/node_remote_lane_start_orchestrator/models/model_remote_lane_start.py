@@ -91,7 +91,7 @@ class ModelRemoteLaneStartRequest(BaseModel):
     model_config = _FROZEN
 
     lane: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-    key: str = Field(min_length=1, pattern=r"^[^|\s]+$")
+    key: str | None = Field(default=None, min_length=1, pattern=r"^[^|\s]+$")
     ticket: str = Field(pattern=r"^OMN-[0-9]+$")
     parent: str | None = None
     engine: str = Field(min_length=1)
@@ -106,6 +106,9 @@ class ModelRemoteLaneStartRequest(BaseModel):
     repo: str | None = None
     owner: str | None = None
     sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    #: The lane's runtime limit in minutes; the CLAIM's est hours follow it as the runner script's do
+    #: (``max(1, round(minutes / 60))``). Absent, the overlay's ``est_hours`` stands.
+    timeout_min: int | None = Field(default=None, ge=1)
 
 
 class ModelRemoteLaneStartReceipt(BaseModel):
@@ -115,9 +118,10 @@ class ModelRemoteLaneStartReceipt(BaseModel):
 
     lane: str
     run_id: str
-    key: str
+    key: str | None = None
     ticket: str
     state: str
+    status: str | None = None
     host: str | None = None
     claim_request_id: str | None = None
     claim_row: str | None = None

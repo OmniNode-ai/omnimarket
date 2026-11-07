@@ -143,4 +143,6 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
     )
     assert receipt["final"]
     assert receipt["engine_rc"] == 0
-    assert "REMOTE-LANE-CLAIMED lane=floor-alpha-a1" in out
+    assert " lane=floor-alpha-a1 host=" in next(
+        line for line in out.splitlines() if line.startswith("CLAIM ")
+    )  # the script's own CLAIM line
