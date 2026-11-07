@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Commitment Writer Effect (OMN-23013)
+#
+# The writer the ledger skills call to record an operator's ask. It reads the ask verbatim (a file or stdin), the owner and
+# the check, builds the row with node_commitment_ledger_compute (which refuses an ask with no owner or no runnable
+# check) and prints it; the ledger skill appends it through the ledger writer, so no row is written here. The rules are the
+# ledger node's overlay.
+name: node_commitment_writer_effect
+contract_name: node_commitment_writer_effect
+node_name: node_commitment_writer_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Reads an operator's ask, its owner and its check, and prints the ledger commitment row that records them, or the
+  reasons the row was refused (exit 65). Writes nothing to the ledger.
+
+handler:
+  module: omnimarket.nodes.node_commitment_ledger_compute.handlers.handler_commitment_ledger
+  class: HandlerCommitmentLedger
+  input_model: omnimarket.nodes.node_commitment_ledger_compute.models.ModelCommitmentLedgerRequest
+
+# Not a runtime-dispatched handler: the node runs through its own command line, called by the ledger skills.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: []
+  purity: impure
+  idempotent: true
+  side_effects: [reads-ask-file-or-stdin, reads-overlay]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelCommitmentLedgerRequest
+  module: omnimarket.nodes.node_commitment_ledger_compute.models
+  description: Built by the command line from its arguments and the ask.
+output_model:
+  name: ModelCommitmentLedgerResult
+  module: omnimarket.nodes.node_commitment_ledger_compute.models
+  description: The row built, or the refusals.
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_commitment_writer_effect, called by the ledger skills."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []

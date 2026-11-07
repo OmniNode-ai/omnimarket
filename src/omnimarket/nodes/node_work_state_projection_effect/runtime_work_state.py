@@ -27,6 +27,12 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.nodes.node_commitment_ledger_compute.handlers.commitment_rows import (
+    fold_commitments,
+)
+from omnimarket.nodes.node_commitment_ledger_compute.models import (
+    ModelCommitmentRules,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     FileLedgerRowSource,
 )
@@ -45,6 +51,7 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_s
     tickets_from_linear_snapshot,
 )
 from omnimarket.nodes.node_work_state_projection_compute.models import (
+    ModelCommitmentSource,
     ModelReadingSource,
     ModelWorkStateRequest,
     ModelWorkStateResult,
@@ -75,6 +82,58 @@ def _read_yaml_overlay(
         return None
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else None
+
+
+def _read_commitments(
+    rt: Mapping[str, Any],
+    now: datetime,
+    env: Mapping[str, str],
+    ledger: ProtocolLedgerRowSource | None,
+    unread: list[str],
+) -> list[ModelCommitmentSource]:
+    """Every operator ask recorded as a commitment, read over its own window (an ask outlives the lane rows' window)."""
+    cfg = rt["commitments"]
+    if ledger is None:
+        unread.append(f"commitments:ledger {rt['ledger']['path_env']} unset")
+        return []
+    try:
+        commitment_rules = load_structured_overlay(
+            cfg["overlay_id"],
+            ModelCommitmentRules,
+            env,
+            file_env=cfg["overlay_file_env"],
+        )
+    except NodeOverlayError as exc:
+        unread.append(f"commitments:overlay {type(exc).__name__}")
+        return []
+    read = ledger.read(
+        ModelLedgerQuery(
+            since=now - timedelta(hours=float(cfg["lookback_hours"])),
+            until=now + timedelta(days=1),
+            row_type=commitment_rules.row_type,
+            term=f"{commitment_rules.kind_cell}={commitment_rules.kind_value}",
+        )
+    )
+    if read.error is not None:
+        unread.append(f"commitments:ledger {read.error}")
+        return []
+    folded, malformed = fold_commitments(read.rows, commitment_rules)
+    unread.extend(f"commitments:malformed {entry}" for entry in malformed)
+    return [
+        ModelCommitmentSource(
+            commitment_id=c.commitment_id,
+            ask=c.ask,
+            owner=c.owner,
+            check=c.check,
+            status=c.status.value,
+            opened_at=c.opened_at,
+            ticket=c.ticket,
+            requires=c.requires,
+            last_checked_at=c.last_checked_at,
+            last_exit=c.last_exit,
+        )
+        for c in folded
+    ]
 
 
 def build_request(
@@ -111,6 +170,8 @@ def build_request(
                 rows = []
                 break
             rows.extend(read.rows)
+
+    commitments = _read_commitments(rt, now, env, ledger, unread)
 
     pull_requests: list[Any] = []
     watcher = (
@@ -204,6 +265,7 @@ def build_request(
         ledger_rows=tuple(rows),
         receipts=tuple(receipts_from_documents(receipt_docs)),
         readings=tuple(readings),
+        commitments=tuple(commitments),
         unread=tuple(unread),
     )
 

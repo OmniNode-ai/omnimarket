@@ -37,6 +37,7 @@ from omnimarket.nodes.node_work_state_projection_compute.models import (
     EnumScopeStatus,
     EnumWorkItemKind,
     EnumWorkItemState,
+    ModelCommitmentSource,
     ModelCriterionPart,
     ModelLaneReceiptSource,
     ModelPullRequestSource,
@@ -49,9 +50,18 @@ from omnimarket.nodes.node_work_state_projection_compute.models import (
 
 CLAIM = "CLAIM"
 TERMINAL = "TERMINAL"
+COMMITMENT_VERIFIED = "verified"
+COMMITMENT_REGRESSED = "regressed"
 OUTCOME_CELL = "outcome"
 READING_PREFIX = "reading:"
 _PR_REF = re.compile(r"^(?:[\w.-]+/)?(?P<repo>[\w.-]+)#(?P<number>\d+)$")
+
+
+def _commitment_reason(c: ModelCommitmentSource) -> str:
+    """Why an unfinished commitment is work: its check has not passed yet, or it passed and then failed."""
+    if c.status == COMMITMENT_REGRESSED:
+        return f"regressed: check failed (exit {c.last_exit}) after it passed; owed by {c.owner}"
+    return f"open: check has not passed; owed by {c.owner}"
 
 
 def pr_key(repo: str, number: int) -> str:
@@ -199,6 +209,7 @@ class _Draft:
     scope: EnumScopeStatus = EnumScopeStatus.PAUSED
     pr: ModelPullRequestSource | None = None
     check: str | None = None
+    commitment: ModelCommitmentSource | None = None
 
 
 def _ticket_in_scope(
@@ -319,6 +330,24 @@ class HandlerWorkStateProjection:
                     pr=pr,
                     check=check,
                 )
+
+        for c in request.commitments:
+            key = f"commitment:{c.commitment_id}"
+            drafts[key] = _Draft(
+                key=key,
+                kind=EnumWorkItemKind.COMMITMENT,
+                title=c.ask,
+                ticket=c.ticket,
+                aliases={key},
+                done=c.status == COMMITMENT_VERIFIED,
+                done_reason=f"check passes (exit {c.last_exit})",
+                requires=tuple(normalize_ref(r, rules) for r in c.requires),
+                # An operator's ask is in scope by being asked; only a ticket the goal pauses pauses it.
+                scope=EnumScopeStatus.PAUSED
+                if c.ticket in scope.paused_tickets
+                else EnumScopeStatus.IN_SCOPE,
+                commitment=c,
+            )
 
         lanes = _read_lanes(request.ledger_rows, request.receipts, rules, request.now)
         lanes_of: dict[str, list[_Lane]] = defaultdict(list)
@@ -459,6 +488,8 @@ class HandlerWorkStateProjection:
                 reason = (
                     "start criterion reads true" if d.requires else "no prerequisite"
                 )
+                if d.commitment is not None:
+                    reason = _commitment_reason(d.commitment)
             items.append(
                 ModelWorkItem(
                     key=key,
@@ -476,6 +507,7 @@ class HandlerWorkStateProjection:
                     lanes=tuple(ln.name for ln in attributed),
                     live_lane=live_lane,
                     left=left,
+                    owner=d.commitment.owner if d.commitment else None,
                 )
             )
 

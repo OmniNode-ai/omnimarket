@@ -14,6 +14,7 @@ from omnimarket.nodes.node_work_state_projection_compute.models.model_work_state
     ModelWorkStateRules,
 )
 from omnimarket.nodes.node_work_state_projection_compute.models.model_work_state_sources import (
+    ModelCommitmentSource,
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
@@ -36,6 +37,7 @@ class ModelWorkStateRequest(BaseModel):
     ledger_rows: tuple[ModelLedgerEvidenceRow, ...] = ()
     receipts: tuple[ModelLaneReceiptSource, ...] = ()
     readings: tuple[ModelReadingSource, ...] = ()
+    commitments: tuple[ModelCommitmentSource, ...] = ()
     unread: tuple[str, ...] = ()
 
 

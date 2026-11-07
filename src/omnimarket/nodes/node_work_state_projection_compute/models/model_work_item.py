@@ -52,6 +52,8 @@ class ModelWorkItem(BaseModel):
     live_lane: str | None = None
     # What a stopped lane left (its pushed branch and head, its outcome).
     left: str | None = None
+    # Who owes the item, where the source names one (a commitment's owner).
+    owner: str | None = None
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]

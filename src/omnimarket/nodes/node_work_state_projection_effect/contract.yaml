@@ -68,6 +68,12 @@ runtime:
     archive_subdir: archive
     lookback_hours: 72
     row_types: [CLAIM, TERMINAL, STATUS]
+  # Operator asks recorded as ledger commitments (node_commitment_ledger_compute): read over their own window, because an
+  # ask outlives the lane rows' lookback. The rules are that node's overlay.
+  commitments:
+    overlay_id: node_commitment_ledger_compute
+    overlay_file_env: ONEX_COMMITMENT_OVERLAY
+    lookback_hours: 2160
   watcher:
     path_env: ONEX_PR_WATCHER_STATE
     relpath: .claude_scratch/pr-watcher/state.json
