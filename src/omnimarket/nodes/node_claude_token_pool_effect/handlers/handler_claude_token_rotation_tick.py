@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerClaudeTokenRotationTick is resolved at boot from handler_routing in contract.yaml (operation tick), by module path, not by a Python import
 """The rotation tick of a lab host's Claude token pool (OMN-23000), and its envelope-shaped handler.
 
 Measured 2026-11-07 (lane token-swap-1335): five hosts ran on one limited account for days because
