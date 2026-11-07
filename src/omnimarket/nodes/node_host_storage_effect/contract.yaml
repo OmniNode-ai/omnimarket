@@ -50,6 +50,8 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles:
+  - effects
   idempotent: false
   timeout_ms: 600000
 # OVERLAY KEYS (overlay.yaml under node_host_storage_effect): backend (in_memory | subprocess),
