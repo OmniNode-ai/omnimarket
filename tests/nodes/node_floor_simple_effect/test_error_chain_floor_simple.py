@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.floor_17a import (
     ModelFloorCause,
@@ -22,9 +25,6 @@ from omnimarket.models.floor_17a import (
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (
     HandlerFloorSimple,
     check_red_rule,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
