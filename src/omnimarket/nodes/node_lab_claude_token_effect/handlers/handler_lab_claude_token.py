@@ -109,10 +109,10 @@ PROBE_SCRIPT = (
     '[ -r "$T" ] || exit 66\n'
     "unset ANTHROPIC_API_KEY\n"
     'CLAUDE_CODE_OAUTH_TOKEN="$(cat "$T")"; export CLAUDE_CODE_OAUTH_TOKEN\n'
-    "if command -v timeout >/dev/null 2>&1; then timeout "
+    "B=(); if command -v timeout >/dev/null 2>&1; then B=(timeout "
     + str(int(PROBE_TIMEOUT_S) - 30)
-    + ' claude -p "Reply with the single word ok" --model sonnet --output-format text 2>&1\n'
-    'else claude -p "Reply with the single word ok" --model sonnet --output-format text 2>&1; fi\n'
+    + "); fi\n"
+    '"${B[@]}" env claude -p "Reply with the single word ok" --model sonnet --output-format text 2>&1\n'
 )
 
 
