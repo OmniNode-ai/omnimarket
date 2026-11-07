@@ -495,3 +495,108 @@ def test_a_dirty_clone_refused_only_for_the_detached_bound_is_left_alone(
     assert (
         _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
     )
+
+
+# -- a clean clone diverged from its upstream --------------------------------------------------
+
+#: The recorded case: a registry clone refused for 24.3 days with "main and origin/main have
+#: diverged", a clean tree, and the engine's REFUSED_TOO_LONG line printed on every tick.
+DIVERGED_FOR = int(24.3 * 86400)
+
+
+def _report_diverged(
+    handler: HandlerCanonicalCloneDirtyConvergeEffect, planted: Planted, seconds: int
+) -> None:
+    if REAL_ROOT:
+        planted.refuse_for(handler, seconds)
+        return
+    fetch = f"git -C '{planted.clone}' fetch --quiet origin"
+    line = (
+        f"REFUSED_TOO_LONG {planted.clone} refused for {seconds}s: "
+        "dev and origin/dev have diverged"
+    )
+    handler._engine_argv = ["/bin/sh", "-c", f"{fetch}; echo '{line}'"]
+
+
+@pytest.fixture
+def diverged_case(tmp_path: Path) -> Planted:
+    """A clean canonical clone with one local commit while its upstream moved on."""
+    planted = Planted(tmp_path, "workspace", {"a.txt": "one\n"})
+    (planted.clone / "local.txt").write_text("local commit\n")
+    _git("add", "local.txt", cwd=planted.clone)
+    _git("commit", "--quiet", "-m", "local", cwd=planted.clone)
+    return planted
+
+
+def test_a_clean_diverged_clone_converges_and_names_its_local_commits(
+    diverged_case: Planted,
+) -> None:
+    clone = diverged_case.clone
+    local = _git("rev-parse", "HEAD", cwd=clone)
+    assert _clean(clone)
+    handler = diverged_case.handler(**{AGE_ENV: str(AGE)})
+    _report_diverged(handler, diverged_case, DIVERGED_FOR)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert outcome.refused_for_seconds == DIVERGED_FOR
+    assert outcome.dropped_paths == ()
+    assert outcome.dropped_commits == (local[:7],)
+    assert outcome.converged_to == diverged_case.tip
+    assert _git("rev-parse", "HEAD", cwd=clone) == diverged_case.tip
+    assert diverged_case.branches() == ["dev"]  # nothing pushed, no rescue branch
+    row = diverged_case.row_text()
+    assert row.count("| STATUS |") == 1
+    assert f"1 local commit(s) ({local[:7]})" in row
+    assert (
+        f"diverged at {local[:12]}" in row
+    )  # the old head stays findable in the reflog
+
+
+def test_a_diverged_clone_below_the_age_is_left_alone(diverged_case: Planted) -> None:
+    clone = diverged_case.clone
+    before = _git("rev-parse", "HEAD", cwd=clone)
+    handler = diverged_case.handler(**{AGE_ENV: str(AGE)})
+    _report_diverged(handler, diverged_case, AGE - 1)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "below the declared" in outcome.reason
+    assert _git("rev-parse", "HEAD", cwd=clone) == before
+
+
+def test_a_diverged_clone_an_open_claim_names_is_left_alone(
+    diverged_case: Planted, tmp_path: Path
+) -> None:
+    clone = diverged_case.clone
+    before = _git("rev-parse", "HEAD", cwd=clone)
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"2026-11-04T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in {clone}\n"
+    )
+    handler = diverged_case.handler(
+        **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(ledger)}
+    )
+    _report_diverged(handler, diverged_case, DIVERGED_FOR)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "other-lane" in outcome.reason
+    assert _git("rev-parse", "HEAD", cwd=clone) == before
+
+
+def test_a_clean_clone_only_ahead_of_its_upstream_is_left_alone(
+    tmp_path: Path,
+) -> None:
+    """Positive control: unpushed commits on a clone its upstream never passed are not dropped."""
+    planted = Planted(tmp_path, "workspace", {"a.txt": "one\n"})
+    clone = planted.clone
+    _git("fetch", "--quiet", "origin", cwd=clone)
+    _git("reset", "--hard", "--quiet", "origin/dev", cwd=clone)
+    (clone / "ahead.txt").write_text("ahead\n")
+    _git("add", "ahead.txt", cwd=clone)
+    _git("commit", "--quiet", "-m", "ahead", cwd=clone)
+    before = _git("rev-parse", "HEAD", cwd=clone)
+    handler = planted.handler(**{AGE_ENV: str(AGE)})
+    _report_diverged(handler, planted, DIVERGED_FOR)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "ahead" in outcome.reason
+    assert _git("rev-parse", "HEAD", cwd=clone) == before

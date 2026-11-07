@@ -14,6 +14,10 @@
 # (operator ruling 2026-10-31 about 20:00Z; the work is redone from its ticket). converge-canonical-clone.sh
 # resets the clone and writes the one ledger row, which names what was dropped. A clone a live lane is
 # using (an open CLAIM naming it, or a process whose working directory is inside it) is left alone.
+# A clean clone whose branch has diverged from its upstream (the engine's "main and origin/main have
+# diverged"; a registry clone sat refused 24.3 days that way) converges the same way past the same age;
+# the row names the dropped local commits and the head they diverged at. A clean clone only ahead of its
+# upstream is left alone.
 name: "node_canonical_clone_dirty_converge_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
