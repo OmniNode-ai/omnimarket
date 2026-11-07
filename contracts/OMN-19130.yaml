@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19130"
+title: "One-command lab host bring-up: the host transport the bring-up run reaches a host through"
+summary: "The plan's ProtocolHostShell, its ssh and local adapter, a scripted adapter for tests, and a shell probe and actuator that plug into the bring-up run, with h202's and h053's hand steps as declared steps in an overlay. The lease file on the host, the bus sink and the onex host front door are not in this pull request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19130-host-transport"
+    statement: |-
+      The bring-up run reaches a host through one port, over ssh in batch mode or the local shell, with the script on stdin and never in an argv; a target with no declared step, a failed transport or an exit other than 0 or 1 reads unknown, never satisfied; an apply that fails names the expected and the observed exit.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: A second run over an already-converged host is a no-op that still reads every value back. -- falsifier: run the entrypoint twice against the same host and assert the second run exits 0, reports every readback, and changes no container id and no image id"
+evidence_requirements:
+  - kind: "tests"
+    description: "The transport suite and the run's chains over the transport pass at the pushed head."
+    command: "uv run pytest tests/unit/nodes/test_node_host_bringup_shell_transport.py tests/test_golden_chain_host_bringup_shell.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19130-host-transport"
+    description: "The transport suite: batch-mode argv with the script on stdin, ssh 255 and timeout as transport failures, each primitive read through the real local shell, unknown never satisfied, the actuator's refusals."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_node_host_bringup_shell_transport.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn19130-converged-rerun"
+    description: "The run's golden and error chains over the scripted transport, and two runs over a converged host each exit 0 with no action and every declared step read."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_host_bringup_shell.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn19130-deploy-probe-host-transport"
+    description: "Deploy probe: the transport adapter GitHub serves at the checked-out commit declares HandlerHostShellTransport; the file is absent at the merge base, so the read answers false there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_host_shell_transport.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerHostShellTransport\")' | grep -qx true"
+        cwd: "."
