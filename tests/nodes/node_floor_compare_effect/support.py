@@ -8,11 +8,11 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history import (
+    append_snapshot,
+)
 from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare import (
     load_runtime,
-)
-from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_history import (
-    append_snapshot,
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelSnapshot,

@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history import (
+    read_history,
+)
 from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare import (
     HandlerFloorCompare,
-)
-from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_history import (
-    read_history,
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelFloorCompareRequest,

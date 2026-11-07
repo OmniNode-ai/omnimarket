@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_history import (
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history import (
     prune,
     read_history,
     reading_at,
 )
-from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_metrics import (
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_metrics import (
     snapshot_from_floor_simple,
 )
 from tests.nodes.node_floor_compare_effect.support import (
