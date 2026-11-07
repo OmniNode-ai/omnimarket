@@ -34,7 +34,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore, vendor_compat
+from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+from benchmarks.delegation_ladder.vendoring import vendor_compat
 
 TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
