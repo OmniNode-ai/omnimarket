@@ -50,6 +50,15 @@ dod_evidence:
   - check_type: command
     check_value: "curl -s -m 20 \"${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}\" | python3 -c \"import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['pieces'][4]['joins'][0]['state'] != 'broken' else 1)\""
     cwd: .
+- id: dod-omn22914-j5-floor-fold
+  description: The floor's own receipt fold reads the golden and error chains of this handler together as passed, in process. This is the hosted part of AC3; on the dev source it fails at collection because the join handler does not exist. The served floor itself is read by the local Done gate check above.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5.py -q --no-cov -n 0 -p no:randomly -k together_read_passed
+    cwd: .
 - id: dod-omn22914-integration-proof
   description: The pushed head ran the J5 join tests and the append node suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
