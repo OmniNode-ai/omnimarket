@@ -47,6 +47,16 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: node_delegate_skill_orchestrator publishes onex.evt.omnimarket.delegate-skill-admission-decided.v1 as event type DelegateSkillAdmissionDecided and does not subscribe to it -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k "contract_publishes or admission_topic"
+  - id: "req-omn21098-claim-store"
+    statement: |-
+      Slice 2 of TB.3: the orchestrator has a typed client-call claim store with an in-memory default backend, an injected clock and lease, and the rules of the AgentCallAdapter TLA+ model; each invariant check fails on its named injected break.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: sixteen concurrent claims on one key produce one winner and fifteen waits, a stale owner write after takeover changes zero rows, a conflicting fingerprint writes nothing, a live lease waits, and a recorded dispatch intent resumes at the wait -- falsifier: uv run pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -k real_store
+      - id: "AC8"
+        statement: |-
+          AC8: each invariant check fails on its named injected break (M1 no fencing, M3 blind upsert, M4 resume before intent, conflict ignored, live lease ignored) -- falsifier: a break whose check passes, read as a failure of uv run pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -k named_break
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the client verdict table test over the full product of outcome, client maximum, echoed mode, allowlist, echo and terminal acceptance."
@@ -57,6 +67,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3 to AC6: the step-1 wire decoders, the client-call and admission models, and the contract topic."
     command: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC7 and AC8: the claim store invariant checks and their named breaks."
+    command: "uv run pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -q -n 0 -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -132,3 +145,26 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^    - onex.evt.omnimarket.delegate-skill-admission-decided.v1$' | grep -qx 1
+  - id: "dod-omn21098-ac7-claim-store-real"
+    description: "AC7: the real store keeps each invariant of the AgentCallAdapter model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -k real_store -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21098-ac8-claim-store-breaks"
+    description: "AC8: each named injected break fails the check it targets."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21098_client_call_claim_store.py -k named_break -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21098-deploy-claim-store"
+    description: "Deploy probe: read the claim store port at the checked-out commit from GitHub and require its in-memory store class. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_client_call_claim.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^class InMemoryClientCallClaimStore:$' | grep -qx 1
