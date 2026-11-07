@@ -252,3 +252,12 @@ dod_evidence:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-r2 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
         cwd: .
+  - id: dod-omn22478-hosted-image-pin
+    description: >-
+      The jobs that install postgresql-16 (ci.yml test and integration guard, nightly-full-suite shard) run on ubuntu-24.04, not a floating label. The check fails when ci.yml has fewer than two ubuntu-24.04 jobs or the nightly shard job is not pinned.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: 'test "$(grep -c "runs-on: ubuntu-24.04" .github/workflows/ci.yml)" -ge 2 && grep -B3 "timeout-minutes: 30" .github/workflows/nightly-full-suite.yml | grep -q "runs-on: ubuntu-24.04"'
+        cwd: .

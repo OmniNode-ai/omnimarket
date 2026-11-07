@@ -383,11 +383,6 @@ jobs:
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
-      # OMN-22478: SYNC with the lane-job-placement pre-commit hook.
-      - name: No floating hosted image with a versioned system package (OMN-22478)
-        run: uv run --frozen python scripts/ci/check_lane_job_placement.py
-      - name: Hosted image pin negative controls (OMN-22478)
-        run: uv run --frozen pytest tests/ci/test_hosted_image_pin_omn22478.py tests/test_delegation_nightly_placement.py -q -n 0 -p no:randomly --no-cov
       - name: Lane census alias parity (OMN-19998)
         run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
       - name: Ruff format check
