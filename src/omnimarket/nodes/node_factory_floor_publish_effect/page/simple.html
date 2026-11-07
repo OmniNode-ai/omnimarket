@@ -17,7 +17,7 @@ main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
 h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
 .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
-.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}
+.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}.dot.quiet{background:var(--grey)}
 .row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
 .strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
 .p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center}
@@ -84,7 +84,7 @@ function draw(){
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
   for (const c of listed.slice(0, doc.causes_shown)) {
-    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
