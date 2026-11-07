@@ -1257,6 +1257,7 @@ node_work_progress_compute = "omnimarket.nodes.node_work_progress_compute"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_compute"
+node_workflow_routing_scan_compute = "omnimarket.nodes.node_workflow_routing_scan_compute"
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 [project.scripts]
