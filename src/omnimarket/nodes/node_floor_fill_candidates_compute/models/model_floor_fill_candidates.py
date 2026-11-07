@@ -209,7 +209,7 @@ class ModelRecordItem(BaseModel):
 
     id: str
     kind: str
-    state: Literal["done", "active", "prep", "wait", "stop"]
+    state: Literal["done", "active", "prep", "wait", "stop", "integrating"]
     note: str = ""
     prs: tuple[str, ...] = ()
 
