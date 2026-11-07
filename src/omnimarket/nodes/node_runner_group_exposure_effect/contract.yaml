@@ -66,7 +66,13 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.runner-group-exposure-probed.v1
 
+# Declared command/terminal seam (dispatch-addressable). The bus lists below stay empty: these
+# runtime_dispatch topics are the CLI dispatcher's own command/result seam.
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.runner-group-exposure-probed.v1
+    failure: onex.evt.omnimarket.runner-group-exposure-probe-failed.v1
   external_trigger: true
 
 topics:
