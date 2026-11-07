@@ -1,0 +1,40 @@
+schema_version: "1.0.0"
+ticket_id: OMN-20804
+title: "Automation liveness overlay declares every process, with a completeness gate over all installers"
+summary: A pure node scans every registry repository for units, templates, cron files and installer code and refuses any the overlay does not cover; it runs as a CI job and a pre-commit hook. This repository is the published destination of node_automation_liveness_overlay_check_compute, so the scan's own reading rules are maintained here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn20804-overlay-complete
+    statement: Every unit, cron file and launchd template that a registry repository installs has an overlay entry, and every installer names the units it installs.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: every unit, cron file and template in the sources of 4.11 has an overlay entry -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect -q`'
+  - id: req-omn20804-gaps-refused
+    statement: An entry with no positive control, a broken deadline, or a new unit with no entry fails the check.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: an entry with no positive control, a broken deadline, or a new unit with no entry fails the check -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect -q`'
+  - id: req-omn20804-installer-scan
+    statement: The scan finds an installer in a directory nobody listed, and the check fails until it is declared, while a file that only names a unit directory in a pattern installs nothing and is not reported.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a planted installer in an unlisted directory is found by the scan and fails the check until declared, and a wildcard unit-directory token is read as a pattern rather than an install path -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q`'
+evidence_requirements:
+  - kind: tests
+    description: Installer-scan reading rules for this repository's copy of the compute node, and the overlay completeness run over the node's effect side.
+    command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+dod_evidence:
+  - id: dod-omn20804-glob-is-not-an-install-path
+    description: "A unit directory named inside a wildcard token is a shape something is matched against, not a path anything installs to, so the scan reads it as neither. Fails at the merge base, where a module that merely globs the agent and user-unit directories and copies something elsewhere reads as installer code: that is the shape of a plugin pruner in a sibling repository, which reads those globs so it can spare a plugin tree some unit still references, and whose misclassification reddened the overlay completeness gate on every pull request of the repository the scan was reported from. Concrete declarations keep their classification, which is why proximity to the write verb cannot be the discriminator: a clone sync in that same repository names nine real units 137 lines from its nearest write."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q
+        cwd: "."
+    binds_ac:
+      - AC3
