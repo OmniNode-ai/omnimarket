@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22951
+title: The pull-request test selector's flag is read back from each workflow and branch protection, and shadow misses against the full suite are counted per repository
+summary: One compute node reads, per repository, whether the workflow file references the selector flag, the Actions variable holds true and branch protection requires the selector's context, and counts
+  shadow misses against the same-head full suite.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22951-activation-readback
+  statement: Selector activation is read back from the workflow file, the variable and branch protection for each of the four repositories.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: selector activation is read back from the workflow file and branch protection for each of the four repositories -- falsifier: uv run pytest src/omnimarket/nodes/node_test_selector_reading_compute
+      -q -k activation_readback'
+- id: req-omn22951-shadow-miss
+  statement: A disabled selector, or a failure the same-head full suite found that the narrowed run did not, makes shadow misses non-zero and turns the reading red.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a disabled selector, or a missed failure against the same-head full suite, makes shadow misses non-zero and turns the reading red -- falsifier: uv run pytest src/omnimarket/nodes/node_test_selector_reading_compute
+      -q -k shadow_miss'
+evidence_requirements:
+- kind: tests
+  description: The selector reading node suite at the pushed head.
+  command: uv run pytest src/omnimarket/nodes/node_test_selector_reading_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22951-ac1-activation-readback
+  description: Each of the four repositories reads active only when its workflow, variable and branch protection agree; each source alone turns it disabled; an unreadable source reads unknown.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_test_selector_reading_compute -q --no-cov --tb=line -k activation_readback
+    cwd: .
+- id: dod-omn22951-ac2-shadow-miss
+  description: A disabled selector counts one shadow miss, each failure the same-head full suite found and the narrowed run did not counts one, and both turn the reading NOT WORKING; caught failures read zero.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_test_selector_reading_compute -q --no-cov --tb=line -k shadow_miss
+    cwd: .
+- id: dod-omn22951-deploy-probe-contract
+  description: 'Hosted deploy artifact readback: fetch the reading rules at the checked-out commit and require that they read the workflow, the variable and branch protection and count shadow misses.
+    Missing published content fails. This reads published source and does not claim a runtime rollout.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/test_selector_reading/reading_rules.py"
+      | python3 -c ''\''''import sys
+
+      source = sys.stdin.read()
+
+      required = ["workflow_text", "required_contexts", "full_suite_head_sha", "shadow_misses"]
+
+      assert all(call in source for call in required), "Published selector reading rules are incomplete"
+
+      print("Published selector reading rules read the three sources and count shadow misses")''\'''''''
+    cwd: .
+- id: dod-omn22951-integration-proof-live
+  description: 'Integration proof on a lab host through the central test location: the selector reading suites run as a lab work unit at the pushed sha on the declared bus lane.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22951 -- uv run --frozen pytest src/omnimarket/nodes/node_test_selector_reading_compute
+      tests/nodes/node_test_selector_reading_compute -q --no-cov
+    cwd: .
