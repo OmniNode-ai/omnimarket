@@ -104,6 +104,13 @@ runtime:
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
+    # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
+    # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
+    # <controller_state_dir_env or ~/controller_state_dir_fallback>/controller_admissions_name; only its newest tail is read.
+    controller_state_dir_env: LANDING_STATE_DIR
+    controller_state_dir_fallback: .local/state/omni/landing
+    controller_admissions_name: admissions.jsonl
+    controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
