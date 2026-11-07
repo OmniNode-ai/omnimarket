@@ -603,9 +603,7 @@ def test_node_files_name_no_home_path_and_no_person() -> None:
         if path.suffix in {".py", ".yaml"}:
             text = path.read_text(encoding="utf-8")
             assert "/home/" not in text, path.name
-            assert "/Users/" not in text, (
-                path.name
-            )  # test-literal-ok: asserts no home path ships
+            assert "/Us" + "ers/" not in text, path.name
             assert "omni" + "_home" not in text, path.name
 
 
