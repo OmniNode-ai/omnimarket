@@ -38,6 +38,43 @@ normalizer_facts:
     lane_name_patterns: []
     max_open_triage: 4
   hosts: []
+outcome_classes:
+  done: done
+  complete: done
+  delivered: done
+  pass_evidence: done
+  handed-off: handed-off
+  skipped-owned: skipped-owned
+  skipped: skipped-owned
+  skipped-built: skipped-owned
+  skipped-already-built: skipped-owned
+  skipped-superseded: skipped-owned
+  superseded: skipped-owned
+  partial: partial
+  prepared-draft: partial
+  blocked: blocked
+  failed: failed
+  fail_contract_refused: failed
+  rejected-no-delegation: failed
+  timeout: failed
+  abandoned: failed
+  unknown: unknown
+result_classes:
+  blocked: blocked
+  external_blocker: blocked
+  cause_found_fix_needs_credential_owner: blocked
+  no_result_file: failed
+  push_failed: failed
+  push_timeout: failed
+  codex_capacity_retry: failed
+  fix_submitted: handed-off
+  cause_fix_submitted: handed-off
+  close_superseded: handed-off
+  armed: handed-off
+  waiting_ci: handed-off
+  cause_not_shared: handed-off
+  handed-off: handed-off
+  done: done
 error_rule_document:
   error_rules:
   - id: example-rule

@@ -56,6 +56,47 @@ FACTS: dict[str, Any] = {
 }
 
 
+OUTCOME_CLASSES: dict[str, str] = {
+    "done": "done",
+    "complete": "done",
+    "delivered": "done",
+    "pass_evidence": "done",
+    "handed-off": "handed-off",
+    "skipped-owned": "skipped-owned",
+    "skipped": "skipped-owned",
+    "skipped-built": "skipped-owned",
+    "skipped-already-built": "skipped-owned",
+    "skipped-superseded": "skipped-owned",
+    "superseded": "skipped-owned",
+    "partial": "partial",
+    "prepared-draft": "partial",
+    "blocked": "blocked",
+    "failed": "failed",
+    "fail_contract_refused": "failed",
+    "rejected-no-delegation": "failed",
+    "timeout": "failed",
+    "abandoned": "failed",
+    "unknown": "unknown",
+}
+RESULT_CLASSES: dict[str, str] = {
+    "blocked": "blocked",
+    "external_blocker": "blocked",
+    "cause_found_fix_needs_credential_owner": "blocked",
+    "no_result_file": "failed",
+    "push_failed": "failed",
+    "push_timeout": "failed",
+    "codex_capacity_retry": "failed",
+    "fix_submitted": "handed-off",
+    "cause_fix_submitted": "handed-off",
+    "close_superseded": "handed-off",
+    "armed": "handed-off",
+    "waiting_ci": "handed-off",
+    "cause_not_shared": "handed-off",
+    "handed-off": "handed-off",
+    "done": "done",
+}
+
+
 def class_key_of(text: str) -> str:
     """The key the sweep must compute for this error text, through the real normalizer."""
     result = HandlerErrorClassNormalize().handle(
@@ -91,6 +132,8 @@ def overlay(**changes: Any) -> ModelLaneResultSweepOverlay:
         "source": "lane",
         "producer": "remote-lane-runner",
         "normalizer_facts": FACTS,
+        "outcome_classes": OUTCOME_CLASSES,
+        "result_classes": RESULT_CLASSES,
         "error_rule_document": {
             "error_rules": [
                 {

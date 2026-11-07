@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.error_normalizer import ModelErrorNormalizerFacts
+from omnimarket.models.model_lane_result_sweep import EnumLaneResultClass
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
     ModelFileLedgerReadRoute,
@@ -51,6 +52,10 @@ class ModelLaneResultSweepOverlay(BaseModel):
     source: str = Field(min_length=1)
     producer: str = Field(min_length=1)
     normalizer_facts: ModelErrorNormalizerFacts
+    #: Class of each token of a TERMINAL's ``outcome`` cell (lower case). An unlisted token is unknown.
+    outcome_classes: dict[str, EnumLaneResultClass]
+    #: Class of each token of a TERMINAL's ``result`` / ``lane_result`` cell (lower case).
+    result_classes: dict[str, EnumLaneResultClass]
     #: The error rule table (``error_rules`` rows with ``class_keys`` and ``action``).
     error_rule_document: dict[str, Any]
 
@@ -63,6 +68,10 @@ class ModelLaneResultSweepOverlay(BaseModel):
                     for row in self.error_rule_document.get("error_rules", [])
                 ),
                 "normalizer": self.normalizer_facts.model_dump(mode="json"),
+                "outcomes": {
+                    k: v.value for k, v in sorted(self.outcome_classes.items())
+                },
+                "results": {k: v.value for k, v in sorted(self.result_classes.items())},
             },
             sort_keys=True,
             separators=(",", ":"),

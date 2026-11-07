@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -94,37 +94,45 @@ def receipt_of(row: ModelLedgerEvidenceRow) -> ModelLaneReceipt | None:
         result_outcome=_cell(row, "lane_result") or _cell(row, "result"),
         blocker=blocker,
         engine_rc=int(rc) if rc.lstrip("-").isdigit() else None,
-        error_text=blocker or _clean(_closing_text(row)),
+        error_text=blocker
+        or _clean(_cell(row, "reason"))
+        or (
+            f"result {result}"
+            if (result := (_cell(row, "lane_result") or _cell(row, "result")))
+            else ""
+        )
+        or _clean(_closing_text(row)),
     )
 
 
-def classify(receipt: ModelLaneReceipt) -> EnumLaneResultClass:
-    """The worse of the claimed outcome and the lane's own result (AC1).
+def classify(
+    receipt: ModelLaneReceipt,
+    outcome_classes: Mapping[str, EnumLaneResultClass],
+    result_classes: Mapping[str, EnumLaneResultClass],
+) -> EnumLaneResultClass:
+    """The worst class any signal of the receipt gives (AC1).
 
-    A blocker, a blocked result or a blocked outcome reads blocked even under ``handed-off`` or
-    ``done``; a non-zero engine exit or a failed outcome reads failed.
+    The claimed ``outcome`` and the lane's own ``result`` are each read through the overlay's
+    vocabulary (an unlisted token is unknown, so a new word shows instead of passing as done). A
+    blocker reads blocked and a non-zero engine exit reads failed whatever was claimed, so a
+    ``handed-off`` TERMINAL that stopped on a blocker is blocked and never done.
     """
-    outcome = receipt.terminal_outcome.lower()
-    result = receipt.result_outcome.lower()
-    if receipt.blocker or "blocked" in (outcome, result):
-        return EnumLaneResultClass.BLOCKED
-    if (
-        "failed" in (outcome, result)
-        or outcome.startswith("rejected")
-        or (receipt.engine_rc not in (None, 0))
-    ):
-        return EnumLaneResultClass.FAILED
-    if "partial" in (outcome, result):
-        return EnumLaneResultClass.PARTIAL
-    claimed = result or outcome
-    for member in (
-        EnumLaneResultClass.SKIPPED_OWNED,
-        EnumLaneResultClass.HANDED_OFF,
-        EnumLaneResultClass.DONE,
-    ):
-        if claimed == member.value:
-            return member
-    return EnumLaneResultClass.UNKNOWN
+    signals = [
+        outcome_classes.get(
+            receipt.terminal_outcome.lower(), EnumLaneResultClass.UNKNOWN
+        )
+    ]
+    if receipt.result_outcome:
+        signals.append(
+            result_classes.get(
+                receipt.result_outcome.lower(), EnumLaneResultClass.UNKNOWN
+            )
+        )
+    if receipt.blocker:
+        signals.append(EnumLaneResultClass.BLOCKED)
+    if receipt.engine_rc not in (None, 0):
+        signals.append(EnumLaneResultClass.FAILED)
+    return max(signals, key=lambda member: member.severity)
 
 
 @dataclass
@@ -220,7 +228,17 @@ class HandlerLaneResultSweep:
                 receipt, existing.get(receipt.receipt_key), now, deadline
             )
             if command.write:
-                verdict, rows = self._write_rows(receipt, verdict, existing, now)
+                try:
+                    verdict, rows = self._write_rows(receipt, verdict, existing, now)
+                except RuntimeError as exc:
+                    # An append that did not land stops the run; the rows already
+                    # appended stay named, and the reading is not written over a gap.
+                    return ModelLaneResultSweepResult(
+                        correlation_id=command.correlation_id,
+                        status="failed",
+                        rows_written=tuple(written),
+                        failure=str(exc),
+                    )
                 written.extend(rows)
             verdicts.append(verdict)
 
@@ -238,9 +256,14 @@ class HandlerLaneResultSweep:
         )
         return self._write_reading(command, result, now) if command.write else result
 
+    def _classify(self, receipt: ModelLaneReceipt) -> EnumLaneResultClass:
+        return classify(
+            receipt, self._overlay.outcome_classes, self._overlay.result_classes
+        )
+
     def _classify_text(self, receipt: ModelLaneReceipt) -> tuple[str, str, str]:
         """Class key, rule id and action kind for a receipt, from the error rule table."""
-        text = receipt.error_text or f"lane result {classify(receipt).value}"
+        text = receipt.error_text or f"lane result {self._classify(receipt).value}"
         try:
             key = self._normalizer.handle(
                 ModelErrorClassNormalizeRequest(
@@ -267,7 +290,7 @@ class HandlerLaneResultSweep:
         now: datetime,
         deadline: timedelta,
     ) -> ModelReceiptVerdict:
-        effective = classify(receipt)
+        effective = self._classify(receipt)
         class_key, rule_id = "", ""
         if effective.needs_action:
             class_key, rule_id, _ = self._classify_text(receipt)

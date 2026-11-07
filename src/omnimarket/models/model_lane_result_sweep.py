@@ -30,6 +30,11 @@ class EnumLaneResultClass(StrEnum):
     UNKNOWN = "unknown"
 
     @property
+    def severity(self) -> int:
+        """Higher is worse; a receipt takes the worst class any of its signals gives."""
+        return _SEVERITY[self]
+
+    @property
     def needs_action(self) -> bool:
         """A class that is not a clean finish needs an action row or a valid park."""
         return self not in (
@@ -37,6 +42,17 @@ class EnumLaneResultClass(StrEnum):
             EnumLaneResultClass.HANDED_OFF,
             EnumLaneResultClass.SKIPPED_OWNED,
         )
+
+
+_SEVERITY = {
+    EnumLaneResultClass.DONE: 0,
+    EnumLaneResultClass.HANDED_OFF: 1,
+    EnumLaneResultClass.SKIPPED_OWNED: 2,
+    EnumLaneResultClass.UNKNOWN: 3,
+    EnumLaneResultClass.PARTIAL: 4,
+    EnumLaneResultClass.FAILED: 5,
+    EnumLaneResultClass.BLOCKED: 6,
+}
 
 
 class EnumSweepState(StrEnum):

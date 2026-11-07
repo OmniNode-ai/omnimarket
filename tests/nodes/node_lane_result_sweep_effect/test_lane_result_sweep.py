@@ -253,3 +253,39 @@ def test_cli_without_an_overlay_exits_3_naming_the_fact(monkeypatch, capsys) -> 
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     assert main(["probe", "--since", "2026-11-07T00:00:00Z"]) == 3
     assert "INDETERMINATE" in capsys.readouterr().err
+
+
+def test_handed_off_but_blocked_landing_controller_result_vocabulary() -> None:
+    """The shape 13,826 hidden failures took: outcome=handed-off, the failure in ``result=``."""
+    finished = SWEEP_AT - timedelta(minutes=10)
+    lines = [
+        terminal(
+            "lane-j", finished, "handed-off", result="external_blocker", engine_rc=0
+        ),
+        terminal(
+            "lane-k", finished, "handed-off", result="no_result_file", engine_rc=86
+        ),
+        terminal("lane-l", finished, "handed-off", result="fix_submitted", engine_rc=0),
+        terminal("lane-m", finished, "handed-off", result="a_word_nobody_listed"),
+    ]
+    sweep, _ = handler(lines)
+    by_lane = {v.lane: v for v in sweep.handle(_command()).verdicts}
+    assert by_lane["lane-j"].effective_class is EnumLaneResultClass.BLOCKED
+    assert by_lane["lane-k"].effective_class is EnumLaneResultClass.FAILED
+    assert by_lane["lane-l"].effective_class is EnumLaneResultClass.HANDED_OFF
+    # An unlisted word shows as unknown; it is never counted as a clean finish.
+    assert by_lane["lane-m"].effective_class is EnumLaneResultClass.UNKNOWN
+    assert by_lane["lane-m"].state is EnumSweepState.PENDING
+
+
+def test_park_expiry_an_append_that_does_not_land_fails_the_run_and_writes_no_reading() -> (
+    None
+):
+    finished = SWEEP_AT - timedelta(minutes=5)
+    sweep, ledger = handler([terminal("lane-n", finished, "blocked", blocker=BLOCKER)])
+    ledger.append_status = "pending"
+    result = sweep.handle(_command(write=True))
+    assert result.status == "failed"
+    assert result.failure == "append-failed:pending"
+    assert result.verdict is None
+    assert not any("action=lane-result-reading" in line for line in ledger.lines)
