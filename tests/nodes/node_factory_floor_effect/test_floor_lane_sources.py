@@ -6,16 +6,22 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import yaml
 
+from omnimarket.models.model_factory_floor_input import ModelFloorLedgerRow
+from omnimarket.nodes.node_factory_floor_effect import source_loader
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_cloud_accounts,
     load_host_table,
+    load_lane_processes,
     load_linear,
     load_placed,
     load_pool,
@@ -202,7 +208,12 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
     old = write(tmp_path / "old" / "rlane-old-1.json", receipt_json("old"))
     os.utime(old.parent, (NOW.timestamp() - 90 * 3600, NOW.timestamp() - 90 * 3600))
     receipts = load_receipts(
-        tmp_path, now=NOW, window_hours=24, glob="rlane-*.json", result_chars=600
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=4,
     )
     assert receipts is not None
     by_lane = {r.lane: r for r in receipts}
@@ -230,9 +241,152 @@ def test_receipts_take_the_newest_file_of_each_recent_lane_directory(
             window_hours=24,
             glob="rlane-*.json",
             result_chars=600,
+            scan_workers=4,
         )
         is None
     )
+
+
+def test_receipt_pid_distinguishes_a_live_quiet_runner_from_an_exited_one(
+    tmp_path: Path,
+) -> None:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait(timeout=10)
+    for lane, pid in (("pfix-2062-r-1744", child.pid), ("quiet-live", os.getpid())):
+        write(tmp_path / lane / f"rlane-{lane}-1.json", receipt_json(lane, pid=pid))
+    receipts = load_receipts(
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=1,
+    )
+    assert receipts is not None
+    assert {r.lane: r.runner_alive for r in receipts} == {
+        "pfix-2062-r-1744": False,
+        "quiet-live": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("group", "tagged"), [(False, False), (True, False), (False, True)]
+)
+def test_controller_liveness_reuses_group_and_tag_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    group: bool,
+    tagged: bool,
+) -> None:
+    (tmp_path / "workers" / "025919").mkdir(parents=True)
+    table = [SimpleNamespace(tags=frozenset(), stat="S")]
+    lease = {"lease_id": 25919, "pid": 100, "tag": "landing-lease-25919-test"}
+
+    def probe(held: Any, seen: Any) -> tuple[bool, bool]:
+        assert held is lease
+        assert seen is table
+        return group, tagged
+
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {
+            "read_process_table": lambda: table,
+            "read_lease": lambda directory, lid: (
+                lease if directory == tmp_path and lid == 25919 else None
+            ),
+            "probe": probe,
+        },
+    )
+    claim = ModelFloorLedgerRow(
+        ts=NOW.replace(hour=16), kind="CLAIM", lane="landing-cause-L25919"
+    )
+    result = load_lane_processes(
+        (claim,), directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+    )
+    assert result is not None
+    assert [(p.lane, p.alive) for p in result] == [(claim.lane, group or tagged)]
+
+
+def test_missing_lease_needs_a_readable_directory_and_keeps_a_tagged_orphan_alive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "workers").mkdir()
+    table = [SimpleNamespace(tags=frozenset({"landing-lease-26040-orphan"}), stat="S")]
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {
+            "read_process_table": lambda: table,
+            "read_lease": lambda *_args: None,
+        },
+    )
+    claims = tuple(
+        ModelFloorLedgerRow(ts=NOW.replace(hour=16), kind="CLAIM", lane=lane)
+        for lane in ("landing-cause-L25919", "landing-cause-L26040")
+    )
+    result = load_lane_processes(
+        claims, directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+    )
+    assert result is not None
+    assert {p.lane: p.alive for p in result} == {
+        claims[0].lane: False,
+        claims[1].lane: True,
+    }
+    assert (
+        load_lane_processes(
+            claims,
+            directory=tmp_path / "unread",
+            plugin_root=tmp_path,
+            now=NOW,
+            grace_seconds=120,
+        )
+        is None
+    )
+
+
+def test_unread_process_table_missing_plugin_and_claim_before_spawn_stay_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "workers").mkdir()
+    claims = (ModelFloorLedgerRow(ts=NOW, kind="CLAIM", lane="landing-cause-L26040"),)
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {"read_process_table": lambda: None},
+    )
+    assert (
+        load_lane_processes(
+            claims, directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+        )
+        is None
+    )
+    assert (
+        load_lane_processes(
+            claims, directory=tmp_path, plugin_root=None, now=NOW, grace_seconds=120
+        )
+        is None
+    )
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {"read_process_table": lambda: []},
+    )
+    assert (
+        load_lane_processes(
+            claims, directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+        )
+        == ()
+    )
+
+
+def test_remote_claim_run_cell_is_retained_for_receipt_identity() -> None:
+    (claim,) = parse_ledger_text(
+        "L1 2026-10-31T17:30:00Z | CLAIM | lane=pfix-2062-r-1744 | run=rlane-current | host=h051 | work"
+    )
+    assert claim.run_id == "rlane-current"
 
 
 def test_cloud_accounts_read_login_cap_open_sessions_and_credit(tmp_path: Path) -> None:
@@ -423,3 +577,39 @@ def test_the_host_table_is_the_pinned_file_then_the_floor_overlay_relpath_then_t
         == roots / "lab_hosts" / "overlay.yaml"
     )
     assert resolve_host_table({}, "TABLE", tmp_path, "") is None
+
+
+def test_a_workers_directory_of_thousands_is_read_without_a_stat_per_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The measured slow step of the publish cycle: 28,728 worker directories, one stat each, in the unit's tick (OMN-22699)."""
+    workers = tmp_path / "workers"
+    workers.mkdir()
+    for lease in range(2000):
+        (workers / f"{lease:06d}").mkdir()
+    table = [SimpleNamespace(tags=frozenset(), stat="S")]
+    monkeypatch.setattr(
+        source_loader.runpy,
+        "run_path",
+        lambda _path: {
+            "read_process_table": lambda: table,
+            "read_lease": lambda *_args: None,
+        },
+    )
+    stats: list[str] = []
+    real_stat = Path.stat
+
+    def counted(self: Path, *args: Any, **kwargs: Any) -> Any:
+        stats.append(str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", counted)
+    claim = ModelFloorLedgerRow(
+        ts=NOW.replace(hour=16), kind="CLAIM", lane="landing-cause-L25919"
+    )
+    result = load_lane_processes(
+        (claim,), directory=tmp_path, plugin_root=tmp_path, now=NOW, grace_seconds=120
+    )
+    assert result is not None
+    assert [(p.lane, p.alive) for p in result] == [(claim.lane, False)]
+    assert not [path for path in stats if path.startswith(str(workers))]

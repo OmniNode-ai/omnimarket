@@ -1,0 +1,22 @@
+# Synthetic values only, on the in-memory backend. The real overlay is deployment data kept outside this repository
+# and found under ONEX_SKILL_OVERLAY_ROOTS (or at the file ONEX_TAILNET_HTTPS_SERVE_OVERLAY names); it sets
+# `backend: tailscale` and carries a `tailscale:` block in place of `in_memory:`.
+backend: in-memory
+listener:
+  https_port: 8443
+  upstream_url: http://127.0.0.1:18080
+  probe_path: /health
+  probe_timeout_seconds: 10
+  env_file: /etc/example/tailnet-https/serve.env
+  env_port_name: EXAMPLE_HTTPS_PORT
+  env_upstream_name: EXAMPLE_UPSTREAM
+in_memory:
+  upstream_alive: true
+  served: {}
+report:
+  append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+  lane: tailnet-https-serve
+  actor: node:node_tailnet_https_serve_effect
+  timeout_seconds: 60
+  environment:
+    ONEX_LEDGER_PATH: /srv/ledger/ROLLING_WORK_LEDGER.md

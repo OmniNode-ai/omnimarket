@@ -7,15 +7,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -24,7 +26,10 @@ from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
     ModelFloorCloudAccount,
+    ModelFloorDriftHost,
+    ModelFloorHostDrift,
     ModelFloorHostRow,
+    ModelFloorLaneProcess,
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
     ModelFloorManifest,
@@ -32,6 +37,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorMerge,
     ModelFloorPlacedHost,
     ModelFloorPlanInput,
+    ModelFloorPoolDisk,
     ModelFloorPoolReading,
     ModelFloorPr,
     ModelFloorReceipt,
@@ -58,6 +64,9 @@ from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets impor
     merge_task_links,
     prose_task_tickets,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    with_table_evidence as _with_table_evidence,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
     ModelFactoryFloorContainerSource,
@@ -74,7 +83,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to)$"
+    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -122,7 +131,17 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+
+
 def _ledger_ts(value: str) -> datetime | None:
+    """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
+    read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if _TS_SHAPE.fullmatch(value):
+        try:
+            return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
+        except ValueError:
+            return None
     try:
         return datetime.strptime(value, TS_FMT).replace(tzinfo=UTC)
     except ValueError:
@@ -179,6 +198,9 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
                 if len(tokens) > 1:
                     remainders.append(" ".join(tokens[1:]))
+            elif sep and key == "owns":
+                # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
+                fields.setdefault("owns", value.split()[0] if value.split() else "")
             elif sep and key in {"reason", "blocker"}:
                 # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
                 fields.setdefault("reason", value.strip()[:300])
@@ -208,6 +230,8 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             model=fields.get("model", ""),
             actor=fields.get("actor", ""),
             to=fields.get("to", ""),
+            run_id=fields.get("run", ""),
+            owns=_csv(fields.get("owns", "")),
         )
         core = row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}
         # Every ask to a recipient and every row that answers one: an ask stays open until an answer names it.
@@ -634,20 +658,6 @@ def is_section_heading(label: str, text: str) -> bool:
     )
 
 
-def _with_table_evidence(
-    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
-) -> ModelFloorManifestTask:
-    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
-    if row is None:
-        return task
-    return task.model_copy(
-        update={
-            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
-            "prs": tuple(sorted({*task.prs, *row.prs})),
-        }
-    )
-
-
 def _plan_input(
     *,
     relative: str,
@@ -880,6 +890,45 @@ def _number(value: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+_SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?)i?B?\s*$", re.IGNORECASE)
+_TO_GB = {"": 1 / 1024**3, "K": 1 / 1024**2, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
+
+
+def _size_gb(text: str) -> float | None:
+    """``123.2G`` as 123.2; None for ``-`` or anything that is not a size."""
+    match = _SIZE.match(text)
+    return float(match.group(1)) * _TO_GB[match.group(2).upper()] if match else None
+
+
+def _disks(cells: dict[str, str]) -> tuple[ModelFloorPoolDisk, ...]:
+    """Every ``disk_<name>=free/total/pct`` cell whose free and total sizes read; a cell that does not read is left out."""
+    disks: list[ModelFloorPoolDisk] = []
+    for key, value in cells.items():
+        if not key.startswith("disk_"):
+            continue
+        free, _, rest = value.partition("/")
+        total = rest.partition("/")[0]
+        free_gb, total_gb = _size_gb(free), _size_gb(total)
+        if free_gb is not None and total_gb:
+            disks.append(
+                ModelFloorPoolDisk(
+                    name=key.removeprefix("disk_"), free_gb=free_gb, total_gb=total_gb
+                )
+            )
+    return tuple(disks)
+
+
+def _pressure(
+    cells: dict[str, str],
+) -> tuple[float | None, Literal["", "psi", "level"]]:
+    """The Linux ``mempsi`` figure when the reading has one, else the macOS ``pressure`` level."""
+    psi = _number(cells.get("mempsi", ""))
+    if psi is not None:
+        return psi, "psi"
+    level = _number(cells.get("pressure", ""))
+    return (level, "level") if level is not None else (None, "")
+
+
 def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
     """One ``host:key=value,...`` reading of the landing placement's pool read (``Reading`` as the runner prints it)."""
     host, _, rest = line.partition(":")
@@ -906,9 +955,13 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
         _number(cells.get("lane_slots", "")),
     )
+    pressure, pressure_kind = _pressure(cells)
     return ModelFloorPoolReading(
         host=host,
         read_at=read_at,
+        disks=_disks(cells),
+        mem_pressure=pressure,
+        mem_pressure_kind=pressure_kind,
         cores=int(cores) if cores is not None else None,
         load1=_number(cells.get("load1", "")),
         busy_cores=_number(cells.get("busy", "")),
@@ -938,6 +991,35 @@ def load_pool(path: Path) -> tuple[ModelFloorPoolReading, ...] | None:
     return _optional(read)
 
 
+def load_host_drift(path: Path) -> ModelFloorHostDrift | None:
+    """The host-drift fleet projection (``fleet.json``): when it was folded, and per host its newest heartbeat and its open items."""
+
+    def read() -> ModelFloorHostDrift:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ModelFloorHostDrift(
+            folded_at=_utc(data["folded_at"]),
+            hosts=tuple(
+                ModelFloorDriftHost(
+                    host=str(row["host"]),
+                    last_heartbeat_at=_utc(row["last_heartbeat_at"])
+                    if row.get("last_heartbeat_at")
+                    else None,
+                    open_items=len(row.get("open") or ()),
+                )
+                for row in data["hosts"]
+            ),
+        )
+
+    return _optional(read)
+
+
+def host_drift_cause(path: Path) -> str:
+    """Why the fleet projection is unread, in words the Machines tab can show; empty when it reads."""
+    if not path.exists():
+        return f"the host-drift fleet projection {path.name} does not exist at the declared path"
+    return f"the host-drift fleet projection {path.name} exists but could not be parsed"
+
+
 def load_host_table(path: Path) -> tuple[ModelFloorHostRow, ...] | None:
     def read() -> tuple[ModelFloorHostRow, ...]:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -965,6 +1047,19 @@ def _pid_alive(pid: int) -> bool:
         return True
     except (ProcessLookupError, OverflowError, OSError):
         return False
+    return True
+
+
+def _runner_alive(pid: int) -> bool | None:
+    """Only ESRCH proves an exited runner; permission and transport errors do not prove death."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, OverflowError):
+        return None
     return True
 
 
@@ -1003,6 +1098,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
         cloud = _mapping(data.get("cloud"))
         state = _mapping(cloud.get("session_state"))
         ended = data.get("ended_at")
+        pid = data.get("pid")
         return ModelFloorReceipt(
             lane=str(data["lane"]),
             run_id=str(data.get("run_id") or ""),
@@ -1011,6 +1107,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             final=bool(data.get("final")),
             started_at=_utc(data["started_at"]),
             ended_at=_utc(ended) if isinstance(ended, str) else None,
+            runner_alive=_runner_alive(pid) if type(pid) is int and pid > 0 else None,
             model=str(data.get("model") or ""),
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
@@ -1031,29 +1128,131 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
 
 
 def load_receipts(
-    directory: Path, *, now: datetime, window_hours: int, glob: str, result_chars: int
+    directory: Path,
+    *,
+    now: datetime,
+    window_hours: int,
+    glob: str,
+    result_chars: int,
+    scan_workers: int,
 ) -> tuple[ModelFloorReceipt, ...] | None:
-    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands)."""
+    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands).
+
+    Whether a directory was touched inside the window is one metadata read per directory, tens of thousands of them,
+    and each waits on the disk when the process runs in the Background class; they are read ``scan_workers`` at a time.
+    """
+
+    def touched(entry: os.DirEntry[str]) -> bool:
+        return entry.is_dir() and entry.stat().st_mtime >= since
+
+    def newest_receipt(entry: os.DirEntry[str]) -> ModelFloorReceipt | None:
+        files = [
+            p for p in Path(entry.path).glob(glob) if not p.name.endswith(".job.json")
+        ]
+        newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
+        return _receipt_of(newest, result_chars) if newest else None
+
+    since = now.timestamp() - window_hours * 3600
 
     def read() -> tuple[ModelFloorReceipt, ...]:
-        since = now.timestamp() - window_hours * 3600
-        found: list[ModelFloorReceipt] = []
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                if not entry.is_dir() or entry.stat().st_mtime < since:
-                    continue
-                files = [
-                    p
-                    for p in Path(entry.path).glob(glob)
-                    if not p.name.endswith(".job.json")
-                ]
-                newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
-                receipt = _receipt_of(newest, result_chars) if newest else None
-                if receipt is not None:
-                    found.append(receipt)
+        with os.scandir(directory) as scanned:
+            entries = list(scanned)
+        with ThreadPoolExecutor(max_workers=scan_workers) as pool:
+            recent = [
+                e
+                for e, keep in zip(entries, pool.map(touched, entries), strict=True)
+                if keep
+            ]
+            found = [r for r in pool.map(newest_receipt, recent) if r is not None]
         return tuple(sorted(found, key=lambda r: (r.started_at, r.lane)))
 
     return _optional(read)
+
+
+def load_lane_processes(
+    ledger: tuple[ModelFloorLedgerRow, ...],
+    *,
+    directory: Path,
+    plugin_root: Path | None,
+    now: datetime,
+    grace_seconds: int,
+    window_minutes: int = 180,
+) -> tuple[ModelFloorLaneProcess, ...] | None:
+    """Reuse the controller's group/tag probe; never signal workers or infer death from ledger silence.
+
+    These leases and the process table belong to the controller host, just like the placement markers.
+    An unread directory, lease or table stays unknown. A readable directory with no lease or worker tag
+    proves absence after the claim-before-spawn grace period.
+    """
+    claims: dict[str, ModelFloorLedgerRow] = {}
+    terminals: dict[str, datetime] = {}
+    newest: dict[str, datetime] = {}
+    for row in ledger:
+        newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
+        if row.kind == "TERMINAL":
+            terminals[row.lane] = max(terminals.get(row.lane, row.ts), row.ts)
+        if (
+            row.kind == "CLAIM"
+            and re.fullmatch(r"landing-(?:cause-)?L\d+", row.lane)
+            and (row.lane not in claims or row.ts > claims[row.lane].ts)
+        ):
+            claims[row.lane] = row
+    claims = {
+        lane: claim
+        for lane, claim in claims.items()
+        if (lane not in terminals or terminals[lane] < claim.ts)
+        and (now - newest[lane]).total_seconds() <= window_minutes * 60
+    }
+    if not claims:
+        return ()
+    if plugin_root is None:
+        return None
+    try:
+        # A readable worker directory is the positive control for a missing lease file.
+        # One directory read, no stat per entry: the directory holds tens of thousands of lease directories, and a stat of
+        # each took more than 5 minutes as the publisher's tick (OMN-22699); a DirEntry knows its type from the read.
+        with os.scandir(directory / "workers") as scanned:
+            worker_ids = {e.name for e in scanned if e.is_dir()}
+        workers = runpy.run_path(
+            str(plugin_root / "skills/merge-drain/scripts/landing_workers.py")
+        )
+        table = workers["read_process_table"]()
+        if table is None:
+            return None
+        found: list[ModelFloorLaneProcess] = []
+        for lane, claim in claims.items():
+            if (now - claim.ts).total_seconds() < grace_seconds:
+                continue
+            lease_id = int(lane.rsplit("L", 1)[1])
+            lease = workers["read_lease"](directory, lease_id)
+            if lease is None:
+                if f"{lease_id:06d}" in worker_ids:
+                    # A present but unreadable lease cannot be treated as a missing worker.
+                    continue
+                alive = any(
+                    tag.startswith(f"landing-lease-{lease_id}-")
+                    and not p.stat.startswith("Z")
+                    for p in table
+                    for tag in p.tags
+                )
+            else:
+                # The lane's lease number is unique; claim time identifies the observation's ownership.
+                group, tagged = workers["probe"](lease, table)
+                alive = bool(group or tagged)
+            found.append(
+                ModelFloorLaneProcess(
+                    lane=lane,
+                    started_at=claim.ts,
+                    observed_at=now,
+                    alive=alive,
+                    detail="controller worker group or tag is live"
+                    if alive
+                    else "controller worker group and tag are absent",
+                )
+            )
+        return tuple(found)
+    except (OSError, ValueError, KeyError, TypeError, ImportError):
+        return None
 
 
 def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None:
@@ -1207,10 +1406,18 @@ def load_runner_fleet(path: Path) -> ModelFloorRunnerFleet | None:
 
 def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and data.get("status") == "unread":
+        raise SourceRefusedError(str(data.get("reason") or "fleet producer unread"))
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(
-            ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
+            ModelFloorRunner(
+                host_label=str(row["host"]),
+                status=row["status"],
+                runner_name=row.get("runner_name"),
+                label_class=row.get("label_class"),
+                labels=tuple(row.get("labels") or ()),
+            )
             for row in data["runners"]
         ),
     )

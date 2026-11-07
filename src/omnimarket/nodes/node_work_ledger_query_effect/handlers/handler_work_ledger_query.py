@@ -29,6 +29,10 @@ from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
     work_ledger_query_replay as replay,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_answer_bound import (
+    bound_answer,
+    load_work_ledger_answer_bound,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history import (
     history_answer,
 )
@@ -64,6 +68,7 @@ class HandlerWorkLedgerQuery:
     ) -> None:
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
+        self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
             reader
@@ -76,8 +81,14 @@ class HandlerWorkLedgerQuery:
     def handle(
         self, request: ModelWorkLedgerQueryRequest
     ) -> ModelWorkLedgerQueryResult:
+        """Answer the request, or refuse it when its answer would not fit the bound."""
         if not isinstance(request, ModelWorkLedgerQueryRequest):
             raise TypeError("work ledger query handler requires its contract payload")
+        return bound_answer(request, self._answer_request(request), self._answer_bound)
+
+    def _answer_request(
+        self, request: ModelWorkLedgerQueryRequest
+    ) -> ModelWorkLedgerQueryResult:
         now = request.now or self._now()
         until = request.until or now
         base = ModelWorkLedgerQueryResult(
@@ -261,7 +272,8 @@ class HandlerWorkLedgerQuery:
             )
             return {"matched": len(claims), "open_claims": tuple(claims)}
         newest = replay.newest_per_lane(rows, kinds=request.kinds)
-        return {"matched": len(newest), "rows": tuple(r.record for r in newest)}
+        shown = newest[-request.limit :] if request.limit else newest
+        return {"matched": len(newest), "rows": tuple(r.record for r in shown)}
 
 
 __all__ = ["HandlerWorkLedgerQuery"]

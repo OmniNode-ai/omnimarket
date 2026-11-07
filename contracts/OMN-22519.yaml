@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-22519
+title: Hostile review gate leaves the lab; add receipt reader and review trigger
+summary: The criteria of omnimarket#5147, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn19998-public-review-off-actions
+  statement: The existing review nodes gain a receipt-only reader and a proactive PR-state command producer before the hosted workflow cutover.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: the proactive exact-head review command and receipt-only reader preserve the publisher, signature and quorum refusal boundary through runtime dispatch, persistent command acknowledgement and bounded missing-receipt refusal -- falsifier: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly'
+  - id: AC15
+    statement: 'AC15: the Hostile Review Gate job runs GitHub-hosted under its required name and still needs the review job, and a planted lab label fails -- falsifier: uv run --frozen pytest tests/ci/test_public_runner_placement_omn19998.py -q --no-cov -n 0 -k hostile_review_gate'
+evidence_requirements:
+- kind: tests
+  description: Hostile review gate leaves the lab; add receipt reader and review trigger
+  command: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-public-review-receipt
+  description: Focused replay of exact-head receipt verification outcomes, persistent command identity, acknowledgement retry and bounded missing-receipt failure. The hosted workflow activation remains a separate patch until trusted base tooling is available. This scoped proof does not claim runner-group policy enforcement or completion of the controller timer criteria.
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn19998-public-review-runtime-wiring
+  description: Hosted runtime discovery and in-memory dispatch exercise the contract-declared PR-state handler and its durable per-head command acknowledgement. A live lab runtime install and a real signed receipt remain pending; this entry claims the wiring smoke only.
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly -k runtime_discovers
+    cwd: .
+- id: dod-omn19998-hostile-review-gate-hosted
+  description: The Hostile Review Gate job reads the result of the review job from a GitHub-hosted runner under its required name.
+  source: manual
+  binds_ac:
+  - AC15
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_public_runner_placement_omn19998.py -q --no-cov -n 0 -k hostile_review_gate
+    cwd: .
+- id: dod-omn22519-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22519 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

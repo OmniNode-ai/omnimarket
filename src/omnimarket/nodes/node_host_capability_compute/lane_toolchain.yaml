@@ -20,14 +20,27 @@ tools:
     probe: [pnpm, --version]
     repair: {kind: install}
     owner_fix: the host owner declares a pnpm installer argv for the host in the toolchain overlay, or installs pnpm
+  make:
+    probe: [make, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a make installer argv for the host in the toolchain overlay, or installs make
+  jq:
+    probe: [jq, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a jq installer argv for the host in the toolchain overlay, or installs jq
+  python:
+    # Lanes invoke this command by name; a working python3 alone does not supply it.
+    probe: [python, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares an installer argv that provides python on the lane PATH
   pyright:
     probe: [uvx, pyright, --version]
     repair: {kind: clear-empty-tree, path: .cache/pyright-python/nodeenv}
     owner_fix: pyright-python needs a node on the lane PATH or a working nodeenv under its cache; the host owner installs node, or removes the broken nodeenv
 hosts:
-  h051: [onex, node, pnpm, pyright]
-  h053: [onex, node, pnpm, pyright]
-  h101: [onex, node, pnpm, pyright]
-  h105: [onex, node, pnpm, pyright]
-  h200: [onex, node, pnpm, pyright]
-  h201: [onex, node, pnpm, pyright]
+  h051: [onex, node, pnpm, make, jq, python, pyright]
+  h053: [onex, node, pnpm, make, jq, python, pyright]
+  h101: [onex, node, pnpm, make, jq, python, pyright]
+  h105: [onex, node, pnpm, make, jq, python, pyright]
+  h200: [onex, node, pnpm, make, jq, python, pyright]
+  h201: [onex, node, pnpm, make, jq, python, pyright]

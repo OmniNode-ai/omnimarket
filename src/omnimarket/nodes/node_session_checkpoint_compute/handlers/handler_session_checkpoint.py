@@ -101,11 +101,14 @@ class HandlerSessionCheckpoint:
                         )
                     path = found
                     data = ckpt.load(path)
+                lines = ckpt.read_lines(data, path)
+                if not request.path:
+                    lines += ckpt.prior_lines(directory, scope, data)
                 return ModelSessionCheckpointResult(
                     **base,
                     status="ok",
                     path=str(path),
-                    lines=tuple(ckpt.read_lines(data, path)),
+                    lines=tuple(lines),
                 )
             spec_hook = request.hook
             if spec_hook is None:

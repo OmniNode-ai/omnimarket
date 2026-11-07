@@ -44,6 +44,17 @@ handler_routing:
       name: HandlerDelegationReport
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report.ModelDelegationReportRequest
+  - operation: read_runner_fleet
+    handler:
+      name: HandlerFleetObservationSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: prepare_process_health
+    handler:
+      name: HandlerProcessHealthPayload
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadRequest
+    output_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadResult
   - operation: publish_operator_reports
     handler:
       name: HandlerOperatorAccess
@@ -63,6 +74,7 @@ descriptor:
   - runs the lab host reading, the pool read of the machines (which writes its own receipt), the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
   - reads the factory floor JSON and the packaged pages (the tab page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
+  - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
   - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
@@ -98,15 +110,31 @@ runtime:
   overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
   # The site's page is the tab page (the dashboard and the four tabs); the factory floor artwork is its own page, drawn
   # inside the Factory floor tab, so both are packaged and both are published.
-  page_relpath: page/index.html
+  # OMN-19998: the site's address shows the simple floor (page/simple.html, published as index.html); the tab page with
+  # every line, machine and report is page/detail.html, published as detail.html, and is the simple page's one link.
+  page_relpath: page/detail.html
+  simple_page_relpath: page/simple.html
+  simple_data_relpath: .claude_scratch/factory-floor/floor-simple.json
+  simple_reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
   theme_css_relpath: page/vendor/omniui
+  # The site's icons: an SVG, a 32 px PNG and an apple-touch icon, drawn from one mark in the site's own colours. Each is
+  # published under its own name at the site's root, ahead of the pages, and every page head links them with a path that
+  # resolves from where the page is served.
+  icons_relpath: page/icons
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
   process_health_relpath: .onex_state/process-health/process-health.json
+  # The floor needs daily values and summaries; only the detailed report needs
+  # hundreds of thousands of range observations. Preserve those in a gzip file,
+  # published before the small summary. The report reader's 8 MiB bound stays.
+  process_health_payload:
+    max_source_bytes: 268435456
+    max_summary_bytes: 8388608
+    detail_file: process-health-detail.json.gz
   # The publisher reads the lab projection through the existing delegation_health overlay.
   # Both windows share one database clock and snapshot; unread reads replace stale counts.
   delegation_relpath: .onex_state/delegation-report/delegation-window.json
@@ -164,20 +192,46 @@ runtime:
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
     fresh_relpath: .onex_state/process-health/process-health.json
     fresh_seconds: 900
+  - name: runner_fleet
+    concurrent: true
+    kind: runner_fleet
+    required: false
+    timeout_seconds: 30
+    output_relpath: .onex_state/runner-fleet/runner-fleet.json
   - name: factory_floor
     kind: module
     required: true
     timeout_seconds: 600
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
+  # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
+  # required: when it fails the previous floor-simple.json stays and the page draws its own age, red past 15 minutes.
+  - name: floor_simple
+    kind: module
+    required: false
+    timeout_seconds: 120
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--defer-canary"]
+  # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
+  after_publish_steps:
+  - name: floor_canary
+    kind: module
+    required: true
+    timeout_seconds: 120
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--publish-canary"]
   names:
-    page: index.html
+    page: detail.html
+    simple_page: index.html
+    simple_data: floor-simple.json
+    simple_reads: floor-simple-reads.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json
     delegation: delegation.json
     status: publish-status.json
     theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
+    icons: [favicon.svg, favicon-32.png, apple-touch-icon.png]
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
@@ -239,6 +293,7 @@ runtime:
         relpath: .onex_state/process-health/process-health.json
         as_of_key: generated_at
         publish: false
+        projection: process_health_summary
     - id: decision_map
       title: October decision map
       summary: Problems the system ran into, the decisions they led to, and whether each problem came back after the change.

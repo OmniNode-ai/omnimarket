@@ -12,6 +12,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
 from ..models.model_install_superset import (
     ModelCarriedCommit,
     ModelMissingCommit,
@@ -41,7 +43,7 @@ def git(
             capture_output=True,
             timeout=GIT_TIMEOUT_S,
             check=False,
-            env=env,
+            env=env if env is not None else scrub_git_location_env(os.environ),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise SupersetError(f"git {' '.join(args[:2])}: {exc}") from exc
@@ -137,7 +139,10 @@ def diff_present(repo: Path, commit: str, tree: str) -> bool:
     if not patch.strip():
         return True
     with tempfile.TemporaryDirectory(prefix="install-superset-") as scratch:
-        env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
+        env = {
+            **scrub_git_location_env(os.environ),
+            "GIT_INDEX_FILE": str(Path(scratch) / "index"),
+        }
         git(repo, "read-tree", tree, env=env)
         done = git(
             repo,

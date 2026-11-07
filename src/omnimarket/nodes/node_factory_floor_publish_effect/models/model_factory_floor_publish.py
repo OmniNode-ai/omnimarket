@@ -10,6 +10,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadPolicy,
+)
+
 
 class ModelFactoryFloorPublishOverlay(BaseModel):
     """Deployment facts of the host that serves the page. There is no packaged default for any of them."""
@@ -64,7 +68,7 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command"]
+StepKind = Literal["module", "capture", "copy", "command", "runner_fleet"]
 
 
 class ModelPublishStep(BaseModel):
@@ -78,6 +82,8 @@ class ModelPublishStep(BaseModel):
     (OMN-21733: the run took 8.5 to 10 minutes against a 300 s tick, which left the heartbeat older than twice its
     interval half the time). A step with ``fresh_relpath`` and ``fresh_seconds`` is skipped, counted ok, while that file
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
+    ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
+    a failed read writes an unread cause so old counts cannot masquerade as a new read.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -107,6 +113,7 @@ class ModelPublishStep(BaseModel):
             "capture": bool(self.argv) and bool(self.output_relpath),
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
+            "runner_fleet": bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
@@ -125,6 +132,8 @@ class ModelPublishStepResult(BaseModel):
     status: Literal["ok", "failed"]
     detail: str = ""
     diagnostic: str = ""
+    # The wall-clock seconds the step took, measured by the handler (OMN-22699).
+    seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelPublishNames(BaseModel):
@@ -132,7 +141,12 @@ class ModelPublishNames(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # The address of the site is the simple floor page (OMN-19998); the page with every line, machine and report is
+    # published beside it under ``page`` and is the one link the simple page carries.
     page: str = Field(min_length=1)
+    simple_page: str = Field(min_length=1)
+    simple_data: str = Field(min_length=1)
+    simple_reads: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -141,7 +155,10 @@ class ModelPublishNames(BaseModel):
     # The vendored OmniUI theme files the page links, published beside it under these names.
     theme_css: tuple[str, ...] = Field(min_length=1)
 
-    @field_validator("theme_css")
+    # The site's icons (the SVG, the 32 px PNG, the apple-touch icon), published beside the pages under these names.
+    icons: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("theme_css", "icons")
     @classmethod
     def _theme_css(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for name in value:
@@ -228,6 +245,7 @@ class ModelReportData(BaseModel):
     relpath: str = Field(min_length=1)
     as_of_key: str | None = None
     publish: bool = True
+    projection: Literal["identity", "process_health_summary"] = "identity"
 
     @field_validator("remote")
     @classmethod
@@ -314,17 +332,29 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    simple_page_relpath: str = Field(min_length=1)
+    # What node_floor_simple_effect writes (relative to the registry home); both are published when they exist.
+    simple_data_relpath: str = Field(min_length=1)
+    simple_reads_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)
+    # The directory, relative to the node, holding the icon files named by ``names.icons``.
+    icons_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    process_health_payload: ModelProcessHealthPayloadPolicy
     delegation_relpath: str = Field(min_length=1)
     lines_overlay: ModelLinesOverlay
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
     record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
+    # Steps run after the page and the record are served, in order, never concurrently. The canary status is published
+    # here, from the page as served, so its floor age is the age of the page a reader gets. A required step that fails
+    # raises after the page is served: a failed page upload stops the run before these steps, so the canary status
+    # then ages past its bound and reads as silent, and a failed canary publish is a failed run, never a hidden one.
+    after_publish_steps: tuple[ModelPublishStep, ...]
     names: ModelPublishNames
     transport: ModelPublishTransport
     history: ModelPublishHistory
@@ -363,10 +393,15 @@ class ModelFactoryFloorPublishResult(BaseModel):
     data_sha256: str
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
+    # The steps that ran after the page was served (the canary status), in order.
+    after_publish: tuple[ModelPublishStepResult, ...] = ()
     process_health_published: bool
     delegation_published: bool = False
     history_snapshot: str = ""
     history_pruned: tuple[str, ...] = ()
+    # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
+    cycle_seconds: float = Field(default=0.0, ge=0)
+    phase_seconds: dict[str, float] = Field(default_factory=dict)
 
 
 class ModelReportsPublishRequest(BaseModel):

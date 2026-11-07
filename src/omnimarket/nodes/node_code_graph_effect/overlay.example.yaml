@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_code_graph_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   graph_backend     git (the deployment) or in_memory (the tests)
+#   repos_root_env    the variable naming the directory that holds one clone per repository
+#   repos             each repository and the ref that names its default-branch head
+#   graph_roots       which files are read, which are tests, and what counts as a root
+#   sample            the frozen sample (labels and their basis), its bar, the known-used controls,
+#                     and the hash they were frozen under: a changed sample refuses the load
+#   publish           the reading rows' lane and actor, and how long a reading stays fresh
+#   schedule_hosts    hosts that install the nightly systemd user timer
+#   unit_environment  environment the installed unit carries
+graph_backend: in_memory
+repos_root_env: EXAMPLE_REPOS_ROOT
+repos:
+  - name: example_core
+    ref: origin/main
+  - name: example_app
+    ref: origin/main
+graph_roots:
+  source_dirs: [src]
+  test_globs: ["tests/**", "**/tests/**", "**/test_*.py", "**/conftest.py"]
+  root_globs: ["scripts/*.py"]
+  contract_globs: ["src/**/contract.yaml"]
+  command_globs: [".github/workflows/*.yml"]
+  contract_module_keys: [module]
+  entry_points: true
+  main_modules: true
+  max_file_bytes: 2000000
+sample:
+  entries:
+    - {repo: example_core, path: src/example_core/models.py, expected: used, basis: example}
+    - {repo: example_core, path: src/example_core/unused.py, expected: unused, basis: example}
+    - {repo: example_core, path: src/example_core/helpers.py, expected: unused, basis: example}
+    - {repo: example_app, path: src/example_app/nodes/node_a/handler.py, expected: used, basis: example}
+    - {repo: example_app, path: src/example_app/nodes/node_a/util.py, expected: used, basis: example}
+    - {repo: example_app, path: src/example_app/orphan.py, expected: unused, basis: example}
+    - {repo: example_app, path: src/example_app/dyn.py, expected: used, basis: example}
+  min_agree: 6
+  controls:
+    - {repo: example_app, path: src/example_app/nodes/node_a/handler.py, why: the example node's handler}
+    - {repo: example_core, path: src/example_core/models.py, why: the example script's import}
+  frozen_hash: '9ce0021035fb211a'
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: code-graph
+  actor: node:node_code_graph_effect
+  publish_max_age_seconds: 93600
+  row_path_limit: 6
+schedule_hosts:
+  - name: example-host
+    scheduler: systemd-user
+    venv: example/.venv
+unit_environment:
+  EXAMPLE_REPOS_ROOT: $OMNI_HOME
+  EXAMPLE_HOST_NAME: example-host
+injected_fault: Stop the timer and advance the clock, or drop the contract links in a drill run

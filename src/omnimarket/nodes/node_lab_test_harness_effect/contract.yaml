@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Test Harness Effect
+#
+# The central test harness. On lab-test-harness-requested (the schedule node's request, or the
+# `run` verb of this node's CLI) it sends every case of the harness overlay to the lab work
+# unit node on the declared bus lane, reads the receipts, computes the reading and writes it
+# where the floor reads it. A golden case must pass; an error case is a broken input that must
+# go red. Every setting (cases, hosts, shas, bus lane, max age, interval, result path) is in the
+# overlay node_lab_test_harness_effect under ONEX_SKILL_OVERLAY_ROOTS; this contract holds none.
+#   handle(ModelLabTestHarnessRequested) -> ModelLabTestHarnessReading
+name: node_lab_test_harness_effect
+contract_name: node_lab_test_harness_effect
+node_name: node_lab_test_harness_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Runs the central test harness's cases as lab work units and publishes the current
+  reading: WORKING when every golden case passed and every error case went red, NOT WORKING
+  otherwise, with probed_at, published_at and max age so a stale row reads NOT WORKING.
+input_model:
+  name: ModelLabTestHarnessRequested
+  module: omnimarket.models.lab_test_harness
+  description: One run request, from the schedule node or the CLI.
+output_model:
+  name: ModelLabTestHarnessReading
+  module: omnimarket.models.lab_test_harness
+  description: The current reading, with each case's outcome.
+handler:
+  module: omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_harness_effect
+  class: HandlerLabTestHarnessEffect
+  input_model: omnimarket.models.lab_test_harness.ModelLabTestHarnessRequested
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_test_harness_run
+      handler:
+        name: HandlerLabTestHarnessEffect
+        module: omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_harness_effect
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.lab-test-harness-requested.v1"
+    operation: "lab_test_harness_run"
+side_effects:
+  reads: []
+  writes:
+    - the current-result file the overlay names
+    - lab work unit commands on the overlay's bus lane
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 900000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lab-test-harness-read.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-test-harness-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-test-harness-read.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-test-harness-requested.v1
+# The floor reads the reading; it is not a node contract.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-test-harness-read.v1
+# The node's own timer, installed by `schedule install --host <name>` as a systemd user timer on each host the
+# overlay's schedule_hosts names, removed by `schedule uninstall`. The interval is the overlay's schedule block;
+# this block holds only how the unit is run.
+schedule:
+  unit_name: onex-central-test-harness
+  state_directory: .onex_state/lab-test-harness
+  timeout_seconds: 900
+  boot_delay: 120s
+  randomized_delay: 30s
+  persistent: true
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+overlay:
+  node: node_lab_test_harness_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.models.lab_test_harness.ModelLabTestHarnessOverlay
+metadata:
+  transport_type: kafka
+  description: "Central test harness: golden and error cases as lab work units"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-05"
+  tags: [effect, lab-test-harness]
+  related_tickets: ["OMN-22478"]

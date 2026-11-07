@@ -383,6 +383,8 @@ jobs:
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+      - name: Lane census alias parity (OMN-19998)
+        run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate
@@ -478,6 +480,9 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
+
+      - name: Standing dispatch rules and runtime wiring
+        run: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
       # OMN-14762 (F-18): keep the authoritative coverage-json invocation
       # (pytest-cov, config-driven) aligned with the shadow aggregator's
       # `coverage json -i` so a missing C-extension source can never red one gate
@@ -630,6 +635,9 @@ jobs:
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+      # OMN-19998: regression proof for the hosted receipt reader and PR-state producer.
+      - name: Public review receipt and runtime dispatch
+        run: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
       # OMN-20910: paired with the contract-prerequisite-verifier-host-tools hook.
       - name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
         run: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
@@ -659,6 +667,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head "$PR_HEAD" --title "$PR_TITLE"
 
       # Paired with pr-handoff-dod-receipt-regression (pre-commit).
@@ -1229,7 +1238,7 @@ jobs:
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [repo-evidence-preflight, detect-changes]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
     # (last 30 successful ci.yml runs, 2026-09-15) is 7.8m, which looked like
@@ -1715,7 +1724,7 @@ jobs:
     name: Integration Silent-Skip Guard (OMN-14172)
     needs: [repo-evidence-preflight, zone-filter]
     if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
     services:
@@ -1835,6 +1844,13 @@ jobs:
       - name: Run integration-marked tests (Postgres provisioned)
         env:
           OMN20025_POSTGRES_BACKEND: ci
+          # OMN-22478: the omnidash release proofs (OMN-21469) read the publish
+          # workflow's runs from the GitHub REST API. With no token that read is
+          # unauthenticated and shares the 60-per-hour quota of the runner's
+          # address, which a night of reruns spends: HTTP 403 rate limit. The
+          # run's own token lifts it to the repository quota; the test already
+          # reads GH_TOKEN and sends it through rest_json.
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv run pytest -m "integration and not kafka" \
             -rs -v --tb=short \
@@ -4037,6 +4053,40 @@ jobs:
           fi
           uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
             python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
+      # OMN-19998: the same refusal as the check-public-lab-selection hook, at that
+      # hook's rev. The job is registered in the CI Summary sweep, so this is required.
+      - name: Read the core pin of the lab selection hook
+        run: |
+          set -eu
+          spec="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          blocks = [r for r in config["repos"] if any(h["id"] == "check-public-lab-selection" for h in r["hooks"])]
+          assert len(blocks) == 1, blocks
+          print("omnibase-core @ git+" + blocks[0]["repo"] + "@" + blocks[0]["rev"])
+          ')"
+          echo "LAB_SELECTION_CORE=${spec}" >> "$GITHUB_ENV"
+      - name: Failing control (planted lab job refused)
+        run: |
+          set -u
+          planted="$RUNNER_TEMP/planted"
+          mkdir -p "$planted/.github/workflows"
+          printf 'on: push\njobs:\n  planted:\n    runs-on: [self-hosted, omnibase-ci]\n    steps:\n      - run: "true"\n' \
+            > "$planted/.github/workflows/zz-planted.yml"
+          if uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --root "$planted" --repo omnimarket --visibility public; then
+            echo "FAILING CONTROL FAILED: a planted lab job was accepted"
+            exit 1
+          fi
+          echo "failing control: a planted lab job refused"
+      - name: Refuse a public workflow selecting a lab runner
+        env:
+          LIVE_VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --repo omnimarket --visibility public --variables-json "$LIVE_VARIABLES"
 
   # OMN-19998: the guard has both refusal and passing-pin controls, including
   # the actual lane-launch and controller-brief callers. Required by CI Summary.

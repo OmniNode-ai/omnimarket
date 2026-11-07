@@ -1,0 +1,41 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22537
+title: "A lab node reads dev merges, publishes the redeploy-start command and reads the dev lane back"
+summary: >-
+  Rebuild plan section 8, step R2. A lab node reads a dev merge from the bus, classifies it with the CI deploy gate's
+  classifier, publishes the redeploy-start command the orchestrator consumes, reads the dev lane's build provenance back
+  after the orchestrator's terminal event and publishes one receipt per merge. It does not cut the Actions trigger over.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22537-dev-merge-redeploy
+    statement: A lab node reads a dev merge from the bus, publishes the redeploy-start command for a merge that reaches the dev lane, reads the lane back and publishes one receipt, so the dev redeploy and its verification need no public job on a lab runner.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: one merge event yields the start command and a verified receipt under one correlation id, and a decline, an unreadable file list, classifier or build-context ref, a refused publish, a redeploy that did not finish, a lane that is behind or unreadable and a missed deadline each yield a typed receipt, with no command published after a failed read -- falsifier: uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The golden and error chain tests and the real-git adapter tests of the dev-merge redeploy node pass.
+    command: uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22537-chain-tests
+    description: The golden and error chain tests and the real-git adapter tests of the dev-merge redeploy node pass, including the named injected break that turns the lane-behind test red.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22537-integration-proof
+    description: Run the dev-merge redeploy chain tests on a lab host at the pushed head. This proves the node's chains on the lab, not a correlated dev merge through a running node; the cutover proof is a separate read.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22537 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
+        cwd: .

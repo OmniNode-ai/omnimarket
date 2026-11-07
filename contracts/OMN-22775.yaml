@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22775
+title: The reading writer's ledger read names the refusal class the read command printed, so an intermittent exit 1 names its own cause
+summary: On h053 the hourly reading writer's first ledger read ended with exit 1 in six ticks of 2026-11-06 and read WORKING in ten manual probes with the unit's exact environment. The adapter in CommandLedgerRowSource discarded the read command's stderr and kept only read-command-exit-1, so the refusal class the CLI prints (Work-ledger read refused (ExceptionClass)) was lost and the cause could not be read from a failed tick. The adapter now keeps that class name beside the exit code and nothing else of stderr.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22775-name-the-refusal
+  statement: A failed ledger read names the refusal class its command printed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a read command that exits 1 with Work-ledger read refused (DelegateLaneSelectionError) on stderr gives the error read-command-exit-1:DelegateLaneSelectionError, and an exit 1 with no recognisable line keeps read-command-exit-1 -- falsifier: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py -k refusal_class -q --no-cov'
+  - id: AC2
+    statement: 'AC2: against the adapter file from dev the same test is red -- falsifier: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py -k refusal_class -q --no-cov with the dev adapter file in place fails'
+evidence_requirements:
+- kind: tests
+  description: The refusal class kept, the unnamed exit unchanged and the control against dev's adapter
+  command: uv run --frozen pytest tests/nodes/node_reading_writer_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22775-refusal-class
+  description: A failed read names its refusal class in the error the reading row carries.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py -k refusal_class -q --no-cov
+    cwd: .
+- id: dod-omn22775-integration-proof
+  description: Run this pull request's own reading writer tests on a lab host at the pushed head (the real probe of piece 1 with the lane declaration root unset names DelegateLaneSelectionError in its reason, the dev clone names only read-command-exit-1). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22775 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_reading_writer_effect -q --no-cov
+    cwd: .
