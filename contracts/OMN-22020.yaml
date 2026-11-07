@@ -1,0 +1,30 @@
+schema_version: 1.0.0
+ticket_id: OMN-22020
+title: The run-node bootstrap test accepts a core that reads no bootstrap variable
+summary: Core 0.47.66 resolves the bus from the contract overlay and its cli_run_node.py no longer names KAFKA_BOOTSTRAP_SERVERS. The test keeps refusing a localhost:19092 default and stops requiring the variable name.
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn22020-bootstrap-test
+  statement: The installed-core bootstrap test passes for a core that reads no bootstrap variable and still refuses a localhost default.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: test_kafka_bootstrap.py passes against the installed core and still bans the localhost:19092 default -- falsifier: uv run pytest tests/unit/nodes/node_design_to_plan/test_kafka_bootstrap.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The bootstrap test file passes.
+  command: uv run pytest tests/unit/nodes/node_design_to_plan/test_kafka_bootstrap.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22020-bootstrap-ac1
+  description: 'AC1: test_kafka_bootstrap.py passes against the installed core and still bans the localhost:19092 default'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_design_to_plan/test_kafka_bootstrap.py -q --no-cov
+  status: pending
