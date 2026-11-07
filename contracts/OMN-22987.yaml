@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22987
+title: The friction rollup unit and its timer move into the omnimarket friction rollup node with parity on a recorded day
+summary: node_friction_rollup_compute gains a recorded-day parity test against the old unit's rollup with a planted-divergence control, and the unit's timer becomes node_friction_rollup_tick_effect, which runs the compute node with the node's own class rules and writes the same reports and STATUS row.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22987-parity
+  statement: The node's rollup of a recorded day equals the unit's rollup cell by cell, and a planted divergence turns the comparison red.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the node's rollup of a recorded day equals the unit's rollup row for row, classified stoppages included -- falsifier: uv run pytest src/omnimarket/nodes/node_friction_rollup_compute -q -k parity_with_unit_on_recorded_day"
+  - id: AC3
+    statement: "AC3: a planted divergence turns the parity test red -- falsifier: uv run pytest src/omnimarket/nodes/node_friction_rollup_compute -q -k planted_divergence"
+evidence_requirements:
+- kind: tests
+  description: The parity, planted-divergence and tick node tests at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_friction_rollup_compute tests/nodes/node_friction_rollup_tick_effect tests/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22987-parity
+  description: The recorded-day parity test passes, and the planted-divergence tests show the same comparison turning red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly -k parity_with_unit_on_recorded_day
+    cwd: .
+- id: dod-omn22987-planted
+  description: Each planted divergence turns the comparison red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly -k planted_divergence
+    cwd: .
