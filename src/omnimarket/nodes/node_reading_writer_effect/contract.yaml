@@ -31,6 +31,15 @@ handler:
 # Not a runtime-dispatched handler: HandlerReadingWriter takes its overlay, source, appender and clock
 # as constructor parameters, so the node runs through its own CLI and schedule, not handler_routing.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: relation_map_reading
+      topic: onex.cmd.omnimarket.relation-map-reading-requested.v1
+      handler:
+        name: HandlerRelationMapReading
+        module: omnimarket.nodes.node_reading_writer_effect.handlers.handler_relation_map_reading
+
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]

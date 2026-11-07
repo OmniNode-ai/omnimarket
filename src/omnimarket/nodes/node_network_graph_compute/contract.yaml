@@ -85,6 +85,9 @@ metadata:
   transport_type: kafka
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.import-relation-compute-requested.v1
+  producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
 - onex.evt.omnimarket.network-graph-computed.v1
 - onex.evt.omnimarket.import-relation-computed.v1

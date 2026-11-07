@@ -130,3 +130,19 @@ def test_one_request_gives_one_set_of_bytes_whatever_the_edge_order() -> None:
     two = _RUN(request(tuple(reversed(edges)), bare_overlay()))
     assert one.model_dump_json() == two.model_dump_json()
     assert one.digest() == two.digest()
+
+
+def test_contract_declares_the_import_relation_topics() -> None:
+    import yaml
+
+    from omnimarket.nodes import node_network_graph_compute as pkg
+
+    path = pkg.__path__[0] + "/contract.yaml"
+    with open(path) as fh:
+        contract = yaml.safe_load(fh)
+    assert (
+        "onex.evt.omnimarket.import-relation-computed.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
+    produced = [e["topic"] for e in contract["externally_produced_topics"]]
+    assert "onex.cmd.omnimarket.import-relation-compute-requested.v1" in produced
