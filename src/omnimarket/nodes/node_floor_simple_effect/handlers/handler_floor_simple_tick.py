@@ -76,6 +76,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     load_record,
     overlay_store_events,
     parse_time,
+    read_admissions,
     read_broker_lag,
     read_deploy_lag,
     read_disk,
@@ -140,6 +141,10 @@ class ModelSourcePaths(BaseModel):
 
     record_relpath: str
     watcher_relpath: str
+    controller_state_dir_env: str
+    controller_state_dir_fallback: str
+    controller_admissions_name: str
+    controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
@@ -674,9 +679,17 @@ class HandlerFloorSimpleTick:
                 record = None
             except FloorSourceError:
                 record = None
+            controller_dir = Path(
+                env.get(rt.sources.controller_state_dir_env, "").strip()
+                or Path.home() / rt.sources.controller_state_dir_fallback
+            )
             watcher = read_watcher(
                 home / rt.sources.watcher_relpath,
                 now,
+                admissions=read_admissions(
+                    controller_dir / rt.sources.controller_admissions_name,
+                    rt.sources.controller_admissions_tail_bytes,
+                ),
                 excluded_classes=floor_ov.numbers.excluded_pr_classes,
                 queue_classes=lab_ov.queue_age_classes,
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,

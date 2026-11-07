@@ -75,6 +75,21 @@ class ModelReadingPublish(BaseModel):
     reading_term: str = Field(min_length=1)
 
 
+class ModelLandingRoute(BaseModel):
+    """Where piece 9's watcher snapshot comes from: the watcher's state file and the goal's scope overlay."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The variable holding the path of the pull request watcher's state file.
+    watcher_state_env: str = Field(min_length=1)
+    #: The goal scope overlay: its id, and the variable that pins its file.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    #: The watcher classes that are green and waiting (an eligible head), and the merge states that mean a conflict.
+    queue_classes: tuple[str, ...] = Field(min_length=1)
+    conflict_merge_states: tuple[str, ...] = ()
+
+
 class ModelReadingScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -98,6 +113,8 @@ class ModelReadingOverlay(BaseModel):
     #: The build order of the pieces. Part of every row key.
     order: tuple[int, ...]
     pieces: tuple[ModelPieceReadingSpec, ...]
+    #: Required when a piece carries landing requirements.
+    landing_route: ModelLandingRoute | None = None
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
     #: Environment the installed unit carries (the routes' commands and their roots).
     unit_environment: dict[str, str] = Field(default_factory=dict)
@@ -109,6 +126,12 @@ class ModelReadingOverlay(BaseModel):
             raise ValueError("a piece is declared twice")
         if sorted(self.order) != sorted(ids):
             raise ValueError("order must list exactly the declared pieces, once each")
+        if self.landing_route is None and any(
+            piece.landing is not None for piece in self.pieces
+        ):
+            raise ValueError(
+                "a piece reads landing and the overlay has no landing_route"
+            )
         names = [host.name for host in self.schedule_hosts]
         if len(names) != len(set(names)):
             raise ValueError("a schedule host is declared twice")
