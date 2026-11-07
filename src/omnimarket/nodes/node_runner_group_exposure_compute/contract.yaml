@@ -71,7 +71,7 @@ event_bus:
 # The fetching effect (a later piece) sends the request; the reading writer reads the result.
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.runner-group-exposure-read-requested.v1
-    producer: "the fetching effect, which reads the org group and the repository files and asks for the reading; not yet built"
+    producer: "node_runner_group_exposure_effect, which reads the org group and the repository files and asks for the reading (it calls the handler in process; a bus caller may use this topic)"
 externally_consumed_topics:
   - onex.evt.omnimarket.runner-group-exposure-read.v1
 
