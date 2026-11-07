@@ -1,0 +1,24 @@
+name: node_work_state_projection_compute
+version: "0.1.0"
+description: "Work-state projection: every work item (ticket, plan task, pull request, red check, lane) from the sources, with its state and its start criterion's reading, for the floor and the fill dispatcher"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_state_projection_compute: "omnimarket.nodes.node_work_state_projection_compute"
+capabilities:
+  standalone: true
+  # false until the floor and the fill orchestrator call it in the runtime: auto-wiring prepares this node as SKIPPED.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "work-state", "projection", "pure"]
+pack: "routing"
+display_name: "Work-State Projection Compute"
+node_role: "compute"

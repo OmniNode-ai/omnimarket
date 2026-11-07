@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work-State Projection Compute
+#
+# One projection of every work item, computed from the sources and never from the floor page or its data file: tracker
+# tickets, plan file tasks (any plan the globs match, so a new plan or project needs no code change), pull requests with
+# the landing controller's decision, their red required checks, and lanes from the ledger and their receipts, with piece
+# and host readings. Each item gets a state (available, blocked with the blocking items, stopped with what is left, in
+# progress with its lane, done) and its start criterion's reading. Lanes attribute to items only by their CLAIM's cells
+# the overlay names (ticket, owns, cause, key), never by an owner typed into an overlay. The floor and the fill
+# dispatcher are the two consumers. The handler is pure; node_work_state_projection_effect reads the sources and writes the result.
+name: "node_work_state_projection_compute"
+contract_name: "node_work_state_projection_compute"
+node_name: "node_work_state_projection_compute"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+node_type: "COMPUTE_GENERIC"
+# Experimental until the floor and the fill orchestrator read the projection in the runtime.
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Projects every work item from the sources with its state and its start criterion's reading. A ticket, plan task, pull
+  request or red check is done, in progress (a live lane attributed through its CLAIM cells, an open pull request for
+  its ticket, a green open pull request with landing), stopped (the newest attributed lane closed with an outcome that
+  is not a done outcome, its receipt ended with no closing row, or it went silent past the live window, with what it
+  left), blocked (its start criterion reads false or unread, naming the blocking items; a pull request with red required
+  checks names them) or available. Every lane is an item too. An item outside the goal's scope declaration is projected
+  and marked paused. A source that could not be read is carried in unread, never drawn empty.
+input_model:
+  name: "ModelWorkStateRequest"
+  module: "omnimarket.nodes.node_work_state_projection_compute.models"
+  description: "The clock reading, the rules overlay, the goal's scope and every source's rows."
+output_model:
+  name: "ModelWorkStateResult"
+  module: "omnimarket.nodes.node_work_state_projection_compute.models"
+  description: "Every work item in key order with its state and reason, the unread sources and a count per state."
+handler:
+  module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
+  class: "HandlerWorkStateProjection"
+  input_model: "omnimarket.nodes.node_work_state_projection_compute.models.ModelWorkStateRequest"
+  output_model: "omnimarket.nodes.node_work_state_projection_compute.models.ModelWorkStateResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection:HandlerWorkStateProjection"
+  handlers:
+    - operation: "project_work_state"
+      handler:
+        name: "HandlerWorkStateProjection"
+        module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation: node_work_state_projection_effect reads the sources and calls the handler; the floor and the fill orchestrator call it in process."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Every work item from the sources, with its state and its start criterion's reading."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags: ['compute', 'work-state', 'projection', 'pure']
