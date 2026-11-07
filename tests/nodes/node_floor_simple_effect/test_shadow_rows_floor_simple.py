@@ -25,7 +25,7 @@ from omnimarket.models.model_code_graph import EnumGraphFault, ModelShadowComman
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     InMemoryPullRequestSource,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_shadow_check import (
+from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
     HandlerCodeGraphShadow,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
