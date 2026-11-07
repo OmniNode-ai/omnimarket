@@ -41,6 +41,11 @@ class ModelRegistryUnitsRequest(BaseModel):
     # The Phoenix base URL a unit that declares this input persists for its tick (the factory floor reads its trace
     # count and newest span age there). Persisted for the same reason as runtime_ssh_host; empty defers to the shell.
     phoenix_url: str = Field(default="", pattern=r"^(?:https?://[^\s/]+(?:/\S*)?)?$")
+    # The checkout whose interpreter and ledger appender the alarm unit runs (its launchd PATH has none), and the host
+    # table file the alarm reads each host's event names from. Persisted in the unit's install record, so a reinstall
+    # with neither reproduces the configuration. Empty defers to the installing shell, then to the last install.
+    appender_root: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
+    host_table_path: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
     # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
     alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
@@ -65,6 +70,9 @@ class ModelRegistryUnitsResult(BaseModel):
     bundle_sha256: str = ""
     project_is_canonical: bool = True
     record: str = ""
+    # The configuration document a unit that declares one is installed with, and where it is written.
+    config: str = ""
+    config_path: str = ""
 
 
 class ModelCopiedUnitPayload(BaseModel):

@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-22893
+title: The central test harness installs its own systemd user timer from its contract and overlay
+summary: The harness node gains a schedule verb that renders, installs, reads and removes its own systemd user timer on a host the overlay's schedule_hosts names. The interval is the overlay's schedule block, the unit environment is the overlay's, and the contract holds only how the unit runs. An undeclared host, a missing interpreter, a runtime that cannot be imported and a unit root inside a worktree each refuse before any unit file is written. No bound is changed and nothing is muted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22893-harness-timer
+  statement: The harness timer is installed on a declared host with the overlay's interval, runs the harness runtime, and is removed by uninstall.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: schedule install on a declared host writes the service and timer with the overlay interval and enables the timer, and every refusal writes no unit file, with a failing control on dev -- falsifier: uv run --frozen pytest tests/test_lab_test_harness_schedule.py -q --no-cov, which cannot import the schedule module on origin/dev'
+evidence_requirements:
+- kind: tests
+  description: The schedule tests, golden and error chains, and the harness node's existing tests.
+  command: uv run --frozen pytest tests/test_lab_test_harness_schedule.py tests/test_golden_chain_lab_test_harness.py tests/test_runtime_lab_test_harness.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22893-ac1
+  description: The schedule golden and error chain tests pass on the branch.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_lab_test_harness_schedule.py -q --no-cov
+- id: dod-omn22893-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22893 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_lab_test_harness_schedule.py tests/test_golden_chain_lab_test_harness.py tests/test_runtime_lab_test_harness.py -q --no-cov
