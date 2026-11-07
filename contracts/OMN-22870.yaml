@@ -1,0 +1,33 @@
+schema_version: 1.0.0
+ticket_id: OMN-22870
+title: One setup command makes an HP lab host ready for the iLO Redfish node
+summary: The iLO Redfish node refused with overlay_unavailable for every host because setup was five hand steps. The node now has a setup verb that, for one or more hosts in one run, creates the least-privilege read and write accounts, files their generated passwords in the lab secret store, pins the iLO certificate only when the presented and the iLO-reported certificates agree, writes the overlay row, sets it live, and runs discover and identity to record the serial.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22870-setup-verb
+  statement: One run of the setup verb leaves every named host with two least-privilege accounts, their keys in the store, a pinned certificate, a live overlay row and a recorded serial, and a rerun creates nothing again.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scripted-Redfish run sets up two hosts with one password prompt, creates exactly a read account (Login) and a write account (Login, Virtual Media, Virtual Power and Reset), writes the overlay with live true and the serial, and prints no password -- falsifier: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup.py -q --no-cov, which fails on dev where the setup verb does not exist'
+  - id: AC2
+    statement: 'AC2: a certificate whose serial or SHA-256 differs from what the iLO reports refuses before any account, store key, pin or overlay row is written, and an existing account is reused and never duplicated -- falsifier: the same test file, tests test_a_fingerprint_mismatch_refuses_before_anything_is_created_or_written and test_a_rerun_reuses_the_accounts_and_creates_nothing_again'
+evidence_requirements:
+- kind: tests
+  description: The setup verb tests over a scripted Redfish transport and a dict-backed secret store.
+  command: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22870-ac1
+  description: The setup verb tests pass on the branch and cannot run on the dev source, where the verb and its handler do not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup.py -q --no-cov

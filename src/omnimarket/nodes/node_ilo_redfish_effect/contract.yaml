@@ -18,7 +18,8 @@ node_version: {major: 0, minor: 1, patch: 0}
 
 description: >
   iLO 4 Redfish EFFECT for the Gen8 and Gen9 lab servers. Verbs: discover, identity, inventory,
-  health, logs, power-status (read); power, virtual-media, boot-once (write, approval-gated). Hosts,
+  health, logs, power-status (read); power, virtual-media, boot-once (write, approval-gated); setup (the
+  one-run host setup of OMN-22870: accounts, store keys, certificate pin, overlay row, first read). Hosts,
   addresses, pinned certificates and credential key names come from a private overlay; credentials
   come from the lab secret store at use; TLS verification is never disabled; every returned field is
   redacted. Design: reference/ilo4-redfish-management-design.md in the shared knowledge base.
@@ -50,6 +51,12 @@ config:
     type: str
     default: "ILO_{HOST}_{ROLE}_{FIELD}"
     description: "Template of the lab secret store keys that hold a host's iLO accounts. Names only; the values live in the store."
+  # The folder of the lab secret store the setup verb lists, reads and creates the iLO keys in (names
+  # only here; ROLE is READ, WRITE, or ADMIN for an administrator credential the operator filed).
+  secret_folder:
+    type: str
+    default: "/shared/env"
+    description: "Folder of the lab secret store that holds the iLO account keys the setup verb creates."
 
 metadata:
   transport_type: in_process

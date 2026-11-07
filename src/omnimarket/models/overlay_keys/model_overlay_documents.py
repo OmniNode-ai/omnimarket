@@ -90,6 +90,9 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
+    # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
+    ilo_address: NonEmptyStr | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
