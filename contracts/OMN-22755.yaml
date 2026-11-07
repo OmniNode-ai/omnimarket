@@ -74,5 +74,5 @@ dod_evidence:
     check_value: grep -q '"tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py"' config/test_file_durations.json
     cwd: .
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_host_table_duration_recorded_omn22755.py tests/nodes/node_silent_failure_alarm_effect/test_host_table_aliases_omn22755.py -q --no-cov
     cwd: .
