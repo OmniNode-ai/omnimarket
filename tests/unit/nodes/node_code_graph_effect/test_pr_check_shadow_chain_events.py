@@ -21,7 +21,7 @@ from omnimarket.models.model_code_graph import EnumGraphFault
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     InMemoryPullRequestSource,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_shadow_check import (
+from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
     HandlerCodeGraphShadow,
     answer_shadow_command,
     load_shadow_topics,

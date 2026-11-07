@@ -121,6 +121,8 @@ def _frozen(
 def _overlay(sample: ModelGraphSample) -> ModelCodeGraphOverlay:
     return overlay(
         repos=[{"name": REPO, "ref": REF}],
+        allowlist=[],
+        shadow=None,
         sample=sample.model_dump(mode="json"),
     )
 

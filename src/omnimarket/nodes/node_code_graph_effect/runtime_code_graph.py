@@ -47,13 +47,13 @@ from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
 from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
     HandlerCodeGraph,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_shadow_check import (
-    HandlerCodeGraphShadow,
-)
 from omnimarket.nodes.node_code_graph_effect.handlers.schedule import (
     CodeGraphScheduler,
     load_schedule,
     state_directory,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
+    HandlerCodeGraphShadow,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     NODE_NAME,

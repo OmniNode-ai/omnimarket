@@ -30,7 +30,7 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
     InMemoryPullRequestSource,
     WatcherStatePullRequestSource,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_shadow_check import (
+from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
     HandlerCodeGraphShadow,
 )
 from omnimarket.nodes.node_code_graph_effect.protocols import PullRequestSourceError
