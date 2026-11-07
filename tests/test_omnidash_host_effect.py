@@ -637,13 +637,26 @@ def test_omnidash_host_contract_owns_the_interval_default() -> None:
     assert list(contract["schedule"]["schedulers"]) == ["systemd-user"]
 
 
-def test_omnidash_host_floor_page_has_no_links_area() -> None:
+@pytest.mark.parametrize("page_name", ["simple.html", "detail.html"])
+def test_omnidash_host_floor_page_has_no_links_area(page_name: str) -> None:
     page = (
         Path(__file__).resolve().parents[1]
-        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html"
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page"
+        / page_name
     )
     text = page.read_text(encoding="utf-8")
     assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
+
+
+def test_omnidash_host_floor_main_page_tab_bar_is_a_div_with_both_tabs() -> None:
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+    )
+    text = page.read_text(encoding="utf-8")
+    assert re.search(r"<div class=\"tabs\" role=\"tablist\"", text)
+    assert 'href="#process"' in text
+    assert 'href="#machines"' in text
 
 
 @pytest.mark.parametrize(

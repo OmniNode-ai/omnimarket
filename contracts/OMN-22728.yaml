@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-22728
+title: A ledger reader that the overlay names as moved answers from the bus-fed ledger query node, paged, with watermark freshness and receipt parity, and never reads the file
+summary: node_work_ledger_reader_effect answers one read by one named reader (inbox, holds, open-claims) from node_work_ledger_query_effect over the bus. A reader named in the overlay's moved_readers is read page by page to the end of its open set, is stale when the answer's watermark is older than the overlay bound, reads parity from the daily receipt rows on request, and when the node does not answer it is unreadable and the file is not read in its place. A reader not named keeps its own read. Every read journals an answered or a refused event.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22728-moved-reader
+  statement: A ledger reader moved off the file reads the open set from the bus-fed query node, says how fresh it is from the answer's watermark, and never falls back to the file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a reader that the overlay names as moved answers from the query node, paged, and refuses a file read -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "moved or paged or never_reads_the_file or not_moved"'
+  - id: AC2
+    statement: 'AC2: freshness comes from the answer watermark and parity from the receipt rows, so a watermark older than the overlay bound reads stale and a missing receipt row reads parity broken -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "watermark or parity"'
+  - id: AC3
+    statement: 'AC3: the golden chain and the error chain event tests exist, and the injected break (the query node does not answer) emits the refused event and not the answered one -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "golden_chain or error_chain"'
+  - id: AC4
+    statement: 'AC4: a live read on a lab host returns the open inbox of a lane for a stated window with file_read=no and the same open items as the file for that window -- falsifier: the node CLI run on a lab host from the pushed head, its open count against the file count for the window, any difference named by row'
+evidence_requirements:
+- kind: tests
+  description: The moved reader node tests and the entry point registration neighbours.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22728-ac1
+  description: The moved, paged, not-moved and never-reads-the-file tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "moved or paged or never_reads_the_file or not_moved"
+    cwd: .
+- id: dod-omn22728-ac2
+  description: The watermark freshness and receipt parity tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "watermark or parity"
+    cwd: .
+- id: dod-omn22728-ac3-ac4
+  description: The golden and error chains pass. The live read on a lab host is run by hand from the pushed head and its two counts are in the pull request body.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+    cwd: .
+- id: dod-omn22728-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22728 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov
+    cwd: .

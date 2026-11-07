@@ -47,6 +47,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingResultKind,
     EnumLandingSuspension,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
+    ModelLandingExhaustionOwner,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -56,6 +59,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     SUBJECT_PATTERN,
     ModelLandingControllerState,
     ModelLandingMemberRef,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.overlay import (
+    load_exhaustion_owner,
 )
 
 FIXER_HOLD_ALL = "all"
@@ -151,6 +157,15 @@ class ModelLandingPrFacts(BaseModel):
         ),
     )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
+    lacks_base_head: bool = Field(
+        default=False,
+        description=(
+            "The head does not contain its base branch's newest head, read from "
+            "the clone's ancestry (never GitHub's merge state, which reads a PR "
+            "BLOCKED, not BEHIND, on a base that is not strict). False when "
+            "unread: an unread head is never updated on this evidence."
+        ),
+    )
     merge_queue: bool = Field(
         default=False,
         description=(
@@ -410,6 +425,11 @@ class ModelLandingPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    exhaustion_owner: ModelLandingExhaustionOwner = Field(
+        default_factory=load_exhaustion_owner,
+        description="Accountable human or lane after exhaustion; grants no extra attempt.",
+    )
+
     max_workers: int = Field(default=6, ge=0, description="Concurrent workers (D5).")
     load_pause_threshold: float = Field(
         default=20.0, gt=0, description="No dispatch while load1 is above this (D5)."
@@ -566,6 +586,16 @@ class ModelLandingFacts(BaseModel):
     )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
+    )
+    base_green_checks: tuple[ModelLandingRepoChecks, ...] = Field(
+        default=(),
+        description=(
+            "Checks whose newest copy at each repo's newest base head "
+            "(``base_heads``) is green. A red head whose every fixable red check "
+            "is listed here, and which lacks that base head, is red from an older "
+            "base: its branch is updated, never a worker sent. A repo missing "
+            "here is unread, never green."
+        ),
     )
     base_heads: tuple[ModelLandingRepoHead, ...] = Field(
         default=(),

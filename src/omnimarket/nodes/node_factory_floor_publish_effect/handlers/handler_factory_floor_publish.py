@@ -19,10 +19,11 @@ import os
 import shlex
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import yaml
 
@@ -214,8 +215,13 @@ def copy_to_server(
 class HandlerFactoryFloorPublish:
     """Boundary of the publish: the input steps, the reads and the copies happen here."""
 
-    def __init__(self, runner: Runner = run_process) -> None:
+    def __init__(
+        self,
+        runner: Runner = run_process,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._run = runner
+        self._clock = clock
 
     def handle(
         self,
@@ -241,7 +247,10 @@ class HandlerFactoryFloorPublish:
         home = Path(home_value)
         now = request.now or datetime.now(UTC)
 
+        cycle_start = self._clock()
+        phases: dict[str, float] = {}
         results: list[ModelPublishStepResult] = []
+        steps_start = self._clock()
         if not request.skip_refresh:
             for group in self._groups(rt.steps):
                 for step, result in zip(
@@ -253,6 +262,7 @@ class HandlerFactoryFloorPublish:
                             f"the required step {step.name} failed ({result.detail}): {result.diagnostic}"
                         )
 
+        phases["input_steps"] = self._clock() - steps_start
         data = self._read_record(home / rt.source.relpath)
         record = json.loads(data)
         generated_at = str(record["generated_at"])
@@ -260,10 +270,17 @@ class HandlerFactoryFloorPublish:
             results, rt, self._declared_fragments(rt, env), record["lines"]
         )
         page = (NODE_DIR / rt.page_relpath).read_bytes()
+        simple_page = (NODE_DIR / rt.simple_page_relpath).read_bytes()
+        simple_data = self._read_simple(home / rt.simple_data_relpath)
+        simple_reads = self._read_simple(home / rt.simple_reads_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
             for name in rt.names.theme_css
+        ]
+        icons = [
+            (name, (NODE_DIR / rt.icons_relpath / name).read_bytes())
+            for name in rt.names.icons
         ]
         health_payload = HandlerProcessHealthPayload().handle(
             ModelProcessHealthPayloadRequest(
@@ -271,6 +288,7 @@ class HandlerFactoryFloorPublish:
             )
         )
         health = health_payload.summary
+        delegation_start = self._clock()
         if not request.skip_refresh or request.refresh_delegation:
             reading = HandlerDelegationReport(self._run).handle(
                 ModelDelegationReportRequest(probe=True), environ=env
@@ -279,10 +297,14 @@ class HandlerFactoryFloorPublish:
                 home / rt.delegation_relpath, json.dumps(reading.report).encode()
             )
         delegation = self._read_delegation(home / rt.delegation_relpath)
+        phases["delegation"] = self._clock() - delegation_start
         status = json.dumps(
             {
+                "cycle_seconds_before_copy": round(self._clock() - cycle_start, 3),
+                "phase_seconds": {k: round(v, 3) for k, v in phases.items()},
                 "published_at": now.astimezone(UTC).isoformat(),
                 "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
+                "simple_floor": "published" if simple_data is not None else "absent",
                 "process_health": "published" if health is not None else "absent",
                 "process_health_reason": health_payload.reason,
                 "delegation": "published" if delegation is not None else "absent",
@@ -294,10 +316,16 @@ class HandlerFactoryFloorPublish:
         # The record goes last: a reader that gets the new record always finds a page that reads it.
         files: list[tuple[str, bytes]] = [
             *theme_css,
+            *icons,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
+            (rt.names.simple_page, simple_page),
             (rt.names.status, status),
         ]
+        if simple_reads is not None:
+            files.append((rt.names.simple_reads, simple_reads))
+        if simple_data is not None:
+            files.append((rt.names.simple_data, simple_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))
@@ -307,6 +335,7 @@ class HandlerFactoryFloorPublish:
         files.append((rt.names.data, data))
         # The snapshot is stored before the live record, so a record that is shown has always been kept.
         snapshot = snapshot_name(rt.history, rt.names.data, now)
+        copy_start = self._clock()
         copy_to_server(
             self._run,
             rt,
@@ -318,9 +347,38 @@ class HandlerFactoryFloorPublish:
         )
         for name, payload in files:
             self._copy(rt, overlay, name, payload)
+        phases["copy"] = self._clock() - copy_start
+        prune_start = self._clock()
         pruned = self._prune_history(rt, overlay, now)
+        phases["history_prune"] = self._clock() - prune_start
 
+        # The page and the record are served. The canary status is published from them, so its floor age is the page's.
+        after: list[ModelPublishStepResult] = []
+        after_start = self._clock()
+        for after_step in rt.after_publish_steps:
+            after_result = self._step(
+                after_step, home, overlay, rt.plugin_root_env, env
+            )
+            after.append(after_result)
+            if after_result.status == "failed" and after_step.required:
+                phases["after_publish"] = self._clock() - after_start
+                if request.state_dir:
+                    self._write_evidence(
+                        Path(request.state_dir) / rt.evidence_file,
+                        now,
+                        generated_at,
+                        hashlib.sha256(data).hexdigest(),
+                        tuple(name for name, _ in files),
+                        self._timing(cycle_start, phases, results, after),
+                    )
+                raise PublishRefusedError(
+                    f"the page was served but the required step {after_step.name} failed "
+                    f"({after_result.detail}): {after_result.diagnostic}"
+                )
+
+        phases["after_publish"] = self._clock() - after_start
         digest = hashlib.sha256(data).hexdigest()
+        timing = self._timing(cycle_start, phases, results, after)
         if request.state_dir:
             self._write_evidence(
                 Path(request.state_dir) / rt.evidence_file,
@@ -328,6 +386,7 @@ class HandlerFactoryFloorPublish:
                 generated_at,
                 digest,
                 tuple(name for name, _ in files),
+                timing,
             )
         return ModelFactoryFloorPublishResult(
             published=tuple(name for name, _ in files),
@@ -335,6 +394,9 @@ class HandlerFactoryFloorPublish:
             data_sha256=digest,
             serve_url=overlay.serve_url,
             steps=tuple(results),
+            cycle_seconds=timing["cycle_seconds"],
+            phase_seconds={k: round(v, 3) for k, v in phases.items()},
+            after_publish=tuple(after),
             process_health_published=health is not None,
             delegation_published=delegation is not None,
             history_snapshot=snapshot,
@@ -404,7 +466,37 @@ class HandlerFactoryFloorPublish:
             ]
             return [future.result() for future in futures]
 
+    def _timing(
+        self,
+        cycle_start: float,
+        phases: Mapping[str, float],
+        results: Sequence[ModelPublishStepResult],
+        after: Sequence[ModelPublishStepResult],
+    ) -> dict[str, Any]:
+        """The cycle's measured seconds: the total, each phase, and each step with the slowest named."""
+        steps = {r.name: r.seconds for r in (*results, *after)}
+        slowest = max(steps, key=lambda name: steps[name], default="")
+        return {
+            "cycle_seconds": round(self._clock() - cycle_start, 3),
+            "phase_seconds": {k: round(v, 3) for k, v in phases.items()},
+            "step_seconds": steps,
+            "slowest_step": slowest,
+        }
+
     def _step(
+        self,
+        step: ModelPublishStep,
+        home: Path,
+        overlay: ModelFactoryFloorPublishOverlay,
+        plugin_root_env: str,
+        env: Mapping[str, str],
+    ) -> ModelPublishStepResult:
+        """One step, with the seconds it took."""
+        started = self._clock()
+        result = self._run_step(step, home, overlay, plugin_root_env, env)
+        return result.model_copy(update={"seconds": round(self._clock() - started, 3)})
+
+    def _run_step(
         self,
         step: ModelPublishStep,
         home: Path,
@@ -517,6 +609,16 @@ class HandlerFactoryFloorPublish:
         return data
 
     @staticmethod
+    def _read_simple(path: Path) -> bytes | None:
+        """A file of the simple floor, or ``None`` when absent or not JSON (the page then draws it as absent, in red)."""
+        try:
+            data = path.read_bytes()
+            json.loads(data)
+        except (OSError, ValueError):
+            return None
+        return data
+
+    @staticmethod
     def _read_delegation(path: Path) -> bytes | None:
         """The delegation counts, or ``None`` when absent or not that shape (the page then draws the card unread)."""
         try:
@@ -602,6 +704,7 @@ class HandlerFactoryFloorPublish:
         generated_at: str,
         digest: str,
         names: tuple[str, ...],
+        timing: Mapping[str, Any] | None = None,
     ) -> None:
         write_atomic(
             path,
@@ -612,6 +715,7 @@ class HandlerFactoryFloorPublish:
                         "record_generated_at": generated_at,
                         "data_sha256": digest,
                         "published": list(names),
+                        **(timing or {}),
                     },
                     sort_keys=True,
                 )
