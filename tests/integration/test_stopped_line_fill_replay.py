@@ -254,10 +254,11 @@ def _entry(run: Replay, argv: list[str], *, host: str | None = None) -> Any:
     )
 
 
-def test_lines_entry_real_entry_points_after_a_refusing_tick_prints_the_four_missing_lines() -> (
-    None
-):
-    run = replay(variant="b", runner="refusing", ids="key-safe")
+@pytest.mark.parametrize("ids", ["recorded", "key-safe"])
+def test_lines_entry_real_entry_points_after_a_refusing_tick_prints_the_four_missing_lines(
+    ids: str,
+) -> None:
+    run = replay(variant="b", runner="refusing", ids=ids)
     ticked = _entry(run, ["tick"])
     printed = _entry(run, ["lines"])
     missing = [
@@ -270,10 +271,11 @@ def test_lines_entry_real_entry_points_after_a_refusing_tick_prints_the_four_mis
     assert printed.exit_code == ticked.exit_code == 0
 
 
-def test_lines_entry_real_entry_points_after_a_working_tick_prints_the_filled_lines() -> (
-    None
-):
-    run = replay(variant="b", runner="working", ids="key-safe")
+@pytest.mark.parametrize("ids", ["recorded", "key-safe"])
+def test_lines_entry_real_entry_points_after_a_working_tick_prints_the_filled_lines(
+    ids: str,
+) -> None:
+    run = replay(variant="b", runner="working", ids=ids)
     ticked = _entry(run, ["tick"])
     printed = _entry(run, ["lines"])
     assert printed.stdout == ticked.stdout
