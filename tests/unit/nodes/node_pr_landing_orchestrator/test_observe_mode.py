@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.landing_decision import ModelLandingDecision
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
@@ -58,9 +59,11 @@ def assert_wrote_nothing(writer: InMemoryTickWriter, result: ModelTickResult) ->
 class LeakyOrchestrator(HandlerPrLandingTickOrchestrator):
     """Named injected break: an observe tick that performs the actions it computed."""
 
-    def _performed_in(self, request: ModelTickRequest, decision: object) -> int:
+    def _performed_in(
+        self, request: ModelTickRequest, decision: ModelLandingDecision
+    ) -> int:
         count = 0
-        for action in decision.actions:  # type: ignore[attr-defined]
+        for action in decision.actions:
             self._writer.perform(action)
             count += 1
         return count

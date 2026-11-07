@@ -50,6 +50,9 @@ def test_registered_with_a_pure_reducer_contract() -> None:
     assert contract["node_type"] == "REDUCER_GENERIC"
     assert contract["descriptor"]["purity"] == "pure"
     assert contract["metadata"]["related_tickets"] == ["OMN-22921"]
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.pr-landing-tick-reduced.v1"
+    )
 
 
 def test_handler_imports_no_io() -> None:

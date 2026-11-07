@@ -18,12 +18,14 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.models.landing_decision import ModelLandingDecision, ModelLandingFacts
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
+    ProtocolTickDecider,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickFailureReason,
@@ -177,18 +179,17 @@ def test_error_chain_a_decider_that_raises_ends_in_the_failed_event_not_an_excep
 
 # --- the floor's emission chains: a start, then a success with counters or a typed failure ---
 
-from omnimarket.handlers.emission_sink import InMemoryEmissionSink  # noqa: E402
-
 FLOOR_PIECE = 9
 
 
 def _emitting(
-    sink: InMemoryEmissionSink, **kw: object
+    sink: InMemoryEmissionSink,
+    *,
+    drill: bool = False,
+    decider: ProtocolTickDecider | None = None,
 ) -> HandlerPrLandingTickOrchestrator:
     return HandlerPrLandingTickOrchestrator(
-        emission_sink=sink,
-        floor_piece=FLOOR_PIECE,
-        **kw,  # type: ignore[arg-type]
+        emission_sink=sink, floor_piece=FLOOR_PIECE, drill=drill, decider=decider
     )
 
 
@@ -259,11 +260,8 @@ def test_the_floor_receipt_fold_counts_the_golden_and_the_error_chain() -> None:
 # --- named mutations: each chain test goes red when its mutation is injected ---
 
 
-class _SwallowingPublisher:
+class _SwallowingPublisher(InMemoryTickPublisher):
     """Mutation drop_compared_event: the publisher takes the event and sends nothing."""
-
-    def __init__(self) -> None:
-        self.published: list[tuple[str, BaseModel]] = []
 
     def publish(self, topic: str, event: BaseModel) -> None:
         return None
@@ -276,8 +274,8 @@ class _WrongTopicPublisher(InMemoryTickPublisher):
         super().publish(COMPARED_TOPIC, event)
 
 
-def _golden_chain(publisher: InMemoryTickPublisher | _SwallowingPublisher) -> None:
-    HandlerPrLandingTickOrchestrator(publisher=publisher).handle(_request())  # type: ignore[arg-type]
+def _golden_chain(publisher: InMemoryTickPublisher) -> None:
+    HandlerPrLandingTickOrchestrator(publisher=publisher).handle(_request())
     assert [t for t, _ in publisher.published] == [COMPARED_TOPIC]
 
 
@@ -298,7 +296,7 @@ NAMED_MUTATIONS = {
 def test_chain_test_goes_red_under_its_named_mutation(name: str) -> None:
     check, mutated = NAMED_MUTATIONS[name]
     with pytest.raises(AssertionError):
-        check(mutated())  # type: ignore[arg-type]
+        check(mutated())
 
 
 def test_chain_tests_are_green_without_a_mutation() -> None:
