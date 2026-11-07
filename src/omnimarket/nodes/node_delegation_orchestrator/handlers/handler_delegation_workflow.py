@@ -3545,9 +3545,14 @@ class HandlerDelegationWorkflow:
         # bound. Acting on it retried or escalated runs days old and called a
         # provider again for each. It is recorded as expired and the run closes
         # FAILED here, before any retry, escalation or gate intent is built.
-        elapsed_seconds = (time.time_ns() - workflow.started_at_ns) // 1_000_000_000
-        if elapsed_seconds > self._completion_bound():
-            return self._expire_late_response(workflow, response, elapsed_seconds)
+        # The comparison keeps nanosecond precision: a response 0.5 s past the
+        # bound is past it. Only the evidence is whole seconds, rounded up so it
+        # never reads as not exceeding the bound it exceeded.
+        elapsed_ns = time.time_ns() - workflow.started_at_ns
+        if elapsed_ns > self._completion_bound() * 1_000_000_000:
+            return self._expire_late_response(
+                workflow, response, -(-elapsed_ns // 1_000_000_000)
+            )
 
         # OMN-18278 (bus half): apply the OMN-18379 boundary rule HERE, at the
         # one point every downstream reader of this response takes it from — the
@@ -3888,6 +3893,30 @@ class HandlerDelegationWorkflow:
             f"contract-declared completion bound of {bound}s; recorded as "
             f"expired and not re-routed. Resubmit the request."
         )
+        # The answering attempt is the final rung of this run, so it is recorded
+        # in the history like every other failure terminal's final attempt. This
+        # appends history only: the spend is priced once by ``_emit_terminal``
+        # from the response's tokens and is not banked into the cumulative
+        # totals, so nothing is counted twice.
+        self._record_escalation_attempt(
+            workflow,
+            ModelDelegationEscalationAttempt(
+                tier_name=workflow.current_tier_name or "unknown",
+                model_used=model_used,
+                quality_score=0.0,
+                failure_reasons=(
+                    "inference response arrived after the completion bound",
+                ),
+                latency_ms=response.latency_ms,
+                fallback_recommended=False,
+                attempted_at=datetime.now(UTC),
+                routing_decision_id=workflow.routing_decision.selected_backend_id,
+                acceptance_decision=EnumDelegationAcceptanceDecision.TERMINATE,
+                acceptance_reason=EnumDelegationAcceptanceReason.COMPLETION_BOUND_EXPIRED,
+            ),
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+        )
         _, history_dicts = _terminal_response_fields(workflow, "")
         terminal_inputs = TerminalEmissionInputs(
             completed=False,
@@ -3927,7 +3956,7 @@ class HandlerDelegationWorkflow:
             provenance=workflow.request.provenance,
             route=response.route or workflow.inference_route,
             provider=response.provider or workflow.inference_provider,
-            credential_source=workflow.inference_credential_source,
+            credential_source=response.credential_source,
             prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
             prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
             prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
