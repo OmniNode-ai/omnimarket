@@ -98,7 +98,8 @@ def _keep(result: ModelCodeGraphResult) -> None:
     staged.replace(target)
 
 
-def _run(arguments: argparse.Namespace, write: bool) -> int:
+def build_handler(write: bool) -> tuple[HandlerCodeGraph, str]:
+    """The nightly handler as the overlay and the environment name it, and this host's name."""
     overlay = load_overlay()
     host = os.environ.get(overlay.ledger_append.host_env, "").strip()
     if not host:
@@ -114,6 +115,11 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         else None,
         clock=lambda: datetime.now(UTC),
     )
+    return handler, host
+
+
+def _run(arguments: argparse.Namespace, write: bool) -> int:
+    handler, host = build_handler(write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
         ModelCodeGraphCommand(
@@ -170,7 +176,8 @@ def _check(arguments: argparse.Namespace) -> int:
     return 0 if result.passed else 1
 
 
-def _shadow(arguments: argparse.Namespace) -> int:
+def build_shadow_handler(write: bool) -> tuple[HandlerCodeGraphShadow, str]:
+    """The shadow handler as the overlay and the environment name it, and this host's name."""
     overlay = load_overlay()
     shadow = overlay.shadow
     if shadow is None:
@@ -185,7 +192,6 @@ def _shadow(arguments: argparse.Namespace) -> int:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
-    write = not arguments.probe
     handler = HandlerCodeGraphShadow(
         overlay=overlay,
         host=host,
@@ -196,6 +202,12 @@ def _shadow(arguments: argparse.Namespace) -> int:
         else None,
         clock=lambda: datetime.now(UTC),
     )
+    return handler, host
+
+
+def _shadow(arguments: argparse.Namespace) -> int:
+    write = not arguments.probe
+    handler, host = build_shadow_handler(write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
         ModelShadowCommand(
