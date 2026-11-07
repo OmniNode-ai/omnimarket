@@ -64,3 +64,12 @@ dod_evidence:
 
       print("Published selector reading rules read the three sources and count shadow misses")''\'''''''
     cwd: .
+- id: dod-omn22951-integration-proof-live
+  description: 'Integration proof on a lab host through the central test location: the selector reading suites run as a lab work unit at the pushed sha on the declared bus lane.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22951 -- uv run --frozen pytest src/omnimarket/nodes/node_test_selector_reading_compute
+      tests/nodes/node_test_selector_reading_compute -q --no-cov
+    cwd: .
