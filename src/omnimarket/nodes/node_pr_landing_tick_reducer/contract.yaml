@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingTickReducer
+#
+# The landing tick reducer (rebuild piece 9, OMN-22921): one tick's decision folded to a row
+# per pull request, compared per pull request with the decision the live script recorded.
+#
+#   handle(ModelTickReduceInput) -> ModelTickReduceOutput
+#
+# Pure: no clock, no I/O, no model.
+name: "node_pr_landing_tick_reducer"
+contract_name: "node_pr_landing_tick_reducer"
+node_name: "node_pr_landing_tick_reducer"
+lifecycle: experimental
+node_type: "REDUCER_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B reducer for the landing tick. Folds a landing decision to one row per
+  subject (pull request, cause or the tick itself) and, given the decision the script
+  recorded, names every subject whose rows differ with the differing paths.
+input_model:
+  name: "ModelTickReduceInput"
+  module: "omnimarket.models.landing_tick"
+  description: "The node path's decision and the script's recorded decision."
+output_model:
+  name: "ModelTickReduceOutput"
+  module: "omnimarket.models.landing_tick"
+  description: "A row per subject and every divergent subject."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_tick_reducer.handlers.handler_pr_landing_tick_reducer"
+  class: "HandlerPrLandingTickReducer"
+  input_model: "omnimarket.models.landing_tick.ModelTickReduceInput"
+  output_model: "omnimarket.models.landing_tick.ModelTickReduceOutput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_tick_reducer.handlers.handler_pr_landing_tick_reducer:HandlerPrLandingTickReducer"
+  handlers:
+    - operation: "reduce_landing_tick"
+      handler:
+        name: "HandlerPrLandingTickReducer"
+        module: "omnimarket.nodes.node_pr_landing_tick_reducer.handlers.handler_pr_landing_tick_reducer"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-tick-reduce-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-landing-tick-reduced.v1"
+terminal_event: "onex.evt.omnimarket.pr-landing-tick-reduced.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-tick-reduce-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-tick-reduced.v1"
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles:
+    - main
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Landing tick decision folded per pull request and compared with the recorded decision."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags:
+    - reducer
+    - pr-landing
+    - landing-tick
+    - pure
+  related_tickets:
+    - OMN-22921

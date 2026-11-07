@@ -32,6 +32,7 @@ golden_path:
   - "Lock the tenant's mode and read its stored rows"
   - "Plan the report's row and every sibling its time re-judges; a replay or a late report plans nothing"
   - "Upsert each planned row under (tenant, mode, service)"
+  - "Publish each alert the write raised or cleared to onex.evt.omnimarket.local-alert-transitioned.v1"
   - "Publish each written row to the bus-backed projection API"
   - "Emit onex.evt.omnimarket.projection-local-environment-applied.v1"
 dod_evidence:
@@ -71,6 +72,10 @@ event_bus:
     - onex.evt.omnimarket.local-environment-status.v1
   publish_topics:
     - onex.evt.omnimarket.projection-local-environment-applied.v1
+    # Every alert a write raises or clears, derived by the local alert
+    # transition compute from the rows around the write; folded by
+    # node_projection_local_alerts.
+    - onex.evt.omnimarket.local-alert-transitioned.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-local-environment-malformed.v1
 externally_consumed_topics:
