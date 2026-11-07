@@ -131,15 +131,12 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
         COMMAND_TOPIC,
         HEALTH_COMMAND_TOPIC,
     ]
-    assert contract["event_bus"]["publish_topics"] == [
-        TERMINAL_TOPIC,
-        HEALTH_TERMINAL_TOPIC,
-    ]
+    # decide_customer_health runs in process and returns its line; this node's Python never
+    # publishes a health event, so the contract does not declare one (publish parity gate).
+    assert contract["event_bus"]["publish_topics"] == [TERMINAL_TOPIC]
+    assert HEALTH_TERMINAL_TOPIC not in contract["event_bus"]["publish_topics"]
     assert contract["terminal_event"] == TERMINAL_TOPIC
-    assert contract["externally_consumed_topics"] == [
-        TERMINAL_TOPIC,
-        HEALTH_TERMINAL_TOPIC,
-    ]
+    assert contract["externally_consumed_topics"] == [TERMINAL_TOPIC]
     assert [h["operation"] for h in contract["handler_routing"]["handlers"]] == [
         "decide_product_floor_verdict",
         "decide_customer_health",
