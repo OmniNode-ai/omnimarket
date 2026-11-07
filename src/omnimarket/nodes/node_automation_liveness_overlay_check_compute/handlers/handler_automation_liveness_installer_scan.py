@@ -91,6 +91,9 @@ _FILE_WRITE = re.compile(
 # comparison, so only a shell script is read for them.
 _SHELL_REDIRECT = re.compile(r"(?<![-=])>>?\s*(?!/dev/null|&)[\"'$/~]")
 _SHELL_SUFFIXES = frozenset({".sh", ".bash", ".zsh", ""})
+# A path token carrying a wildcard is a pattern something MATCHES, never a file it installs, so the
+# unit-directory read ignores those tokens (OMN-20804).
+_GLOB_TOKEN = re.compile(r"""[^\s"'(),\[\]]*[*?][^\s"'(),\[\]]*""")
 
 
 def _is_comment(line: str) -> bool:
@@ -109,11 +112,27 @@ def _excluded(path: str) -> bool:
     ) or parts[-1].startswith("test_")
 
 
+def _names_a_unit_directory(code: str) -> bool:
+    """True when the code names a unit directory outside a wildcard pattern.
+
+    A wildcard token is a shape something is matched against, not a path
+    anything is written to. A plugin pruner in a sibling repository holds a glob
+    list of the agent and user-unit directories so that it spares a plugin tree
+    some unit still references; it installs nothing, and reading those globs as
+    unit paths reddened the overlay completeness gate on every pull request of
+    the repository the finding was reported from. Concrete declarations are
+    untouched: a clone sync in that same repository names nine real units in a
+    table and keeps its classification, even though its writes are 137 lines
+    away, which is why proximity to the write cannot be the discriminator here.
+    """
+    return bool(_UNIT_DIRECTORIES.search(_GLOB_TOKEN.sub("", code)))
+
+
 def _writes_units(name: str, text: str) -> bool:
     code = "\n".join(line for line in text.splitlines() if not _is_comment(line))
     if _LOAD_OR_LINK.search(code):
         return True
-    if not _UNIT_DIRECTORIES.search(code):
+    if not _names_a_unit_directory(code):
         return False
     if _FILE_WRITE.search(code):
         return True

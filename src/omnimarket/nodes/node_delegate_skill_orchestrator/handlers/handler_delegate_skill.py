@@ -144,6 +144,7 @@ from omnimarket.pricing import (
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -707,6 +708,20 @@ def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
     }
 
 
+def _attempt_key(raw: dict[str, object]) -> dict[str, Any]:
+    """OMN-22474: the minted tenant key this rung ran on, or none.
+
+    A house-key name or any other ref without the minted tenant-key shape is
+    never carried, so only a customer key's last_used_at can move.
+    """
+    ref = raw.get("secret_ref")
+    return {
+        "secret_ref": ref
+        if isinstance(ref, str) and is_tenant_credential_ref(ref)
+        else None
+    }
+
+
 def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
     """The OMN-20168 lineage and placement fields, typed or dropped."""
     fields: dict[str, Any] = {}
@@ -851,6 +866,7 @@ def _attempt_records(
                     finish_reason=_as_finish_reason(raw.get("finish_reason")),
                     **truncated_fields,
                     **_provider_facts(raw),
+                    **_attempt_key(raw),
                     **_lineage_fields(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -883,6 +899,7 @@ def _attempt_records(
                 ),
                 error_message=str(raw.get("error_message", "")),
                 **_provider_facts(raw),
+                **_attempt_key(raw),
                 **_lineage_fields(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the

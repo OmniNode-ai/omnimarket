@@ -109,8 +109,9 @@ class SourceLocalFiles:
                     rolled.append((date.fromisoformat(found["date"]), path))
         for path in [p for _, p in sorted(rolled)] + [self._ledger]:
             for line in path.read_text(encoding="utf-8").splitlines():
-                # A roll leaves an HTML comment that quotes the heading it rolled; it is not a row.
-                if not line.startswith("<!--"):
+                # A roll leaves an HTML comment and a blockquote header that quote the heading it
+                # rolled (a CLAIM with its host cell, whole); neither is a row.
+                if not line.startswith(("<!--", ">")):
                     yield line
 
     def read_prs(self) -> tuple[ModelMrcPr, ...]:

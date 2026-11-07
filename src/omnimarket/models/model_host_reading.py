@@ -22,6 +22,65 @@ class EnumHostProbe(StrEnum):
     LEDGER_OLD_NAMES = "ledger-old-names"
     #: Append one probe row through the bus and read it back from the durable store by a deadline.
     LEDGER_DURABILITY = "ledger-durability"
+    HOST_CANARY = "host-canary"
+    #: Join J1: the code graph's verdict for the nodes host discovery and placement depend on.
+    JOIN_J1 = "join-j1"
+
+
+class EnumCanaryEnding(StrEnum):
+    """How one host's canary lane ended (piece 2 of the base-first plan).
+
+    ``typed`` and ``busy`` are typed endings: the lane started and ended with its result, or the
+    placement refused it with its own typed refusal. Every other ending is a failure of the host:
+    a wrapper that was killed or a result that cannot be read is ``untyped``, a canary cut at its
+    deadline is ``timed-out`` (never free capacity), a host the pool read could not reach is
+    ``unreachable``.
+    """
+
+    TYPED = "typed"
+    BUSY = "busy"
+    UNTYPED = "untyped"
+    TIMED_OUT = "timed-out"
+    UNREACHABLE = "unreachable"
+
+
+class ModelCanaryHost(BaseModel):
+    """One row of the lab host table as the canary reads it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    pooled: bool
+    #: Why the table parks the host; empty for a pooled host.
+    reason: str = ""
+
+
+class ModelCanaryRun(BaseModel):
+    """What the route returned for one canary: exit code and output, or the deadline."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    exit_code: int | None
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+
+
+class ModelCanaryHostReading(BaseModel):
+    """One pooled host's canary: its ending, the disk it read and the slots the pool read gave."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    ending: EnumCanaryEnding
+    free_disk_gb: float | None = None
+    slots: int | None = None
+    #: Token-safe reasons this host fails the reading; empty when it passes.
+    failures: tuple[str, ...] = ()
+
+    @property
+    def passed(self) -> bool:
+        return not self.failures
 
 
 class ModelProbeReading(BaseModel):
@@ -57,6 +116,8 @@ class ModelHostProbeOutcome(BaseModel):
     verdict: EnumReadingVerdict
     outcome: EnumReadingOutcome
     reasons: tuple[str, ...]
+    #: The measured cells of the row (per-host endings for the host canary).
+    cells: dict[str, str] = Field(default_factory=dict)
     row_key: str
     #: ``written``, ``already-written``, ``not-written`` (a probe) or ``append-failed:<why>``.
     ledger: str
