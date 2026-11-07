@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_workflow_routing_scan_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Read, without I/O, every workflow definition of the repositories the caller injects and resolve each
+  routing scenario of each job: a hosted label, a declared route to a lab job node, a route that retires
+  with the runners, or unresolved. An expected repository that was not read, a workflow that does not
+  parse, a lab label, a runner group, a computed or undeclared-variable runs-on and an unread seam
+  variable each stay unresolved and are counted, so the count of unresolved scenarios is zero only when
+  every definition of every expected repository was read and resolved. Settings live in overlay.yaml.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: scan_workflow_routing
+    handler:
+      name: HandlerWorkflowRoutingScan
+      module: omnimarket.nodes.node_workflow_routing_scan_compute.handlers.handler_workflow_routing_scan
+    input_model: omnimarket.nodes.node_workflow_routing_scan_compute.models.model_workflow_routing_scan.ModelWorkflowRoutingScanRequest
+    output_model: omnimarket.nodes.node_workflow_routing_scan_compute.models.model_workflow_routing_scan.ModelWorkflowRoutingScanResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.workflow-routing-scan-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.workflow-routing-scanned.v1
+terminal_event: onex.evt.omnimarket.workflow-routing-scanned.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.workflow-routing-scan-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.workflow-routing-scanned.v1
+metadata:
+  ticket: OMN-22948
+  transport_type: kafka
+lifecycle: experimental
