@@ -12,9 +12,9 @@ variable that holds it.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_runner_group_exposure_compute.models.model_runner_group_exposure import (
@@ -41,9 +41,21 @@ class ModelInMemoryFixture(BaseModel):
     read_failure: EnumExposureReadFailure | None = None
 
 
-class ModelGithubSource(BaseModel):
+class ModelInMemorySource(BaseModel):
+    """The in-memory source: a fixture in the overlay."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    backend: Literal["inmemory"]
+    fixture: ModelInMemoryFixture
+
+
+class ModelGithubSource(BaseModel):
+    """The GitHub source: the REST API, read only."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    backend: Literal["github"]
     api_base: str = Field(min_length=1)
     org: str = Field(min_length=1)
     group_id: int
@@ -56,24 +68,9 @@ class ModelGithubSource(BaseModel):
     timeout_seconds: float = Field(gt=0)
 
 
-class ModelExposureSource(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    backend: Literal["inmemory", "github"]
-    inmemory: ModelInMemoryFixture | None = None
-    github: ModelGithubSource | None = None
-
-    @model_validator(mode="after")
-    def _shape(self) -> ModelExposureSource:
-        if self.backend == "inmemory" and self.inmemory is None:
-            raise ValueError("the inmemory backend needs its inmemory fixture")
-        if self.backend == "github" and self.github is None:
-            raise ValueError("the github backend needs its github settings")
-        if self.backend == "inmemory" and self.github is not None:
-            raise ValueError("the inmemory backend takes no github settings")
-        if self.backend == "github" and self.inmemory is not None:
-            raise ValueError("the github backend takes no inmemory fixture")
-        return self
+ModelExposureSource = Annotated[
+    ModelInMemorySource | ModelGithubSource, Field(discriminator="backend")
+]
 
 
 class ModelExposureProbeOverlay(BaseModel):
@@ -93,5 +90,6 @@ __all__ = [
     "ModelExposureSource",
     "ModelGithubSource",
     "ModelInMemoryFixture",
+    "ModelInMemorySource",
     "load_overlay",
 ]

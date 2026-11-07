@@ -28,8 +28,8 @@ from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_so
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.inmemory_group_source import (
     InMemoryGroupSource,
 )
-from omnimarket.nodes.node_runner_group_exposure_effect.adapters.urllib_http_get import (
-    UrllibHttpGet,
+from omnimarket.nodes.node_runner_group_exposure_effect.handlers.http_transport import (
+    UrllibHttpTransport,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe import (
     ModelExposureProbeRequest,
@@ -37,6 +37,7 @@ from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_pr
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
     ModelExposureProbeOverlay,
+    ModelInMemorySource,
     load_overlay,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group_source import (
@@ -66,13 +67,11 @@ class HandlerExposureProbe:
 
     def _source(self, overlay: ModelExposureProbeOverlay) -> ProtocolGroupSource:
         source = overlay.source
-        if source.backend == "inmemory":
-            assert source.inmemory is not None
-            return InMemoryGroupSource(source.inmemory)
-        assert source.github is not None
+        if isinstance(source, ModelInMemorySource):
+            return InMemoryGroupSource(source.fixture)
         return GithubGroupSource(
-            source.github,
-            self._http_get or UrllibHttpGet(),
+            source,
+            self._http_get or UrllibHttpTransport(),
             os.environ if self._environ is None else self._environ,
         )
 

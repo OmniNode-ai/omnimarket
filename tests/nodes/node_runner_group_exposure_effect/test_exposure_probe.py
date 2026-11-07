@@ -9,11 +9,12 @@ import base64
 import json
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -37,6 +38,7 @@ from omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposur
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe import (
     ModelExposureProbeRequest,
+    ModelExposureProbeResult,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
     NODE_NAME,
@@ -214,20 +216,18 @@ def _probe(
     if backend == "inmemory":
         source: dict[str, object] = {
             "backend": "inmemory",
-            "inmemory": _fixture(scenario),
+            "fixture": _fixture(scenario),
         }
     else:
         source = {
             "backend": "github",
-            "github": {
-                "api_base": f"http://127.0.0.1:{server.server_address[1]}",
-                "org": "example-org",
-                "group_id": 7,
-                "group_labels": ["example-private-group"],
-                "token_env": TOKEN_ENV,
-                "max_calls": max_calls,
-                "timeout_seconds": 5,
-            },
+            "api_base": f"http://127.0.0.1:{server.server_address[1]}",
+            "org": "example-org",
+            "group_id": 7,
+            "group_labels": ["example-private-group"],
+            "token_env": TOKEN_ENV,
+            "max_calls": max_calls,
+            "timeout_seconds": 5,
         }
     install_node_overlay(
         monkeypatch, tmp_path, NODE_NAME, {"settings": SETTINGS, "source": source}
@@ -235,11 +235,11 @@ def _probe(
     return HandlerExposureProbe()
 
 
-def _run(handler: HandlerExposureProbe):  # type: ignore[no-untyped-def]
+def _run(handler: HandlerExposureProbe) -> ModelExposureProbeResult:
     return handler.handle(ModelExposureProbeRequest(correlation_id="probe-1", now=NOW))
 
 
-def _verdicts(result) -> dict[str, EnumReadingVerdict]:  # type: ignore[no-untyped-def]
+def _verdicts(result: ModelExposureProbeResult) -> dict[str, EnumReadingVerdict]:
     return {s.name: s.verdict for s in result.reading.subjects}
 
 
@@ -247,7 +247,9 @@ def _verdicts(result) -> dict[str, EnumReadingVerdict]:  # type: ignore[no-untyp
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_golden_chain_clean_group_reads_working(backend, server, tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
+def test_golden_chain_clean_group_reads_working(
+    backend: str, server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     result = _run(_probe(backend, Scenario(), server, tmp_path, monkeypatch))
     assert result.backend == backend
     assert result.reading.verdict is EnumReadingVerdict.WORKING
@@ -287,8 +289,12 @@ BREAKS = {
 @pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("name", sorted(BREAKS))
 def test_injected_break_reads_not_working_on_its_subject(
-    name, backend, server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    name: str,
+    backend: str,
+    server: _Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     scenario, subject = BREAKS[name]
     result = _run(_probe(backend, scenario, server, tmp_path, monkeypatch))
     assert result.reading.verdict is EnumReadingVerdict.NOT_WORKING
@@ -302,32 +308,32 @@ def test_injected_break_reads_not_working_on_its_subject(
 
 
 def test_error_chain_org_read_denied_reads_unknown_in_memory(
-    server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scenario = Scenario(read_failure="org-read-denied")
     result = _run(_probe("inmemory", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.ORG_READ_DENIED)
 
 
 def test_error_chain_org_read_denied_reads_unknown_over_http(
-    server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scenario = Scenario(group_status=403)
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.ORG_READ_DENIED)
 
 
 def test_error_chain_a_broken_workflow_listing_reads_unreadable(
-    server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scenario = Scenario(listing_status=500)
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
 
 
 def test_error_chain_the_call_past_the_budget_is_not_made(
-    server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     handler = _probe("github", Scenario(), server, tmp_path, monkeypatch, max_calls=2)
     result = _run(handler)
     _assert_unknown(result, EnumExposureReadFailure.BUDGET_EXHAUSTED)
@@ -335,8 +341,8 @@ def test_error_chain_the_call_past_the_budget_is_not_made(
 
 
 def test_error_chain_a_missing_token_reads_denied_and_makes_no_call(
-    server, tmp_path, monkeypatch
-):  # type: ignore[no-untyped-def]
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     handler = _probe("github", Scenario(), server, tmp_path, monkeypatch)
     monkeypatch.delenv(TOKEN_ENV)
     result = _run(handler)
@@ -345,7 +351,9 @@ def test_error_chain_a_missing_token_reads_denied_and_makes_no_call(
     assert server.seen_auth == []
 
 
-def test_error_chain_a_stale_read_reads_unknown(server, tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
+def test_error_chain_a_stale_read_reads_unknown(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scenario = Scenario(read_age_seconds=7200)
     result = _run(_probe("inmemory", scenario, server, tmp_path, monkeypatch))
     assert result.reading.verdict is EnumReadingVerdict.UNKNOWN
@@ -354,7 +362,9 @@ def test_error_chain_a_stale_read_reads_unknown(server, tmp_path, monkeypatch): 
     assert topic == load_topics()["probe_completed"]
 
 
-def _assert_unknown(result, failure: EnumExposureReadFailure) -> None:  # type: ignore[no-untyped-def]
+def _assert_unknown(
+    result: ModelExposureProbeResult, failure: EnumExposureReadFailure
+) -> None:
     assert result.reading.verdict is EnumReadingVerdict.UNKNOWN
     assert result.reading.read_failure is failure
     assert set(_verdicts(result).values()) == {EnumReadingVerdict.UNKNOWN}
@@ -364,8 +374,11 @@ def _assert_unknown(result, failure: EnumExposureReadFailure) -> None:  # type: 
 
 
 def test_the_token_value_is_in_no_result_and_no_log(
-    server, tmp_path, monkeypatch, caplog
-):  # type: ignore[no-untyped-def]
+    server: _Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     caplog.set_level(logging.DEBUG)
     handler = _probe(
         "github", Scenario(group_status=403), server, tmp_path, monkeypatch
@@ -379,8 +392,8 @@ def test_the_token_value_is_in_no_result_and_no_log(
 
 
 def test_shipped_examples_load_and_the_in_memory_one_reads_working(
-    monkeypatch, tmp_path
-):  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     memory = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     install_node_overlay(monkeypatch, tmp_path, NODE_NAME, memory)
     assert load_overlay().source.backend == "inmemory"
@@ -396,10 +409,14 @@ def test_shipped_examples_load_and_the_in_memory_one_reads_working(
         lambda d: d.pop("settings"),
         lambda d: d["settings"].pop("max_age_seconds"),
         lambda d: d["source"].pop("backend"),
-        lambda d: d["source"].pop("inmemory"),
+        lambda d: d["source"].pop("fixture"),
     ],
 )
-def test_an_incomplete_in_memory_overlay_refuses(mutate, monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
+def test_an_incomplete_in_memory_overlay_refuses(
+    mutate: Callable[[dict[str, Any]], object],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     document = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     mutate(document)
     install_node_overlay(monkeypatch, tmp_path, NODE_NAME, document)
@@ -409,17 +426,29 @@ def test_an_incomplete_in_memory_overlay_refuses(mutate, monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("key", ["token_env", "max_calls", "api_base"])
 def test_a_github_overlay_without_a_key_refuses_and_names_it(
-    key, monkeypatch, tmp_path
-):  # type: ignore[no-untyped-def]
+    key: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     document = yaml.safe_load((NODE_DIR / "overlay.github.example.yaml").read_text())
-    document["source"]["github"].pop(key)
+    document["source"].pop(key)
     install_node_overlay(monkeypatch, tmp_path, NODE_NAME, document)
     with pytest.raises(NodeOverlayError, match=key):
         load_overlay()
 
 
-def test_contract_declares_the_probe_topics():
+def test_contract_declares_the_probe_topics() -> None:
     topics = load_topics()
+    assert (
+        topics["probe_requested"]
+        == "onex.cmd.omnimarket.runner-group-exposure-probe-requested.v1"
+    )
+    assert (
+        topics["probe_completed"]
+        == "onex.evt.omnimarket.runner-group-exposure-probed.v1"
+    )
+    assert (
+        topics["probe_failed"]
+        == "onex.evt.omnimarket.runner-group-exposure-probe-failed.v1"
+    )
     assert topics["probe_requested"].startswith("onex.cmd.omnimarket.")
     assert topics["probe_completed"].startswith("onex.evt.omnimarket.")
     assert topics["probe_failed"].startswith("onex.evt.omnimarket.")

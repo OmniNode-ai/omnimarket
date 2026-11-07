@@ -88,7 +88,7 @@ def _request(**changes: object) -> ModelRunnerGroupExposureRequest:
         "jobs": (ModelGroupJob(run_id=1, run_event="schedule", workflow_ref="a"),),
     }
     fields.update(changes)
-    return ModelRunnerGroupExposureRequest(**fields)  # type: ignore[arg-type]
+    return ModelRunnerGroupExposureRequest.model_validate(fields)
 
 
 def _verdicts(

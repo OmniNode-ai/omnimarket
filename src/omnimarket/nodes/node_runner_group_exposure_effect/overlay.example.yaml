@@ -8,7 +8,7 @@ settings:
   max_age_seconds: 3600
 source:
   backend: inmemory
-  inmemory:
+  fixture:
     read_age_seconds: 60
     group:
       group_id: 7

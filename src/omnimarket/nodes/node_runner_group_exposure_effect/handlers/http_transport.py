@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The real HTTP getter: urllib, one GET, status and body back (an HTTP error is a status)."""
+"""The real HTTP getter (the contract declares the http transport): urllib, one GET, status and body back (an HTTP error is a status)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import urllib.request
 from collections.abc import Mapping
 
 
-class UrllibHttpGet:
+class UrllibHttpTransport:
     def get(
         self, url: str, headers: Mapping[str, str], timeout: float
     ) -> tuple[int, bytes]:

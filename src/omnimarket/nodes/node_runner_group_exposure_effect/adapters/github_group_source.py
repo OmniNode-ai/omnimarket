@@ -43,7 +43,7 @@ _DENIED = (401, 403, 404)
 _RUN_STATUSES = ("queued", "in_progress")
 
 
-class _Stop(Exception):  # noqa: N818
+class _StopError(Exception):
     def __init__(self, failure: EnumExposureReadFailure) -> None:
         super().__init__(failure.value)
         self.failure = failure
@@ -64,10 +64,10 @@ class GithubGroupSource:
     # -- transport -----------------------------------------------------------------------
     def _get(self, path: str, *, denied_is_org: bool = False) -> Any:
         if self._calls >= self._s.max_calls:
-            raise _Stop(EnumExposureReadFailure.BUDGET_EXHAUSTED)
+            raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
         token = self._environ.get(self._s.token_env, "")
         if not token:
-            raise _Stop(EnumExposureReadFailure.ORG_READ_DENIED)
+            raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
         status, body = self._http.get(
             f"{self._s.api_base.rstrip('/')}{path}",
@@ -78,21 +78,21 @@ class GithubGroupSource:
             self._s.timeout_seconds,
         )
         if status in _DENIED and denied_is_org:
-            raise _Stop(EnumExposureReadFailure.ORG_READ_DENIED)
+            raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         if status != 200:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE)
+            raise _StopError(EnumExposureReadFailure.UNREADABLE)
         try:
             return json.loads(body)
         except ValueError as error:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+            raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
 
     def _optional(self, path: str) -> Any | None:
         """A GET whose 404 means the thing is absent (a repository with no workflows)."""
         if self._calls >= self._s.max_calls:
-            raise _Stop(EnumExposureReadFailure.BUDGET_EXHAUSTED)
+            raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
         token = self._environ.get(self._s.token_env, "")
         if not token:
-            raise _Stop(EnumExposureReadFailure.ORG_READ_DENIED)
+            raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
         status, body = self._http.get(
             f"{self._s.api_base.rstrip('/')}{path}",
@@ -105,11 +105,11 @@ class GithubGroupSource:
         if status == 404:
             return None
         if status != 200:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE)
+            raise _StopError(EnumExposureReadFailure.UNREADABLE)
         try:
             return json.loads(body)
         except ValueError as error:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+            raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
 
     # -- parsing -------------------------------------------------------------------------
     def _document(self, repository: str, path: str, ref: str | None) -> dict[str, Any]:
@@ -125,9 +125,9 @@ class GithubGroupSource:
             binascii.Error,
             yaml.YAMLError,
         ) as error:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+            raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
         if not isinstance(loaded, dict):
-            raise _Stop(EnumExposureReadFailure.UNREADABLE)
+            raise _StopError(EnumExposureReadFailure.UNREADABLE)
         return loaded
 
     @staticmethod
@@ -183,7 +183,7 @@ class GithubGroupSource:
             return self._selects(repository, document, depth + 1)
         parts = target.split("/", 2)
         if len(parts) != 3 or not ref:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE)
+            raise _StopError(EnumExposureReadFailure.UNREADABLE)
         document = self._document(f"{parts[0]}/{parts[1]}", parts[2], ref)
         return self._selects(f"{parts[0]}/{parts[1]}", document, depth + 1)
 
@@ -193,7 +193,7 @@ class GithubGroupSource:
             group, repositories = self._group()
             files = self._files(repositories)
             jobs = self._jobs(repositories, files)
-        except _Stop as stop:
+        except _StopError as stop:
             return ModelGroupRead(
                 read_at=now, calls=self._calls, read_failure=stop.failure
             )
@@ -217,7 +217,7 @@ class GithubGroupSource:
                 repositories=repositories,
             )
         except (KeyError, TypeError, ValueError) as error:
-            raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+            raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
         return facts, repositories
 
     def _files(
@@ -229,20 +229,20 @@ class GithubGroupSource:
             try:
                 ref = str(branch["default_branch"])
             except (KeyError, TypeError) as error:
-                raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+                raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
             listing = self._optional(
                 f"/repos/{repository}/contents/.github/workflows?ref={ref}"
             )
             if listing is None:
                 continue
             if not isinstance(listing, list):
-                raise _Stop(EnumExposureReadFailure.UNREADABLE)
+                raise _StopError(EnumExposureReadFailure.UNREADABLE)
             for entry in listing:
                 try:
                     path = str(entry["path"])
                     kind = str(entry["type"])
                 except (KeyError, TypeError) as error:
-                    raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+                    raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
                 if kind != "file" or not path.endswith((".yml", ".yaml")):
                     continue
                 document = self._document(repository, path, ref)
@@ -284,5 +284,5 @@ class GithubGroupSource:
                             )
                         )
                 except (KeyError, TypeError, ValueError) as error:
-                    raise _Stop(EnumExposureReadFailure.UNREADABLE) from error
+                    raise _StopError(EnumExposureReadFailure.UNREADABLE) from error
         return tuple(jobs)

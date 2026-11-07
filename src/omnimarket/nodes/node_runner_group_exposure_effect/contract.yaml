@@ -68,4 +68,4 @@ overlay:
 
 metadata:
   ticket: OMN-22860
-  transport_type: inmemory
+  transport_type: http
