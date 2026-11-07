@@ -8,6 +8,11 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 
+from omnimarket.events.friction_rollup import (
+    ModelFrictionRollupRequest,
+    ModelFrictionRollupResult,
+    ModelFrictionRollupSource,
+)
 from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core import (
     LedgerRow,
     SourceSummary,
@@ -20,11 +25,6 @@ from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core
     parse_jsonl_rows,
     parse_markdown_rows,
     render_markdown,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionRollupRequest,
-    ModelFrictionRollupResult,
-    ModelFrictionRollupSource,
 )
 
 

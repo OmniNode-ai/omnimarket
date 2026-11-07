@@ -15,6 +15,12 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from omnimarket.events.friction_rollup import (
+    ModelFrictionClassOwner,
+    ModelFrictionClassRule,
+    ModelFrictionRollupRequest,
+    ModelFrictionRollupSource,
+)
 from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core import (
     parse_class_owners,
     parse_class_rules,
@@ -22,12 +28,6 @@ from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core
 )
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionClassOwner,
-    ModelFrictionClassRule,
-    ModelFrictionRollupRequest,
-    ModelFrictionRollupSource,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
     _cell,

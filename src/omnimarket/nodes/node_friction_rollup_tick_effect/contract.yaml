@@ -35,6 +35,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 inputs:
   registry_root: {type: str, required: true, description: Root that holds the default state directory.}
   ledger_path: {type: str, required: true, description: The rolling work ledger to read and append to.}

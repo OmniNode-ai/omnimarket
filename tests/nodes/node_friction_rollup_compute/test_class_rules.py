@@ -18,11 +18,11 @@ import yaml
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
+from omnimarket.events.friction_rollup import (
+    ModelFrictionRollupRequest,
+)
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionRollupRequest,
 )
 
 pytestmark = pytest.mark.unit
