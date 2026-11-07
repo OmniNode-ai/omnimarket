@@ -17,11 +17,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
-)
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
     ModelFloorReceipts,
