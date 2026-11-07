@@ -41,9 +41,9 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish impor
     HandlerIloRedfish,
     load_credential_key_template,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_setup import (
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
     OVERLAY_NODE_DIR,
-    HandlerIloSetup,
+    IloSetupRunner,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.journal_file import (
     FileActionJournal,
@@ -204,7 +204,7 @@ def _setup(args: argparse.Namespace) -> int:
         store = InfisicalSetupSecrets(load_store_target())
     except SetupStoreError as exc:
         return _fail("secret_store_unavailable", str(exc))
-    handler = HandlerIloSetup(
+    handler = IloSetupRunner(
         secrets_port=store,
         fetch_certificate=fetch_certificate_der,
         transport_factory=build_pinned_transport,

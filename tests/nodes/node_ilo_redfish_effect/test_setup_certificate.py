@@ -32,7 +32,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     setup_certificate as cert,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import setup_lab_ca as lab_ca
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_setup import (
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
     RESET_POLLS,
     _LegacyScope,
 )

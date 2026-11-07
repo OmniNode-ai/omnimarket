@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Envelope-shaped handlers for runtime routing of the iLO node.
 
-The real handlers (``HandlerIloRedfish``, ``HandlerIloSetup``) take lab-private ports (overlay,
+The real handlers (``HandlerIloRedfish``, ``IloSetupRunner``) take lab-private ports (overlay,
 secret store, transports) that the shared runtime cannot inject, so the node is hosted in process
 by the operator's CLI. These wrappers take only the container, resolve at boot, and refuse any
 request that reaches them through a shared runtime instead of acting on it.

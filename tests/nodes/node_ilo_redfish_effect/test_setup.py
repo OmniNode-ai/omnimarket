@@ -23,8 +23,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 from pydantic import JsonValue, SecretStr
 
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_setup import (
-    HandlerIloSetup,
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
+    IloSetupRunner,
     generate_password,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
@@ -248,7 +248,7 @@ class Rig:
             self.store_at_fetch.append(frozenset(self.secrets.values))
             return self.der
 
-        self.handler = HandlerIloSetup(
+        self.handler = IloSetupRunner(
             secrets_port=self.secrets,
             fetch_certificate=fetch,
             transport_factory=transport_factory or factory,
