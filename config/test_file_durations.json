@@ -3311,6 +3311,7 @@
   "tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py": 1.3,
   "tests/unit/nodes/node_agent_review_gate_accept_effect/test_subprocess_verifier.py": 0.03,
   "tests/unit/nodes/node_agent_review_harness_rung_effect/test_harness_rung.py": 0.26,
+  "tests/unit/nodes/node_ask_done_check_effect/test_ask_done_check_chain_events.py": 0.03,
   "tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py": 0.29,
   "tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py": 0.19,
   "tests/unit/nodes/node_baseline_capture/models/test_model_baseline.py": 0.02,
