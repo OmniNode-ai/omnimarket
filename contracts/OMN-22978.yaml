@@ -53,5 +53,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_eval_corpus_reader_effect/handlers/handler_join_j15.py?ref=omn-22978-j15-join-corpus-reader --jq .content | base64 -d | grep -q 'class HandlerJoinJ15'"
+    check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_eval_corpus_reader_effect/handlers/handler_join_j15.py?ref=omn-22978-j15-join-corpus-reader --jq .content | base64 -d | grep -c 'class HandlerJoinJ15' > /dev/null"
     cwd: .
