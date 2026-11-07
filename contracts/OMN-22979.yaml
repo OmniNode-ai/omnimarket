@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22979"
+title: "The pilot manifest check refuses a pilot that starts without a frozen bar and hash"
+summary: "node_pilot_manifest_check_compute is a pure compute node: given a pilot manifest it refuses a pilot with no frozen bar, no bar hash, a hash that does not match the bar, or a bar frozen after the start; given results read against the bar it returns accepted when every criterion is met and rejected when one is not, never extended. Every setting is in the node's overlay."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pilot-manifest-check"
+    statement: "A pilot starts only on a manifest with a frozen bar and its matching hash, and a pilot that fails its frozen bar reads rejected, not extended."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a pilot manifest without a frozen bar or its hash fails the check and one with both passes -- falsifier: uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_and_hash"
+      - id: "AC2"
+        statement: "AC2: a pilot that fails its frozen bar reads rejected, not extended -- falsifier: uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_failure_rejects"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: a pilot manifest without a frozen bar or its hash fails the check and one with both passes."
+    command: "uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_and_hash"
+  - kind: "tests"
+    description: "AC2: a pilot that fails its frozen bar reads rejected, not extended."
+    command: "uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_failure_rejects"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22979-ac1-bar-and-hash"
+    description: "AC1: a pilot manifest without a frozen bar or its hash fails the check and one with both passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_and_hash"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22979-ac2-bar-failure-rejects"
+    description: "AC2: a pilot that fails its frozen bar reads rejected, not extended."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pilot_manifest_check_compute -q -p no:randomly -k bar_failure_rejects"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
