@@ -63,6 +63,12 @@ event_bus:
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.stall-responder-requested.v1
 
+# OMN-22885 -- explicit SINK declaration (contract topic graph closure). No node contract
+# subscribes to the result event: the node starts nothing and writes nothing, so its caller
+# reads the answer from this topic and starts the lanes outside the ONEX node graph.
+externally_consumed_topics:
+  - onex.evt.omnimarket.stall-responder-decided.v1
+
 dod_evidence:
   - test: tests/nodes/node_stall_responder_compute/test_stall_responder.py
     description: "Replaying the 59 THROUGHPUT STALL rows of 2026-11-07T00:08Z to 10:30Z answers one dispatch per distinct cause key (19 keys, two tick-owned findings skipped); replaying the 30 lab-idle FRICTION rows sums to 7,100 lane-minutes"

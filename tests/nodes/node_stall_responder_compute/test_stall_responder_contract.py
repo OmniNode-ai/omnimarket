@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -18,7 +19,7 @@ NODE = (
 )
 
 
-def _contract() -> dict[str, object]:
+def _contract() -> dict[str, Any]:
     loaded = yaml.safe_load((NODE / "contract.yaml").read_text("utf-8"))
     assert isinstance(loaded, dict)
     return loaded
@@ -27,8 +28,8 @@ def _contract() -> dict[str, object]:
 def test_contract_is_pure_and_routes_both_operations_to_callable_handlers() -> None:
     contract = _contract()
     assert contract["node_type"] == "compute"
-    assert contract["descriptor"]["purity"] == "pure"  # type: ignore[index]
-    handlers = contract["handler_routing"]["handlers"]  # type: ignore[index]
+    assert contract["descriptor"]["purity"] == "pure"
+    handlers = contract["handler_routing"]["handlers"]
     assert [h["operation"] for h in handlers] == [
         "decide_stall_responses",
         "sum_lab_idle_cost",
@@ -43,8 +44,8 @@ def test_contract_is_pure_and_routes_both_operations_to_callable_handlers() -> N
 def test_contract_topics_are_declared_and_the_terminal_event_is_published() -> None:
     contract = _contract()
     topics = contract["event_bus"]
-    assert topics["subscribe_topics"] == [contract["runtime_dispatch"]["command_topic"]]  # type: ignore[index]
-    assert topics["publish_topics"] == [contract["terminal_event"]]  # type: ignore[index]
+    assert topics["subscribe_topics"] == [contract["runtime_dispatch"]["command_topic"]]
+    assert topics["publish_topics"] == [contract["terminal_event"]]
     assert (
         contract["terminal_event"] == "onex.evt.omnimarket.stall-responder-decided.v1"
     )
