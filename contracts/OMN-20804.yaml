@@ -1,30 +1,20 @@
 schema_version: "1.0.0"
 ticket_id: OMN-20804
-title: "Automation liveness overlay declares every process, with a completeness gate over all installers"
-summary: A pure node scans every registry repository for units, templates, cron files and installer code and refuses any the overlay does not cover; it runs as a CI job and a pre-commit hook. This repository is the published destination of node_automation_liveness_overlay_check_compute, so the scan's own reading rules are maintained here.
+title: "The automation-liveness installer scan reads only what installs an automatic process"
+summary: A pure node scans a repository's files for units, templates, cron files and installer code so a completeness gate can refuse any the overlay does not cover. This repository is the published destination of node_automation_liveness_overlay_check_compute, so the scan's reading rules are maintained here. The overlay declaration and the completeness run itself are not in this repository, so this contract carries only the scan's own criterion.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn20804-overlay-complete
-    statement: Every unit, cron file and launchd template that a registry repository installs has an overlay entry, and every installer names the units it installs.
-    acceptance:
-      - id: AC1
-        statement: 'AC1: every unit, cron file and template in the sources of 4.11 has an overlay entry -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect -q`'
-  - id: req-omn20804-gaps-refused
-    statement: An entry with no positive control, a broken deadline, or a new unit with no entry fails the check.
-    acceptance:
-      - id: AC2
-        statement: 'AC2: an entry with no positive control, a broken deadline, or a new unit with no entry fails the check -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect -q`'
   - id: req-omn20804-installer-scan
-    statement: The scan finds an installer in a directory nobody listed, and the check fails until it is declared, while a file that only names a unit directory in a pattern installs nothing and is not reported.
+    statement: The scan finds an installer in a directory nobody listed, and a file that only names a unit directory inside a wildcard pattern installs nothing and is not reported.
     acceptance:
       - id: AC3
-        statement: 'AC3: a planted installer in an unlisted directory is found by the scan and fails the check until declared, and a wildcard unit-directory token is read as a pattern rather than an install path -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q`'
+        statement: 'AC3: a planted installer in an unlisted directory is found by the scan, and a wildcard unit-directory token is read as a pattern rather than an install path -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q`'
 evidence_requirements:
   - kind: tests
-    description: Installer-scan reading rules for this repository's copy of the compute node, and the overlay completeness run over the node's effect side.
-    command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect -q
+    description: The installer-scan reading rules for this repository's copy of the compute node.
+    command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q
 emergency_bypass:
   enabled: false
   justification: ''
