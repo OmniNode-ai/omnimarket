@@ -131,7 +131,9 @@ def render_systemd(
         "# Rollback: schedule uninstall.\n"
         f"[Unit]\nDescription={what}\n"
         "\n[Service]\nType=oneshot\nNice=10\n"
-        f"TimeoutStartSec={schedule.timeout_seconds}\n"
+        # The drill's injected fault makes the run exit 1 on purpose: that is the typed failure it exists to write.
+        + ("SuccessExitStatus=1\n" if drill else "")
+        + f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
         f"ExecStart={python} -m {NODE_MODULE} {arguments}\n"

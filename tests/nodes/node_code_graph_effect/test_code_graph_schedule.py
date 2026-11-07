@@ -98,6 +98,8 @@ def test_dry_run_renders_the_drill_pair_beside_the_nightly_pair(tmp_path: Path) 
         in result.stdout
     )
     assert "SyslogIdentifier=onex-code-graph-drill" in result.stdout
+    # the drill's own typed failure is its expected exit; the nightly service keeps exit 0 as its only success
+    assert result.stdout.count("SuccessExitStatus=1") == 1
     # the nightly service still runs with no fault
     assert "node_code_graph_effect nightly\n" in result.stdout
 
