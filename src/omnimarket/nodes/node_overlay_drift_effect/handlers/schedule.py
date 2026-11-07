@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_overlay_drift_effect.overlay import (
     NODE_NAME,
     ModelOverlayDriftOverlay,
@@ -200,6 +201,7 @@ class DriftScheduler:
                 home=self.home,
                 overlay_root=overlay_root,
             )
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:

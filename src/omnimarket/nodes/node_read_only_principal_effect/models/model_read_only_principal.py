@@ -143,14 +143,40 @@ class ModelChannelProbe(BaseModel):
         return value
 
 
+class ModelProbeEmission(BaseModel):
+    """Where the probe emits its chain: the floor's piece it counts for and the floor's journal.
+
+    ``journal_relpath`` is relative to the registry home named by the ``home_env`` variable, and is the path
+    the floor's own cycle appends to, so one receipt fold reads both.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    journal_relpath: str = Field(min_length=1)
+    home_env: str = Field(default="OMNI_HOME", min_length=1)
+
+    @field_validator("journal_relpath")
+    @classmethod
+    def _relative_and_inside(cls, value: str) -> str:
+        parts = value.split("/")
+        if value.startswith("/") or ".." in parts:
+            raise ValueError("journal_relpath is relative and stays inside the home")
+        return value
+
+
 class ModelReadOnlyPrincipalOverlay(BaseModel):
-    """The ``node_read_only_principal_effect`` overlay document."""
+    """The ``node_read_only_principal_effect`` overlay document.
+
+    ``emission`` is optional: an overlay without it probes as before and emits nothing.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     principal: str = Field(min_length=1)
     ssh: ModelSshGate
     probes: tuple[ModelChannelProbe, ...] = Field(min_length=1)
+    emission: ModelProbeEmission | None = None
 
     @model_validator(mode="after")
     def _every_channel_is_probed_once(self) -> ModelReadOnlyPrincipalOverlay:

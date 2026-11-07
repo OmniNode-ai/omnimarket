@@ -13,7 +13,17 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class ModelWorktreeScheduleResources(_Frozen):
+    """The unit's priority, written into its drop-in by the installer."""
+
+    nice: int = Field(ge=-20, le=19)
+    io_scheduling_class: Literal["best-effort", "idle"]
+    io_scheduling_priority: int = Field(ge=0, le=7)
+    cpu_weight: int = Field(ge=1, le=10000)
+
+
 class ModelWorktreeSchedule(_Frozen):
+    resources: ModelWorktreeScheduleResources
     unit_name: str = Field(pattern=r"^[a-zA-Z0-9_.-]+$")
     interval_seconds: int = Field(gt=0)
     timeout_seconds: int = Field(gt=0)
@@ -42,4 +52,5 @@ class ModelWorktreeScheduleResult(_Frozen):
     stderr: str = ""
     service: str = ""
     timer: str = ""
+    dropin: str = ""
     revision: str = ""

@@ -332,6 +332,8 @@ class ModelFloorLane(BaseModel):
     claim_full: str
     liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
     liveness_detail: str = "no process reading was supplied"
+    # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
+    owns: tuple[str, ...] = ()
 
 
 class ModelFloorLamp(BaseModel):
