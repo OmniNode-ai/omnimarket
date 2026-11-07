@@ -22,6 +22,10 @@ A join reads, for a piece whose node declares its chains (``declared_chains``), 
 chains of its piece that are not the pipeline a join reads, such as one chain per row the floor cycle reads; such a
 chain still counts toward the piece's own receipt and still gets its findings, and no join demands a typed upstream
 refusal for it. This narrows what a join reads to what it was specified to read; it relaxes no verdict.
+
+A join may also be declared to end at a node of its own from piece (``join_ends``), where no node of its to piece can emit a
+typed refusal: it is judged on that node's chain ending in a success or a typed failure within the deadline, and asks the to
+piece for nothing. Every other join still ends at its to piece.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
     ModelFloorReceipts,
     ModelJoinDef,
+    ModelJoinEnd,
     ModelJoinReceipt,
     ModelNodeEmission,
     ModelPieceReceipt,
@@ -246,8 +251,16 @@ class HandlerFloorReceipt:
             )
 
         joins: list[ModelJoinReceipt] = []
+        ends = {e.join: e for e in request.join_ends}
+        by_chain = {(r.cid, r.piece, r.node): r for r in readings}
         for jdef in request.joins:
-            receipt, join_findings = self._join(jdef, by_cid, now, request)
+            end = ends.get(jdef.id)
+            if end is not None:
+                receipt, join_findings = self._join_ending_at_node(
+                    jdef, end, by_chain, request
+                )
+            else:
+                receipt, join_findings = self._join(jdef, by_cid, now, request)
             joins.append(receipt)
             findings.extend(join_findings)
         return ModelFloorReceipts.model_validate(
@@ -258,6 +271,56 @@ class HandlerFloorReceipt:
                 "chains": tuple(r.chain() for r in readings),
                 "findings": tuple(findings),
             }
+        )
+
+    @staticmethod
+    def _join_ending_at_node(
+        jdef: ModelJoinDef,
+        end: ModelJoinEnd,
+        by_chain: dict[tuple[str, int, str], _ChainReading],
+        request: ModelFloorReceiptInput,
+    ) -> tuple[ModelJoinReceipt, list[ModelChainFinding]]:
+        """A join that ends at a node of its from piece: it reads that node's chain and asks nothing of the to piece.
+
+        The chain ends the join when it ends in a success (golden) or a typed failure (error). A chain with no terminal past
+        the deadline, or a malformed one, breaks the join; the chain's own findings name it, so the join adds none.
+        """
+        golden_at: datetime | None = None
+        error_at: datetime | None = None
+        broken = False
+        judged = request.judged_to_pieces
+        if judged is None or jdef.to_piece in judged:
+            for (_cid, piece, node), chain in sorted(by_chain.items()):
+                if piece != jdef.from_piece or node != end.node or chain.drill:
+                    continue
+                if chain.kind == "broken":
+                    broken = True
+                elif chain.ended_at is not None and chain.kind == "golden":
+                    golden_at = max(filter(None, (golden_at, chain.ended_at)))
+                elif chain.ended_at is not None and chain.kind == "error":
+                    error_at = max(filter(None, (error_at, chain.ended_at)))
+        if broken:
+            state = "broken"
+        elif golden_at and error_at:
+            state = "passed"
+        elif golden_at:
+            state = "golden_only"
+        elif error_at:
+            state = "error_only"
+        else:
+            state = "not_run"
+        return (
+            ModelJoinReceipt.model_validate(
+                {
+                    "join": jdef.id,
+                    "from_piece": jdef.from_piece,
+                    "to_piece": jdef.to_piece,
+                    "golden_at": golden_at,
+                    "error_at": error_at,
+                    "state": state,
+                }
+            ),
+            [],
         )
 
     @staticmethod
