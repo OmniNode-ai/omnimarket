@@ -46,7 +46,7 @@ class FakeRunnerStopper:
         return True
 
 
-class StuckRunnerStopper:
+class StuckWorkerStopper:
     """The injected break of the runner stop: exits 0 and leaves the runner as it was."""
 
     def __init__(self) -> None:

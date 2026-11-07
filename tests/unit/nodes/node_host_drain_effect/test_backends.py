@@ -14,7 +14,7 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
-    CommandRunnerStopper,
+    CommandWorkerStopper,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import RedpandaDrainStore
 from omnimarket.nodes.node_host_drain_effect.overlay import (
@@ -92,9 +92,9 @@ def test_command_stopper_runs_the_overlay_argv_with_the_unit(
         seen.append(argv)
         return _done(0)
 
-    assert CommandRunnerStopper(overlay.runner_stop, run=run).stop("example-runner-1")
+    assert CommandWorkerStopper(overlay.runner_stop, run=run).stop("example-runner-1")
     assert seen == [["example-service-control", "stop", "example-runner-1.service"]]
-    failing = CommandRunnerStopper(overlay.runner_stop, run=lambda *_a, **_k: _done(3))
+    failing = CommandWorkerStopper(overlay.runner_stop, run=lambda *_a, **_k: _done(3))
     assert failing.stop("example-runner-1") is False
     assert failing.stop("not-a-runner") is False
 
@@ -110,7 +110,7 @@ def test_command_probe_reads_busy_idle_and_unknown_from_the_argv_output(
     overlay: ModelHostDrainOverlay,
 ) -> None:
     from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
-        CommandRunnerProbe,
+        CommandWorkerProbe,
     )
     from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
         EnumRunnerActivity,
@@ -118,8 +118,8 @@ def test_command_probe_reads_busy_idle_and_unknown_from_the_argv_output(
 
     probe_settings = overlay.runner_stop.command_probe
 
-    def probe_with(code: int, out: str) -> CommandRunnerProbe:
-        return CommandRunnerProbe(
+    def probe_with(code: int, out: str) -> CommandWorkerProbe:
+        return CommandWorkerProbe(
             overlay.runner_stop, run=lambda *_a, **_k: _done(code, out)
         )
 

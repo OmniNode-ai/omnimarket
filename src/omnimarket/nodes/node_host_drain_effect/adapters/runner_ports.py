@@ -19,7 +19,7 @@ from omnimarket.nodes.node_host_drain_effect.overlay import (
 CommandRun = Callable[..., "subprocess.CompletedProcess[str]"]
 
 
-class ProcRunnerProbe:
+class ProcWorkerProbe:
     """A runner holds a job exactly when a worker process runs from its directory.
 
     Reads the process table under ``proc_root``. A table that cannot be listed gives UNKNOWN, and so does a runner the
@@ -78,7 +78,7 @@ class ProcRunnerProbe:
         return bool(names & {self._worker, self._listener})
 
 
-class CommandRunnerProbe:
+class CommandWorkerProbe:
     """Reads a runner by the overlay's argv (a container runner): busy, idle or unknown, and whether it is up."""
 
     def __init__(
@@ -120,7 +120,7 @@ class CommandRunnerProbe:
         return out == self._probe.running_token
 
 
-class CommandRunnerStopper:
+class CommandWorkerStopper:
     """Stops a runner's service with the overlay's argv; no shell."""
 
     def __init__(

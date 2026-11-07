@@ -32,12 +32,12 @@ from omnimarket.handlers.emission_sink import (
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
-    CommandRunnerProbe,
-    CommandRunnerStopper,
-    ProcRunnerProbe,
+    CommandWorkerProbe,
+    CommandWorkerStopper,
+    ProcWorkerProbe,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
-    AiokafkaStateTopicClient,
+    AiokafkaStateTopicConnection,
     InMemoryDrainStore,
     JsonlDrainStore,
     RedpandaDrainStore,
@@ -80,7 +80,7 @@ def _require_env(environ: Mapping[str, str], name: str) -> str:
 
 def build_store_and_sink(
     overlay: ModelHostDrainOverlay, environ: Mapping[str, str]
-) -> tuple[ProtocolDrainStore, ProtocolEmissionSink, str]:
+) -> tuple[ProtocolDrainStore, ProtocolEmissionSink, Literal["in_memory", "real"]]:
     """The store and the chain-event sink of the overlay's profile, and the backend label the chains carry."""
     if overlay.profile == "in_memory":
         return InMemoryDrainStore(), InMemoryEmissionSink(), "in_memory"
@@ -89,7 +89,7 @@ def build_store_and_sink(
     if overlay.profile == "jsonl":
         return JsonlDrainStore(home / overlay.jsonl_state_relpath), sink, "real"
     servers = _require_env(environ, overlay.redpanda.bootstrap_servers_env)
-    client = AiokafkaStateTopicClient(overlay.redpanda, servers)
+    client = AiokafkaStateTopicConnection(overlay.redpanda, servers)
     return RedpandaDrainStore(overlay.redpanda, client), sink, "real"
 
 
@@ -124,21 +124,18 @@ def run(
         for host in store.draining_hosts():
             print(host)
         return 0
-    label: Literal["in_memory", "real"] = (
-        "in_memory" if backend == "in_memory" else "real"
-    )
     if args.verb == "runner-stop":
         stopper = HandlerIdleRunnerStop(
             overlay.runner_stop,
             probe=(
-                CommandRunnerProbe(overlay.runner_stop)
+                CommandWorkerProbe(overlay.runner_stop)
                 if overlay.runner_stop.probe_kind == "command"
-                else ProcRunnerProbe(overlay.runner_stop)
+                else ProcWorkerProbe(overlay.runner_stop)
             ),
-            stopper=CommandRunnerStopper(overlay.runner_stop),
+            stopper=CommandWorkerStopper(overlay.runner_stop),
             sink=sink,
             clock=lambda: datetime.now(UTC),
-            backend=label,
+            backend=backend,
         )
         stopped = stopper.handle(
             ModelIdleRunnerStopRequest(
@@ -153,7 +150,7 @@ def run(
         lanes=CommandLaneSource(overlay.lanes),
         sink=sink,
         clock=lambda: datetime.now(UTC),
-        backend=label,
+        backend=backend,
     )
     result = drain.handle(
         ModelHostDrainRequest(

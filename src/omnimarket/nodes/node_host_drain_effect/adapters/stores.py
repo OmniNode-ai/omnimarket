@@ -104,7 +104,7 @@ class ProtocolStateTopicClient(Protocol):
     async def read_all(self, topic: str) -> list[tuple[str, bytes]]: ...
 
 
-class AiokafkaStateTopicClient:
+class AiokafkaStateTopicConnection:
     """The real client: aiokafka against the broker the overlay's environment variable names."""
 
     def __init__(self, settings: ModelRedpandaSettings, bootstrap_servers: str) -> None:

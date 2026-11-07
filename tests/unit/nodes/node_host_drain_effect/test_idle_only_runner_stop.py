@@ -11,10 +11,10 @@ from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
     FakeRunnerProbe,
     FakeRunnerStopper,
-    StuckRunnerStopper,
+    StuckWorkerStopper,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
-    ProcRunnerProbe,
+    ProcWorkerProbe,
 )
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop import (
     HandlerIdleRunnerStop,
@@ -114,7 +114,7 @@ def test_idle_only_injected_break_a_stop_that_leaves_the_runner_up_reads_failed(
     """The failing control: a stop command that exits 0 and leaves the runner running is caught by the readback."""
     assert overlay.runner_stop.injected_fault
     probe.states["example-runner-1"] = EnumRunnerActivity.IDLE
-    result = _handler(overlay, probe, StuckRunnerStopper(), sink).handle(
+    result = _handler(overlay, probe, StuckWorkerStopper(), sink).handle(
         ModelIdleRunnerStopRequest(runner_name="example-runner-1")
     )
     assert result.outcome is EnumRunnerStopOutcome.FAILED
@@ -128,7 +128,7 @@ def test_idle_only_proc_probe_reads_a_worker_process_as_busy(
     proc = tmp_path / "proc"
     runner_dir = tmp_path / "runners" / "example-runner-1"
     runner_dir.mkdir(parents=True)
-    probe = ProcRunnerProbe(settings, proc_root=proc)
+    probe = ProcWorkerProbe(settings, proc_root=proc)
     # No process at all: the listener is idle.
     proc.mkdir()
     assert probe.activity("example-runner-1") is EnumRunnerActivity.IDLE
@@ -139,10 +139,10 @@ def test_idle_only_proc_probe_reads_a_worker_process_as_busy(
         f"{runner_dir}/bin/{settings.worker_process_name}\0spawnclient\0".encode()
     )
     (worker / "cwd").symlink_to(runner_dir)
-    probe_busy = ProcRunnerProbe(
+    probe_busy = ProcWorkerProbe(
         settings, proc_root=proc, runner_dirs={"example-runner-1": str(runner_dir)}
     )
     assert probe_busy.activity("example-runner-1") is EnumRunnerActivity.BUSY
     # A proc root that cannot be read is unknown, never idle.
-    unreadable = ProcRunnerProbe(settings, proc_root=tmp_path / "absent")
+    unreadable = ProcWorkerProbe(settings, proc_root=tmp_path / "absent")
     assert unreadable.activity("example-runner-1") is EnumRunnerActivity.UNKNOWN
