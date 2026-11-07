@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_shadow_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
     HandlerWorkLedgerShadowJudge,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_judge import (

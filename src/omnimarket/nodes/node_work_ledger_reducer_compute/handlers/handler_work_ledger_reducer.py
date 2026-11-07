@@ -9,13 +9,13 @@ shadow judge is stateless here (the caller supplies the ledger text before the r
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_guard_replay import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_guard_replay import (
     HandlerWorkLedgerGuardReplay,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_rebuild import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_rebuild import (
     HandlerWorkLedgerRebuild,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_shadow_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
     HandlerWorkLedgerShadowJudge,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_reducer import (

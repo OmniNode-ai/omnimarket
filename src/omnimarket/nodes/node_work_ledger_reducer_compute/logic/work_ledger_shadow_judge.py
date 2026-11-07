@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
     verdict_difference,
 )

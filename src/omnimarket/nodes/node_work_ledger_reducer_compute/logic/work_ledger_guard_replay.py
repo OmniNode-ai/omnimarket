@@ -11,11 +11,11 @@ non-empty.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
     verdict_difference,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_shadow_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
     JudgeFn,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_judge import (

@@ -25,7 +25,7 @@ from omnimarket.models.model_work_ledger_fold_request import ModelWorkLedgerFold
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     TOPIC_ACCEPTED_ROW,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_rebuild import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_rebuild import (
     HandlerWorkLedgerRebuild,
     WorkLedgerRebuildError,
 )

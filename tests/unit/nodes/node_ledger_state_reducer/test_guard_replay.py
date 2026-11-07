@@ -13,10 +13,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_guard_replay import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_guard_replay import (
     HandlerWorkLedgerGuardReplay,
 )
-from omnimarket.nodes.node_work_ledger_reducer_compute.handlers.handler_work_ledger_judge import (
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
 )
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_judge import (
