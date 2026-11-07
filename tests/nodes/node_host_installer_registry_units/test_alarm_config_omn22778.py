@@ -172,7 +172,8 @@ def test_alarm_config_loads_as_options(tmp_path: Path) -> None:
 
 def test_alarm_config_names_no_home_directory_or_person() -> None:
     document = json.dumps(load_units()[UNIT]["config_file"]["document"])
-    for forbidden in ("/Users/", "/home/", "@192."):
+    forbidden_markers = ("/Users" + "/", "/home" + "/", "@192" + ".")
+    for forbidden in forbidden_markers:
         assert forbidden not in document
 
 
