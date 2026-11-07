@@ -37,10 +37,10 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'h=$(mktemp -d) && printf \"[tag]\\n\\tgpgsign = true\\n[commit]\\n\\tgpgsign = true\\n\" > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22496-signing-off"
     description: "Under a HOME whose .gitconfig sets no signing key, the same file passes 7 of 7, so behaviour without signing is unchanged."
     source: "manual"
@@ -48,10 +48,10 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'h=$(mktemp -d) && : > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22496-command-wrapped-pytest-binds"
     description: "AC3: a command check that prepares a HOME and then runs uv run pytest binds the file it names; the negative controls still refuse a wrapper with no pytest run and one naming a path not in the tree."
     source: "manual"
@@ -59,4 +59,4 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
