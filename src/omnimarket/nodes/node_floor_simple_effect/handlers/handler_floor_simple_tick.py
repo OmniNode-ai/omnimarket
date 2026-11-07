@@ -39,6 +39,7 @@ from omnimarket.models.floor_17a import (
     ModelAlarmState,
     ModelCanaryStatus,
     ModelFloorAlarmLine,
+    ModelFloorHealthLine,
     ModelFloorReceiptInput,
     ModelFloorReceipts,
     ModelFloorSimple,
@@ -107,6 +108,14 @@ from omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_ala
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
     build_slack_api,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
+    HandlerCustomerHealth,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
+    ModelCustomerHealthOverlay,
+    ModelCustomerHealthRequest,
+    ModelHealthReadingIn,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
@@ -190,6 +199,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     floor_overlay: ModelOverlayRef
     lab_overlay: ModelOverlayRef
     alarm_overlay: ModelOverlayRef
+    # The customer health line's overlay (OMN-22923, 17b): which pieces make up the customer path and the line's own bound.
+    health_overlay: ModelOverlayRef
     goal_scope_overlay: ModelOverlayRef
     serve_overlay: ModelOverlayRef
     served_record_name: str
@@ -848,6 +859,7 @@ class HandlerFloorSimpleTick:
                 "red_rule_violations": len(out.red_rule.violations),
             },
         )
+        doc = self._with_health(rt, env, doc, floor_ov, step)
         payload = {
             "lab_reads": [r.model_dump(mode="json") for r in reads],
             "floor_input": floor_input.model_dump(mode="json"),
@@ -867,6 +879,63 @@ class HandlerFloorSimpleTick:
         return doc, canary
 
     # ----------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _with_health(
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        doc: ModelFloorSimple,
+        floor_ov: ModelFloorSimpleOverlay,
+        step: Callable[..., Any],
+    ) -> ModelFloorSimple:
+        """Add the customer health line, computed from this document's own piece readings (OMN-22923, 17b).
+
+        An overlay that cannot be read leaves the line UNKNOWN and says why; the floor still publishes.
+        """
+        try:
+            health_ov = load_structured_overlay(
+                rt.health_overlay.overlay_id,
+                ModelCustomerHealthOverlay,
+                env,
+                file_env=rt.health_overlay.file_env,
+            )
+        except NodeOverlayError as exc:
+            return doc.model_copy(
+                update={
+                    "health": ModelFloorHealthLine(
+                        state="UNKNOWN",
+                        line=f"Customer health: UNKNOWN, its overlay was not read ({type(exc).__name__})",
+                        generated_at=doc.generated_at,
+                        max_age_s=floor_ov.freshness_max_age_s,
+                        readings=(),
+                        named=(f"overlay {rt.health_overlay.overlay_id} not read",),
+                    )
+                }
+            )
+        readings = tuple(
+            ModelHealthReadingIn(
+                piece=p.piece,
+                name=p.name,
+                reading_state=p.reading_state,
+                reading_age_s=p.reading_age_s,
+                reading_max_age_s=p.reading_max_age_s,
+            )
+            for p in doc.pieces
+        )
+        health: ModelFloorHealthLine = step(
+            "node_product_floor_verdict_compute:decide_customer_health",
+            lambda: HandlerCustomerHealth().handle(
+                ModelCustomerHealthRequest(
+                    now=doc.generated_at, readings=readings, overlay=health_ov
+                )
+            ),
+            lambda out: {
+                "readings": len(out.readings),
+                "named": len(out.named),
+                "working": int(out.state == "WORKING"),
+            },
+        )
+        return doc.model_copy(update={"health": health})
 
     @staticmethod
     def _drill(step: Callable[..., Any]) -> None:

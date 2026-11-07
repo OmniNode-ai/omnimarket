@@ -85,6 +85,8 @@ runtime:
   alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
   # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
   # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
+  health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
