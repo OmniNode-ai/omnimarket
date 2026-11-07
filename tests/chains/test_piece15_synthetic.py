@@ -12,6 +12,7 @@ double except the in-memory bus.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -263,10 +264,10 @@ async def test_drop_result_flips_the_reading_when_the_probe_row_is_never_written
     ],
 )
 async def test_each_other_way_to_fail_has_its_own_reason(
-    kwargs: dict[str, object], reason: str
+    kwargs: dict[str, Any], reason: str
 ) -> None:
     cid, events = await run_synthetic_task()
-    result = judge(cid, events, issued_at=T0, **kwargs)  # type: ignore[arg-type]
+    result = judge(cid, events, issued_at=T0, **kwargs)
     assert result.verdict is EnumSyntheticProbeVerdict.FAIL
     assert result.reason.value == reason
     assert read_window([as_row(result)], T0 + HOUR) is EnumReadingVerdict.NOT_WORKING

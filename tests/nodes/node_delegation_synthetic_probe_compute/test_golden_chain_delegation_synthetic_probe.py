@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -95,6 +96,6 @@ async def test_error_chain_a_task_with_its_result_dropped_is_judged_fail_with_a_
         correlation_id=cid,
         bus_history_count=await recorder.bus_history_count(),
     )
-    terminal = recorder.events[-1].payload
-    assert terminal.row_cells["verdict"] == "FAIL"  # type: ignore[attr-defined]
-    assert terminal.row_cells["result"] == "dropped"  # type: ignore[attr-defined]
+    terminal: Any = recorder.events[-1].payload
+    assert terminal.row_cells["verdict"] == "FAIL"
+    assert terminal.row_cells["result"] == "dropped"

@@ -20,9 +20,13 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from typing import Any
 
 import pytest
 
+from omnimarket.nodes.node_delegation_synthetic_probe_compute.handlers.handler_delegation_synthetic_probe import (
+    load_rules,
+)
 from omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation import (
     ModelGeneratedChain,
 )
@@ -83,21 +87,21 @@ def by_kind(kind: str) -> list[ModelGeneratedChain]:
     return [chain for chain in chains() if chain.kind == kind]
 
 
-async def run_chain(chain: ModelGeneratedChain) -> tuple[uuid.UUID, object]:
+async def run_chain(chain: ModelGeneratedChain) -> tuple[uuid.UUID, Any]:
     obligation = next(o for o in obligations(OWNER) if o.path_id == chain.path_id)
     return await DRIVERS[OWNER].run(obligation)
 
 
-def check(chain: ModelGeneratedChain, cid: uuid.UUID, run: object) -> None:
+def check(chain: ModelGeneratedChain, cid: uuid.UUID, run: Any) -> None:
     """The golden or error chain assertion over a run (a ChainRun)."""
-    events = run.events  # type: ignore[attr-defined]
+    events = run.events
     assert_ = assert_error_chain if chain.kind == "error" else assert_chain
     assert_(
         events,
         expected_event_types=chain.expected_event_types,
         terminal_fields=_typed(events[-1].payload, chain.terminal_fields),
         correlation_id=cid,
-        bus_history_count=run.bus_history_count,  # type: ignore[attr-defined]
+        bus_history_count=run.bus_history_count,
     )
 
 
@@ -106,6 +110,15 @@ def test_the_delegation_contract_has_golden_and_error_chains() -> None:
     assert kinds == {"golden", "error"}
     # Every walker path of the contract has a chain; none is left to a handwritten test.
     assert sorted(chain_ids()) == sorted(o.path_id for o in obligations(OWNER))
+
+
+def test_the_synthetic_probe_rules_load_beside_the_delegation_chains() -> None:
+    """The probe node's contract rules load and its task completes on a golden chain of this contract."""
+    assert load_rules().bound_seconds >= 1
+    golden_events = {
+        t for chain in by_kind("golden") for t in chain.expected_event_types
+    }
+    assert "ModelDelegationCompleted" in golden_events
 
 
 @pytest.mark.parametrize("path_id", chain_ids())
@@ -123,11 +136,11 @@ async def test_mutation_turns_every_chain_of_its_kind_red(
     publish = ChainRecorder.publish
 
     async def broken_publish(
-        self: ChainRecorder, topic: str, event: object, **kw: object
+        self: ChainRecorder, topic: str, event: Any, **kw: Any
     ) -> None:
         if type(event).__name__ in dropped:
             return
-        await publish(self, topic, event, **kw)  # type: ignore[arg-type]
+        await publish(self, topic, event, **kw)
 
     targets = by_kind(MUTATION_KIND[mutation])
     assert targets, f"no {MUTATION_KIND[mutation]} chain to mutate"
@@ -151,11 +164,11 @@ async def test_mutation_leaves_the_other_kind_of_chain_green(
     publish = ChainRecorder.publish
 
     async def broken_publish(
-        self: ChainRecorder, topic: str, event: object, **kw: object
+        self: ChainRecorder, topic: str, event: Any, **kw: Any
     ) -> None:
         if type(event).__name__ in dropped:
             return
-        await publish(self, topic, event, **kw)  # type: ignore[arg-type]
+        await publish(self, topic, event, **kw)
 
     monkeypatch.setattr(ChainRecorder, "publish", broken_publish)
     other = "error" if MUTATION_KIND[mutation] == "golden" else "golden"
@@ -185,7 +198,7 @@ class RedpandaCarry:
                 await producer.send_and_wait(
                     self.topic,
                     key=str(event.correlation_id).encode(),
-                    value=event.payload.model_dump_json().encode(),  # type: ignore[attr-defined]
+                    value=event.payload.model_dump_json().encode(),
                     headers=[("event_type", event.event_type.encode())],
                     partition=0,
                 )
@@ -227,13 +240,12 @@ async def test_chain_holds_on_the_real_broker(kind: str) -> None:
         pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no lab broker")
     for chain in by_kind(kind):
         cid, run = await run_chain(chain)
-        events = run.events  # type: ignore[attr-defined]
+        events = run.events
         read = await RedpandaCarry(bootstrap).carry(events)
         # What the broker returned is the chain: same order, one correlation id, same payloads.
         assert [item[0] for item in read] == list(chain.expected_event_types)
         assert {item[1] for item in read} == {str(cid)}
         assert [item[2] for item in read] == [
-            e.payload.model_dump_json()
-            for e in events  # type: ignore[attr-defined]
+            e.payload.model_dump_json() for e in events
         ]
         check(chain, cid, run)
