@@ -20,6 +20,7 @@ emit_daemon:
   health_probe_socket_path: /tmp/onex_emit.sock
 
 claude:
+  home_dir: ~/.claude
   tasks_dir: ~/.claude/tasks
   installed_plugins_file: ~/.claude/plugins/installed_plugins.json
 
@@ -39,6 +40,27 @@ uv:
 
 runtime_host:
   ci_disk_path: /var/lib/docker
+  # Deployed git repository on the runtime host that node_dod_verify's runtime SHA check probes
+  # when the request names none.
+  deployed_repo_path: /opt/omninode/runtime
+
+lab_work_unit:
+  # Directories appended to PATH for the shell a lab work unit and the host reader run.
+  # A value starting with ``~`` is expanded by its reader.
+  extra_path_dirs:
+    - ~/.local/bin
+    - /opt/homebrew/bin
+    - /usr/local/bin
+
+push_validation:
+  # Interpreter of the venv baked into the DTL container image.
+  container_venv_python: /opt/dtl-venv/bin/python
+
+contractor_note:
+  # Path prefixes that mark operator-machine text a contractor note must not carry.
+  internal_path_prefixes:
+    - /Users/
+    - /Volumes/
 
 brief_prerequisites:
   # Prefixes that mark a token in a brief as a filesystem path.

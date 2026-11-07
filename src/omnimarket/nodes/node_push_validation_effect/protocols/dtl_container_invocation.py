@@ -33,6 +33,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.handlers.runtime_paths import runtime_path
+
 DTL_LABEL_KEY = "org.omninode.dtl.correlation_id"
 ALLOWED_ENV_KEYS: tuple[str, ...] = ("HOME", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE")
 _FIXED_ENV: tuple[str, ...] = (
@@ -42,7 +44,7 @@ _FIXED_ENV: tuple[str, ...] = (
 )
 CONTAINER_WORKDIR = "/work"
 JUNIT_PATH_IN_CONTAINER = "/work/.dtl/junit.xml"
-VENV_PYTHON = "/opt/dtl-venv/bin/python"
+VENV_PYTHON = runtime_path("push_validation.container_venv_python")
 DEFAULT_DOCKER_BIN = "/usr/local/bin/docker"
 GATE_DIR_IN_CONTAINER = "/work/.dtl/gates"
 #: OMN-19527: the repository gates run over each ``gate_paths`` file after the

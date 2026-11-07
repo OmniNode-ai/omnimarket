@@ -47,6 +47,7 @@ from omnimemory.models.crawl.model_document_removed_event import (
     ModelDocumentRemovedEvent,
 )
 
+from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_state_record import (
     ModelCrawlStateRecord,
 )
@@ -72,7 +73,7 @@ HANDLER_ID_FILESYSTEM_CRAWLER: str = "filesystem-crawler"
 
 DEFAULT_SCOPE_REF: str = "omninode/shared"
 
-_STATIC_STANDARDS_PREFIXES: tuple[str, ...] = (str(Path("~/.claude").expanduser()),)
+_STATIC_STANDARDS_PREFIXES: tuple[str, ...] = (runtime_dir("claude.home_dir"),)
 
 _SKIP_DIRS: frozenset[str] = frozenset({"src", "docs", "design", "plans", "handoffs"})
 
@@ -118,9 +119,8 @@ def _detect_doc_type(path: Path) -> EnumDetectedDocType:
 
 
 def _source_type_for_path(path: Path) -> EnumContextSourceType:
-    for prefix in _STATIC_STANDARDS_PREFIXES:
-        if path.is_relative_to(Path(prefix)):
-            return EnumContextSourceType.STATIC_STANDARDS
+    if any(path.is_relative_to(prefix) for prefix in _STATIC_STANDARDS_PREFIXES):
+        return EnumContextSourceType.STATIC_STANDARDS
 
     if path.name == "CLAUDE.md":
         return EnumContextSourceType.STATIC_STANDARDS

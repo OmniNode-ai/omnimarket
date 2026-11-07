@@ -35,6 +35,7 @@ import re
 from collections.abc import Iterable, Sequence
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.runtime_paths import runtime_path_list
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
     ModelContractorRoster,
     ModelContractorRosterEntry,
@@ -64,8 +65,10 @@ _TICKET_PATTERN = re.compile(r"\bOMN-(\d+)\b", re.IGNORECASE)
 # --------------------------------------------------------------------------
 
 _INTERNAL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"/Users/"),
-    re.compile(r"/Volumes/"),
+    *(
+        re.compile(re.escape(prefix))
+        for prefix in runtime_path_list("contractor_note.internal_path_prefixes")
+    ),
     re.compile(r"\$?OMNI_HOME", re.IGNORECASE),
     re.compile(r"\bomni_home\b", re.IGNORECASE),
     re.compile(r"\bomni_worktrees\b", re.IGNORECASE),
