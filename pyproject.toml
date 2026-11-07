@@ -1020,6 +1020,7 @@ node_projection_replay_check_compute = "omnimarket.nodes.node_projection_replay_
 node_projection_routing_decision = "omnimarket.nodes.node_projection_routing_decision"
 node_projection_routing_feedback = "omnimarket.nodes.node_projection_routing_feedback"
 node_projection_run_trace = "omnimarket.nodes.node_projection_run_trace"
+node_projection_agent_actions = "omnimarket.nodes.node_projection_agent_actions"
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_sandbox_decisions = "omnimarket.nodes.node_projection_sandbox_decisions"
@@ -1425,14 +1426,14 @@ omnimarket = "omnimarket.nodes"
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102181416-beb08a83c93e" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261104031344-24ef3b66b19d" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261101203942-2080333acfaf" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261102080237-7e087d566f24" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261103062530-3580a8d986fd" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
