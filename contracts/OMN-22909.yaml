@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-22909
+title: The seam reading demands the on-demand-only command seams through an attach-on-demand activation, and a required automatic seam with no bound sender reads NOT WORKING
+summary: Piece 3 of the base-first plan (bus, runtime and seams). An on-demand-only command node has no consumer on the bus, so no timestamp shows a missing trigger. The activation attaches one such node for a demand, sends its command, reads the correlated result before the seam's deadline and detaches it. A required automatic seam with no bound sender reads NOT WORKING, the same seam with a sender reads WORKING, and per-seam readings are stored in a store that has no update and refuses a rewrite of a stored row. The deadline probe row carries the seam counts when its overlay declares seams.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22909-seam-on-demand
+  statement: The seam reading demands on-demand-only commands, reads a required automatic seam with no bound sender as NOT WORKING, and keeps per-seam rows append-only.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an activation step attaches one on-demand node to the bus for a test, sends its command and reads the correlated result before the seam''s deadline -- falsifier: uv run pytest tests/unit/nodes/node_seam_read_orchestrator/test_attach_on_demand.py -q'
+  - id: AC2
+    statement: 'AC2: a seam declared automatic with no bound sender reads NOT WORKING and the same seam with a sender reads WORKING -- falsifier: uv run pytest tests/unit/nodes/node_seam_reading_compute/test_required_sender.py -q'
+  - id: AC3
+    statement: 'AC3: per-seam readings are stored append-only and a rewrite of an old row is refused -- falsifier: uv run pytest tests/unit/nodes/node_seam_reading_compute -q -k append_only'
+evidence_requirements:
+- kind: tests
+  description: Attach-on-demand, required-sender and append-only golden and error chain tests, and the deadline probe's seam-count and on-demand tests.
+  command: uv run --frozen pytest tests/unit/nodes/node_seam_read_orchestrator tests/unit/nodes/node_seam_reading_compute tests/nodes/node_seam_deadline_probe_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22909-ac1
+  description: The attach-on-demand activation attaches one on-demand node, reads the correlated result inside the deadline and detaches; a node too slow for the deadline, an unattachable node and an error answer each read NOT WORKING.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_seam_read_orchestrator/test_attach_on_demand.py -q --no-cov
+- id: dod-omn22909-ac2
+  description: A required automatic seam with no bound sender reads NOT WORKING with reason no-bound-sender and the same seam with a sender reads WORKING; the seam counts name the required seams without a sender.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_seam_reading_compute/test_required_sender.py -q --no-cov
+- id: dod-omn22909-ac3
+  description: Per-seam rows append in order, the same row twice is already appended, a row whose key is stored with different content is refused and the stored row stays, and the store port declares no update and no delete.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_seam_reading_compute -q --no-cov -k append_only
+- id: dod-omn22909-probe
+  description: The deadline probe demands an on-demand seam through the activation and its row carries seams_automatic, seams_on_demand and required_without_sender; a required seam with no sender fails the run.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov
+- id: dod-omn22909-integration-proof
+  description: Run the seam suites on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22909 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_seam_read_orchestrator tests/unit/nodes/node_seam_reading_compute tests/nodes/node_seam_deadline_probe_effect tests/nodes/node_seam_reading_compute tests/nodes/node_seam_read_orchestrator -q --no-cov
