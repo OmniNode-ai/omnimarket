@@ -26,6 +26,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
 NODE_NAME = "node_floor_fill_orchestrator"
 TICK_ARGV: tuple[str, ...] = ("onex", "run-node", NODE_NAME, "--", "tick")
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+DISPATCH_VENV_BIN = ".onex-dispatch-venv/bin"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
@@ -55,8 +56,9 @@ def _assignment(name: str, value: str) -> str:
     return f'Environment="{name}={escaped}"\n'
 
 
-def unit_path(home: Path) -> str:
-    return f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+def unit_path(home: Path, omni_root: Path) -> str:
+    """The unit's PATH: the dispatch venv's bin first, where ``onex`` lives on a fill host (as for the census unit)."""
+    return f"{omni_root}/{DISPATCH_VENV_BIN}:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 
 def render_systemd(
@@ -74,7 +76,7 @@ def render_systemd(
         "HOME": user_home,
         "OMNI_HOME": root,
         OVERLAY_ROOTS_ENV: _safe(overlay_root, "overlay root"),
-        "PATH": unit_path(home),
+        "PATH": unit_path(home, omni_root),
     }
     interval = f"{config.tick_interval_seconds}s"
     service = (
@@ -177,12 +179,12 @@ class HandlerFloorFillSchedule:
                 exit_code=0, stdout="".join(body + "\n" for _, body in files)
             )
         if self.on_path is not None and not self.on_path(
-            TICK_ARGV[0], unit_path(self.home)
+            TICK_ARGV[0], unit_path(self.home, omni_root)
         ):
             return ModelFloorFillScheduleResult(
                 exit_code=1,
                 stderr=(
-                    f"{TICK_ARGV[0]} is not on the unit's PATH {unit_path(self.home)}; "
+                    f"{TICK_ARGV[0]} is not on the unit's PATH {unit_path(self.home, omni_root)}; "
                     "the tick would not start\n"
                 ),
             )

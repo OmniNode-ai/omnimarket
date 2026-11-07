@@ -24,7 +24,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ModelRunOutcome,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
-    ScriptedCommandRunner,
+    ScriptedCommandForward,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.schedule_entry import run_schedule
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
@@ -193,6 +193,48 @@ def test_floor_fill_schedule_installed_unit_equals_dry_run(tmp_path: Path) -> No
     assert "unchanged" in again
 
 
+def test_floor_fill_schedule_unit_path_holds_the_dispatch_venv_bin(
+    tmp_path: Path,
+) -> None:
+    _, dry, _ = _install(OVERLAY, tmp_path, "--dry-run")
+    path_line = next(
+        line for line in dry.splitlines() if line.startswith('Environment="PATH=')
+    )
+    assert path_line.startswith(
+        f'Environment="PATH={OMNI_ROOT}/.onex-dispatch-venv/bin:{tmp_path}/.local/bin:'
+    )
+
+
+def test_floor_fill_schedule_install_refused_when_onex_not_on_the_unit_path(
+    tmp_path: Path,
+) -> None:
+    searched: list[str] = []
+
+    def on_path(name: str, path: str) -> bool:
+        searched.append(path)
+        return False
+
+    result = run_schedule(
+        [
+            "install",
+            "--this-host",
+            "fill-host",
+            "--workspace-root",
+            str(OMNI_ROOT),
+        ],
+        {"floor_fill": OVERLAY},
+        hosts=HOSTS,
+        overlay_root=OVERLAY_ROOT,
+        home=tmp_path,
+        run=_ok,
+        on_path=on_path,
+    )
+    assert result.exit_code == 1
+    assert "onex is not on the unit's PATH" in result.stderr
+    assert str(OMNI_ROOT / ".onex-dispatch-venv/bin") in searched[0]
+    assert not (tmp_path / ".config/systemd/user").exists()
+
+
 def test_floor_fill_schedule_uninstall_is_the_rollback(tmp_path: Path) -> None:
     _install(OVERLAY, tmp_path)
     schedule = load_floor_fill_schedule()
@@ -306,7 +348,7 @@ def test_lines_entry_prints_stored_answer() -> None:
     handler = HandlerFloorFillCommand(
         config=h.config,
         orchestrator=h.orchestrator(),
-        runner=ScriptedCommandRunner(
+        runner=ScriptedCommandForward(
             ModelRunOutcome(state="exited", exit_code=0, stdout=stored)
         ),
     )
@@ -336,7 +378,9 @@ def test_lines_entry_prints_stored_answer() -> None:
     absent = HandlerFloorFillCommand(
         config=fresh.config,
         orchestrator=fresh.orchestrator(),
-        runner=ScriptedCommandRunner(ModelRunOutcome(state="failed")),
+        runner=ScriptedCommandForward(
+            ModelRunOutcome(state="failed", cause="forward-unused")
+        ),
     ).handle(
         ModelFloorFillCommandRequest(
             command=EnumFloorFillCommand.LINES, host_id=fresh.config.host_id
@@ -357,7 +401,7 @@ def test_lines_entry_unreachable_prints_diagnostic(outcome: ModelRunOutcome) -> 
     handler = HandlerFloorFillCommand(
         config=h.config,
         orchestrator=h.orchestrator(),
-        runner=ScriptedCommandRunner(outcome),
+        runner=ScriptedCommandForward(outcome),
     )
     result = handler.handle(_lines_request())
     assert result.stdout == "UNKNOWN floor-fill-unreachable\n"
