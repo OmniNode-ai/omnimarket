@@ -22,6 +22,93 @@ class_rules:
   - name: installed-copy-behind-merged-code
     owner: "the host installer (the declared installer and adopt-merged), not the lane that met it"
     pattern: '(?:installed revision \w+ carries|record-clobber|dispatch venv|ImportError|clone moved beside)'
+# The rows of 2026-11-06T09:07Z to 2026-11-07T10:40Z that carried no class cell and matched none of the rules above (OMN-22865):
+# 71 rows grouped by the cause each row's own text states. The order matters: the first match wins, and the gateway class is
+# first because several hand-off refusals quote the same cache_only error as their cause.
+  - name: github-gateway-rejects-cache-only
+    owner: "the dev redeploy of node_github_repo_gateway_effect (deploy agent): the client sends cache_only and the deployed gateway model forbids the field"
+    pattern: 'cache_only'
+  - name: handoff-install-first-read-fails
+    owner: "the pr-handoff skill: its install-first check reads a clone path or a comment read that does not exist for the repository"
+    pattern: 'install-first check|refused \S+ with (?:exit 5 )?live-read|exit 5 live-read'
+  - name: lab-host-table-refused-whole-by-row-model
+    owner: "the lab host row model in omnimarket (ModelLabHostRow, overlay_keys): a column the table declares and the model forbids makes lab-run placement refuse the whole table"
+    pattern: 'volumes_root|lab_run_hosts'
+  - name: lab-run-bus-unit-returns-no-receipt
+    owner: "the lab-work serve unit and the lab-run client: a bus unit is sent, never answered, and the client names no host or ssh fallback"
+    pattern: '(?:lab-run|lab-work|bus units?|bus lab-run).{0,200}(?:no receipt|never started|got no answer|refused every unit)'
+  - name: lane-ledger-rows-reach-the-ledger-only-at-lane-end
+    owner: "the remote-lane relay outbox: rows a lab lane writes queue until the lane ends, so a reply can never be read in-lane"
+    pattern: 'relay=queued|relay outbox|ledger copy is a snapshot|queued in the relay'
+  - name: ticket-create-gate-reads-sidecar-lane-name
+    owner: "the ticket create gate: it names a subagent lane from its harness sidecar, not from the brief lane name"
+    pattern: 'harness sidecar|lane_identity_missing|sidecar name'
+  - name: lab-stack-unleased-ownership-unproved
+    owner: "the lab stack reaper (OMN-20864): a stack with no lease cannot be reaped"
+    pattern: 'unleased stack; ownership cannot be proved'
+  - name: launchd-bootstrap-io-error-after-install
+    owner: "the host installer (onex-host-install): a bootout then bootstrap that fails with exit 5 leaves the unit unloaded"
+    pattern: 'Bootstrap failed: 5'
+  - name: read-tool-missing-for-the-lane-phase
+    owner: "the owner of the read tool named in the row (omnimarket onex scm and runtime_probe nodes); the lane has no route to the read"
+    pattern: 'CHECK_RUN_READ_FAILED|No tool reads|No runtime_probe|no runtime_probe|re-pin tool'
+  - name: runner-host-deploy-script-has-no-declared-route
+    owner: "the owner of deploy-runners.sh in omnibase_infra: a secondary-host roll, a retire or a stop has no declared, lane-readable route"
+    pattern: 'deploy-runners|runner-label-exists'
+  - name: scm-gateway-read-times-out
+    owner: "the owner of node_github_repo_gateway_effect: a job-log read that the gateway does not answer inside its budget"
+    pattern: 'timed out at the gateway'
+  - name: dev-redeploy-blocked-by-build-settings
+    owner: "the dev deploy agent build settings check (dev_lane_build_settings in omnibase_infra)"
+    pattern: 'dev_lane_build_settings'
+  - name: canonical-clone-git-lock-left-behind
+    owner: "the clone sync unit of the host installer: a stale lock file in a canonical clone that no process holds"
+    pattern: 'index\.lock|cannot lock ref'
+  - name: ci-timing-flake-in-validator-tests
+    owner: "the owner of the plugin validator-tests job: two timing tests fail on a loaded runner"
+    pattern: 'validator-tests'
+  - name: receipted-delegation-route-fails
+    owner: "the owner of delegation_step.py and the code-edit node: every route of a receipted code or text step failed or was refused"
+    pattern: 'Delegation was refused|receipted code delegation|GLM code route'
+  - name: skill-or-tick-slice-shorter-than-measured-duration
+    owner: "the owner of the skill executor or tick named in the row: its time slice is below the duration measured for the work"
+    pattern: 'forked executor.{0,40}limit|cut at its 8 s slice'
+  - name: concurrent-branch-installs-race-on-one-unit
+    owner: "the host installer: branch installs into one unit take no lock and check no overlay shape"
+    pattern: 'install branches into the one|install\.sh superset guard'
+  - name: landing-deferral-reason-not-read-at-handoff
+    owner: "the pr-handoff skill and landing controller: a CRITERIA_DRIFT deferral is not read back to the lane"
+    pattern: 'CRITERIA_DRIFT'
+  - name: lane-brief-premise-or-placement-does-not-hold-on-host
+    owner: "the lane-brief and remote-lane placement owners: the brief names paths or tools the placed host lacks"
+    pattern: 'neither held|no node, pnpm|SHARED SCRATCHPAD|canonical-file-shape ratchet refuses'
+  - name: tool-result-exceeds-context-cap
+    owner: "the owner of the read tool named in the row: its page size overflows the tool-result cap"
+    pattern: 'tool-result token cap'
+# The 9 rows of 2026-11-06T17:45Z to 2026-11-07T17:45Z that the rules above left unclassified (OMN-22865): two of them join
+# earlier causes (a hand-off refusal that names exit 5, a brief whose plan is absent from the placed host) in classes of their own
+# here, and five are new causes. The earlier rules above are unchanged, so a replay with only them is the control.
+  - name: handoff-live-read-over-bus-failed
+    owner: "the pr-handoff skill: its install-first check reads the pull request over the bus and a refused read ends the hand-off at exit 5"
+    pattern: 'pr_handoff refused exit 5'
+  - name: plan-branch-absent-from-the-placed-lab-host-clone
+    owner: "the lane-brief and remote-lane placement owners: the brief names a plan branch the placed host clone does not hold (canonical_clone_sync answers NO_CLONE)"
+    pattern: 'answers NO_CLONE'
+  - name: drive-bind-over-live-ramfs-ended-landing-workers
+    owner: "the host installer step that binds the lab drive over the host's RAM filesystem: it must refuse while a process still uses that filesystem"
+    pattern: 'bind of the (?:drive|RAM filesystem)'
+  - name: ticket-falsifier-names-file-the-src-freeze-gate-refuses
+    owner: "the author of the ticket criterion and the owner of the src-freeze gate: a falsifier that names a new code file in a frozen repository cannot be met"
+    pattern: 'src-freeze gate'
+  - name: handoff-script-argument-list-too-long
+    owner: "the pr-handoff skill (handoff.sh): it passes the whole file list of a large pull request on one command line"
+    pattern: 'Argument list too long'
+  - name: lane-github-read-budget-spent-on-job-logs
+    owner: "the owner of the lane GitHub read budget and of the job-log read window: a large log costs many reads of a fixed window, so the budget ends before the reds are read"
+    pattern: 'GitHub read budget'
+  - name: ledger-write-ledger-option-ignored-on-bus-write-hosts
+    owner: "the ledger-write skill: on a host that appends through the bus its --ledger option does not redirect the write"
+    pattern: '--ledger header option'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
