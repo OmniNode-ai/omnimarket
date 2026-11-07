@@ -16,9 +16,7 @@ requirements:
   - id: AC3
     statement: 'AC3: A dropped observation leaves state and `seq` unchanged and names the reason -- falsifier: `-k admission_drops`, cases for a late answer of an earlier attempt, a wrong lane, a wrong state (`ReservedChecked`, `StartFailed` and `SentChecked` each against an entry in the other state) and a `ReserveRequested` against a `RESERVED` entry and against a live `SENT` entry (typed refusal `held`) and against an ended `SENT` entry past its window (`uncleared`), `seq` unchanged in each.'
   - id: AC4
-    statement: 'AC4: The lane name is a function of the key and the attempt: replay gives the same name, attempt 2 differs from attempt 1, and the keys `floor:a-b:c` and `floor:a:b-c` get different names -- falsifier: `-k lane_name_deterministic` and `-k lane_name_concatenation_pair`.'
-  - id: AC4b
-    statement: 'AC4b: A late `ReservedChecked` with no CLAIM that arrives after the same attempt became `SENT` is dropped and the entry stays `SENT` -- falsifier: `-k late_check_after_confirm_dropped`.'
+    statement: 'AC4: The lane name is a function of the key and the attempt: replay gives the same name, attempt 2 differs from attempt 1, and the keys `floor:a-b:c` and `floor:a:b-c` get different names -- falsifier: `-k lane_name_deterministic` and `-k lane_name_concatenation_pair`. The ticket''s AC4b rides here, because the binding label grammar takes no letter suffix: a late `ReservedChecked` with no CLAIM that arrives after the same attempt became `SENT` is dropped and the entry stays `SENT` -- falsifier: `-k late_check_after_confirm_dropped`.'
   - id: AC5
     statement: 'AC5: A `RESERVED` entry past the timeout with no CLAIM is cleared, keeps its ticket and attempt, and is offered again as attempt n+1; with the CLAIM it is `SENT`; with an unreadable ledger it is untouched; a `StartFailed` clears it at once -- falsifier: `-k reserved_resolution`, four cases.'
   - id: AC6
@@ -67,7 +65,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -k "lane_name_deterministic or lane_name_concatenation_pair"
 - id: dod-omn22852-ac4b
-  description: A late check after the confirm is dropped and the entry stays SENT (criterion AC4b; the binding label grammar takes no letter suffix, so it binds AC4).
+  description: A late check after the confirm is dropped and the entry stays SENT (the ticket's AC4b, bound as AC4).
   source: manual
   binds_ac:
   - AC4
