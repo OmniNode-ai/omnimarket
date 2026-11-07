@@ -17,6 +17,27 @@ handler:
   module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_copy
   class: HandlerWorkLedgerCopy
   input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_copy.ModelCopyRequest
+# OMN-22916 (plan section 4.3, step 7): the snapshot job and the restore drill. Both are externally
+# triggered like the copy; their requests and results are the models named below.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: work_ledger_copy
+      handler:
+        name: HandlerWorkLedgerCopy
+        module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_copy
+    - operation: work_ledger_snapshot
+      handler:
+        name: HandlerWorkLedgerSnapshot
+        module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_snapshot.ModelSnapshotRequest
+      output_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_snapshot.ModelSnapshotResult
+    - operation: work_ledger_restore_drill
+      handler:
+        name: HandlerWorkLedgerRestoreDrill
+        module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_snapshot.ModelDrillRequest
+      output_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_snapshot.ModelDrillResult
 descriptor:
   node_archetype: effect
   purity: impure

@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-22916
+title: Ledger bus step 7, a snapshot job and a restore drill run on a host other than the source host with the source unreachable, and a damaged snapshot is refused by the drill
+summary: The work-ledger node gains a snapshot job that writes the accepted-row topic rows and the projection rows with a per-row digest manifest to lab storage on a host other than the source host, and a restore drill that refuses to run unless the source host is unreachable from the drill host, refuses a snapshot whose rows differ from the manifest, rebuilds a table from the topic rows alone and compares it with the projection row for row. Both are overlay-driven with in-memory defaults.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22916-restore-drill
+  statement: A snapshot job and a restore drill run on a host other than the source host with the source unreachable from it, and the rebuilt table equals the projection row for row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a snapshot job writes the accepted-row topic and the projection to lab storage off the source host and a restore drill rebuilds the table on another host with the source host unreachable from it, equal row for row -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_drill.py -q'
+- id: req-omn22916-damaged
+  statement: A snapshot with one damaged row is refused by the drill.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a snapshot with one damaged row is refused by the drill -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_drill.py -q -k damaged'
+- id: req-omn22916-no-mutation
+  statement: Nothing on the source host is stopped or restarted by the drill.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: nothing on the source host is stopped or restarted by the drill, shown by a test that records every command it issues -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_no_mutation.py -q'
+evidence_requirements:
+- kind: tests
+  description: The restore drill, damaged snapshot and no-mutation tests of the work-ledger node.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22916-ac1
+  description: The drill passes with the source unreachable and the rebuilt table equal to the projection row for row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_drill.py -q
+- id: dod-omn22916-ac2
+  description: A snapshot with one damaged row is refused by the drill.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_drill.py -q -k damaged
+- id: dod-omn22916-ac3
+  description: Every command the job and the drill issue is on an allow list that names no mutating verb and touches the source host only with a connection probe.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_restore_no_mutation.py -q
