@@ -8,8 +8,10 @@ number carries the read it came from, so a checker can repeat it; an input that 
 becomes a cause of its own, never an empty or zero value.
 
 The colour rule (M1): a cause draws red only when no live lane is on it or it needs the operator; otherwise it draws
-amber and names the lanes. ``check_red_rule`` recomputes that from the finished document and the lanes alone, so a
-builder that gets the rule wrong is caught by a reader that does not share its code path.
+amber and names the lanes. A stoppage whose own record says it is not occurring (no row since, past the overlay's
+window) and that needs nobody draws ``quiet``: listed with its age, last in order, not counted red. ``check_red_rule``
+recomputes all of that from the finished document and the lanes alone, so a builder that gets the rule wrong is caught
+by a reader that does not share its code path.
 """
 
 from __future__ import annotations
@@ -43,6 +45,13 @@ def _ago(seconds: int | None) -> str:
     if seconds < 172800:
         return f"{seconds // 3600} h ago"
     return f"{seconds // 86400} d ago"
+
+
+def _cause_draw(cause: ModelFloorCause | None) -> str:
+    """How a row that stands on a cause draws: red with no cause or a red one, grey when the cause is quiet."""
+    if cause is None or cause.state == "red":
+        return "red"
+    return "grey" if cause.state == "quiet" else "amber"
 
 
 def live_lanes(
@@ -96,8 +105,22 @@ def check_red_rule(
         if cause.state == "red" and under_way and not cause.needs_operator:
             with_work += 1
             violations.append(f"{cause.id} draws red while {', '.join(on_it)} is on it")
+        if (
+            cause.state == "red"
+            and cause.still_occurring is False
+            and not cause.needs_operator
+        ):
+            violations.append(
+                f"{cause.id} draws red though its record says it is not occurring (last seen {_ago(cause.last_seen_age_s)})"
+            )
         if cause.state == "amber" and not under_way:
             violations.append(f"{cause.id} draws amber with no lane on it")
+        if cause.state == "quiet" and (
+            cause.still_occurring is not False or cause.needs_operator or under_way
+        ):
+            violations.append(
+                f"{cause.id} draws quiet though it is occurring, needs you or has a lane on it"
+            )
     rows: list[tuple[str, str | None, str]] = [
         *((f"piece {p.piece}", p.cause_id, p.draw) for p in document.pieces),
         *((f"lab {line.id}", line.cause_id, line.draw) for line in document.lab_state),
@@ -140,13 +163,7 @@ class HandlerFloorSimple:
         by_id = {c.id: c for c in causes}
         pieces = tuple(self._row_draw(r, by_id) for r in rows)
         lines = tuple(self._lab_line(v, by_id) for v in lab)
-        level = (
-            "red"
-            if any(c.state == "red" for c in causes)
-            else "amber"
-            if causes
-            else "green"
-        )
+        level = self._level(causes)
         sentence, subline = self._words(causes)
         document = ModelFloorSimple.model_validate(
             {
@@ -179,6 +196,13 @@ class HandlerFloorSimple:
         return document.model_copy(
             update={"red_rule": check_red_rule(document, request.lanes)}
         )
+
+    @staticmethod
+    def _level(causes: tuple[ModelFloorCause, ...]) -> str:
+        """Red when a cause has nobody on it or needs you, amber when every live cause has a lane; quiet ones add nothing."""
+        if any(c.state == "red" for c in causes):
+            return "red"
+        return "amber" if any(c.state == "amber" for c in causes) else "green"
 
     # --- the three numbers --------------------------------------------------------------------------------------------
 
@@ -585,6 +609,17 @@ class HandlerFloorSimple:
                 else None
             )
             within = r.overlay.causes.still_occurring_within_s
+            occurring = (
+                age <= within if age is not None and within is not None else None
+            )
+            # A stoppage that stopped and needs nobody is a fact about the past: listed with its age, not red.
+            state = (
+                "quiet"
+                if occurring is False and not c.needs_operator and not lanes
+                else "red"
+                if red
+                else "amber"
+            )
             causes.append(
                 ModelFloorCause.model_validate(
                     {
@@ -593,7 +628,7 @@ class HandlerFloorSimple:
                         "detail": c.detail,
                         "size": c.size,
                         "size_unit": c.size_unit,
-                        "state": "red" if red else "amber",
+                        "state": state,
                         "work_under_way": bool(lanes),
                         "needs_operator": c.needs_operator,
                         "lanes": lanes,
@@ -602,11 +637,7 @@ class HandlerFloorSimple:
                         "prs": c.prs,
                         "last_seen": c.last_seen,
                         "last_seen_age_s": age,
-                        "still_occurring": (
-                            age <= within
-                            if age is not None and within is not None
-                            else None
-                        ),
+                        "still_occurring": occurring,
                     }
                 )
             )
@@ -641,7 +672,7 @@ class HandlerFloorSimple:
                     }
                 )
             )
-        return tuple(sorted(causes, key=lambda c: (-c.size, c.id)))
+        return tuple(sorted(causes, key=lambda c: (c.state == "quiet", -c.size, c.id)))
 
     @staticmethod
     def _lab_title(members: list[ModelFloorCause], r: ModelFloorSimpleInput) -> str:
@@ -668,7 +699,7 @@ class HandlerFloorSimple:
             # The lab-state piece: its cause is its first failing lab source.
             cid = "lab:state" if "lab:state" in by_id else cid
         cause = by_id.get(cid)
-        draw = "red" if cause is None or cause.state == "red" else "amber"
+        draw = _cause_draw(cause)
         return row.model_copy(update={"draw": draw, "cause_id": cid})
 
     @staticmethod
@@ -680,7 +711,7 @@ class HandlerFloorSimple:
         if v.state == "WORKING":
             draw, under_way, cid = "green", False, None
         else:
-            draw = "red" if cause is None or cause.state == "red" else "amber"
+            draw = _cause_draw(cause)
             under_way = bool(cause and cause.work_under_way)
             cid = f"lab:{v.id}"
         text = v.summary if v.state == "WORKING" else f"{v.state}: {v.reason}"
@@ -702,7 +733,9 @@ class HandlerFloorSimple:
 
     @staticmethod
     def _words(causes: tuple[ModelFloorCause, ...]) -> tuple[str, str]:
-        causes = tuple(c for c in causes if c.listed)
+        listed = tuple(c for c in causes if c.listed)
+        quiet = [c for c in listed if c.state == "quiet"]
+        causes = tuple(c for c in listed if c.state != "quiet")
         red = [c for c in causes if c.state == "red"]
         if red:
             top = red[0]
@@ -719,10 +752,14 @@ class HandlerFloorSimple:
                 f"Work is moving, with {len(causes)} known holdups and a lane on each: {top.title.rstrip('.')}.",
                 f"{top.detail} Lane {', '.join(top.lanes[:2])} is on it. Nothing is needed from you.".strip(),
             )
-        return (
-            "Nothing is holding things up.",
-            "Every read is fresh and every lab source is working.",
-        )
+        subline = "Every read is fresh and every lab source is working."
+        if quiet:
+            plural = "s" if len(quiet) > 1 else ""
+            subline += (
+                f" {len(quiet)} earlier stoppage{plural} had no row since in the rollup;"
+                " they are listed below with their age."
+            )
+        return "Nothing is holding things up.", subline
 
     @staticmethod
     def _rebuild(
