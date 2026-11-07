@@ -5,10 +5,13 @@
 A pure compute: no clock and no I/O. ``now``, the floor record text, the per-task payload verdicts, the per-task
 entry-ticket verdicts and the fill's state entries all come in on the request. The pill of a line is never read.
 
-A task is ready when its state is ``prep``, its note starts ``ready``, it has no pull request, no live lane names it
-and its key is not held by a RESERVED entry or a SENT entry inside the window. Every ready task is returned in record
-order with no cutoff by capacity (the reducer's reserve rule is the one capacity gate), so a task whose ticket is
-refused cannot hide the next one.
+A task is ready when its start criterion reads true (the prerequisites of its ``Start when:`` line all read true),
+it is not done, active or stopped, it has no pull request, no live lane names it and its key is not held by a RESERVED
+entry or a SENT entry inside the window. Nothing an operator says is read: the request has no field for it, and the
+floor record's own ``wait`` state and note do not decide readiness. A task with an unmet prerequisite is not ready and
+names it; a task with no criterion, or one that cannot be parsed, is not ready and names that. Every ready task is
+returned in record order with no cutoff by capacity (the reducer's reserve rule is the one capacity gate), so a task
+whose ticket is refused cannot hide the next one.
 """
 
 from __future__ import annotations
@@ -17,6 +20,10 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_start_criterion import (
+    PrerequisiteReader,
+    parse_start_when,
+)
 from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidate,
@@ -37,9 +44,10 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill
 )
 
 KEY_PREFIX = "floor:"
-WAITS_FOR = "waits for "
-READY_NOTE = "ready"
 LANE_KIND = "lane"
+NO_CRITERION = "no-start-criterion"
+UNPARSEABLE = "start-when-unparseable:"
+UNMET = "unmet:"
 
 Pair = tuple[str, str]
 
@@ -122,6 +130,15 @@ class _View:
         self.payloads: dict[Pair, ModelFloorTaskPayloadVerdict] = {
             (v.line_id, v.task_id): v for v in request.payload_verdicts
         }
+        self.criteria: dict[Pair, str] = {
+            (c.line_id, c.task_id): c.start_when for c in request.start_criteria
+        }
+        self.reader = PrerequisiteReader(
+            now=request.now,
+            pieces_record=request.pieces_record,
+            merged_refs=request.merged_refs,
+            m0_verdict=request.m0_verdict,
+        )
 
     @staticmethod
     def _holds(
@@ -137,11 +154,9 @@ class _View:
         not_ready: list[ModelFloorFillNotReady] = []
         for station in line.stations:
             for item in station.items:
-                cause = self._not_ready_cause(line.line_id, item)
-                if cause:
-                    not_ready.append(
-                        ModelFloorFillNotReady(task_id=item.id, cause=cause)
-                    )
+                refusal = self._not_ready(line.line_id, item)
+                if refusal is not None:
+                    not_ready.append(refusal)
                     continue
                 self._ready(line.line_id, item.id, candidates, untickettable)
         capacity_left = max(
@@ -166,22 +181,21 @@ class _View:
             not_ready=tuple(not_ready),
         )
 
-    def _not_ready_cause(self, line_id: str, item: ModelRecordItem) -> str:
+    def _not_ready(
+        self, line_id: str, item: ModelRecordItem
+    ) -> ModelFloorFillNotReady | None:
+        cause = self._occupied_cause(line_id, item)
+        if cause:
+            return ModelFloorFillNotReady(task_id=item.id, cause=cause)
+        return self._criterion_refusal(line_id, item.id)
+
+    def _occupied_cause(self, line_id: str, item: ModelRecordItem) -> str:
         if item.state == "done":
             return "done"
         if item.kind != LANE_KIND:
             return f"not-a-lane:{item.kind}"
-        if item.state == "wait":
-            note = item.note.strip()
-            return "wait:" + (
-                note.removeprefix(WAITS_FOR).strip()
-                if note.startswith(WAITS_FOR)
-                else note
-            )
         if item.state in ("active", "stop"):
             return item.state
-        if not item.note.startswith(READY_NOTE):
-            return f"not-ready:{item.note}"
         if item.prs:
             return "open-pr:" + ",".join(item.prs)
         lane = self.lanes.get((line_id, item.id))
@@ -191,6 +205,29 @@ class _View:
         if held is not None:
             return f"held:{held}"
         return ""
+
+    def _criterion_refusal(
+        self, line_id: str, task_id: str
+    ) -> ModelFloorFillNotReady | None:
+        """None when the task's start criterion reads true, otherwise the refusal naming what is unmet."""
+        text = self.criteria.get((line_id, task_id))
+        if text is None:
+            return ModelFloorFillNotReady(task_id=task_id, cause=NO_CRITERION)
+        parse = parse_start_when(text)
+        if parse.unparseable_cause:
+            return ModelFloorFillNotReady(
+                task_id=task_id, cause=UNPARSEABLE + parse.unparseable_cause
+            )
+        unmet = tuple(
+            f"{p.label()} ({why})"
+            for p in parse.prerequisites
+            if (why := self.reader.unmet(p))
+        )
+        if not unmet:
+            return None
+        return ModelFloorFillNotReady(
+            task_id=task_id, cause=UNMET + "; ".join(unmet), unmet=unmet
+        )
 
     def _ready(
         self,

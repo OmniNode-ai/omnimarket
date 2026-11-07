@@ -103,7 +103,7 @@ def test_fixture_not_ready_causes_are_listed_per_line() -> None:
         "G0": "not-a-lane:gate",
         "P1": "not-a-lane:adopted",
         "G1a": "not-a-lane:gate",
-        "W1.1": "wait:G1a",
+        "W1.1": "no-start-criterion",
         "G1b": "not-a-lane:gate",
     }
 
@@ -469,10 +469,10 @@ def test_no_startable_lists_the_cause_of_every_task_that_is_not_ready() -> None:
     assert line.verdict == "NO-STARTABLE"
     assert dict(line.not_ready_pairs()) == {
         "A": "done",
-        "B": "wait:A,C",
+        "B": "no-start-criterion",
         "C": "active",
         "D": "stop",
-        "E": "not-ready:blocked on review",
+        "E": "no-start-criterion",
     }
 
 
