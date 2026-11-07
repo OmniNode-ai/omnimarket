@@ -90,7 +90,8 @@ def node_output(request: ModelFrictionRollupRequest) -> ModelFrictionRollupResul
 
 
 def unit_report() -> dict[str, Any]:
-    return json.loads(RECORDED["expected"]["json_text"])  # type: ignore[no-any-return]
+    report: dict[str, Any] = json.loads(RECORDED["expected"]["json_text"])
+    return report
 
 
 def test_recorded_day_is_not_vacuous() -> None:
