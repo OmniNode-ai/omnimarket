@@ -44,10 +44,13 @@ def test_the_previous_infra_pin_is_not_the_one_locked() -> None:
     assert _locked_dev_tag("omnibase-infra")[1][:12] != "3f93a2cc6f6c"
 
 
-_MIGRATION = (
+_MIGRATIONS = (
     Path(__file__).resolve().parents[2]
     / "src/omnimarket/nodes/node_projection_skill_lifecycle/migrations"
-    / "0002_grant_tenant_projection_writer_skill_executions.sql"
+)
+_MIGRATION = _MIGRATIONS / "0002_grant_tenant_projection_writer_skill_executions.sql"
+_DASHBOARD_MIGRATION = (
+    _MIGRATIONS / "0003_grant_app_dashboard_select_skill_executions.sql"
 )
 
 
@@ -57,12 +60,15 @@ def test_the_node_migration_grants_the_writer_and_the_dashboard_reader_on_skill_
     """The node carries the grant migration itself, beside the infra pin.
 
     The pin above is already on dev, so it cannot show what this change adds.
-    The migration the node ships is what grants the writer its privileges on
-    public.skill_executions and the RLS-scoped dashboard reader its SELECT.
+    0002 is already applied and stays byte-identical to the omnibase_infra copy;
+    it grants the writer its privileges on public.skill_executions, and 0003
+    grants the RLS-scoped dashboard reader its SELECT.
     """
     sql = " ".join(_MIGRATION.read_text().split())
     assert re.search(
         r"GRANT SELECT, INSERT, UPDATE ON public\.skill_executions TO tenant_projection_writer",
         sql,
     )
-    assert "GRANT SELECT ON public.skill_executions TO app_dashboard;" in sql
+    assert "app_dashboard" not in sql
+    dashboard_sql = " ".join(_DASHBOARD_MIGRATION.read_text().split())
+    assert "GRANT SELECT ON public.skill_executions TO app_dashboard;" in dashboard_sql
