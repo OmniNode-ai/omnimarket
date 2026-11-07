@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -59,8 +59,8 @@ class TestTheDeferredRepublishReadsTheRealViews:
     def test_a_burst_applies_then_republishes_each_aggregate_once(self) -> None:
         async def _run() -> None:
             async with _rls_bound_runner() as (runner, admin, _schema):
-                runner._aggregate_coalesce_window_s = 60.0
-                runner.enable_aggregate_coalescing()
+                runner._coalescer.window_s = 60.0
+                runner._coalescer.enable()
                 views = len(runner._aggregate_exposures)
                 assert views >= 2
 
@@ -74,7 +74,7 @@ class TestTheDeferredRepublishReadsTheRealViews:
                         published.append({"topic": exposure.topic, **kwargs})
                     return True
 
-                runner.publish_snapshot_delta = _publish  # type: ignore[assignment]
+                cast(Any, runner).publish_snapshot_delta = _publish
 
                 correlation_ids = [str(uuid4()) for _ in range(BURST)]
                 for offset, correlation_id in enumerate(correlation_ids):
@@ -98,7 +98,7 @@ class TestTheDeferredRepublishReadsTheRealViews:
                 assert written == BURST
                 assert published == [], "the burst republished inside the window"
 
-                await runner.drain_aggregates()
+                await runner._coalescer.drain()
 
                 assert len(published) == views, (
                     f"{len(published)} aggregate publishes for a burst of {BURST}; "

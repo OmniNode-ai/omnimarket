@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -68,8 +69,9 @@ class _Harness:
     """A runner whose write is instant and whose aggregate read is slow."""
 
     def __init__(self, *, coalesce: bool, window_ms: int = 60) -> None:
-        self.runner = DelegationProjectionRunner(publish_fn=AsyncMock())
-        self.runner._db = AsyncMock()  # type: ignore[assignment]
+        runner: Any = DelegationProjectionRunner(publish_fn=AsyncMock())
+        self.runner = runner
+        self.runner._db = AsyncMock()
         self.events: list[tuple[str, float]] = []
         self.commit_times: list[float] = []
         self.published: list[dict[str, Any]] = []
@@ -106,16 +108,14 @@ class _Harness:
             self.events.append(("commit", now))
             self.commit_times.append(now)
 
-        self.runner._db.execute = _execute  # type: ignore[assignment]
-        self.runner.publish_snapshot_delta = _publish  # type: ignore[assignment]
-        self.runner._project_delegate_skill_terminal = (  # type: ignore[assignment]
-            _project_delegate_skill_terminal
-        )
-        self.runner._update_watermark = _noop_watermark  # type: ignore[assignment]
-        self.runner._consumer = SimpleNamespace(commit=_commit)  # type: ignore[assignment]
+        runner._db.execute = _execute
+        runner.publish_snapshot_delta = _publish
+        runner._project_delegate_skill_terminal = _project_delegate_skill_terminal
+        runner._update_watermark = _noop_watermark
+        self.runner._consumer = SimpleNamespace(commit=_commit)
         if coalesce:
-            self.runner._aggregate_coalesce_window_s = window_ms / 1000
-            self.runner.enable_aggregate_coalescing()
+            self.runner._coalescer.window_s = window_ms / 1000
+            self.runner._coalescer.enable()
 
     def message(self, offset: int) -> SimpleNamespace:
         correlation_id = str(uuid4())
@@ -180,7 +180,7 @@ class TestTheBurstNoLongerWaitsForTheViews:
                 "path is still waiting on the views"
             )
         finally:
-            await h.runner.drain_aggregates()
+            await h.runner._coalescer.drain()
 
     @pytest.mark.asyncio
     async def test_the_burst_republishes_each_aggregate_once_not_once_per_message(
@@ -189,7 +189,7 @@ class TestTheBurstNoLongerWaitsForTheViews:
         h = _Harness(coalesce=True)
         views = len(h.runner._aggregate_exposures)
         await h.burst()
-        await h.runner.drain_aggregates()
+        await h.runner._coalescer.drain()
 
         assert h.reads() == views, (
             f"{h.reads()} aggregate reads for a burst of {BURST} messages; "
@@ -223,7 +223,7 @@ class TestTheBurstNoLongerWaitsForTheViews:
         await h.runner._handle_message(h.message(0))
         h.tenant_for_next_write = TENANT_B
         await h.runner._handle_message(h.message(1))
-        await h.runner.drain_aggregates()
+        await h.runner._coalescer.drain()
 
         assert len(h.published) == 2 * views
         by_tenant: dict[str, int] = {}
@@ -254,7 +254,7 @@ class TestTheErrorChain:
             e.topic for e in h.runner._aggregate_exposures
         }
         assert h.reads() > views, "the failed read was not retried"
-        await h.runner.drain_aggregates()
+        await h.runner._coalescer.drain()
 
     @pytest.mark.asyncio
     async def test_drain_publishes_what_is_pending_and_then_nothing_is_pending(
@@ -265,10 +265,10 @@ class TestTheErrorChain:
         await h.burst(2)
         assert h.published == [], "nothing may publish inside the window"
 
-        await h.runner.drain_aggregates()
+        await h.runner._coalescer.drain()
         assert len(h.published) == views
 
-        await h.runner.drain_aggregates()
+        await h.runner._coalescer.drain()
         assert len(h.published) == views, "a second drain republished again"
 
 
@@ -286,8 +286,8 @@ class TestTheRuntimePathStaysInline:
 class TestTheWindowIsDeclaredNotHardCoded:
     def test_the_contract_declares_the_window(self) -> None:
         runner = DelegationProjectionRunner(publish_fn=AsyncMock())
-        assert runner._aggregate_coalesce_window_s is not None
-        assert runner._aggregate_coalesce_window_s > 0
+        assert runner._coalescer.window_s is not None
+        assert runner._coalescer.window_s > 0
 
     def test_enabling_without_a_declared_window_is_refused(self, tmp_path: Any) -> None:
         import yaml
@@ -296,12 +296,12 @@ class TestTheWindowIsDeclaredNotHardCoded:
             handler_delegation,
         )
 
-        src = handler_delegation.Path(handler_delegation.__file__).parent.parent
+        src = Path(handler_delegation.__file__).parent.parent
         contract = yaml.safe_load((src / "contract.yaml").read_text())
         contract.pop("aggregate_republish", None)
         path = tmp_path / "contract.yaml"
         path.write_text(yaml.safe_dump(contract))
         runner = DelegationProjectionRunner(path, publish_fn=AsyncMock())
-        assert runner._aggregate_coalesce_window_s is None
+        assert runner._coalescer.window_s is None
         with pytest.raises(RuntimeError, match="aggregate_republish"):
-            runner.enable_aggregate_coalescing()
+            runner._coalescer.enable()
