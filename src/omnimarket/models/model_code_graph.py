@@ -107,9 +107,81 @@ class ModelGraphCheckResult(BaseModel):
     base: str
     head: str
     added: int = Field(ge=0)
-    #: Added non-test module paths unreachable at the head, sorted.
+    #: Added non-test module paths unreachable at the head and not allowed, sorted.
     flagged: tuple[str, ...] = ()
+    #: Added unreachable paths a live allowlist entry excuses, sorted.
+    allowed: tuple[str, ...] = ()
+    #: Allowlist entries of this repository past their date, each ``<path> expired <date>``.
+    expired: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
-        return not self.flagged
+        return not self.flagged and not self.expired
+
+
+class EnumShadowOutcome(StrEnum):
+    """What the check would have decided for one pull request."""
+
+    WOULD_PASS = "would-pass"
+    WOULD_REFUSE = "would-refuse"
+    #: A ref could not be read: no verdict, and the row says so.
+    INDETERMINATE = "indeterminate"
+
+
+class ModelShadowPullRequest(BaseModel):
+    """An open pull request the shadow checks: its base branch and the exact head."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    number: int = Field(ge=1)
+    base_ref: str = Field(min_length=1)
+    head_ref: str = Field(min_length=1)
+    head_sha: str = Field(min_length=1)
+
+
+class ModelShadowVerdict(BaseModel):
+    """The check's verdict for one pull request, logged and never enforced."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str
+    number: int
+    head: str
+    outcome: EnumShadowOutcome
+    added: int = Field(ge=0, default=0)
+    flagged: tuple[str, ...] = ()
+    expired: tuple[str, ...] = ()
+    #: Why the verdict is indeterminate; empty otherwise.
+    reason: str = ""
+
+
+class ModelShadowCommand(BaseModel):
+    """Check every open pull request of the declared repositories now, in shadow."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: str = Field(min_length=1)
+    #: A probe run checks and appends nothing.
+    write: bool = True
+    #: A run with a fault is a drill: its row carries drill=yes.
+    fault: EnumGraphFault = EnumGraphFault.NONE
+
+
+class ModelShadowResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: str
+    status: Literal["completed", "failed"]
+    fault: EnumGraphFault = EnumGraphFault.NONE
+    repos: tuple[str, ...] = ()
+    verdicts: tuple[ModelShadowVerdict, ...] = ()
+    #: The shadow decides nothing: it never holds a merge, whatever it would have refused.
+    holds_merge: Literal[False] = False
+    row_key: str | None = None
+    ledger: str = "not-written"
+    row: str | None = None
+    failure: str | None = None
+
+    def count(self, outcome: EnumShadowOutcome) -> int:
+        return sum(1 for verdict in self.verdicts if verdict.outcome is outcome)

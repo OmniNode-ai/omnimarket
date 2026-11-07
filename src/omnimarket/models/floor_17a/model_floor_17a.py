@@ -393,6 +393,17 @@ class ModelFloorJoinRow(_Frozen):
     error_age_s: int | None
 
 
+class ModelFloorShadowLine(_Frozen):
+    """What a piece's check would have refused, as its newest shadow row says, with the row's age."""
+
+    label: str
+    text: str
+    age_s: int
+    max_age_s: int
+    # The row is older than the age it declared: its numbers are old, and the page says so.
+    stale: bool
+
+
 class ModelFloorPieceRow(_Frozen):
     piece: int
     name: str
@@ -407,6 +418,7 @@ class ModelFloorPieceRow(_Frozen):
     freshness: Literal["fresh", "stale", "none"]
     cause_id: str | None = None
     joins: tuple[ModelFloorJoinRow, ...] = ()
+    shadows: tuple[ModelFloorShadowLine, ...] = ()
 
 
 class ModelFloorLabLine(_Frozen):
@@ -548,6 +560,31 @@ class ModelLedgerReadingRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelShadowField(_Frozen):
+    """One cell of a shadow row the floor shows, under the label it shows it by."""
+
+    cell: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+class ModelLedgerShadowRule(_Frozen):
+    """Which ledger rows are a piece's shadow results, and which cells the floor shows of the newest one.
+
+    A shadow row is a check that logs what it would refuse and holds nothing. The floor shows the newest matching row of the
+    rule under its piece, with its age against the max age the row itself declares; it never draws the piece red from one.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    label: str = Field(min_length=1)
+    row_type: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    cells: dict[str, str] = Field(default_factory=dict)
+    published_at_cell: str = Field(min_length=1)
+    max_age_cell: str = Field(min_length=1)
+    fields: tuple[ModelShadowField, ...] = Field(min_length=1)
+    lookback_days: int = Field(gt=0)
+
+
 class ModelRebuildOverlay(_Frozen):
     go: ModelGoRule
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
@@ -590,6 +627,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     piece_events: tuple[ModelPieceEventRule, ...] = ()
     # Where the reading writer's rows are on the ledger; ``None`` reads none (the file route of the runtime alone).
     ledger_readings: ModelLedgerReadingRule | None = None
+    # Where each piece's shadow rows are on the ledger; none reads none.
+    ledger_shadows: tuple[ModelLedgerShadowRule, ...] = ()
     freshness_max_age_s: int = Field(gt=0)
     error_receipt_max_age_s: int = Field(gt=0)
     error_drill_after_s: int = Field(gt=0)
@@ -615,6 +654,17 @@ class ModelReadingRow(_Frozen):
     reason: str = ""
 
 
+class ModelShadowReading(_Frozen):
+    """The newest shadow row of one rule: when it was published, how long it stays fresh, and the cells the floor shows."""
+
+    piece: int
+    label: str
+    published_at: datetime
+    max_age_s: int
+    # ``(label, value)`` of each cell the rule shows, in the rule's order.
+    values: tuple[tuple[str, str], ...]
+
+
 class ModelFloorSimpleInput(_Frozen):
     now: datetime
     overlay: ModelFloorSimpleOverlay
@@ -636,6 +686,7 @@ class ModelFloorSimpleInput(_Frozen):
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
     readings: dict[int, ModelReadingRow] | None = None
+    shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
     alarms: tuple[ModelFloorAlarmLine, ...] = ()

@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The node's nightly schedule: render, install, uninstall, read and run it on a declared host.
+"""The node's schedules: render, install, uninstall, read and run one on a declared host.
 
-The cadence is the contract's ``schedule`` block; the hosts, their venv and the unit environment
+The nightly graph is the contract's ``schedule`` block and the pull request check in shadow is its ``shadow_schedule``
+block; each names the verb its unit runs.
+The cadence is the contract's block; the hosts, their venv and the unit environment
 are the overlay's. ``uninstall`` is the rollback: it stops the timer and removes its unit files,
 and changes nothing else.
 """
@@ -46,15 +48,26 @@ class ModelCodeGraphCadence(BaseModel):
 class ModelCodeGraphSchedule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: The verb of the node's CLI the unit runs (``nightly`` or ``shadow``).
+    verb: str = Field(min_length=1)
     unit_name: str = Field(min_length=1)
+    #: What the unit is, in the words of its ``Description=`` line.
+    description: str = Field(min_length=1)
+    #: The same for its timer.
+    timer_description: str = Field(min_length=1)
+    #: The stem of the unit's output and error log files in its state directory.
+    log_stem: str = Field(min_length=1)
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelCodeGraphCadence
 
 
-def load_schedule(path: Path = CONTRACT_PATH) -> ModelCodeGraphSchedule:
+def load_schedule(
+    path: Path = CONTRACT_PATH, block: str = "schedule"
+) -> ModelCodeGraphSchedule:
+    """The contract's ``schedule`` block (the nightly graph) or its ``shadow_schedule`` block."""
     contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return ModelCodeGraphSchedule.model_validate(contract["schedule"])
+    return ModelCodeGraphSchedule.model_validate(contract[block])
 
 
 def _safe(path: Path, what: str) -> str:
@@ -102,19 +115,19 @@ def render_systemd(
         "# Rendered by the code graph node (schedule install); the node contract owns the\n"
         "# cadence, so change the contract and install again rather than editing this file.\n"
         "# Rollback: schedule uninstall.\n"
-        "[Unit]\nDescription=ONEX nightly code graph (piece 1 reading)\n"
+        f"[Unit]\nDescription={schedule.description}\n"
         "\n[Service]\nType=oneshot\nNice=10\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={python} -m {NODE_MODULE} nightly\n"
-        f"StandardOutput=append:{state}/code-graph.out.log\n"
-        f"StandardError=append:{state}/code-graph.err.log\n"
+        f"ExecStart={python} -m {NODE_MODULE} {schedule.verb}\n"
+        f"StandardOutput=append:{state}/{schedule.log_stem}.out.log\n"
+        f"StandardError=append:{state}/{schedule.log_stem}.err.log\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
     )
     timer = (
         f"# {cadence.description}\n"
-        "[Unit]\nDescription=ONEX nightly code graph tick\n"
+        f"[Unit]\nDescription={schedule.timer_description}\n"
         f"\n[Timer]\nOnCalendar={cadence.on_calendar}\n"
         f"RandomizedDelaySec={cadence.randomized_delay}\n"
         f"Persistent={'true' if cadence.persistent else 'false'}\n"
@@ -125,7 +138,7 @@ def render_systemd(
 
 
 class CodeGraphScheduler:
-    """Install, remove, read and run the nightly schedule on one declared host."""
+    """Install, remove, read and run one of the node's schedules on one declared host."""
 
     def __init__(
         self,
@@ -194,7 +207,7 @@ class CodeGraphScheduler:
                 exit_code=1,
                 stderr=(
                     f"{python} cannot import {NODE_MODULE}.__main__ (exit {started.returncode}); "
-                    f"the nightly run would not start\n{started.stderr}"
+                    f"the {self.schedule.verb} run would not start\n{started.stderr}"
                 ),
             )
         (omni_root / self.schedule.state_directory).mkdir(parents=True, exist_ok=True)
@@ -250,7 +263,8 @@ class CodeGraphScheduler:
         )
         return ModelHostScheduleResult(
             exit_code=done.returncode,
-            stdout=done.stdout or f"started the nightly run on {name} once\n",
+            stdout=done.stdout
+            or f"started the {self.schedule.verb} run on {name} once\n",
             stderr=done.stderr,
         )
 

@@ -24,6 +24,7 @@ import tomllib
 from collections import deque
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 
 import yaml
@@ -37,6 +38,7 @@ from omnimarket.models.model_code_graph import (
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     ModelGraphRoots,
     ModelGraphSample,
+    ModelWiringAllowance,
 )
 
 Entity = tuple[str, str]
@@ -419,20 +421,44 @@ def judge_sample(graph: Graph, sample: ModelGraphSample) -> ModelSampleOutcome:
 
 
 def check_added(
-    base: ModelRepoSnapshot, head: ModelRepoSnapshot, rules: GraphRules
+    base: ModelRepoSnapshot,
+    head: ModelRepoSnapshot,
+    rules: GraphRules,
+    *,
+    allowlist: Sequence[ModelWiringAllowance] = (),
+    today: date | None = None,
 ) -> ModelGraphCheckResult:
-    """Modules the head adds that no root reaches at the head (tests excluded)."""
+    """Modules the head adds that no root reaches at the head (tests excluded).
+
+    A live allowlist entry of the repository excuses the added paths it covers; an entry whose date
+    has come excuses nothing and is itself a finding, so ``today`` is required with an allowlist.
+    """
+    entries = tuple(entry for entry in allowlist if entry.repo == head.repo)
+    if entries and today is None:
+        raise ValueError("an allowlist is judged on a day: pass today")
     graph = build_graph([head], rules)
     added = sorted(
         path
         for path in head.files
         if path.endswith(".py") and path not in base.files and not rules.is_test(path)
     )
-    flagged = tuple(path for path in added if (head.repo, path) not in graph.reached)
+    unreached = [path for path in added if (head.repo, path) not in graph.reached]
+    live = tuple(
+        entry for entry in entries if today is not None and not entry.expired_on(today)
+    )
+    allowed = tuple(
+        path for path in unreached if any(entry.covers(path) for entry in live)
+    )
     return ModelGraphCheckResult(
         repo=head.repo,
         base=base.head,
         head=head.head,
         added=len(added),
-        flagged=flagged,
+        flagged=tuple(path for path in unreached if path not in allowed),
+        allowed=allowed,
+        expired=tuple(
+            f"{entry.path} expired {entry.expires.isoformat()}"
+            for entry in entries
+            if today is not None and entry.expired_on(today)
+        ),
     )
