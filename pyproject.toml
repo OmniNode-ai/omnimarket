@@ -1119,6 +1119,7 @@ node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owe
 node_runner_group_exposure_compute = "omnimarket.nodes.node_runner_group_exposure_compute"
 node_runner_group_exposure_effect = "omnimarket.nodes.node_runner_group_exposure_effect"
 node_runner_orchestrator = "omnimarket.nodes.node_runner_orchestrator"
+node_runner_pool_canary_compute = "omnimarket.nodes.node_runner_pool_canary_compute"
 node_runner_workspace_retention_effect = "omnimarket.nodes.node_runner_workspace_retention_effect"
 node_runtime_closeout_orchestrator = "omnimarket.nodes.node_runtime_closeout_orchestrator"
 node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
