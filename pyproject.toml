@@ -1726,14 +1726,6 @@ dev = [
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
     "types-jsonschema>=4.25.1.20251222",
-    # OMN-22573: the Wire Compatibility Gate's real-history replay
-    # (tests/ci/test_check_wire_compatibility_omn18868.py) imports the released
-    # v0.4.133 tree, whose evidence_pipeline wire types import omnibase_compat.
-    # omnibase-infra stopped declaring omnibase-compat in the tag this branch
-    # pins, so without this entry the replay probe dies with
-    # ModuleNotFoundError instead of refusing the field. Test-only; no module in
-    # src/ imports it (the floor comment on omnibase-core above still holds).
-    "omnibase-compat==0.5.7",
 ]
 
 [tool.coverage.run]
