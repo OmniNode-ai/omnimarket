@@ -303,7 +303,7 @@ class HandlerSecretJoinJ4:
                 correlation_id=command.correlation_id,
                 phase="failure",
                 emitted_at=self._clock(),
-                backend="in_memory" if backend == "in_memory" else "real",
+                backend=backend,
                 drill=self._join.drill,
                 failure_code=UPSTREAM_PREFIX + code,
                 failure_detail=f"scan not run: {code}",
