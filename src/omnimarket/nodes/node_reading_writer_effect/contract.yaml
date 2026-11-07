@@ -21,7 +21,8 @@ description: >
   NOT_WORKING or UNKNOWN per piece, and appends one reading row per piece. A conflicting
   duplicate fails the window; the same row key with different content is a replay failure; a
   source that cannot be read gives UNKNOWN; a window that has not reached its cutoff is refused
-  with a typed failure.
+  with a typed failure. A piece that declares landing requirements (piece 9) is read from the pull
+  request watcher's snapshot through the overlay's landing route, beside the ledger rows of its canary.
 
 handler:
   module: omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
