@@ -9,6 +9,7 @@ reports ``error`` and runs no ssh.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -139,3 +140,22 @@ def test_with_no_host_table_the_probe_reports_error_naming_the_overlay(
     run_mock.assert_not_called()
     assert result["status"] == "error"
     assert "lab_hosts" in result["details"]["error"]
+
+
+@pytest.mark.unit
+def test_no_login_literal_remains_in_the_node_source() -> None:
+    node_root = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_integration_sweep_orchestrator"
+    )
+    literal = re.compile(r"\"[A-Za-z_][A-Za-z0-9_-]*@\{")
+    offenders = [
+        f"{path.name}:{number}"
+        for path in node_root.rglob("*.py")
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if literal.search(line)
+    ]
+    assert offenders == []

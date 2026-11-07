@@ -40,8 +40,17 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: bash -c '! grep -rnE "\"[A-Za-z_][A-Za-z0-9_-]*@\{" src/omnimarket/nodes/node_integration_sweep_orchestrator --include=*.py'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py -q --no-cov --tb=line -k no_login_literal
+    cwd: .
+- id: dod-omn22621-deploy
+  description: The sweep node's surface probes build the ssh destination from the lab host row's ssh_user, so the deployed sweep carries no login literal and refuses a host without a row. The deploy check runs the destination tests against the changed handler.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py -q --no-cov --tb=line -k "destination or refus"
     cwd: .
 - id: dod-omn22621-integration-proof
   description: The pushed head runs the node's tests on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
