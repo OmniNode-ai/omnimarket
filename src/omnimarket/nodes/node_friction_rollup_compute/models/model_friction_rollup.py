@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.events.friction_rollup import (
+from omnimarket.models.model_friction_rollup_shared import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
     ModelFrictionRollupRequest,
