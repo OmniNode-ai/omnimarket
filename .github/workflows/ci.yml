@@ -396,8 +396,12 @@ jobs:
       # This strict lint job already gates CI Summary, including docs-only PRs.
       - name: CI Summary external producer trigger parity
         run: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
+      # OMN-22020: omnibase-core moved this check from scripts/validation into its
+      # validation package (the pinned core tag no longer ships the script); same
+      # detector, same scope (src/), run through core's validator runtime as the
+      # check-stub-implementations pre-commit hook does.
       - name: Stub implementation check
-        run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
+        run: git ls-files 'src/*.py' | xargs env -u PYTHONPATH uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_stub_implementations:ValidatorStubImplementations
       - name: TODO format check
         run: |
           # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
