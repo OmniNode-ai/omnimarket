@@ -13,10 +13,19 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: one command delivers the overlay to the issuer host and the env file carries PRINCIPAL_ISSUER_OVERLAY_FILE, read back from the host -- falsifier: uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q"
+  - id: "req-omn21899-bringup-run"
+    statement: |-
+      One run drives one host toward one top target, one action per pass, under a fenced lease; exit 0 up, 75 waiting on a person, 1 a target failed, 2 usage, 3 the lease is held or the fence was replaced; one terminal per run id, emitted before the lease is released; every run owed a terminal is closed abandoned at takeover; every host action runs inside the fenced lock and renews the lease to start plus lease_grace_s; a wait passes only on its check reading ok.
+  - id: "req-omn21899-declared-once"
+    statement: |-
+      A host is declared once in the owner copy of the lab host table; every other copy is derived from it, a hand-added host, column or value in any copy is named by surface, host and field, and the in-service flip changes the declaration only.
 evidence_requirements:
   - kind: "tests"
     description: "The focused node tests pass."
     command: "uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q --no-cov"
+  - kind: "tests"
+    description: "The run and derive suites pass at the pushed head."
+    command: "uv run pytest tests/unit/nodes/test_node_host_bringup_run.py tests/unit/nodes/test_node_host_declaration_derive.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -36,4 +45,18 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_issuer_overlay_delivery_effect/models/model_overlay_delivery.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"PRINCIPAL_ISSUER_OVERLAY_FILE\")' | grep -qx true"
+        cwd: "."
+  - id: "dod-omn21899-bringup-run"
+    description: "The run suite: exit codes, lease takeover, terminal if-absent and before release, renewal at action start, stale holder refused, wait timeout, flip last on the committed 57-target graph."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_node_host_bringup_run.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn21899-declared-once"
+    description: "The derive suite: in sync, flip, a host left unavailable in two copies, a hand-added column, value drift, missing and surplus hosts, refusals."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_node_host_declaration_derive.py -q --no-cov --tb=line"
         cwd: "."
