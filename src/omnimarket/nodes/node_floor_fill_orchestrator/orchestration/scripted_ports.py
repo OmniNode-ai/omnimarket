@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 from pydantic import ValidationError
 
@@ -45,6 +46,8 @@ class ScriptedClock:
 
 class ScriptedFacts:
     """The floor, plan texts, brake and stop signal; any of them can be made unreadable."""
+
+    synchronous_execution: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -210,7 +213,7 @@ class ScriptedTickets:
 class ScriptedStarter:
     """The process effect for detached starts: records each start, answers ``failed`` for the keys told to, and can run a hook."""
 
-    synchronous_execution = True
+    synchronous_execution: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -248,7 +251,7 @@ class ScriptedStarter:
 class ScriptedCommandRunner:
     """The process effect for the forward: records argv and timeout, answers from a script."""
 
-    synchronous_execution = True
+    synchronous_execution: ClassVar[bool] = True
 
     def __init__(self, outcome: ModelRunOutcome) -> None:
         self.outcome = outcome
