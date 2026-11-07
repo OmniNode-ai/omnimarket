@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-22919
+title: "Piece 9's first task: the J8 join test: a lab-bound check run posts on the exact head and the landing decision node reads it, and a missing or superseded check holds the head, golden and error"
+summary: The landing decision node gains an optional lab_check fact on each PR and a J8 join handler. A head whose lab-bound check has a passing run on the exact head carrying the current attempt's identity is judged mergeable; a missing check, a check from a superseded attempt, a failing check and a still-running check each hold the head with their own named reason. The join handler answers piece 9's chain on the floor's emission contract under the correlation id piece 8's chain carries, so the floor's own receipt fold reads the pair as golden and error. A runner-group reading names any public repository a lab runner group lets reach its runners. A PR with no lab_check fact decides exactly as before, so the running landing tick is unchanged until a collector supplies the fact (not part of this change).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22919-j8-join
+  statement: A lab-bound check run on the exact head, carrying the current attempt's identity, is read by the landing decision; a missing or superseded check holds the head.
+  acceptance:
+  - id: AC1
+    statement: "AC1: golden join test: a head with the current attempt's check run passing is judged mergeable by node_pr_landing_decision_compute -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q -k golden"
+  - id: AC2
+    statement: "AC2: error join test: a missing check and a check from a superseded attempt each hold the head and the held reason names which -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q -k error"
+  - id: AC3
+    statement: "AC3: a runner-group read shows no public repository reaches a lab runner and the floor shows J8 with ages -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q -k runner_group"
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22919-j8-golden
+  description: The golden join tests pass; on the dev source they fail at collection because the join handler does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly -k golden
+    cwd: .
+- id: dod-omn22919-j8-error
+  description: The error join tests pass; the control tests show the reading the floor gave before this handler (broken) and two injected breaks (a judge that counts any attempt, a judge that counts any head) turning the error assertions red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly -k error
+    cwd: .
+- id: dod-omn22919-j8-runner-group
+  description: The runner-group tests pass, in memory and from a saved snapshot file; an injected break (a read that ignores the group's public flag) reads clean over a group open to public repositories.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly -k runner_group
+    cwd: .
+- id: dod-omn22919-j8-floor
+  description: The served floor reads J8 as something other than broken. Hosted CI cannot reach the floor host (the URL is in FLOOR_SIMPLE_URL), so only the local Done gate runs this unbound check. It reads not_run until the handler runs on the dev bus under piece 8's correlation ids (not part of this change).
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: "curl -s -m 20 \"${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}\" | python3 -c \"import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['pieces'][7]['joins'][0]['state'] not in ('broken','not_run') else 1)\""
+    cwd: .
+- id: dod-omn22919-integration-proof
+  description: The pushed head ran the J8 join tests and the landing decision node suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22919 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute -q --no-cov -n 0 -p no:randomly'
+    cwd: .
