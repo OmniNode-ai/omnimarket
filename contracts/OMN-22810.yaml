@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22810
+title: The main page's rebuild strip opens a side panel and shows a hover tooltip for each piece
+summary: Each piece row of the floor record gains what, reason, next_text, window_s, golden_in_window and error_in_window, computed by node_floor_simple_compute from the overlay and the receipts' chains. The main page makes each piece on the rebuild strip a link to #piece-N, shows a tooltip on hover or focus, and opens a side panel from the right (from the bottom on a phone) that closes on Esc, the close button, a click outside or Back. The panel reads only the record the page already loads.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22810-piece-panel
+  statement: A reader can hover a piece on the main page's rebuild strip for a short reading and open its details in a panel without leaving the page.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each piece row carries the overlay sentence, its reason, the next step and the golden and error chains inside the window, and unread receipts give none instead of zero -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_piece_panel_cells_floor_simple_compute.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the page keeps the parts that open and close the panel and does not lock or resize the body -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the served page opens the panel at desktop and phone size and closes it by Esc, the close button, a click outside and Back -- falsifier: a Playwright run against the served page of the branch with screenshots, and the same run against dev finding no panel'
+evidence_requirements:
+- kind: tests
+  description: The compute cells and the page parts.
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_compute tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22810-ac1
+  description: The compute cell tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_piece_panel_cells_floor_simple_compute.py -q --no-cov
+- id: dod-omn22810-ac2
+  description: The page part tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
