@@ -120,6 +120,10 @@ runtime:
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
   theme_css_relpath: page/vendor/omniui
+  # The site's icons: an SVG, a 32 px PNG and an apple-touch icon, drawn from one mark in the site's own colours. Each is
+  # published under its own name at the site's root, ahead of the pages, and every page head links them with a path that
+  # resolves from where the page is served.
+  icons_relpath: page/icons
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
@@ -227,6 +231,7 @@ runtime:
     delegation: delegation.json
     status: publish-status.json
     theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
+    icons: [favicon.svg, favicon-32.png, apple-touch-icon.png]
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60

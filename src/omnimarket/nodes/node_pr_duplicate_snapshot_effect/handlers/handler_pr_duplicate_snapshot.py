@@ -29,6 +29,7 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
 )
+from omnimarket.models.model_github_gateway_io import ModelOpenPrFactsResult
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumStackBaseRule,
     ModelDuplicateDigestConfig,
@@ -41,6 +42,10 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelPrDuplicateSnapshotRequest,
     ModelPrDuplicateSnapshotResult,
     ModelPrTouch,
+)
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
+    OpenPrFactsUnreadableError,
+    ProtocolOpenPrFactsSource,
 )
 
 logger = logging.getLogger(__name__)
@@ -281,6 +286,71 @@ def _load_watcher(path: Path | None, now: datetime) -> dict[str, object]:
             "the watcher is not ticking, so the open pull requests cannot be trusted"
         )
     return state
+
+
+def _state_from_gateway(
+    repo: str, source: ProtocolOpenPrFactsSource, now: datetime
+) -> dict[str, object]:
+    """The open pull requests of ``repo`` read live from the gateway, in the watcher state's own shape.
+
+    The fold reads the same records whichever source gave them. The list is complete or it is an error:
+    a cut or a mismatched answer never stands for "no other pull request is open" (OMN-22654).
+    """
+    result: ModelOpenPrFactsResult = source.read(repo)
+    if result.repo.casefold() != repo.casefold():
+        raise OpenPrFactsUnreadableError(f"it answered for {result.repo}, not {repo}")
+    if result.truncated:
+        total = result.total_count if result.total_count is not None else "more"
+        raise OpenPrFactsUnreadableError(
+            f"it was cut at {len(result.prs)} of {total} open pull requests, so it cannot say "
+            "that none of the rest duplicates this one"
+        )
+    short = repo.split("/")[-1]
+    return {
+        "schema": WATCHER_SCHEMA,
+        "last_tick": now.isoformat(),
+        "prs": {
+            f"{short}#{pr.number}": {
+                "facts": {
+                    "state": "OPEN",
+                    "repo": short,
+                    "number": pr.number,
+                    "head_ref": pr.head_ref,
+                    "head_sha": pr.head_sha,
+                    "base": pr.base_ref,
+                    "title": pr.title,
+                    "body": "\n".join(pr.fix_markers),
+                    "draft": pr.draft,
+                }
+            }
+            for pr in result.prs
+        },
+    }
+
+
+def _open_pr_state(
+    repo: str,
+    watcher_state: Path | None,
+    now: datetime,
+    open_prs_source: ProtocolOpenPrFactsSource | None,
+) -> dict[str, object]:
+    """The open pull requests: the PR watcher's fresh state, else a live gateway read, else unchecked.
+
+    A host that has no watcher state (a lab host) or whose watcher is not ticking reads the gateway. When
+    that read is not possible either, the guard is unchecked and the reason names both reads it lacks.
+    """
+    try:
+        return _load_watcher(watcher_state or default_watcher_state_path(), now)
+    except DuplicateGuardUncheckedError as watcher:
+        if open_prs_source is None:
+            raise
+        try:
+            return _state_from_gateway(repo, open_prs_source, now)
+        except OpenPrFactsUnreadableError as gateway:
+            raise DuplicateGuardUncheckedError(
+                f"{watcher}; and the gateway read of the open pull requests of {repo} "
+                f"(open_pr_facts) failed: {gateway}"
+            ) from None
 
 
 def _load_ledger(path: Path | None) -> str:
@@ -565,10 +635,11 @@ def read_request(
     clone: Path | None = None,
     worktree: Path | None = None,
     now: datetime | None = None,
+    open_prs_source: ProtocolOpenPrFactsSource | None = None,
 ) -> ModelPrDuplicateGuardRequest:
     """The fold's request for one new pull request, or ``DuplicateGuardUncheckedError``."""
     moment = now or datetime.now(UTC)
-    state = _load_watcher(watcher_state or default_watcher_state_path(), moment)
+    state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
     declared = os.environ.get(LEDGER_ENV)
     ledger_text = _load_ledger(ledger or (Path(declared) if declared else None))
     where = clone or default_clone_path(repo)
@@ -597,7 +668,12 @@ def read_request(
 
 
 class HandlerPrDuplicateSnapshot:
-    """Read the watcher state, the ledger and git for one pull request about to be opened."""
+    """Read the watcher state (or the gateway), the ledger and git for one pull request about to be opened."""
+
+    def __init__(
+        self, open_prs_source: ProtocolOpenPrFactsSource | None = None
+    ) -> None:
+        self._open_prs_source = open_prs_source
 
     def handle(
         self, request: ModelPrDuplicateSnapshotRequest
@@ -617,6 +693,7 @@ class HandlerPrDuplicateSnapshot:
                 ledger=Path(request.ledger) if request.ledger else None,
                 clone=Path(request.clone) if request.clone else None,
                 worktree=Path(request.worktree) if request.worktree else None,
+                open_prs_source=self._open_prs_source,
             )
         except DuplicateGuardUncheckedError as exc:
             return ModelPrDuplicateSnapshotResult(unchecked_reason=str(exc))
