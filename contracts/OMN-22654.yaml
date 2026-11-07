@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-22654
+title: onex scm pr-create on a lab host reads the open pull requests from the GitHub gateway when it has no PR watcher state, so the duplicate guard decides there and still refuses when it cannot read
+summary: A lab host has no PR watcher state file, so the duplicate-fix guard of onex scm pr-create refused every pull request a landing cause or fix worker tried to open there. The guard now reads the open pull requests from the gateway's open_pr_facts operation when the watcher state cannot be read, folds them with the same rules, and stays unchecked naming both reads it lacks when the gateway read fails too.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn22654-gateway-read
+  statement: The duplicate-fix guard reads the open pull requests of the repository from the gateway when the PR watcher state cannot be read, decides with the same fold, and refuses, naming the read it lacks, when that read fails.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with no PR watcher state file the guard reads the open pull requests of the repository from the gateway and answers clear, or the pull request to adopt, as it does from the watcher state -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a gateway read that fails, is truncated or is refused leaves the guard unchecked with exit 3, and the answer names the read it lacks -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -k unchecked -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the gateway operation open_pr_facts returns number, head branch, head sha, base, title, draft and the Fix-Check and Fix-Cause lines of every open pull request, and says when it cut -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_gateway_effect/test_open_pr_facts.py -q --no-cov'
+  - id: AC4
+    statement: 'AC4: the recorded refusals of the lab workers fail the guard at dev with no watcher state and pass the branch with a gateway answer -- falsifier: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -k recorded -q --no-cov'
+  - id: AC5
+    statement: 'AC5: on a lab host from the branch, onex scm pr-create with --dry-run and no watcher state reaches the write node''s dry run, and the same command at dev refuses with exit 3 -- falsifier: python3 onex_lab_run.py --host h053 -- onex scm pr-create at the branch and at dev'
+evidence_requirements:
+- kind: tests
+  description: The gateway source tests and the open_pr_facts tests pass
+  command: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py tests/unit/nodes/node_github_repo_gateway_effect/test_open_pr_facts.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22654-guard-gateway-source
+  description: The guard reads the gateway on a host with no watcher state, answers as it does from the watcher state, and is unchecked naming both reads when the gateway read fails. The tests run pr-create and pr-create --dry-run through the CLI with no watcher state; the lab run of the same command is the unbound item below.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC4
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -q --no-cov
+    cwd: .
+- id: dod-omn22654-open-pr-facts
+  description: The gateway operation open_pr_facts returns the facts the guard folds over and says when it cut.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_gateway_effect/test_open_pr_facts.py -q --no-cov
+    cwd: .
+- id: dod-omn22654-integration-proof
+  description: Run onex scm pr-create with --dry-run on a lab host from the pushed head with no watcher state, and the same command at dev. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22654 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -q --no-cov
+    cwd: .

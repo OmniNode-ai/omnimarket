@@ -63,6 +63,8 @@ from omnimarket.models.model_github_gateway_io import (
     ModelJobStep,
     ModelMergeCommitShaResult,
     ModelMergedPrResult,
+    ModelOpenPrFact,
+    ModelOpenPrFactsResult,
     ModelOpenPrsResult,
     ModelOpenPrSummary,
     ModelPrComment,
@@ -746,6 +748,67 @@ def read_pr_heads(
     )
 
 
+# The lines of a PR body the duplicate-fix guard reads (``Fix-Check:`` and ``Fix-Cause:``), in the
+# guard's own spelling: line start, any case.
+_FIX_MARKER_LINE = re.compile(r"^Fix-(?:Check|Cause):[ \t]*.+$", re.M | re.I)
+_MAX_FIX_MARKERS = 8
+_MAX_FIX_MARKER_CHARS = 500
+
+
+def _open_pr_fact(item: dict[str, object]) -> ModelOpenPrFact:
+    """One REST pull-request item as the facts the duplicate-fix guard needs.
+
+    A PR the read cannot shape is an error, never a skipped PR: a guard that dropped one would
+    decide without it.
+    """
+    head, base = item.get("head"), item.get("base")
+    body = item.get("body")
+    markers = (
+        [
+            found.group(0)[:_MAX_FIX_MARKER_CHARS]
+            for found in _FIX_MARKER_LINE.finditer(body)
+        ][:_MAX_FIX_MARKERS]
+        if isinstance(body, str)
+        else []
+    )
+    title = item.get("title")
+    return ModelOpenPrFact.model_validate(
+        {
+            "number": item.get("number"),
+            "head_ref": _nested_str(head, "ref"),
+            "head_sha": _nested_str(head, "sha"),
+            "base_ref": _nested_str(base, "ref"),
+            "title": title if isinstance(title, str) else "",
+            "draft": bool(item.get("draft", False)),
+            "fix_markers": markers,
+        }
+    )
+
+
+def read_open_pr_facts(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelOpenPrFactsResult:
+    """Every open PR with the facts the duplicate-fix guard folds over (OMN-22654).
+
+    One REST list of the open PRs, newest first, cut at the request's limit and flagged when cut.
+    The PR body does not travel: only its ``Fix-Check:`` and ``Fix-Cause:`` lines do.
+    """
+    raw, total, cut = _collect(
+        transport,
+        pull_requests_request(
+            request.repo, state="open", per_page=min(request.limit, LIST_PAGE_SIZE)
+        ),
+        item_key="value",
+        limit=request.limit,
+    )
+    return ModelOpenPrFactsResult(
+        repo=request.repo,
+        prs=[_open_pr_fact(item) for item in raw],
+        total_count=total,
+        truncated=cut,
+    )
+
+
 def read_commit_check_runs(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelCommitCheckRunsResult:
@@ -933,6 +996,7 @@ __all__: list[str] = [
     "read_job_log_tail",
     "read_merge_commit_sha",
     "read_merged_pr",
+    "read_open_pr_facts",
     "read_open_prs_list",
     "read_pr_heads",
     "read_pr_review_threads",
