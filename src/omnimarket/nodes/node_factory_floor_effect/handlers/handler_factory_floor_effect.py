@@ -16,6 +16,7 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.models.cloud_session_placement import ModelCloudSessionPlacementResult
+from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorCloudAccount,
@@ -196,6 +197,15 @@ class HandlerFactoryFloorEffect:
             if not request.plan_path_contains:
                 raise
             overlay = None
+        try:
+            goal_scope: ModelGoalScope | None = load_structured_overlay(
+                rt.goal_scope_overlay_id,
+                ModelGoalScope,
+                file_env=rt.goal_scope_file_env,
+            )
+        except NodeOverlayError:
+            # An unread scope lists no stopped lane, and the record says so under floor.stopped_cause.
+            goal_scope = None
         contains = request.plan_path_contains or (
             overlay.plan_path_contains if overlay is not None else ()
         )
@@ -280,6 +290,7 @@ class HandlerFactoryFloorEffect:
             ),
             watcher=watcher,
             ledger=ledger,
+            goal_scope=goal_scope,
             lane_processes=load_lane_processes(
                 ledger,
                 directory=resolve_dir(

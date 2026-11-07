@@ -104,6 +104,9 @@ class ModelFactoryFloorRuntime(BaseModel):
     home_env: str = Field(min_length=1)
     plans_kb_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
+    # The landing goal's scope overlay (the one the simple floor reads): the stopped-lane list needs it, and lists none unread.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
