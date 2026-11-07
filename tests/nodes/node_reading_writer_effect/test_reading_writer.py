@@ -361,6 +361,34 @@ def test_the_command_route_never_turns_an_error_or_truncation_into_an_empty_answ
     assert missing.rows == ()
 
 
+_STUB_REFUSED = """
+import sys
+sys.stdin.read()
+sys.stderr.write({text!r})
+sys.exit(1)
+"""
+
+
+def test_refusal_class_of_a_failed_read_is_kept() -> None:
+    """Recorded: h053 ticks at 19:15Z and 20:15Z read `read-command-exit-1` and nothing more (OMN-22775)."""
+    refused = CommandLedgerRowSource(
+        [
+            sys.executable,
+            "-c",
+            _STUB_REFUSED.format(
+                text="Error: Work-ledger read refused (DelegateLaneSelectionError)\n"
+            ),
+        ],
+        30,
+        1000,
+    ).read(_query())
+    assert refused.error == "read-command-exit-1:DelegateLaneSelectionError"
+    unnamed = CommandLedgerRowSource(
+        [sys.executable, "-c", _STUB_REFUSED.format(text="boom\n")], 30, 1000
+    ).read(_query())
+    assert unnamed.error == "read-command-exit-1"
+
+
 _STUB_APPEND = """
 import json, sys
 rows = sys.stdin.read()
