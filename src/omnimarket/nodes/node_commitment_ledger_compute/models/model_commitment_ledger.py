@@ -19,11 +19,12 @@ from omnimarket.nodes.node_commitment_ledger_compute.models.model_commitment_rul
 
 
 class ModelCommitmentLedgerRequest(BaseModel):
-    """`build_open_row` writes the row that records an ask; `fold` reads every commitment from ledger rows."""
+    """`build_open_row` writes the row that records an ask, `build_withdraw_row` the row that withdraws it; `fold` reads
+    every commitment from ledger rows."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["build_open_row", "fold"]
+    operation: Literal["build_open_row", "build_withdraw_row", "fold"]
     rules: ModelCommitmentRules
     now: datetime
     # build_open_row: the lane writing the row, the ask as the operator said it, who owes it and the check.
@@ -33,6 +34,8 @@ class ModelCommitmentLedgerRequest(BaseModel):
     check: str = ""
     ticket: str | None = None
     requires: tuple[str, ...] = ()
+    # build_withdraw_row: the commitment no longer wanted (lane is the writer).
+    commitment_id: str = ""
     # fold: the ledger rows to read; rows of other kinds are skipped.
     ledger_rows: tuple[ModelLedgerEvidenceRow, ...] = ()
 
@@ -42,7 +45,7 @@ class ModelCommitmentLedgerResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["build_open_row", "fold"]
+    operation: Literal["build_open_row", "build_withdraw_row", "fold"]
     row: str | None = None
     refusals: tuple[str, ...] = ()
     commitments: tuple[ModelCommitment, ...] = ()

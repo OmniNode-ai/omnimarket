@@ -115,9 +115,12 @@ class HandlerCommitmentCheckRunner:
         due = [
             c
             for c in commitments
-            if c.status is not EnumCommitmentStatus.VERIFIED
-            or c.last_checked_at is None
-            or now - c.last_checked_at >= interval
+            if c.status is not EnumCommitmentStatus.WITHDRAWN
+            and (
+                c.status is not EnumCommitmentStatus.VERIFIED
+                or c.last_checked_at is None
+                or now - c.last_checked_at >= interval
+            )
         ]
         return due[: self._rules.max_checks_per_run]
 

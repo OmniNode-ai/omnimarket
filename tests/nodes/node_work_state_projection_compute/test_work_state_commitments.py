@@ -109,6 +109,19 @@ def test_a_verified_commitment_is_done_and_not_dispatched(rules, now) -> None:
     assert item not in result.ready()
 
 
+def test_a_withdrawn_commitment_is_done_and_not_dispatched(rules, now) -> None:
+    result = _project(
+        now=now,
+        rules=rules,
+        scope=ModelWorkScope(),
+        commitments=[_commitment(now, "withdrawn")],
+    )
+    item = _item(result, KEY)
+    assert item.state is EnumWorkItemState.DONE
+    assert "withdrawn" in item.reason
+    assert item not in result.ready()
+
+
 def test_a_regressed_commitment_is_available_again_and_says_so(rules, now) -> None:
     result = _project(
         now=now,

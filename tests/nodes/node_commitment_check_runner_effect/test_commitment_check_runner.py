@@ -10,6 +10,7 @@ named injected breaks (a runner that reads any exit as a pass, one that never re
 from __future__ import annotations
 
 import sys
+from datetime import timedelta
 
 import pytest
 
@@ -153,6 +154,19 @@ def test_verified_commitment_past_the_interval_and_still_passing_gets_a_fresh_re
     result, ledger = _run(lines, executor)
     assert result.outcomes[0].result == "refreshed"
     assert len(ledger.lines) == 3
+
+
+def test_a_withdrawn_commitment_is_never_checked() -> None:
+    cid = commitment_id()
+    withdrawn = (
+        f"{(RUN_AT - timedelta(minutes=30)):%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=me | kind=commitment | "
+        f"commitment={cid} | status=withdrawn | the ask was withdrawn"
+    )
+    executor = InMemoryCheckExecutor({CHECK: PASS})
+    result, ledger = _run([open_commitment_line(), withdrawn], executor)
+    assert result.outcomes == ()
+    assert executor.calls == []
+    assert len(ledger.lines) == 2
 
 
 def test_a_check_outside_the_allowlist_is_refused_and_never_executed() -> None:

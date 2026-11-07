@@ -52,6 +52,7 @@ CLAIM = "CLAIM"
 TERMINAL = "TERMINAL"
 COMMITMENT_VERIFIED = "verified"
 COMMITMENT_REGRESSED = "regressed"
+COMMITMENT_WITHDRAWN = "withdrawn"
 OUTCOME_CELL = "outcome"
 READING_PREFIX = "reading:"
 _PR_REF = re.compile(r"^(?:[\w.-]+/)?(?P<repo>[\w.-]+)#(?P<number>\d+)$")
@@ -339,8 +340,10 @@ class HandlerWorkStateProjection:
                 title=c.ask,
                 ticket=c.ticket,
                 aliases={key},
-                done=c.status == COMMITMENT_VERIFIED,
-                done_reason=f"check passes (exit {c.last_exit})",
+                done=c.status in (COMMITMENT_VERIFIED, COMMITMENT_WITHDRAWN),
+                done_reason="withdrawn"
+                if c.status == COMMITMENT_WITHDRAWN
+                else f"check passes (exit {c.last_exit})",
                 requires=tuple(normalize_ref(r, rules) for r in c.requires),
                 # An operator's ask is in scope by being asked; only a ticket the goal pauses pauses it.
                 scope=EnumScopeStatus.PAUSED

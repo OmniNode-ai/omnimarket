@@ -8,8 +8,11 @@ from enum import StrEnum
 
 
 class EnumCommitmentStatus(StrEnum):
-    """A commitment is open until its check passes, verified while it passes, regressed when it failed after passing."""
+    """Open until its check passes, verified while it passes, regressed when it failed after passing.
+
+    Withdrawn is final: the operator no longer wants the ask, so it is no work and its check is never run."""
 
     OPEN = "open"
     VERIFIED = "verified"
     REGRESSED = "regressed"
+    WITHDRAWN = "withdrawn"

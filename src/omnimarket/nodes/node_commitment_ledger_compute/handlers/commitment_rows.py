@@ -147,6 +147,30 @@ def result_row(
     return " | ".join((stamp_of(now), rules.row_type, *cells, text))
 
 
+def withdraw_row_refusals(lane: str, cid: str) -> list[str]:
+    reasons: list[str] = []
+    if not grammar.LANE_TOKEN_RE.match(lane):
+        reasons.append(f"lane={lane!r} is not a lane token")
+    if grammar.ID_RE.match(cid) is None:
+        reasons.append(
+            f"commitment={cid!r} is not a commitment id (<timestamp>-<lane>)"
+        )
+    return reasons
+
+
+def withdraw_row(
+    rules: ModelCommitmentRules, now: datetime, lane: str, cid: str
+) -> str:
+    cells = [
+        f"lane={lane}",
+        f"{rules.kind_cell}={rules.kind_value}",
+        f"{ID_CELL}={cid}",
+        f"{STATUS_CELL}={EnumCommitmentStatus.WITHDRAWN.value}",
+    ]
+    text = "The commitment was withdrawn: it is no work and its check is not run."
+    return " | ".join((stamp_of(now), rules.row_type, *cells, text))
+
+
 def _cell_values(row: ModelLedgerEvidenceRow, key: str) -> str | None:
     """The first value of a cell, read from the row's text so a value holding `=` or spaces is whole."""
     for part in row.raw.split(" | ")[2:]:
@@ -216,15 +240,13 @@ def fold_commitments(
         if cid not in opened:
             malformed.append(f"{cid}: reading for a commitment no row opened")
             continue
-        if (
-            status
-            not in (
-                EnumCommitmentStatus.VERIFIED.value,
-                EnumCommitmentStatus.REGRESSED.value,
-            )
-            or exit_text is None
-            or not exit_text.lstrip("-").isdigit()
-        ):
+        withdrawn = status == EnumCommitmentStatus.WITHDRAWN.value
+        checked = status in (
+            EnumCommitmentStatus.VERIFIED.value,
+            EnumCommitmentStatus.REGRESSED.value,
+        )
+        exit_ok = exit_text is not None and exit_text.lstrip("-").isdigit()
+        if not (withdrawn or (checked and exit_ok)):
             malformed.append(f"{cid}: reading with status={status} exit={exit_text}")
             continue
         readings[cid].append(r)
@@ -232,19 +254,27 @@ def fold_commitments(
     for cid, commitment in opened.items():
         update: dict[str, object] = {}
         mine = readings.get(cid, [])
-        if mine:
-            newest = mine[-1]
+        checks = [
+            m
+            for m in mine
+            if _cell_values(m, STATUS_CELL) != EnumCommitmentStatus.WITHDRAWN.value
+        ]
+        if checks:
+            newest = checks[-1]
             update = {
                 "status": EnumCommitmentStatus(_cell_values(newest, STATUS_CELL) or ""),
                 "last_checked_at": newest.stamp,
                 "last_exit": int(_cell_values(newest, EXIT_CELL) or "0"),
                 "regressions": sum(
                     1
-                    for m in mine
+                    for m in checks
                     if _cell_values(m, STATUS_CELL)
                     == EnumCommitmentStatus.REGRESSED.value
                 ),
             }
+        # Withdrawn is final: a reading that races in after the withdrawal does not undo it.
+        if len(checks) != len(mine):
+            update["status"] = EnumCommitmentStatus.WITHDRAWN
         folded.append(commitment.model_copy(update=update))
     folded.sort(key=lambda c: (c.opened_at, c.commitment_id))
     return folded, malformed
@@ -257,4 +287,6 @@ __all__ = [
     "open_row",
     "open_row_refusals",
     "result_row",
+    "withdraw_row",
+    "withdraw_row_refusals",
 ]

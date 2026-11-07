@@ -220,6 +220,49 @@ def test_malformed_and_orphan_rows_are_named_never_dropped(
     assert any("ghost" in m for m in result.malformed)
 
 
+def test_a_withdrawn_commitment_stays_withdrawn_whatever_reading_follows(
+    commitment_rules, now, row
+) -> None:
+    opened = _open_line(commitment_rules, now - timedelta(hours=3))
+    cid = f"{(now - timedelta(hours=3)):%Y-%m-%dT%H:%M:%SZ}-orchestrator-31d9"
+    withdraw = _handle(
+        operation="build_withdraw_row",
+        rules=commitment_rules,
+        now=now - timedelta(hours=1),
+        lane="orchestrator-31d9",
+        commitment_id=cid,
+    )
+    assert withdraw.row is not None, withdraw.refusals
+    assert grammar.row_refusals(withdraw.row) == []
+    late_reading = row(
+        "STATUS",
+        "lane=commitment-check-runner",
+        "kind=commitment",
+        f"commitment={cid}",
+        "status=verified",
+        "exit=0",
+        minutes_ago=5,
+    )
+    folded = _fold(
+        commitment_rules,
+        now,
+        [_evidence(opened), _evidence(withdraw.row), late_reading],
+    )
+    assert folded.status is EnumCommitmentStatus.WITHDRAWN
+
+
+def test_a_withdrawal_naming_no_commitment_is_refused(commitment_rules, now) -> None:
+    result = _handle(
+        operation="build_withdraw_row",
+        rules=commitment_rules,
+        now=now,
+        lane="orchestrator-31d9",
+        commitment_id="not-an-id",
+    )
+    assert result.row is None
+    assert result.refusals
+
+
 def _evidence(line: str):
     from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
         evidence_row_from_text,
