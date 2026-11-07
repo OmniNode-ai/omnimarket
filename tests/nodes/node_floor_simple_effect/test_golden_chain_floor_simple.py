@@ -16,6 +16,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorSimple,
     ModelFloorSimpleInput,
@@ -24,9 +27,6 @@ from omnimarket.models.floor_17a import (
 )
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (
     HandlerFloorSimple,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
