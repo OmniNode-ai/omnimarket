@@ -153,5 +153,12 @@ def test_ignored_hook_event_is_skipped_in_the_savings_writer_handle() -> None:
     """OMN-23043: the savings writer skips an ignored hook event before any setup."""
     writer = SavingsProjectionWriter()
     topic = "onex.evt.omniclaude.hook-event.v1"
-    out = writer.handle({"_topic": topic, "hook_event_name": "PreToolUse"})
+    out = writer.handle(
+        {
+            "_topic": topic,
+            "_partition": 0,
+            "_offset": 0,
+            "hook_event_name": "PreToolUse",
+        }
+    )
     assert out == {"projected": True}

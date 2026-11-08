@@ -104,3 +104,12 @@ def test_other_topics_are_never_skipped(writer: SavingsProjectionWriter) -> None
         )
     )
     assert _RecordingRunner.constructed == 1
+
+
+def test_a_skipped_event_without_source_coordinates_fails_as_the_base_does(
+    writer: SavingsProjectionWriter,
+) -> None:
+    """Error chain: an ignored event lacking its coordinates is not silently passed over."""
+    with pytest.raises(KeyError, match="_partition"):
+        writer.handle({"_topic": HOOK_TOPIC, "_offset": 5, "hook_event_name": "Stop"})
+    assert _RecordingRunner.constructed == 0
