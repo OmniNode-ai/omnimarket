@@ -165,5 +165,12 @@
     "basis": "Four work-state projection test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were.",
     "runner": "lab host h101, lane landing-L31295; the next CI refresh replaces these entries",
     "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
+  },
+  "supplement_omn23013": {
+    "recorded_on": "2026-11-08",
+    "files_added": 13,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h053, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "042bd2e3d520546767285442bcb519a01791aa95"
   }
 }

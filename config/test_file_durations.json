@@ -4597,5 +4597,18 @@
   "tests/unit/nodes/node_network_graph_compute/test_dependency_gate.py": 0.144,
   "tests/unit/nodes/node_overlay_drift_effect/test_join_j3_golden.py": 0.128,
   "tests/unit/nodes/node_tailnet_https_serve_effect/test_live_readback_omn23120.py": 0.006,
-  "tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py": 0.458
+  "tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py": 0.458,
+  "tests/nodes/node_commitment_check_runner_effect/test_commitment_chain_events.py": 1.897,
+  "tests/nodes/node_commitment_check_runner_effect/test_commitment_check_runner.py": 1.242,
+  "tests/nodes/node_commitment_check_runner_effect/test_commitment_cli.py": 0.226,
+  "tests/nodes/node_commitment_check_runner_effect/test_commitment_schedule.py": 0.051,
+  "tests/nodes/node_commitment_check_runner_effect/test_review_findings.py": 0.068,
+  "tests/nodes/node_commitment_check_runner_effect/test_review_findings_runner.py": 1.306,
+  "tests/nodes/node_commitment_ledger_compute/test_commitment_rows.py": 0.11,
+  "tests/nodes/node_commitment_writer_effect/test_commitment_ids.py": 0.02,
+  "tests/nodes/node_commitment_writer_effect/test_commitment_writer_cli.py": 0.036,
+  "tests/nodes/node_work_state_projection_compute/test_work_state_commitment_source.py": 1.753,
+  "tests/nodes/node_work_state_projection_compute/test_work_state_commitments.py": 0.786,
+  "tests/nodes/node_work_state_projection_compute/test_work_state_effect_plans_root.py": 1.158,
+  "tests/nodes/node_work_state_projection_compute/test_work_state_review_findings.py": 0.448
 }
