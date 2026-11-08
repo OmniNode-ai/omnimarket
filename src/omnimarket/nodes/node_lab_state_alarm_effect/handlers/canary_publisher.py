@@ -14,6 +14,7 @@ silent once it is older than its bound.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -26,6 +27,19 @@ class CanaryPublishError(RuntimeError):
 
 
 RunGit = Callable[[Sequence[str], Path, int], tuple[int, str]]
+
+# What git can print about a remote that carries a credential: the userinfo of a URL, and the shapes of the tokens the
+# lab's remotes use. A typed failure names the git step and its words with these replaced, so no emission, record or
+# floor page that carries the failure can hold a credential (OMN-22924, AC3).
+_URL_USERINFO = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
+_TOKEN_SHAPES = re.compile(
+    r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
+)
+
+
+def redact(text: str) -> str:
+    """The text with every URL userinfo and token shape replaced; git's other words are kept."""
+    return _TOKEN_SHAPES.sub("***", _URL_USERINFO.sub(r"\g<scheme>***@", text))
 
 
 def run_git(argv: Sequence[str], cwd: Path, timeout_s: int) -> tuple[int, str]:
@@ -40,7 +54,9 @@ def run_git(argv: Sequence[str], cwd: Path, timeout_s: int) -> tuple[int, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 124, f"git did not run ({type(exc).__name__})"
-    return done.returncode, (done.stderr or done.stdout)[-300:]
+    # Redact the whole text first and take the tail of the redacted words: a tail cut before the redaction can begin inside
+    # ``user:password@`` with the scheme gone, and no pattern matches what is left.
+    return done.returncode, redact(done.stderr or done.stdout)[-300:]
 
 
 class GitCanaryPublisher:
@@ -58,7 +74,7 @@ class GitCanaryPublisher:
         code, tail = self._git(argv, self._dir, self._overlay.timeout_s)
         if code != 0:
             raise CanaryPublishError(
-                f"git {argv[0]} failed (exit {code}): {tail.strip()[:160]}"
+                f"git {argv[0]} failed (exit {code}): {redact(tail).strip()[:160]}"
             )
         return tail
 
@@ -95,4 +111,4 @@ class GitCanaryPublisher:
         self._step("push", "-q", "--force", "origin", f"HEAD:refs/heads/{ov.branch}")
 
 
-__all__ = ["CanaryPublishError", "GitCanaryPublisher", "RunGit", "run_git"]
+__all__ = ["CanaryPublishError", "GitCanaryPublisher", "RunGit", "redact", "run_git"]

@@ -30,3 +30,10 @@ schedule_hosts:
     environment:
       EXAMPLE_LEDGER_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
       EXAMPLE_HOST_NAME: example-lab-host
+# Optional (OMN-22909). A seam with `on_demand: true` has a node with an on-demand path only; the
+# reading attaches it for the demand through the attach-on-demand activation. `seam_declarations`
+# names each seam's trigger and bound sender; with it the row carries seams_automatic,
+# seams_on_demand and required_without_sender, and a required automatic seam with no sender
+# fails the run:
+# seam_declarations:
+#   - {seam: example-query, trigger: automatic, required: true, sender: node_example_sender_effect}

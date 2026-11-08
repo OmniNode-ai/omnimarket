@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_start_effect
+version: "0.1.0"
+description: "Effect: prepare a lane's worktree on a lab host, start its engine detached in a session of its own, read its log and exit, and stop it. Hosted on the host that leads the lane."
+pack: operator_tooling
+node_role: effect
+display_name: "Remote Lane Start Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_remote_lane_start_effect: "omnimarket.nodes.node_remote_lane_start_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase-spi>=0.20.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "remote-lane"]
