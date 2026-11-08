@@ -80,6 +80,10 @@ class ProtocolBringupBus(Protocol):
         """Append the terminal unless one exists for its run id; True when appended."""
         ...
 
+    def terminal_for(self, run_id: str) -> ModelBringupTerminalEvent | None:
+        """The one terminal already on the bus for ``run_id``, or None when it has none."""
+        ...
+
 
 __all__ = [
     "ProtocolBringupBus",

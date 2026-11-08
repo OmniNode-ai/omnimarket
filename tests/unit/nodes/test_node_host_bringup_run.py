@@ -217,6 +217,49 @@ def test_terminal_is_if_absent_on_the_run_id() -> None:
     assert [t.run_id for t in bus.terminals] == ["run-1"]
 
 
+def test_a_run_id_that_already_has_a_terminal_is_refused_as_usage_before_it_acts() -> (
+    None
+):
+    """One run id has one terminal: a retry under that id must not run and return a different outcome."""
+    host, lease, bus, clock = _world(satisfied=())
+    handler = _handler(host, lease, bus, clock)
+    first = handler.handle(_request("run-1", no_wait=True))
+    assert first.outcome is EnumRunOutcome.WAITING
+    host.satisfied.add(
+        "operator_sudo"
+    )  # the person step lands after the first run ended
+    fence_before = lease.fence
+    acts_before = list(host.acts)
+
+    retry = handler.handle(_request("run-1", no_wait=True))
+
+    assert retry.outcome is EnumRunOutcome.USAGE
+    assert retry.exit_code == 2
+    assert "run-1" in retry.detail
+    assert "waiting" in retry.detail
+    assert host.acts == acts_before
+    assert lease.fence == fence_before
+    assert [(t.run_id, t.outcome) for t in bus.terminals] == [
+        ("run-1", EnumRunOutcome.WAITING)
+    ]
+
+
+def test_a_new_run_id_after_a_waiting_run_acts_and_completes() -> None:
+    """The positive control of the refusal above: the same state under a fresh id runs to the end."""
+    host, lease, bus, clock = _world(satisfied=())
+    handler = _handler(host, lease, bus, clock)
+    handler.handle(_request("run-1", no_wait=True))
+    host.satisfied.add("operator_sudo")
+
+    again = handler.handle(_request("run-2", no_wait=True))
+
+    assert again.outcome is EnumRunOutcome.COMPLETED
+    assert {t.run_id: t.outcome for t in bus.terminals} == {
+        "run-1": EnumRunOutcome.WAITING,
+        "run-2": EnumRunOutcome.COMPLETED,
+    }
+
+
 def test_terminal_is_emitted_before_the_lease_is_released() -> None:
     """Verdict condition 3: terminal first, then release."""
     host, lease, bus, clock = _world()

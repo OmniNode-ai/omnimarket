@@ -150,6 +150,9 @@ class InMemoryBringupBus:
         self.journal.append((next(_SEQ), "terminal"))
         return True
 
+    def terminal_for(self, run_id: str) -> ModelBringupTerminalEvent | None:
+        return next((t for t in self.terminals if t.run_id == run_id), None)
+
 
 __all__ = [
     "InMemoryBringupBus",

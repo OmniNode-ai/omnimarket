@@ -15,7 +15,8 @@ The five conditions of the OMN-21882 design-review verdict, each held here:
 1. Takeover closes every run id in the lease's owed set ``abandoned``, and only
    then removes it from the set.
 2. Every path that ends a run emits its terminal through the bus's if-absent
-   append keyed on the run id.
+   append keyed on the run id; a request whose run id already has a terminal is
+   refused as usage before it acts, so the result never differs from the bus.
 3. The terminal is emitted before the lease is released.
 4. Every host action runs through ``lease.fenced``, which compares the fence and
    renews the lease to at least start plus ``lease_grace_s`` under the host lock
@@ -121,6 +122,22 @@ class HandlerHostBringupRun:
                 outcome=EnumRunOutcome.USAGE,
                 exit_code=EXIT_CODE[EnumRunOutcome.USAGE],
                 detail=f"target {request.top_target} names no declared target",
+            )
+        earlier = self._bus.terminal_for(request.run_id)
+        if earlier is not None:
+            # A run id has exactly one terminal (condition 2): a retry under it would act and then
+            # report an outcome the bus does not hold. It is the caller's request that is wrong, so it
+            # is a usage error (exit 2) raised before any lease or action, and nothing is emitted.
+            return ModelHostBringupRunResult(
+                run_id=request.run_id,
+                host=request.host,
+                fence=0,
+                outcome=EnumRunOutcome.USAGE,
+                exit_code=EXIT_CODE[EnumRunOutcome.USAGE],
+                detail=(
+                    f"run id {request.run_id} already ended {earlier.outcome.value} on the bus; "
+                    "use a new run id"
+                ),
             )
         graph = _closure(by_name, request.top_target)
 
