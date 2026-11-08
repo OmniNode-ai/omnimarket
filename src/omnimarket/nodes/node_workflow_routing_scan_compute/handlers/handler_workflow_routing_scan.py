@@ -31,6 +31,7 @@ from omnimarket.nodes.node_workflow_routing_scan_compute.models import (
     EnumRoutingRouteKind,
     EnumRoutingSelection,
     EnumRoutingVia,
+    ModelGroup7Naming,
     ModelRepositorySummary,
     ModelRoutingScanPolicy,
     ModelRoutingScenario,
@@ -158,6 +159,32 @@ def _selections(
     return []
 
 
+_TOKEN = re.compile(r"[\w.\-]+")
+
+
+def _tokens(detail: str) -> set[str]:
+    return {token.lower() for token in _TOKEN.findall(detail)}
+
+
+def _group7_labels(request: ModelWorkflowRoutingScanRequest) -> set[str]:
+    return {label.strip().lower() for label in request.group7_labels if label.strip()}
+
+
+def _caller_hits(
+    scenario: ModelRoutingScenario,
+    request: ModelWorkflowRoutingScanRequest,
+    named: Callable[[str, str, frozenset[tuple[str, str]]], list[str]],
+    own: tuple[str, str],
+) -> list[str]:
+    match = _re(request.policy.uses_pattern).match(
+        scenario.detail.split(" (", 1)[0].strip()
+    )
+    if match is None:
+        return []
+    callee = (match.group("repo") or scenario.repository, match.group("path"))
+    return named(*callee, frozenset({own, callee}))
+
+
 class HandlerWorkflowRoutingScan:
     """Expand every job of every injected workflow into scenarios and resolve each."""
 
@@ -237,6 +264,7 @@ class HandlerWorkflowRoutingScan:
             summaries.append(self._summary(repo, mine))
 
         stale = self._stale(request, scenarios)
+        group7 = self._group7_public(request, scenarios)
         return ModelWorkflowRoutingScanResult(
             complete=not unread,
             repositories_expected=len(request.expected_repositories),
@@ -254,7 +282,68 @@ class HandlerWorkflowRoutingScan:
             scenarios=tuple(scenarios),
             repositories=tuple(summaries),
             stale_routes=stale,
+            group7_labels_declared=len(_group7_labels(request)),
+            group7_public_count=len(group7),
+            group7_public=group7,
         )
+
+    @staticmethod
+    def _group7_public(
+        request: ModelWorkflowRoutingScanRequest,
+        scenarios: list[ModelRoutingScenario],
+    ) -> tuple[ModelGroup7Naming, ...]:
+        """Every job of a public repository that selects a group-7 label, itself or through a callee."""
+        labels = _group7_labels(request)
+        if not labels:
+            return ()
+        by_file: dict[tuple[str, str], list[ModelRoutingScenario]] = {}
+        for scenario in scenarios:
+            by_file.setdefault((scenario.repository, scenario.workflow), []).append(
+                scenario
+            )
+        public = {
+            repo.name
+            for repo in request.repositories
+            if repo.visibility.strip().lower() == "public"
+        }
+
+        def named(
+            repository: str, path: str, seen: frozenset[tuple[str, str]]
+        ) -> list[str]:
+            found: list[str] = []
+            for scenario in by_file.get((repository, path), []):
+                if scenario.selection is EnumRoutingSelection.CALLER:
+                    match = _re(request.policy.uses_pattern).match(
+                        scenario.detail.split(" (", 1)[0].strip()
+                    )
+                    if match is None:
+                        continue
+                    callee = (match.group("repo") or repository, match.group("path"))
+                    if callee not in seen:
+                        found.extend(named(*callee, seen | {callee}))
+                    continue
+                found.extend(sorted(_tokens(scenario.detail) & labels))
+            return found
+
+        out: list[ModelGroup7Naming] = []
+        for scenario in scenarios:
+            if scenario.repository not in public:
+                continue
+            if scenario.selection is EnumRoutingSelection.CALLER:
+                own = (scenario.repository, scenario.workflow)
+                hits = _caller_hits(scenario, request, named, own)
+            else:
+                hits = sorted(_tokens(scenario.detail) & labels)
+            out.extend(
+                ModelGroup7Naming(
+                    repository=scenario.repository,
+                    workflow=scenario.workflow,
+                    job=scenario.job,
+                    label=label,
+                )
+                for label in dict.fromkeys(hits)
+            )
+        return tuple(out)
 
     @staticmethod
     def _summary(
