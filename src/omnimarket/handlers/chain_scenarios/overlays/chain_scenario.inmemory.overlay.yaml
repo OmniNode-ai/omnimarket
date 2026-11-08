@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory bus: the default for CI. Every setting a scenario run reads is here.
+bus: inmemory
+kafka_bootstrap_env: null
+terminal_deadline_ms: 2000
+failure_row_type: FRICTION
+scrub_env: [KAFKA_BOOTSTRAP_SERVERS]
