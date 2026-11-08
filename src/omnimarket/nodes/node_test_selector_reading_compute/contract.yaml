@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Selector Reading Compute
+#
+# Pure definition-B compute: handle(ModelTestSelectorReadingRequest) -> ModelTestSelectorReading.
+# The caller supplies what it read from each repository's workflow file, Actions variable
+# and branch protection, the shadow comparisons against the same-head full suite, and the time.
+name: node_test_selector_reading_compute
+contract_name: node_test_selector_reading_compute
+node_name: node_test_selector_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The pull-request test selector's reading per repository. A repository is active only when
+  its workflow file references the flag, its variable holds true and branch protection requires
+  the selector's context. A disabled selector, or a failure the same-head full suite found that
+  the narrowed run did not, makes shadow misses non-zero and the reading NOT WORKING; an unreadable
+  source reads UNKNOWN. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: test_selector_reading
+      handler:
+        name: HandlerTestSelectorReading
+        module: omnimarket.nodes.node_test_selector_reading_compute.handlers.handler_test_selector_reading
+
+handler:
+  module: omnimarket.nodes.node_test_selector_reading_compute.handlers.handler_test_selector_reading
+  class: HandlerTestSelectorReading
+  input_model: omnimarket.models.test_selector_reading.ModelTestSelectorReadingRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_model:
+  name: ModelTestSelectorReadingRequest
+  module: omnimarket.models.test_selector_reading
+  description: Per-repository observations of the workflow file, variable, branch protection and shadow comparisons, and the read time.
+output_model:
+  name: ModelTestSelectorReading
+  module: omnimarket.models.test_selector_reading
+  description: The reading per repository and the shadow-miss total.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.test-selector-read-requested.v1"
+    operation: "test_selector_reading"
+
+terminal_event: onex.evt.omnimarket.test-selector-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.test-selector-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.test-selector-read.v1
+
+# The floor's reading source sends the request and reads the result; neither is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.test-selector-read-requested.v1
+    producer: "the floor's reading source, which gathers the repository observations and asks for the reading; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.test-selector-read.v1
+
+metadata:
+  description: "Test selector activation and shadow-miss reading per repository"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-07"
+  tags: [compute, test-selector, reading, pure]
+  related_tickets: ["OMN-22951"]

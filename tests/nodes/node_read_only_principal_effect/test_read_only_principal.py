@@ -24,6 +24,9 @@ from omnimarket.nodes.node_lab_host_key_distribution_effect.protocols.protocol_h
 from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_memory_attempt_executor import (
     MemoryAttemptExecutor,
 )
+from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_memory_credential_resolver import (
+    MemoryCredentialResolver,
+)
 from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_subprocess_attempt_executor import (
     SubprocessAttemptExecutor,
 )
@@ -42,11 +45,13 @@ from omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only
 from omnimarket.nodes.node_read_only_principal_effect.models import (
     EnumAttemptOutcome,
     EnumChannel,
+    EnumCredentialStore,
     EnumGateDecision,
     EnumGateReason,
     EnumKeyInstallStatus,
     ModelAllowedCommand,
     ModelChannelProbe,
+    ModelCredentialRef,
     ModelGateDecideRequest,
     ModelKeyInstallRequest,
     ModelProbeAttempt,
@@ -103,6 +108,13 @@ def _gate(
     )
 
 
+CREDENTIAL = ModelCredentialRef(
+    store=EnumCredentialStore.ONEX_CREDENTIAL_STORE,
+    lane="dev",
+    secret_ref="dev-lane-sasl",
+)
+
+
 def _probe(channel: EnumChannel, stem: str) -> ModelChannelProbe:
     return ModelChannelProbe(
         channel=channel,
@@ -117,6 +129,7 @@ def _overlay(
 ) -> ModelReadOnlyPrincipalOverlay:
     return ModelReadOnlyPrincipalOverlay(
         principal="ro-test",
+        credential=CREDENTIAL,
         ssh=_gate(allowed),
         probes=(
             _probe(EnumChannel.SSH, "ssh-probe"),
@@ -707,3 +720,72 @@ def test_the_contract_names_the_three_operations() -> None:
     text = NodeReadOnlyPrincipalEffect.contract_path.read_text(encoding="utf-8")
     for operation in ("probe", "gate_decide", "install_key"):
         assert f"operation: {operation}" in text
+
+
+# ------------------------------------------------- the credential is a store reference (OMN-22898 AC1)
+
+
+def test_golden_a_resolvable_reference_is_asked_once_and_the_probe_runs() -> None:
+    resolver = MemoryCredentialResolver(held={("dev", "dev-lane-sasl")})
+    executor = MemoryAttemptExecutor(_answers())
+    result = HandlerReadOnlyPrincipalProbe(
+        executor=executor, credential_resolver=resolver
+    ).handle(ModelProbeRequest(overlay=_overlay()))
+    assert result.passed
+    assert resolver.asked == [CREDENTIAL]
+
+
+def test_error_a_reference_the_store_does_not_hold_refuses_before_any_attempt() -> None:
+    executor = MemoryAttemptExecutor(_answers())
+    with pytest.raises(NodeOverlayError, match=r"dev-lane-sasl.*does not resolve"):
+        HandlerReadOnlyPrincipalProbe(
+            executor=executor,
+            credential_resolver=MemoryCredentialResolver(held=set()),
+        ).handle(ModelProbeRequest(overlay=_overlay()))
+    assert executor.calls == []
+
+
+def test_error_an_overlay_without_the_reference_is_refused_by_its_model() -> None:
+    dumped = _overlay().model_dump()
+    del dumped["credential"]
+    with pytest.raises(ValidationError, match="credential"):
+        ModelReadOnlyPrincipalOverlay.model_validate(dumped)
+
+
+@pytest.mark.parametrize(
+    "value", ["", "x", "Dev-Lane", "has space", "tok_" + "A1" * 40, "a/b"]
+)
+def test_error_a_value_shaped_string_is_not_a_reference(value: str) -> None:
+    with pytest.raises(ValidationError):
+        ModelCredentialRef(
+            store=EnumCredentialStore.ONEX_CREDENTIAL_STORE,
+            lane="dev",
+            secret_ref=value,
+        )
+
+
+def test_golden_the_real_resolver_finds_a_reference_in_a_real_store(
+    tmp_path: Path,
+) -> None:
+    from omnibase_infra.cli.store_lane_credential import StoreLaneCredential
+
+    from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_onex_store_credential_resolver import (
+        OnexStoreCredentialResolver,
+    )
+
+    StoreLaneCredential(onex_home=tmp_path).save(
+        lane="dev", sasl_username="ro-test", sasl_password="generated-in-test"
+    )
+    assert OnexStoreCredentialResolver(tmp_path).resolves(CREDENTIAL)
+    other = ModelCredentialRef(
+        store=CREDENTIAL.store, lane="dev", secret_ref="other-lane-sasl"
+    )
+    assert not OnexStoreCredentialResolver(tmp_path).resolves(other)
+
+
+def test_error_the_real_resolver_refuses_an_empty_store(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_read_only_principal_effect.handlers.adapter_onex_store_credential_resolver import (
+        OnexStoreCredentialResolver,
+    )
+
+    assert not OnexStoreCredentialResolver(tmp_path).resolves(CREDENTIAL)

@@ -53,6 +53,16 @@ checks:
       class contracts and routing tiers, refusing a lab-passing class routed to a
       cloud model first
 
+  - check_id: delegation.routing_overlay_bars
+    check_class: gate
+    blocks:
+      - a task-class contract or routing overlay change in a pull request
+    source: >-
+      rebuild plan 3.6 row 15 (routing_overlay, task_class_bars; OMN-22976): a
+      deterministic read of the committed task-class contract and the routing overlay
+      of bars, refusing a class with no frozen bar, a bar edited without a new hash,
+      and a contract bar that moved away from the frozen one
+
   - check_id: delegation_regression_nightly.per_run_gates
     check_class: gate
     blocks:
