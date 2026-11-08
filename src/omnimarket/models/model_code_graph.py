@@ -23,8 +23,13 @@ class EnumGraphFault(StrEnum):
     NONE = "none"
     #: The first declared repository cannot be read.
     UNREADABLE_REPO = "unreadable-repo"
-    #: Contracts stop linking their node packages to the modules they name.
+    #: Contracts stop linking their node packages to the modules they name. On the live sample this cannot fail the
+    #: reading: 2 of its 30 entries and none of its 4 controls reach a module only through a contract link (measured on
+    #: h053 2026-11-06: 28 of 30 against a bar of 27, controls 4 of 4). It fails the small fixtures the chain tests use.
     DROP_CONTRACT_LINKS = "drop-contract-links"
+    #: The pyproject entry points stop being roots. On the live sample 7 of its 30 entries lose their reach (23 of 30
+    #: against a bar of 27, measured on h053 2026-11-06), so this is the break that fails the real reading.
+    DROP_ENTRY_POINTS = "drop-entry-points"
 
 
 class ModelRepoSnapshot(BaseModel):
@@ -107,9 +112,81 @@ class ModelGraphCheckResult(BaseModel):
     base: str
     head: str
     added: int = Field(ge=0)
-    #: Added non-test module paths unreachable at the head, sorted.
+    #: Added non-test module paths unreachable at the head and not allowed, sorted.
     flagged: tuple[str, ...] = ()
+    #: Added unreachable paths a live allowlist entry excuses, sorted.
+    allowed: tuple[str, ...] = ()
+    #: Allowlist entries of this repository past their date, each ``<path> expired <date>``.
+    expired: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
-        return not self.flagged
+        return not self.flagged and not self.expired
+
+
+class EnumShadowOutcome(StrEnum):
+    """What the check would have decided for one pull request."""
+
+    WOULD_PASS = "would-pass"
+    WOULD_REFUSE = "would-refuse"
+    #: A ref could not be read: no verdict, and the row says so.
+    INDETERMINATE = "indeterminate"
+
+
+class ModelShadowPullRequest(BaseModel):
+    """An open pull request the shadow checks: its base branch and the exact head."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    number: int = Field(ge=1)
+    base_ref: str = Field(min_length=1)
+    head_ref: str = Field(min_length=1)
+    head_sha: str = Field(min_length=1)
+
+
+class ModelShadowVerdict(BaseModel):
+    """The check's verdict for one pull request, logged and never enforced."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str
+    number: int
+    head: str
+    outcome: EnumShadowOutcome
+    added: int = Field(ge=0, default=0)
+    flagged: tuple[str, ...] = ()
+    expired: tuple[str, ...] = ()
+    #: Why the verdict is indeterminate; empty otherwise.
+    reason: str = ""
+
+
+class ModelShadowCommand(BaseModel):
+    """Check every open pull request of the declared repositories now, in shadow."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: str = Field(min_length=1)
+    #: A probe run checks and appends nothing.
+    write: bool = True
+    #: A run with a fault is a drill: its row carries drill=yes.
+    fault: EnumGraphFault = EnumGraphFault.NONE
+
+
+class ModelShadowResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: str
+    status: Literal["completed", "failed"]
+    fault: EnumGraphFault = EnumGraphFault.NONE
+    repos: tuple[str, ...] = ()
+    verdicts: tuple[ModelShadowVerdict, ...] = ()
+    #: The shadow decides nothing: it never holds a merge, whatever it would have refused.
+    holds_merge: Literal[False] = False
+    row_key: str | None = None
+    ledger: str = "not-written"
+    row: str | None = None
+    failure: str | None = None
+
+    def count(self, outcome: EnumShadowOutcome) -> int:
+        return sum(1 for verdict in self.verdicts if verdict.outcome is outcome)

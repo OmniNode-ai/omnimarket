@@ -122,6 +122,13 @@ def _select_pool_secret_ref(
     * Candidates are this tenant's keys for the overlay's provider that are not
       revoked and whose ``expires_at`` is unset or still ahead of ``now``.
       Nothing routes to a lapsed key (ruling 2026-10-11T16:02:35Z).
+    * A key with a ``bound_host`` is not a candidate (OMN-22822). Its value
+      lives only in that host's local secret store and the host's own caller
+      (the review gateway) reads it there; the shared delegation lane resolves a
+      tenant key from the lane secret store, where a host-bound key is never
+      written. On the dev lane on 2026-11-04 and 2026-11-05 the h200 review key
+      was chosen here for 1,262 delegations, and every one failed with
+      "Failed to resolve secret from Infisical".
     * With ``selector_key`` (the request's correlation id) the choice is a hash
       of it over the candidates sorted by ref: stable for one request, spread
       across the pool over many, and independent of the order a read returns.
@@ -173,6 +180,7 @@ def _select_pool_secret_ref(
         if row.get("api_key_ref")
         and row.get("revoked_at") is None
         and _not_expired(row.get("expires_at"), now)
+        and not row.get("bound_host")
     )
     if not live:
         logger.warning(
