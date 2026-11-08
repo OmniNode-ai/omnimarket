@@ -7,15 +7,15 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     EnumRemoteLaneOutcome,
     ModelRemoteLaneAttempt,
     ModelRemoteLaneLadder,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
 )
 
 pytestmark = pytest.mark.unit

@@ -102,15 +102,54 @@ def _plist_strings(value: object) -> Iterable[str]:
             yield from _plist_strings(item)
 
 
+def _command_paths(text: str) -> Iterable[str]:
+    """Every absolute path inside command text or a path list."""
+    for path in _ABSOLUTE_PATH.findall(text):
+        if len(path) > 1:
+            yield path.rstrip("/")
+
+
+def _literal_path(text: str) -> Iterable[str]:
+    """The whole string when it is one absolute path; otherwise the paths inside it."""
+    if text.startswith("/"):
+        if len(text) > 1:
+            yield text.rstrip("/")
+        return
+    yield from _command_paths(text)
+
+
+def _plist_key_paths(value: object) -> Iterable[str]:
+    """The paths of one plist key: literal where the key holds a path, scanned where it holds text."""
+    if isinstance(value, str):
+        yield from _literal_path(value)
+    elif isinstance(value, list):
+        shell_command = False
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            if shell_command:
+                yield from _command_paths(item)
+            else:
+                yield from _literal_path(item)
+            shell_command = item.startswith("-") and item.endswith("c")
+    elif isinstance(value, dict):
+        for item in value.values():
+            for text in _plist_strings(item):
+                for part in text.split(":"):
+                    yield from _literal_path(part)
+
+
 def plist_paths(data: bytes) -> frozenset[str]:
-    """Every absolute path named by a path-bearing key of a launchd agent plist."""
+    """Every absolute path named by a path-bearing key of a launchd agent plist.
+
+    A program or directory string is one literal path and keeps its spaces and punctuation; the
+    argument after a shell ``-c`` flag is command text, and an environment value is a path list split
+    at its colons.
+    """
     document = plistlib.loads(data)
     found: set[str] = set()
     for key in PLIST_PATH_KEYS:
-        for text in _plist_strings(document.get(key)):
-            for path in _ABSOLUTE_PATH.findall(text):
-                if len(path) > 1:
-                    found.add(path.rstrip("/"))
+        found.update(_plist_key_paths(document.get(key)))
     return frozenset(found)
 
 

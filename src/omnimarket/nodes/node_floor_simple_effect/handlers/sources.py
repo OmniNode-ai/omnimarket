@@ -8,6 +8,7 @@ empty value for a source it could not read. Paths are the contract's; limits and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from collections.abc import Mapping
@@ -273,7 +274,18 @@ def read_watcher(
                 if isinstance(d, list) and len(d) > 2 and d[2]
             ]
             if done:
-                ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
+                # OMN-23056: the wait starts when the pull request could be landed. Checks that finished while it was a
+                # draft are older than that, so a handoff to landing for this very head moves the start forward to it.
+                started = max(done)
+                handoff = value.get("handoff")
+                if (
+                    isinstance(handoff, dict)
+                    and handoff.get("at")
+                    and handoff.get("head") == facts.get("head_sha")
+                ):
+                    with contextlib.suppress(ValueError):
+                        started = max(started, parse_time(handoff["at"]))
+                ages.append((key, max(int((now - started).total_seconds() // 60), 0)))
                 merge_state = str((value.get("review") or {}).get("merge_state") or "")
                 if merge_state in conflict_states:
                     conflicted.add(str(key))
@@ -683,12 +695,16 @@ def read_deploy_lag(
                 )
     lags.sort(key=lambda x: -x[1])
     limit = source.limit if source.limit is not None else 0.0
+    # A merge reads "not running" only for want of evidence; when the count could not read the running build, say so on
+    # the row, so a red that means "not placed" is not read as "not deployed".
+    unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
+    unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
     subjects = [
         ModelLabSubject(
             name=key,
             ok=lag <= limit,
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}",
+            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
         )
         for key, lag in lags[:3]
     ]

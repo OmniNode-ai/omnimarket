@@ -15,6 +15,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloBootTarget,
+    EnumIloJournalStatus,
+    EnumIloMediaAction,
+    EnumIloOutcome,
+    EnumIloPowerAction,
+    EnumIloRefusal,
+)
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
+    ModelIloRedfishRequest,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
+    ModelIloEvidenceStep,
+    ModelIloJournalRecord,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     Clock,
     ProtocolActionJournal,
@@ -34,24 +52,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
     odata_ids,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.safety import check_media_url
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloBootTarget,
-    EnumIloJournalStatus,
-    EnumIloMediaAction,
-    EnumIloOutcome,
-    EnumIloPowerAction,
-    EnumIloRefusal,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
-    ModelIloRedfishRequest,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
-    ModelIloEvidenceStep,
-    ModelIloJournalRecord,
-)
 
 RESET_TYPES: dict[EnumIloPowerAction, str] = {
     EnumIloPowerAction.ON: "On",

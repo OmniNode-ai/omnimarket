@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Power Effect (OMN-22906)
+#
+# Powers a lab host on, off or restart through the route the node's overlay declares for it. A host
+# with no declared route, an action the host does not allow, or a write with no cited approval is
+# refused with a typed result before any backend call. The backend is chosen by the overlay:
+# in_memory (simulated hosts, the default profile of tests and drills) or ilo_redfish, which hands the
+# action to node_ilo_redfish_effect and keeps its approval, identity and journal safety in force.
+name: node_host_power_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Power a lab host through its overlay-declared route; refuse a host with no route with a typed
+  result; in-memory backend by default, the iLO Redfish node as the real backend.
+input_model:
+  name: ModelHostPowerRequest
+  module: omnimarket.nodes.node_host_power_effect.models.model_host_power
+output_model:
+  name: ModelHostPowerResult
+  module: omnimarket.nodes.node_host_power_effect.models.model_host_power
+handler:
+  module: omnimarket.nodes.node_host_power_effect.handlers.handler_host_power
+  class: HandlerHostPower
+  input_model: omnimarket.nodes.node_host_power_effect.models.model_host_power.ModelHostPowerRequest
+  output_model: omnimarket.nodes.node_host_power_effect.models.model_host_power.ModelHostPowerResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostPower
+      module: omnimarket.nodes.node_host_power_effect.handlers.handler_host_power
+    event_model:
+      name: ModelHostPowerRequest
+      module: omnimarket.nodes.node_host_power_effect.models.model_host_power
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-power-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-power-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-power-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  # A write is made idempotent by the iLO node's action journal, not by this node.
+  idempotent: false
+  timeout_ms: 300000
+# OVERLAY KEYS (overlay.yaml under node_host_power_effect): backend (in_memory | ilo_redfish),
+# writes_need_approval, ilo_ledger_path_env (required by ilo_redfish) and hosts: name, power_route
+# (absent = no route), allowed_actions, initial_state (simulated route only). Profiles ship in
+# overlays/: in_memory.yaml for the in-memory profile and ilo_redfish.example.yaml for the real one.
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+  real: overlays/ilo_redfish.example.yaml
+metadata:
+  transport_type: kafka
+  ticket: OMN-22906
+  description: Power a lab host through its overlay-declared route; refuse a host with no route.
+  created: '2026-11-07'
+  tags:
+  - host-power
+terminal_event: onex.evt.omnimarket.host-power-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-power-completed.v1
+  event_type: ModelHostPowerResult
+externally_consumed_topics:
+- onex.evt.omnimarket.host-power-completed.v1
