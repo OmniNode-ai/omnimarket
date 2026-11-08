@@ -37,7 +37,10 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerRead
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLedgerQuery,
+    ModelLedgerRead,
+)
 from tests.nodes.node_code_graph_effect.code_graph_support import HOST, overlay
 from tests.nodes.node_floor_simple_effect.support import (
     OVERLAYS,
@@ -212,7 +215,7 @@ def test_a_shadow_query_that_fails_keeps_the_go_and_the_other_facts() -> None:
             self._fail_call = fail_call
             self.calls = 0
 
-        def read(self, query):  # type: ignore[no-untyped-def]
+        def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
             self.calls += 1
             if self.calls == self._fail_call:
                 return ModelLedgerRead(error="shadow-read-down")
