@@ -53,7 +53,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_repo_state_query_effect/handlers/adapter_repo_state_query_serve.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^class RepoStateHost'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_repo_state_query_effect/handlers/adapter_repo_state_query_serve.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^class RepoStateHost' > /dev/null
     cwd: .
 - id: dod-omn23033-deploy-golden-chain
   description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or GitHub read: runs the node''s golden chain through the in-process bus and requires the planted current mirror to answer from the mirror and the planted stale mirror to pull once.'
