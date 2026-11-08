@@ -18,8 +18,10 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     HandlerTempRetention,
     RefusalError,
     host_row,
+    load_bounds,
     load_overlay,
     load_schedule,
+    validate_declarations,
 )
 from omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention import (
     ModelRetentionScheduleResult,
@@ -126,8 +128,10 @@ def _schedule(args: argparse.Namespace) -> int:
         schedule=load_schedule(), rows=overlay.hosts, home=Path.home()
     )
     if args.verb == "check":
+        bounds = load_bounds()
         for row in overlay.hosts:
             host_row(overlay, row.name)
+            validate_declarations(row, bounds)
         sys.stdout.write(f"OK {len(overlay.hosts)} hosts, each with a retention row\n")
         return 0
     result: ModelRetentionScheduleResult

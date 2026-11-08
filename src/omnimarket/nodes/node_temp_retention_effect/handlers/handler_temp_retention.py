@@ -54,8 +54,11 @@ CONTRACT_PATH = NODE_DIR / "contract.yaml"
 OVERLAY_ENV = "ONEX_TEMP_RETENTION_OVERLAY"
 MIB = 1024 * 1024
 LIST_CAP = 50
-# A name inside a path, as a process names it: up to the next separator, quote or list mark.
-NAME_AFTER_ROOT = r"/([^/\n\"':,;]+)"
+# A name inside a path, as a process names it: up to the next separator or quote. A colon, comma or
+# semicolon is a legal character of a name, so the whole run is one name; the pieces either side of such
+# a mark are held too, because the same text is also a path list.
+NAME_AFTER_ROOT = r"/([^/\n\"']+)"
+LIST_MARKS = re.compile(r"[:,;]")
 # A command line that runs the tool owning a store: its processes may be writing the store.
 PACKAGE_TOOL = {"pnpm": re.compile(r"(?<![\w.-])pnpm(?![\w-])")}
 
@@ -72,24 +75,36 @@ class ProcessReferences:
     directories: list[Path] = field(default_factory=list)
     blobs: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
+    unreadable: list[int] = field(
+        default_factory=list
+    )  # same-user processes that refused a read
 
 
 def read_process_references() -> ProcessReferences | None:
     """The working directory of every readable process and its command line, environment and fd links.
 
     None when ``/proc`` is not readable. A process of another user that cannot be read contributes
-    nothing, and the owner check keeps that user's entries out of reach.
+    nothing, and the owner check keeps that user's entries out of reach. A process of the running user
+    that refuses a read is listed in ``unreadable``: it may hold an entry the pass cannot see, and a
+    login manager or a session of the running user is commonly such a process, so the pass reports the
+    count (``unreadable_count``) with its result and does not stop on it.
     """
     proc = Path("/proc")
     if not (proc / "self").is_dir():
         return None
     found = ProcessReferences()
+    me = os.getuid()
     for entry in proc.iterdir():
         if not entry.name.isdigit():
             continue
+        try:
+            same_user = entry.stat().st_uid == me
+        except OSError:
+            continue  # gone since it was listed
+        refused = False
         parts: list[str] = []
         for name in ("cmdline", "environ"):
-            with contextlib.suppress(OSError):
+            try:
                 text = (
                     (entry / name)
                     .read_bytes()
@@ -99,14 +114,28 @@ def read_process_references() -> ProcessReferences | None:
                 parts.append(text)
                 if name == "cmdline":
                     found.commands.append(text.replace("\n", " "))
-        with contextlib.suppress(OSError):
+            except PermissionError:
+                refused = True
+            except OSError:
+                pass
+        try:
             cwd = os.readlink(entry / "cwd")
             found.directories.append(Path(cwd))
             parts.append(cwd)
-        with contextlib.suppress(OSError):
+        except PermissionError:
+            refused = True
+        except OSError:
+            pass
+        try:
             for descriptor in (entry / "fd").iterdir():
                 with contextlib.suppress(OSError):
                     parts.append(os.readlink(descriptor))
+        except PermissionError:
+            refused = True
+        except OSError:
+            pass
+        if refused and same_user:
+            found.unreadable.append(int(entry.name))
         found.blobs.append("\n".join(parts))
     return found
 
@@ -144,6 +173,10 @@ def load_overlay(overlay_file: str = "") -> ModelTempRetentionOverlay:
             raise RefusalError(
                 f"overlay {overlay_file} is unreadable ({type(exc).__name__})"
             ) from None
+        if not isinstance(document, dict):
+            raise RefusalError(
+                f"overlay {overlay_file} must be a mapping, so no other overlay source is tried"
+            )
         return load_structured_overlay(
             NODE_NAME, ModelTempRetentionOverlay, explicit=document
         )
@@ -178,9 +211,37 @@ def _check_declared_path(path: str, leaf_names: tuple[str, ...], what: str) -> P
             f"{what} {path!r} is named {declared.name!r}; the contract allows only "
             f"{', '.join(leaf_names)}"
         )
-    if declared.is_symlink():
-        raise RefusalError(f"{what} {path!r} is a symlink")
+    if declared.is_symlink() or os.path.realpath(path) != path:
+        raise RefusalError(f"{what} {path!r} is a symlink or sits under one")
     return declared
+
+
+def validate_declarations(
+    row: ModelTempRetentionHost, bounds: ModelRetentionBounds
+) -> list[list[re.Pattern[str]]]:
+    """Refuse every unsafe declaration of a host row before anything is read or removed.
+
+    Returns, for each temp directory in declaration order, its compiled protected-name patterns.
+    """
+    patterns: list[list[re.Pattern[str]]] = []
+    for declared in row.temp_roots:
+        _check_declared_path(
+            declared.path, bounds.temp_root_leaf_names, "temp directory"
+        )
+        compiled: list[re.Pattern[str]] = []
+        for pattern in declared.protected_name_patterns:
+            try:
+                compiled.append(re.compile(pattern))
+            except re.error as exc:
+                raise RefusalError(
+                    f"protected name pattern {pattern!r} does not compile ({exc})"
+                ) from None
+        patterns.append(compiled)
+    for ceiling in row.store_ceilings:
+        _check_declared_path(
+            ceiling.path, (bounds.store_leaf_names[ceiling.kind],), "package store"
+        )
+    return patterns
 
 
 @dataclass
@@ -259,8 +320,9 @@ def _held_names(root: Path, refs: ProcessReferences) -> set[str]:
     pattern = re.compile(re.escape(str(root)) + NAME_AFTER_ROOT)
     for blob in refs.blobs:
         for token in pattern.findall(blob):
-            names.add(token)
-            names.add(token.split()[0] if token.split() else token)
+            for candidate in (token, *LIST_MARKS.split(token)):
+                names.add(candidate)
+                names.add(candidate.split()[0] if candidate.split() else candidate)
     return names
 
 
@@ -275,12 +337,19 @@ def _make_owned_directories_writable(path: Path, uid: int) -> None:
     while stack:
         directory = stack.pop()
         try:
-            info = directory.lstat()
-            if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid:
-                continue
-            wanted = stat.S_IMODE(info.st_mode) | stat.S_IRWXU
-            if wanted != stat.S_IMODE(info.st_mode):
-                directory.chmod(wanted)
+            # Open the directory itself (never a symlink) and change the inode that was checked.
+            descriptor = os.open(
+                directory, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            )
+            try:
+                info = os.fstat(descriptor)
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid:
+                    continue
+                wanted = stat.S_IMODE(info.st_mode) | stat.S_IRWXU
+                if wanted != stat.S_IMODE(info.st_mode):
+                    os.chmod(f"/proc/self/fd/{descriptor}", wanted)
+            finally:
+                os.close(descriptor)
             stack.extend(
                 Path(entry.path)
                 for entry in os.scandir(directory)
@@ -306,6 +375,7 @@ def _remove(path: Path, uid: int) -> None:
 
 def _pass_root(
     declared: ModelTempRoot,
+    protected: list[re.Pattern[str]],
     row: ModelTempRetentionHost,
     bounds: ModelRetentionBounds,
     *,
@@ -326,7 +396,6 @@ def _pass_root(
     hours = row.windows.pressure_retain_hours if pressed else row.windows.retain_hours
     out["windows"][str(root)] = hours
     cutoff = now - hours * 3600
-    protected = [re.compile(pattern) for pattern in declared.protected_name_patterns]
     held = _held_names(root, refs)
     device = root.lstat().st_dev
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
@@ -361,6 +430,7 @@ def _pass_store(
     row: ModelTempRetentionHost,
     bounds: ModelRetentionBounds,
     *,
+    uid: int,
     dry_run: bool,
     refs: ProcessReferences,
     used: Callable[[Path], float],
@@ -396,7 +466,14 @@ def _pass_store(
             break
         size = tree_bytes(version)
         if not dry_run:
-            shutil.rmtree(version, ignore_errors=True)
+            try:
+                _remove(version, uid)
+            except OSError as exc:
+                out["errors"].append(f"{version}: {type(exc).__name__}"[:300])
+            if os.path.lexists(version):
+                # A failed deletion frees only what it did remove, and is not counted as removed.
+                remaining -= max(size - tree_bytes(version), 0)
+                continue
         remaining -= size
         removed += 1
     out["freed"] += before - remaining
@@ -427,16 +504,26 @@ def run_pass(
         "windows": {},
         "kept": 0,
         "freed": 0,
+        "unreadable": 0,
     }
-    refs = references()
-    if refs is None:
-        out["errors"].append(
-            "process references unreadable (no /proc); nothing removed"
-        )
-    else:
-        for declared in row.temp_roots:
+    # Every declaration is checked before the first removal, so a refusal never follows a removal.
+    protected = validate_declarations(row, bounds)
+    # The references are read again before each directory and store: a process that starts during a
+    # long scan of an earlier one is seen by the next.
+    roots = list(zip(row.temp_roots, protected, strict=True))
+    for index in range(len(roots) + len(row.store_ceilings)):
+        refs = references()
+        if refs is None:
+            out["errors"].append(
+                "process references unreadable (no /proc); nothing removed"
+            )
+            break
+        out["unreadable"] = max(out["unreadable"], len(refs.unreadable))
+        if index < len(roots):
+            declared, patterns = roots[index]
             _pass_root(
                 declared,
+                patterns,
                 row,
                 bounds,
                 now=now,
@@ -446,11 +533,12 @@ def run_pass(
                 used=used_percent,
                 out=out,
             )
-        for ceiling in row.store_ceilings:
+        else:
             _pass_store(
-                ceiling,
+                row.store_ceilings[index - len(roots)],
                 row,
                 bounds,
+                uid=uid,
                 dry_run=dry_run,
                 refs=refs,
                 used=used_percent,
@@ -465,6 +553,7 @@ def run_pass(
         busy=tuple(out["busy"][:list_cap]),
         busy_count=len(out["busy"]),
         kept_count=out["kept"],
+        unreadable_count=out["unreadable"],
         refused=tuple(out["refused"]),
         windows=out["windows"],
         stores=tuple(out["stores"]),

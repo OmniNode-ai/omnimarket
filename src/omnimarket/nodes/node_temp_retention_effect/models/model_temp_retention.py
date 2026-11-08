@@ -115,6 +115,9 @@ class ModelRetentionPass(_Frozen):
     busy: tuple[str, ...] = ()
     busy_count: int = 0
     kept_count: int = 0
+    unreadable_count: int = (
+        0  # same-user processes whose working directory or files could not be read
+    )
     refused: tuple[str, ...] = ()
     windows: dict[str, float] = Field(default_factory=dict)
     stores: tuple[str, ...] = ()
