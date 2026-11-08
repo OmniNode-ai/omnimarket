@@ -42,6 +42,13 @@ from pydantic import BaseModel, ConfigDict
 SIGNALLED_EXIT = 143
 
 
+#: Exits that say the start script launched nothing: its own refusal before the launch (the run
+#: directory could not be made) and the runner's exit for a host command that could not be run.
+#: Any other end without a pid (ssh's 255, a timeout, a pid that never came back) may follow a launch.
+START_REFUSED_EXIT = 3
+HOST_COMMAND_UNAVAILABLE_EXIT = 127
+
+
 class ModelHostCommandResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -74,7 +81,9 @@ class SubprocessHostCommandExecutor:
         except subprocess.TimeoutExpired:
             return ModelHostCommandResult(exit_code=124, stderr="timed out")
         except OSError as exc:
-            return ModelHostCommandResult(exit_code=127, stderr=str(exc))
+            return ModelHostCommandResult(
+                exit_code=HOST_COMMAND_UNAVAILABLE_EXIT, stderr=str(exc)
+            )
         return ModelHostCommandResult(
             exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr
         )
@@ -169,22 +178,23 @@ class SshLaneHostTransport:
         )
         # The wrapper is the session leader: its pid is the session and process-group id.
         script = (
-            f"mkdir -p {q(request.workdir)} {q(run)} || exit 3; "
+            f"mkdir -p {q(request.workdir)} {q(run)} || exit {START_REFUSED_EXIT}; "
             f"{self._detach} sh -c {q(inner)} > /dev/null 2>&1 < /dev/null & echo $! > {q(run + '/pid')}; "
             f"cat {q(run + '/pid')}"
         )
         result = self._sh(request.host, script, request.timeout_seconds)
-        if result.exit_code == 124:
-            return ModelLaneStartEngineResult(state="unresolved")
         pid = result.stdout.strip().splitlines()[-1:] if result.stdout.strip() else []
-        if result.exit_code != 0 or not pid or not pid[0].isdigit():
+        if result.exit_code == 0 and pid and pid[0].isdigit():
+            return ModelLaneStartEngineResult(state="started", session_id=pid[0])
+        if result.exit_code in (START_REFUSED_EXIT, HOST_COMMAND_UNAVAILABLE_EXIT):
             return ModelLaneStartEngineResult(
                 state="failed",
                 error=(result.stderr or f"start exit {result.exit_code}").strip()[
                     -500:
                 ],
             )
-        return ModelLaneStartEngineResult(state="started", session_id=pid[0])
+        # The launch comes before the pid comes back: a lost answer may hide a running engine.
+        return ModelLaneStartEngineResult(state="unresolved")
 
     def read_engine_exit(
         self, request: ModelLaneReadEngineExitRequest
