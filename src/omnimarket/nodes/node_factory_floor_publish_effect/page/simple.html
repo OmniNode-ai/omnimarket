@@ -408,6 +408,7 @@ function drawMachines(){
   const limit = (doc && doc.freshness_max_age_s) || FALLBACK_MAX_AGE_S;
   let h = "";
   if (mfailure) h += `<div class="frozen">The last refresh of the machines failed (${esc(mfailure)}); this is the record from ${ago(age)}.</div>`;
+  else if (age > limit) h += `<div class="frozen">The machine record was read ${ago(age)}, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
   const rows = ((mdoc.floor || {}).host_status) || [];
   if (!rows.length) { box.innerHTML = h + `<p class="unread">The record carries no per-host status: it was written before the Machines tab existed, or the host table was not read.</p>`; return; }
   const out = rows.filter(r => r.condition === "out").length, ok = rows.filter(r => r.condition === "read").length;
