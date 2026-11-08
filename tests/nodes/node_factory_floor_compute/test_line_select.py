@@ -28,6 +28,7 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,
+    ModelFloorCoverage,
 )
 from tests.nodes.node_factory_floor_compute.support import (
     NOW,
@@ -400,7 +401,7 @@ def test_select_output_follows_the_requests_time_and_not_the_clock() -> None:
 # ------------------------------------------------------------------------------- coverage (T4-D)
 
 
-def _cover(result: ModelFactoryFloorResult, name: str):  # type: ignore[no-untyped-def]
+def _cover(result: ModelFactoryFloorResult, name: str) -> ModelFloorCoverage:
     return next(c for c in result.coverage if c.line_class == name)
 
 
