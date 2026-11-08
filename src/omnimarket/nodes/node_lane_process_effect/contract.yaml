@@ -58,6 +58,13 @@ protocol_dependencies:
   protocol: omnibase_spi.protocols.lane:ProtocolLaneProcessRunner
   bind_as: runner
   required: true
+  implementations:
+  - handler:
+      name: HandlerPosixProcess
+      module: omnimarket.nodes.node_lane_process_effect.handlers.handler_posix_process
+  - handler:
+      name: HandlerScriptedRunner
+      module: omnimarket.nodes.node_lane_process_effect.handlers.handler_scripted_runner
 descriptor:
   node_archetype: effect
   purity: effectful
