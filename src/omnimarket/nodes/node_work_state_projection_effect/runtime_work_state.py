@@ -38,7 +38,10 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
 )
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_source_budget import (
+from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
+    HandlerWorkStateProjection,
+)
+from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_source_budget import (
     FileSnapshotStore,
     InMemorySnapshotStore,
     ProtocolSnapshotStore,
@@ -46,9 +49,6 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_source
     SourceSpec,
     SourceUnreadableError,
     read_sources_budgeted,
-)
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
-    HandlerWorkStateProjection,
 )
 from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_source_mapping import (
     plan_tasks_from_text,
