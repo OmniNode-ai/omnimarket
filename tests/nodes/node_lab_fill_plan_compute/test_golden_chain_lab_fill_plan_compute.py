@@ -82,6 +82,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
         "plan_lab_fill_fallbacks",
         "compose_lab_fill_status",
         "plan_lab_fill_headroom",
+        "settle_lab_fill_lane_states",
         "verify_lab_fill_fanout",
         "lab_fill.scheduled_fire",
         "plan_lab_fill_fire",
