@@ -77,4 +77,4 @@ overlay:
 
 metadata:
   ticket: OMN-22478
-  transport_type: inmemory
+  transport_type: database
