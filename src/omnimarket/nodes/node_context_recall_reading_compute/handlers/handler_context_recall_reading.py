@@ -21,6 +21,7 @@ network or environment: the caller supplies the read time and the overlay. The r
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 from importlib.resources import files
 from typing import Any
@@ -53,14 +54,26 @@ def _normal(text: str) -> str:
 
 def fact_recalled(expected: str, answer: str | None) -> bool:
     """The answer carries the planted fact, whitespace and case aside."""
-    return answer is not None and _normal(expected) in _normal(answer)
+    if answer is None:
+        return False
+    wanted = _normal(expected)
+    if not wanted:
+        return False
+    # The fact stands alone in the answer: not the head or tail of a longer token.
+    return (
+        re.search(rf"(?<![\w-]){re.escape(wanted)}(?![\w-])", _normal(answer))
+        is not None
+    )
 
 
 def probe_reason(probe: ModelPlantedFactProbe) -> str | None:
     """None when the probe passes, else the reason code."""
     if not probe.compaction_forced or probe.compaction_completed_at is None:
         return f"compaction-not-completed:{probe.probe_id}"
-    if probe.recall_read_at is not None and not (
+    if probe.recall_read_at is None:
+        if probe.recalled_answer is not None:
+            return f"probe-out-of-order:{probe.probe_id}"
+    elif not (
         probe.planted_at <= probe.compaction_completed_at <= probe.recall_read_at
     ):
         return f"probe-out-of-order:{probe.probe_id}"
@@ -74,6 +87,8 @@ def eval_run_reason(
 ) -> str | None:
     """None when the run ended in a result or is still inside its deadline, else the reason."""
     if run.ended_at is not None:
+        if not run.started_at <= run.ended_at <= now:
+            return f"eval-ended-out-of-order:{run.run_id}"
         return None if run.result_id else f"eval-ended-without-result:{run.run_id}"
     if now - run.started_at > timedelta(seconds=deadline_seconds):
         return f"eval-open-past-deadline:{run.run_id}"
@@ -130,6 +145,7 @@ class HandlerContextRecallReading:
                 )
             )
 
+        probe_faults = len(reasons)
         for run in request.eval_runs:
             if run.started_at > now:
                 reason = f"future-dated:{run.run_id}"
@@ -150,7 +166,12 @@ class HandlerContextRecallReading:
                 if inside
                 else None
             )
-            ended = inside and run.ended_at is not None and bool(run.result_id)
+            ended = (
+                inside
+                and run.ended_at is not None
+                and bool(run.result_id)
+                and reason is None
+            )
             in_progress = inside and run.ended_at is None and reason is None
             runs_in_window += inside
             if reason is not None:
@@ -166,6 +187,7 @@ class HandlerContextRecallReading:
                 )
             )
 
+        run_faults = len(reasons) - probe_faults
         unknown = False
         if not request.probes:
             reasons.append("no-probe-supplied")
@@ -182,15 +204,25 @@ class HandlerContextRecallReading:
         ):
             reasons.append("stale-eval-run:no-eval-run-in-window")
 
-        if not reasons:
-            if passing_probes < overlay.min_probes:
-                reasons.append(
-                    f"below-minimum:probes:{passing_probes}-of-{overlay.min_probes}"
-                )
-            if finished_runs < overlay.min_eval_runs:
-                reasons.append(
-                    f"below-minimum:eval-runs:{finished_runs}-of-{overlay.min_eval_runs}"
-                )
+        # The minimums apply to each kind of evidence that was supplied and found no fault of its own.
+        if (
+            request.probes
+            and probe_faults == 0
+            and probes_in_window > 0
+            and passing_probes < overlay.min_probes
+        ):
+            reasons.append(
+                f"below-minimum:probes:{passing_probes}-of-{overlay.min_probes}"
+            )
+        if (
+            request.eval_runs
+            and run_faults == 0
+            and runs_in_window > 0
+            and finished_runs < overlay.min_eval_runs
+        ):
+            reasons.append(
+                f"below-minimum:eval-runs:{finished_runs}-of-{overlay.min_eval_runs}"
+            )
 
         # A fault found beats a missing input: UNKNOWN only when nothing else is wrong.
         only_missing = unknown and all(r.startswith("no-") for r in reasons)
