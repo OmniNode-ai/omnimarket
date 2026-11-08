@@ -1,0 +1,112 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23069
+title: Real review findings on merged omnimarket pull requests 5311, 5245, 5299, 5323 and 5305, fixed from dev
+summary: >-
+  Fixes every review finding that was still true at dev's head on the merged pull requests omnimarket#5311 (claude token pool, 9 findings), #5245 (work ledger query, 2), #5299 (pilot manifest check, 2), #5323 (landing canary, 8) and #5305 (lab fill plan, finding 2). Each has a test that fails on dev's source and passes with the fix. No finding of these five pull requests was found already fixed or false at dev's head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23069-review-findings-fixed
+    statement: >-
+      Each real review finding still true at dev's head has a test that fails on dev and passes on the fix, and each finding already fixed or false is named with the dev line that settles it.
+    acceptance:
+      - id: AC1
+        statement: "AC1: each real finding still true at dev's head has a test that fails on dev and passes on the fix, in one or more pull requests citing this ticket -- falsifier: uv run pytest of the new test files, red on dev's head without the fix"
+      - id: AC2
+        statement: "AC2: each finding already fixed or false at dev's head is named in the pull request body with the dev line that settles it -- falsifier: reading the pull request body against the report's finding list"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The review findings tests for the claude token pool rotation (#5311).
+    command: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_review_findings_omn23069.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The review findings tests for the work ledger query (#5245).
+    command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_review_findings_omn23069_ledgerq.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The review findings tests for the pilot manifest check (#5299).
+    command: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The review findings tests for the landing canary (#5323).
+    command: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_review_findings_omn23069.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The review findings tests for the lab fill plan order (#5305).
+    command: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23069-ac1-findings-tests-1
+    description: >-
+      The review findings tests for the claude token pool rotation (#5311) pass with the fix and fail on dev's source without it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_review_findings_omn23069.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23069-ac1-findings-tests-2
+    description: >-
+      The review findings tests for the work ledger query (#5245) pass with the fix and fail on dev's source without it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_review_findings_omn23069_ledgerq.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23069-ac1-findings-tests-3
+    description: >-
+      The review findings tests for the pilot manifest check (#5299) pass with the fix and fail on dev's source without it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23069-ac1-findings-tests-4
+    description: >-
+      The review findings tests for the landing canary (#5323) pass with the fix and fail on dev's source without it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_review_findings_omn23069.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23069-ac1-findings-tests-5
+    description: >-
+      The review findings tests for the lab fill plan order (#5305) pass with the fix and fail on dev's source without it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23069-ac2-findings-named
+    description: >-
+      Every finding of the five pull requests was still true at dev's head, so none is named as already fixed or false; the pull request body lists each finding with the test that covers it. The pre-existing pilot manifest tests still pass beside the new ones.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_pilot_manifest_check.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23069-node-dispatch
+    description: >-
+      The pilot manifest node's golden chain runs the command through the handler to a terminal event on the in-memory profile, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_golden_chain_pilot_manifest_check.py -q -n 0 --no-cov -k golden_chain_command_json_to_terminal_event_json
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []

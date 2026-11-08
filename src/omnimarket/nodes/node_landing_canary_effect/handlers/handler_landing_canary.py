@@ -135,6 +135,7 @@ class HandlerLandingCanary:
             nonce=nonce,
             title=f"{target.title_prefix} {nonce}",
         )
+        opening_began = self._clock().astimezone(UTC)
         try:
             opened = self._repo.open(request)
         except CanaryRepoError as exc:
@@ -145,7 +146,9 @@ class HandlerLandingCanary:
                 ending=EnumCanaryEnding.OPEN_FAILED,
                 reasons=(reason_token(f"canary-open-failed-{exc}"),),
             )
-        opened_at = self._clock().astimezone(UTC)
+        # The pull request exists from some instant inside the create call, not from its return: count
+        # from the instant the repository reports, or else from before the call began.
+        opened_at = (opened.opened_at or opening_began).astimezone(UTC)
         state, unreadable = self._wait(opened.number, opened_at)
         now = self._clock().astimezone(UTC)
         if state is None:
@@ -223,9 +226,19 @@ class HandlerLandingCanary:
                 failure = str(exc)
             if last is not None and (last.merged or last.closed):
                 return last, ""
-            if self._clock().timestamp() >= deadline:
+            remaining = deadline - self._clock().timestamp()
+            if remaining <= 0:
                 return last, failure
-            self._sleep(float(target.poll_seconds))
+            # Never sleep past the bar: the run must still read once more and publish a terminal row.
+            self._sleep(min(float(target.poll_seconds), remaining))
+
+    def _operational(self, drill: bool) -> bool:
+        """Only a run of the real test repository, and not a drill, may count as an operational reading.
+
+        The ``inmemory`` backend merges its own fixture pull request, so its row proves nothing about the
+        landing tick whatever the overlay's drill setting says.
+        """
+        return not drill and self._overlay.target.backend == "scm"
 
     def _publish(
         self, result: ModelLandingCanaryResult, now: datetime, write: bool
@@ -269,8 +282,8 @@ class HandlerLandingCanary:
             "model=none",
             f"host={self._host}",
             f"piece={publish.piece}",
-            f"tag={'drill' if publish.drill else 'operational'}",
-            f"drill={'yes' if publish.drill else 'no'}",
+            f"tag={'operational' if self._operational(publish.drill) else 'drill'}",
+            f"drill={'no' if self._operational(publish.drill) else 'yes'}",
             f"backend={self._overlay.target.backend}",
             f"verdict={result.verdict.value}",
             f"outcome={result.outcome.value}",
