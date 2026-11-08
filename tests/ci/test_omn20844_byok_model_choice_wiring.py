@@ -10,7 +10,7 @@ skipped or absent conclusion fails closed.
 
 from __future__ import annotations
 
-import re
+import json
 import shlex
 from pathlib import Path
 from typing import Any
@@ -53,14 +53,10 @@ def _job() -> dict[str, Any]:
 
 
 def _strict_jobs() -> tuple[str, ...]:
-    source = CI_SUMMARY_GATE.read_text(encoding="utf-8")
-    match = re.search(
-        r"STRICT_GATE_JOBS:\s*tuple\[str, \.\.\.\]\s*=\s*\((?P<body>.*?)\n\)",
-        source,
-        re.S,
+    doc = json.loads(
+        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
     )
-    assert match is not None
-    return tuple(re.findall(r'^\s*"([^"]+)",', match["body"], re.M))
+    return tuple(e["name"] for e in doc["rules"]["STRICT_GATE_JOBS"]["entries"])
 
 
 def test_the_hook_runs_the_guard_tests_and_rewrites_nothing() -> None:
