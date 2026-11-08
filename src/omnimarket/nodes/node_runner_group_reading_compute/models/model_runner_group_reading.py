@@ -59,7 +59,7 @@ class ModelGroupFact(BaseModel):
     visibility: EnumGroupVisibility
     allows_public_repositories: bool
     selected_repositories: tuple[str, ...] = ()
-    runners: tuple[ModelGroupRunner, ...] = ()
+    runners: tuple[ModelGroupRunner, ...]
 
 
 class ModelRepositoryFact(BaseModel):
