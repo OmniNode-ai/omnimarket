@@ -58,3 +58,6 @@ dod_evidence:
     check_value: |-
       env UV_PROJECT_ENVIRONMENT=/tmp/omn22953-venv uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_automatic_fix_install_effect.handlers.handler_fix_install_join_j9 import HandlerFixInstallJoinJ9; from omnimarket.nodes.node_automatic_fix_install_effect.models import ModelJoinJ9Request, ModelJoinJ9Result; assert callable(HandlerFixInstallJoinJ9.handle); c = yaml.safe_load(open("src/omnimarket/nodes/node_automatic_fix_install_effect/contract.yaml")); assert c["join_j9"]["deadline_seconds"] == 3600, c["join_j9"]; print("J9 join handler and one hour deadline resolved")'
     cwd: .
+  - check_type: command
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automatic_fix_install_effect/handlers/handler_fix_install_join_j9.py?ref=omn-22953-j9-join-test' --jq .path
+    cwd: .
