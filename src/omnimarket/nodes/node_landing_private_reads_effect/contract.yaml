@@ -45,6 +45,7 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.landing-private-reads-listed.v1
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.landing-private-reads-list.v1
   external_trigger: "python -m omnimarket.nodes.node_landing_private_reads_effect, with ONEX_SKILL_OVERLAY_ROOTS naming the overlay root."
 descriptor:
   node_archetype: effect
