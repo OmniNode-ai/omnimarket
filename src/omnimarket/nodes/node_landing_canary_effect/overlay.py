@@ -65,7 +65,8 @@ class ModelCanaryPublish(BaseModel):
     actor: str = Field(min_length=1)
     #: The piece this reading is for (landing and merge queue).
     piece: int = Field(ge=1, le=18)
-    #: A drill run's row is marked ``tag=drill`` and never counts as an operational reading.
+    #: A drill run's row is marked ``tag=drill`` and ``drill=yes`` (an operational row ``drill=no``): it never counts as an
+    #: operational reading, and the floor counts its error rows as drill errors from the ``drill`` cell.
     drill: bool
     #: How long a published reading stays fresh: the daily cadence plus the run bound; older, NOT WORKING.
     publish_max_age_seconds: int = Field(ge=1)

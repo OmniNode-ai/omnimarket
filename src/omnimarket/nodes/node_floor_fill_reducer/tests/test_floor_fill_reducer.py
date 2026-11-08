@@ -35,12 +35,7 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
 from omnibase_core.validation.validator_fsm_analysis import analyze_fsm
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
-    VALID_TRANSITIONS,
-    HandlerFloorFillReducer,
-    lane_name,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models import (
+from omnimarket.models.floor_fill import (
     EnumFloorFillDropReason,
     EnumFloorFillEntryState,
     EnumFloorFillTrigger,
@@ -54,6 +49,11 @@ from omnimarket.nodes.node_floor_fill_reducer.models import (
     ModelFloorFillState,
     ModelFloorFillTicketStored,
     line_and_task,
+)
+from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
+    VALID_TRANSITIONS,
+    HandlerFloorFillReducer,
+    lane_name,
 )
 
 pytestmark = pytest.mark.unit
