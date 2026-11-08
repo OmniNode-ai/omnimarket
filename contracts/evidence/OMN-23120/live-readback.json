@@ -1,0 +1,91 @@
+{
+  "ac1": {
+    "driver": "Playwright 1.64.1 python, Chromium build 1243, headless; ssh -L tunnel from the dev host through h053 to the https listener, hostname mapped by --host-resolver-rules so URL, SNI and certificate are the real ones; certificate errors not ignored",
+    "exit_code": 0,
+    "screenshots": {
+      "ac1-1-gate.png": "8bc623cc3b8362200f8f41ff3ac731775cf61f298d3eed52b6f5f959e5ca4903",
+      "ac1-2-consent.png": "8b7eaabcfc818258f0f2fe3ca870c3c8b8589b17654e1a46dcd694911589b997"
+    },
+    "steps": [
+      {
+        "final_url": "https://<dev-host-tailnet-name>/cost-estimator",
+        "gate_form_visible": true,
+        "http_status": 200,
+        "step": "load",
+        "title": "Private preview | OmniNode"
+      },
+      {
+        "final_url": "https://<dev-host-tailnet-name>/cost-estimator",
+        "gate_form_still_visible": false,
+        "step": "after-gate",
+        "title": "What your prompts would have cost through delegation | OmniNode"
+      },
+      {
+        "consent_checkbox_count": 1,
+        "consent_label_text": "I agree to Omninode storing the result shown above.",
+        "cookies": [
+          "__Host-authjs.csrf-token:secure",
+          "__Secure-authjs.callback-url:secure",
+          "_ga:insecure",
+          "_ga_M702HG0ZNS:insecure",
+          "_rdt_uuid:secure",
+          "estimator_gate:secure"
+        ],
+        "estimate_result_visible": true,
+        "final_url": "https://<dev-host-tailnet-name>/cost-estimator",
+        "send_button_disabled_until_consent": true,
+        "step": "consent",
+        "title": "What your prompts would have cost through delegation | OmniNode"
+      }
+    ]
+  },
+  "ac3": {
+    "after_reinstall": {
+      "peer_curl_exit": 0,
+      "peer_curl_http": 200,
+      "read_at": "2026-11-08T07:48:32Z",
+      "self_curl_exit": 60,
+      "self_curl_http": 0,
+      "serve_status": "https://<dev-host-tailnet-name> (tailnet only)\n|-- / proxy http://127.0.0.1:3080\n\nhttps://<dev-host-tailnet-name>:8443 (tailnet only)\n|-- / proxy unix:<principal-issuer-socket>"
+    },
+    "after_uninstall": {
+      "peer_curl_exit": 60,
+      "peer_curl_http": 0,
+      "read_at": "2026-11-08T07:48:28Z",
+      "self_curl_exit": 60,
+      "self_curl_http": 0,
+      "serve_status": "https://<dev-host-tailnet-name>:8443 (tailnet only)\n|-- / proxy unix:<principal-issuer-socket>"
+    },
+    "before": {
+      "peer_curl_exit": 0,
+      "peer_curl_http": 200,
+      "read_at": "2026-11-08T07:48:24Z",
+      "self_curl_exit": 60,
+      "self_curl_http": 0,
+      "serve_status": "https://<dev-host-tailnet-name> (tailnet only)\n|-- / proxy http://127.0.0.1:3080\n\nhttps://<dev-host-tailnet-name>:8443 (tailnet only)\n|-- / proxy unix:<principal-issuer-socket>"
+    },
+    "node_verbs": {
+      "install": {
+        "exit": 0,
+        "output": "installed run=20261108T074829Z port=443 :443 serves http://127.0.0.1:3080, read back"
+      },
+      "uninstall": {
+        "exit": 0,
+        "output": "uninstalled run=20261108T074825Z port=443 :443 no longer serves http://127.0.0.1:3080, read back"
+      }
+    }
+  },
+  "direct_http_control": {
+    "gate_form_present": false,
+    "http": 200,
+    "read_from": "h053",
+    "title": "What your prompts would have cost through delegation | OmniNode",
+    "url": "http://<dev-host-tailnet-ip>:3080/cost-estimator"
+  },
+  "host": "h201 (dev lane host, tailnet name redacted)",
+  "redaction": "tailnet name, tailnet address and one socket path replaced by angle-bracket placeholders; the unredacted record stays in the lane report",
+  "schema": "estimator_https_live_readback.v1",
+  "tailnet_peer_used_for_reads": "h053 (tailnet name redacted)",
+  "ticket_id": "OMN-23120",
+  "url": "https://<dev-host-tailnet-name>/cost-estimator"
+}
