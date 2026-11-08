@@ -7,18 +7,18 @@ from typing import Literal
 
 import pytest
 
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
-    ProtocolRedfishTransport,
-    RedfishTransportError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloLogKind,
     EnumIloOutcome,
     EnumIloRefusal,
     EnumIloVerb,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
     ModelIloRedfishRequest,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
+    ProtocolRedfishTransport,
+    RedfishTransportError,
 )
 from tests.nodes.node_ilo_redfish_effect.conftest import OPERATOR_LANE, build
 from tests.nodes.node_ilo_redfish_effect.ilo_fakes import (

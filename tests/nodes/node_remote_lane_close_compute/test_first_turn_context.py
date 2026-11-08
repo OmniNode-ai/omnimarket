@@ -9,15 +9,15 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.remote_lane_close import (
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.nodes.node_remote_lane_close_compute.handlers import (
     HandlerRemoteLaneResult,
 )
 from omnimarket.nodes.node_remote_lane_close_compute.handlers.first_turn_context import (
     COLUMNS,
     first_turn_context_table,
-)
-from omnimarket.nodes.node_remote_lane_close_compute.models import (
-    ModelRemoteLaneResultRequest,
 )
 
 pytestmark = pytest.mark.unit
