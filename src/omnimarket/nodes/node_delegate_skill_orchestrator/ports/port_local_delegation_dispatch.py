@@ -920,13 +920,20 @@ def local_transport_cause(
 
 
 def local_quality_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refusal: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the local port (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. A rung's refusal
+    of a secret or exfiltration request on policy grounds is its own cause,
+    ``policy_refusal`` (OMN-23216), which the lists declare terminal.
     """
+    if policy_refusal:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -3727,11 +3734,10 @@ class LocalDelegationDispatchPort:
             # floor is the same quality veto the bus stops on.
             quality_cause = local_quality_cause(
                 no_rung_can_satisfy=(
-                    gate_result.no_rung_can_satisfy
-                    or repeated_deterministic_floor
-                    or secret_request_refused
+                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
                 ),
                 fail_category=gate_result.fail_category,
+                policy_refusal=secret_request_refused,
             )
             ladder_stopped_by_veto = (
                 self._decide_transition(quality_cause, task_type=task_type).kind
