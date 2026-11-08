@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-23083
+title: Join J2 passes - rebuild piece 2 (hosts and capacity) integrates with piece 3 (bus, runtime and seams)
+summary: The J2 join check (omnimarket#5284, handlers/join_j2.py, runtime verb join-j2) was built and tested and never run, so the served floor held no J2 chain and read the join broken. The publish node's contract gains one input step, join_j2 (module omnimarket.nodes.node_host_reading_effect.runtime_host_reading, args join-j2 on the overlay's bus lane, concurrent with the other input steps, required false, timeout 90 s), so the join runs in every publish cycle before the floor steps read the receipts and writes the canary chain (piece 2) and the seam chain (piece 3) under one correlation id. The join overlay gains an optional host list (empty means every pooled host). No check, bound or window of the receipts is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23083-join-j2-publish-step
+  statement: The publish cycle runs join J2 before the floor reads its receipts, a step that exits non-zero is recorded failed without stopping the floor steps, and with the step removed from the contract the focused tests fail.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the publish cycle calls the join-j2 verb before the floor reads its receipts, and a failing control that removes the step makes the focused tests fail -- falsifier: uv run pytest of the publish step tests, failures without the step'
+evidence_requirements:
+- kind: tests
+  description: The J2 publish-step tests, the publish tests and the cycle bound test, with the failing control that takes the contract without the step.
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23083-ac1-tests
+  description: The J2 publish-step tests, the publish tests and the cycle bound test pass; with the contract taken from before the step, the step tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov
+- id: dod-omn23083-ac1-contract-step
+  description: The publish contract declares the join_j2 step.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py -q --no-cov
+  - check_type: command
+    check_value: "grep -q 'runtime_host_reading' src/omnimarket/nodes/node_factory_floor_publish_effect/contract.yaml && uv run pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py -q --no-cov"
+    cwd: .
+- id: dod-omn23083-integration-proof
+  description: The focused tests run on a lab host at the pushed head, and the lab run is recorded in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23083 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov
+    cwd: .

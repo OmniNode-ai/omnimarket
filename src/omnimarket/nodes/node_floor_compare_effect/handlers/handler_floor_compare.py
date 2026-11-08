@@ -32,6 +32,7 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history i
     value_in,
 )
 from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_metrics import (
+    measures_from_factory_record,
     snapshot_from_factory_record,
     snapshot_from_floor_simple,
 )
@@ -40,6 +41,12 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_sources i
     live_extension,
     load_book,
     load_friction_rules,
+)
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_piece_measure import (
+    append_verdicts,
+    load_overlay,
+    measure_pieces,
+    read_verdicts,
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelCompareLine,
@@ -273,6 +280,34 @@ class HandlerFloorCompare:
             if doc is not None
             else None
         )
+        if snapshot is None and request.backfill_only and raw is None:
+            # Archive-only operation reads the dated copies into the history and records no tick: it needs no live floor.
+            archived, bad_lines = read_history(history_path)
+            imported = self._backfill(rt, home, history_path, archived)
+            wrote_by_source: dict[str, int] = {}
+            source_notes: tuple[str, ...] = ()
+            if request.backfill_history:
+                wrote_by_source, source_notes = self._backfill_history(
+                    request, rt, home, now, env, history_path
+                )
+            points = len(read_history(history_path)[0])
+            chain.success(
+                {
+                    "history_points": points,
+                    "backfilled": imported,
+                    "recorded": 0,
+                    "skipped_lines": bad_lines,
+                    "history_written": sum(wrote_by_source.values()),
+                    "source_notes": len(source_notes),
+                }
+            )
+            return ModelFloorCompareResult(
+                ok=True,
+                backfilled=imported,
+                history_points=points,
+                history_written=wrote_by_source,
+                source_notes=source_notes,
+            )
         if snapshot is None:
             chain.failure(
                 "simple_payload_invalid",
@@ -284,6 +319,16 @@ class HandlerFloorCompare:
                 failure_detail=f"{rt.simple_relpath} cannot be read",
             )
         snapshot, notes = self._with_sources(snapshot, rt, home, env)
+        record = self._read_json(home / rt.record_relpath) if raw is None else None
+        measured = (
+            measures_from_factory_record(record, rt, source="tick")
+            if record is not None
+            else None
+        )
+        if measured is not None and measured.at.date() == snapshot.at.date():
+            snapshot = snapshot.model_copy(
+                update={"values": {**snapshot.values, **measured.values}}
+            )
         snapshots, skipped = read_history(history_path)
         added = self._backfill(rt, home, history_path, snapshots)
         written: dict[str, int] = {}
@@ -309,6 +354,10 @@ class HandlerFloorCompare:
             snapshots = kept
         snapshots = tuple(sorted(snapshots, key=lambda s: s.at))
         comparison = build_comparison(snapshots, snapshot, rt)
+        comparison, verdicts_written, more = self._pieces(
+            comparison, snapshots, home, now, env
+        )
+        notes = (*notes, *more)
         out = home / rt.output_relpath
         _write_atomic(out, comparison.model_dump_json(indent=1).encode("utf-8"))
         chain.success(
@@ -320,6 +369,8 @@ class HandlerFloorCompare:
                 "unread_lines_1d": comparison.windows[0].counts["unread"],
                 "history_written": sum(written.values()),
                 "source_notes": len(notes),
+                "pieces_measured": len(comparison.pieces),
+                "verdicts_recorded": verdicts_written,
             }
         )
         return ModelFloorCompareResult(
@@ -330,6 +381,36 @@ class HandlerFloorCompare:
             history_points=len(snapshots),
             history_written=written,
             source_notes=notes,
+        )
+
+    @staticmethod
+    def _pieces(
+        comparison: ModelFloorComparison,
+        snapshots: tuple[ModelSnapshot, ...],
+        home: Path,
+        now: datetime,
+        env: Mapping[str, str],
+    ) -> tuple[ModelFloorComparison, int, tuple[str, ...]]:
+        """Each live piece against its baseline (OMN-23081); a day-7 verdict is recorded once and read back unchanged."""
+        try:
+            overlay = load_overlay(env)
+        except (OSError, ValueError, KeyError) as exc:
+            return (
+                comparison,
+                0,
+                (
+                    f"the piece measures overlay cannot be read ({type(exc).__name__}: {exc}); no piece is measured",
+                ),
+            )
+        path = home / overlay.verdicts_relpath
+        results, fresh = measure_pieces(snapshots, overlay, now, read_verdicts(path))
+        written = append_verdicts(path, fresh)
+        return (
+            comparison.model_copy(
+                update={"pieces": tuple(r.model_dump(mode="json") for r in results)}
+            ),
+            written,
+            (),
         )
 
     @staticmethod
@@ -360,7 +441,7 @@ class HandlerFloorCompare:
                 update={
                     "values": {**snapshot.values, **values},
                     "labels": {**snapshot.labels, **labels},
-                    "complete": complete,
+                    "complete": tuple(dict.fromkeys((*snapshot.complete, *complete))),
                 }
             ),
             tuple(notes),
@@ -424,20 +505,27 @@ class HandlerFloorCompare:
             done = set()
         have = {(s.source, s.at) for s in existing}
         fresh: list[ModelSnapshot] = []
+        parsers = {
+            "floor_simple": snapshot_from_floor_simple,
+            "factory_record": snapshot_from_factory_record,
+            "factory_measures": measures_from_factory_record,
+        }
         for source in rt.backfill:
-            parse = (
-                snapshot_from_floor_simple
-                if source.kind == "floor_simple"
-                else snapshot_from_factory_record
-            )
+            parse = parsers[source.kind]
             for path in sorted(home.glob(source.glob)):
                 rel = path.relative_to(home).as_posix()
+                # A kind added after the first backfill reads the same copies again under its own mark (OMN-23081).
+                if source.kind == "factory_measures":
+                    rel = f"{source.kind}:{rel}"
                 if rel in done or not path.is_file():
                     continue
-                done.add(rel)
                 doc = self._read_json(path)
                 snap = parse(doc, rt, source=f"backfill:{source.kind}") if doc else None
-                if snap is None or (snap.source, snap.at) in have or not snap.values:
+                if snap is None:
+                    # Unreadable or incomplete now: not checkpointed, so a copy that becomes valid is still imported.
+                    continue
+                done.add(rel)
+                if (snap.source, snap.at) in have or not snap.values:
                     continue
                 have.add((snap.source, snap.at))
                 fresh.append(snap)

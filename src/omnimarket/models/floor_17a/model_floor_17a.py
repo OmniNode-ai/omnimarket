@@ -613,6 +613,10 @@ class ModelPieceEventRule(_Frozen):
     failure_default: str = Field(min_length=1)
     error_drill_cell: str = Field(min_length=1)
     lookback_days: int = Field(gt=0)
+    #: The cell of a row that names the correlation id the row's chain runs under, when the row answers another piece's chain
+    #: (a read that took the upstream piece's success as its input). A row without the cell, or with it empty, keeps the id the
+    #: floor derives from the row itself.
+    correlation_cell: str | None = Field(default=None, min_length=1)
 
 
 class ModelLedgerReadingRule(_Frozen):
