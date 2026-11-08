@@ -297,7 +297,18 @@ class HandlerLaneResultSweep:
         reasons: list[str] = []
         if receipt.terminal_outcome.lower() != effective.value:
             reasons.append(f"claimed-{receipt.terminal_outcome.lower()}")
-        if not effective.needs_action:
+        unclassified = existing is None or existing.class_at is None
+        join = self._overlay.join_j12
+        # J12: every typed receipt, clean or not, has its class row inside the join window.
+        join_late = (
+            unclassified
+            and join is not None
+            and now - receipt.finished_at
+            > timedelta(seconds=join.class_row_deadline_seconds)
+        )
+        if join_late:
+            state = EnumSweepState.UNCLASSIFIED_LATE
+        elif not effective.needs_action:
             state = EnumSweepState.CLEAR
         elif existing is None or existing.class_at is None:
             late = now - receipt.finished_at >= deadline

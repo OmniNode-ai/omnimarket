@@ -35,6 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+from omnimarket.handlers.vendor_compat import vendor_compat
 
 TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
@@ -661,13 +662,12 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
 
 def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
     """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
-    env = {
-        **os.environ,
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": str(tree / "src"),
-    }
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
     argv += ["-p", "no:cacheprovider", "-o", "addopts="]
+    failure = vendor_compat(tree, env)
+    if failure is not None:
+        return failure
     try:
         completed = subprocess.run(
             argv,
