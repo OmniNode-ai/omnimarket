@@ -16,23 +16,23 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
-    IloRefusalError,
-    JsonObject,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloGeneration,
     EnumIloRefusal,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
     ModelIloHost,
     ModelIloOverlay,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
     ModelIloRedfishRequest,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
+    IloRefusalError,
+    JsonObject,
 )
 
 SCOPE_MARKER = "ilo-redfish"

@@ -66,6 +66,7 @@ from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading imp
     HandlerHostReading,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_join_j1 import (
+    CONTROL_NOT_BROKEN,
     GRAPH_RUN_FAILED,
     UPSTREAM_PREFIX,
     VERDICT_MISSING,
@@ -474,7 +475,10 @@ def test_golden_the_host_reading_run_writes_a_working_row_that_names_the_graph_r
     assert cells["correlation"] == "graph-run-n1"
     assert cells["verdict"] == "WORKING"
     assert cells["started"] == "yes"
-    assert {e.correlation_id for e in sink.events} == {"graph-run-n1"}
+    assert {e.correlation_id for e in sink.events} == {
+        "graph-run-n1",
+        "graph-run-control-n1",
+    }
 
 
 def test_error_the_host_reading_run_writes_a_not_working_row_with_the_typed_code() -> (
@@ -579,3 +583,125 @@ def test_control_the_error_assertions_turn_red_on_that_break() -> None:
 def test_control_a_run_that_gives_no_correlation_id_is_refused() -> None:
     with pytest.raises(ValidationError):
         ModelJoinJ1Result(join="J1", correlation_id="", state="passed", started=True)
+
+
+# --- the failing control: the join's error side from a real graph run ---------------------------------------------------
+
+
+CONTROL = "node_join_j1_control_absent"
+
+
+def _control_settings() -> ModelJoinJ1Settings:
+    cfg = settings()
+    assert cfg.control_node == CONTROL
+    return cfg
+
+
+def run_with_control(
+    world: JoinWorld, sink: InMemoryEmissionSink
+) -> tuple[ModelJoinJ1Result, ModelProbeReading]:
+    return read_join_j1(
+        settings(),
+        world.source(),
+        sink,
+        correlation_id="graph-run-real",
+        clock=_clock(),
+        control_correlation_id="graph-run-control-real",
+    )
+
+
+def test_golden_a_writing_run_with_a_control_makes_the_join_pass_on_the_floor(
+    world: JoinWorld,
+) -> None:
+    _control_settings()
+    sink = InMemoryEmissionSink()
+    result, reading = run_with_control(world, sink)
+    assert result.state == "passed"
+    assert reading.verdict is EnumReadingVerdict.WORKING
+    assert {e.correlation_id for e in sink.events} == {
+        "graph-run-real",
+        "graph-run-control-real",
+    }
+    (join,) = floor_fold(sink.read(RUN_AT), RUN_AT + timedelta(minutes=5)).joins
+    assert join.state == "passed"
+    assert join.golden_at is not None
+    assert join.error_at is not None
+
+
+def test_error_the_control_is_a_typed_failure_of_the_host_stage_that_never_starts(
+    world: JoinWorld,
+) -> None:
+    sink = InMemoryEmissionSink()
+    run_with_control(world, sink)
+    control = [e for e in sink.events if e.correlation_id == "graph-run-control-real"]
+    host = [e for e in control if e.piece == settings().to_piece]
+    assert [e.phase for e in host] == ["failure"]
+    assert host[0].failure_code == f"{UPSTREAM_PREFIX}{VERDICT_MISSING}"
+    assert CONTROL in host[0].failure_detail
+    graph = [e for e in control if e.piece == settings().from_piece]
+    assert [e.phase for e in graph] == ["start", "failure"]
+
+
+def test_control_without_the_control_run_the_join_reads_golden_only_not_passed(
+    world: JoinWorld,
+) -> None:
+    sink = InMemoryEmissionSink()
+    run_join(world, sink)
+    (join,) = floor_fold(sink.read(RUN_AT), RUN_AT + timedelta(minutes=5)).joins
+    assert join.state == "golden_only"
+
+
+def test_control_a_control_that_does_not_break_the_join_turns_the_reading_red() -> None:
+    sink = InMemoryEmissionSink()
+    source = InMemoryGraphVerdictSource(
+        [verdict(DISCOVERY), verdict(PLACEMENT), verdict(CONTROL)]
+    )
+    result, reading = read_join_j1(
+        settings(),
+        source,
+        sink,
+        correlation_id="graph-run-real",
+        clock=_clock(),
+        control_correlation_id="graph-run-control-real",
+    )
+    assert result.state == "passed"
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert reading.reasons == (CONTROL_NOT_BROKEN,)
+    assert {e.correlation_id for e in sink.events} == {"graph-run-real"}
+
+
+def test_error_a_failed_graph_run_is_not_doubled_by_the_control() -> None:
+    sink = InMemoryEmissionSink()
+    source = InMemoryGraphVerdictSource([], failure="repo-unreadable:x")
+    result, reading = read_join_j1(
+        settings(),
+        source,
+        sink,
+        correlation_id="graph-run-real",
+        clock=_clock(),
+        control_correlation_id="graph-run-control-real",
+    )
+    assert result.failure_code == GRAPH_RUN_FAILED
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert {e.correlation_id for e in sink.events} == {"graph-run-real"}
+
+
+def test_a_join_that_declares_no_control_emits_no_control_chains() -> None:
+    cfg = settings().model_copy(update={"control_node": None})
+    sink = InMemoryEmissionSink()
+    read_join_j1(
+        cfg,
+        InMemoryGraphVerdictSource([verdict(DISCOVERY), verdict(PLACEMENT)]),
+        sink,
+        correlation_id="graph-run-real",
+        clock=_clock(),
+        control_correlation_id="graph-run-control-real",
+    )
+    assert {e.correlation_id for e in sink.events} == {"graph-run-real"}
+
+
+def test_the_overlay_refuses_a_control_node_that_is_a_required_node() -> None:
+    document = overlay().model_dump(mode="json")
+    document["join_j1"]["control_node"] = DISCOVERY
+    with pytest.raises(ValidationError, match="control node"):
+        ModelHostReadingOverlay.model_validate(document)
