@@ -27,6 +27,7 @@ that cannot see the old shape proves nothing about the new one.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from decimal import Decimal
@@ -180,6 +181,22 @@ async def _seed(conn: asyncpg.Connection) -> None:
     await _estimate(conn, "h-1", HOUSE_SLUG, local_cost=Decimal("0.07"))
 
 
+def _comparable(row: dict[str, Any]) -> dict[str, Any]:
+    """The row with the ``sessions`` array in a fixed order.
+
+    Both views order sessions by ``created_at`` alone and the seeded events share one
+    timestamp, so the order among tied sessions is the plan's choice. The values are
+    compared, the unspecified order is not.
+    """
+    sessions = row["sessions"]
+    if isinstance(sessions, str):
+        sessions = json.loads(sessions)
+    if sessions is None:
+        return row
+    ordered = sorted(sessions, key=lambda s: json.dumps(s, sort_keys=True, default=str))
+    return {**row, "sessions": ordered}
+
+
 async def _rows(conn: asyncpg.Connection, view: str) -> dict[str, dict[str, Any]]:
     rows = await conn.fetch(f"SELECT * FROM {view} ORDER BY tenant_id")
     return {row["tenant_id"]: {c: row[c] for c in _COLUMNS} for row in rows}
@@ -205,7 +222,9 @@ async def test_the_new_view_answers_what_098_answered_for_every_tenant(
     assert seeded <= set(old), "positive control: the oracle has every seeded tenant"
     assert old.keys() == new.keys()
     for tenant, old_row in old.items():
-        assert new[tenant] == old_row, f"tenant {tenant} changed"
+        assert _comparable(new[tenant]) == _comparable(old_row), (
+            f"tenant {tenant} changed"
+        )
 
 
 async def test_the_counts_the_oracle_gives_are_the_ones_the_cases_were_built_for(
