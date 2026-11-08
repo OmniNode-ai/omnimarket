@@ -40,6 +40,9 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py tests/unit/nodes/node_dod_verify/test_omn_16846_hermetic_behaviour_check_env.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+      - check_type: command
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py?ref=956ecdbd2b14511caab47f4c79051f5bb26fa8c7" --jq '.content' | base64 -d | grep -c 'def close'
     binds_ac: []
   - id: dod-omn23198-venv-cleanup-integration-proof
     description: >-
