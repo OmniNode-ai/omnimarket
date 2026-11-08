@@ -78,6 +78,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_tic
     HandlerDelegationTicketFold,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    AGGREGATE_READ_RELATIONS,
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
     _deciding_rung_stop_reason,
@@ -219,13 +220,9 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         # typed contract does not name, which is what makes them reachable
         # from the in-process publisher; they appear here so this runner's own
         # role check accepts the same declaration rather than rejecting a
-        # contract the kernel accepts.
-        "projection_delegation_summary",
-        "projection_delegation_model_routing",
-        "projection_delegation_quality_gate",
-        "projection_delegation_token_usage",
-        # OMN-21970: the per-day view, read and republished the same way.
-        "projection_delegation_daily",
+        # contract the kernel accepts. OMN-21970: one list for both handlers,
+        # the aggregate republish's read set, which names the per-day view too.
+        *AGGREGATE_READ_RELATIONS,
     }
 )
 

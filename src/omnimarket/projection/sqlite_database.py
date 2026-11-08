@@ -617,8 +617,8 @@ _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
     "projection_delegation_model_routing",
     "sqlite/delegation_model_routing_view_v2.sql",
 )
-# OMN-21970: the counterpart of node_projection_delegation migration 0066, all of
-# a tenant's days in one row (migration 0065's cursor is a cursor-table step).
+# OMN-21970: the counterpart of node_projection_delegation migration 0067, all of
+# a tenant's days in one row (migration 0066's cursor is a cursor-table step).
 _DAILY_VIEW_STEP = "omn21970_delegation_daily_view"
 _DAILY_VIEW_SQL = ("projection_delegation_daily", "sqlite/delegation_daily_view.sql")
 # OMN-20008: the counterpart of node_projection_savings migration 090's savings
@@ -1112,10 +1112,23 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             conn.execute(f"DROP VIEW IF EXISTS {view}")
             conn.execute(ddl)
 
-    @staticmethod
-    def _create_cursor_table(conn: sqlite3.Connection, ddl: tuple[str, ...]) -> None:
-        """OMN-19988, OMN-19986: a local table, its cursor sequence, seed and triggers."""
+    @classmethod
+    def _create_cursor_table(
+        cls, conn: sqlite3.Connection, ddl: tuple[str, ...]
+    ) -> None:
+        """OMN-19988, OMN-19986: a local table, its cursor sequence, seed and triggers.
+
+        OMN-21970: SQLite has no ADD COLUMN IF NOT EXISTS, so when a step is replayed
+        (a store that lost its step records) a column it already added is kept.
+        """
         for statement in ddl:
+            words = statement.split()
+            if (
+                words[:2] == ["ALTER", "TABLE"]
+                and words[3:5] == ["ADD", "COLUMN"]
+                and words[5] in cls._existing_columns(conn, words[2])
+            ):
+                continue
             conn.execute(statement)
 
     @classmethod

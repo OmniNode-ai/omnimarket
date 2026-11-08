@@ -118,9 +118,9 @@ _LOCAL_IDENTITY = (
 )
 
 # OMN-21970: the SQLite counterpart of node_projection_delegation migration
-# 0065, delegation_events' integer walk cursor. It is the row's own integer id:
+# 0066, delegation_events' integer walk cursor. It is the row's own integer id:
 # existing rows take it once, and a new row takes it on insert. A row rewritten
-# in place keeps its id, so it keeps its cursor, as migration 0065 does.
+# in place keeps its id, so it keeps its cursor, as migration 0066 does.
 _DELEGATION_EVENTS_CURSOR = (
     "ALTER TABLE delegation_events ADD COLUMN projection_cursor INTEGER",
     "UPDATE delegation_events SET projection_cursor = id",
@@ -136,7 +136,7 @@ _DELEGATION_EVENTS_CURSOR = (
 # Each is a store step, not a statement on every connect: a sequence seed or a
 # backfill is a write, so a read-only store, or a reader on a busy one, must not
 # run it. OMN-19988 the local environment, OMN-19986 the local identity, OMN-21970
-# delegation_events' walk cursor (node_projection_delegation migration 0065).
+# delegation_events' walk cursor (node_projection_delegation migration 0066).
 _CURSOR_TABLE_STEPS = (
     ("omn19988_local_environment", "the local environment table", _LOCAL_ENVIRONMENT),
     ("omn19986_local_identity", "the local identity table", _LOCAL_IDENTITY),

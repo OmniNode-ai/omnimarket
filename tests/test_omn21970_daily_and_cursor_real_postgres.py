@@ -3,13 +3,13 @@
 """Real-Postgres proof of the per-day view and the walk cursor (OMN-21970).
 
 The SQLite module proves the local store. It cannot prove that node
-projection_delegation's migrations 0065 and 0066 apply on top of the whole
+projection_delegation's migrations 0066 and 0067 apply on top of the whole
 chain, that adding the cursor numbers the rows a live table already holds,
 that a later insert takes the next number, or that the per-day view and the
 decisions walk serve every run through the same table reader the dashboard's
 API uses on Postgres. Each test names the failure it exists to catch:
 
-* rows written before migration 0065 keep a NULL cursor, so a walk skips them;
+* rows written before migration 0066 keep a NULL cursor, so a walk skips them;
 * a row inserted after it has no cursor, or a duplicate one;
 * the per-day view stops short of 600 runs over 20 days, puts a run on the
   wrong day, or counts failed and unrecorded runs differently from the
@@ -17,7 +17,7 @@ API uses on Postgres. Each test names the failure it exists to catch:
 * another tenant's days are served;
 * the decisions walk cannot reach the runs older than the newest 500.
 
-THE RED HALF IS MECHANICAL. Before migrations 0065 and 0066 there is no
+THE RED HALF IS MECHANICAL. Before migrations 0066 and 0067 there is no
 ``projection_cursor`` column and no ``projection_delegation_daily`` relation.
 
 WHICH DATABASE. As in the OMN-19970 module: CI's provisioned PostgreSQL 16 when
@@ -63,7 +63,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _MIGRATIONS_DIR = (
     _ROOT / "src" / "omnimarket" / "nodes" / "node_projection_delegation" / "migrations"
 )
-_CURSOR_MIGRATION = "0065_delegation_events_projection_cursor.sql"
+_CURSOR_MIGRATION = "0066_delegation_events_projection_cursor.sql"
 _DOCKER = shutil.which("docker")
 _DAILY = "onex.snapshot.projection.delegation.daily.v1"
 _DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
@@ -310,6 +310,35 @@ async def test_the_cursor_numbers_existing_rows_and_each_later_insert(
     assert None not in cursors
     assert len(set(cursors)) == 3
     assert rows[-1]["correlation_id"] == "after"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_delegation_projection_contract(postgres: _Postgres) -> None:
+    """The standalone writer's known tables take the delegation views from
+    AGGREGATE_READ_RELATIONS: it boots on the shipped contract, which names the
+    per-day view, and every view it may read is created by this node's migration
+    chain on a real PostgreSQL 16 (INTEGRATION_POSTGRES_* or an owned container).
+    Drafted by onex delegate run 4b0bcd9d."""
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+        KNOWN_PROJECTION_TABLES,
+        DelegationProjectionRunner,
+    )
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        AGGREGATE_READ_RELATIONS,
+    )
+
+    async with _provisioned(postgres) as (admin, schema):
+        DelegationProjectionRunner()
+
+        assert "projection_delegation_daily" in AGGREGATE_READ_RELATIONS
+        assert AGGREGATE_READ_RELATIONS <= KNOWN_PROJECTION_TABLES
+
+        for name in AGGREGATE_READ_RELATIONS:
+            row = await admin.fetchrow(
+                "SELECT to_regclass($1 || '.' || $2) AS reg", schema, name
+            )
+            assert row["reg"] is not None, f"{name} missing in {schema}"
 
 
 @pytest.mark.asyncio

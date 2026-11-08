@@ -5,7 +5,7 @@
 -- holds every UTC day with runs, oldest first, so the Overview's Runs per day
 -- and Tokens per day count every run instead of the newest 500 rows. One row
 -- per tenant is what the writer's singleton-aggregate republish can serve.
--- Same columns, names and rules as migration 0066:
+-- Same columns, names and rules as migration 0067:
 -- * day is the UTC date of written_at, else created_at, as the dashboard
 --   places a run;
 -- * a run whose terminal was not ok failed whatever its quality gate said;

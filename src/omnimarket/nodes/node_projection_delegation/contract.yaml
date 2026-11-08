@@ -324,7 +324,7 @@ db_io:
     - name: projection_delegation_daily
       database_ref: application
       schema: public
-      migration: "0066_delegation_daily_view.sql"
+      migration: "0067_delegation_daily_view.sql"
       access: read
       role: aggregate_daily
 
@@ -531,7 +531,7 @@ projection_api:
         - tenant_id
         - writer_identity
         - written_at
-        # OMN-21970: the integer walk cursor (migration 0065).
+        # OMN-21970: the integer walk cursor (migration 0066).
         - projection_cursor
       order_by: written_at DESC
       freshness_column: written_at

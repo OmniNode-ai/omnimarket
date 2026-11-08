@@ -814,7 +814,7 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-19991's local_alerts (same PR as its CREATE) = 120.
     # +1 for OMN-19986's local_identity (same PR as its CREATE) = 121.
     # +1 for OMN-22020's view_seam_readings (same PR as its CREATE) = 122.
-    # +1 for OMN-21970's projection_delegation_daily view (0066), which the
+    # +1 for OMN-21970's projection_delegation_daily view (0067), which the
     # census counts with the other delegation views = 123.
     assert census["source_declared_tables"] == 123
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
