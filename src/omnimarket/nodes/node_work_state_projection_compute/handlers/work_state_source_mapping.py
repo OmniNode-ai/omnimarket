@@ -14,16 +14,16 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
-    normalize_ref,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
+from omnimarket.events.work_state_projection import (
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelTicketSource,
     ModelWorkScope,
     ModelWorkStateRules,
+)
+from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
+    normalize_ref,
 )
 
 _LOCAL_TASK = re.compile(r"^T\d+[a-z]?$")

@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
-    HandlerWorkStateProjection,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
+from omnimarket.events.work_state_projection import (
     EnumWorkItemState,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelTicketSource,
     ModelWorkScope,
     ModelWorkStateRequest,
+)
+from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
+    HandlerWorkStateProjection,
 )
 
 pytestmark = pytest.mark.unit

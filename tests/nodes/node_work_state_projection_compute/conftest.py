@@ -11,13 +11,13 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.work_state_projection import (
+    ModelWorkStateRules,
+)
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     evidence_row_from_text,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
-    ModelWorkStateRules,
 )
 
 NOW = datetime(2026, 11, 7, 13, 0, tzinfo=UTC)

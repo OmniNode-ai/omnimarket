@@ -8,18 +8,18 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.models.model_reading import ModelLedgerEvidenceRow
-from omnimarket.nodes.node_work_state_projection_compute.models.model_work_state_rules import (
+from omnimarket.events.work_state_projection.model_work_state_rules import (
     ModelWorkScope,
     ModelWorkStateRules,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.model_work_state_sources import (
+from omnimarket.events.work_state_projection.model_work_state_sources import (
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelReadingSource,
     ModelTicketSource,
 )
+from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 
 
 class ModelWorkStateRequest(BaseModel):

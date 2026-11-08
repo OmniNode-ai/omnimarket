@@ -22,6 +22,12 @@ from typing import Any
 
 import yaml
 
+from omnimarket.events.work_state_projection import (
+    ModelReadingSource,
+    ModelWorkStateRequest,
+    ModelWorkStateResult,
+    ModelWorkStateRules,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
@@ -43,12 +49,6 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_sou
     receipts_from_documents,
     scope_from_declaration,
     tickets_from_linear_snapshot,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
-    ModelReadingSource,
-    ModelWorkStateRequest,
-    ModelWorkStateResult,
-    ModelWorkStateRules,
 )
 
 # The projection overlay belongs to the compute node; this effect reads the sources and calls it.

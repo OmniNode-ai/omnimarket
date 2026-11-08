@@ -6,16 +6,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_criterion_reading import (
+from omnimarket.events.work_state_projection.enum_criterion_reading import (
     EnumCriterionReading,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_scope_status import (
+from omnimarket.events.work_state_projection.enum_scope_status import (
     EnumScopeStatus,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_item_kind import (
+from omnimarket.events.work_state_projection.enum_work_item_kind import (
     EnumWorkItemKind,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_item_state import (
+from omnimarket.events.work_state_projection.enum_work_item_state import (
     EnumWorkItemState,
 )
 

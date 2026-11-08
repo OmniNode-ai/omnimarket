@@ -29,6 +29,9 @@ import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import ValidationError
 
+from omnimarket.events.work_state_projection import (
+    ModelWorkStateRequest,
+)
 from omnimarket.models.model_scenario_row import ModelScenarioRow
 from omnimarket.models.model_scenario_run import ModelScenarioRun
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
@@ -39,9 +42,6 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 )
 from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
     HandlerWorkStateProjection,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
-    ModelWorkStateRequest,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.work_state_parity]
