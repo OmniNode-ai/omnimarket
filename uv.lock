@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261104102410-b002ec3ceab1" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261107125813-33b470fda2b8" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261103062530-3580a8d986fd" },
 ]
 
@@ -3094,7 +3094,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455#5e69171dd45594742a56ac4b9f8a3e38a8178120" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261107125813-33b470fda2b8#33b470fda2b8b235a1c6c35d27188ba264c03082" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3236,7 +3236,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261104102410-b002ec3ceab1" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261106125951-5e69171dd455" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261107125813-33b470fda2b8" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261103062530-3580a8d986fd" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3" },
     { name = "packaging", specifier = ">=24.0" },

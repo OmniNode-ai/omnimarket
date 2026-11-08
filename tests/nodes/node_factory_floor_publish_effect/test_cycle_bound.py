@@ -81,7 +81,12 @@ def test_concurrent_input_steps_count_at_their_slowest_and_sequential_ones_add_u
     assert (
         len(concurrent) > 1
     )  # the group exists, so the slowest-member rule is exercised
-    expected = max(concurrent) + timeouts["factory_floor"] + timeouts["floor_simple"]
+    expected = (
+        max(concurrent)
+        + timeouts["factory_floor"]
+        + timeouts["floor_simple"]
+        + timeouts["floor_compare"]
+    )
     assert rt.declared_longest_path()["input_steps"] == expected
     assert sum(timeouts.values()) > expected  # a plain sum would overstate the path
 

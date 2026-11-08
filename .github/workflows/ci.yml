@@ -367,12 +367,24 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked
+        # OMN-22020: the delegation-ladder benchmark replays a merged historical tree whose
+        # evidence_pipeline wire types import omnibase_compat, which this repository
+        # retired (OMN-22385) and which the pinned omnibase-infra no longer declares.
+        # Installed into this job's venv alone, after the locked sync, as the wire
+        # gate job does; the `uv run` steps below keep what is installed.
+        run: |
+          uv sync --locked
+          uv pip install 'omnibase-compat==0.5.7'
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
+      # OMN-22020: keep both falsifiers aligned with their pre-commit hooks.
+      - name: Declared view seam graph
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_graph_declared.py -q --no-cov
+      - name: View seam three-part proof
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
       - name: Retired model references (including dated history)
         run: uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
       - name: Retired model and archive safety negative controls
