@@ -82,6 +82,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 from omnimarket.nodes.node_floor_fill_reducer.handlers import (
     EnumFloorFillDropReason,
     EnumFloorFillEntryState,
+    ModelFloorFillEntry,
     ModelFloorFillObservation,
     ModelFloorFillReduceInput,
     ModelFloorFillReduceOutput,
@@ -95,9 +96,6 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers import (
 )
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     HandlerFloorFillReducer,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
-    ModelFloorFillEntry,
 )
 
 # The class a floor task is sent as: the name the open-count brake and the stop signal answer to.
