@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22820
+title: "omnimarket's Delegation Health Check call moves its pin to the omnibase_infra commit that treats a cancelled verdict run as no verdict"
+summary: "The caller of the omnibase_infra delegation-health reusable workflow pins an omnibase_infra dev-merge tag. The pin moves to the dev-merge tag of the omnibase_infra change that reads a cancelled or skipped verdict run as no verdict, so a cancelled newest run no longer fails the check on every omnimarket pull request. No check is widened and no bound is changed: a verdict run that completed with a failure still fails the check."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22820-pin
+  statement: "The caller pins the omnibase_infra dev-merge tag of the cancelled-verdict fix, and the check reads green while the newest verdict run is cancelled."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket workflow pins the merged infra commit and an omnimarket pull request reads the check green while the newest verdict run is cancelled -- falsifier: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: "The caller test replays the pinned check with a cancelled newest verdict run (green), a completed failure behind it (red) and only cancelled runs (refused)"
+  command: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22820-tests
+  description: "The pinned delegation-health check treats a cancelled newest verdict run as no verdict and still fails a completed failure."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py -q --no-cov
+    cwd: .

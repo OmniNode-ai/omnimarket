@@ -64,6 +64,7 @@ def test_every_consumer_resolving_reads_working_and_writes_one_row() -> None:
     assert "piece=5" in row
     assert "failed_consumers=none" in row
     assert "tag=operational" in row
+    assert "| drill=no |" in row
     assert "planted_dummy=found" in row
     assert "exposures=0" in row
 
@@ -252,3 +253,20 @@ def test_the_shipped_example_overlay_loads() -> None:
     )
     assert loaded.store.secret_store is not None
     assert loaded.store.backend_name == "secret-store-effect"
+
+
+def test_a_drill_overlay_marks_its_row_drill_yes_for_the_floors_error_event() -> None:
+    """The floor's piece events read the drill cell: a drill row says drill=yes."""
+    ledger = InMemoryLedger()
+    drill_overlay = overlay(
+        publish={
+            "lane": "secret-reading",
+            "actor": "node:node_secret_reading_effect",
+            "piece": 5,
+            "drill": True,
+            "publish_max_age_seconds": 7200,
+        }
+    )
+    handler(store(), ledger, test_overlay=drill_overlay).handle(_command())
+    row = ledger.lines[0]
+    assert "| tag=drill | drill=yes |" in row
