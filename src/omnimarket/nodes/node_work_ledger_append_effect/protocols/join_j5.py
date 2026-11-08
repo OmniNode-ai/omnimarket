@@ -9,6 +9,7 @@ live ledger file's name. A real backend is another adapter of the same three por
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
@@ -19,6 +20,8 @@ from omnimarket.models.model_work_ledger_fold_result import ModelWorkLedgerRowRe
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
     ModelAppendCommandResult,
 )
+
+_ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 
 #: File names that are the live ledger; a scratch lane never takes one.
 LIVE_LEDGER_FILE_NAMES = frozenset({"ROLLING_WORK_LEDGER.md"})
@@ -86,16 +89,30 @@ class InMemoryProjectedRows:
         return tuple(self._rows.values())
 
 
+def logical_rows(text: str) -> list[tuple[int, str]]:
+    """Each logical row of ``text`` as ``(line number of its header, row)``.
+
+    A logical row is a stamp line plus its continuation lines, blank lines dropped and the whole trimmed: the row
+    shape the ledger's own splitter hands the projection, so the durable text and the projected row are compared
+    in one representation."""
+    groups: list[tuple[int, list[str]]] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        if _ROW_START.match(line):
+            groups.append((number, [line]))
+        elif groups and line.strip():
+            groups[-1][1].append(line)
+    return [(number, "\n".join(lines).strip()) for number, lines in groups]
+
+
 def _project_appended(
     projection: InMemoryProjectedRows, ledger_id: str, text: str, rows: str
 ) -> None:
-    """Tell the projection each appended row at its position, as the row event would."""
-    first = len(text.splitlines()) - len(rows.splitlines()) + 1
-    for offset, line in enumerate(rows.splitlines()):
-        if line.strip() and not line.startswith((" ", "\t")):
-            projection.project(
-                raw_row=line, ledger_id=ledger_id, ledger_seq=first + offset
-            )
+    """Tell the projection each appended logical row at its position, as the row event would."""
+    first = len(text.splitlines()) - len(rows.splitlines())
+    for number, raw_row in logical_rows(rows):
+        projection.project(
+            raw_row=raw_row, ledger_id=ledger_id, ledger_seq=first + number
+        )
 
 
 class InMemoryJoinLedger:
@@ -118,6 +135,8 @@ class InMemoryJoinLedger:
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         self.append_calls.append(rows)
+        if self._text and not self._text.endswith("\n"):
+            self._text += "\n"
         self._text += rows if rows.endswith("\n") else rows + "\n"
         _project_appended(self._projection, self._ledger_id, self._text, rows)
         return ModelAppendCommandResult(exit_code=0)
@@ -133,10 +152,12 @@ class ScratchFileJoinLedger:
         projection: InMemoryProjectedRows,
         ledger_id: str = "rolling-work-ledger",
     ) -> None:
-        if path.name in LIVE_LEDGER_FILE_NAMES:
-            raise ValueError(
-                f"{path.name} is the live ledger file: a scratch lane never appends to it"
-            )
+        # A link is followed: a scratch name that resolves to the live file is the live file.
+        for name in (path.name, path.resolve().name):
+            if name in LIVE_LEDGER_FILE_NAMES:
+                raise ValueError(
+                    f"{name} is the live ledger file: a scratch lane never appends to it"
+                )
         self._path = path
         self._projection = projection
         self._ledger_id = ledger_id
@@ -148,7 +169,10 @@ class ScratchFileJoinLedger:
         return self._path.read_text(encoding="utf-8")
 
     def append(self, rows: str) -> ModelAppendCommandResult:
+        existing = self.read_text()
         with self._path.open("a", encoding="utf-8") as stream:
+            if existing and not existing.endswith("\n"):
+                stream.write("\n")
             stream.write(rows if rows.endswith("\n") else rows + "\n")
         _project_appended(self._projection, self._ledger_id, self.read_text(), rows)
         return ModelAppendCommandResult(exit_code=0)
@@ -163,4 +187,5 @@ __all__ = [
     "ProtocolStoreIdentities",
     "ScratchFileJoinLedger",
     "StoreIdentityUnresolvedError",
+    "logical_rows",
 ]

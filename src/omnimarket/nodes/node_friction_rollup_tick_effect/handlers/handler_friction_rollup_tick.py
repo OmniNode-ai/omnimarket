@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.friction_rollup import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
@@ -36,6 +37,7 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
     log_line,
     needs_ticket,
     render_summary_markdown,
+    report_directory_reference,
     stamp,
     status_row,
     top_classes,
@@ -59,6 +61,7 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger
 )
 
 NODE_DIR = Path(__file__).resolve().parent.parent
+NODE_NAME = NODE_DIR.name
 DEFAULT_OVERLAY = NODE_DIR / "overlay.example.yaml"
 
 
@@ -69,7 +72,12 @@ def _refused(message: str) -> ModelFrictionRollupTickResult:
 
 
 class HandlerFrictionRollupTick:
-    """Run one tick; the appender and the settings can be injected, otherwise the overlay and the real command are used."""
+    """Run one tick; the appender and the settings can be injected.
+
+    Without injected settings the deployment overlay ``<root>/node_friction_rollup_tick_effect/overlay.yaml`` found
+    under ``ONEX_SKILL_OVERLAY_ROOTS`` governs the tick and its relative rule path is read from that overlay's
+    directory; with no deployment overlay the packaged ``overlay.example.yaml`` profile is the default.
+    """
 
     def __init__(
         self,
@@ -77,10 +85,15 @@ class HandlerFrictionRollupTick:
         settings: ModelFrictionRollupTickSettings | None = None,
         settings_dir: Path | None = None,
     ) -> None:
-        self._settings_dir = settings_dir if settings_dir is not None else NODE_DIR
-        self._settings = (
-            settings if settings is not None else load_settings(DEFAULT_OVERLAY)
-        )
+        deployed = find_node_overlay(NODE_NAME) if settings is None else None
+        if settings is not None:
+            selected_settings, selected_dir = settings, NODE_DIR
+        elif deployed is not None:
+            selected_settings, selected_dir = load_settings(deployed), deployed.parent
+        else:
+            selected_settings, selected_dir = load_settings(DEFAULT_OVERLAY), NODE_DIR
+        self._settings_dir = settings_dir if settings_dir is not None else selected_dir
+        self._settings = selected_settings
         self._appender: ProtocolLedgerAppender = (
             appender
             if appender is not None
@@ -141,10 +154,11 @@ class HandlerFrictionRollupTick:
             if request.archive_dir
             else ledger.parent / settings.archive_subdir
         )
+        registry_root = Path(request.registry_root)
         state_dir = (
             Path(request.state_dir)
             if request.state_dir
-            else Path(request.registry_root) / settings.state_subdir
+            else registry_root / settings.state_subdir
         )
         try:
             now = parse_iso8601(request.now) if request.now else datetime.now(UTC)
@@ -197,7 +211,15 @@ class HandlerFrictionRollupTick:
         }
         if rules_note is not None:
             document["class_rules"] = rules_note.removeprefix("class-rules=")
-        row = status_row(now, current, summary, report_name, settings, rules_note)
+        row = status_row(
+            now,
+            current,
+            summary,
+            report_name,
+            settings,
+            rules_note,
+            report_directory_reference(state_dir, registry_root, settings),
+        )
         json_text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         markdown_text = render_summary_markdown(now, current, summary, settings)
         done_code = 0 if rules_note is None else 3

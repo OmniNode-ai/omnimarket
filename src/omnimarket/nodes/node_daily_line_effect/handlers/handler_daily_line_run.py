@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,13 +29,13 @@ from omnimarket.models.model_daily_line import (
     ModelDailyLineRequest,
     ModelDailyLineRunCommand,
 )
-from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
-    HandlerDailyLine,
-)
+from omnimarket.nodes.node_daily_line_compute import HandlerDailyLine
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 NODE_NAME = "node_daily_line_effect"
 J1_JOIN_ID = "J1"
+#: The published line is read by other users' tools, so it keeps the mode a plain write gives.
+PUBLISHED_MODE = 0o644
 
 LedgerAppender = Callable[[str], None]
 Clock = Callable[[], datetime]
@@ -107,7 +108,8 @@ def read_floor_record(
     text = own.get("text")
     return (
         ModelDailyLinePiece(
-            state=state if isinstance(state, str) else "UNKNOWN",
+            # An absent reading stays blank so the compute handler lists the part as not read.
+            state=state if isinstance(state, str) else "",
             detail=text if isinstance(text, str) else "",
         ),
         j1_state,
@@ -148,9 +150,19 @@ def command_appender(
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(text, encoding="utf-8")
-    os.replace(temporary, path)
+    # One temporary file per call, so overlapping runs never write into the same inode.
+    descriptor, name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        temporary.chmod(PUBLISHED_MODE)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def status_row(

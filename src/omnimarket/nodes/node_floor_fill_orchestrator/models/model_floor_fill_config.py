@@ -107,13 +107,17 @@ def load_floor_fill_config(overlay: Mapping[str, Any]) -> ModelFloorFillConfig:
     try:
         return ModelFloorFillConfig.model_validate(dict(overlay))
     except ValidationError as error:
-        messages = [str(item["msg"]) for item in error.errors()]
+        messages: list[str] = []
+        located: list[str] = []
+        for item in error.errors():
+            message = str(item["msg"])
+            if item["loc"]:
+                key = f"{OVERLAY_PREFIX}{'.'.join(str(part) for part in item['loc'])}"
+                located.append(key)
+                if key not in message:
+                    message = f"{key}: {message}"
+            messages.append(message)
         text = "; ".join(messages)
-        located = [
-            f"{OVERLAY_PREFIX}{'.'.join(str(part) for part in item['loc'])}"
-            for item in error.errors()
-            if item["loc"]
-        ]
         keys = tuple(
             dict.fromkeys(
                 [

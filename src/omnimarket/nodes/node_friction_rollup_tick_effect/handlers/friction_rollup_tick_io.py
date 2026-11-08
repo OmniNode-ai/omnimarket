@@ -122,10 +122,20 @@ def load_class_rules(
         raise ValueError("rules file is not a mapping")
     rules = [
         ModelFrictionClassRule.model_validate(item)
-        for item in document.get("class_rules") or []
+        for item in _collection(document, "class_rules")
     ]
     owners = [
         ModelFrictionClassOwner.model_validate(item)
-        for item in document.get("class_owners") or []
+        for item in _collection(document, "class_owners")
     ]
     return rules, owners
+
+
+def _collection(document: dict[str, Any], key: str) -> list[Any]:
+    """The list under ``key``; an absent or null key is an empty list, any other non-list value is malformed."""
+    value = document.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{key} is not a list")
+    return value
