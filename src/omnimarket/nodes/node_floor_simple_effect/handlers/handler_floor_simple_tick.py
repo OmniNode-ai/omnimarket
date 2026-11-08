@@ -835,6 +835,7 @@ class HandlerFloorSimpleTick:
             lanes=record_lanes(record) if record else (),
             lab=lab,
             receipts=receipts,
+            receipts_covered_s=rt.state.emission_window_hours * 3600,
             readings=self._readings(
                 home / rt.sources.readings_relpath,
                 home / rt.sources.harness_result_relpath,

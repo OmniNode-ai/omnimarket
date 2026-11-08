@@ -406,8 +406,18 @@ class HandlerFloorSimple:
         kind: Literal["golden", "error"],
         window_s: int,
     ) -> int | None:
-        """How many chains of ``piece`` ended as ``kind`` inside the window; ``None`` when the receipts were not read."""
+        """How many chains of ``piece`` ended as ``kind`` inside the window.
+
+        ``None`` (unread, never zero) when the receipts were not read, when they reach back less far than the window, or
+        when the ledger holding the piece's events could not be read and no local chain of the piece stands in for it.
+        """
         if r.receipts is None:
+            return None
+        if r.receipts_covered_s is not None and window_s > r.receipts_covered_s:
+            return None
+        if r.sources_read.get("ledger") is False and not any(
+            c.piece == piece for c in r.receipts.chains
+        ):
             return None
         return sum(
             1
