@@ -29,6 +29,10 @@ from omnimarket.nodes.node_floor_task_ticket_effect.handlers.ticket_judge import
 Gate = Callable[[ModelFloorTicketCreateRequest], str | None]
 
 
+def _admit_all(_request: ModelFloorTicketCreateRequest) -> str | None:
+    return None
+
+
 @dataclass
 class StoredTicket:
     """One ticket of the in-memory store."""
@@ -47,7 +51,7 @@ class InMemoryFloorTicketStore:
 
     synchronous_execution: ClassVar[bool] = True
 
-    gate: Gate = lambda _request: None
+    gate: Gate = field(default=_admit_all)
     prefix: str = "OMN"
     first_number: int = 1
     tickets: dict[str, StoredTicket] = field(default_factory=dict)
