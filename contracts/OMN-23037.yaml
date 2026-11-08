@@ -13,8 +13,6 @@ requirements:
     acceptance:
       - id: AC1
         statement: "AC1: with the reader's clone lacking the running commit, the reader still counts both merges as running when the runtime host's clone holds it, and a count that could not read the running build says so in the row note -- falsifier: uv run pytest of the deploy-lag reader tests with the three source files restored to origin/dev, 4 tests fail"
-      - id: AC2
-        statement: "AC2: after the build is installed on the host that runs factory-floor-publish, the floor's lab:deploy_lag row for #5663 and #5674 reads running or clears -- falsifier: curl of floor-simple.json lab:deploy_lag row after one publish"
 evidence_requirements:
   - kind: tests
     description: >-
@@ -39,8 +37,6 @@ dod_evidence:
     description: >-
       After the build is installed on the host that runs factory-floor-publish and the overlay value is landed, one publish later the floor serves a lab:deploy_lag row that does not name omnibase_infra#5663 and #5674 as merged, not running. The floor is reachable only from the lab network, so hosted CI cannot run this check and only the local Done gate runs it, with FLOOR_SIMPLE_JSON_URL set to the floor page JSON address from the lab overlay.
     source: manual
-    binds_ac:
-      - AC2
     execution_scope: local_done_gate
     checks:
       - check_type: command
