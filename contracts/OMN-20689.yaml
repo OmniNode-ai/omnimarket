@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-20689
+title: Host drift syncs every plugin by installed revision, not version string
+summary: The host-drift sync policy and the plugin revision decision moved out of the frozen internal host-drift package into two omnimarket nodes. node_host_drift_plugin_revision_compute decides a plugin's drift by whether its installed revision holds the merged tip, whatever its version says, and carries the plugin sync rules as an overlay. node_host_drift_plugin_sync_effect installs a data-only plugin (onex-overlays) from the tip, keeping the previous tree and rolling back on a failed check.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20689-revision-sync
+  statement: A plugin at an unchanged version whose installed revision lacks the merged tip is drift and routes to a tree install; onex-overlays reaches the tip.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a fixture at the same version 0.1.30 and an older revision reads latest to the version compare and drift to the revision decision, and the sync moves its installed tree and recorded revision to the tip -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_sync_effect/tests -q --no-cov -k "failing_control"`'
+evidence_requirements:
+- kind: tests
+  description: The revision decision and the data-plugin sync tests pass, including the same-version older-revision failing controls.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_sync_effect/tests -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20689-ac1-tests
+  description: Runs the revision decision and the data-plugin sync tests. The failing-control tests show the version compare leaving the same-version older-revision fixture in place, and the revision decision and sync moving it to the tip.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_sync_effect/tests -q --no-cov
+    cwd: .
+- id: dod-omn20689-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20689 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_sync_effect/tests -q --no-cov
+    cwd: .

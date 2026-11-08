@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_revision_compute
+lifecycle: experimental
+node_type: compute
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Decide a plugin's host drift by installed revision, not version string, and route it through
+  the plugin rules of the host-drift sync policy. Pure compute over typed probe facts (OMN-20689).
+input_model:
+  name: ModelPluginRevisionFacts
+  module: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision
+output_model:
+  name: ModelPluginRevisionVerdict
+  module: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision
+handler:
+  module: omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision
+  class: HandlerHostDriftPluginRevision
+  input_model: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision.ModelPluginRevisionFacts
+  output_model: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision.ModelPluginRevisionVerdict
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostDriftPluginRevision
+      module: omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision
+    event_model:
+      name: ModelPluginRevisionFacts
+      module: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-drift-plugin-revision-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-drift-plugin-revision-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-drift-plugin-revision-requested.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+metadata:
+  transport_type: kafka
+  ticket: OMN-20689
+  description: Plugin drift by revision; the plugin sync rules are the overlay plugin_sync_policy.yaml.
+  tags:
+  - host-drift
+terminal_event: onex.evt.omnimarket.host-drift-plugin-revision-decided.v1
+published_events:
+- topic: onex.evt.omnimarket.host-drift-plugin-revision-decided.v1
+  event_type: ModelPluginRevisionVerdict
+externally_consumed_topics:
+- onex.evt.omnimarket.host-drift-plugin-revision-decided.v1

@@ -1,0 +1,7 @@
+# Settings of the data-plugin revision sync (OMN-20689). No value is hard-coded in the handler.
+rollback_keep: 3
+rollback_infix: ".rollback-"
+staging_infix: ".staging-"
+registry_rel: ".claude/plugins/installed_plugins.json"
+manifest_rel: ".claude-plugin/plugin.json"
+sha_pattern: "[0-9a-f]{40}"
