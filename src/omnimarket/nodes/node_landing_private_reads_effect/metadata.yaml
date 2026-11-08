@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_private_reads_effect
+version: "1.0.0"
+description: "Landing Private Reads Effect - day one of rebuild piece 9 (OMN-22478)."
+pack: pr_lifecycle
+node_role: effect
+display_name: "Landing Private Reads Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_landing_private_reads_effect: "omnimarket.nodes.node_landing_private_reads_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['effect', 'landing-private-reads', 'OMN-22478']

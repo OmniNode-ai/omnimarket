@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_overlay_store
+version: "1.0.0"
+description: "Holds loaded deployment overlays in the database and publishes each on the snapshot topic hosts read."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_overlay_store: omnimarket.nodes.node_projection_overlay_store
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [reducer, projection, overlay, configuration]
+pack: "data"
+display_name: "Projection: Overlay Store"
+node_role: "reducer"
+license: "MIT"
