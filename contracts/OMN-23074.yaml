@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-23074
+title: The lab-run shim's bus route accepts the overlay-store host table's registry root candidates instead of falling back to ssh
+summary: The host-list projection built from the lab_hosts overlay holds registry_root_candidates beside hosts, unit_needs and bus_lane. The table model forbade extra fields, so a bus placement that read the projection refused the whole table and the shim fell back to ssh. The table model now carries an optional registry_root_candidates tuple of registry roots (at least one when present), and an unrelated extra field is still refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23074-registry-root-candidates
+  statement: A lab host table that declares registry_root_candidates loads with them, a table that declares none loads with none, a candidate the probe script cannot quote is refused, and an unrelated extra field is still refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a regression test built from the recorded case (an overlay-store host table passed on the bus route) fails on dev and passes on the branch -- falsifier: uv run pytest of the registry_root_candidates test in omnimarket'
+  - id: AC2
+    statement: 'AC2: the shim run with `--via bus` against the overlay-store table places a command without falling back to ssh -- falsifier: onex lab-run with --via bus exits 0 and the receipt names the bus route'
+evidence_requirements:
+- kind: tests
+  description: The registry_root_candidates table tests and the lab host table tests around them.
+  command: uv run --frozen pytest tests/unit/lab_work tests/unit/handlers/test_overlay_keys.py tests/nodes/node_host_capability_compute/test_registry_roots.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23074-registry-root-candidates-ac1
+  description: The registry_root_candidates table tests pass; on dev two of them fail with the table refused for the field.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py -q --no-cov
+- id: dod-omn23074-registry-root-candidates-ac2
+  description: A bus placement against the overlay-store host table places a command and the receipt names the bus route.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py tests/unit/lab_work/test_lab_work_host_bus.py -q --no-cov

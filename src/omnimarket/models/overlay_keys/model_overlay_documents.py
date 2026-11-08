@@ -235,6 +235,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    # Registry roots tried in order on a probed host, read by node_host_capability_compute (OMN-23074); carried by the
+    # table shape, not an overlay key. The host-list projection holds it beside the hosts.
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":
