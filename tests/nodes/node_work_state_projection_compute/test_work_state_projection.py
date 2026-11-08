@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.events.work_state_projection import (
+from omnimarket.models.work_state_projection import (
     EnumCriterionReading,
     EnumScopeStatus,
     EnumWorkItemKind,

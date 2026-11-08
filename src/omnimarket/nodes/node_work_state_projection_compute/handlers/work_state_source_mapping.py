@@ -14,7 +14,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from omnimarket.events.work_state_projection import (
+from omnimarket.models.work_state_projection import (
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,

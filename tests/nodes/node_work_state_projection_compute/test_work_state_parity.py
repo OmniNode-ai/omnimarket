@@ -29,11 +29,11 @@ import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import ValidationError
 
-from omnimarket.events.work_state_projection import (
-    ModelWorkStateRequest,
-)
 from omnimarket.models.model_scenario_row import ModelScenarioRow
 from omnimarket.models.model_scenario_run import ModelScenarioRun
+from omnimarket.models.work_state_projection import (
+    ModelWorkStateRequest,
+)
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
 )

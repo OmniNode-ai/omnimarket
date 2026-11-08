@@ -8,13 +8,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.events.work_state_projection.enum_scope_status import (
+from omnimarket.models.work_state_projection.enum_scope_status import (
     EnumScopeStatus,
 )
-from omnimarket.events.work_state_projection.enum_work_item_state import (
+from omnimarket.models.work_state_projection.enum_work_item_state import (
     EnumWorkItemState,
 )
-from omnimarket.events.work_state_projection.model_work_item import (
+from omnimarket.models.work_state_projection.model_work_item import (
     ModelWorkItem,
 )
 

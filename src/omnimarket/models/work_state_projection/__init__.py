@@ -2,37 +2,37 @@
 # SPDX-License-Identifier: MIT
 """Models of the work-state projection."""
 
-from omnimarket.events.work_state_projection.enum_criterion_reading import (
+from omnimarket.models.work_state_projection.enum_criterion_reading import (
     EnumCriterionReading,
 )
-from omnimarket.events.work_state_projection.enum_lane_state import (
+from omnimarket.models.work_state_projection.enum_lane_state import (
     EnumLaneState,
 )
-from omnimarket.events.work_state_projection.enum_scope_status import (
+from omnimarket.models.work_state_projection.enum_scope_status import (
     EnumScopeStatus,
 )
-from omnimarket.events.work_state_projection.enum_work_item_kind import (
+from omnimarket.models.work_state_projection.enum_work_item_kind import (
     EnumWorkItemKind,
 )
-from omnimarket.events.work_state_projection.enum_work_item_state import (
+from omnimarket.models.work_state_projection.enum_work_item_state import (
     EnumWorkItemState,
 )
-from omnimarket.events.work_state_projection.model_work_item import (
+from omnimarket.models.work_state_projection.model_work_item import (
     ModelCriterionPart,
     ModelWorkItem,
 )
-from omnimarket.events.work_state_projection.model_work_state_request import (
+from omnimarket.models.work_state_projection.model_work_state_request import (
     ModelWorkStateRequest,
 )
-from omnimarket.events.work_state_projection.model_work_state_result import (
+from omnimarket.models.work_state_projection.model_work_state_result import (
     ModelWorkStateResult,
 )
-from omnimarket.events.work_state_projection.model_work_state_rules import (
+from omnimarket.models.work_state_projection.model_work_state_rules import (
     ModelPlanParseRules,
     ModelWorkScope,
     ModelWorkStateRules,
 )
-from omnimarket.events.work_state_projection.model_work_state_sources import (
+from omnimarket.models.work_state_projection.model_work_state_sources import (
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,

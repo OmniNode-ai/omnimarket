@@ -22,16 +22,16 @@ from typing import Any
 
 import yaml
 
-from omnimarket.events.work_state_projection import (
-    ModelReadingSource,
-    ModelWorkStateRequest,
-    ModelWorkStateResult,
-    ModelWorkStateRules,
-)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
     load_structured_overlay,
+)
+from omnimarket.models.work_state_projection import (
+    ModelReadingSource,
+    ModelWorkStateRequest,
+    ModelWorkStateResult,
+    ModelWorkStateRules,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     FileLedgerRowSource,

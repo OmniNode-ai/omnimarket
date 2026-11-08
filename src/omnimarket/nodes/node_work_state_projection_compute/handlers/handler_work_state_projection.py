@@ -30,7 +30,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from omnimarket.events.work_state_projection import (
+from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.models.work_state_projection import (
     EnumCriterionReading,
     EnumLaneState,
     EnumScopeStatus,
@@ -45,7 +46,6 @@ from omnimarket.events.work_state_projection import (
     ModelWorkStateResult,
     ModelWorkStateRules,
 )
-from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 
 CLAIM = "CLAIM"
 TERMINAL = "TERMINAL"
