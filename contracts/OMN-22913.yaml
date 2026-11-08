@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-22913
+title: 'Piece 5''s rotation readback: after a rotation each consumer starts with a store key and completes one call, and a consumer left on the old key reads NOT WORKING'
+summary: A new effect node, node_secret_rotation_readback_effect, reads back every consumer of its overlay's list after a rotation. Each consumer resolves its key from the store and completes one call with the key it holds; one row per consumer goes to the ledger, a consumer still on the old key reads NOT WORKING by name, and a rotation with no named approver is refused before any probe and writes nothing. It has an in-memory profile and a real-backend profile, both as overlays.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22913-readback
+  statement: A rotation drill on a dev-only key probes every consumer of the overlay's list, writes one row per consumer, and reads a consumer held on the old key as NOT WORKING naming it; a rotation with no approver is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a rotation drill on a dev-only key probes every consumer in the overlay''s consumer list and writes one row per consumer -- falsifier: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_readback.py -q'
+  - id: AC2
+    statement: 'AC2: a consumer held on the old key reads NOT WORKING and names the consumer -- falsifier: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_readback.py -q -k stale_consumer'
+  - id: AC3
+    statement: 'AC3: a rotation row with no approver is refused -- falsifier: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_approver.py -q'
+evidence_requirements:
+- kind: tests
+  description: The readback and approver tests, with the golden and error chain event tests of the node.
+  command: uv run pytest tests/unit/nodes/node_secret_reading_effect tests/nodes/node_secret_rotation_readback_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22913-ac1
+  description: The readback tests pass on the branch and error at collection without the node.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_readback.py -q
+- id: dod-omn22913-ac2
+  description: The stale-consumer tests pass on the branch and fail under the injected break that removes the rejection of an old key.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_readback.py -q -k stale_consumer
+- id: dod-omn22913-ac3
+  description: The approver tests pass on the branch and fail under the injected break that removes the approver check.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_rotation_approver.py -q
+- id: dod-omn22913-integration-proof
+  description: Run the node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22913 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect tests/nodes/node_secret_rotation_readback_effect -q --no-cov

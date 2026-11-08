@@ -17,12 +17,12 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
-from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
-    HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
+from omnimarket.models.friction_rollup import (
     ModelFrictionRollupRequest,
     ModelFrictionRollupResult,
+)
+from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
+    HandlerFrictionRollup,
 )
 from tests.runtime_local_compat import RuntimeLocal
 
@@ -230,7 +230,10 @@ def test_handler_imports_and_calls_stay_pure() -> None:
         "pydantic",
         "omnimarket",
     }
+    # the node's own tests (src/.../tests) read fixtures and import pytest: the check is of its code
     for path in NODE_DIR.rglob("*.py"):
+        if "tests" in path.relative_to(NODE_DIR).parts:
+            continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
