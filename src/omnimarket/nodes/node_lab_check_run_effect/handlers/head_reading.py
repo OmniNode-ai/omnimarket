@@ -13,11 +13,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
+from omnimarket.models.lab_check_verdict import EnumLabCheckVerdict
 from omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run import (
     ModelCheckRunRecord,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
-    EnumLabCheckVerdict,
 )
 
 COMPLETED = "completed"

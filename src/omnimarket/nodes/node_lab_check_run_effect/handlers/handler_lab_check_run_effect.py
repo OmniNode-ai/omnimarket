@@ -38,6 +38,7 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.models.lab_check_verdict import EnumLabCheckVerdict
 from omnimarket.nodes.node_lab_check_run_effect.adapters.github_check_run_api import (
     GithubCheckRunApi,
 )
@@ -70,9 +71,6 @@ from omnimarket.nodes.node_lab_check_run_effect.protocols.protocol_check_run_api
     CheckRunApiError,
     ProtocolCheckRunApi,
     ProtocolHttpJson,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
-    EnumLabCheckVerdict,
 )
 
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"

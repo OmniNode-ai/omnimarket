@@ -15,9 +15,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
-    EnumLabCheckVerdict,
-)
+from omnimarket.models.lab_check_verdict import EnumLabCheckVerdict
 
 SHA_PATTERN = r"^[0-9a-f]{40}$"
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
