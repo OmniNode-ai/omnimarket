@@ -23,6 +23,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorDetailFact,
     ModelFloorDetailItem,
     ModelFloorDetailSection,
+    ModelFloorJoinRow,
     ModelFloorLane,
     ModelFloorLinks,
     ModelFloorPieceRow,
@@ -244,7 +245,12 @@ class _Builder:
             out[f"lab:{line.id}"] = self._lab(line.id)
         for piece in self.doc.pieces:
             out[f"piece:{piece.piece}"] = self._piece(piece)
+        for join in self._joins().values():
+            out[f"join:{join.id}"] = self._join(join)
         return out
+
+    def _joins(self) -> dict[str, ModelFloorJoinRow]:
+        return {j.id: j for p in self.doc.pieces for j in p.joins}
 
     def _unread(self, key: str, title: str, reason: str) -> ModelFloorDetail:
         return ModelFloorDetail(
@@ -618,6 +624,11 @@ class _Builder:
         return ids
 
     def _cause(self, c: ModelFloorCause) -> ModelFloorDetail:
+        if c.id.startswith("join:") and c.id.removeprefix("join:") in self._joins():
+            # A join's red row opens the join's own panel under the row's key (OMN-23081).
+            return self._join(self._joins()[c.id.removeprefix("join:")]).model_copy(
+                update={"key": f"cause:{c.id}"}
+            )
         why = {
             "red": "Red: it needs you."
             if c.needs_operator
@@ -746,6 +757,104 @@ class _Builder:
             sections=tuple(sections),
         )
 
+    def _join(self, j: ModelFloorJoinRow) -> ModelFloorDetail:
+        """What a join row opens (OMN-23081): its definition, its last run, the side that failed and the owner lane."""
+        words, state_tone = JOIN_WORDS.get(j.state, (j.state, "grey"))
+        cause = self.causes.get(f"join:{j.id}")
+        tone: Draw = (
+            CAUSE_TONE[cause.state]
+            if cause is not None
+            else ("green" if j.passes else state_tone)
+        )
+        pieces = {p.piece: p for p in self.doc.pieces}
+        counts = (
+            "yes: both of its pieces are in the goal's scope"
+            if j.counted
+            else "no: a piece of it is outside the goal's scope"
+        )
+        facts = [
+            ModelFloorDetailFact(label="Definition", value=j.definition),
+            ModelFloorDetailFact(label="State", value=f"{j.id} {words}"),
+            ModelFloorDetailFact(label="Counts toward ready", value=counts),
+            self._ran("Last run", j.last_run_age_s),
+            self._ran("Golden chain", j.golden_age_s),
+            self._ran("Error chain", j.error_age_s),
+        ]
+        if not j.passes:
+            side = {
+                "from": f"the from side, piece {j.from_piece}, {pieces[j.from_piece].name.lower()}",
+                "to": f"the to side, piece {j.to_piece}, {pieces[j.to_piece].name.lower()}",
+                "neither": "neither side alone: both pieces read, no cycle ran the join",
+            }.get(j.failed_side, "not known")
+            facts.append(ModelFloorDetailFact(label="Failed side", value=side))
+            facts.append(
+                ModelFloorDetailFact(label="Why", value=j.failed_reason or "no reason")
+            )
+        findings = [
+            f for f in self.doc.chain_findings if f.subject.startswith(f"{j.id} piece ")
+        ]
+        sections = [
+            ModelFloorDetailSection(
+                heading="The two pieces",
+                note="The upstream piece and the downstream piece; each opens its own reading.",
+                items=tuple(
+                    ModelFloorDetailItem(
+                        title=f"Piece {n}, {pieces[n].name}",
+                        sub=f"{role}: {pieces[n].text}",
+                        tag=role,
+                        tone=pieces[n].draw,
+                        opens=f"piece:{n}",
+                    )
+                    for role, n in (("from", j.from_piece), ("to", j.to_piece))
+                ),
+            ),
+            ModelFloorDetailSection(
+                heading="Chain findings",
+                note="Chains of this join that break the emission contract.",
+                items=tuple(
+                    ModelFloorDetailItem(
+                        title=f.code,
+                        sub=f.detail,
+                        tag=f.correlation_id[:8],
+                        tone="red",
+                    )
+                    for f in findings
+                ),
+                empty="No chain of this join breaks the contract.",
+            ),
+        ]
+        if j.counted:
+            sections += [
+                self._tickets(j.owners, ()),
+                ModelFloorDetailSection(
+                    heading="Owner lane",
+                    note="The live lanes on the owner tickets; the row is red until one is.",
+                    items=self._lane_items(j.lanes),
+                    empty="No live lane is on it."
+                    if j.owners
+                    else "No owner ticket is declared, so no lane can be on it.",
+                ),
+            ]
+        return ModelFloorDetail(
+            key=f"join:{j.id}",
+            title=f"Join {j.id}, {j.label}",
+            summary=f"{j.definition}. {j.id} {words}.",
+            tone=tone,
+            facts=tuple(facts),
+            sources=(
+                "The emission receipts: the golden and the error chain of the two pieces under one correlation id.",
+                "The floor overlay's readiness scope, which says which joins count toward ready.",
+            ),
+            sections=tuple(sections),
+        )
+
+    def _ran(self, label: str, age_s: int | None) -> ModelFloorDetailFact:
+        if age_s is None:
+            return ModelFloorDetailFact(label=label, value="never run")
+        return ModelFloorDetailFact(
+            label=label, value="", at=self.r.now - timedelta(seconds=age_s)
+        )
+
     def _join_items(self, piece: int) -> tuple[ModelFloorDetailItem, ...]:
         receipts = {j.join: j for j in self.r.receipts.joins} if self.r.receipts else {}
         out: list[ModelFloorDetailItem] = []
@@ -773,6 +882,7 @@ class _Builder:
                     + (f" ({', '.join(ages)})" if ages else ""),
                     tag="out" if j.from_piece == piece else "in",
                     tone=tone,
+                    opens=f"join:{j.id}",
                 )
             )
         return tuple(out)
