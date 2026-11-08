@@ -126,6 +126,7 @@ class DirectorySnapshotStore:
 
     def write(self, bundle: ModelSnapshotBundle) -> None:
         run_id = bundle.manifest.run_id
+        work: Path | None = None
         try:
             self._dir.mkdir(parents=True, exist_ok=True)
             work = Path(tempfile.mkdtemp(prefix=f".{run_id}.", dir=self._dir))
@@ -142,6 +143,8 @@ class DirectorySnapshotStore:
                 raise CopyStepError("store", f"snapshot {run_id} already exists")
             os.replace(work, final)
         except OSError as exc:
+            if work is not None:
+                shutil.rmtree(work, ignore_errors=True)
             raise CopyStepError("store", f"{type(exc).__name__}: {exc}") from None
 
     def read(self, run_id: str) -> ModelSnapshotBundle | None:

@@ -83,7 +83,8 @@ def test_job_and_drill_pass_and_issue_only_allowed_commands(tmp_path: Path) -> N
     assert drilled.rebuilt_rows == 7
     assert_no_mutation(runner.commands, overlay.source.host, _ALLOWED)
     verbs = [argv[0] for argv in runner.commands]
-    assert verbs.count("/usr/local/bin/example-export") == 2
+    # topic, projection, then the topic again to prove it did not move between the two exports
+    assert verbs.count("/usr/local/bin/example-export") == 3
     assert verbs.count("nc") == 1
     probe = next(argv for argv in runner.commands if argv[0] == "nc")
     assert probe == (

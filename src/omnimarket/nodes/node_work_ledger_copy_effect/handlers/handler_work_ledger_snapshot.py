@@ -104,11 +104,18 @@ class HandlerWorkLedgerSnapshot:
         try:
             topic = self._topic.rows()
             projection = self._projection.rows()
+            topic_again = self._topic.rows()
         except CopyStepError as exc:
             return ModelSnapshotResult(
                 run_id=run_id,
                 outcome=EnumSnapshotOutcome.SOURCE_FAILED,
                 detail=str(exc),
+            )
+        if topic_again != topic:
+            return ModelSnapshotResult(
+                run_id=run_id,
+                outcome=EnumSnapshotOutcome.SOURCE_FAILED,
+                detail="the accepted-row topic changed while the projection was exported",
             )
         if not topic or not projection:
             return ModelSnapshotResult(
@@ -140,16 +147,18 @@ class HandlerWorkLedgerSnapshot:
                 detail="the snapshot read back from storage differs from what was written",
                 **counts,
             )
+        warning = ""
         try:
             pruned = self._store.prune(self._keep)
-        except CopyStepError:
-            pruned = ()
+        except CopyStepError as exc:
+            pruned, warning = (), f"prune failed: {exc}"
         return ModelSnapshotResult(
             run_id=run_id,
             outcome=EnumSnapshotOutcome.WRITTEN,
             detail=f"{len(topic)} topic rows and {len(projection)} projection rows written and read back",
             manifest_sha256=manifest.manifest_sha256,
             pruned=pruned,
+            warning=warning,
             **counts,
         )
 
@@ -234,6 +243,17 @@ class HandlerWorkLedgerRestoreDrill:
             )
         seal = bundle.manifest.manifest_sha256
         damaged = find_damaged_rows(bundle)
+        if bundle.manifest.source_host != self._source_host:
+            damaged = (
+                f"manifest: source_host {bundle.manifest.source_host!r} is not "
+                f"{self._source_host!r}",
+                *damaged,
+            )
+        if run_id and bundle.manifest.run_id != run_id:
+            damaged = (
+                f"manifest: run_id {bundle.manifest.run_id!r} is not {run_id!r}",
+                *damaged,
+            )
         if damaged:
             return self._result(
                 run_id,

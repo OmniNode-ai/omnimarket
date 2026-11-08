@@ -7,10 +7,12 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-_SEP = "\x1f"
+#: A sha256 digest as lower-case hex: the only text the manifest hashes, so it always encodes.
+_Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
 class EnumSnapshotOutcome(StrEnum):
@@ -43,12 +45,33 @@ class ModelLedgerRow(BaseModel):
 
     @property
     def digest(self) -> str:
-        body = _SEP.join((str(self.seq), self.row_id, self.text))
+        # Each field is length-prefixed, so no value can move a boundary between fields.
+        body = "".join(
+            f"{len(part)}:{part}" for part in (str(self.seq), self.row_id, self.text)
+        )
         return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def digest_of_digests(digests: tuple[str, ...]) -> str:
     return hashlib.sha256("\n".join(digests).encode("ascii")).hexdigest()
+
+
+def _manifest_digest(
+    run_id: str,
+    cutoff: datetime,
+    source_host: str,
+    topic_digests: tuple[str, ...],
+    projection_digests: tuple[str, ...],
+) -> str:
+    """The seal covers the run, the cutoff and the source host as well as the row digests."""
+    header = digest_of_digests(
+        (
+            hashlib.sha256(
+                f"{run_id}|{cutoff.isoformat()}|{source_host}".encode()
+            ).hexdigest(),
+        )
+    )
+    return digest_of_digests((header, *topic_digests, "|", *projection_digests))
 
 
 class ModelSnapshotManifest(BaseModel):
@@ -59,9 +82,18 @@ class ModelSnapshotManifest(BaseModel):
     run_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9T_-]+$")
     cutoff: datetime
     source_host: str = Field(min_length=1)
-    topic_digests: tuple[str, ...]
-    projection_digests: tuple[str, ...]
-    manifest_sha256: str
+    topic_digests: tuple[_Sha256Hex, ...]
+    projection_digests: tuple[_Sha256Hex, ...]
+    manifest_sha256: _Sha256Hex
+
+    def _seal_digest(self) -> str:
+        return _manifest_digest(
+            self.run_id,
+            self.cutoff,
+            self.source_host,
+            self.topic_digests,
+            self.projection_digests,
+        )
 
     @staticmethod
     def seal(
@@ -79,15 +111,13 @@ class ModelSnapshotManifest(BaseModel):
             source_host=source_host,
             topic_digests=topic_digests,
             projection_digests=projection_digests,
-            manifest_sha256=digest_of_digests(
-                (*topic_digests, "|", *projection_digests)
+            manifest_sha256=_manifest_digest(
+                run_id, cutoff, source_host, topic_digests, projection_digests
             ),
         )
 
     def sealed_ok(self) -> bool:
-        return self.manifest_sha256 == digest_of_digests(
-            (*self.topic_digests, "|", *self.projection_digests)
-        )
+        return self.manifest_sha256 == self._seal_digest()
 
 
 class ModelSnapshotBundle(BaseModel):
@@ -174,6 +204,8 @@ class ModelSnapshotResult(BaseModel):
     projection_rows: int = Field(default=0, ge=0)
     manifest_sha256: str | None = None
     pruned: tuple[str, ...] = ()
+    #: What went wrong after the snapshot was written and read back, e.g. a failed prune.
+    warning: str = ""
 
     @property
     def ok(self) -> bool:
