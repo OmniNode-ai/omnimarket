@@ -24,6 +24,7 @@ class ModelLabFillLaneState(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     lane: str
+    host: str = ""
     state: str
     reason: str = ""
 

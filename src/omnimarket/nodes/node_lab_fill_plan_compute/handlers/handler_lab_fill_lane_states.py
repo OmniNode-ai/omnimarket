@@ -32,24 +32,29 @@ def settle_lane(
 ) -> ModelLabFillLaneState:
     """The lane's state: placed, preparing, never-started, refused or other, with its reason."""
     lane = text(placement.get("lane"))
+    host = text(placement.get("host"))
     outcome = text(placement.get("outcome"))
     if outcome in ("placed", "placed-elsewhere"):
-        return ModelLabFillLaneState(lane=lane, state="placed")
+        return ModelLabFillLaneState(lane=lane, host=host, state="placed")
     if outcome == "pending":
         return ModelLabFillLaneState(
-            lane=lane, state="placed" if lane in claimed else "preparing"
+            lane=lane, host=host, state="placed" if lane in claimed else "preparing"
         )
     if outcome == _NOT_STARTED:
         return ModelLabFillLaneState(
-            lane=lane, state="never-started", reason=_NOT_STARTED
+            lane=lane, host=host, state="never-started", reason=_NOT_STARTED
         )
     if outcome.startswith(_SKIPPED):
         return ModelLabFillLaneState(
-            lane=lane, state="never-started", reason=outcome[len(_SKIPPED) :]
+            lane=lane, host=host, state="never-started", reason=outcome[len(_SKIPPED) :]
         )
     if outcome == "refused" or outcome.startswith(("engine-failed:", "deferred:")):
-        return ModelLabFillLaneState(lane=lane, state="refused", reason=outcome)
-    return ModelLabFillLaneState(lane=lane, state="other", reason=outcome or "unknown")
+        return ModelLabFillLaneState(
+            lane=lane, host=host, state="refused", reason=outcome
+        )
+    return ModelLabFillLaneState(
+        lane=lane, host=host, state="other", reason=outcome or "unknown"
+    )
 
 
 class HandlerLabFillLaneStates:
@@ -83,9 +88,6 @@ class HandlerLabFillLaneStates:
 
 
 def _refusal(lane: ModelLabFillLaneState) -> str:
-    """A refused lane's reason is its outcome (refused, engine-failed:x); the others name their state."""
-    return (
-        f"{lane.lane}:{lane.reason}"
-        if lane.state == "refused"
-        else f"{lane.lane}:{lane.state}:{lane.reason}"
-    )
+    """``lane@host:reason`` as the tick node writes it; an outcome no state names keeps ``other:``."""
+    reason = f"other:{lane.reason}" if lane.state == "other" else lane.reason
+    return f"{lane.lane}@{lane.host or 'none'}:{reason}"
