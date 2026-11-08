@@ -11,10 +11,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.cycle_interrupt import CycleInterrupted
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.floor_17a import ModelFloorSimpleTickRequest
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
-    CycleInterrupted,
     HandlerFloorSimpleTick,
     check_overlays,
 )

@@ -15,6 +15,12 @@ from typing import Any
 import pytest
 
 from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
+from omnimarket.models.floor_fill import (
+    ModelFloorEntryTicketVerdict,
+    ModelFloorFillCandidatesResult,
+    ModelFloorFillStateEntry,
+    ModelStoppedLaneReport,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     compute_factory_floor,
 )
@@ -24,12 +30,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
     stopped_key,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
-    ModelFloorEntryTicketVerdict,
-    ModelFloorFillCandidatesResult,
-    ModelFloorFillStateEntry,
-    ModelStoppedLaneReport,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
     REPORT_CHARS,
