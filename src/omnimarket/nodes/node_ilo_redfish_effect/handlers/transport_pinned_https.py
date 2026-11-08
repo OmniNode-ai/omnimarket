@@ -23,12 +23,12 @@ from typing import Literal
 
 from pydantic import JsonValue, SecretStr
 
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ModelRedfishResponse,
     RedfishTransportError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
 )
 
 _MAX_BODY_BYTES = 4 * 1024 * 1024

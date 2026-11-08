@@ -1,0 +1,65 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23036
+title: The lab host table file that the overlay store projects is a table, so bus placement reads it instead of refusing it
+summary: >-
+  The overlay store projects the whole lab_hosts overlay (hosts, unit_needs, bus_lane, registry_root_candidates) into the file ONEX_LAB_RUN_HOSTS names. The file reader of the overlay keys validated that file against the table model, which did not declare registry_root_candidates, so the lab-run bus placement refused it with "fields ['registry_root_candidates']" and every run fell back to ssh placement. The table model now declares registry_root_candidates as an optional key; the whole-overlay model still requires it, and a key neither model declares is still refused. No bound, check or other field is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23036-table-file-is-whole-overlay
+    statement: >-
+      A file holding the whole lab_hosts overlay resolves lab_hosts.hosts, and the registry roots it carries are checked entry by entry.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a file holding the whole lab_hosts overlay resolves its hosts, and fails on dev without the change with fields ['registry_root_candidates'] -- falsifier: uv run pytest tests/unit/handlers/test_overlay_keys.py -k whole_lab_hosts_overlay in omnimarket"
+      - id: AC2
+        statement: "AC2: a table file whose registry_root_candidates holds a malformed entry is refused naming that entry's position, which a table that did not declare the key could not name -- falsifier: uv run pytest tests/unit/handlers/test_overlay_keys.py -k malformed_registry_root_candidates_entry in omnimarket"
+evidence_requirements:
+  - kind: tests
+    description: The overlay key reader tests.
+    command: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23036-ac1-whole-overlay
+    description: >-
+      The whole-overlay file resolves its hosts on this branch. On dev (c551a8e2d) it fails with lab_hosts.hosts ONEX_LAB_RUN_HOSTS file is invalid: fields ['registry_root_candidates'].
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -k whole_lab_hosts_overlay -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23036-ac2-malformed-root-refused
+    description: >-
+      A malformed registry root in a table file is refused naming its position (registry_root_candidates.1); on dev the file is refused for the key as a whole, so the test fails there.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -k malformed_registry_root_candidates_entry -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23036-overlay-keys
+    description: >-
+      The whole overlay key test file passes, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn23036-overlay-keys-integration-proof
+    description: >-
+      The pushed head ran the overlay key tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane hosttable-labrun-0815 -- uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -q -n 0 --no-cov
+        cwd: .

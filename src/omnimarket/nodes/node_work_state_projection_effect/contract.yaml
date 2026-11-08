@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work-State Projection Effect
+#
+# Reads the sources of the work-state projection (the ledger through the reading writer's ledger row port, the PR
+# watcher state, every plan file the plan globs match under the plans root, the newest Linear snapshot, the lane
+# receipts and the reading rows), calls node_work_state_projection_compute in process and writes the projection where
+# the floor and the fill dispatcher read it. Never reads the floor record or the floor page's data file. A source that
+# cannot be read is named in the projection's unread list. Paths are relative to the registry home unless an env var
+# names one; the projection's rules are the compute node's overlay and the scope is the goal's own declaration.
+name: "node_work_state_projection_effect"
+contract_name: "node_work_state_projection_effect"
+node_name: "node_work_state_projection_effect"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+node_type: "EFFECT_GENERIC"
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Reads the work-state projection's sources, runs the projection and writes it with every unread source named.
+input_model:
+  name: "ModelWorkStateRequest"
+  module: "omnimarket.models.work_state_projection"
+  description: "Built from the sources by the runtime module."
+output_model:
+  name: "ModelWorkStateResult"
+  module: "omnimarket.models.work_state_projection"
+  description: "The projection, as written."
+handler:
+  module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
+  class: "HandlerWorkStateProjection"
+  input_model: "omnimarket.models.work_state_projection.ModelWorkStateRequest"
+  output_model: "omnimarket.models.work_state_projection.ModelWorkStateResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection:HandlerWorkStateProjection"
+  handlers:
+    - operation: "read_and_project_work_state"
+      handler:
+        name: "HandlerWorkStateProjection"
+        module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_work_state_projection_effect, by the floor publish tick and the fill orchestrator's pass."
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+  side_effects:
+    - reads ledger rows through the reading writer's file ledger row source
+    - reads the PR watcher state, plan files under the plans root, the newest Linear snapshot, lane receipts and reading rows
+    - writes each source's last good read as a snapshot file, served stale when that source is over its overlay budget
+    - writes the projection JSON atomically to the output path
+# Where the runtime module reads and writes. Paths are relative to the registry home (OMNI_HOME) unless an env var names one.
+runtime:
+  home_env: OMNI_HOME
+  overlay_file_env: ONEX_WORK_STATE_OVERLAY
+  goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
+  goal_ticket_rule_overlay: {overlay_id: goal_scope_ticket_rule, file_env: ONEX_GOAL_SCOPE_TICKET_RULE_OVERLAY}
+  ledger:
+    path_env: ONEX_LEDGER_PATH
+    archive_subdir: archive
+    lookback_hours: 72
+    row_types: [CLAIM, TERMINAL, STATUS]
+  watcher:
+    path_env: ONEX_PR_WATCHER_STATE
+    relpath: .claude_scratch/pr-watcher/state.json
+  plans:
+    root_env: ONEX_WORK_STATE_PLANS_ROOT
+    globs: ["beta/plans/*.md", "plans/*.md"]
+  linear:
+    dir_env: ONEX_LINEAR_SNAPSHOT_DIR
+    dir_relpath: .onex_state/linear-snapshot
+    glob: "linear-*.json"
+  receipts:
+    dir_env: ONEX_REMOTE_LANE_DIR
+    dir_fallback: .local/state/omni/remote-lanes
+    glob: "*/*.json"
+  readings:
+    relpath: .onex_state/readings/readings.jsonl
+    key_field: key
+    value_field: value
+  snapshots:
+    dir_env: ONEX_WORK_STATE_SNAPSHOT_DIR
+    relpath: .onex_state/work-state/snapshots
+  output:
+    relpath: .onex_state/work-state/work-state.json
+metadata:
+  transport_type: local
+  description: "Reads the work-state projection's sources and writes the projection."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags: ['effect', 'work-state', 'projection']
