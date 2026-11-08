@@ -127,7 +127,8 @@ def _chain(
     row: ModelLedgerEvidenceRow, rule: ModelPieceEventRule, *, failed: bool
 ) -> tuple[ModelNodeEmission, ...]:
     """The start and the terminal event one ledger row stands for, under a correlation id the row decides."""
-    correlation = hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
+    named = row.cells.get(rule.correlation_cell, "") if rule.correlation_cell else ""
+    correlation = named or hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
     start = ModelNodeEmission(
         node=rule.node,
         piece=rule.piece,
