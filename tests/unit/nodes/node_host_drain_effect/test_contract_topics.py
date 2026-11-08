@@ -29,3 +29,18 @@ def test_terminal_event_is_the_completed_topic(contract: dict[str, Any]) -> None
 @pytest.mark.unit
 def test_completed_topic_is_externally_consumed(contract: dict[str, Any]) -> None:
     assert contract["terminal_event"] in contract["externally_consumed_topics"]
+
+
+@pytest.mark.unit
+def test_contract_binds_both_handlers_by_a_handler_block(
+    contract: dict[str, Any],
+) -> None:
+    """The canonical file shape ratchet reads a handler block's module: both handler files must be bound."""
+    bound = {contract["handler"]["module"]}
+    bound.add(contract["runner_stop_handler"]["handler"]["module"])
+    base = "omnimarket.nodes.node_host_drain_effect.handlers."
+    assert bound == {
+        base + "handler_host_drain",
+        base + "handler_idle_runner_stop",
+    }
+    assert contract["handler_routing"]["handlers"] == []

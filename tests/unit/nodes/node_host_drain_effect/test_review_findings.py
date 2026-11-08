@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Review findings of the drain node (OMN-22905): uncertainty is kept, store failures end the chain, the real reader works."""
+"""Review findings of the drain node (OMN-22905): uncertainty is kept, store failures end the chain."""
 
 from __future__ import annotations
 
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,10 +17,7 @@ from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandWorkerProbe,
     ProcWorkerProbe,
 )
-from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
-    AiokafkaStateTopicConnection,
-    InMemoryDrainStore,
-)
+from omnimarket.nodes.node_host_drain_effect.adapters.stores import InMemoryDrainStore
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
 )
@@ -198,69 +194,3 @@ def test_a_store_read_failure_on_a_status_or_start_check_ends_the_chain(
         assert result.outcome is EnumDrainOutcome.FAILED
         assert result.admitted is not True
         assert _phases(sink) == ["start", "failure"]
-
-
-class _FakeConsumer:
-    """The aiokafka consumer's real shape: ``partitions_for_topic`` is a plain call; metadata refresh awaits."""
-
-    partitions: set[int] | None = {0}
-
-    def __init__(self, **_kwargs: Any) -> None:
-        self._pos = 0
-        self.refreshed = False
-
-    async def start(self) -> None: ...
-
-    async def stop(self) -> None: ...
-
-    async def topics(self) -> set[str]:
-        self.refreshed = True
-        return set()
-
-    def partitions_for_topic(self, topic: str) -> set[int] | None:
-        return type(self).partitions
-
-    def assign(self, _tps: Any) -> None: ...
-
-    async def seek_to_beginning(self, *_tps: Any) -> None: ...
-
-    async def end_offsets(self, tps: Any) -> dict[Any, int]:
-        return dict.fromkeys(tps, 1)
-
-    async def position(self, _tp: Any) -> int:
-        return self._pos
-
-    async def getmany(self, timeout_ms: int) -> dict[Any, list[Any]]:
-        self._pos = 1
-        record = SimpleNamespace(key=b"example-host-a", value=b'{"x":1}')
-        return {"tp": [record]}
-
-
-def _connection(overlay: ModelHostDrainOverlay) -> AiokafkaStateTopicConnection:
-    return AiokafkaStateTopicConnection(overlay.redpanda, "127.0.0.1:1")
-
-
-def test_the_real_reader_uses_the_sync_partitions_call_after_a_metadata_refresh(
-    overlay: ModelHostDrainOverlay, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import asyncio
-
-    import aiokafka
-
-    _FakeConsumer.partitions = {0}
-    monkeypatch.setattr(aiokafka, "AIOKafkaConsumer", _FakeConsumer)
-    rows = asyncio.run(_connection(overlay).read_all("state-topic"))
-    assert rows == [("example-host-a", b'{"x":1}')]
-
-
-def test_the_real_reader_does_not_read_missing_metadata_as_an_empty_state(
-    overlay: ModelHostDrainOverlay, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import asyncio
-
-    import aiokafka
-
-    _FakeConsumer.partitions = None
-    monkeypatch.setattr(aiokafka, "AIOKafkaConsumer", _FakeConsumer)
-    with pytest.raises(LookupError):
-        asyncio.run(_connection(overlay).read_all("state-topic"))

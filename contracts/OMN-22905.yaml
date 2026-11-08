@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22905
 title: "A drain verb and an idle-only runner stop exist as nodes with a failing control, so a host leaves placement by a command and not by a data pull request"
-summary: "Rebuild piece 2 (hosts and capacity) lacked two automations the host windows need (plan 7.4): a drain verb and an idle-only runner stop. The new node node_host_drain_effect sets one host draining on a store the overlay picks (in memory, a durable file, or a compacted Redpanda topic), the lab placement judge refuses a draining host, running lanes are counted and left to finish, and a runner is stopped only when its process table shows no worker. Both verbs emit a golden and an error chain event under one correlation id on the piece 2 floor row."
+summary: "Rebuild piece 2 (hosts and capacity) lacked two automations the host windows need (plan 7.4): a drain verb and an idle-only runner stop. The new node node_host_drain_effect sets one host draining on a store the overlay picks (in memory or a durable file), the lab placement judge refuses a draining host, running lanes are counted and left to finish, and a runner is stopped only when its process table shows no worker. Both verbs emit a golden and an error chain event under one correlation id on the piece 2 floor row."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

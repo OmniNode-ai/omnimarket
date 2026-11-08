@@ -40,10 +40,8 @@ from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     ProcWorkerProbe,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
-    AiokafkaStateTopicConnection,
     InMemoryDrainStore,
     JsonlDrainStore,
-    RedpandaDrainStore,
 )
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
@@ -89,11 +87,7 @@ def build_store_and_sink(
         return InMemoryDrainStore(), InMemoryEmissionSink(), "in_memory"
     home = Path(_require_env(environ, overlay.emission.home_env))
     sink = JsonlEmissionSink(home / overlay.emission.journal_relpath)
-    if overlay.profile == "jsonl":
-        return JsonlDrainStore(home / overlay.jsonl_state_relpath), sink, "real"
-    servers = _require_env(environ, overlay.redpanda.bootstrap_servers_env)
-    client = AiokafkaStateTopicConnection(overlay.redpanda, servers)
-    return RedpandaDrainStore(overlay.redpanda, client), sink, "real"
+    return JsonlDrainStore(home / overlay.jsonl_state_relpath), sink, "real"
 
 
 def draining_hosts_of(

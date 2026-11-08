@@ -5,7 +5,7 @@
 Found at ``<root>/node_host_drain_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The package
 ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load and
 names it. ``profile`` picks the backend: ``in_memory`` (the default a test and a first run use), ``jsonl`` (a durable
-file on one host) or ``redpanda`` (the drain state on a compacted topic of the bus).
+file on one host).
 """
 
 from __future__ import annotations
@@ -118,16 +118,6 @@ class ModelLaneCountSettings(_Frozen):
     timeout_seconds: int = Field(ge=1)
 
 
-class ModelRedpandaSettings(_Frozen):
-    """The drain state on a compacted topic, keyed by host."""
-
-    state_topic: str = Field(min_length=1)
-    bootstrap_servers_env: str = Field(min_length=1)
-    client_id: str = Field(min_length=1)
-    read_timeout_seconds: int = Field(ge=1)
-    send_timeout_seconds: int = Field(ge=1)
-
-
 class ModelEmissionSettings(_Frozen):
     """Where the chain events of the real profiles go: the journal the floor reads its receipts from."""
 
@@ -136,13 +126,12 @@ class ModelEmissionSettings(_Frozen):
 
 
 class ModelHostDrainOverlay(_Frozen):
-    profile: Literal["in_memory", "jsonl", "redpanda"]
+    profile: Literal["in_memory", "jsonl"]
     #: The jsonl profile's state file, relative to the emission home.
     jsonl_state_relpath: str = Field(min_length=1)
     drain: ModelDrainSettings
     runner_stop: ModelRunnerStopSettings
     lanes: ModelLaneCountSettings
-    redpanda: ModelRedpandaSettings
     emission: ModelEmissionSettings
 
     @model_validator(mode="after")

@@ -18,7 +18,7 @@ description: >
   emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
   drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
   runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
-  file on one host) or redpanda (a compacted topic keyed by host). Every setting is in the overlay.
+  file on one host). Every setting is in the overlay.
 
 handler:
   module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain
@@ -34,6 +34,15 @@ handlers:
     input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainRequest
     output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainResult
   - name: HandlerIdleRunnerStop
+    module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
+    input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopRequest
+    output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopResult
+
+# The second handler is bound by its own handler block, not by a routing entry: its constructor takes the runner ports,
+# so a runtime that builds routed handlers with no arguments cannot boot it (the command line builds it).
+runner_stop_handler:
+  handler:
+    name: HandlerIdleRunnerStop
     module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
     input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopRequest
     output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopResult
@@ -68,7 +77,6 @@ runtime_dispatch:
 # The topics by role; the stores and the chains hold no topic string.
 topics:
   host_drain_requested: onex.cmd.omnimarket.host-drain-requested.v1
-  host_drain_state: onex.evt.omnimarket.host-drain-state.v1
   host_drain_completed: onex.evt.omnimarket.host-drain-completed.v1
   host_drain_failed: onex.evt.omnimarket.host-drain-failed.v1
   runner_stop_requested: onex.cmd.omnimarket.runner-stop-requested.v1
@@ -78,7 +86,6 @@ event_bus:
   publish_topics: []
 
 externally_consumed_topics:
-  - onex.evt.omnimarket.host-drain-state.v1
   - onex.evt.omnimarket.host-drain-completed.v1
   - onex.evt.omnimarket.host-drain-failed.v1
 

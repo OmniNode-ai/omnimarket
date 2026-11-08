@@ -46,12 +46,6 @@ runner_stop:
 lanes:
   count_command: [example-lane-count, "{host}"]
   timeout_seconds: 30
-redpanda:
-  state_topic: onex.evt.omnimarket.host-drain-state.v1
-  bootstrap_servers_env: EXAMPLE_BOOTSTRAP_SERVERS
-  client_id: example-host-drain
-  read_timeout_seconds: 10
-  send_timeout_seconds: 10
 emission:
   home_env: EXAMPLE_FLOOR_HOME
   journal_relpath: .onex_state/floor-simple/emissions.jsonl

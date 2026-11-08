@@ -16,7 +16,6 @@ from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
     CommandWorkerStopper,
 )
-from omnimarket.nodes.node_host_drain_effect.adapters.stores import RedpandaDrainStore
 from omnimarket.nodes.node_host_drain_effect.overlay import (
     EXAMPLE_OVERLAY,
     NODE_NAME,
@@ -25,31 +24,6 @@ from omnimarket.nodes.node_host_drain_effect.overlay import (
 )
 
 NOW = datetime(2026, 11, 7, 15, 0, tzinfo=UTC)
-
-
-class _FakeTopic:
-    """A compacted topic held in a list: what the broker would return to a reader from the start."""
-
-    def __init__(self) -> None:
-        self.rows: list[tuple[str, bytes]] = []
-
-    async def send(self, topic: str, key: str, value: bytes) -> None:
-        self.rows.append((key, value))
-
-    async def read_all(self, topic: str) -> list[tuple[str, bytes]]:
-        return list(self.rows)
-
-
-def test_redpanda_profile_keeps_the_latest_record_per_host(
-    overlay: ModelHostDrainOverlay,
-) -> None:
-    store = RedpandaDrainStore(overlay.redpanda, _FakeTopic())
-    store.set_draining("example-host-a", True, reason="window", at=NOW)
-    store.set_draining("example-host-b", True, reason="window", at=NOW)
-    store.set_draining("example-host-b", False, reason="back", at=NOW)
-    assert store.is_draining("example-host-a") is True
-    assert store.is_draining("example-host-b") is False
-    assert store.draining_hosts() == ("example-host-a",)
 
 
 def test_overlay_with_a_missing_key_refuses_the_load(tmp_path: Path) -> None:
@@ -64,12 +38,26 @@ def test_overlay_with_a_missing_key_refuses_the_load(tmp_path: Path) -> None:
 
 def test_overlay_loads_from_a_root_and_picks_the_profile(tmp_path: Path) -> None:
     document = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
-    document["profile"] = "redpanda"
+    document["profile"] = "jsonl"
     node_dir = tmp_path / NODE_NAME
     node_dir.mkdir()
     (node_dir / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
     loaded = load_overlay({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
-    assert loaded.profile == "redpanda"
+    assert loaded.profile == "jsonl"
+
+
+def test_overlay_refuses_the_removed_redpanda_profile() -> None:
+    document = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
+    document["profile"] = "redpanda"
+    with pytest.raises(ValueError, match="profile"):
+        ModelHostDrainOverlay.model_validate(document)
+
+
+def test_overlay_refuses_a_stale_redpanda_settings_block() -> None:
+    document = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
+    document["redpanda"] = {"state_topic": "example-topic"}
+    with pytest.raises(ValueError, match="redpanda"):
+        ModelHostDrainOverlay.model_validate(document)
 
 
 def test_overlay_runner_on_an_undeclared_host_is_refused() -> None:
