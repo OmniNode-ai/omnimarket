@@ -365,7 +365,10 @@ class IloSetupSequence:
             raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
         mine = sorted(k for k in stored if k.startswith(self._prefix(name)))
         self._note(
-            steps, "store key names", "done", ", ".join(mine) or "none for this host"
+            steps,
+            "store key names",
+            "done",
+            f"{len(mine)} for this host" if mine else "none for this host",
         )
         admin_user, admin_password = self._admin(name, request, stored, steps)
 

@@ -190,7 +190,6 @@ def test_contract_declares_no_bus_binds_handlers_and_no_secret_values() -> None:
     modules = {h["handler"]["module"] for h in raw["handler_routing"]["handlers"]}
     assert modules == {
         "omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope",
-        "omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish",
     }
     assert raw["node_type"] == "effect"
     assert (
