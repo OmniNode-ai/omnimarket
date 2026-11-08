@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory profile: simulated hosts, nothing leaves the process. Synthetic names only.
+# Quote "on" and "off": unquoted, YAML reads them as booleans and the overlay refuses to load.
+backend: in_memory
+writes_need_approval: true
+hosts:
+  - name: sim-host-a
+    power_route: simulated
+    allowed_actions: [status, "on", force_off, force_restart, power_button]
+    initial_state: "on"
+  - name: sim-host-b
+    power_route: simulated
+    allowed_actions: [status, "on"]
+    initial_state: "off"
+  - name: sim-host-no-route
+    allowed_actions: [status]
