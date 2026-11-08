@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Result Sweep Effect (OMN-22967)
+#
+# Reads lane TERMINAL rows, classifies each by the worse of its claimed outcome and the lane's own
+# result, matches the class key against the error rule table, and appends one class row per receipt,
+# an action row where a rule matches, and one reading row. It writes rows and nothing else: a
+# reading is never a gate, a stop or an admission.
+name: node_lane_result_sweep_effect
+contract_name: node_lane_result_sweep_effect
+node_name: node_lane_result_sweep_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Classifies every lane receipt by the error rule table and holds it to the one-hour rule. A
+  handed-off TERMINAL whose result was blocked is classified blocked, never done. A class row that
+  stands an hour without an action row or a valid park (a citation and an unexpired review_by)
+  fails the reading, and a park past its review_by reads NOT WORKING.
+
+handler:
+  module: omnimarket.nodes.node_lane_result_sweep_effect.handlers.handler_lane_result_sweep
+  class: HandlerLaneResultSweep
+  input_model: omnimarket.models.model_lane_result_sweep.ModelLaneResultSweepCommand
+
+# HandlerLaneResultSweep takes the overlay, the ledger row source, the appender and the clock as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-read, ledger-append]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelLaneResultSweepCommand
+  module: omnimarket.models.model_lane_result_sweep
+  description: The window start and whether to write the rows.
+output_model:
+  name: ModelLaneResultSweepResult
+  module: omnimarket.models.model_lane_result_sweep
+  description: The verdict, one state per receipt, the rows written and any failure.
+
+terminal_event: onex.evt.omnimarket.lane-result-sweep-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  lane_result_sweep_requested: onex.cmd.omnimarket.lane-result-sweep-requested.v1
+  lane_result_sweep_completed: onex.evt.omnimarket.lane-result-sweep-completed.v1
+  lane_result_sweep_failed: onex.evt.omnimarket.lane-result-sweep-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-result-sweep-completed.v1
+  - onex.evt.omnimarket.lane-result-sweep-failed.v1
+
+overlay:
+  node: node_lane_result_sweep_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22967
+  transport_type: inmemory
