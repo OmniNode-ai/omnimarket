@@ -157,6 +157,10 @@ class_rules:
   - name: harness-delegate-fixed-call-budget-kills-long-run
     owner: "the owner of the harness-delegate task class budgets (a class's fixed call budget cannot be raised, and a harness that writes its answer only at the end loses a run that reaches it)"
     pattern: "fixed \\d+ s call budget"
+# The 1 row of 2026-11-08T18:51Z that the 48 rules above did not name (OMN-22879), named from its own text.
+  - name: bulk-copy-on-host-array-starves-host-install
+    owner: "the owner of the host bring-up graph and the host-ram-filesystem installer (OMN-22993): a copy of a spill directory (millions of small files) must be bandwidth-limited from the start, and the installer must not run while a bulk copy reads the same array"
+    pattern: 'unthrottled rsync of the .{0,40}ram-spill'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
