@@ -37,6 +37,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k records_evidence
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-ac2-unresolved-consumer
   description: An unresolved consumer or an unreadable scope keeps the entity and refuses the batch; the blind-source break flips the reading.
   source: manual
@@ -45,6 +46,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k unresolved_consumer_keeps_entity
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-ac3-rare-path
   description: A rare-path declaration naming a drill keeps the entity; one naming none exempts nothing.
   source: manual
@@ -53,6 +55,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k rare_path_declaration
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-integration-proof-lab-run
   description: >-
     The integration proof: the node's acceptance tests and its golden and error chain events run on a lab host at the
