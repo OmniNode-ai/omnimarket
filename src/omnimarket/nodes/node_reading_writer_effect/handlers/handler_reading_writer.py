@@ -433,6 +433,14 @@ class HandlerReadingWriter:
                     }
                 )
                 result = tagged(result)
+        elif result.outcome is EnumReadingOutcome.SOURCE_UNREADABLE:
+            # A computed reading is immutable under its row key (OMN-23119): a later run whose source timed out must not
+            # put an UNKNOWN row over the reading the window already has. With none, the attempt is still recorded.
+            existing, error = self._existing(spec.piece, start, end, now)
+            if error is None and any(
+                row.cells.get("key") == result.row_key for row in existing
+            ):
+                return outcome(result, "kept-computed-reading")
         row = build_reading_row(
             result,
             two_backend_pending=pending,

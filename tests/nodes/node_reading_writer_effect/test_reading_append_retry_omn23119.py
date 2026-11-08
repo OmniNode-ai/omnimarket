@@ -16,7 +16,12 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.models.model_reading import ModelReadingWindowCommand
+from omnimarket.models.model_reading import (
+    EnumReadingOutcome,
+    EnumReadingVerdict,
+    ModelReadingPieceOutcome,
+    ModelReadingWindowCommand,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
@@ -205,3 +210,58 @@ def test_golden_the_retry_pass_asks_the_ledger_again() -> None:
     outcomes = _slow_run(ledger, 1)
     assert set(outcomes.values()) == {"written"}
     assert ledger.replay_reads == 3
+
+
+class FlakySourceLedger(InMemoryLedger):
+    """Answers every query until ``break_sources``; then every query that is not the writer's own times out."""
+
+    def __init__(self) -> None:
+        super().__init__(healthy_ledger())
+        self.break_sources = False
+
+    def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        if self.break_sources and query.lane != "reading-writer":
+            return ModelLedgerRead(error="read-command-exit-1-timeouterror")
+        return super().read(query)
+
+
+def _window(ledger: FlakySourceLedger) -> dict[int, ModelReadingPieceOutcome]:
+    writer = HandlerReadingWriter(
+        overlay=_overlay(None),
+        source=ledger,
+        appender=ledger,
+        clock=lambda: RUN_AT,
+        pause=lambda _seconds: None,
+    )
+    result = writer.handle(
+        ModelReadingWindowCommand(
+            correlation_id="c-src", window_start=START, pieces=(), write=True
+        )
+    )
+    return {o.piece: o for o in result.pieces}
+
+
+def test_error_a_source_that_times_out_later_does_not_replace_the_computed_reading() -> (
+    None
+):
+    """Piece 6 read WORKING at 08:15Z; a run at 08:31Z whose parity read timed out wrote UNKNOWN over it."""
+    ledger = FlakySourceLedger()
+    first = _window(ledger)
+    assert first[6].verdict is EnumReadingVerdict.WORKING
+    assert first[6].ledger == "written"
+    ledger.break_sources = True
+    second = _window(ledger)
+    assert second[6].outcome is EnumReadingOutcome.SOURCE_UNREADABLE
+    assert second[6].ledger == "kept-computed-reading"
+    assert len(_rows(ledger, 6)) == 1
+
+
+def test_golden_a_source_unreadable_with_no_computed_reading_is_still_recorded() -> (
+    None
+):
+    ledger = FlakySourceLedger()
+    ledger.break_sources = True
+    outcomes = _window(ledger)
+    assert outcomes[6].outcome is EnumReadingOutcome.SOURCE_UNREADABLE
+    assert outcomes[6].ledger == "written"
+    assert len(_rows(ledger, 6)) == 1
