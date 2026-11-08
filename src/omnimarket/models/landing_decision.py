@@ -16,6 +16,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingSuspension,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
+    ModelLandingAction,
     ModelLandingDecision,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
@@ -29,6 +30,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
 __all__ = [
     "EnumLandingActionKind",
     "EnumLandingSuspension",
+    "ModelLandingAction",
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
     "ModelLandingDecision",

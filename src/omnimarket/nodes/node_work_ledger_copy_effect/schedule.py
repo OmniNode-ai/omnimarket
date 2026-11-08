@@ -3,7 +3,9 @@
 """The copy's hourly launchd agent: render, install and uninstall.
 
 The cadence is the contract's ``schedule`` block; the interpreter, environment and log directory are
-the overlay's ``launchd`` block. ``uninstall`` is the rollback: it boots the agent out and removes
+the overlay's ``launchd`` block. A plist that runs from a worktree is refused with the path named,
+in a render as in an install (``UnitRootRefusedError``), because the host worktree reconcile removes
+the tree and the agent would die with it. ``uninstall`` is the rollback: it boots the agent out and removes
 the plist, and changes nothing else.
 """
 
@@ -16,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_plists
 from omnimarket.nodes.node_work_ledger_copy_effect.adapters.adapters_real import (
     expand_home,
 )
@@ -41,7 +44,7 @@ def render_plist(overlay: ModelCopyOverlay, schedule: dict[str, object]) -> byte
     minute = int(str(schedule["minute"]))
     every = int(str(schedule["every_hours"]))
     calendar = [{"Hour": hour, "Minute": minute} for hour in range(0, 24, every)]
-    return plistlib.dumps(
+    rendered = plistlib.dumps(
         {
             "Label": str(schedule["unit_name"]),
             "ProgramArguments": [
@@ -61,6 +64,8 @@ def render_plist(overlay: ModelCopyOverlay, schedule: dict[str, object]) -> byte
             "StandardErrorPath": f"{expand_home(launchd.log_directory)}/work-ledger-copy.err.log",
         }
     )
+    refuse_worktree_plists({f"{schedule['unit_name']}.plist": rendered})
+    return rendered
 
 
 def install(
@@ -71,10 +76,11 @@ def install(
     uid: int,
     run: Runner = _run,
 ) -> int:
+    rendered = render_plist(overlay, schedule)
     Path(expand_home(overlay.launchd.log_directory)).mkdir(parents=True, exist_ok=True)
     agents_dir.mkdir(parents=True, exist_ok=True)
     target = agents_dir / f"{schedule['unit_name']}.plist"
-    target.write_bytes(render_plist(overlay, schedule))
+    target.write_bytes(rendered)
     domain = f"gui/{uid}"
     run(["launchctl", "bootout", f"{domain}/{schedule['unit_name']}"])
     return run(["launchctl", "bootstrap", domain, str(target)]).returncode

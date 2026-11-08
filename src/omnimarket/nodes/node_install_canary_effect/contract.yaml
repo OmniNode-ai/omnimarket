@@ -95,7 +95,11 @@
     "install_set",
     "install_stale",
     "keep_held",
-    "restore_held"
+    "restore_held",
+    "fresh_head",
+    "install_probe",
+    "daily_install_probe",
+    "drill_install_probe"
   ],
   "entrypoint": {
     "name": "NodeInstallCanaryEffect",
