@@ -45,11 +45,14 @@ DOD_VERIFY = "dod-verify"
 MACHINERY = "machinery"
 PR_KINDS = ("pr-red", "pr-stalled", PR_LAND)
 KINDS = ("pr-red", "pr-stalled", "defect", "ticket", *APPROVED_KINDS)
+# The tier-1 source kinds (plan-stalled, ruling-pending, lane-resend) are scoped by their source, never by
+# the sprint, and an umbrella ticket fences them like a ticket (OMN-20780).
+SOURCE_KINDS = ("plan-stalled", "ruling-pending", "lane-resend")
 # The kinds a plan dispatches. pr-land is not an enumerated source kind (the STATUS row's per-kind cells
 # iterate KINDS): lab-fill selection's idle-slot fallback produces it (OMN-20864). machinery is the
 # factory's own breaks (OMN-22413): the fill effect hands the plan the facts, the machinery handler
 # classifies them, and the policy's tier order in contract.yaml ranks the kind.
-DISPATCH_KINDS = (*KINDS, PR_LAND, DOD_VERIFY, MACHINERY)
+DISPATCH_KINDS = (*KINDS, *SOURCE_KINDS, PR_LAND, DOD_VERIFY, MACHINERY)
 LANE = "lab-fill"
 # The dispatched lane's ROUTE line. The runner refuses a --model or --effort that
 # differs from it, so the two are rendered from one table.
@@ -59,17 +62,55 @@ LANE_ROUTES = {
 }
 _TICKET_RE = re.compile(r"OMN-[0-9]+")
 _PR_RE = re.compile(r"([A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+#[0-9]+")
+# A PR value is <repo>#<n> or <owner>/<repo>#<n>, with an optional :<cause> suffix the landing controller adds.
+_PR_ITEM_RE = re.compile(
+    r"((?:[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+#[0-9]+)(?::([A-Za-z0-9][A-Za-z0-9_.:-]*))?"
+)
 _NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 _RUN_TAG_RE = re.compile(r"[0-9]{4}-([0-9]{2})-([0-9]{2})(?:T([0-9]{2})([0-9]{2})Z)?")
 _MAX_SAFE_INTEGER = 2**53 - 1
 
 
+def parse_pr_item(value: object) -> tuple[str, str] | None:
+    """(pr, cause) for a well-formed PR value, None when no #<n> stands in it."""
+    match = _PR_ITEM_RE.fullmatch(value.strip() if isinstance(value, str) else "")
+    return (match.group(1), match.group(2) or "") if match else None
+
+
 def _pr_key(candidate: object) -> str:
-    pr = get(candidate, "pr")
-    pr = pr.strip() if isinstance(pr, str) else ""
-    if not pr:
+    parsed = parse_pr_item(get(candidate, "pr"))
+    if parsed is None:
         return ""
+    pr = parsed[0]
     return (pr.rsplit("/", 1)[-1] if "/" in pr else pr).lower()
+
+
+def normalize_pr(candidate: dict[str, object]) -> dict[str, object]:
+    """The candidate with its PR value reduced to <repo>#<n>, the suffix carried as cause."""
+    parsed = parse_pr_item(candidate.get("pr"))
+    if parsed is None:
+        return candidate
+    pr, cause = parsed
+    carried = candidate.get("cause") or cause
+    return {**candidate, "pr": pr, **({"cause": carried} if carried else {})}
+
+
+def priority_class(candidate: dict[str, object], cfg: ModelLabFillPlanConfig) -> str:
+    """The lane priority class, from the run's declared classes (RULING 2026-10-15T08:14:02Z)."""
+    mvp, process, other = cfg.priority_classes
+    repo = text_of(candidate.get("repo")).strip().lower()
+    kind = candidate.get("kind")
+    is_pr = kind in ("pr-red", "pr-stalled")
+    delegation = any(
+        label in cfg.defect_labels for label in words(candidate.get("labels"))
+    ) or any(has_word_stem(candidate.get("title"), t) for t in cfg.defect_terms)
+    if is_pr and (repo in cfg.mvp_repos or delegation):
+        return mvp
+    if kind in ("process-fix", "ruling-pending") or (
+        is_pr and repo in cfg.process_repos
+    ):
+        return process
+    return other
 
 
 def _ticket_number(ticket: object) -> int:
@@ -147,9 +188,23 @@ def skip_reason(
     if approved and truthy(c.get("blocked_until")):
         return f"blocked-until:{text_of(c['blocked_until'])}"
     is_pr = kind in PR_KINDS
-    if is_pr and _PR_RE.fullmatch(text_of(c.get("pr"))) is None:
+    if (
+        is_pr
+        and _PR_RE.fullmatch(text_of(c.get("pr"))) is None
+        and parse_pr_item(c.get("pr")) is None
+    ):
         return "no-pr"
-    if kind in ("ticket", "defect") and ticket == cfg.parent_ticket:
+    # A PR value with no #<n> in it would reach the runner's --pr and exit 2 on every tick.
+    pr_value = c.get("pr")
+    if (
+        isinstance(pr_value, str)
+        and pr_value.strip()
+        and parse_pr_item(pr_value) is None
+    ):
+        return "pr-ref-no-number"
+    if (
+        kind in ("ticket", "defect") or kind in SOURCE_KINDS
+    ) and ticket == cfg.parent_ticket:
         return "umbrella"
     labels = c.get("labels")
     parts = [
@@ -181,7 +236,7 @@ def skip_reason(
         )
         if not is_defect:
             return "not-a-pillar-defect"
-    elif not approved and kind != MACHINERY and not scoped:
+    elif not approved and kind != MACHINERY and kind not in SOURCE_KINDS and not scoped:
         return "out-of-scope"
     holder = c.get("claim_holder")
     holder = holder.strip() if isinstance(holder, str) else ""
@@ -234,9 +289,42 @@ def kind_priority(policy: ModelLabFillMachineryPolicy) -> dict[str, int]:
     return rank
 
 
+def lane_class(candidate: dict[str, object], cfg: ModelLabFillPlanConfig) -> str:
+    """The class a lane is ordered and dispatched by; machinery states its own."""
+    if candidate.get("kind") == MACHINERY:
+        return text_of(candidate.get("priority_class")) or cfg.priority_classes[-1]
+    return priority_class(candidate, cfg)
+
+
+def _class_rank(name: str, cfg: ModelLabFillPlanConfig) -> int:
+    classes = cfg.priority_classes
+    return classes.index(name) if name in classes else -1
+
+
 def _compare(
-    x: dict[str, object], y: dict[str, object], priority: Mapping[str, int]
+    x: dict[str, object],
+    y: dict[str, object],
+    priority: Mapping[str, int],
+    cfg: ModelLabFillPlanConfig,
 ) -> int:
+    # Open-count gated work ranks after all ungated work; then the lane priority class (the run's declared order,
+    # first ranked first); then a PR the landing controller parked or escalated back (OMN-20780).
+    by_gate = int(truthy(x.get("gated"))) - int(truthy(y.get("gated")))
+    if by_gate:
+        return by_gate
+    # Machinery is ranked against every kind by the contract's tier order alone (OMN-22413), so the
+    # class and landing ranks judge only the pairs that hold no machinery lane.
+    if MACHINERY not in (x["kind"], y["kind"]):
+        by_class = _class_rank(lane_class(x, cfg), cfg) - _class_rank(
+            lane_class(y, cfg), cfg
+        )
+        if by_class:
+            return by_class
+        by_landing = int(not truthy(x.get("landing"))) - int(
+            not truthy(y.get("landing"))
+        )
+        if by_landing:
+            return by_landing
     by_kind = priority[str(x["kind"])] - priority[str(y["kind"])]
     if by_kind:
         return by_kind
@@ -272,10 +360,10 @@ class HandlerLabFillDispatchPlan:
             if why:
                 skipped.append(_entry(candidate, cfg, why))
             elif isinstance(candidate, dict):
-                ok.append(candidate)
+                ok.append(normalize_pr(candidate))
         # A stable sort keeps the approved file's value order inside the approved tier.
         priority = kind_priority(request.machinery or machinery_policy())
-        ok.sort(key=cmp_to_key(lambda x, y: _compare(x, y, priority)))
+        ok.sort(key=cmp_to_key(lambda x, y: _compare(x, y, priority, cfg)))
         seen_pr: set[str] = set()
         seen_ticket: set[object] = set()
         seen_machinery: set[str] = set()
@@ -312,6 +400,7 @@ class HandlerLabFillDispatchPlan:
         tag = _run_tag(cfg.run_key)
         dispatch: list[ModelLabFillDispatchItem] = []
         deferred: list[ModelLabFillSkipEntry] = []
+        gated_over: dict[str, int] = {}
 
         def best(engine: str, pin: str) -> _Slot | None:
             fit = [
@@ -332,7 +421,11 @@ class HandlerLabFillDispatchPlan:
 
         for c in unique:
             if len(dispatch) >= budget:
-                deferred.append(_entry(c, cfg, "over-cap"))
+                if truthy(c.get("gated")):
+                    kind_key = text_of(c["kind"])
+                    gated_over[kind_key] = gated_over.get(kind_key, 0) + 1
+                else:
+                    deferred.append(_entry(c, cfg, "over-cap"))
                 continue
             host_value = c.get("host")
             pin = host_value.strip() if isinstance(host_value, str) else ""
@@ -384,16 +477,35 @@ class HandlerLabFillDispatchPlan:
                 "engine": engine,
                 "route": LANE_ROUTES[engine],
             }
+            if truthy(c.get("gated")):
+                fields["gated"] = True
             if c["kind"] in APPROVED_KINDS:
                 fields["id"] = c.get("id")
+            if truthy(c.get("cause")):
+                fields["cause"] = text_of(c["cause"])
+            if c.get("escalated") is True:
+                fields["escalated"] = True
+            if c["kind"] in SOURCE_KINDS:
+                fields["evidence"] = text_of(c.get("evidence"))[:240]
+            if truthy(c.get("fix_evidence")):
+                fields["fix_evidence"] = text_of(c["fix_evidence"])[:200]
+            fields["priority_class"] = lane_class(c, cfg) or None
             if c["kind"] == MACHINERY:
                 fields["machinery_key"] = text_of(c.get("machinery_key"))
-                fields["priority_class"] = text_of(c.get("priority_class")) or None
             if truthy(c.get("repo_source")):
                 fields["repo_source"] = c["repo_source"]
             if fallback is not None:
                 fields["fallback"] = fallback
             dispatch.append(ModelLabFillDispatchItem(**fields))
+        for gated_kind, count in gated_over.items():
+            deferred.append(
+                ModelLabFillSkipEntry(
+                    id=f"open-count-gate:{gated_kind}",
+                    reason="open-count-gate:rising",
+                    n=count,
+                    **({"kind": gated_kind} if cfg.project_id else {}),
+                )
+            )
         return ModelLabFillDispatchPlanResult(
             dispatch=tuple(dispatch),
             skipped=tuple(skipped),

@@ -65,6 +65,9 @@ work_ledger_query:
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
     parity_receipt_lane: work-ledger-parity
+  # An until=open HOLD with no RELEASE older than this is stale, not in force: holds lists it under
+  # a stale heading with its age and inbox does not count it (cutover plan section 13, answer 2).
+  hold_stale_after_days: 14
   # Every answer travels as one record on the completed topic. The producer
   # refuses a record over its max_request_size (1,048,588 on the dev bus), and
   # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An

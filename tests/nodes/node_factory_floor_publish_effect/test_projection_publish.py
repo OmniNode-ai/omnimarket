@@ -147,7 +147,12 @@ def test_published_site_pages_carry_memory_used_label(tmp_path: Path) -> None:
     )
 
     pages = sorted(str(path.relative_to(site)) for path in site.rglob("*.html"))
-    assert pages == ["detail.html", "floor/index.html", "index.html"], (
+    assert pages == [
+        "compare.html",
+        "detail.html",
+        "floor/index.html",
+        "index.html",
+    ], (
         pages,
         result.published,
     )
