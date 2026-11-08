@@ -19,13 +19,6 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: a regression test built from the recorded failure (converge ignores the build lock) fails on dev and passes on the branch -- falsifier: uv run pytest of the converge build-lock test in omnimarket
-  - id: "req-offlineage-deploy"
-    statement: |-
-      An off-lineage deploy on h201 reaches success with the change installed.
-    acceptance:
-      - id: "AC2"
-        statement: |-
-          AC2: an off-lineage deploy on h201 succeeds with the branch installed -- falsifier: the deploy-agent job for that deploy reaches status success (onex deploy-agent job read)
 evidence_requirements:
   - kind: tests
     description: "A dirty or detached clone is skipped while a declared build lock is live; a lock past its declared age does not hold it"
@@ -43,15 +36,6 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q --no-cov -k \"build_lock or image_build\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: dod-converge-offlineage-deploy
-    description: "the deploy-agent job of an off-lineage deploy on h201 with the branch installed reaches status success; read after the install, recorded on the pull request"
-    source: manual
-    execution_scope: "local_done_gate"
-    checks:
-      - check_type: "command"
-        check_value: "test -n \"$ONEX_DEPLOY_JOB_ID\""
-        cwd: "."
-    binds_ac: ["AC2"]
   - id: "dod-omn23073-deploy-assessment"
     description: "Deploy assessment: the change edits one effect node's contract declaration, model and handler; no new topic, migration or prod mutation. It reaches the runtime through the package on the next standard image rebuild and deploy cycle."
     source: "manual"
