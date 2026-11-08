@@ -4,7 +4,7 @@
 
 The default transport of the start effect. Each call appends one line to ``calls``, a list the
 caller may share with its ledger fixture so one ordered log holds host commands and ledger
-appends together. The engine is never run: ``exit_polls`` running answers come back from
+appends together. Each provisioning step is answered ok and logged, or refused with ``provision_error``. The engine is never run: ``exit_polls`` running answers come back from
 ``read_engine_exit`` before ``exit_code``, and ``read_log_tail`` hands out ``log_lines``.
 """
 
@@ -13,12 +13,23 @@ from __future__ import annotations
 from typing import ClassVar, Literal
 
 from omnibase_spi.contracts.services import (
+    ModelLaneChangeList,
+    ModelLaneCloseoutCells,
+    ModelLaneHostStepRequest,
+    ModelLaneHostStepResult,
+    ModelLaneLedgerOutboxRows,
     ModelLanePrepareWorktreeRequest,
     ModelLanePrepareWorktreeResult,
     ModelLaneReadEngineExitRequest,
     ModelLaneReadEngineExitResult,
     ModelLaneReadLogTailRequest,
     ModelLaneReadLogTailResult,
+    ModelLaneRegistryRootResult,
+    ModelLaneRunDirsResult,
+    ModelLaneShipPluginTreesRequest,
+    ModelLaneShipPluginTreesResult,
+    ModelLaneStagedInput,
+    ModelLaneStageInputRequest,
     ModelLaneStartEngineRequest,
     ModelLaneStartEngineResult,
     ModelLaneStopEngineRequest,
@@ -36,6 +47,7 @@ class ModelScriptedTransportScript(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     prepare_error: str | None = None
+    provision_error: str | None = None
     start_state: Literal["started", "failed", "unresolved"] = "started"
     start_error: str = "engine did not start"
     exit_polls: int = Field(default=0, ge=0)
@@ -130,6 +142,142 @@ class ScriptedLaneHostTransport:
         return ModelLaneReadLogTailResult(
             lines=lines, next_offset=request.offset + len(lines)
         )
+
+    def _step(
+        self, op: str, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        self.calls.append(f"host:{op} host={request.host.name} run={request.run_id}")
+        if self._script.provision_error:
+            return ModelLaneHostStepResult(ok=False, error=self._script.provision_error)
+        return ModelLaneHostStepResult(ok=True, detail=f"scripted {op}")
+
+    def resolve_registry_root(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneRegistryRootResult:
+        self.calls.append(
+            f"host:resolve_registry_root host={request.host.name} run={request.run_id}"
+        )
+        if self._script.provision_error:
+            return ModelLaneRegistryRootResult(error=self._script.provision_error)
+        return ModelLaneRegistryRootResult(registry_root="/registry")
+
+    def prepare_run_dirs(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneRunDirsResult:
+        self.calls.append(
+            f"host:prepare_run_dirs host={request.host.name} run={request.run_id}"
+        )
+        if self._script.provision_error:
+            return ModelLaneRunDirsResult(error=self._script.provision_error)
+        root = request.registry_root or "/registry"
+        return ModelLaneRunDirsResult(
+            run_dir=f"{root}/runs/{request.run_id}",
+            context_dir=f"{root}/runs/{request.run_id}.ctx",
+        )
+
+    def _stage(
+        self, op: str, request: ModelLaneStageInputRequest
+    ) -> ModelLaneStagedInput:
+        self.calls.append(
+            f"host:{op} host={request.host.name} run={request.run_id} name={request.name}"
+        )
+        if self._script.provision_error:
+            return ModelLaneStagedInput(
+                staged=False, error=self._script.provision_error
+            )
+        return ModelLaneStagedInput(
+            staged=True, path=f"/registry/runs/{request.run_id}.ctx/{request.name}"
+        )
+
+    def stage_ledger_snapshot(
+        self, request: ModelLaneStageInputRequest
+    ) -> ModelLaneStagedInput:
+        return self._stage("stage_ledger_snapshot", request)
+
+    def stage_file(self, request: ModelLaneStageInputRequest) -> ModelLaneStagedInput:
+        return self._stage("stage_file", request)
+
+    def ship_plugin_trees(
+        self, request: ModelLaneShipPluginTreesRequest
+    ) -> ModelLaneShipPluginTreesResult:
+        self.calls.append(
+            f"host:ship_plugin_trees host={request.host.name} run={request.run_id} trees={len(request.trees)}"
+        )
+        if self._script.provision_error:
+            return ModelLaneShipPluginTreesResult(
+                shipped=False, error=self._script.provision_error
+            )
+        return ModelLaneShipPluginTreesResult(
+            shipped=True,
+            plugin_dirs=tuple(
+                (t.name, f"/registry/plugins/{t.source_digest}") for t in request.trees
+            ),
+        )
+
+    def mirror_ledger(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("mirror_ledger", request)
+
+    def write_runtime_config(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("write_runtime_config", request)
+
+    def drain_guard_spool(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("drain_guard_spool", request)
+
+    def relay_reports(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("relay_reports", request)
+
+    def read_ledger_outbox(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneLedgerOutboxRows:
+        self.calls.append(
+            f"host:read_ledger_outbox host={request.host.name} run={request.run_id}"
+        )
+        if self._script.provision_error:
+            return ModelLaneLedgerOutboxRows(error=self._script.provision_error)
+        return ModelLaneLedgerOutboxRows()
+
+    def read_lane_changes(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneChangeList:
+        self.calls.append(
+            f"host:read_lane_changes host={request.host.name} run={request.run_id}"
+        )
+        if self._script.provision_error:
+            return ModelLaneChangeList(error=self._script.provision_error)
+        return ModelLaneChangeList()
+
+    def closeout_worktrees(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneCloseoutCells:
+        self.calls.append(
+            f"host:closeout_worktrees host={request.host.name} run={request.run_id}"
+        )
+        if self._script.provision_error:
+            return ModelLaneCloseoutCells(error=self._script.provision_error)
+        return ModelLaneCloseoutCells()
+
+    def hold_run_dir_guard(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("hold_run_dir_guard", request)
+
+    def retain_run_artifacts(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("retain_run_artifacts", request)
+
+    def stop_lane_guard(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return self._step("stop_lane_guard", request)
 
 
 __all__ = [

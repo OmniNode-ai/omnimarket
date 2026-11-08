@@ -23,19 +23,34 @@ from collections.abc import Sequence
 from typing import ClassVar, Protocol
 
 from omnibase_spi.contracts.services import (
+    ModelLaneChangeList,
+    ModelLaneCloseoutCells,
     ModelLaneHostRef,
+    ModelLaneHostStepRequest,
+    ModelLaneHostStepResult,
+    ModelLaneLedgerOutboxRows,
     ModelLanePrepareWorktreeRequest,
     ModelLanePrepareWorktreeResult,
     ModelLaneReadEngineExitRequest,
     ModelLaneReadEngineExitResult,
     ModelLaneReadLogTailRequest,
     ModelLaneReadLogTailResult,
+    ModelLaneRegistryRootResult,
+    ModelLaneRunDirsResult,
+    ModelLaneShipPluginTreesRequest,
+    ModelLaneShipPluginTreesResult,
+    ModelLaneStagedInput,
+    ModelLaneStageInputRequest,
     ModelLaneStartEngineRequest,
     ModelLaneStartEngineResult,
     ModelLaneStopEngineRequest,
     ModelLaneStopEngineResult,
 )
 from pydantic import BaseModel, ConfigDict
+
+#: What every provisioning step of the protocol answers from this transport: the frozen runner
+#: script still performs these host steps, so the node does not issue them yet (OMN-22848).
+STEP_NOT_RUN_BY_NODE = "{op}: not run by the ssh transport; the frozen onex_remote_lane script still performs this step"
 
 #: The exit code the wrapper never writes; read_engine_exit answers it for an engine whose whole
 #: process group is gone with no exit file (killed with its wrapper by a signal to the group).
@@ -253,9 +268,98 @@ class SshLaneHostTransport:
             lines=lines, next_offset=request.offset + len(lines)
         )
 
+    def _not_run(self, op: str) -> str:
+        return STEP_NOT_RUN_BY_NODE.format(op=op)
+
+    def resolve_registry_root(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneRegistryRootResult:
+        return ModelLaneRegistryRootResult(error=self._not_run("resolve_registry_root"))
+
+    def prepare_run_dirs(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneRunDirsResult:
+        return ModelLaneRunDirsResult(error=self._not_run("prepare_run_dirs"))
+
+    def stage_ledger_snapshot(
+        self, request: ModelLaneStageInputRequest
+    ) -> ModelLaneStagedInput:
+        return ModelLaneStagedInput(
+            staged=False, error=self._not_run("stage_ledger_snapshot")
+        )
+
+    def stage_file(self, request: ModelLaneStageInputRequest) -> ModelLaneStagedInput:
+        return ModelLaneStagedInput(staged=False, error=self._not_run("stage_file"))
+
+    def ship_plugin_trees(
+        self, request: ModelLaneShipPluginTreesRequest
+    ) -> ModelLaneShipPluginTreesResult:
+        return ModelLaneShipPluginTreesResult(
+            shipped=False, error=self._not_run("ship_plugin_trees")
+        )
+
+    def mirror_ledger(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(ok=False, error=self._not_run("mirror_ledger"))
+
+    def write_runtime_config(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(
+            ok=False, error=self._not_run("write_runtime_config")
+        )
+
+    def drain_guard_spool(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(
+            ok=False, error=self._not_run("drain_guard_spool")
+        )
+
+    def relay_reports(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(ok=False, error=self._not_run("relay_reports"))
+
+    def read_ledger_outbox(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneLedgerOutboxRows:
+        return ModelLaneLedgerOutboxRows(error=self._not_run("read_ledger_outbox"))
+
+    def read_lane_changes(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneChangeList:
+        return ModelLaneChangeList(error=self._not_run("read_lane_changes"))
+
+    def closeout_worktrees(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneCloseoutCells:
+        return ModelLaneCloseoutCells(error=self._not_run("closeout_worktrees"))
+
+    def hold_run_dir_guard(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(
+            ok=False, error=self._not_run("hold_run_dir_guard")
+        )
+
+    def retain_run_artifacts(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(
+            ok=False, error=self._not_run("retain_run_artifacts")
+        )
+
+    def stop_lane_guard(
+        self, request: ModelLaneHostStepRequest
+    ) -> ModelLaneHostStepResult:
+        return ModelLaneHostStepResult(ok=False, error=self._not_run("stop_lane_guard"))
+
 
 __all__ = [
     "SIGNALLED_EXIT",
+    "STEP_NOT_RUN_BY_NODE",
     "ModelHostCommandResult",
     "ProtocolHostCommandRunner",
     "SshLaneHostTransport",
