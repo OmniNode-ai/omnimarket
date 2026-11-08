@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.remote_lane_placement import (
+    ModelRemoteLanePlacementRequest,
+)
 from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_codex_lane_limit import (
     HandlerCodexLaneLimit,
 )
@@ -18,9 +21,6 @@ from omnimarket.nodes.node_lane_placement_recovery_effect.models.model_codex_lan
 )
 from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
     HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
-    ModelRemoteLanePlacementRequest,
 )
 from omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision import (
     HandlerThroughputTickDecision,
