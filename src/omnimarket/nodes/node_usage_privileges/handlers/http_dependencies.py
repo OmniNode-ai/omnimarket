@@ -9,11 +9,11 @@ from typing import Any
 
 import yaml
 
-from omnimarket.adapters.catalog_postgres_pool import CatalogPostgresPool
 from omnimarket.models.model_catalog_http_route import (
     ModelCatalogDatabaseConfig,
     ModelCatalogHttpRoute,
 )
+from omnimarket.models.model_catalog_postgres_pool import CatalogPostgresPool
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 OVERLAY_ID = "node_usage_privileges"

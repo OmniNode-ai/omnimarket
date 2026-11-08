@@ -35,7 +35,7 @@ repos:
         name: Catalog runtime HTTP mounts (plans, usage privileges)
         entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
         language: system
-        files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/adapters/catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
+        files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
         pass_filenames: false
         stages: [pre-commit]
       # OMN-22156: the same guard runs in the required CI lint job, on every PR.

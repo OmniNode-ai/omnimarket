@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from omnimarket.adapters.catalog_postgres_pool import CatalogPostgresPool
+from omnimarket.models.model_catalog_postgres_pool import CatalogPostgresPool
 from omnimarket.nodes.node_plan_list.handlers.handler_plan_list import HandlerPlanList
 from omnimarket.nodes.node_plan_list.handlers.http_dependencies import (
     build_postgres_pool,

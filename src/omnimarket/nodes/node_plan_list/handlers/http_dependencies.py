@@ -9,11 +9,11 @@ from typing import Any
 
 import yaml
 
-from omnimarket.adapters.catalog_postgres_pool import CatalogPostgresPool
 from omnimarket.models.model_catalog_http_route import (
     ModelCatalogDatabaseConfig,
     ModelCatalogHttpRoute,
 )
+from omnimarket.models.model_catalog_postgres_pool import CatalogPostgresPool
 from omnimarket.nodes.node_plan_list.handlers.repository_plan_catalog_postgres import (
     RepositoryPlanCatalogPostgres,
 )
