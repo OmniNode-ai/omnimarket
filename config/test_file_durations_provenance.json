@@ -136,11 +136,17 @@
     "runner": "lab host h202, lane durations-c0825, Python 3.13.15; the next CI refresh replaces these entries",
     "base_sha": "370eb11de08d810bb8dc445f9401c19de3091846"
   },
+  "supplement_omn22573": {
+    "recorded_on": "2026-11-08",
+    "files_added": 51,
+    "basis": "summed per-test seconds per file from one serial run of the CI shard pytest flags without coverage",
+    "runner": "lab host h053, not a GitHub-hosted runner; the next refresh from source runs replaces these entries"
+  },
   "supplement_omn22935": {
     "ticket": "OMN-22935",
     "recorded_on": "2026-11-08",
-    "files_added": 10,
-    "basis": "Ten test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were. Added to keep the unrecorded count under the freshness limit after merging dev.",
+    "files_added": 4,
+    "basis": "Four work-state projection test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were.",
     "runner": "lab host h101, lane landing-L31295; the next CI refresh replaces these entries",
     "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
   }
