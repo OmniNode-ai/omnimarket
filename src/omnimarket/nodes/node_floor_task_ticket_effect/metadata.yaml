@@ -16,7 +16,8 @@ capabilities:
   requires_secrets: true
   requires_docker: false
   side_effect_class: write
-dependencies: []
+dependencies:
+- omnibase-spi>=0.23.3
 license: MIT
 authors:
 - OmniNode Team
