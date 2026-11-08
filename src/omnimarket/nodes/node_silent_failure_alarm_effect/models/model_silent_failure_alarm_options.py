@@ -46,6 +46,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # --min-merges-per-hour) and lanes placed on a pool host per hour. Zero turns a measure off.
     min_merges_per_hour: int = Field(default=5, ge=0)
     min_lanes_placed_per_hour: int = Field(default=1, ge=0)
+    # How long a lane the lab fill handed to a detached send job may read ``pending`` with no CLAIM
+    # row before the placement alarm counts it unplaced: the fill's own send cap (sendCapS 900 s).
+    lane_send_cap_minutes: int = Field(default=15, ge=1)
     controller_state_dir: Path = Field(
         default_factory=lambda: Path.home() / ".local/state/omni/landing"
     )

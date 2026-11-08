@@ -11,10 +11,18 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a canonical clone found detached, dirty or behind is repaired by the sync on its next run, with no lane action needed -- falsifier: uv run pytest of the sync''s tests with a planted detached clone'
+- id: req-omn23032-job-log-filler
+  statement: A merge-relevant run with no cached log makes the lane job-log read refuse naming the cache path; after the filler runs the same read answers from the cache with no GitHub call.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: lanes read pull request, check and job-log state from the local mirror (PR watcher state plus stored logs), never from the GitHub API; a direct API read from a lane is refused with the mirror path named -- falsifier: uv run pytest of the read guard with a planted API read'
 evidence_requirements:
 - kind: tests
   description: The dirty-converge node tests pass, including the planted detached, lane-branch, local-commit and dirty clones repaired one timer period later
   command: uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov
+- kind: tests
+  description: The filler tests (selection, a pass, a 404, the cap, the failing control with its injected break) and the golden and error chain tests pass, and the gateway job-log cache tests still pass
+  command: uv run --frozen pytest tests/nodes/node_job_log_filler_effect tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -36,4 +44,44 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23032 --kind test -- sh -c 'ONEX_TEST_OMNICLAUDE_ROOT="$OMNI_HOME/omniclaude" PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/clone_dirty_converge -k next_run -q --no-cov'
+    cwd: .
+- id: dod-omn23032-filler-control
+  description: Runs the filler tests; the planted merge-relevant run with no cached log makes the lane job-log read exit 1 naming the cache path, the same read answers after the filler ran, and the injected break (a reader that fetches nothing) leaves it refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23032-filler-chains
+  description: Runs the golden and error chain event tests. The node's contract is wired into the dispatch engine on the in-memory bus and a fill command is answered on the node's terminal topic, completed for the planted state and failed for the planted 404s and for a host with no watcher state.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_golden_chain_node_job_log_filler_effect.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23032-gateway-cache-regression
+  description: The gateway's existing job-log cache tests pass with the refusal now naming the cache path. A regression check, not proof of a criterion, so it binds none (it passes at the merge base by design).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly"
+    cwd: .
+- id: dod-omn23032-filler-integration-proof
+  description: The pushed head ran the filler tests, the golden and error chain tests and the gateway cache tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23032 -- uv run --frozen pytest tests/nodes/node_job_log_filler_effect tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23032-filler-deploy
+  description: Reads the filler node's contract from the pushed branch through the GitHub contents API; the exit status depends on the branch holding the lane job-log policy key the node and the gateway share, so it goes red when the node is absent. Runs on a hosted runner.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'grep -q lane_reads_cache_only src/omnimarket/nodes/node_job_log_filler_effect/contract.yaml && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_job_log_filler_effect/contract.yaml?ref=omn-23032-job-log-filler" --jq .content | base64 -d | grep lane_reads_cache_only >/dev/null'
     cwd: .

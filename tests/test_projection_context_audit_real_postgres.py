@@ -1,0 +1,247 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Real-Postgres proof of node_projection_context_audit's writer SQL.
+
+The node migration runs against both an empty application schema and a legacy
+table with migration 053's shape (a BIGSERIAL id and no natural key). Only
+the schema name is isolated; the shipped SQL, asyncpg parameter binding and the
+node migration are what run. The shared fixture uses CI's INTEGRATION_POSTGRES
+service when configured, otherwise an owned, disposable PostgreSQL container.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import asyncpg
+import pytest
+
+import tests.test_omn19514_ticket_id_projection_real_postgres as _pg
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.node_projection_context_audit.handlers import (
+    handler_context_audit_writer as writer_module,
+)
+from omnimarket.projection.runner import MessageMeta
+from tests.test_golden_chain_projection_context_audit import _event
+
+postgres = _pg.postgres
+
+NODE = (
+    Path(__file__).resolve().parents[1]
+    / "src/omnimarket/nodes/node_projection_context_audit"
+)
+
+# Verbatim from omnibase_infra docker/migrations/forward/053_create_context_audit_events.sql.
+_INFRA_053_TABLE = """
+CREATE TABLE IF NOT EXISTS public.context_audit_events (
+    id                      BIGSERIAL       PRIMARY KEY,
+    task_id                 TEXT            NOT NULL,
+    parent_task_id          TEXT,
+    correlation_id          TEXT            NOT NULL,
+    contract_id             TEXT,
+    event_type              TEXT            NOT NULL,
+    enforcement_level       TEXT            NOT NULL,
+    enforcement_action      TEXT,
+    violation_details       JSONB,
+    context_tokens_used     INT,
+    context_budget_tokens   INT,
+    return_tokens           INT,
+    return_max_tokens       INT,
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+"""
+
+_RETIRED_COLUMNS = (
+    "task_id",
+    "parent_task_id",
+    "correlation_id",
+    "contract_id",
+    "event_type",
+    "enforcement_level",
+    "enforcement_action",
+    "violation_details",
+    "context_tokens_used",
+    "context_budget_tokens",
+    "return_tokens",
+    "return_max_tokens",
+)
+
+
+@pytest.mark.integration
+async def test_migration_reconciles_an_incomplete_table_without_losing_rows(
+    postgres: _pg._Postgres,
+) -> None:
+    admin = await asyncpg.connect(**postgres.connect_kwargs())
+    schema = f"context_audit_{uuid4().hex}"
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        await admin.execute(
+            f"CREATE TABLE {schema}.context_audit_events ("
+            "id BIGSERIAL PRIMARY KEY, task_id TEXT NOT NULL, "
+            "correlation_id TEXT NOT NULL, event_type TEXT NOT NULL, "
+            "enforcement_level TEXT NOT NULL)"
+        )
+        original_id = await admin.fetchval(
+            f"INSERT INTO {schema}.context_audit_events "
+            "(task_id, correlation_id, event_type, enforcement_level) "
+            "VALUES ('retained', 'c', 't', 'strict') RETURNING id"
+        )
+        migration = (
+            (NODE / "migrations/0000_add_context_audit_event_key.sql")
+            .read_text()
+            .replace("public.", f"{schema}.")
+        )
+        for _ in range(2):
+            await admin.execute(migration)
+        row = await admin.fetchrow(f"SELECT * FROM {schema}.context_audit_events")
+        assert row is not None
+        assert row["id"] == original_id
+        assert row["task_id"] == "retained"
+        assert set(_RETIRED_COLUMNS).issubset(row.keys())
+        assert row["event_key"] is None
+        assert row["created_at"] is not None
+    finally:
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
+
+
+@pytest.mark.integration
+async def test_migration_refuses_an_id_without_a_generating_default(
+    postgres: _pg._Postgres,
+) -> None:
+    admin = await asyncpg.connect(**postgres.connect_kwargs())
+    schema = f"context_audit_{uuid4().hex}"
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        await admin.execute(_INFRA_053_TABLE.replace("public.", f"{schema}."))
+        await admin.execute(
+            f"ALTER TABLE {schema}.context_audit_events ALTER COLUMN id DROP DEFAULT"
+        )
+        migration = (
+            (NODE / "migrations/0000_add_context_audit_event_key.sql")
+            .read_text()
+            .replace("public.", f"{schema}.")
+        )
+        with pytest.raises(
+            asyncpg.RaiseError, match="id must generate values from its owned sequence"
+        ):
+            await admin.execute(migration)
+    finally:
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
+
+
+def _events() -> list[tuple[str, dict[str, Any]]]:
+    topics = writer_module.ContextAuditProjectionWriter().subscribe_topics
+    return [(topic, _event(index)) for index, topic in enumerate(topics)]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("legacy_table", [False, True], ids=["fresh", "legacy"])
+@pytest.mark.parametrize(
+    "runtime_delivery", [False, True], ids=["standalone", "runtime"]
+)
+async def test_replay_against_real_postgres_leaves_one_row_per_key(
+    postgres: _pg._Postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_table: bool,
+    runtime_delivery: bool,
+) -> None:
+    admin = await asyncpg.connect(**postgres.connect_kwargs())
+    schema = f"context_audit_{uuid4().hex}"
+    pool: asyncpg.Pool | None = None
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        if legacy_table:
+            await admin.execute(_INFRA_053_TABLE.replace("public.", f"{schema}."))
+        # 0001 grants a role the disposable database does not hold; its text is
+        # pinned in tests/test_golden_chain_projection_context_audit.py.
+        migrations = sorted((NODE / "migrations").glob("0000_*.sql"))
+        assert [path.name for path in migrations] == [
+            "0000_add_context_audit_event_key.sql"
+        ]
+        for migration in migrations:
+            await admin.execute(migration.read_text().replace("public.", f"{schema}."))
+        # The migration is safe to re-run.
+        for migration in migrations:
+            await admin.execute(migration.read_text().replace("public.", f"{schema}."))
+        monkeypatch.setattr(
+            writer_module,
+            "_UPSERT",
+            writer_module._UPSERT.replace("public.", f"{schema}."),
+        )
+
+        # Runtime deliveries open and close their own pool on the worker loop.
+        # Keep the fixture's administrative connection on this test's loop.
+        adapter = AsyncpgAdapter(dsn=postgres.dsn(schema).split("?", 1)[0])
+        if not runtime_delivery:
+            pool = await asyncpg.create_pool(
+                **postgres.connect_kwargs(), min_size=1, max_size=2
+            )
+            assert pool is not None
+            monkeypatch.setattr(adapter, "_pool", pool)
+        writer = writer_module.ContextAuditProjectionWriter()
+        monkeypatch.setattr(writer, "_db", adapter)
+
+        async def replay() -> None:
+            for index, (topic, event) in enumerate(_events()):
+                meta = MessageMeta(
+                    partition=index % 2, offset=10 + index, fallback_id="f", topic=topic
+                )
+                if runtime_delivery:
+                    result = await asyncio.to_thread(
+                        writer.handle,
+                        {
+                            **event,
+                            "_topic": topic,
+                            "_partition": meta.partition,
+                            "_offset": meta.offset,
+                        },
+                    )
+                    assert result["rows_upserted"] == 1
+                else:
+                    assert await writer.project_event(topic, event, meta)
+
+        await replay()
+        rows = await admin.fetch(
+            f"SELECT * FROM {schema}.context_audit_events ORDER BY task_id"
+        )
+        assert len(rows) == 5
+        assert len({row["event_key"] for row in rows}) == 5
+        for row, (_, event) in zip(
+            rows, sorted(_events(), key=lambda e: e[1]["task_id"]), strict=True
+        ):
+            for column in _RETIRED_COLUMNS:
+                got = row[column]
+                if column == "violation_details" and got is not None:
+                    got = json.loads(got)
+                assert got == event[column], column
+        first = {row["event_key"]: (row["id"], row["created_at"]) for row in rows}
+
+        await replay()
+        again = await admin.fetch(f"SELECT * FROM {schema}.context_audit_events")
+        assert len(again) == 5
+        assert {
+            row["event_key"]: (row["id"], row["created_at"]) for row in again
+        } == first
+
+        # Rows the retired module wrote carry a NULL key and stay distinct.
+        for _ in range(2):
+            await admin.execute(
+                f"INSERT INTO {schema}.context_audit_events "
+                "(task_id, correlation_id, event_type, enforcement_level) "
+                "VALUES ('legacy', 'c', 't', 'l')"
+            )
+        assert (
+            await admin.fetchval(f"SELECT COUNT(*) FROM {schema}.context_audit_events")
+            == 7
+        )
+    finally:
+        if pool is not None:
+            await pool.close()
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
