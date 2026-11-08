@@ -123,6 +123,12 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
             writer, "_db", SimpleNamespace(pool=pool, fetchval=pool.fetchval)
         )
         monkeypatch.setattr(writer, "publish_snapshot_delta", capture)
+
+        async def _transition_publish(topic: str, value: bytes) -> None:
+            # Alert transitions are published inside the write (OMN-23064).
+            return None
+
+        monkeypatch.setattr(writer, "_publish_fn", _transition_publish)
         topic = writer.subscribe_topics[0]
         meta = MessageMeta(partition=0, offset=7, fallback_id="proof", topic=topic)
 

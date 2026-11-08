@@ -18,6 +18,10 @@ publish:
   actor: node:node_lane_result_sweep_effect
   piece: 12
   action_deadline_seconds: 3600
+# Optional (OMN-22965, J12): a typed receipt without its class row this long after it finished
+# reads NOT WORKING; the reading clears when the class row appears. Absent, the rule is off.
+join_j12:
+  class_row_deadline_seconds: 900
 source: lane
 producer: remote-lane-runner
 normalizer_facts:
