@@ -107,10 +107,13 @@ class HandlerFloorFillCommand:
         self, request: ModelFloorFillCommandRequest
     ) -> ModelFloorFillEntryResult:
         box: dict[str, ModelFloorFillAnswer | BaseException] = {}
+        expired = threading.Event()
 
         def work() -> None:
             try:
-                box["answer"] = self._orchestrator.run(request.command, request.key)
+                box["answer"] = self._orchestrator.run(
+                    request.command, request.key, expired
+                )
             except (
                 BaseException
             ) as error:  # reported as unreachable below, never raised into the caller
@@ -120,6 +123,7 @@ class HandlerFloorFillCommand:
         worker.start()
         worker.join(self._config.command_timeout_seconds)
         if worker.is_alive():
+            expired.set()  # the worker stops before its next mint, write or start
             return _unreachable(forwarded=False, timed_out=True)
         answer = box.get("answer")
         if not isinstance(answer, ModelFloorFillAnswer):
