@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-22478, RULING 2026-11-06T00:23:28Z: "We should have a fucking overlay that gets loaded into the
+# fucking database or into the KV store." The overlay home is the source; this node loads one overlay by id
+# onto the bus, and node_projection_overlay_store stores it, the work ledger's pattern. The host table
+# is its first overlay.
+name: overlay_store_load_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Validates one overlay of the overlay home by the model the home names for it and publishes one version on the bus.
+output_model: omnimarket.models.overlay_store.ModelOverlayStoreLoadResult
+handler:
+  module: omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_store_load
+  class: HandlerOverlayStoreLoad
+  output_model: omnimarket.models.overlay_store.ModelOverlayStoreLoadResult
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [bus-publish]
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.overlay-store-loaded.v1
+overlay:
+  node: node_overlay_store_load_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: kafka
+  ticket: OMN-22478

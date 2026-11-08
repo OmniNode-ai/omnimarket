@@ -11,6 +11,12 @@ from __future__ import annotations
 
 from pydantic import JsonValue
 
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloLogKind,
+)
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
     JsonObject,
     ModelIloEndpoints,
@@ -22,12 +28,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
     odata_ids,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.safety import IdentityReading
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloLogKind,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
-)
 
 _MAX_LOG_PAGES = 5
 _SYSTEM_FIELDS = (

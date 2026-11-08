@@ -13,12 +13,12 @@ from pydantic import ValidationError
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_engine_ladder import CONTEXT_KEY
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     ModelRemoteLaneAttempt,
     ModelRemoteLaneLadder,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
 )
 
 pytestmark = pytest.mark.unit
