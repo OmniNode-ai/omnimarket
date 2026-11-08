@@ -39,14 +39,7 @@ handlers:
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain:HandlerHostDrain
-  handlers:
-    - operation: idle_runner_stop
-      handler:
-        name: HandlerIdleRunnerStop
-        module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
-      event_model:
-        name: ModelIdleRunnerStopRequest
-        module: omnimarket.nodes.node_host_drain_effect.models.model_host_drain
+  handlers: []
 
 descriptor:
   node_archetype: effect
@@ -90,6 +83,9 @@ externally_consumed_topics:
 overlay:
   node: node_host_drain_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+# Both handlers take their ports as constructor parameters; the runtime wiring owns them.
+requires_external_dependencies: true
 
 metadata:
   ticket: OMN-22905
