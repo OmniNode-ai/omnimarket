@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22953
+title: "Piece 10's first task: the J9 join test: a merged fix is installed on every target host within an hour and read back equal, golden and error"
+summary: The automatic fix install node gains a J9 join handler. It reads the receipts the node's own tick wrote against the head piece 9 merged and the one hour deadline in the node's contract. When every declared target reads back the merged head inside the hour it answers piece 10's chain on the floor's emission contract with a start then a success; once the hour has passed it names each target that did not (late, a read-back that differs, or a refused install) in a typed failure and emits a start then a failure; inside the hour it emits nothing. The tests run the node's real tick against a scratch git repository with injected installer commands, never a real host. The running wiring on the dev bus is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22953-j9-join
+  statement: A merged fix is installed on every target host within an hour and read back equal, with a golden and an error case.
+  acceptance:
+  - id: AC1
+    statement: "AC1: golden join test: a merged fix is installed on every target host within an hour and the readback equals the merged head -- falsifier: uv run pytest tests/integration/test_join_j9.py -q -k golden"
+  - id: AC2
+    statement: "AC2: error join test: a host that does not install within the hour is named in a typed failure and the join reads failed -- falsifier: uv run pytest tests/integration/test_join_j9.py -q -k error"
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest tests/integration/test_join_j9.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22953-j9-golden
+  description: The golden join tests pass; on the dev source they fail at collection because the J9 join handler does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j9.py -q --no-cov -n 0 -p no:randomly -k golden
+    cwd: .
+- id: dod-omn22953-j9-error
+  description: The error join tests pass; with the deadline check forced off, five of them go red while the golden tests stay green.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j9.py -q --no-cov -n 0 -p no:randomly -k error
+    cwd: .
