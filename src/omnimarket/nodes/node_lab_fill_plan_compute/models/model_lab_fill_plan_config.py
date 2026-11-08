@@ -48,6 +48,20 @@ class ModelLabFillPlanConfig(BaseModel):
     exclude_areas: tuple[str, ...] = ()
     defect_labels: tuple[str, ...] = ()
     defect_terms: tuple[str, ...] = ()
+    # Repositories whose red or stalled PRs rank first (the MVP class) and next (the process
+    # class) among the work a run takes (RULING 2026-10-15T08:14:02Z). The caller's overlay
+    # supplies the process repositories and may replace the MVP ones.
+    mvp_repos: tuple[str, ...] = (
+        "omnibase_infra",
+        "omnibase_core",
+        "omnimarket",
+        "omniclaude",
+        "omnidash",
+    )
+    process_repos: tuple[str, ...] = ()
+    # The lane priority classes, first ranked first: the class of an MVP or delegation PR, of a
+    # process fix, and of everything else.
+    priority_classes: tuple[str, str, str] = ("mvp-landing", "process-fix", "other")
     max_lanes: int = Field(default=8, ge=1, le=12)
     fallback_max_age_min: int = Field(default=720, ge=1, le=10080)
 
@@ -75,7 +89,13 @@ class ModelLabFillPlanConfig(BaseModel):
         return value
 
     @field_validator(
-        "pr_repos", "exclude_areas", "defect_labels", "defect_terms", mode="after"
+        "pr_repos",
+        "exclude_areas",
+        "defect_labels",
+        "defect_terms",
+        "mvp_repos",
+        "process_repos",
+        mode="after",
     )
     @classmethod
     def _lowered(cls, value: tuple[str, ...]) -> tuple[str, ...]:
