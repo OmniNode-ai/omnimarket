@@ -220,6 +220,34 @@ def test_select_a_ruling_older_than_the_window_is_no_line() -> None:
     assert "ruling:r-old" not in {line.line_id for line in result.lines}
 
 
+def test_select_a_lane_end_inside_the_window_is_a_ticket_line_and_one_older_is_not() -> (
+    None
+):
+    inside = row(
+        "TERMINAL",
+        60,
+        "lane-in",
+        tickets=("OMN-910",),
+        outcome="blocked",
+        row_id="t-in",
+    )
+    outside = row(
+        "TERMINAL",
+        timedelta(days=30).total_seconds() / 60,
+        "lane-out",
+        tickets=("OMN-911",),
+        outcome="blocked",
+        row_id="t-out",
+    )
+    base = _nine_line_request()
+    result = _compute(
+        base.model_copy(update={"ledger": (*base.ledger, inside, outside)})
+    )
+    ids = {line.line_id for line in result.lines}
+    assert "ticket:OMN-910" in ids
+    assert "ticket:OMN-911" not in ids
+
+
 def test_select_a_plan_plans_today_names_with_no_plan_supplied_is_drawn_stopped_not_dropped() -> (
     None
 ):

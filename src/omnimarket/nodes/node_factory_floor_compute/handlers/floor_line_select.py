@@ -225,14 +225,17 @@ def _ticket_candidates(
         for ticket in claim.tickets:
             add(ticket, claim.row_id or f"{cfg.claim_kind} {claim.lane}")
     for row in request.ledger:
-        if row.kind != cfg.terminal_kind:
+        # A lane end older than the window is judged by the resolution rules (plan task T5), not selected here: the
+        # effect forwards unresolved ends from the archive rolls with no age limit, and this selection does not read
+        # them as work in progress.
+        if row.kind != cfg.terminal_kind or row.ts < cutoff:
             continue
         for ticket in row.tickets:
             evidence = row.row_id or f"{cfg.terminal_kind} {row.lane}"
             if row.outcome in unresolved:
                 if ticket not in reached_running:
                     add(ticket, evidence)
-            elif row.ts >= cutoff and (ticket in open_prs or ticket in unrun):
+            elif ticket in open_prs or ticket in unrun:
                 add(ticket, evidence)
     for ticket in sorted(open_prs | unrun):
         add(ticket, f"pull request on {ticket}")
