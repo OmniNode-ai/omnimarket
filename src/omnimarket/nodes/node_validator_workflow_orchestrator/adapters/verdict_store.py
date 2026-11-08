@@ -45,19 +45,33 @@ class FileVerdictStore:
         os.replace(tmp, self._path)
 
 
-def store_from_overlay(
-    overlay: ModelVerdictReducerOverlay, environ: Mapping[str, str] | None = None
+def _in_memory_store(
+    overlay: ModelVerdictReducerOverlay, environ: Mapping[str, str]
 ) -> ProtocolVerdictStore:
-    """The store the overlay names; the file backend needs its path env var set."""
-    if overlay.store.backend == "in_memory":
-        return InMemoryVerdictStore()
-    env = os.environ if environ is None else environ
-    path = env.get(overlay.store.path_env)
+    return InMemoryVerdictStore()
+
+
+def _file_store(
+    overlay: ModelVerdictReducerOverlay, environ: Mapping[str, str]
+) -> ProtocolVerdictStore:
+    path = environ.get(overlay.store.path_env)
     if not path:
         raise ValueError(
             f"store.backend=file needs {overlay.store.path_env} set to the state file path"
         )
     return FileVerdictStore(Path(path))
+
+
+# The overlay's store.backend value keys the builder, so no code compares it with a literal.
+_STORE_BUILDERS = {"in_memory": _in_memory_store, "file": _file_store}
+
+
+def store_from_overlay(
+    overlay: ModelVerdictReducerOverlay, environ: Mapping[str, str] | None = None
+) -> ProtocolVerdictStore:
+    """The store the overlay names; the file backend needs its path env var set."""
+    env = os.environ if environ is None else environ
+    return _STORE_BUILDERS[overlay.store.backend](overlay, env)
 
 
 def make_reducer_file_backend(workdir: Path) -> ProtocolVerdictStore:
