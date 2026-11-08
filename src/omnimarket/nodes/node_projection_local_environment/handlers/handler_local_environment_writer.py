@@ -238,13 +238,10 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
             return
         publish = await self.get_publish_fn()
         if publish is None:
-            logger.warning(
-                "local environment writer: no publisher for %s; %d alert "
-                "transition(s) not published",
-                self._transition_topic,
-                len(transitions),
+            raise RuntimeError(
+                f"local environment writer: no publisher for {self._transition_topic}; "
+                f"{len(transitions)} alert transition(s) not published"
             )
-            return
         topic = apply_topic_namespace(self._transition_topic)
         for transition in transitions:
             envelope = ModelEventEnvelope[dict[str, object]](
@@ -341,13 +338,16 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
                     _UPSERT_ROW, *(_parameter(name, row.get(name)) for name in _COLUMNS)
                 )
                 written.append(_wire_row(dict(returned[0])))
-        # Derived from the rows around the write, after the commit. A
-        # redelivered report re-raises the alerts its mode still holds open.
-        if written:
-            transitions = derive_local_alert_transitions(stored_rows, written)
-        else:
-            transitions = derive_local_alert_transitions((), replayed)
-        await self._publish_alert_transitions(transitions)
+            # Derived from the rows around the write and published before the
+            # commit: a failed publish rolls the write back, so the redelivery
+            # sees the same stored rows and derives the same transitions (their
+            # ids are deterministic), clears included. After the commit, a
+            # replay has no before-state to derive a clear from, and builds a
+            # raise from the current row rather than the report it came from.
+            if written:
+                await self._publish_alert_transitions(
+                    derive_local_alert_transitions(stored_rows, written)
+                )
         if self._snapshot_exposure is not None:
             for row in written or replayed:
                 await self.publish_snapshot_delta(
