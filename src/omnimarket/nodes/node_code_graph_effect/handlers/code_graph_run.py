@@ -72,7 +72,7 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
-class HandlerCodeGraph:
+class CodeGraphRun:
     """Run the graph over the overlay's repositories."""
 
     def __init__(
@@ -312,7 +312,7 @@ def events_of(
 
 
 def answer_command(
-    payload: bytes, handler: HandlerCodeGraph, topics: dict[str, str]
+    payload: bytes, handler: CodeGraphRun, topics: dict[str, str]
 ) -> list[tuple[str, bytes]]:
     """One command message in, the events it produces out, each as (topic, JSON bytes).
 

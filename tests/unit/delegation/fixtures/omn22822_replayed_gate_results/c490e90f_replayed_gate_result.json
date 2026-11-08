@@ -1,0 +1,20 @@
+{
+ "headers": {
+  "x-replay-count": "1",
+  "x-replayed-at": "2026-11-07T02:40:20.107709+00:00",
+  "x-replayed-by": "node_dlq_replay_effect"
+ },
+ "payload": {
+  "correlation_id": "c490e90f-bdbc-4bfd-9fb9-3eeadf485146",
+  "fail_category": "fail_heuristic",
+  "failure_reasons": [
+   "answer does not address the request"
+  ],
+  "fallback_recommended": true,
+  "passed": false,
+  "quality_score": 0.3
+ },
+ "provenance_note": "Constructed, not captured: the quality gate result a run on the c490e90f attempt would have received (a failed heuristic verdict, the shape that sends the orchestrator to the next rung), wrapped in the envelope and headers the dead-letter replay node used for the recorded inference-response replay of the same run. The run row it is applied to is the recorded c490e90f row advanced to INFERENCE_COMPLETED by the test.",
+ "timestamp_ms": 1794019220107,
+ "topic": "onex.evt.omnibase-infra.quality-gate-result.v1"
+}
