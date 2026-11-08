@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloJournalStatus,
     EnumIloOutcome,
     EnumIloRefusal,

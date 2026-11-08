@@ -14,6 +14,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+WRITE_VIA_MODES = ("local", "bus")
+
 
 class ModelAppendCommandResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -95,13 +97,22 @@ class LocalLedgerAppendCommand:
     # cannot take it, so the process is never killed mid-write by our own timeout.
     LOCK_WAIT_S = 60
 
-    def __init__(self, argv_prefix: list[str], timeout_s: float = 150.0) -> None:
+    def __init__(
+        self,
+        argv_prefix: list[str],
+        timeout_s: float = 150.0,
+        *,
+        write_via: str = "local",
+    ) -> None:
         if not argv_prefix:
             raise ValueError("append command must not be empty")
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
+        if write_via not in WRITE_VIA_MODES:
+            raise ValueError(f"write_via must be one of {WRITE_VIA_MODES}")
         self._argv_prefix = list(argv_prefix)
         self._timeout_s = timeout_s
+        self._write_via = write_via
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         try:
@@ -114,8 +125,12 @@ class LocalLedgerAppendCommand:
                     str(self.LOCK_WAIT_S),
                 ],
                 stdin=subprocess.DEVNULL,
-                # A request must never be re-published to the bus it came from.
-                env={**os.environ, "ONEX_LEDGER_WRITE_VIA": "local"},
+                # The ledger serve keeps "local": a request must never be
+                # re-published to the bus it came from. A writer that is not the
+                # serve (the lane start leader, OMN-22848) passes "bus", because a
+                # host whose ledger of record is the bus refuses a direct file
+                # append from anyone but the serve.
+                env={**os.environ, "ONEX_LEDGER_WRITE_VIA": self._write_via},
                 capture_output=True,
                 text=True,
                 timeout=self._timeout_s,
