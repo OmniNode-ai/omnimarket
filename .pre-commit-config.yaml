@@ -85,6 +85,18 @@ repos:
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: dev-20261101023710-a66b5ff79cc0
     hooks:
+      # OMN-22848 (stopped-line fill plan T15, Step 1 item 0): omnibase_core validators of the plan's
+      # G-NODE point 2 that this config did not run, scoped by directory glob to the stopped-line fill
+      # plan's nodes so each is judged by them from its first commit, with no baseline entry. Wired here:
+      # the handler-shape ratchet and binding conformance. Not yet wired, because the remote lane start
+      # nodes fail them today: handler-di-gate, check-no-io-outside-effects and the contracts-and-DI
+      # validator (validator_contracts_and_di, which core publishes no hook for).
+      - id: canonical-handler-shape-ratchet
+        files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/.*\.py$
+        require_serial: true
+      - id: check-binding-conformance
+        files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/(handlers/[^/]+|handler_[^/]+)\.py$
+        require_serial: true
       # OMN-14172 integration silent-skip guard: the --selftest drives the decision
       # over synthetic reports and validates scripts/ci/integration_skip_guard.yaml
       # (this repo's config, read from the default path). No DB needed locally; the

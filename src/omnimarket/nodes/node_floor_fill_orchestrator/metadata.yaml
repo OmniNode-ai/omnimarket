@@ -1,0 +1,25 @@
+name: node_floor_fill_orchestrator
+version: "0.1.0"
+description: "Floor fill orchestrator: the one writer of every floor lane; a tick reads the floor, resolves its entries, mints each task's ticket, reserves under a conditional write and starts a lane on every startable line"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_fill_orchestrator: "omnimarket.nodes.node_floor_fill_orchestrator"
+capabilities:
+  standalone: true
+  # false until the live seams (facts, pool, ledger, tickets, process) and the state_io table are bound.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-spi>=0.23.3,<0.24.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "floor-fill"]
+pack: "routing"
+display_name: "Floor Fill Orchestrator"
+node_role: "orchestrator"
