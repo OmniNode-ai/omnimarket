@@ -74,3 +74,11 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC5
+- id: dod-omn21895-integration-proof
+  description: The work-contract corpus pins the refreshed uv.lock and loads on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21895 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_model_work_contract.py -q --no-cov
+    cwd: .
