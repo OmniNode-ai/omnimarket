@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Real-backend profile, synthetic values: keys resolve through the secret store effect, and each
+# consumer's own probe command makes it complete one call with the key it holds. A probe command
+# exits 0 when the call completed, 1 when the service refused its key (still on the old key), any
+# other code for a failed call. Run without a shell, its output discarded; it never receives the
+# value on its command line.
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: secret-rotation-readback
+  actor: node:node_secret_rotation_readback_effect
+  piece: 5
+  publish_max_age_seconds: 7200
+store:
+  secret_store:
+    provider: example-provider
+    address: https://store.example.invalid
+    project_id: 00000000-0000-4000-8000-000000000000
+    environment: example
+    root_folder: /
+    client_id_ref: EXAMPLE_CLIENT_ID
+    client_secret_ref: EXAMPLE_CLIENT_SECRET_REF
+    identity_file: .example/identity.env
+consumers:
+  - consumer: example-gate
+    folder: /dev-only/drill
+    key: EXAMPLE_DRILL_KEY
+    probe_command: [/example/bin/example-gate-probe, --once]
+  - consumer: example-decider
+    folder: /dev-only/drill
+    key: EXAMPLE_DRILL_KEY
+    probe_command: [/example/bin/example-decider-probe, --once]
+call_timeout_seconds: 60
+rotation:
+  approvers:
+    - example-approver
+  dev_only_keys:
+    - folder: /dev-only/drill
+      key: EXAMPLE_DRILL_KEY
+injected_fault: Hold one consumer on the old key after the store rotated

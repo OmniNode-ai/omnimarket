@@ -150,6 +150,17 @@ descriptor:
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
+# OMN-22874. The four singleton aggregate exposures below are whole-table views
+# over delegation_events; the writer re-reads and republishes each one after a
+# delegation write. Read per message that cost about 2.2 s at 96,661 rows and
+# held every offset commit behind it, so a burst of events stood as consumer
+# group lag and raised the lab lag alarm. In the consume loop the republish is
+# marked dirty per tenant and flushed once per window, off the commit path; the
+# snapshot is latest-wins, so what a reader loses is at most this window of
+# freshness. The per-delivery runtime path keeps the inline republish.
+aggregate_republish:
+  coalesce_window_ms: 3000
+
 # Golden path: delegation chain (terminal event -> delegation_events table)
 golden_path:
   - "Consume delegation terminal event from a contract-declared topic"

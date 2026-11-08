@@ -93,6 +93,17 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
+  # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
+  # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
+  # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
+  pipeline_chains:
+    - node_floor_simple_effect:run_floor_simple_cycle
+    - node_floor_simple_effect:read_sources
+    - node_floor_simple_compute:compute_lab_state
+    - node_lab_state_alarm_effect:alarm_lab_state
+    - node_floor_emission_compute:compute_floor_receipts
+    - node_floor_simple_compute:compute_floor_simple
+    - node_lab_state_alarm_effect:publish_canary
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
@@ -104,6 +115,13 @@ runtime:
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
+    # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
+    # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
+    # <controller_state_dir_env or ~/controller_state_dir_fallback>/controller_admissions_name; only its newest tail is read.
+    controller_state_dir_env: LANDING_STATE_DIR
+    controller_state_dir_fallback: .local/state/omni/landing
+    controller_admissions_name: admissions.jsonl
+    controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json

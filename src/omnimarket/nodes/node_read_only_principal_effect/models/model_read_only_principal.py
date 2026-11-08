@@ -27,6 +27,12 @@ class EnumChannel(StrEnum):
     LEDGER = "ledger"
 
 
+class EnumCredentialStore(StrEnum):
+    """The declared stores a credential reference may name; a value is never one of them."""
+
+    ONEX_CREDENTIAL_STORE = "onex_credential_store"
+
+
 class EnumGateDecision(StrEnum):
     """What the forced-command gate does with the command a client asked for."""
 
@@ -115,6 +121,29 @@ class ModelSshGate(BaseModel):
         return value
 
 
+class ModelCredentialRef(BaseModel):
+    """Where the principal's bus credential lives: a store and the reference filed in it, never the value.
+
+    The probe resolves the reference in the store before it runs any attempt, so an overlay whose reference
+    names nothing (or is absent) is refused, never probed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    store: EnumCredentialStore
+    lane: str = Field(min_length=1)
+    secret_ref: str = Field(min_length=1)
+
+    @field_validator("lane", "secret_ref")
+    @classmethod
+    def _reference_shape(cls, value: str) -> str:
+        if not re.fullmatch(r"[a-z][a-z0-9-]{1,62}", value):
+            raise ValueError(
+                "a lane and a secret reference are lowercase words of letters, digits and hyphens"
+            )
+        return value
+
+
 class ModelProbeAttempt(BaseModel):
     """One command run as the principal. ``pass_env`` names the variables the child may see."""
 
@@ -143,14 +172,41 @@ class ModelChannelProbe(BaseModel):
         return value
 
 
+class ModelProbeEmission(BaseModel):
+    """Where the probe emits its chain: the floor's piece it counts for and the floor's journal.
+
+    ``journal_relpath`` is relative to the registry home named by the ``home_env`` variable, and is the path
+    the floor's own cycle appends to, so one receipt fold reads both.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    journal_relpath: str = Field(min_length=1)
+    home_env: str = Field(default="OMNI_HOME", min_length=1)
+
+    @field_validator("journal_relpath")
+    @classmethod
+    def _relative_and_inside(cls, value: str) -> str:
+        parts = value.split("/")
+        if value.startswith("/") or ".." in parts:
+            raise ValueError("journal_relpath is relative and stays inside the home")
+        return value
+
+
 class ModelReadOnlyPrincipalOverlay(BaseModel):
-    """The ``node_read_only_principal_effect`` overlay document."""
+    """The ``node_read_only_principal_effect`` overlay document.
+
+    ``emission`` is optional: an overlay without it probes as before and emits nothing.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     principal: str = Field(min_length=1)
+    credential: ModelCredentialRef
     ssh: ModelSshGate
     probes: tuple[ModelChannelProbe, ...] = Field(min_length=1)
+    emission: ModelProbeEmission | None = None
 
     @model_validator(mode="after")
     def _every_channel_is_probed_once(self) -> ModelReadOnlyPrincipalOverlay:

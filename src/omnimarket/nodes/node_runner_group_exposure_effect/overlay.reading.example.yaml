@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the overlay the hourly reading writer and its schedule load (the probe's
+# in-memory overlay plus ledger_append, publish and hosts). The deployment's overlay lives at
+# <root>/node_runner_group_exposure_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default. For the GitHub source, replace `source` with the
+# one in overlay.github.example.yaml; the token is supplied through the host's environment_file.
+settings:
+  public_reach_events: [pull_request_target, pull_request, issue_comment]
+  max_age_seconds: 3600
+source:
+  backend: inmemory
+  fixture:
+    read_age_seconds: 60
+    group:
+      group_id: 7
+      allows_public_repositories: false
+      restricted_to_workflows: true
+      selected_workflows: ["example-org/example-repo/.github/workflows/build.yml@main"]
+      repositories: ["example-org/example-repo"]
+    files:
+      - repository: example-org/example-repo
+        path: .github/workflows/build.yml
+        ref: main
+        selects_group_label: true
+        triggers: [push, workflow_dispatch]
+    jobs:
+      - run_id: 1001
+        run_event: push
+        head_is_fork: false
+        workflow_ref: .github/workflows/build.yml
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: runner-group-exposure
+  actor: node:node_runner_group_exposure_effect
+  publish_max_age_seconds: 7200
+  injected_fault: Add a public-origin trigger to a workflow file the group runs, in a sandbox fixture
+hosts:
+  - name: example-host
+    scheduler: systemd-user
+    venv: .onex_state/installed-units/example-unit/omnimarket/.venv
+    environment_file: $HOME/.config/onex/example-group-read-token.env
+    environment:
+      EXAMPLE_HOST_NAME: example-host
+      EXAMPLE_LEDGER_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev

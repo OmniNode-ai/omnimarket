@@ -175,7 +175,11 @@ class CommandLedgerRowSource:
         except (OSError, subprocess.TimeoutExpired) as exc:
             return ModelLedgerRead(error=f"read-command-failed:{type(exc).__name__}")
         if done.returncode != 0:
-            return ModelLedgerRead(error=f"read-command-exit-{done.returncode}")
+            # The read CLI prints `Work-ledger read refused (<ExceptionClass>)`; keep the class so an
+            # intermittent exit names its own cause (OMN-22775). Nothing else of stderr is kept.
+            refused = _READ_REFUSED.search(done.stderr)
+            suffix = f":{refused.group(1)}" if refused else ""
+            return ModelLedgerRead(error=f"read-command-exit-{done.returncode}{suffix}")
         try:
             answer = json.loads(done.stdout)
         except json.JSONDecodeError:
@@ -210,6 +214,7 @@ class CommandLedgerRowSource:
         return ModelLedgerRead(rows=tuple(rows))
 
 
+_READ_REFUSED = re.compile(r"Work-ledger read refused \(([A-Za-z_][A-Za-z0-9_]*)\)")
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| [^|\r\n]+ \| ")
 
 
