@@ -30,6 +30,7 @@ Failure modes each test is written against:
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -120,8 +121,14 @@ class _Conn:
     @asynccontextmanager
     async def transaction(self) -> Any:
         self.in_transaction = True
+        saved = copy.deepcopy(self.table)
         try:
             yield
+        except BaseException:
+            # A real transaction rolls back every write it made when it raises.
+            self.table.clear()
+            self.table.update(saved)
+            raise
         finally:
             self.in_transaction = False
 
@@ -198,6 +205,12 @@ def _writer(
         published.append({"topic": exposure.topic, **kwargs})
         return True
 
+    async def _transition_publish(topic: str, value: bytes) -> None:
+        # The alert transitions are published inside the write; a writer with
+        # no publisher fails the report (OMN-23064), so the stand-in has one.
+        return None
+
+    patch.setattr(writer, "_publish_fn", _transition_publish)
     patch.setattr(writer, "publish_snapshot_delta", _capture)
     return writer, conn, published
 
