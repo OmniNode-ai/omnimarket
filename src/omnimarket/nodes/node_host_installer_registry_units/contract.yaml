@@ -17,7 +17,8 @@ description: >-
   floor publisher); an override of any other variable is refused. Declared environment inputs are persisted in
   the unit. A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
   unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
-  replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
+  replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick. A unit that declares
+  run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -85,6 +86,9 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    # The board is stale past its 900 s freshness bound (freshness_max_age_s), so a publish that runs longer than that has already failed the page; a run took more than 7 minutes under the Background clamp and 43 s in the foreground.
+    run_timeout_s: 900
     # Not Background (OMN-22699). Measured 2026-11-06 on the launching Mac at load 19 to 21 on 24 cores: the factory floor
     # step took 43 s run in the foreground (profiled) and more than 7 minutes as this unit's tick under the Background clamp,
     # which made one cycle 7 to 10 minutes against a 300 s interval, so a tick was skipped and the page refreshed every 10
@@ -147,6 +151,9 @@ units:
       run_at_load: true
       description: every 3600 s and at load
     registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    # Under its 3600 s interval, so a hung harness run ends before the next tick is due.
+    run_timeout_s: 3300
     tick_no_sync: true
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
@@ -175,6 +182,9 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    # The node's own timeout_ms is 900000 (its contract), so the unit ends a run at the bound the node declares.
+    run_timeout_s: 900
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
       - /usr/local/bin/python3.13
