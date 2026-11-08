@@ -59,3 +59,10 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22936 -- uv run --frozen pytest tests/integration/test_join_j6.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
+- id: dod-omn22936-deploy-source-read
+  description: The pushed branch carries the J6 join handler module and the gate store contract binds it under cli_handlers. Read live from GitHub at the branch head, so it fails if the handler is missing from the pushed source.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_gate_store_effect/contract.yaml?ref=omn-22936-j6-gate-store-join" --jq .content | base64 -d | grep -q 'HandlerGateStoreJoinJ6'
+    cwd: .
