@@ -41,6 +41,9 @@ from omnimarket.lab_work.bus import (
     LabWorkCaller,
     LabWorkHost,
 )
+from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
+    read_draining_hosts,
+)
 from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
 from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
@@ -326,18 +329,27 @@ def run_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            caller = LabWorkCaller(opened)
+            caller = LabWorkCaller(opened, draining_hosts=read_draining_hosts)
             await caller.start()
             try:
                 await caller.collect(window or 2 * caller.topics.cadence_seconds + 2)
-                placement = caller.place(
-                    max_load_per_core=max_load_per_core,
-                    min_free_bytes=int(min_free_gb * 1024**3),
-                    need_tools=need_tools,
-                    only_host=only_host,
-                    repo=repo,
-                    kind=kind,
-                )
+                try:
+                    placement = caller.place(
+                        max_load_per_core=max_load_per_core,
+                        min_free_bytes=int(min_free_gb * 1024**3),
+                        need_tools=need_tools,
+                        only_host=only_host,
+                        repo=repo,
+                        kind=kind,
+                    )
+                except (OSError, ValueError) as exc:
+                    # The drain state could not be read: no unit is placed on a state that was not read.
+                    click.echo(
+                        f"lab-work: the drain state could not be read ({type(exc).__name__}: {exc}); "
+                        "not running the unit anywhere",
+                        err=True,
+                    )
+                    return EXIT_NOT_RUN
                 click.echo(placement.describe(), err=True)
                 if not placement.placed:
                     click.echo(

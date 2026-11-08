@@ -53,6 +53,7 @@ def _runner(
         overlay.runner_stop,
         probe=probe,
         stopper=FakeRunnerStopper(probe),
+        store=InMemoryDrainStore(),
         sink=sink,
         clock=lambda: NOW,
         backend="in_memory",

@@ -11,11 +11,13 @@ description: >
   A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
   The drain verb sets one host draining in the drain store and reads it back: the lab placement judge refuses
   every new unit for a draining host, running lanes are counted and left to finish, and the host reads drained
-  when the count is 0. The idle-only runner stop stops a runner only when its process table shows no worker
-  process; a busy or unreadable runner is refused and nothing is stopped. Each command is one chain on the
+  when the count is 0. The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
+  while it reads and acts, then stops a runner only when its process table shows no worker process; a busy or
+  unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner
+  stopped. Each command is one chain on the
   emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
   drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
-  runner_stop_failed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
+  runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
   file on one host) or redpanda (a compacted topic keyed by host). Every setting is in the overlay.
 
 handler:

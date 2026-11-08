@@ -34,12 +34,14 @@ runner_stop:
   listener_process_name: Runner.Listener
   stop_command: [example-service-control, stop, "{unit}"]
   stop_timeout_seconds: 60
+  stop_reason: idle-only runner stop closes admission
   codes:
     runner_busy: runner_busy
     runner_unreadable: runner_unreadable
     unknown_runner: unknown_runner
     still_running: runner_still_running
     stop_failed: runner_stop_failed
+    admission_not_closed: admission_not_closed
   injected_fault: Use a stop command that exits 0 and leaves the runner running, so the readback finds it up
 lanes:
   count_command: [example-lane-count, "{host}"]

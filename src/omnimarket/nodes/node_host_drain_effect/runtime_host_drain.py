@@ -29,7 +29,10 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    NodeOverlayNotFoundError,
+)
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
     CommandWorkerProbe,
@@ -93,6 +96,29 @@ def build_store_and_sink(
     return RedpandaDrainStore(overlay.redpanda, client), sink, "real"
 
 
+def draining_hosts_of(
+    overlay: ModelHostDrainOverlay, environ: Mapping[str, str]
+) -> tuple[str, ...]:
+    """The hosts the overlay's drain store reads as draining. A store that cannot be read raises."""
+    store, _sink, _backend = build_store_and_sink(overlay, environ)
+    return store.draining_hosts()
+
+
+def read_draining_hosts(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """The draining hosts for a placement caller (``LabWorkCaller(draining_hosts=...)``).
+
+    No drain overlay selected means no drain verb is deployed, so no host can be draining: the answer is empty. A
+    broken overlay, a missing deployment fact or an unreadable store raises, so a placement never reads an unreadable
+    drain state as an empty one.
+    """
+    env = os.environ if environ is None else environ
+    try:
+        overlay = load_overlay(env)
+    except NodeOverlayNotFoundError:
+        return ()
+    return draining_hosts_of(overlay, env)
+
+
 def _print(model: BaseModel) -> None:
     print(model.model_dump_json())
 
@@ -133,6 +159,7 @@ def run(
                 else ProcWorkerProbe(overlay.runner_stop)
             ),
             stopper=CommandWorkerStopper(overlay.runner_stop),
+            store=store,
             sink=sink,
             clock=lambda: datetime.now(UTC),
             backend=backend,

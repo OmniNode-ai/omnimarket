@@ -496,8 +496,10 @@ class LabWorkCaller:
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         placer: handlers.HandlerLabPoolPlace | None = None,
+        draining_hosts: Callable[[], tuple[str, ...]] = lambda: (),
     ) -> None:
         self._bus = require_ungrouped(bus)
+        self._draining_hosts = draining_hosts
         self._placer = placer or handlers.HandlerLabPoolPlace()
         self._topics = topics or load_lab_work_topics()
         self._slack = wait_slack_seconds
@@ -571,6 +573,8 @@ class LabWorkCaller:
             min_free_bytes=min_free_bytes,
             need_tools=need_tools,
             only_host=only_host,
+            # Read at every placement; a reader that raises stops the placement, it never reads as none draining.
+            draining_hosts=tuple(self._draining_hosts()),
         )
         return self._placer.handle(request)
 

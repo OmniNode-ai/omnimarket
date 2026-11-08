@@ -45,6 +45,8 @@ class ModelRunnerStopCodes(_Frozen):
     unknown_runner: str = Field(min_length=1)
     still_running: str = Field(min_length=1)
     stop_failed: str = Field(min_length=1)
+    #: The runner's host could not be set draining and read back as draining: nothing is read or stopped.
+    admission_not_closed: str = Field(min_length=1)
 
 
 class ModelDrainSettings(_Frozen):
@@ -98,6 +100,8 @@ class ModelRunnerStopSettings(_Frozen):
     #: argv of the stop; {unit} is replaced with the runner's unit. No shell.
     stop_command: tuple[str, ...] = Field(min_length=1)
     stop_timeout_seconds: int = Field(ge=1)
+    #: The reason written to the drain store when the stop closes admission on the runner's host.
+    stop_reason: str = Field(min_length=1)
     codes: ModelRunnerStopCodes
     injected_fault: str = Field(min_length=1)
 

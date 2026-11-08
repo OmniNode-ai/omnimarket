@@ -16,6 +16,7 @@ from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     ProcWorkerProbe,
 )
+from omnimarket.nodes.node_host_drain_effect.adapters.stores import InMemoryDrainStore
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop import (
     HandlerIdleRunnerStop,
 )
@@ -43,6 +44,7 @@ def _handler(
         overlay.runner_stop,
         probe=probe,
         stopper=stopper,
+        store=InMemoryDrainStore(),
         sink=sink,
         clock=lambda: NOW,
         backend="in_memory",
