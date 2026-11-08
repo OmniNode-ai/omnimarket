@@ -7812,6 +7812,7 @@
         "node_pr_lifecycle_orchestrator",
         "node_pr_state_emit_effect",
         "node_pr_state_read_effect",
+        "node_reading_writer_effect",
         "node_wip_admission_compute"
       ],
       "target_schema": "omninode_internal",
