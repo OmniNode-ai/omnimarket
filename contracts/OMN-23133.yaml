@@ -23,22 +23,14 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
 - id: dod-omn23133-phase-budget-test
-  description: The four tests pass at the head. On the base commit (dev 294b7a0fe) three of the four fail (the call limit past the time left, a fraction of a second granted as a whole second, the refusal saying untouched) and the control passes on both.
+  description: The four new tests and the neighbouring publish tests (cycle bound, cycle timing, publish) pass at the head, run as one command so it fails at the base. On the base commit (dev 294b7a0fe) three of the four fail (the call limit past the time left, a fraction of a second granted as a whole second, the refusal saying untouched) and the control passes on both.
   source: manual
   binds_ac:
   - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn23133-neighbours
-  description: The neighbouring publish tests that read the phase budget (cycle bound, cycle timing, publish) pass at the head.
-  source: manual
-  binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23133-integration-proof
   description: The pushed head ran the phase budget tests and the publish node cycle tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
