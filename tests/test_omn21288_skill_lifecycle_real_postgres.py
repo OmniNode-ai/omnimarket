@@ -62,7 +62,11 @@ async def _connect_or_skip() -> asyncpg.Connection:
     try:
         return await asyncpg.connect(dsn, timeout=10)
     except (OSError, asyncpg.PostgresError) as exc:
-        pytest.skip(f"no reachable Postgres for the write-path proof: {exc}")
+        # Only an unset configuration skips (above); a configured database that
+        # cannot be reached is a red, never a skip.
+        pytest.fail(
+            f"configured Postgres for the write-path proof is unreachable: {exc}"
+        )
 
 
 def _scoped(statement: str, schema: str, role: str | None = None) -> str:
