@@ -58,12 +58,16 @@ consumed_events:
   - event_type: ModelRepoMerged
     topic: onex.evt.omnimarket.repo-merged.v1
     description: "A merge or a pull request state change; the bus's latest state of a branch."
+  - event_type: GitHubBranchHeadObservation
+    topic: onex.evt.github.branch-head.v1
+    description: "A push to a watched branch: the branch's new head, so a branch that is never merged still moves the bus's latest state."
   - event_type: ModelMirrorPrMerged
     topic: onex.evt.github.pr-merged.v1
     description: "A merge seen by the Actions, webhook or mirror producers."
 bus_state_events:
   - topic: onex.evt.omnimarket.repo-merged.v1
   - topic: onex.evt.github.pr-merged.v1
+  - topic: onex.evt.github.branch-head.v1  # a push to a watched branch (kind branch-ref-advanced)
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.repo-state-query-requested.v1
     producer: "repo-state query, run by lanes, the landing controller, the floor and the lab fill, not a node contract"

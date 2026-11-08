@@ -188,6 +188,26 @@ class PrWatcherStateFile:
         return rec if isinstance(rec, dict) else None
 
 
+BRANCH_ADVANCED_KIND = "branch-ref-advanced"
+
+
+def _as_merge_payload(push: Mapping[str, Any]) -> dict[str, Any]:
+    """A push to a watched branch (``onex.evt.github.branch-head.v1``) as a head advance.
+
+    The webhook ingress folds push deliveries into ``branch-ref-advanced`` observations: the
+    branch's new sha and the time GitHub says it held. A push to a branch that is never merged
+    still advances that branch's head here, so a mirror that lacks it reads as behind.
+    """
+    return {
+        "repo": push.get("repo"),
+        "base": push.get("branch"),
+        "merge_sha": push.get("sha"),
+        "merged_at": push.get("as_of"),
+        "state": "merged",
+        "source": "push",
+    }
+
+
 def _parse_time(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
@@ -230,6 +250,8 @@ class FoldedBusRepoState:
 
     def apply(self, payload: Mapping[str, Any]) -> bool:
         """Fold one event payload; return whether it changed the fold."""
+        if payload.get("kind") == BRANCH_ADVANCED_KIND:
+            payload = _as_merge_payload(payload)
         try:
             repo = validate_repo_slug(str(payload.get("repo", "")))
             sha = validate_git_sha(str(payload.get("merge_sha", "")))

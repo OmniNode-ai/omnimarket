@@ -77,3 +77,10 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_repo_state_watcher_refresh_effect/handlers/handler_watcher_refresh.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerWatcherRefresh" > /dev/null'
     cwd: .
+- id: dod-omn23033-push-fold
+  description: Runs the push fold tests; a push to a branch that is never merged (branch-ref-advanced on the branch-head topic) is folded into the bus state, so a mirror that lacks it reads as behind, pulls, and answers current, while without the event the mirror reads current.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_push_fold.py -q --no-cov
+    cwd: .
