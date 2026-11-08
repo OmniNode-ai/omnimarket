@@ -542,6 +542,7 @@ class HandlerSilentFailureAlarm:
                 finding_exits=options.job_finding_exits,
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
+                dispatch_configured=options.dispatch_command is not None,
             )
         )
         job_streaks = {item.label: item for item in jobs.streaks}
