@@ -1,0 +1,86 @@
+{
+  "declared_by_this_change": [
+    "lab:deploy_lag",
+    "lab:disk",
+    "lab:runner_groups",
+    "piece:4",
+    "stoppage:hook-refusal:heavy-work-over-load-bar",
+    "stoppage:hook-refusal:worktree-add-refused",
+    "stoppage:lab-enumerate-partial",
+    "stoppage:lab-enumerate-unreadable",
+    "stoppage:lab-source-unreadable"
+  ],
+  "note": "causes.owners of the floor overlay after OMN-22928; declared_by_this_change names the causes whose entry that change added or widened",
+  "owners": {
+    "chains:broken": [
+      "OMN-22864"
+    ],
+    "lab:broker_lag": [
+      "OMN-22870"
+    ],
+    "lab:deploy_lag": [
+      "OMN-22889",
+      "OMN-22927"
+    ],
+    "lab:disk": [
+      "OMN-22993"
+    ],
+    "lab:hosts": [
+      "OMN-22870"
+    ],
+    "lab:runner_groups": [
+      "OMN-22860",
+      "OMN-22898"
+    ],
+    "lab:state": [
+      "OMN-22870"
+    ],
+    "piece:2": [
+      "OMN-22869",
+      "OMN-22478"
+    ],
+    "piece:4": [
+      "OMN-22878",
+      "OMN-22809",
+      "OMN-22478"
+    ],
+    "prs:red": [
+      "OMN-22867"
+    ],
+    "stoppage:hook-refusal:heavy-work-over-load-bar": [
+      "OMN-22880"
+    ],
+    "stoppage:hook-refusal:unauthorised-shared-tree-git-mutation": [
+      "OMN-22880"
+    ],
+    "stoppage:hook-refusal:worktree-add-refused": [
+      "OMN-22880"
+    ],
+    "stoppage:job-exit": [
+      "OMN-22881"
+    ],
+    "stoppage:lab-enumerate-partial": [
+      "OMN-22870"
+    ],
+    "stoppage:lab-enumerate-unreadable": [
+      "OMN-22870"
+    ],
+    "stoppage:lab-idle": [
+      "OMN-22866",
+      "OMN-22478"
+    ],
+    "stoppage:lab-source-unreadable": [
+      "OMN-22870"
+    ],
+    "stoppage:quiet-host": [
+      "OMN-22778"
+    ],
+    "stoppage:throughput-results": [
+      "OMN-22868"
+    ],
+    "stoppage:unclassified": [
+      "OMN-22879",
+      "OMN-22865"
+    ]
+  }
+}

@@ -5,5 +5,8 @@
 from omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect import (
     HandlerFactoryFloorEffect,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.handler_seam_emitter import (
+    HandlerSeamEmitter,
+)
 
-__all__ = ["HandlerFactoryFloorEffect"]
+__all__ = ["HandlerFactoryFloorEffect", "HandlerSeamEmitter"]
