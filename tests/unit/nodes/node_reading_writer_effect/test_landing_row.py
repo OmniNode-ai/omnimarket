@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from pydantic import ValidationError
 
@@ -100,7 +102,77 @@ def test_the_reading_clears_when_the_head_merges() -> None:
 def test_a_stale_watcher_snapshot_reads_not_working() -> None:
     piece, _ = _read((), merges=1, age_seconds=901)
     assert piece.verdict is EnumReadingVerdict.NOT_WORKING
-    assert piece.reasons == ("snapshot-stale:age-901s-over-900s",)
+    assert piece.reasons == ("snapshot-stale:over-900s",)
+
+
+def test_a_stale_snapshot_names_its_newest_observation_when_the_source_gives_it() -> (
+    None
+):
+    ledger = InMemoryLedger([canary_row()])
+    newest = START - timedelta(days=8)
+    source = InMemoryLandingSource(
+        snapshot(merges=1, age_seconds=704265, newest_at=newest)
+    )
+    result = writer(ledger, source).handle(
+        ModelReadingWindowCommand(correlation_id="c-n", window_start=START, pieces=(9,))
+    )
+    (piece,) = result.pieces
+    assert piece.verdict is EnumReadingVerdict.NOT_WORKING
+    assert piece.reasons == (
+        f"snapshot-stale:newest-{newest.strftime('%Y%m%dT%H%M%SZ')}-over-900s",
+    )
+
+
+@pytest.mark.parametrize("newest_known", [True, False])
+def test_probing_a_stale_window_again_later_reads_already_written_not_replay_failed(
+    newest_known: bool,
+) -> None:
+    """OMN-23077: the same stale snapshot probed twice for one window is one reading.
+
+    Seen on h053 2026-11-08: the 03:00Z window written at 04:12:17Z read
+    ``snapshot-stale:age-705641s-over-900s`` and the probe at 04:17:07Z, over the same
+    unchanged projection, read another age, so the second row was ``replay-failed``.
+    """
+    ledger = InMemoryLedger([canary_row()])
+    newest = START - timedelta(days=8) if newest_known else None
+    command = ModelReadingWindowCommand(
+        correlation_id="c-s", window_start=START, pieces=(9,)
+    )
+    first = writer(
+        ledger,
+        InMemoryLandingSource(snapshot(merges=1, age_seconds=705641, newest_at=newest)),
+    ).handle(command)
+    second = writer(
+        ledger,
+        InMemoryLandingSource(snapshot(merges=1, age_seconds=705931, newest_at=newest)),
+    ).handle(command)
+    assert first.pieces[0].ledger == "written"
+    assert second.pieces[0].outcome is EnumReadingOutcome.READ
+    assert second.pieces[0].ledger == "already-written"
+    assert sum("piece=9 " in line for line in ledger.lines) == 1
+
+
+def test_a_stale_snapshot_whose_newest_observation_moved_is_another_reading() -> None:
+    """The check stays: a different snapshot for a written window is still a replay failure."""
+    ledger = InMemoryLedger([canary_row()])
+    command = ModelReadingWindowCommand(
+        correlation_id="c-m", window_start=START, pieces=(9,)
+    )
+    older = START - timedelta(days=8)
+    writer(
+        ledger,
+        InMemoryLandingSource(snapshot(merges=1, age_seconds=5000, newest_at=older)),
+    ).handle(command)
+    second = writer(
+        ledger,
+        InMemoryLandingSource(
+            snapshot(
+                merges=1, age_seconds=4000, newest_at=older + timedelta(seconds=1000)
+            )
+        ),
+    ).handle(command)
+    assert second.pieces[0].outcome is EnumReadingOutcome.REPLAY_FAILED
+    assert second.pieces[0].verdict is EnumReadingVerdict.NOT_WORKING
 
 
 def test_a_watcher_that_cannot_be_read_gives_unknown_and_never_an_empty_queue() -> None:

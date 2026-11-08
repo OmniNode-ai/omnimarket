@@ -432,15 +432,26 @@ class LocalBriefBlocks:
         skills = self._skills if self._skills is not None else resolve_skills_dir()
         rules_script = skills.parent / "scripts" / "lane_rules_block.py"
         try:
-            rules = subprocess.run(
+            ran = subprocess.run(
                 [sys.executable, str(rules_script)],
                 capture_output=True,
                 text=True,
                 timeout=60,
-                check=True,
-            ).stdout
+                check=False,
+            )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise LabFillPortError(f"lane_rules_block: {type(exc).__name__}") from exc
+            raise LabFillPortError(
+                f"lane_rules_block.py {rules_script}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if ran.returncode != 0:
+            # OMN-23025: the reader's own stderr names the rules file it could not read and why
+            # (the resolved rules checkout, a missing block, an unreadable file); the
+            # exception class alone left 22 skipped lanes with no cause to read.
+            said = " / ".join(ran.stderr.strip().splitlines()[-3:]) or "no stderr"
+            raise LabFillPortError(
+                f"lane_rules_block.py exit {ran.returncode} ({rules_script}): {said}"
+            )
+        rules = ran.stdout
         sys.path.insert(0, str(skills / "lane-brief/scripts"))
         try:
             lb = _load(skills, "lane_brief", "lane-brief/scripts/lane_brief.py")
