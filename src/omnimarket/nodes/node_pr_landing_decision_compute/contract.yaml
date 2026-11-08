@@ -108,9 +108,10 @@ handler_routing:
       handler:
         name: "HandlerPrLandingDecision"
         module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
-    # HandlerLandingJoinJ8 is not a runtime-dispatched handler: its constructor takes the injected emission sink and
-    # the join_j8 policy (below), neither of which the boot resolver can supply, so a routing entry would
-    # quarantine it at boot. The controller constructs it in process (tests/test_handler_routing_boot_resolvable.py).
+    - operation: "join_j8_landing_decision"
+      handler:
+        name: "HandlerLandingJoinJ8"
+        module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
 runtime_dispatch:
