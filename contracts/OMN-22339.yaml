@@ -8,7 +8,7 @@ summary: >
   an injected identity resolver the hosted edge supplies; with none bound, or with
   no tenant resolved, every request is refused before any projection read. The
   projection reader is a protocol bound by the lane overlay. The recorded-pair
-  replay (AC3) is pending on T18b, OMN-22158; the test runs once the corpus lands.
+  replay (AC3) runs the T18b pairs (OMN-22158) for the two routes.
   No caller is switched and the onex-api container is untouched.
 is_seam_ticket: false
 interface_change: true
@@ -38,14 +38,13 @@ dod_evidence:
       limit, uuid and text tenant binding at every query site, savings-absent
       fallback) run against the app each contract's mount factory builds, and the
       runtime's real listener serves both mounts on the in-memory profile. The
-      corpus replay file is not selected here: its corpus test skips by design
-      until T18b lands.
+      corpus replay files run with the rest.
     source: manual
     binds_ac: [AC1]
     checks:
       - check_type: test_passes
         check_value: >-
-          uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect tests/nodes/node_tenant_delegations_read_effect -q --no-cov --refuse-skips --ignore=tests/nodes/node_tenant_savings_read_effect/test_t18b_replay.py --ignore=tests/nodes/node_tenant_delegations_read_effect/test_t18b_replay.py
+          uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect tests/nodes/node_tenant_delegations_read_effect -q --no-cov --refuse-skips
         cwd: .
   - id: tenant-reads-redpanda
     description: >
@@ -71,7 +70,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22339 -- env ONEX_TENANT_READ_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect tests/nodes/node_tenant_delegations_read_effect -q --no-cov --ignore=tests/nodes/node_tenant_savings_read_effect/test_t18b_replay.py --ignore=tests/nodes/node_tenant_delegations_read_effect/test_t18b_replay.py
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22339 -- env ONEX_TENANT_READ_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect tests/nodes/node_tenant_delegations_read_effect -q --no-cov
         cwd: .
   - id: tenant-reads-fail-closed
     description: >
@@ -85,20 +84,19 @@ dod_evidence:
         check_value: >-
           uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect/test_fail_closed.py tests/nodes/node_tenant_delegations_read_effect/test_fail_closed.py -q --no-cov --refuse-skips
         cwd: .
-  - id: t18b-replay-pending
+  - id: t18b-replay
     description: >
-      AC3 is OPEN. The recorded corpus of OMN-22158 is not available to this
-      implementation, so the corpus replay has not run. This local Done check
-      deliberately refuses until the corpus lands and the replay test passes on
-      it; the replay machinery is exercised by always-run tests, which do not
-      stand for the recorded pairs.
+      AC3: the recorded T18b pairs (OMN-22158) for GET /v1/tenants/me/savings and
+      GET /v1/tenants/me/delegations replay against the mounted app of each node
+      with no unmasked difference. The two pairs travel in
+      tests/fixtures/t18b_tenant_reads, so the replay runs on every CI run; it fails
+      on zero pairs and on a recorded value the handler does not reproduce.
     source: manual
-    execution_scope: local_done_gate
     binds_ac: [AC3]
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: >-
-          python -c "raise SystemExit('AC3 OPEN: the T18b corpus replay for the two tenant read identities has not run')"
+          uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect/test_t18b_replay.py tests/nodes/node_tenant_delegations_read_effect/test_t18b_replay.py -q --no-cov --refuse-skips
         cwd: .
   - id: deploy-probe
     description: >

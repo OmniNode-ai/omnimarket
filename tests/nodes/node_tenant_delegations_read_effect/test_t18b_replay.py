@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """AC3: replay the recorded pairs of GET /v1/tenants/me/delegations against the mounted app.
 
-AC3 (fixture replay) is pending on T18b, OMN-22158; the corpus test runs once the
-corpus lands. The machinery tests below always run, so the replay cannot pass
-vacuously: they prove it accepts a matching pair and fails on an unmasked change.
+AC3: the T18b recorded pairs (OMN-22158) for this route, carried in
+tests/fixtures/t18b_tenant_reads or read from ONEX_T18B_CORPUS_DIR, replay with no
+unmasked difference. The corpus test fails on zero pairs, and the machinery tests
+prove the replay accepts a matching pair and fails on an unmasked change.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from tests.nodes.tenant_read_replay import SKIP_REASON, corpus_pairs, replay
+from tests.nodes.tenant_read_replay import corpus_pairs, replay
 
 pytestmark = pytest.mark.unit
 NODE = "node_tenant_delegations_read_effect"
@@ -82,8 +83,7 @@ async def test_replay_reproduces_a_recorded_refusal() -> None:
 
 async def test_t18b_corpus_replays_with_no_unmasked_difference() -> None:
     pairs = corpus_pairs(IDENTITIES)
-    if not pairs:
-        pytest.skip(SKIP_REASON)
+    assert pairs, "the T18b corpus holds no recorded pair for this route"
     failures = {
         index: differences
         for index, pair in enumerate(pairs)

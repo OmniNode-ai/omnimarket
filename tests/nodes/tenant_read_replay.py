@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Replay of recorded request and response pairs against a mounted tenant read.
 
-The recorded set is one JSON document with a ``pairs`` list. Each pair names its
-method and path, a masked request and response, and ``masks``: a map of JSON
+The recorded set is a directory of JSON documents, as the T18b corpus writes them:
+one recorded pair per file, or a document with a ``pairs`` list. Each pair names
+its method and path, a masked request and response, and ``masks``: a map of JSON
 pointer to the named masking rule applied there. A masked value is replaced by
 ``<MASK:rule>``; every string is masked, and so are credential, identity,
 identifier and volatile scalars. Replay rebuilds each pair's setup from fresh
@@ -41,10 +42,9 @@ from tests.nodes.tenant_read_support import (
 )
 
 CORPUS_ENV = "ONEX_T18B_CORPUS_DIR"
-SKIP_REASON = (
-    f"AC3 (fixture replay) is pending on T18b, OMN-22158: set {CORPUS_ENV} to the recorded "
-    "corpus directory; it is unset or holds no pair for this group's identities"
-)
+# The two recorded pairs of this group travel with the repository, so the replay
+# runs on every CI run; the variable points the same replay at the full corpus.
+SUBSET_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "t18b_tenant_reads"
 UNBOUND_DETAIL = "OIDC authentication is not configured"
 NOT_CONFIGURED = "delegation analytics source not configured"
 UNAVAILABLE = "delegation analytics source unavailable"
@@ -63,19 +63,27 @@ class _ResolvesTenantA:
 
 
 def corpus_pairs(identities: set[tuple[str, str]]) -> list[dict[str, Any]]:
-    """Every recorded pair whose method and path is one of ``identities``."""
+    """Every recorded pair whose method and path is one of ``identities``.
+
+    Reads the directory named by ``ONEX_T18B_CORPUS_DIR`` when set, else the
+    subset carried in this repository. A document is one pair or a ``pairs`` list.
+    """
     location = os.environ.get(CORPUS_ENV, "").strip()
-    if not location:
-        return []
+    root = Path(location) if location else SUBSET_DIR
     found: list[dict[str, Any]] = []
-    for document in sorted(Path(location).rglob("*.json")):
+    for document in sorted(root.rglob("*.json")):
         loaded = json.loads(document.read_text(encoding="utf-8"))
-        if not isinstance(loaded, dict) or not isinstance(loaded.get("pairs"), list):
+        if not isinstance(loaded, dict):
             continue
+        candidates = (
+            loaded["pairs"] if isinstance(loaded.get("pairs"), list) else [loaded]
+        )
         found.extend(
             pair
-            for pair in loaded["pairs"]
-            if (pair["method"], pair["path"]) in identities
+            for pair in candidates
+            if isinstance(pair, dict)
+            and "response" in pair
+            and (pair.get("method"), pair.get("path")) in identities
         )
     return found
 
