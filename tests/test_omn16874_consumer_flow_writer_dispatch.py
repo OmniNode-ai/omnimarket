@@ -415,6 +415,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only
+    # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -454,6 +457,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
         "DelegationProjectionWriter",
+        "OverlayStoreProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
