@@ -22,13 +22,13 @@ from omnimarket.models.model_reading import (
     ModelReadingComputeRequest,
     ModelReadingSourceRows,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
+    CodeGraphRun,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     build_graph,
     glob_regex,
-)
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
-    HandlerCodeGraph,
 )
 from omnimarket.nodes.node_code_graph_effect.protocols import ProtocolRepoSource
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
@@ -77,10 +77,8 @@ def repos(request: pytest.FixtureRequest, tmp_path: Path) -> ProtocolRepoSource:
     return source(request.param, tmp_path)
 
 
-def _handler(
-    repos: ProtocolRepoSource, ledger: InMemoryLedger | None
-) -> HandlerCodeGraph:
-    return HandlerCodeGraph(
+def _handler(repos: ProtocolRepoSource, ledger: InMemoryLedger | None) -> CodeGraphRun:
+    return CodeGraphRun(
         overlay=overlay(),
         host=HOST,
         source=repos,

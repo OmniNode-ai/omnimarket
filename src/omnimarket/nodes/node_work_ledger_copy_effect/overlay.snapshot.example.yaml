@@ -1,0 +1,25 @@
+# Synthetic values only. The real overlay is deployment data kept outside this repository and found at
+# <root>/node_work_ledger_copy_effect_drill/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS, or at the file
+# ONEX_LEDGER_DRILL_OVERLAY names.
+source:
+  host: db.example.invalid
+  port: 5432
+  topic: example.topic.accepted-rows.v1
+  # Each prints one JSON object per line: {"seq": 1, "row_id": "...", "text": "..."}.
+  topic_export_argv: [/usr/local/bin/example-export, topic]
+  projection_export_argv: [/usr/local/bin/example-export, projection]
+  export_timeout_seconds: 600
+store:
+  host: copy-host.example.invalid
+  directory: /srv/ledger-snapshots
+  keep: 24
+drill:
+  host: copy-host.example.invalid
+  # exit 0 reachable, 1 unreachable, anything else is an error
+  reachability_argv: [nc, -z, -w, "3", "{host}", "{port}"]
+  probe_timeout_seconds: 10
+  scratch_table: drill_ledger_rows
+report_append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+report_lane: ledger-restore-drill
+report_ticket: OMN-1
+report_actor: node:node_work_ledger_copy_effect
