@@ -56,7 +56,8 @@ class_rules:
     pattern: 'Bootstrap failed: 5: Input/output error'
   - name: step-timed-out-on-loaded-mac
     owner: "the owner of the timed step; the Mac that ran it was at a load of 35 or more when it was cut"
-    pattern: 'Mac load (?:average was |runs |near )?\d+'
+    # Both conditions the owner text asserts: a step that ran out of time and a load of 35 or more, in either order.
+    pattern: '(?:(?:ran past \d+ s|timed out|was cut).{0,200}?Mac load (?:average was |runs |near )?(?:3[5-9]|[4-9]\d|\d{3,})(?!\d)|Mac load (?:average was |runs |near )?(?:3[5-9]|[4-9]\d|\d{3,})(?!\d).{0,200}?(?:ran past \d+ s|timed out|was cut))'
   - name: step-longer-than-its-time-limit
     owner: "the owner of the step whose measured duration is above the limit the caller gave it"
     pattern: '(?:timed out (?:twice )?at the forked executor|timed out after 900 s|transport push .{0,80}timed out at 600 s|took about 20 minutes on a loaded host)'

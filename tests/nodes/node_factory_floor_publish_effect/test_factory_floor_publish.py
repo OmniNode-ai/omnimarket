@@ -406,6 +406,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "friction",
         "process_health",
         "runner_fleet",
+        "friction_classed",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -435,10 +436,12 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
         Overlapping({"--json": (0, b"[]", b"")})
     ).handle(request, environ=PLUGIN)
     assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
-    # This home has neither the friction report nor the runtime read overlay.
+    # This home has neither the friction report nor the runtime read overlay, and PLUGIN names no ledger path, so the
+    # classed friction rollup refuses with no default.
     assert [s.name for s in result.steps if s.status != "ok"] == [
         "friction",
         "runner_fleet",
+        "friction_classed",
     ]
 
 
@@ -518,7 +521,7 @@ def test_refresh_an_optional_step_failing_is_published_as_failed_without_its_out
         _refresh_request(tmp_path), environ=PLUGIN
     )
     failed = {s.name: s for s in result.steps if s.status == "failed"}
-    assert set(failed) == {"hosts", "friction", "runner_fleet"}
+    assert set(failed) == {"hosts", "friction", "runner_fleet", "friction_classed"}
     assert failed["hosts"].detail == "exit 1"
     assert "refused" in failed["hosts"].diagnostic
     status = json.loads((tmp_path / "site/publish-status.json").read_text())
