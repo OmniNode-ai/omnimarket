@@ -521,7 +521,9 @@ def test_missing_key_refused_naming_the_overlay_key() -> None:
     with pytest.raises(ValidationError, match=r"floor_fill\.mint_timeout_seconds"):
         ModelFloorTaskTicketMintRequest(**fields)
     with pytest.raises(ValidationError, match=r"floor_fill\.mint_timeout_seconds"):
-        ModelFloorTaskEntryTicketRequest(line_id="l", task_id="t", ticket="OMN-1")  # type: ignore[call-arg]
+        ModelFloorTaskEntryTicketRequest.model_validate(
+            {"line_id": "l", "task_id": "t", "ticket": "OMN-1"}
+        )
 
 
 @pytest.mark.parametrize("bad", [0, -1, "soon"])

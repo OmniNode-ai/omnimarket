@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -30,8 +31,8 @@ pytestmark = pytest.mark.unit
 NODE_DIR = Path(__file__).resolve().parent.parent
 
 
-def run(*args: object, **kwargs: object) -> ModelFloorTaskTicketPayloadResult:
-    return HandlerFloorTaskTicketPayload().handle(request(*args, **kwargs))  # type: ignore[arg-type]
+def run(*args: Any, **kwargs: Any) -> ModelFloorTaskTicketPayloadResult:
+    return HandlerFloorTaskTicketPayload().handle(request(*args, **kwargs))
 
 
 def test_payload_carries_parent_title_key_and_verbatim_criteria() -> None:
@@ -178,12 +179,14 @@ def test_payload_has_no_source_fields() -> None:
     assert payload is not None
     assert set(payload.model_dump()) == declared
     with pytest.raises(ValidationError):
-        ModelFloorTaskTicketPayload(
-            floor_key="k",
-            title="t",
-            description="d",
-            parent=PARENT,
-            project="p",  # type: ignore[call-arg]
+        ModelFloorTaskTicketPayload.model_validate(
+            {
+                "floor_key": "k",
+                "title": "t",
+                "description": "d",
+                "parent": PARENT,
+                "project": "p",
+            }
         )
 
 

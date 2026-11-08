@@ -13,17 +13,20 @@ per finding, in order, so ``guard_finding_codes`` reads the codes back from the 
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 
+import yaml
+from omnibase_core.models.contracts.subcontracts.model_validator_subcontract import (
+    ModelValidatorSubcontract,
+)
+from omnibase_core.validation import validator_base
 from omnibase_core.validation.checker_rule_parameters import rule_string
 from omnibase_core.validation.checker_ticket_creation import (
     check_ticket_creation,
     rows_of,
 )
-from omnibase_core.validation.validator_ticket_creation import (
-    ValidatorTicketCreation,
-    ledger_line_lookup,
-)
+from omnibase_core.validation.validator_ticket_creation import ledger_line_lookup
 
 from omnimarket.handlers.handler_lane_intake import ModelLaneIntakePolicy
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
@@ -36,11 +39,21 @@ __all__ = ["CORE_GUARD_ID", "CoreTicketGuard", "core_lane_intake_policy"]
 CORE_GUARD_ID = "omnibase_core.validation.checker_ticket_creation"
 
 _LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
+_CONTRACT_FILE = "ticket_creation.validation.yaml"
+
+
+@lru_cache(maxsize=1)
+def _core_contract() -> ModelValidatorSubcontract:
+    """The core validator's rule rows, read from the contract file beside the validator base."""
+    path = Path(validator_base.__file__).parent / "contracts" / _CONTRACT_FILE
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    nested = data.get("validation") if isinstance(data, dict) else None
+    return ModelValidatorSubcontract.model_validate(nested or data)
 
 
 def core_lane_intake_policy() -> ModelLaneIntakePolicy:
     """The lane-intake label and stamp prefix, read from the core contract's ``lane_intake`` row."""
-    contract = ValidatorTicketCreation()._load_contract()  # noqa: SLF001
+    contract = _core_contract()
     row = rows_of(contract)["lane_intake"]
     return ModelLaneIntakePolicy(
         label=rule_string(row, "label"), stamp_prefix=rule_string(row, "stamp_prefix")
@@ -60,7 +73,7 @@ class CoreTicketGuard:
         self.ledger_path = ledger_path
 
     def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
-        contract = ValidatorTicketCreation()._load_contract()  # noqa: SLF001
+        contract = _core_contract()
         result = check_ticket_creation(
             tool_input,
             contract,

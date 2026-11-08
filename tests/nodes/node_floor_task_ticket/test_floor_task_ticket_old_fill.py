@@ -58,7 +58,7 @@ def facts_of_a_minted_ticket(**issue_fields: object) -> ModelLabFillTicketFacts:
     fields.update(issue_fields)
     return ModelLabFillTicketFacts(
         today=TODAY,
-        issues=(ModelLabFillTicketIssue(**fields),),  # type: ignore[arg-type]
+        issues=(ModelLabFillTicketIssue.model_validate(fields),),
     )
 
 

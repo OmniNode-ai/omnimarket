@@ -7,7 +7,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from omnibase_spi.contracts.services import (
     ModelFloorTicketCreateRequest,
@@ -70,8 +70,8 @@ class ScriptedStore:
         self.search_failure: str | None = None
         self.created_through_create: list[str] = []
 
-    def add(self, ticket: str, **fields: object) -> None:
-        self.inner.tickets[ticket] = StoredTicket(**fields)  # type: ignore[arg-type]
+    def add(self, ticket: str, **fields: Any) -> None:
+        self.inner.tickets[ticket] = StoredTicket(**fields)
 
     def hold(self, operation: str) -> threading.Event:
         """Make every call of ``operation`` wait on the returned event before it runs."""
