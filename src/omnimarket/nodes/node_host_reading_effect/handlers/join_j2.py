@@ -157,6 +157,24 @@ class JoinJ2:
         canary.success({"advert_age_s": age})
         seam = self._chain(s.seam_node, s.seam_piece, cid)
         seam.start()
+        try:
+            return await self._run_seam(seam, host, cid, age)
+        except Exception as exc:
+            # The seam chain has started: whatever raised, it ends with a typed failure.
+            return self._seam_failed(
+                seam,
+                host,
+                cid,
+                EnumJoinJ2Outcome.NO_RESULT,
+                FAIL_NO_RESULT,
+                f"{type(exc).__name__}: {exc}"[:300],
+                age,
+            )
+
+    async def _run_seam(
+        self, seam: ChainEmitter, host: str, cid: str, age: int
+    ) -> ModelJoinJ2HostResult:
+        s = self._settings
         placement = self._caller.place(
             need_tools=s.need_tools, only_host=host, repo=s.repo, kind=s.kind
         )

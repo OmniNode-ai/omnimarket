@@ -218,6 +218,12 @@ def _join_j2(arguments: Sequence[str]) -> int:
     parser.add_argument("--workspace-root", default=os.environ.get("OMNI_HOME"))
     parser.add_argument("--host", action="append", default=None)
     args = parser.parse_args(list(arguments))
+    if args.bus == "inmemory":
+        sys.stderr.write(
+            "J2-BUS-FAILED the in-memory bus carries no capacity advertiser and no "
+            "work-unit server, so every host would read no_advertisement; use --bus kafka\n"
+        )
+        return 1
     overlay = load_overlay()
     if overlay.join_j2 is None:
         raise ValueError("the overlay has no join_j2 block")

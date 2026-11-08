@@ -41,14 +41,15 @@ class ModelJoinJ2Settings(BaseModel):
     seam_node: str = Field(min_length=1)
     #: The unit the canary publishes: a command the pool host runs at a pushed commit.
     repo: str = Field(min_length=1)
-    commit_sha: str = Field(min_length=7)
+    #: A full 40-hex sha and a timeout within 7200 s: the work-unit request refuses anything else.
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     #: The command's words; the one word holding ``{nonce}`` is where the canary's nonce goes.
     argv: tuple[str, ...] = Field(min_length=1)
     #: The line prefix the command prints before the nonce, so the result can be tied to it.
     result_marker: str = Field(min_length=1)
     kind: str = Field(min_length=1)
     lane: str = Field(min_length=1)
-    command_timeout_seconds: int = Field(ge=1)
+    command_timeout_seconds: int = Field(ge=1, le=7200)
     #: How long past the command's own limit the caller waits for the terminal event.
     result_wait_slack_seconds: int = Field(ge=0)
     #: An advertisement older than this is stale: placement would not trust it either.
