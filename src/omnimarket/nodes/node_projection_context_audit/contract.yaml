@@ -13,6 +13,11 @@ description: >
   event's Kafka coordinates, and the write is an UPSERT on it, so replaying the
   same events leaves one row per event.
 
+# OMN-23066: an in-process writer of the application-database table that the
+# tenant_projection binding reaches, so it runs on the process that holds that
+# credential, never on the shared main runtime (OMN-19998 guard).
+runtime_profiles: [tenant-projection]
+
 handler:
   module: omnimarket.nodes.node_projection_context_audit.handlers.handler_projection_context_audit
   class: HandlerProjectionContextAudit

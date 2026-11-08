@@ -5,8 +5,8 @@
 # Node: NodeWipAdmissionCompute
 #
 # The WIP admission: one caller asks to start work and the node answers admit or refuse
-# from the count of started-but-unlanded work (open non-draft pull requests plus started
-# tickets that a live CLAIM holds, once each) against the repository's limit and the
+# from the count of work sent to lanes (started tickets that a live CLAIM holds, once each;
+# open pull requests are not counted, RULING 2026-11-07T20:02:38Z) against the repository's limit and the
 # fleet's limit. Fix-forward work for a red, a repeat break or a landing blocker is
 # never refused, and creating a ticket is never refused by count. The limits and the
 # enforcing ruling come from the wip_admission overlay (overlay.py); the rule's other
