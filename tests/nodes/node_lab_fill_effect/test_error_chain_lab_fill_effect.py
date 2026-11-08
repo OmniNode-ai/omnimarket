@@ -185,7 +185,7 @@ def test_owner_facts_carry_each_failed_source_as_text_and_skip_unneeded_sources(
             ledger_path="/l",
         )
     )
-    assert quiet.called == ["claims"]
+    assert quiet.called == ["claims", "work_state"]
 
 
 def test_owner_facts_keep_the_two_claim_readers_failures_separate() -> None:
