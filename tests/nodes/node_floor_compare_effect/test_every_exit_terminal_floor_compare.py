@@ -18,7 +18,8 @@ import contextlib
 import os
 import signal
 import time
-from datetime import timedelta
+from collections.abc import Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ import yaml
 from omnimarket.handlers import cycle_interrupt
 from omnimarket.handlers.cycle_interrupt import CycleInterrupted
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.models.floor_17a import ModelNodeEmission
 from omnimarket.nodes.node_floor_compare_effect.handlers import (
     handler_floor_compare as compare,
 )
@@ -141,7 +143,7 @@ def test_error_the_start_stays_open_when_the_guard_is_dropped(
     """
 
     @contextlib.contextmanager
-    def unguarded(_deadline: int):  # type: ignore[no-untyped-def]
+    def unguarded(_deadline: int) -> Iterator[None]:
         yield
 
     monkeypatch.setattr(compare, "interruptible", unguarded)
@@ -171,11 +173,11 @@ class _NoCloseSink:
     def __init__(self, inner: InMemoryEmissionSink) -> None:
         self._inner = inner
 
-    def emit(self, event: object) -> None:
-        if getattr(event, "phase", "") == "start":
-            self._inner.emit(event)  # type: ignore[arg-type]
+    def emit(self, event: ModelNodeEmission) -> None:
+        if event.phase == "start":
+            self._inner.emit(event)
 
-    def read(self, since):  # type: ignore[no-untyped-def]
+    def read(self, since: datetime) -> tuple[ModelNodeEmission, ...]:
         return self._inner.read(since)
 
 
