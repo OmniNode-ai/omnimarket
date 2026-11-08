@@ -1,25 +1,27 @@
 schema_version: "1.0.0"
 ticket_id: OMN-23029
-title: The layer-5 default-deny sweep admits Tessl Reviewer's advisory neutral, so a bot configured not to block stops blocking every pull request
+title: Each external check declares advisory or blocking as overlay data, and the layer-5 sweep admits neutral only for a declared-advisory check
 summary: >-
-  SWEEP_GOOD_CONCLUSIONS admits success alone, and the tessl-reviewer app reports neutral as its normal successful outcome in advisory mode. That read as red on 23 open pull requests at once while CI Summary's own verdict one line above was SUCCESS over 56 green jobs and 59 green asserted external contexts. The context is pull_request-only, so the dev head never carried it and dev stayed green, which is why reading dev could not find this. One EXTERNAL_SWEEP_EXCLUSIONS entry admits that one name, reasoned, ticketed, dated and expiring 2027-01-09. SWEEP_GOOD_CONCLUSIONS is deliberately unchanged: widening it to accept neutral would relax a default-deny control for every swept context at once, which is the ruling OMN-18355 carries, not this fix.
+  The layer-5 default-deny sweep admitted success alone, so the tessl-reviewer app, which reports neutral as its normal outcome in advisory mode, redded 23 open pull requests while CI Summary's own verdict one line above was SUCCESS. A named, expiring code exception (#5352) cleared it. Operator ruling 2026-11-08 replaces that exception with a rule held as data: a contract (ci_summary_external_check_modes.contract.json) names each mode and the conclusions it adds to success, an overlay (ci_summary_external_check_modes.json) declares each check's mode. A neutral from a declared-advisory check does not fail and still shows in the report; a blocking check's neutral still fails; an undeclared check is still denied by default; a missing or malformed contract or overlay refuses the gate. Tessl Reviewer is declared advisory in the overlay and its entry is removed from the exclusion registry. SWEEP_GOOD_CONCLUSIONS is unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn23029-advisory-neutral-admitted
+  - id: req-omn23029-advisory-mode-is-overlay-data
     statement: >-
-      An external check-run that the repository deliberately runs in advisory mode does not fail the layer-5 default-deny sweep, and the admission that lets it through is itself reasoned, attributed, dated and expiring.
+      Whether an external check blocks is declared per check in overlay data, and the layer-5 sweep reads that declaration instead of a code exception.
     acceptance:
       - id: AC1
-        statement: "AC1: a head carrying Tessl Reviewer at neutral beside otherwise green rows resolves the sweep SUCCESS and the report no longer names it as a failure -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py -q -k advisory_neutral_no_longer_fails"
+        statement: "AC1: a head with Tessl Reviewer at neutral beside green rows resolves the sweep SUCCESS because the overlay declares it advisory, the report still names the finding, and the exclusion registry no longer carries it -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -k 'shipped_overlay or declared_advisory_neutral'"
       - id: AC2
-        statement: "AC2: the admission is a registered SweepExclusion carrying a reason, this ticket, an added date and a later expiry; a malformed reason, ticket or date is still refused; and on its expiry date the name is swept again and the head goes red -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py -q -k 'registered_reasoned or malformed_version or expires_and_the_sweep_rearms'"
+        statement: "AC2: an undeclared check at neutral fails, a blocking-declared check at neutral fails, and an advisory-declared check at failure, timed_out, action_required or cancelled still fails and is named -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -k 'undeclared_neutral or blocking_neutral or advisory_failure or advisory_cancelled'"
+      - id: AC3
+        statement: "AC3: a missing, unparsable or malformed contract or overlay refuses the gate rather than admitting anything -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -k 'fails_closed or overlay_does_not_declare'"
 evidence_requirements:
   - kind: tests
     description: >-
-      The advisory-sweep tests of this change, plus the repository's own CI Summary gate suite, which pins the exclusion registry and was updated to pin each entry's SHAPE rather than the literal values of the two entries that happened to be shipped.
-    command: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py tests/unit/scripts/ci/test_ci_summary_gate.py -q -n 0 --no-cov
+      The check-mode tests of this change, plus the repository's own CI Summary gate suite and the release-staleness gate test that copies the gate and its data files.
+    command: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py tests/unit/scripts/ci/test_ci_summary_gate.py tests/ci/test_release_staleness_gate_omn18010.py -q -n 0 --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -27,30 +29,31 @@ emergency_bypass:
 dod_evidence:
   - id: dod-omn23029-ac1-advisory-passes
     description: >-
-      A replayed head with Tessl Reviewer at neutral beside a green row resolves SUCCESS. At the merge base it fails, because the sweep admits success only and names the context as a red that nothing else named -- the exact line that failed job 128511383807 on #5346 while that job's own verdict was SUCCESS.
+      A replayed head with Tessl Reviewer at neutral beside a green row resolves SUCCESS and names the advisory finding. Without the shipped overlay declaration the same head fails, because the sweep admits success only for an undeclared check.
     source: manual
     binds_ac:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py -q -n 0 --no-cov -k advisory_neutral_no_longer_fails
+        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -n 0 --no-cov -k 'shipped_overlay or declared_advisory_neutral'
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23029-ac2-bounded-admission
+  - id: dod-omn23029-ac2-undeclared-and-blocking-denied
     description: >-
-      The entry validates like every other, a malformed reason, ticket or date is still refused, and on its expiry date the sweep re-arms and the same head goes red. At the merge base all three fail on KeyError, because the entry does not exist.
+      An undeclared neutral and a blocking-declared neutral fail, and an advisory-declared failure is still red and named. At the merge base the check-mode loader does not exist, so every one of these errors.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py -q -n 0 --no-cov -k 'registered_reasoned or malformed_version or expires_and_the_sweep_rearms'
+        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -n 0 --no-cov -k 'undeclared_neutral or blocking_neutral or advisory_failure or advisory_cancelled'
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23029-scope-guard
+  - id: dod-omn23029-ac3-fails-closed
     description: >-
-      The admission buys nothing for any other unregistered context, nothing for a swept context at failure, cancelled, timed_out or action_required, and the admitted name is not also an asserted external context that this would silence elsewhere. It binds no AC on purpose: these assertions pass at the merge base too, because they state what the change must NOT do, and dod-verify rightly refuses an always-pass control as evidence of a change. Keeping them as an unbound local guard is the shape this repository's other uncontrollable checks use.
+      A missing overlay, a missing contract, an unparsable overlay, a malformed contract and each malformed overlay entry refuse the gate with exit 1.
     source: manual
-    execution_scope: local_done_gate
+    binds_ac:
+      - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_tessl_advisory_omn23029.py -q -n 0 --no-cov -k 'buys_nothing or not_also_an_asserted_context'
+        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -n 0 --no-cov -k 'fails_closed or overlay_does_not_declare'
         cwd: ${OMNI_HOME}/omnimarket

@@ -853,9 +853,7 @@ SWEEP_EXCLUSION_MAX_DAYS: int = 90
 # (stdlib json: the poller runs with no third-party packages). Each entry names
 # its reason, ticket, added date and expiry. The first two were measured over 43
 # merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
-# that skip by design. The Tessl Reviewer entry is RULING 2026-11-05T20:27:56Z
-# (OMN-22478, now OMN-23029): the automated reviewer's neutral row never blocks a merge.
-# Expiry re-arms the sweep.
+# that skip by design. Expiry re-arms the sweep.
 SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
 
 
@@ -868,6 +866,53 @@ def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
 EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
     SWEEP_EXCLUSIONS_FILE
 )
+
+# Per-check advisory or blocking mode is data too (ruling 2026-11-08): the contract
+# names each mode and the conclusions it adds to success, the overlay declares each
+# check's mode. A neutral passes only for a declared-advisory check; undeclared stays denied.
+CHECK_MODES_CONTRACT_FILE = Path(__file__).with_name(
+    "ci_summary_external_check_modes.contract.json"
+)
+CHECK_MODES_OVERLAY_FILE = Path(__file__).with_name(
+    "ci_summary_external_check_modes.json"
+)
+
+
+def load_check_modes(
+    contract_path: Path, overlay_path: Path
+) -> tuple[dict[str, frozenset[str]], list[str]]:
+    """Return ``(conclusions each declared check adds to success, refusals)``.
+
+    A missing, unparsable or malformed file refuses and admits nothing: fail closed.
+    """
+    try:
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+        modes, fields = contract["modes"], contract["entry_fields"]
+        if not (isinstance(overlay, dict) and isinstance(modes, dict)):
+            raise TypeError("modes and the overlay must be objects")
+        modes = {m: frozenset(c) for m, c in modes.items()}
+        fields = tuple(fields)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return {}, [f"check-mode registry unreadable or malformed: {exc!r}"]
+    admitted: dict[str, frozenset[str]] = {}
+    refusals: list[str] = []
+    for name, entry in sorted(overlay.items()):
+        bad = [
+            f
+            for f in fields
+            if not isinstance(entry, dict)
+            or not isinstance(entry.get(f), str)
+            or not entry[f].strip()
+        ]
+        if bad:
+            refusals.append(f"{name}: missing or non-text {', '.join(bad)}")
+        elif entry.get("mode") not in modes:
+            refusals.append(f"{name}: mode {entry.get('mode')!r} is not declared")
+        else:
+            admitted[name] = modes[entry["mode"]]
+    return admitted, refusals
+
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
 _SWEEP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -2095,6 +2140,9 @@ def evaluate_external_sweep(
         sweep_exclusions = EXTERNAL_SWEEP_EXCLUSIONS
     findings = validate_sweep_exclusions(sweep_exclusions)
     active, expired = active_sweep_exclusions(sweep_exclusions, now=now)
+    check_modes, mode_refusals = load_check_modes(
+        CHECK_MODES_CONTRACT_FILE, CHECK_MODES_OVERLAY_FILE
+    )
     accounted = frozenset(expected) | in_run_names | SOFT_ALLOWLIST | {self_name}
     events = check_run_event_index(workflow_runs)
     # OMN-17427: scope before collapsing so a newer non-PR success cannot
@@ -2111,6 +2159,7 @@ def evaluate_external_sweep(
     swept: list[str] = []
     excluded: list[str] = []
     provisional: list[str] = []
+    advisory: list[str] = []
     for name, state in sorted(dedup_latest_check_runs(rows).items()):
         if name in active:
             excluded.append(name)
@@ -2120,6 +2169,8 @@ def evaluate_external_sweep(
             running.append(name)
         elif state.conclusion in SWEEP_GOOD_CONCLUSIONS:
             continue
+        elif state.conclusion in check_modes.get(name, ()):
+            advisory.append(f"{name} ({state.conclusion})")
         elif verdict_is_provisional(state, now) or replacement_run_in_flight(
             state, workflow_runs
         ):
@@ -2137,6 +2188,11 @@ def evaluate_external_sweep(
         )
     if excluded:
         lines.append("  external sweep exclusions applied: " + ", ".join(excluded))
+    if advisory:
+        lines.append(
+            "  external sweep advisory findings (declared advisory, not blocking): "
+            + ", ".join(advisory)
+        )
     if expired:
         lines.append(
             "  external sweep exclusions EXPIRED (no longer excluding): "
@@ -2156,11 +2212,15 @@ def evaluate_external_sweep(
         lines.append(
             "  external sweep exclusion registry REFUSED: " + "; ".join(findings)
         )
+    if mode_refusals:
+        lines.append(
+            "  external check-mode registry REFUSED: " + "; ".join(mode_refusals)
+        )
     if check_runs is None:
         lines.append(
             "  check-runs fetch failed or not yet attempted; sweep unobserved."
         )
-    if failures or findings:
+    if failures or findings or mode_refusals:
         return EXIT_FAILURE, "\n".join(lines)
     if running or provisional or check_runs is None:
         return EXIT_PENDING, "\n".join(lines)
