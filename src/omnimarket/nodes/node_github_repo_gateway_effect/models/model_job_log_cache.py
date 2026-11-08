@@ -12,6 +12,8 @@ class ModelJobLogCachePolicy(BaseModel):
 
     root: Path | None = None
     ttl_seconds: int = Field(default=86400, gt=0)
+    #: A lane's ``job-log`` read is cache-only; the filler node fills the cache (OMN-23032).
+    lane_reads_cache_only: bool = True
 
 
 class ModelCachedJobLog(BaseModel):

@@ -204,6 +204,38 @@ def test_brief_blocks_refuse_rules_that_lack_a_required_marker(tmp_path: Path) -
         LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
 
 
+def test_brief_blocks_name_the_rules_file_and_reason_when_the_reader_fails(
+    tmp_path: Path,
+) -> None:
+    """OMN-23025: the skip detail names the unreadable rules file, not only the exception class."""
+    skills = _skills(tmp_path)
+    (skills.parent / "scripts/lane_rules_block.py").write_text(
+        "import sys\n"
+        "print('lane rules block is missing: /clone/lane_rules/lane-rules-block.md', file=sys.stderr)\n"
+        "sys.exit(2)\n"
+    )
+    brief = tmp_path / "b.md"
+    brief.write_text("# Lane\n")
+    with pytest.raises(LabFillPortError) as raised:
+        LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
+    text = str(raised.value)
+    assert "lane_rules_block.py exit 2" in text
+    assert "/clone/lane_rules/lane-rules-block.md" in text
+
+
+def test_brief_blocks_name_a_rules_reader_that_cannot_start(tmp_path: Path) -> None:
+    skills = _skills(tmp_path)
+    # no lane_rules_block.py in the plugin: the interpreter names the missing path
+    brief = tmp_path / "b.md"
+    brief.write_text("# Lane\n")
+    with pytest.raises(
+        LabFillPortError, match=r"lane_rules_block\.py exit 2"
+    ) as raised:
+        LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
+    assert "lane_rules_block.py" in str(raised.value)
+    assert "No such file" in str(raised.value)
+
+
 def test_pr_claims_parse_the_registry_listing(tmp_path: Path) -> None:
     cli = tmp_path / "cli.py"
     cli.write_text(

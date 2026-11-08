@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Frozen(BaseModel):
@@ -126,6 +126,10 @@ class ModelFloorCompareRuntime(_Frozen):
     families: tuple[ModelMetricFamily, ...] = Field(min_length=1)
     piece_rank: dict[str, int]
     stoppage_cost_pattern: str
+    estimated_cost_stoppages: tuple[str, ...] = Field(
+        default=(),
+        description="Stoppage ids whose logged cost is an estimate of idle capacity, not lost work anything measured; the floor leaves it out, so the history does too.",
+    )
     backfill: tuple[ModelBackfillSource, ...] = ()
     history: ModelHistorySources
     emission_journal_relpath: str
@@ -147,6 +151,13 @@ class ModelSnapshot(_Frozen):
             "read as absent from the source, which is zero. Under any other prefix a missing key is unread."
         ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_has_a_timezone(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("a snapshot's time must carry a timezone")
+        return value
 
 
 class ModelReading(_Frozen):
@@ -200,6 +211,13 @@ class ModelFloorCompareRequest(_Frozen):
     backfill_only: bool = False
     backfill_history: bool = False
     history_days: int | None = None
+
+    @field_validator("now")
+    @classmethod
+    def _now_has_a_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("now must carry a timezone")
+        return value
 
 
 class ModelFloorCompareResult(_Frozen):
