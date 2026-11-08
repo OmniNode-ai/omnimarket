@@ -48,6 +48,9 @@ def _chain(tmp_path: Path, *, planted: bool) -> InMemoryPrivateReadsEventSink:
 def test_topic_is_the_contract_publish_topic() -> None:
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
     assert contract["event_bus"]["publish_topics"] == [TOPIC_LISTED]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.landing-private-reads-listed.v1"
+    ]
 
 
 def test_golden_chain_event(tmp_path: Path) -> None:
@@ -56,6 +59,7 @@ def test_golden_chain_event(tmp_path: Path) -> None:
         (e.topic, e.correlation_id, e.verdict, e.failure_code) for e in sink.events
     ] == [(TOPIC_LISTED, "chain-1", "WORKING", None)]
     assert sink.events[0].reads == 2
+    assert sink.events[0].topic == "onex.evt.omnimarket.landing-private-reads-listed.v1"
 
 
 def test_error_chain_event(tmp_path: Path) -> None:
