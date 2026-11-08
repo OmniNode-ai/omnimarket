@@ -95,7 +95,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_reducer -q --no-cov -m floor_fill_parity -k "reducer"
+    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_reducer/test_floor_fill_reducer_contract.py tests/nodes/node_floor_fill_reducer/test_floor_fill_reducer_parity.py -q --no-cov
 - id: dod-omn22852-dotted-task-id
   description: The reducer key accepts a task id with a dot between two non-empty segments and the lane name writes the dot as a hyphen; the seven tests are red against the old key and green against the fix.
   source: manual
