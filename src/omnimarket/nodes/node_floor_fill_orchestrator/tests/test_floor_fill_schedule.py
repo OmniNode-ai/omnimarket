@@ -51,9 +51,7 @@ VENV_PYTHON = f"{'/srv/example/registry'}/.onex-dispatch-venv/bin/python"
 HOSTS = [("fill-host", True), ("other-host", True), ("away-host", False)]
 OMNI_ROOT = Path("/srv/example/registry")
 NODE_DIR = "src/omnimarket/nodes/node_floor_fill_orchestrator/"
-# The repository's receipt gate reads the ticket's own contract from this one path; it is the only path
-# outside the node the pull request carries and it is named here, not matched by a pattern.
-TICKET_CONTRACT = "contracts/OMN-22855.yaml"
+# Names no file of the node may carry: the fill is a node, never a script, a hook or a copy of another lane's tool.
 FORBIDDEN_NAMES = ("throughput_tick", "queue_status", "hook.sh", "onex_remote_lane")
 
 
@@ -356,50 +354,35 @@ def places_violations(paths: Sequence[str]) -> list[str]:
     return bad
 
 
-def _own_changed_paths() -> list[str]:
-    """The files this pull request's own commits (those citing the ticket) changed.
+def _node_files(root: Path) -> list[str]:
+    """Every file below the node's directory, as a repository-relative path.
 
-    An unreadable ``origin/dev..HEAD`` range skips the check with its reason; it never reads as "nothing changed".
+    Read from the working tree, never from git history, so the check runs the same on a runner that has no
+    ``origin/dev`` range and is never skipped.
     """
+    return sorted(
+        path.relative_to(root).as_posix()
+        for path in (root / NODE_DIR).rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    )
+
+
+def test_no_script_edit_lists_each_node_file() -> None:
     root = Path(__file__).resolve().parents[5]
-    try:
-        commits = subprocess.run(
-            ["git", "log", "origin/dev..HEAD", "--format=%H", "--grep=OMN-22855"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.split()
-        names = [
-            subprocess.run(
-                ["git", "show", "--name-only", "--format=", commit],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.split()
-            for commit in commits
-        ]
-    except (subprocess.CalledProcessError, FileNotFoundError) as error:
-        pytest.skip(f"the origin/dev..HEAD range is unreadable here: {error}")
-    return sorted({path for group in names for path in group} - {TICKET_CONTRACT})
+    files = _node_files(root)
+    assert f"{NODE_DIR}handlers/adapter_floor_fill_schedule.py" in files
+    assert places_violations(files) == []
 
 
-def test_no_script_edit_lists_each_changed_file() -> None:
-    assert places_violations(_own_changed_paths()) == []
-
-
-def test_own_changed_paths_does_not_pass_silently_when_the_range_is_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
+def test_no_script_edit_reads_a_forbidden_file_in_the_node_tree(
+    tmp_path: Path,
 ) -> None:
-    def failing_run(
-        command: list[str], **_: object
-    ) -> subprocess.CompletedProcess[str]:
-        raise subprocess.CalledProcessError(128, command)
-
-    monkeypatch.setattr(subprocess, "run", failing_run)
-    with pytest.raises(pytest.skip.Exception):
-        _own_changed_paths()
+    node = tmp_path / NODE_DIR
+    (node / "handlers").mkdir(parents=True)
+    (node / "handlers" / "adapter.py").write_text("x = 1\n", encoding="utf-8")
+    assert places_violations(_node_files(tmp_path)) == []
+    (node / "throughput_tick.py").write_text("x = 1\n", encoding="utf-8")
+    assert places_violations(_node_files(tmp_path)) == [f"{NODE_DIR}throughput_tick.py"]
 
 
 def test_no_script_edit_fails_on_a_match_or_a_stray_path() -> None:
