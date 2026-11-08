@@ -45,7 +45,9 @@ _HEADER_TICKET = re.compile(
 _PARENT_AT_START = re.compile(r"^\[?(?P<ticket>OMN-[0-9]+)\b")
 _NUMBERED_ITEM = re.compile(r"^[ \t]+(?P<ordinal>[0-9]+)\.[ \t]+(?P<text>\S.*)$")
 _CHECKBOX_ITEM = re.compile(r"^[ \t]*[-*][ \t]+\[[ xX]\][ \t]+(?P<text>\S.*)$")
-_FALSIFIER = re.compile(r"falsifier[ \t]*:|falsified by", re.IGNORECASE)
+_FALSIFIER = re.compile(
+    r"(?:falsifier[ \t]*:|falsified by\b)[ \t`*_]*[^\s`*_]", re.IGNORECASE
+)
 _NONE_LAB = re.compile(r"^none\b", re.IGNORECASE)
 _NAMES_ANOTHER_CHECK = re.compile(
     r"\bT[0-9]+(?:\.[0-9]+)?\b|integration", re.IGNORECASE
@@ -81,7 +83,7 @@ def _header_ticket(plan_text: str) -> str | None:
 def _task_section(plan_text: str, task_id: str) -> tuple[str, list[str]] | None:
     """The heading text after the task id and the body lines of the task's section, or None."""
     heading_re = re.compile(
-        rf"^#{{1,6}}[ \t]+{re.escape(task_id)}(?:[.:][ \t]*|[ \t]+)(?P<title>.*?)[ \t]*$"
+        rf"^#{{1,6}}[ \t]+{re.escape(task_id)}(?:\.(?=[ \t]|$)[ \t]*|:[ \t]*|[ \t]+)(?P<title>.*?)[ \t]*$"
     )
     lines = plan_text.splitlines()
     for index, line in enumerate(lines):

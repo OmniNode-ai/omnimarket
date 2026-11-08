@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_inmemory_floor_ticket_store import (
     InMemoryFloorTicketStore,
+    StoredTicket,
 )
 from omnimarket.nodes.node_floor_task_ticket_effect.container.container_inmemory import (
     build_inmemory_handlers,
@@ -479,6 +480,21 @@ def test_seams_in_spi_each_injected_protocol_resolves_into_omnibase_spi() -> Non
 def test_the_in_memory_store_and_the_scripted_store_satisfy_the_spi_protocol() -> None:
     assert isinstance(InMemoryFloorTicketStore(), ProtocolFloorTicketStore)
     assert isinstance(ScriptedStore(), ProtocolFloorTicketStore)
+
+
+def test_in_memory_create_never_overwrites_a_seeded_ticket_of_a_noncontiguous_seed() -> (
+    None
+):
+    seeded = StoredTicket(description="Floor key: floor:other:T9\n")
+    store = InMemoryFloorTicketStore(tickets={"OMN-2": seeded})
+    created = store.create(
+        ModelFloorTicketCreateRequest(
+            floor_key=KEY, title="t", description=ticket_text(), parent="OMN-1"
+        )
+    )
+    assert created.ticket not in {None, "OMN-2"}
+    assert store.tickets["OMN-2"] is seeded
+    assert len(store.tickets) == 2
 
 
 def test_in_memory_profile_builds_both_handlers_on_one_store() -> None:

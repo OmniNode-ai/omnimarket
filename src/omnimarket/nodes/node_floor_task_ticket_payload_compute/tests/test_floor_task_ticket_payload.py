@@ -19,6 +19,8 @@ from omnimarket.nodes.node_floor_task_ticket_payload_compute.models import (
     ModelFloorTaskTicketPayloadResult,
 )
 from omnimarket.nodes.node_floor_task_ticket_payload_compute.tests.support import (
+    GOOD_TASK,
+    HEADER,
     LINE,
     PARENT,
     PLAN,
@@ -108,6 +110,43 @@ def test_a_task_id_is_matched_whole_not_as_a_prefix() -> None:
     assert result.verdict == "NEEDS-SPEC"
     assert result.payload is None
     assert result.missing == ("falsifier:2",)
+
+
+def test_a_dotted_child_heading_is_not_the_section_of_its_parent_task() -> None:
+    child = GOOD_TASK.replace("### T1. ", "### T1.1. ")
+    parent_absent = HEADER + "\n## 4. Tasks\n\n" + child
+    absent = HandlerFloorTaskTicketPayload().handle(request("T1", parent_absent))
+    assert absent.verdict == "NEEDS-SPEC"
+    assert absent.missing == ("task-section",)
+    parent_after_child = HEADER + "\n## 4. Tasks\n\n" + child + "\n" + GOOD_TASK
+    found = HandlerFloorTaskTicketPayload().handle(request("T1", parent_after_child))
+    assert found.verdict == "PAYLOAD"
+    assert found.payload is not None
+    assert found.payload.title.startswith("T1. The example node")
+    child_found = HandlerFloorTaskTicketPayload().handle(
+        request("T1.1", parent_after_child)
+    )
+    assert child_found.verdict == "PAYLOAD"
+
+
+def test_an_empty_falsifier_marker_is_a_missing_falsifier() -> None:
+    empty = GOOD_TASK.replace(
+        "-- falsifier: run twice, compare `model_dump_json`.", "-- falsifier:"
+    )
+    assert empty != GOOD_TASK
+    result = HandlerFloorTaskTicketPayload().handle(
+        request("T1", HEADER + "\n## 4. Tasks\n\n" + empty)
+    )
+    assert result.verdict == "NEEDS-SPEC"
+    assert result.missing == ("falsifier:2",)
+    assert result.payload is None
+    empty_by = GOOD_TASK.replace(
+        "-- falsifier: run twice, compare `model_dump_json`.", "-- falsified by"
+    )
+    by = HandlerFloorTaskTicketPayload().handle(
+        request("T1", HEADER + "\n## 4. Tasks\n\n" + empty_by)
+    )
+    assert by.missing == ("falsifier:2",)
 
 
 def test_a_falsifier_missing_names_the_criterion() -> None:

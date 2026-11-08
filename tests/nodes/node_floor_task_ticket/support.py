@@ -83,7 +83,7 @@ class RecordingLinearClient:
         self._next += 1
         self.issues[identifier] = {
             "identifier": identifier,
-            "state": {"name": "Backlog"},
+            "state": {"name": "Backlog", "type": "backlog"},
             "description": description,
             "project": None,
             "labels": {"nodes": [{"name": name} for name in label_names]},
@@ -113,7 +113,8 @@ class FakeGraphql:
                         {"identifier": key}
                         for key, issue in self.issues.items()
                         if needle in (issue["description"] or "")
-                    ]
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
                 }
             }
         }

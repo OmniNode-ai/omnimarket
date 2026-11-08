@@ -6,6 +6,10 @@ The creator is the seam to ``node_create_ticket``'s create (the gate runs inside
 this store hands it a callable that takes the create request and answers ``created``, ``refused`` (the gate's codes) or
 ``failed``. This module imports no other node. The GraphQL reader is injected too, so a test answers from a dict and the
 lab binds the one that holds the Linear key from the secret store.
+
+Fail closed: an answer that carries GraphQL ``errors``, or lacks a field the judge reads, is ``failed``, never a
+default that looks safe. Only an issue the answer names as ``null`` is ``missing``, and only a connection the answer
+shows empty with no next page is an empty search.
 """
 
 from __future__ import annotations
@@ -25,12 +29,14 @@ from omnibase_spi.contracts.services import (
 
 FLOOR_KEY_LINE = "Floor key: {floor_key}"
 SEARCH_PAGE = 50
+# Linear's workflow-state types that end a ticket; the state's display name is configurable, its type is not.
+TERMINAL_STATE_TYPES = frozenset({"completed", "canceled"})
 
 READ_QUERY = """
 query FloorTicketRead($id: String!) {
   issue(id: $id) {
     identifier
-    state { name }
+    state { name type }
     description
     project { name }
     labels { nodes { name } }
@@ -40,9 +46,10 @@ query FloorTicketRead($id: String!) {
 """
 
 SEARCH_QUERY = """
-query FloorTicketSearch($needle: String!, $first: Int!) {
-  issues(first: $first, filter: { description: { contains: $needle } }) {
+query FloorTicketSearch($needle: String!, $first: Int!, $after: String) {
+  issues(first: $first, after: $after, filter: { description: { contains: $needle } }) {
     nodes { identifier }
+    pageInfo { hasNextPage endCursor }
   }
 }
 """
@@ -54,6 +61,40 @@ class ProtocolLinearGraphql(Protocol):
     def post(
         self, query: str, variables: Mapping[str, object]
     ) -> Mapping[str, Any]: ...
+
+
+class GraphqlAnswerError(Exception):
+    """The decoded answer holds GraphQL errors or lacks a field the store must read."""
+
+
+def _field(container: object, name: str) -> Any:
+    """``container[name]``, raising when the container is no mapping or the key is absent (``null`` is a value)."""
+    if not isinstance(container, Mapping) or name not in container:
+        raise GraphqlAnswerError(name)
+    return container[name]
+
+
+def _data(answer: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The ``data`` object of an answer that carries no GraphQL errors."""
+    if answer.get("errors"):
+        raise GraphqlAnswerError("errors")
+    data = _field(answer, "data")
+    if not isinstance(data, Mapping):
+        raise GraphqlAnswerError("data")
+    return data
+
+
+def _status(state: object) -> str:
+    """The status the judge reads: the state's type when it ends the ticket, else the state's display name."""
+    kind = str(_field(state, "type") or "")
+    return kind if kind in TERMINAL_STATE_TYPES else str(_field(state, "name") or "")
+
+
+def _nodes(connection: object) -> list[Any]:
+    nodes = _field(connection, "nodes")
+    if not isinstance(nodes, list):
+        raise GraphqlAnswerError("nodes")
+    return nodes
 
 
 @dataclass(frozen=True)
@@ -69,21 +110,25 @@ class GraphqlFloorTicketStore:
         self, request: ModelFloorTicketLookupRequest
     ) -> ModelFloorTicketLookupResult:
         try:
-            data = self.graphql.post(READ_QUERY, {"id": request.ticket})
-            issue = (data.get("data") or {}).get("issue")
+            data = _data(self.graphql.post(READ_QUERY, {"id": request.ticket}))
+            issue = _field(data, "issue")
             if issue is None:
                 return ModelFloorTicketLookupResult(state="missing")
+            project = _field(issue, "project")
             return ModelFloorTicketLookupResult(
                 state="found",
-                ticket=str(issue["identifier"]),
-                status=str((issue.get("state") or {}).get("name") or ""),
-                description=issue.get("description") or "",
-                project=(issue.get("project") or {}).get("name") or None,
+                ticket=str(_field(issue, "identifier")),
+                status=_status(_field(issue, "state")),
+                description=_field(issue, "description") or "",
+                project=(
+                    None if project is None else str(_field(project, "name") or "")
+                )
+                or None,
                 labels=tuple(
-                    str(label["name"])
-                    for label in (issue.get("labels") or {}).get("nodes") or []
+                    str(_field(label, "name"))
+                    for label in _nodes(_field(issue, "labels"))
                 ),
-                has_children=bool((issue.get("children") or {}).get("nodes")),
+                has_children=bool(_nodes(_field(issue, "children"))),
             )
         except Exception as error:
             return ModelFloorTicketLookupResult(
@@ -95,13 +140,29 @@ class GraphqlFloorTicketStore:
     ) -> ModelFloorTicketSearchResult:
         needle = FLOOR_KEY_LINE.format(floor_key=request.floor_key)
         try:
-            data = self.graphql.post(
-                SEARCH_QUERY, {"needle": needle, "first": SEARCH_PAGE}
-            )
-            nodes = ((data.get("data") or {}).get("issues") or {}).get("nodes") or []
+            tickets: list[str] = []
+            seen_cursors: set[str] = set()
+            after: str | None = None
+            while True:
+                data = _data(
+                    self.graphql.post(
+                        SEARCH_QUERY,
+                        {"needle": needle, "first": SEARCH_PAGE, "after": after},
+                    )
+                )
+                issues = _field(data, "issues")
+                tickets.extend(
+                    str(_field(node, "identifier")) for node in _nodes(issues)
+                )
+                page = _field(issues, "pageInfo")
+                if not _field(page, "hasNextPage"):
+                    break
+                after = _field(page, "endCursor")
+                if not isinstance(after, str) or after in seen_cursors:
+                    raise GraphqlAnswerError("endCursor")
+                seen_cursors.add(after)
             return ModelFloorTicketSearchResult(
-                state="answered",
-                tickets=tuple(str(node["identifier"]) for node in nodes),
+                state="answered", tickets=tuple(tickets)
             )
         except Exception as error:
             return ModelFloorTicketSearchResult(

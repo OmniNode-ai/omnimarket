@@ -91,6 +91,9 @@ class InMemoryFloorTicketStore:
         refusal = self.gate(request)
         if refusal is not None:
             return ModelFloorTicketCreateResult(state="refused", cause=refusal)
-        ticket = f"{self.prefix}-{self.first_number + len(self.tickets)}"
+        number = self.first_number + len(self.tickets)
+        while f"{self.prefix}-{number}" in self.tickets:
+            number += 1
+        ticket = f"{self.prefix}-{number}"
         self.tickets[ticket] = StoredTicket(description=request.description)
         return ModelFloorTicketCreateResult(state="created", ticket=ticket)
