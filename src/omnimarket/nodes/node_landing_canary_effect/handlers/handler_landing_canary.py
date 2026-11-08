@@ -66,6 +66,10 @@ def _clean(text: str) -> str:
     return " ".join(text.replace("|", "/").split())
 
 
+#: The longest append cause kept on a result, so one refusal text cannot swell an event.
+_CAUSE_MAX = 200
+
+
 class HandlerLandingCanary:
     """Run the landing canary once."""
 
@@ -288,7 +292,11 @@ class HandlerLandingCanary:
         appended = self._appender.append(row + "\n", request_id)
         if not appended.ok:
             return result.model_copy(
-                update={"ledger": f"append-failed:{appended.status}", "row": row}
+                update={
+                    "ledger": f"append-failed:{appended.status}",
+                    "ledger_cause": _clean(appended.message)[:_CAUSE_MAX],
+                    "row": row,
+                }
             )
         return result.model_copy(
             update={
@@ -323,6 +331,7 @@ def events_of(
         "bound_seconds": result.bound_seconds,
         "row_key": result.row_key,
         "ledger": result.ledger,
+        "ledger_cause": result.ledger_cause,
     }
     return [
         (

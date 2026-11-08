@@ -115,8 +115,14 @@ def _run(write: bool) -> int:
         f"outcome={result.outcome.value} ending={result.ending.value if result.ending else 'none'} "
         f"repo={result.repo} pr={result.pr_number} elapsed_s={result.elapsed_seconds} "
         f"bound_s={result.bound_seconds} ledger={result.ledger} key={result.row_key} "
-        f"reason={','.join(result.reasons)}\n"
+        f"reason={','.join(result.reasons)}"
+        f"{f' cause={result.ledger_cause}' if result.ledger_cause else ''}\n"
     )
+    if result.ledger.startswith("append-failed"):
+        # The unit's error log is where a failed daily run is read; the status alone left it empty.
+        sys.stderr.write(
+            f"LANDING-CANARY-APPEND-FAILED ledger={result.ledger} cause={result.ledger_cause or 'none'}\n"
+        )
     return 1 if result.failed else 0
 
 

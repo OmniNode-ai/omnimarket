@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23077
+title: Rebuild piece 9, landing and merge queue, reads WORKING on the factory floor
+summary: >-
+  Task under this ticket: the daily landing canary names why its ledger append failed. On 2026-11-08 the h053 daily unit ran for 66 seconds against 12 for the run before, exited 1, and wrote ledger=append-failed:error with an empty error log; the append command's own message was dropped, so a slow bus and a refused row looked the same. The result now carries the message as ledger_cause, the failure event and the READING line print it, and the unit's error log names it. No verdict, bound or overlay value changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23077-canary-append-cause
+    statement: >-
+      A failed canary run names its cause on the result, the failure event and the unit's error log, so the daily run's failure can be read and fixed.
+    acceptance:
+      - id: AC1
+        statement: "AC1: piece 9 reads WORKING on the served floor from its own reading, with the rebuild plan's piece 9 tasks built and installed beside the current landing controller for the 7-day comparison -- falsifier: the floor's piece 9 reading"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The landing canary node tests, including the append that outlives its timeout through the real appender, the failure event and the unit error log.
+    command: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23077-canary-append-cause
+    description: >-
+      An append that outlives its timeout fails the run with ledger_cause append-command-failed:TimeoutExpired on the result, in the failure event body and on stderr; at the merge base these tests fail on the missing ledger_cause.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_canary_append_cause.py -q --no-cov
+        cwd: .

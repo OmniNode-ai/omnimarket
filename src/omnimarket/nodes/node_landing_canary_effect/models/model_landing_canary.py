@@ -88,6 +88,8 @@ class ModelLandingCanaryResult(BaseModel):
     bound_seconds: int | None = None
     row_key: str = ""
     ledger: str = "not-written"
+    #: Why the append failed: the append command's own message, kept so a failed run names its cause (OMN-23077).
+    ledger_cause: str = ""
     row: str | None = None
 
     @property
