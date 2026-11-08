@@ -25,6 +25,7 @@ start through their effect seams.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
@@ -122,9 +123,17 @@ class _Pass:
         self.ledger_unread = False
         self.free_slots = 0
         self.started = 0
+        # Reservations of earlier commands whose CLAIM is not on the ledger yet: lanes the pool read cannot show yet.
+        self.outstanding = 0
         self.ticket_verdicts: dict[str, ModelFloorEntryTicketVerdict] = {}
         self.landing_only = False
         self.stop_cause: str | None = None
+        self.cancelled: threading.Event | None = None
+
+    def check_cancelled(self) -> None:
+        """Stop the pass at an effect boundary once the caller has given up on it."""
+        if self.cancelled is not None and self.cancelled.is_set():
+            raise FloorFillUnreadableError("command-timed-out")
 
 
 def _line_of(key: str) -> str:
@@ -189,9 +198,16 @@ class FloorFillOrchestrator:
     # ------------------------------------------------------------------ commands
 
     def run(
-        self, command: EnumFloorFillCommand, key: str | None = None
+        self,
+        command: EnumFloorFillCommand,
+        key: str | None = None,
+        cancelled: threading.Event | None = None,
     ) -> ModelFloorFillAnswer:
-        """Run one command; every outcome is a typed answer, never an exception."""
+        """Run one command; every outcome is a typed answer, never an exception.
+
+        ``cancelled`` is set by a caller whose command timeout has passed: the pass stops before its next mint, state
+        write or lane start, and never authorizes one after that. Lanes already detached are left as they are.
+        """
         try:
             if command is EnumFloorFillCommand.LINES:
                 return self._lines_command()
@@ -200,24 +216,33 @@ class FloorFillOrchestrator:
             if command is EnumFloorFillCommand.SEND_KEY:
                 if not key:
                     return self._failed(command, "UNKNOWN fill-state:no-key")
-                return self._pass(command, key)
-            return self._pass(command, None)
+                return self._pass(command, key, cancelled)
+            return self._pass(command, None, cancelled)
         except FloorFillUnreadableError as error:
             return self._failed(command, f"UNKNOWN fill-state:{error.cause}")
 
     # ------------------------------------------------------------------ the pass
 
     def _pass(
-        self, command: EnumFloorFillCommand, only_key: str | None
+        self,
+        command: EnumFloorFillCommand,
+        only_key: str | None,
+        cancelled: threading.Event | None = None,
     ) -> ModelFloorFillAnswer:
         # S0
         state = self._read_state()
         ctx = _Pass(state, self._clock.now())
+        ctx.cancelled = cancelled
         try:
             # S1
             floor_text = self._read_facts(ctx)
             # S2
             self._resolve(ctx)
+            ctx.outstanding = sum(
+                1
+                for e in ctx.state.entries.values()
+                if e.state is EnumFloorFillEntryState.RESERVED
+            )
             plan_texts = self._plan_texts(ctx, floor_text)
             floor_unread = self._floor_unread(ctx, floor_text)
             if floor_unread is not None:
@@ -241,6 +266,20 @@ class FloorFillOrchestrator:
             return self._finish(command, ctx, hold=hold, floor=verdicts)
         except StaleStateError:
             return self._stale(command, ctx)
+        except FloorFillUnreadableError as error:
+            # A store failure after the pass began keeps what the earlier writes committed and the last sequence that landed.
+            return self._failed(
+                command,
+                f"UNKNOWN fill-state:{error.cause}",
+                ModelFloorFillAnswer(
+                    command=command,
+                    status=EnumFloorFillStatus.FAILED,
+                    key_results=tuple(ctx.results),
+                    exit_code=EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED],
+                    state_seq=ctx.state.seq,
+                    observed_at=ctx.now,
+                ),
+            )
 
     # S0
 
@@ -504,6 +543,7 @@ class FloorFillOrchestrator:
 
     def _start_candidate(self, ctx: _Pass, key: str, verdict: str, ticket: str) -> str:
         """Mint if needed, reserve (a write), then start. Returns ``ok``, ``line-full``, ``no-slot``."""
+        ctx.check_cancelled()
         if verdict == "NEEDS-TICKET":
             minted = self._tickets.mint(key)
             if minted.state != "ticket" or not minted.ticket:
@@ -525,7 +565,7 @@ class FloorFillOrchestrator:
         reserve = ModelFloorFillReserveRequested(
             key=key,
             max_fill_lanes_per_line=self._config.max_fill_lanes_per_line,
-            slot_budget=ctx.free_slots - ctx.started,
+            slot_budget=ctx.free_slots - ctx.started - ctx.outstanding,
             landing_only=False,
             stop_signal=False,
             sent_window_minutes=self._config.sent_window_minutes,
@@ -542,6 +582,7 @@ class FloorFillOrchestrator:
         # The reserve write comes before the intent it authorises.
         self._write(ctx, reserved.state)
         (intent,) = reserved.intents
+        ctx.check_cancelled()
         outcome = self._runner.start_detached(
             ModelLaneStartSpec(
                 argv=_fill(
@@ -601,6 +642,7 @@ class FloorFillOrchestrator:
 
     def _write(self, ctx: _Pass, next_state: ModelFloorFillState) -> None:
         """One conditional write of the row. A lost race ends the command; nothing is retried."""
+        ctx.check_cancelled()
         landed = self._store.compare_and_set(
             self._config.scope,
             ctx.state.seq,
@@ -665,7 +707,11 @@ class FloorFillOrchestrator:
                     return self._failed(
                         answer.command, "UNKNOWN fill-state:answer-unparseable", answer
                     )
-                if ctx.state.seq < stored.state_seq:
+                # A tick that observed less is never published over one that observed more: a lower state sequence is
+                # older, and on an equal sequence (no state write between the two) the earlier observation is older.
+                if ctx.state.seq < stored.state_seq or (
+                    ctx.state.seq == stored.state_seq and ctx.now < stored.observed_at
+                ):
                     return self._failed(answer.command, LINE_STALE_STATE, answer)
             payload = ModelFloorFillStoredAnswer(
                 lines=answer.lines,
@@ -727,7 +773,7 @@ class FloorFillOrchestrator:
             reserved_timeout_seconds=self._config.reserved_timeout_seconds,
             unresolved_keys=unresolved,
             start_results=start_results,
-            free_slots_after=max(0, ctx.free_slots - ctx.started),
+            free_slots_after=max(0, ctx.free_slots - ctx.started - ctx.outstanding),
             hold=hold,
         )
 
