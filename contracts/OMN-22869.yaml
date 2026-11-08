@@ -37,3 +37,19 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22869 -- uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_volumes_root.py tests/unit/nodes/node_host_reading_effect/test_probe_host_canary.py -q --no-cov'
     cwd: .
+- id: dod-omn22869-parked-refusal
+  description: The host canary types a host-table or load-bar refusal as parked, and a parked host never fails the reading; the new parked tests fail when the handler is at its prior content.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_probe_host_canary.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22869-deploy-probe
+  description: "Deploy probe: the canary handler GitHub serves at the checked-out commit reads the parked refusal markers from the overlay, which the merge base does not."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reading_effect/handlers/probe_host_canary.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "settings.pool_parked_markers" > /dev/null'''
+    cwd: .
