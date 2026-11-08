@@ -231,8 +231,14 @@ runtime:
     timeout_seconds: 90
     output_relpath: .claude_scratch/friction/friction-report.json
     rollup:
-      ledger_path_env: ONEX_LEDGER_PATH
-      archive_subdir: archive
+      # The ledger is on the bus: the window's rows come from typed reads of the kinds below, one chunk of
+      # ledger_chunk_hours at a time, through the command the variable holds. A failed or truncated read refuses the step
+      # and the previous report stays; nothing here reads a file.
+      ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+      ledger_read_timeout_seconds: 60
+      ledger_row_limit: 5000
+      ledger_row_kinds: [FRICTION, CORRECTION, STATUS, TERMINAL, CLAIM, MSG]
+      ledger_chunk_hours: 24
       window_hours: 24
       bucket_hours: 2
       umbrella_tickets: [OMN-17427]
