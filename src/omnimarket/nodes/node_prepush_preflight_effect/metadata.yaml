@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prepush_preflight_effect
+version: "1.0.0"
+description: "Run a repository's pre-push stage hooks on a pending push range and report each refusal."
+omnibase_core_compat: ">=0.47.23,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_prepush_preflight_effect: "omnimarket.nodes.node_prepush_preflight_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.47.23"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "validation", "git", "pre-push"]
+pack: "operator_tooling"
+display_name: "Pre-push Preflight Effect"
+node_role: "effect"

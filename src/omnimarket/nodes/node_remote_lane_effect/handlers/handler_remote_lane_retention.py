@@ -8,13 +8,14 @@ from ..models.model_remote_lane_retention import (
     ModelRemoteLaneRetentionRequest,
     ModelRemoteLaneRetentionResult,
 )
-from ..run_retention import retain_run
 
 
 class HandlerRemoteLaneRetention:
     def handle(
         self, request: ModelRemoteLaneRetentionRequest
     ) -> ModelRemoteLaneRetentionResult:
+        from ..run_retention import retain_run
+
         return ModelRemoteLaneRetentionResult(
             **retain_run(
                 Path(request.root),

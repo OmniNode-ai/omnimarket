@@ -6,14 +6,22 @@ node_type: EFFECT_GENERIC
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Local, check-only ticket-contract precondition (OMN-20864). Read the outgoing
+  Local ticket-contract precondition (OMN-20864). Read the outgoing
   commit through the invoking worktree's git context, then import dod_verify's
   static prerequisite for every branch/subject citation, or every explicit PR
-  title citation. Never execute evidence, author contracts, commit or push.
-  Git read errors and missing evidence return a failed result. A push that changes
+  title citation. If the base is absent, fetch only its branch from the configured
+  remote into its remote-tracking ref, then pin the resolved commit for all checks.
+  Existing bases need no network. Never execute evidence, author contracts, commit
+  or push. Git read or fetch errors and missing evidence return a failed result.
+  A push that changes
   a path that runs (OMN-21887, operator ruling 2026-11-01T14:45:51Z) also needs an
   integration-proof evidence item, checked by HandlerIntegrationProof. The CLI maps
   that result to exit 1; pre-push and CI invoke this same node in-process.
+  A push that adds an entry to an umbrella ticket's contract is refused unless its
+  body or commits carry an umbrella evidence line (OMN-21301): every other open pull
+  request appends to the same place, so each landing conflicts the rest.
+config:
+  umbrella_tickets: [OMN-17427, OMN-19998, OMN-22478]
 descriptor:
   node_archetype: effect
   purity: effectful

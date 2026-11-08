@@ -70,6 +70,19 @@ SshIdentity = Annotated[
     AfterValidator(_identity_path),
 ]
 
+
+def _volumes_root(value: str) -> str:
+    if not value.strip("/"):
+        raise ValueError("must be a directory, not the filesystem root")
+    return value
+
+
+VolumesRoot = Annotated[
+    str,
+    StringConstraints(pattern=r"^/[A-Za-z0-9._/-]*$"),
+    AfterValidator(_volumes_root),
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -99,10 +112,22 @@ class ModelLabHostRow(_ModelOverlayBase):
     ssh_user: SshUser | None = None
     proxy_jump: SshJump | None = None
     ssh_identity: SshIdentity | None = None
+    # The same three cells for the ``fallback_targets`` destinations, which a machine off the lab LAN
+    # reaches by a different route than ``target``. Omitted: the row-level cell applies. Same rules as above.
+    fallback_ssh_user: SshUser | None = None
+    fallback_proxy_jump: SshJump | None = None
+    fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
     available: bool = True
+    roles: (
+        tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
+    ) = None
     unavailable_reason: str | None = None
+    # Model serving is independent of lane/unit placement. Omitted: inherit the validated
+    # ``available`` value, preserving the existing policy for every row without this column.
+    # Keep this after ``available``: Pydantic passes preceding validated fields to the factory.
+    model_serving: bool = Field(default_factory=lambda data: data["available"])
     # A collaborator machine: it takes no lane bound to a lane the non-contributor rows bind, only
     # one bound to its own ``lane_binding``, and only while ``lane_ready`` says that lane can take a
     # lane (the remote-lane placement node judges it).
@@ -129,6 +154,15 @@ class ModelLabHostRow(_ModelOverlayBase):
     tenant_id: str | None = None
     ledger_bus_lane: str | None = None
     ledger_bus_python: str | None = None
+    # The ledger a lane on this host is configured with: absolute or ``$OMNI_HOME/`` form, filled on the host.
+    ledger_path: (
+        Annotated[
+            str, StringConstraints(pattern=r"^(?:/|\$OMNI_HOME/)[A-Za-z0-9._/-]+$")
+        ]
+        | None
+    ) = None
+    # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
+    volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
@@ -151,6 +185,23 @@ class ModelLabHostRow(_ModelOverlayBase):
     max_weight: NonEmptyStr | None = None
     # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
     speed: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _roles_are_compatible(self) -> "ModelLabHostRow":
+        """Require distinct roles compatible with host availability and capacity."""
+        roles = self.roles or ()
+        if len(set(roles)) != len(roles):
+            raise ValueError(f"lab host {self.name!r}: roles must not repeat")
+        if not self.available and roles:
+            raise ValueError(f"lab host {self.name!r}: unavailable host has roles")
+        if "launcher" in roles:
+            if self.cap != 0:
+                raise ValueError(f"lab host {self.name!r}: launcher requires cap == 0")
+            if "lab" in roles or "lab-proof" in roles:
+                raise ValueError(
+                    f"lab host {self.name!r}: launcher cannot carry lab or lab-proof roles"
+                )
+        return self
 
     @model_validator(mode="after")
     def _fallback_targets_are_distinct_from_target(self) -> "ModelLabHostRow":
@@ -184,6 +235,19 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+
+    @model_validator(mode="after")
+    def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":
+        """Require one desired-state publisher whenever the table declares roles."""
+        if any(host.roles for host in self.hosts):
+            count = sum(
+                "desired-publisher" in (host.roles or ()) for host in self.hosts
+            )
+            if count != 1:
+                raise ValueError(
+                    f"desired-publisher role must appear on exactly one row; found {count}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _contributor_lane_is_its_own(self) -> "ModelLabHostsTable":

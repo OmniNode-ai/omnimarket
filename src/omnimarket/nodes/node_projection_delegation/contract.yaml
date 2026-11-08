@@ -150,6 +150,17 @@ descriptor:
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
+# OMN-22874. The four singleton aggregate exposures below are whole-table views
+# over delegation_events; the writer re-reads and republishes each one after a
+# delegation write. Read per message that cost about 2.2 s at 96,661 rows and
+# held every offset commit behind it, so a burst of events stood as consumer
+# group lag and raised the lab lag alarm. In the consume loop the republish is
+# marked dirty per tenant and flushed once per window, off the commit path; the
+# snapshot is latest-wins, so what a reader loses is at most this window of
+# freshness. The per-delivery runtime path keeps the inline republish.
+aggregate_republish:
+  coalesce_window_ms: 3000
+
 # Golden path: delegation chain (terminal event -> delegation_events table)
 golden_path:
   - "Consume delegation terminal event from a contract-declared topic"
@@ -1171,3 +1182,18 @@ metadata:
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+
+# OMN-22664 (one-runtime plan T10, under OMN-21288): when the fold moves this
+# writer from its own container into the runtime, the runtime's consumer groups
+# start from the committed offsets of the container's group,
+# {env}.omnimarket-projections.delegation-writer.consume.v1, instead of the bus
+# default (latest), so events published while the container is stopped and the
+# runtime has not yet joined are projected. The container's runner reads a
+# partition it never committed from the earliest offset, and the handover does
+# the same. omnibase_infra's HandlerContractSubscribePreflight reads this key; on
+# a runtime that does not carry this writer's profile it is never read.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: delegation-writer
+  from_version: v1
+  from_auto_offset_reset: earliest

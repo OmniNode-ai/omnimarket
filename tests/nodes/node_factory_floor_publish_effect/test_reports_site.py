@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
     NODE_DIR,
+    HandlerFactoryFloorPublish,
     PublishRefusedError,
     load_runtime,
     remote_write_command,
@@ -30,6 +31,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
+    ModelPublishStep,
+    ModelPublishStepResult,
     ModelReportData,
     ModelReportPage,
     ModelReportsPublishRequest,
@@ -78,6 +81,13 @@ def _sources(home: Path) -> dict[str, str]:
     }
     _put(home, paths["factory-floor.json"], json.dumps(FLOOR_RECORD).encode())
     _put(home, paths["process-health.json"], json.dumps(HEALTH).encode())
+    _put(
+        home,
+        paths["delegation.json"],
+        json.dumps(
+            {"generated_at": "2026-10-31T15:35:00Z", "status": "read", "windows": {}}
+        ).encode(),
+    )
     _put(
         home,
         paths["reports/decision-map/decisions.json"],
@@ -136,7 +146,12 @@ def test_reports_contract_every_page_exists_and_every_link_lands_on_a_published_
     None
 ):
     rt = load_runtime()
-    published = {rt.names.page, rt.names.floor_page, rt.reports.index.remote}
+    published = {
+        rt.names.page,
+        rt.names.simple_page,
+        rt.names.floor_page,
+        rt.reports.index.remote,
+    }
     for entry in rt.reports.entries:
         for page in entry.pages:
             assert (NODE_DIR / page.page_relpath).is_file(), page.page_relpath
@@ -215,10 +230,13 @@ def test_reports_manifest_states_each_data_age_and_what_it_is_measured_from(
     assert document["published_at"] == "2026-10-31T16:00:00Z"
     reports = _manifest(tmp_path)
     assert list(reports) == [
+        "delegation",
         "factory_floor",
         "process_health",
         "decision_map",
     ]
+    assert reports["delegation"]["refresh"] == "tick"
+    assert reports["delegation"]["data"][0]["remote"] == "delegation.json"
     floor = reports["factory_floor"]["data"][0]
     assert floor["as_of"] == "2026-10-31T15:40:00Z"
     assert floor["status"] == "read"
@@ -321,6 +339,20 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     )
     docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    # The canary step publishes to a git remote after fetching the served page; this test reads the order of the
+    # publish, so the step is answered here and its own node tests cover what it does.
+    real_step = HandlerFactoryFloorPublish._step
+
+    def step(
+        self: HandlerFactoryFloorPublish,
+        publish_step: ModelPublishStep,
+        *args: Any,
+    ) -> ModelPublishStepResult:
+        if publish_step.name == "floor_canary":
+            return ModelPublishStepResult(name=publish_step.name, status="ok")
+        return real_step(self, publish_step, *args)
+
+    monkeypatch.setattr(HandlerFactoryFloorPublish, "_step", step)
     assert main(["--omni-home", request.home or "", "--skip-refresh"]) == 0
     out = capsys.readouterr().out
     assert "operator-access: admitted_devices=1" in out
@@ -382,8 +414,8 @@ def test_page_reports_decision_map_scripts_are_pinned_with_integrity_hashes() ->
 def test_page_reports_load_no_script_or_style_from_elsewhere(name: str) -> None:
     page = REPORT_PAGES[name].read_text(encoding="utf-8")
     assert "src=" not in page
-    assert page.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in page
+    assert page.count("<link") == 3
+    assert 'href="data:,"' not in page
 
 
 def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_in_place() -> (
@@ -391,7 +423,7 @@ def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_i
 ):
     for name in ("process-health", "decision-map", "decision-quality"):
         assert 'href="../"' in REPORT_PAGES[name].read_text(encoding="utf-8"), name
-    shell = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+    shell = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
     for name in ("process-health", "decision-map"):
         assert f'page: "reports/{name}/?embed=1"' in shell, name
     assert 'href="reports/"' not in shell
@@ -421,13 +453,13 @@ def test_page_reports_node_syntax_is_valid(name: str) -> None:
 HARNESS = textwrap.dedent(
     """
     const fs = require("fs");
-    const [pagePath, filesJson] = process.argv.slice(1);
-    const files = JSON.parse(filesJson);
+    const [pagePath] = process.argv.slice(1);
+    const files = JSON.parse(fs.readFileSync(0, "utf8"));
     const page = fs.readFileSync(pagePath, "utf8");
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(page)[1];
     const elements = {};
-    const element = id => elements[id] || (elements[id] = {id, innerHTML: "", textContent: "", hidden: true});
-    globalThis.document = {getElementById: element};
+    const element = id => elements[id] || (elements[id] = {id, innerHTML: "", textContent: "", hidden: true, setAttribute() {}, clientWidth:600});
+    globalThis.document = {getElementById: element, querySelectorAll: () => []};
     globalThis.setInterval = () => 0;
     globalThis.fetch = async url => {
       const key = Object.keys(files).find(k => url.endsWith(k));
@@ -450,7 +482,8 @@ def _run_page(page: Path, files: dict[str, str]) -> dict[str, str]:
     if node is None:
         pytest.skip("node is not installed")
     done = subprocess.run(
-        [node, "-e", HARNESS, str(page), json.dumps(files)],
+        [node, "-e", HARNESS, str(page)],
+        input=json.dumps(files).encode(),
         capture_output=True,
         check=False,
         timeout=60,
@@ -584,106 +617,34 @@ def test_page_reports_decision_quality_renders_markdown_and_escapes_everything()
 
 
 def test_page_reports_process_health_shows_unread_never_zero() -> None:
-    comparison = {
-        "key": "regressions.tickets_reopened",
-        "label": "Closed tickets reopened",
-        "unit": "reopens",
-        "kind": "count",
-        "polarity": "lower_is_better",
-        "before": None,
-        "after": None,
-        "delta": None,
-        "delta_ratio": None,
-        "verdict": "unmeasured",
-        "before_status": "unread",
-        "after_status": "unread",
-        "comparable_unit": "reopens per day",
-        "note": "no state history",
-    }
-    quality = {
-        **comparison,
-        "key": "reds.hours_red",
-        "label": "Hours red",
-        "before": 4.0,
-        "after": 6.0,
-        "delta": 2.0,
-        "delta_ratio": 0.5,
-        "verdict": "worse",
-        "before_status": "read",
-        "after_status": "partial",
-    }
-    grey = {
-        **quality,
-        "key": "merges.total",
-        "label": "Merges",
-        "verdict": "informational",
-    }
+    from omnimarket.nodes.node_process_health_compute.handlers.handler_process_health import (
+        HandlerProcessHealth,
+    )
+    from omnimarket.nodes.node_process_health_compute.tests.fixtures import request
 
-    def metric(key: str, value: float | None, status: str) -> dict[str, object]:
-        return {
-            "key": key,
-            "label": key,
-            "unit": "u",
-            "kind": "count",
-            "value": value,
-            "status": status,
-        }
-
-    days = [
-        {
-            "date": f"2026-10-{d:02d}",
-            "is_reset_day": d == 29,
-            "partial": d == 30,
-            "window": {
-                "metrics": [
-                    metric("reds.hours_red", float(d - 25), "read"),
-                    metric("regressions.tickets_reopened", None, "unread"),
-                    metric("merges.total", 3.0, "read"),
-                ]
-            },
-        }
-        for d in (28, 29, 30)
-    ]
-    series = {
-        "generated_at": "2026-10-31T15:30:00Z",
-        "reset_label": "Factory reset",
-        "sources": [
-            {
-                "name": "ledger",
-                "status": "partial",
-                "covered_from": "2026-10-16T14:57:26Z",
-                "covered_to": "2026-10-31T14:57:19Z",
-                "gap_hours": 0.0,
-                "records": 12,
-                "reason": "25 files <b>parsed</b>",
-            }
-        ],
-        "days": days,
-        "summary": {
-            "measured": True,
-            "window_hours": 61.5,
-            "before": {"start": "2026-10-26T12:00:00Z", "end": "2026-10-29T01:30:00Z"},
-            "after": {"start": "2026-10-29T01:30:00Z", "end": "2026-10-31T15:00:00Z"},
-            "improved": 0,
-            "worse": 1,
-            "flat": 0,
-            "unmeasured": 1,
-            "comparisons": [quality, comparison, grey],
-        },
-    }
+    series = HandlerProcessHealth().handle(request()).model_dump(mode="json")
+    source = next(s for s in series["sources"] if s["name"] == "ledger")
+    source["status"] = "partial"
+    source["reason"] = "25 files <b>parsed</b>"
     out = _run_page(
         REPORT_PAGES["process-health"], {"process-health.json": json.dumps(series)}
     )
     body = out["body"]
-    assert 'class="unread">unread</span>' in body
-    assert "unread on every day" in body
+    assert 'class="unread">unmeasured</span>' in body
     assert "25 files &lt;b&gt;parsed&lt;/b&gt;" in body
-    assert "(partial)" in body
     assert body.index("Quality, before and after") < body.index("Throughput and cost")
     grey_block = body[body.index('<section class="grey">') :]
     assert "Merges" in grey_block
     assert "Closed tickets reopened" not in grey_block
     assert "Process health · computed" in out["stamp"]
+
+
+def test_page_reports_process_health_without_overlay_is_unmeasured() -> None:
+    out = _run_page(
+        REPORT_PAGES["process-health"], {"process-health.json": json.dumps(HEALTH)}
+    )
+    assert "Range observations are not published yet" in out["body"]
+    assert "Range details are unmeasured" in out["body"]
 
 
 def test_page_reports_process_health_without_a_series_shows_unread_not_zero() -> None:

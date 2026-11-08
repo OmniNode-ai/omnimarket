@@ -27,6 +27,8 @@ class ModelFactoryFloorSources(BaseModel):
     friction_report_relpath: str = Field(min_length=1)
     linear_titles_glob: str = Field(min_length=1)
     runner_fleet_relpath: str = Field(min_length=1)
+    # The host-drift fleet projection node_host_drift_fleet folds (OMN-21867); the Machines tab reads each host's heartbeat from it.
+    host_drift_relpath: str = Field(min_length=1)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):
@@ -43,12 +45,26 @@ class ModelFactoryFloorLaneSources(BaseModel):
     pool_receipt: str = Field(min_length=1)
     receipt_glob: str = Field(min_length=1)
     receipt_window_hours: int = Field(gt=0)
+    # How many lane directories are examined at once: the scan is one metadata read per directory and the directory
+    # holds tens of thousands, so one at a time is minutes under the Background clamp the module tick runs in.
+    receipt_scan_workers: int = Field(gt=0)
     result_chars: int = Field(gt=0)
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)
     lane_marker_min_id: int = Field(gt=0)
-    cloud_accounts_file: str = Field(min_length=1)
     host_table_env: str = Field(min_length=1)
+    controller_dir_env: str = Field(min_length=1)
+    controller_dir_fallback: str = Field(min_length=1)
+    process_start_grace_seconds: int = Field(ge=0)
+
+
+class ModelFactoryFloorCloudSource(BaseModel):
+    """The existing cloud node's read operation, called through the canonical runtime."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    node_name: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
 
 
 class ModelFactoryFloorLimitSources(BaseModel):
@@ -88,6 +104,11 @@ class ModelFactoryFloorRuntime(BaseModel):
     home_env: str = Field(min_length=1)
     plans_kb_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
+    # The landing goal's scope overlay (the one the simple floor reads): the stopped-lane list needs it, and lists none unread.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    goal_ticket_rule_overlay_id: str = Field(min_length=1)
+    goal_ticket_rule_file_env: str = Field(min_length=1)
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
@@ -100,6 +121,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
+    cloud_source: ModelFactoryFloorCloudSource
     limit_sources: ModelFactoryFloorLimitSources
     container_source: ModelFactoryFloorContainerSource
     output: ModelFactoryFloorOutput
@@ -146,6 +168,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = Field(min_length=1)
+    # Optional argv prefix ending in `onex node`, e.g. ssh to the reachable state owner.
+    # Empty calls the node on the publisher. Paths are resolved by the node on its own host.
+    cloud_accounts_node_command: tuple[str, ...] = ()
     # The machines drawn as bays, in order. A machine not listed here is never drawn, whatever the pool read holds.
     machines: tuple[ModelFloorMachineDecl, ...] = ()
     # The shared lab host table (caps, repair), relative to the registry home, for a deployment where the host_table_env

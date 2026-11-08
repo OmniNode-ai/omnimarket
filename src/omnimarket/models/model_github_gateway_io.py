@@ -46,6 +46,9 @@ class EnumGithubGatewayOperation(StrEnum):
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
+    # OMN-22654: every open PR's head, base, title and fix markers, the read the
+    # duplicate-fix guard makes on a host that has no PR watcher state.
+    OPEN_PR_FACTS = "open_pr_facts"
 
 
 # Operations scoped to a single PR require ``pr_number``.
@@ -107,6 +110,10 @@ class ModelGithubGatewayRequest(BaseModel):
     )
     job_id: int | None = Field(
         default=None, gt=0, description="Job id; required by job_log_tail."
+    )
+    cache_only: bool = Field(
+        default=False,
+        description="job_log_tail: refuse a cache miss without resolving credentials or making HTTP calls.",
     )
     artifact_id: int | None = Field(
         default=None,
@@ -756,6 +763,37 @@ class ModelPrReviewThreadsResult(_ModelBoundedList):
     threads: list[ModelPrReviewThread] = Field(default_factory=list)
 
 
+class ModelOpenPrFact(BaseModel):
+    """What the duplicate-fix guard folds over for one open PR (OMN-22654).
+
+    ``fix_markers`` are the PR body's ``Fix-Check:`` and ``Fix-Cause:`` lines,
+    whole and in body order, so the body itself never travels on the bus.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(..., gt=0)
+    head_ref: str = Field(..., min_length=1)
+    head_sha: str = Field(..., pattern=r"^[0-9a-f]{40}$")
+    base_ref: str = Field(..., min_length=1)
+    title: str
+    draft: bool
+    fix_markers: list[str] = Field(default_factory=list)
+
+
+class ModelOpenPrFactsResult(_ModelBoundedList):
+    """Every open PR of a repo with the facts the duplicate-fix guard needs, newest first.
+
+    Replaces the PR watcher's open records for a caller that has no watcher
+    state. ``total_count`` and ``truncated`` describe the open PRs: a caller
+    that must see every one refuses a truncated answer.
+    """
+
+    operation: Literal["open_pr_facts"] = "open_pr_facts"
+    repo: str
+    prs: list[ModelOpenPrFact] = Field(default_factory=list)
+
+
 GithubGatewayResult = Annotated[
     ModelPrStatusResult
     | ModelCiChecksResult
@@ -773,7 +811,8 @@ GithubGatewayResult = Annotated[
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
     | ModelMergedPrResult
-    | ModelPrReviewThreadsResult,
+    | ModelPrReviewThreadsResult
+    | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
 ]
 
@@ -816,6 +855,8 @@ __all__: list[str] = [
     "ModelJobStep",
     "ModelMergeCommitShaResult",
     "ModelMergedPrResult",
+    "ModelOpenPrFact",
+    "ModelOpenPrFactsResult",
     "ModelOpenPrSummary",
     "ModelOpenPrsResult",
     "ModelPrComment",

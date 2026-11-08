@@ -4,11 +4,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source import (
+    ModelFrictionRollupStepSettings,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadPolicy,
+)
 
 
 class ModelFactoryFloorPublishOverlay(BaseModel):
@@ -64,7 +72,9 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command"]
+StepKind = Literal[
+    "module", "capture", "copy", "command", "runner_fleet", "friction_rollup"
+]
 
 
 class ModelPublishStep(BaseModel):
@@ -78,6 +88,10 @@ class ModelPublishStep(BaseModel):
     (OMN-21733: the run took 8.5 to 10 minutes against a 300 s tick, which left the heartbeat older than twice its
     interval half the time). A step with ``fresh_relpath`` and ``fresh_seconds`` is skipped, counted ok, while that file
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
+    ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
+    a failed read writes an unread cause so old counts cannot masquerade as a new read.
+    ``friction_rollup`` runs the friction rollup node over the ledger named by ``rollup`` with the overlay home's class
+    rules and writes its report to ``output_relpath``; a missing or invalid overlay fails the step and leaves the old file.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -95,6 +109,7 @@ class ModelPublishStep(BaseModel):
     concurrent: bool = False
     fresh_relpath: str | None = None
     fresh_seconds: int | None = Field(default=None, gt=0)
+    rollup: ModelFrictionRollupStepSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
@@ -107,6 +122,8 @@ class ModelPublishStep(BaseModel):
             "capture": bool(self.argv) and bool(self.output_relpath),
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
+            "runner_fleet": bool(self.output_relpath),
+            "friction_rollup": self.rollup is not None and bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
@@ -125,6 +142,8 @@ class ModelPublishStepResult(BaseModel):
     status: Literal["ok", "failed"]
     detail: str = ""
     diagnostic: str = ""
+    # The wall-clock seconds the step took, measured by the handler (OMN-22699).
+    seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelPublishNames(BaseModel):
@@ -132,7 +151,14 @@ class ModelPublishNames(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # The address of the site is the simple floor page (OMN-19998); the page with every line, machine and report is
+    # published beside it under ``page`` and is the one link the simple page carries.
     page: str = Field(min_length=1)
+    simple_page: str = Field(min_length=1)
+    simple_data: str = Field(min_length=1)
+    simple_reads: str = Field(min_length=1)
+    compare_page: str = Field(min_length=1)
+    compare_data: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -141,7 +167,10 @@ class ModelPublishNames(BaseModel):
     # The vendored OmniUI theme files the page links, published beside it under these names.
     theme_css: tuple[str, ...] = Field(min_length=1)
 
-    @field_validator("theme_css")
+    # The site's icons (the SVG, the 32 px PNG, the apple-touch icon), published beside the pages under these names.
+    icons: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("theme_css", "icons")
     @classmethod
     def _theme_css(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for name in value:
@@ -228,6 +257,7 @@ class ModelReportData(BaseModel):
     relpath: str = Field(min_length=1)
     as_of_key: str | None = None
     publish: bool = True
+    projection: Literal["identity", "process_health_summary"] = "identity"
 
     @field_validator("remote")
     @classmethod
@@ -305,6 +335,37 @@ class ModelOperatorReportsRuntime(BaseModel):
         return _checked_remote_name(value)
 
 
+class ModelPublishCycle(BaseModel):
+    """The cycle bound the contract names, and the time each phase after the input steps is allowed (OMN-22699).
+
+    The input steps carry their own ``timeout_seconds``. The delegation read, the copies, the history prune and the
+    final status write are held to the numbers here: the handler clamps every call to what its phase has left, so the
+    longest path the contract allows (``ModelFactoryFloorPublishRuntime.declared_longest_path``) is a real bound.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # The seconds one publish run may take on its longest declared path; the served status names it beside the seconds taken.
+    bound_seconds: int = Field(gt=0)
+    delegation_timeout_seconds: int = Field(gt=0)
+    # All the copies of one run (the snapshot, the pages, the data and the first status) share this; a copy that finds it spent is refused.
+    copy_budget_seconds: int = Field(gt=0)
+    history_prune_budget_seconds: int = Field(gt=0)
+    # The final status write, which carries the whole cycle's seconds.
+    final_status_seconds: int = Field(gt=0)
+
+
+def group_steps(steps: Sequence[ModelPublishStep]) -> list[list[ModelPublishStep]]:
+    """The steps in contract order, consecutive ``concurrent`` ones in one group."""
+    groups: list[list[ModelPublishStep]] = []
+    for step in steps:
+        if step.concurrent and groups and groups[-1][-1].concurrent:
+            groups[-1].append(step)
+        else:
+            groups.append([step])
+    return groups
+
+
 class ModelFactoryFloorPublishRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -314,22 +375,57 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    simple_page_relpath: str = Field(min_length=1)
+    # What node_floor_simple_effect writes (relative to the registry home); both are published when they exist.
+    simple_data_relpath: str = Field(min_length=1)
+    simple_reads_relpath: str = Field(min_length=1)
+    # OMN-23018: the running comparison page and what node_floor_compare_effect writes (relative to the registry home).
+    compare_page_relpath: str = Field(min_length=1)
+    compare_data_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)
+    # The directory, relative to the node, holding the icon files named by ``names.icons``.
+    icons_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    process_health_payload: ModelProcessHealthPayloadPolicy
     delegation_relpath: str = Field(min_length=1)
     lines_overlay: ModelLinesOverlay
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
     record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
+    # Steps run after the page and the record are served, in order, never concurrently. The canary status is published
+    # here, from the page as served, so its floor age is the age of the page a reader gets. A required step that fails
+    # raises after the page is served: a failed page upload stops the run before these steps, so the canary status
+    # then ages past its bound and reads as silent, and a failed canary publish is a failed run, never a hidden one.
+    after_publish_steps: tuple[ModelPublishStep, ...]
     names: ModelPublishNames
     transport: ModelPublishTransport
+    cycle: ModelPublishCycle
     history: ModelPublishHistory
     reports: ModelReportsRuntime
     operator_reports: ModelOperatorReportsRuntime
+
+    def declared_longest_path(self) -> dict[str, int]:
+        """The seconds each phase may take at most, from the timeouts this contract declares.
+
+        The input steps run in groups: a group of concurrent steps takes its slowest member's timeout, and the groups
+        add up. The after-publish steps add up. The other phases are the cycle block's own numbers, which the handler
+        enforces. Their sum is the longest path a run may take; ``cycle.bound_seconds`` must hold it.
+        """
+        return {
+            "input_steps": sum(
+                max(step.timeout_seconds for step in group)
+                for group in group_steps(self.steps)
+            ),
+            "delegation": self.cycle.delegation_timeout_seconds,
+            "copy": self.cycle.copy_budget_seconds,
+            "history_prune": self.cycle.history_prune_budget_seconds,
+            "after_publish": sum(s.timeout_seconds for s in self.after_publish_steps),
+            "final_status": self.cycle.final_status_seconds,
+        }
 
 
 class ModelFactoryFloorPublishContract(BaseModel):
@@ -348,6 +444,7 @@ class ModelFactoryFloorPublishRequest(BaseModel):
     home: str | None = None
     state_dir: str | None = None
     skip_refresh: bool = False
+    refresh_delegation: bool = False
     overlay: ModelFactoryFloorPublishOverlay | None = None
     now: datetime | None = None
 
@@ -362,10 +459,15 @@ class ModelFactoryFloorPublishResult(BaseModel):
     data_sha256: str
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
+    # The steps that ran after the page was served (the canary status), in order.
+    after_publish: tuple[ModelPublishStepResult, ...] = ()
     process_health_published: bool
     delegation_published: bool = False
     history_snapshot: str = ""
     history_pruned: tuple[str, ...] = ()
+    # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
+    cycle_seconds: float = Field(default=0.0, ge=0)
+    phase_seconds: dict[str, float] = Field(default_factory=dict)
 
 
 class ModelReportsPublishRequest(BaseModel):

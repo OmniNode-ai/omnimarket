@@ -45,6 +45,16 @@
 # Effects must collect these new optional facts; absent facts keep the
 # previous behavior. This compute performs no collection or GitHub effects.
 #
+# Exhausted PRs and causes retain a typed exhaustion_owner in next_state,
+# and their degraded rows carry that owner on every tick. Cause park actions
+# carry it too. A live cause claimant takes precedence; otherwise a parked
+# subject keeps its assignment, or adopts policy.exhaustion_owner. Ownership
+# is accountability, never an extra attempt, a claim or a dispatch exclusion.
+# A claim-sourced assignment returns to policy when its live claim ends.
+# At composition, an explicit policy owner wins over the optional
+# <root>/node_pr_landing_decision_compute/overlay.yaml (kind and name), then
+# the exhaustion_owner declared below. The pure tick reads no overlay.
+#
 # The landing controller calls it in process, so it has no event_bus; it is
 # addressable through runtime_dispatch like the other directly-invoked compute
 # nodes. Experimental until the controller runs it (observe-only first).
@@ -69,7 +79,8 @@ description: >
   head, rerun, update-branch, eligibility rerun, companion rebuild or close,
   dispatch of a fixed worker brief or of one cause brief per shared red cause,
   kill, discard, observe-only, operator escalation of a parked cause), the
-  outcomes recorded, DEGRADED reasons, violations, the named gate of every
+  outcomes recorded, DEGRADED reasons with named exhausted-subject owners,
+  violations, the named gate of every
   gated PR, the named reason every green, CLEAN PR was not merged, and the
   next state to write ahead of acting. Deterministic in any input order.
   Fail-closed on its own coverage invariant: a tick that would leave an open,
@@ -97,6 +108,16 @@ handler_routing:
       handler:
         name: "HandlerPrLandingDecision"
         module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
+# HandlerLandingJoinJ8 is deliberately NOT a handler_routing entry. It is an
+# EFFECT handler that takes an emission sink and a ModelJoinJ8Policy through its
+# constructor, and the auto-wiring has no way to supply either: an entry that
+# declares no event_model is granted EVERY contract subscribe_topic, so it would
+# be wired as an independent consumer of the command topic below and throw on
+# the mismatched payload, exactly the silent no-op node_build_loop_orchestrator
+# records in its own contract. Nothing publishes `join_j8_landing_decision`:
+# before this was removed, the operation appeared in this file and nowhere else
+# in src, and only the J8 unit tests construct the handler. The landing
+# controller calls it in process. OMN-23076; the entry arrived with OMN-22919.
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
 runtime_dispatch:
@@ -121,3 +142,29 @@ metadata:
     - pr-landing
     - landing-controller
     - pure
+config:
+  exhaustion_owner:
+    kind: lane
+    name: landing-controller
+# OMN-22919, rebuild plan 4.1 join J8 (piece 8 to piece 9): the decision reads a lab-bound check run on the exact head
+# and only a check carrying the current attempt's identity counts. The join handler answers piece 9's chain on the
+# floor's emission contract under the correlation id piece 8's chain carries: a typed `upstream_` refusal that never
+# started when the check is missing, superseded or failing, and a start then a success or a typed failure otherwise.
+# Nothing of this is spelled in code. The pure decision itself is unchanged for a PR that carries no lab_check fact.
+join_j8:
+  join_id: "J8"
+  from_piece: 8
+  to_piece: 9
+  emission_node: "node_pr_landing_decision_compute"
+  missing_failure_code: "upstream_lab_check_missing"
+  superseded_failure_code: "upstream_lab_check_superseded"
+  failed_failure_code: "upstream_lab_check_failed"
+  not_merged_failure_code: "landing_not_merged"
+# The in-process join handler, bound here and not in handler_routing so the
+# canonical-file-shape ratchet finds it inside this node while the auto-wiring,
+# which reads only handler_routing, never constructs it (OMN-23076).
+in_process_handlers:
+  join_j8:
+    handler:
+      module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
+      class: "HandlerLandingJoinJ8"

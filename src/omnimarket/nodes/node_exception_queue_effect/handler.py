@@ -34,6 +34,9 @@ from omnimarket.models.model_andon_ledger_holds import (
     ModelAndonLedgerHoldsRequest,
     ModelAndonLedgerHoldsResult,
 )
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    priority_class_args,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -200,8 +203,7 @@ def _mechanize(request: ModelExceptionEmitRequest, rows: list[dict[str, Any]]) -
             model,
             "--effort",
             "high",
-            "--priority-class",
-            "process-fix",
+            *priority_class_args(request.ticket_text),
         ]
         if repo:
             command.extend(["--repo", repo])
@@ -719,6 +721,12 @@ class HandlerExceptionCli:
         ):
             ap.add_argument(flag, default="")
         ap.add_argument("--parent")
+        ap.add_argument(
+            "--ticket-text-file",
+            type=Path,
+            default=None,
+            help="the mechanize ticket's text; its Class line sets the lane's --priority-class",
+        )
         ap.add_argument("--decision", action="store_true")
         ap.add_argument("--no-dispatch", action="store_true")
         ap.add_argument("--audience", choices=AUDIENCES, default="orchestrator")
@@ -748,9 +756,25 @@ class HandlerExceptionCli:
                 args.repo,
                 args.readback_command,
             )
+            try:
+                ticket_text = (
+                    args.ticket_text_file.read_text(encoding="utf-8")
+                    if args.ticket_text_file
+                    else ""
+                )
+            except OSError as exc:
+                return ModelExceptionCliResult(
+                    2, f"EXCEPTION-QUEUE refused: --ticket-text-file: {exc}"
+                )
             result = self._emit.handle(
                 ModelExceptionEmitRequest(
-                    where, row, now, runner, args.parent, args.role
+                    where,
+                    row,
+                    now,
+                    runner,
+                    args.parent,
+                    args.role,
+                    ticket_text=ticket_text,
                 )
             )
             detail = f" | {result.detail}" if result.detail else ""

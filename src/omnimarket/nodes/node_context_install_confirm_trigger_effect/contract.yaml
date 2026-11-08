@@ -15,6 +15,10 @@ description: >
   HandlerContextInstallConfirm. Only request_ready carries a confirmation, published on
   the completed topic the receipts projection folds; not_applied (rows_upserted of zero),
   session_unresolved, no_compact_records and all_packages_unreadable publish nothing.
+  With no reader injected (ProtocolSessionCompactSource has no implementation yet,
+  OMN-21115) the handler publishes ModelInstallConfirmSkipped to the skipped topic through
+  the event_publisher the runtime injects, and never to the completed topic. Built
+  without a publisher it returns the model and published_events routes it to the same topic.
   Topics come from this contract.
 input_model:
   name: ModelSessionContentAppliedEvent
@@ -35,6 +39,17 @@ handler_routing:
       event_model:
         name: ModelSessionContentAppliedEvent
         module: omnimarket.models.context_install_confirm_trigger
+dependencies:
+  - name: reader
+    dependency_type: protocol
+    class_name: ProtocolSessionCompactSource
+    module: omnimarket.protocols.protocol_session_compact_source
+    description: Reads a session's captured compact content and published activations.
+    required: false
+    notes: >
+      No implementation is built yet (OMN-21115). Without one the handler records the
+      typed ModelInstallConfirmSkipped event on its own topic and publishes nothing on
+      the completed topic; it never raises.
 descriptor:
   node_archetype: effect
   purity: impure
@@ -46,6 +61,13 @@ event_bus:
     - onex.evt.omnimarket.projection-session-content-applied.v1
   publish_topics:
     - onex.evt.omnimarket.context-install-confirm-completed.v1
+    - onex.evt.omnimarket.context-install-confirm-skipped.v1
+published_events:
+  - event_type: ModelInstallConfirmSkipped
+    topic: onex.evt.omnimarket.context-install-confirm-skipped.v1
+    description: No session compact source was injected, so nothing was read.
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-install-confirm-skipped.v1 # read by operators and the floor; no node subscribes
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.projection-session-content-applied.v1
   terminal_events:

@@ -552,8 +552,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Deployment Fact Gate",
     "Ecosystem Integration Validation",
     "Enforce validator-requirements.yaml (OMN-13291)",
-    "Hostile Review Gate",
-    "Hostile Reviewer (adversarial gate)",
     "Leaked Literals Gate",
     "Legacy Compatibility Check",
     "No Faked Boundary Gate",
@@ -851,23 +849,25 @@ class SweepExclusion:
 
 SWEEP_EXCLUSION_MAX_DAYS: int = 90
 
-# OMN-17427: measured over 43 merged PR heads on 2026-10-17. Only these
-# external pull_request rows skip by design; ci.yml owns the other skips.
+# The registry is data, in ci_summary_sweep_exclusions.json beside this file
+# (stdlib json: the poller runs with no third-party packages). Each entry names
+# its reason, ticket, added date and expiry. The first two were measured over 43
+# merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
+# that skip by design. The Tessl Reviewer entry is RULING 2026-11-05T20:27:56Z
+# (OMN-22478, now OMN-23029): the automated reviewer's neutral row never blocks a merge.
 # Expiry re-arms the sweep.
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
-    "AC1 exact revision row on PostgreSQL 16": SweepExclusion(
-        reason="omn20025-ac1-postgres-proof.yml restricts the proof to PR 3094 from this repository.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-    "auto-tag": SweepExclusion(
-        reason="auto-tag-on-merge.yml runs on closed PRs; the job requires a merged PR with a release label or release title.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-}
+SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
+
+
+def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
+    """Read the exclusion registry; a malformed file raises and fails the gate."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {name: SweepExclusion(**fields) for name, fields in raw.items()}
+
+
+EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
+    SWEEP_EXCLUSIONS_FILE
+)
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
 _SWEEP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1953,18 +1953,14 @@ def validate_sweep_exclusions(
     return findings
 
 
-def _validate_exclusion_fields(
-    name: str,
-    entry: SweepExclusion,
-) -> list[str]:
+def _validate_exclusion_fields(name: str, entry: SweepExclusion) -> list[str]:
     """Validate the reason, owner and bounded expiry of a sweep exclusion."""
 
     findings: list[str] = []
     if not isinstance(entry.reason, str) or not entry.reason.strip():
         findings.append(f"{name}: reason is empty")
-    if not isinstance(entry.ticket, str) or not _SWEEP_TICKET_RE.fullmatch(
-        entry.ticket.strip()
-    ):
+    ticket = entry.ticket if isinstance(entry.ticket, str) else ""
+    if not _SWEEP_TICKET_RE.fullmatch(ticket.strip()):
         findings.append(
             f"{name}: ticket {entry.ticket!r} is not an OMN-<number> reference"
         )
@@ -1974,16 +1970,15 @@ def _validate_exclusion_fields(
         findings.append(f"{name}: added {entry.added!r} is not a YYYY-MM-DD date")
     if expires is None:
         findings.append(f"{name}: expires {entry.expires!r} is not a YYYY-MM-DD date")
-    if added is not None and expires is not None:
-        if expires <= added:
-            findings.append(
-                f"{name}: expires {entry.expires} is not after added {entry.added}"
-            )
-        elif (expires - added).days > SWEEP_EXCLUSION_MAX_DAYS:
-            findings.append(
-                f"{name}: window {(expires - added).days}d exceeds the "
-                f"{SWEEP_EXCLUSION_MAX_DAYS}d cap"
-            )
+    if added is None or expires is None:
+        return findings
+    window, cap = (expires - added).days, SWEEP_EXCLUSION_MAX_DAYS
+    if window <= 0:
+        findings.append(
+            f"{name}: expires {entry.expires} is not after added {entry.added}"
+        )
+    elif window > cap:
+        findings.append(f"{name}: window {window}d exceeds the {cap}d cap")
     return findings
 
 
@@ -2011,11 +2006,8 @@ def active_sweep_exclusions(
             expired.append(name)
             continue
         expires = _parse_exclusion_date(entry.expires)
-        if (
-            _validate_exclusion_fields(name, entry)
-            or expires is None
-            or today >= expires
-        ):
+        spent = expires is None or today >= expires
+        if spent or _validate_exclusion_fields(name, entry):
             expired.append(name)
         else:
             active.add(name)

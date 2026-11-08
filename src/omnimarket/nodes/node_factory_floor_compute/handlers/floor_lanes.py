@@ -8,6 +8,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Literal
 
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
@@ -30,6 +31,9 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
     ModelFloorRunnersOut,
     ModelFloorStationRef,
 )
+
+# A lane owns a floor holdup by an ``owns=floor:<holdup id>`` cell, the explicit rule the ledger MSG uses for pull requests.
+FLOOR_OWNS_PREFIX = "floor:"
 
 
 def _stamp(value: datetime) -> str:
@@ -163,10 +167,11 @@ def build_lanes(
     lines: tuple[ModelFloorLine, ...],
     scopes: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[ModelFloorLane, ...]:
-    """Every lane with a CLAIM no TERMINAL has closed and a row inside the live window."""
+    """Unclosed claims, classified using completion and process evidence before counting occupants."""
     now, config = request.generated_at, request.config
     window = config.lane_live_window_minutes
     receipts = _newest_receipts(request)
+    processes = {p.lane: p for p in request.lane_processes or ()}
     titles = {issue.id: issue.title for issue in request.linear if issue.title}
     prs: dict[str, ModelFloorPr] = {pr.key: pr for pr in request.watcher.prs}
     declared = {m.host for m in request.machines}
@@ -187,6 +192,51 @@ def build_lanes(
         status_row = status or claim
         status_full = status_row.text or status_row.reason
         receipt = receipts.get(lane)
+        # A previous run must never close a new claim of the same lane. Remote claims carry the run id;
+        # without it, only a receipt started at or after this claim can be associated safely.
+        if receipt is not None and (
+            (claim.run_id and receipt.run_id != claim.run_id)
+            or (not claim.run_id and receipt.started_at < claim.ts)
+        ):
+            receipt = None
+        liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
+        detail = "no process reading was supplied"
+        if receipt is not None:
+            if (
+                receipt.final
+                or receipt.ended_at is not None
+                or receipt.status
+                in {
+                    "landing-failed",
+                    "lane-error",
+                    "done",
+                    "failed",
+                    "landed",
+                    "cloud-no-pr",
+                }
+            ):
+                liveness, detail = (
+                    "finished",
+                    f"runner receipt: {receipt.status or 'final'}",
+                )
+            elif receipt.runner_alive is not None:
+                liveness = "alive" if receipt.runner_alive else "dead"
+                detail = (
+                    "runner process is live"
+                    if receipt.runner_alive
+                    else "runner process exited without a final receipt"
+                )
+        process = processes.get(lane)
+        if (
+            liveness != "finished"
+            and process is not None
+            and process.started_at >= claim.ts
+            and process.observed_at <= now
+            and _minutes(now, process.observed_at) <= config.pool_stale_minutes
+            and process.alive is not None
+        ):
+            liveness = "alive" if process.alive else "dead"
+            detail = process.detail
         hosted = [r for r in rows if r.host and r.ts >= claim.ts]
         host = (
             receipt.host
@@ -220,6 +270,16 @@ def build_lanes(
             else (claim.text, "claim")
             if claim.text
             else ("", "unread")
+        )
+        owned = tuple(
+            dict.fromkeys(
+                token.removeprefix(FLOOR_OWNS_PREFIX)
+                for r in rows
+                if r.kind in {"CLAIM", "STATUS"} and r.ts >= claim.ts
+                for token in r.owns
+                if token.startswith(FLOOR_OWNS_PREFIX)
+                and len(token) > len(FLOOR_OWNS_PREFIX)
+            )
         )
         with_prs = [r for r in rows if r.prs and r.ts >= claim.ts]
         pr = pr_key(max(with_prs, key=_key).prs[0]) if with_prs else ""
@@ -262,12 +322,15 @@ def build_lanes(
                 pr_ci_note=watched.ci_note if watched else "",
                 station=_station(lane, tickets, pr, lines, scopes or {}),
                 claim_full=claim.text,
+                liveness=liveness,
+                liveness_detail=detail,
+                owns=owned,
             )
         )
     ordered = sorted(
         lanes, key=lambda item: (item.stalled, item.silent_minutes, item.lane)
     )
-    return tuple(ordered[: config.lane_limit])
+    return tuple(ordered)
 
 
 def _runners(
@@ -418,21 +481,31 @@ def build_machines(
 
 
 def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, ...]:
-    """One bay per drawn machine: the lanes placed on it against its cap, from the same pool read the machine row is.
+    """One bay per drawn machine, counted the way the placement counts it: what is running there, what is free there.
 
-    A machine the pool did not read (unread, in repair or out of selection) or read too long ago has no free bay: its
-    count is the lanes the ledger places there, and it is marked stale rather than shown as room.
+    Running is the larger of the lanes the ledger places on the machine and the units the placement markers hold on it,
+    because a unit of lab work takes a slot of the same cap as a lane does. Free is the machine's own free figure, the
+    pool reading's lane slots, which is zero for a host the reading refuses, so a host the bars refuse is never drawn
+    as room. The bay's slots are those two added together: a refused host adds only what runs on it. A machine the pool
+    did not read (unread, in repair or out of selection) or read too long ago has no free bay: its count is the lanes
+    the ledger places there, its slots are its cap, and it is marked stale rather than shown as room.
     """
     bays: list[ModelFloorBay] = []
     for machine in sorted(machines, key=lambda m: m.host):
-        slots = machine.cap or 0
         stale = machine.state != "read" or machine.stale
+        running = max(machine.lanes_placed, machine.units_placed or 0)
+        if stale:
+            slots, free = machine.cap or 0, 0
+            running = machine.lanes_placed
+        else:
+            free = machine.free_slots
+            slots = running + free
         bays.append(
             ModelFloorBay(
                 host=machine.host,
                 slots=slots,
-                running=machine.lanes_placed,
-                free=0 if stale else max(0, slots - machine.lanes_placed),
+                running=running,
+                free=free,
                 stale=stale,
             )
         )
@@ -503,7 +576,8 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     if request.cloud_accounts is None:
         return ModelFloorCloud(
             state="unread",
-            note="the cloud accounts file could not be read",
+            note=request.cloud_accounts_cause
+            or "the cloud accounts file could not be read",
             accounts=(),
             sessions=sessions,
             lamps=lamps,
@@ -512,12 +586,13 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     ready = [
         a
         for a in sorted(request.cloud_accounts, key=lambda a: a.name)
-        if a.name in declared and a.login in config.cloud_ready_logins
+        if a.identity == "account"
+        or (a.name in declared and a.login in config.cloud_ready_logins)
     ]
     accounts = tuple(
         ModelFloorCloudAccountOut(
             name=a.name,
-            ready=True,
+            ready=a.login in config.cloud_ready_logins,
             login=a.login,
             cap=a.cap,
             open_sessions=open_by_account[a.name]
@@ -536,12 +611,16 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     others = sum(
         1
         for a in request.cloud_accounts
-        if a.name in declared and a.login not in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name in declared
+        and a.login not in config.cloud_ready_logins
     )
     undeclared = sum(
         1
         for a in request.cloud_accounts
-        if a.name not in declared and a.login in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name not in declared
+        and a.login in config.cloud_ready_logins
     )
     notes = [
         text

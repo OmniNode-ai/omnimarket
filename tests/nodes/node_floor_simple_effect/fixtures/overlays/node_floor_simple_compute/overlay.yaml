@@ -1,0 +1,240 @@
+# Overlay of node_floor_simple_compute (OMN-19998, 17a): the factory floor's pieces, joins, bounds and wording.
+# Loaded into ModelFloorSimpleOverlay. Nothing here is in code: change a value here and the floor changes.
+#
+# The 18 pieces are the rebuild plan's list (section 2.1). reading_max_age_s is the plan's reading rule (3.5): 24 hours
+# by default, 8 days for the weekly walk (piece 18), 15 minutes for the lab-state piece (17).
+pieces:
+  - {piece: 1, name: Code graph, reading_max_age_s: 86400, what: "A map of how the code of every repository connects, rebuilt on a schedule, so a change can be traced to what it touches."}
+  - {piece: 2, name: Hosts and capacity, reading_max_age_s: 86400, what: "The list of lab machines, how many lanes each can carry and whether each one answers, checked on a timer."}
+  - {piece: 3, name: "Bus, runtime and seams", reading_max_age_s: 86400, what: "The message bus and the one runtime, and the places where one node hands work to another."}
+  - {piece: 4, name: "Contracts, overlays and injected dependencies", reading_max_age_s: 86400, what: "Every node says what it does in a contract, takes its settings from an overlay and is given what it uses from outside."}
+  - {piece: 5, name: Secrets, reading_max_age_s: 86400, what: "Where the keys and passwords live, who can read them and how they are rotated, never in code or in chat."}
+  - {piece: 6, name: Ledger and state, reading_max_age_s: 86400, what: "The one record of what every lane claimed, did and finished, kept on the bus and read back."}
+  - {piece: 7, name: Process spine, reading_max_age_s: 86400, what: "The rules that stop a line, hold new work and let it in again, run by the system and not by hand."}
+  - {piece: 8, name: "CI, runners and the central test location", reading_max_age_s: 86400, what: "Where tests and checks run, on which machines, and the one place their results are kept."}
+  - {piece: 9, name: Landing and merge queue, reading_max_age_s: 86400, what: "How a finished change reaches the main branch, through checks, queue and merge, without anyone watching it."}
+  - {piece: 10, name: Install and release, reading_max_age_s: 86400, what: "How a merged change gets onto the machines that run it, and how a release is cut."}
+  - {piece: 11, name: Dev deploy and runtime, reading_max_age_s: 86400, what: "Putting the merged code on the dev lab runtime and showing that it runs."}
+  - {piece: 12, name: Dispatch and placement, reading_max_age_s: 86400, what: "How a piece of work is handed to a lane and put on the lab machine with room for it."}
+  - {piece: 13, name: Results and tracking, reading_max_age_s: 86400, what: "What each lane's result really was, success or failure, recorded in one place and counted."}
+  - {piece: 14, name: Review, reading_max_age_s: 86400, what: "Checking each change before it merges, with a model reviewer, and recording what it found."}
+  - {piece: 15, name: "Delegation and the chain of responders", reading_max_age_s: 86400, what: "Sending work to the cheapest model that can do it, measured, and moving up only on a measured miss."}
+  - {piece: 16, name: "Context, memory and evals", reading_max_age_s: 86400, what: "What a lane knows when it starts, what it remembers, and the tests that say whether that helps."}
+  - {piece: 17, name: Observability and the floor, reading_max_age_s: 900, what: "The factory floor page itself and the readings behind it, so a stopped line shows up as it happens."}
+  - {piece: 18, name: Onboarding and the customer path, reading_max_age_s: 691200, what: "A new person's walk from sign-up to a first working result, walked every week."}
+
+# The joins (plan 4.1). J0 is step 0 (the floor, piece 17) to piece 1; J-cycle is review back to landing.
+joins:
+  - {id: J0, from_piece: 17, to_piece: 1, label: "step 0 to the code graph"}
+  - {id: J1, from_piece: 1, to_piece: 2, label: "code graph to hosts"}
+  - {id: J2, from_piece: 2, to_piece: 3, label: "hosts to bus"}
+  - {id: J3, from_piece: 3, to_piece: 4, label: "bus to overlays"}
+  - {id: J4, from_piece: 4, to_piece: 5, label: "overlays to secrets"}
+  - {id: J5, from_piece: 5, to_piece: 6, label: "secrets to ledger"}
+  - {id: J6, from_piece: 6, to_piece: 7, label: "ledger to process spine"}
+  - {id: J7, from_piece: 7, to_piece: 8, label: "process spine to CI"}
+  - {id: J8, from_piece: 8, to_piece: 9, label: "CI to landing"}
+  - {id: J9, from_piece: 9, to_piece: 10, label: "landing to install"}
+  - {id: J10, from_piece: 10, to_piece: 11, label: "install to dev deploy"}
+  - {id: J11, from_piece: 11, to_piece: 12, label: "dev deploy to dispatch"}
+  - {id: J12, from_piece: 12, to_piece: 13, label: "dispatch to results"}
+  - {id: J13, from_piece: 13, to_piece: 14, label: "results to review"}
+  - {id: J14, from_piece: 14, to_piece: 15, label: "review to delegation"}
+  - {id: J15, from_piece: 15, to_piece: 16, label: "delegation to context and evals"}
+  - {id: J16, from_piece: 16, to_piece: 17, label: "evals to the floor"}
+  - {id: J17, from_piece: 17, to_piece: 18, label: "the floor to onboarding"}
+  - {id: J-cycle, from_piece: 14, to_piece: 9, label: "review back to landing"}
+
+# The rebuild strip. Piece 17 is step 0 (17a) and its reading is the lab state.
+rebuild:
+  # The go is read from the ledger's RULING rows, never set here: a ruling on ticket OMN-22478 by the orchestrator lane whose
+  # question asks to start rebuild piece N (or pieces N to M) grants those pieces when the operator's words answer yes, and
+  # takes them back when a later answer does not. The go reaches piece N only when pieces 1 to N are all granted.
+  go:
+    ticket: OMN-22478
+    lane: orchestrator-31d9
+    lookback_days: 60
+    question_pattern: '(?i)\bstart rebuild pieces? (?P<first>\d+)(?: to (?P<last>\d+))?'
+    affirmative_pattern: '(?i)^\W*(go|you may|yes|start)\b'
+  # Only the piece shown while the go cannot be read; with the go read, the strip names the first admitted piece not working.
+  current_piece: 1
+  step0_pieces: [17]
+  lab_state_piece: 17
+  # A piece whose own reading covers only part of its name also stands on these lab sources (piece -> source ids).
+  # Piece 8 is read from the central test harness's stored result; its CI runners are the lab source runner_groups.
+  piece_lab_sources:
+    8: [runner_groups]
+
+numbers:
+  landing_goal_per_hour: 10
+  merge_window_minutes: 60
+  excluded_pr_classes: [held-excluded]
+  watcher_max_age_s: 900
+  record_max_age_s: 900
+
+# Cause wording and owners. A cause draws red only when no live lane is on one of its tickets, or it needs the operator.
+# owners maps a cause id to the tickets whose lanes work on it. needs_operator lists the causes only the operator can clear.
+causes:
+  max_shown: 5
+  pr_classes:
+    red: Pull requests have red checks
+    queue-stuck: Pull requests are stuck in the merge queue
+    green-unarmed: Green pull requests are waiting to be armed
+  titles:
+    "stoppage:lab-idle": Lab slots sit idle while work waits
+    "stoppage:lab-source-unreadable": A lab source could not be read
+    "stoppage:lab-enumerate-unreadable": The lab host list could not be read
+    "stoppage:lab-enumerate-partial": The lab host list was only partly read
+    "stoppage:unclassified": Stoppages that have no class yet
+    "stoppage:throughput-results": Landing results fall short of the goal
+    "stoppage:adoption-persisting": A merged fix was not installed
+    "alarm:undelivered": A lab alarm has no delivery receipt
+  # No ticket owns a pull request class. A lane is on a class when it works on one of the class's pull requests (its
+  # pr field); the shared landing ticket is on every landing lane and says nothing about which cause a lane is on.
+  owners: {}
+  # Stoppages whose logged cost is the reporter's estimate of idle capacity (free slots times the next interval, or an
+  # estimated short-fall), not lost work that anything measured: the floor leaves the figure out.
+  estimated_cost_stoppages:
+    - "stoppage:lab-idle"
+    - "stoppage:lab-source-unreadable"
+    - "stoppage:lab-enumerate-unreadable"
+    - "stoppage:lab-enumerate-partial"
+    - "stoppage:job-exit"
+    - "stoppage:throughput-results"
+  # The friction rollup is built every two hours, so a stoppage seen within three hours is still occurring as far as the
+  # rollup can say; an older one says no row since in the rollup.
+  still_occurring_within_s: 10800
+  needs_operator:
+    - "alarm:undelivered"
+  ignore_stoppages: []
+
+# The reading writer's rows: one STATUS row of its own lane per piece per window. The floor draws each piece's reading from
+# the newest one, so the strip, the colour and the staleness rule read what the writer wrote.
+ledger_readings:
+  row_type: STATUS
+  lane: reading-writer
+  cells: {src: reading}
+  piece_cell: piece
+  verdict_cell: verdict
+  probed_at_cell: probed_at
+  published_at_cell: published_at
+  max_age_cell: max_age
+  reason_cell: reason
+  lookback_days: 3
+
+# A piece's shadow results (OMN-22902): the code graph's pull request check logs what it would refuse and holds no merge. The
+# floor shows the newest row under piece 1 with its age against the max age the row declares, and never draws the piece red from it.
+ledger_shadows:
+  - piece: 1
+    label: Pull request check in shadow
+    row_type: STATUS
+    lane: code-graph
+    cells: {src: code-graph-shadow, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: checked, label: checked}
+      - {cell: would_refuse, label: would refuse}
+      - {cell: indeterminate, label: unreadable}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
+
+freshness_max_age_s: 900
+error_receipt_max_age_s: 86400
+error_drill_after_s: 21600
+chain_deadline_s: 900
+details_href: detail.html
+
+# Pieces whose golden and error events are ledger rows instead of emissions. A golden row stands for a start and a success of
+# node, an error row for a start and a typed failure (a drill when the row says drill=yes), under a correlation id the row
+# decides. Piece 1 is the nightly code graph: one STATUS row a run from node_code_graph_effect.
+piece_events:
+  - piece: 1
+    node: "node_code_graph_effect:run_code_graph"
+    golden:
+      row_type: STATUS
+      lane: code-graph
+      cells: {src: code-graph, drill: "no", outcome: read}
+    error:
+      row_type: STATUS
+      lane: code-graph
+      cells: {src: code-graph, drill: "yes", outcome: source-unreadable}
+    failure_code_cell: fault
+    failure_default: source_unreadable
+    error_drill_cell: drill
+    lookback_days: 30
+  # Pieces 2 to 6 (OMN-22739). A golden row is a WORKING row that is not a drill; an error row is any NOT_WORKING row, drill or
+  # not, so a real failure counts as a typed failure and a drill stays marked as one (error_drill_cell). A reading that is
+  # NOT_WORKING every hour is therefore a failure event every hour, and a broken chain the floor shows for it is a real one.
+  # The failure code is the row's reason cell: it names what failed.
+  - piece: 2
+    node: "node_host_reading_effect:host_canary"
+    golden:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: host-canary, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: host-canary, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: canary_untyped
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 3
+    node: "node_seam_deadline_probe_effect:read"
+    golden:
+      row_type: STATUS
+      lane: seam-deadline
+      cells: {src: seam-deadline, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: seam-deadline
+      cells: {src: seam-deadline, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_result_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 4
+    node: "node_overlay_drift_effect:read"
+    golden:
+      row_type: STATUS
+      lane: overlay-drift
+      cells: {src: overlay-drift, verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: overlay-drift
+      cells: {src: overlay-drift, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: overlay_drift
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 5
+    node: "node_secret_reading_effect:read"
+    golden:
+      row_type: STATUS
+      lane: secret-reading
+      cells: {src: secret-reading, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: secret-reading
+      cells: {src: secret-reading, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: secret_reading_failed
+    error_drill_cell: drill
+    lookback_days: 7
+  - piece: 6
+    node: "node_host_reading_effect:ledger_durability"
+    golden:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: ledger-durability, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: host-reading
+      cells: {src: host-reading, probe: ledger-durability, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_durable_row_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7

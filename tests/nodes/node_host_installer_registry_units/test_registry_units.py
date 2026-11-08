@@ -8,7 +8,9 @@ import importlib
 import json
 import os
 import plistlib
+import signal
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -91,6 +93,7 @@ def request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "workspace_config_root": str(tmp_path / "ws"),
         "plans_path": str(tmp_path / "plans"),
         "marketplace_root": str(tmp_path / "market"),
+        "runtime_ssh_host": "lab-runtime",
     }
     fields.update(kw)
     return ModelRegistryUnitsRequest(**fields)
@@ -251,6 +254,7 @@ def test_install_writes_the_plist_loads_it_and_records_the_revision_it_runs(
     proofs = [c for c in run.calls if c[0] == "/usr/bin/uv"]
     assert proofs
     assert str(branch) in proofs[0]
+    assert "--no-sync" not in proofs[0]
 
 
 def test_the_rendered_unit_and_its_proof_run_on_the_brew_interpreter(
@@ -328,3 +332,245 @@ def test_the_contract_declares_the_override_and_the_node_is_registered() -> None
         yaml.safe_load((NODE_DIR / "metadata.yaml").read_text(encoding="utf-8"))["name"]
         == contract["name"]
     )
+
+
+HARNESS_UNIT = "lab-test-harness"
+HARNESS_ENTRY = (
+    "src/omnimarket/nodes/node_lab_test_harness_effect/runtime_lab_test_harness.py"
+)
+
+
+def test_the_central_test_harness_unit_runs_its_timer_module_hourly_from_a_branch_checkout(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=HARNESS_ENTRY)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=HARNESS_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    plist = plist_of(result.rendered)
+    assert plist["Label"] == "ai.omninode.lab-test-harness"
+    assert plist["StartInterval"] == 3600
+    assert plist["RunAtLoad"] is True
+    args = plist["ProgramArguments"]
+    assert args[args.index("-m") + 1] == (
+        "omnimarket.nodes.node_lab_test_harness_effect.runtime_lab_test_harness"
+    )
+    assert args[args.index("--project") + 1] == str(branch)
+    assert args[args.index("--python") + 1] == BREW_PYTHON
+    environment = plist["EnvironmentVariables"]
+    assert environment["ONEX_STATE_DIR"] == str(tmp_path / "omni" / ".onex_state")
+    assert environment["OMNIBASE_PATH"] == str(tmp_path / "omni")
+    record = json.loads(
+        (
+            tmp_path
+            / "omni"
+            / ".onex_state"
+            / HARNESS_UNIT
+            / f"{HARNESS_UNIT}.installed.json"
+        ).read_text()
+    )
+    assert record["revision"] == revision
+    assert record["project_is_canonical"] is False
+
+
+def test_the_central_test_harness_unit_refuses_a_checkout_without_its_timer_module(
+    tmp_path: Path, canonical: Path
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)  # carries only the floor's entry file
+    result = HandlerRegistryUnits(real_run).handle(
+        request(
+            tmp_path,
+            unit=HARNESS_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "failure"
+
+
+class Overlap:
+    """A runner that, on its first launchctl bootout, sends a second request for the unit while the first install runs."""
+
+    def __init__(self, second: Any) -> None:
+        self.second = second
+        self.nested: Any = None
+
+    def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        if argv[:2] == ["launchctl", "bootout"] and self.nested is None:
+            self.nested = self.second()
+        return real_run(argv)
+
+
+def test_a_second_install_of_the_unit_is_refused_while_the_first_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    other = Recorder()
+    overlap = Overlap(lambda: HandlerRegistryUnits(other).handle(install))
+    first = HandlerRegistryUnits(overlap).handle(install)
+    assert first.status == "success", first.stderr
+    assert overlap.nested.exit_code == 75
+    assert overlap.nested.status == "failure"
+    assert "INSTALL-IN-PROGRESS" in overlap.nested.stderr
+    assert f"pid={os.getpid()}" in overlap.nested.stderr
+    assert other.calls == []
+
+
+def test_the_lock_is_released_when_an_install_fails_so_the_next_one_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    refused = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision="0" * 40,
+        )
+    )
+    assert refused.exit_code == 1
+    retry = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert retry.status == "success", retry.stderr
+
+
+def test_a_dry_run_and_a_status_read_never_take_the_lock(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    reads: list[Any] = []
+
+    def read_while_installing() -> Any:
+        for mode in ("dry-run", "status"):
+            reads.append(
+                HandlerRegistryUnits(Recorder()).handle(
+                    request(
+                        tmp_path,
+                        mode=mode,
+                        project_path=str(branch),
+                        expected_revision=revision,
+                    )
+                )
+            )
+        return reads[-1]
+
+    first = HandlerRegistryUnits(Overlap(read_while_installing)).handle(install)
+    assert first.status == "success", first.stderr
+    assert reads[0].exit_code == 0
+    assert all("INSTALL-IN-PROGRESS" not in r.stderr for r in reads)
+
+
+def test_installs_of_two_different_units_never_take_the_same_lock(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    harness = tmp_path / "harness"
+    harness_revision = make_checkout(harness, entry=HARNESS_ENTRY)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    other_unit = request(
+        tmp_path,
+        unit=HARNESS_UNIT,
+        mode="install",
+        project_path=str(harness),
+        expected_revision=harness_revision,
+    )
+    overlap = Overlap(lambda: HandlerRegistryUnits(Recorder()).handle(other_unit))
+    first = HandlerRegistryUnits(overlap).handle(install)
+    assert first.status == "success", first.stderr
+    assert overlap.nested.status == "success", overlap.nested.stderr
+    assert overlap.nested.exit_code == 0
+    assert "INSTALL-IN-PROGRESS" not in overlap.nested.stderr
+
+
+def test_the_lock_dies_with_its_holder_process_so_the_next_install_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    state = tmp_path / "omni" / str(load_units()[UNIT]["state_directory"])
+    state.mkdir(parents=True, exist_ok=True)
+    lock = state / f"{UNIT}.install.lock"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, sys, time\n"
+            "handle = open(sys.argv[1], 'a+')\n"
+            "fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+            "print('held', flush=True)\n"
+            "time.sleep(600)\n",
+            str(lock),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        install = request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+        recorder = Recorder()
+        refused = HandlerRegistryUnits(recorder).handle(install)
+        assert refused.exit_code == 75
+        assert "INSTALL-IN-PROGRESS" in refused.stderr
+        assert recorder.calls == []
+        holder.send_signal(signal.SIGKILL)
+        holder.wait(timeout=30)
+        retry = HandlerRegistryUnits(Recorder()).handle(install)
+        assert retry.status == "success", retry.stderr
+    finally:
+        if holder.poll() is None:
+            holder.send_signal(signal.SIGKILL)
+            holder.wait(timeout=30)
+        if holder.stdout is not None:
+            holder.stdout.close()

@@ -330,6 +330,10 @@ class ModelFloorLane(BaseModel):
     pr_ci_note: str
     station: ModelFloorStationRef | None
     claim_full: str
+    liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
+    liveness_detail: str = "no process reading was supplied"
+    # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
+    owns: tuple[str, ...] = ()
 
 
 class ModelFloorLamp(BaseModel):
@@ -387,6 +391,120 @@ class ModelFloorCloud(BaseModel):
     lamps: tuple[ModelFloorLamp, ...]
 
 
+ReadingState = Literal["read", "stale", "unread"]
+HostCondition = Literal["out", "unread", "stale", "refusing", "read"]
+
+
+class ModelHostNumber(BaseModel):
+    """One number of a host's status with the source that gave it, its read time and its age.
+
+    ``state`` is ``read`` only for a value inside its freshness bound; a value older than the bound keeps its number and
+    is ``stale``; a value with no source, or whose source could not be read, has no number and ``reason`` says why.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ReadingState
+    value: float | None
+    unit: str
+    source: str
+    read_at: str
+    age_min: int | None
+    reason: str
+
+
+class ModelHostFlag(BaseModel):
+    """One yes-or-no fact of a host's status, with the same state, source and reason as a number."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ReadingState
+    value: bool | None
+    source: str
+    read_at: str
+    age_min: int | None
+    reason: str
+
+
+class ModelHostLaneUse(BaseModel):
+    """One worker occupying a slot of a host: its name, ticket, kind and how long it has run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    ticket: str
+    kind: str
+    engine: str
+    started_at: str
+    run_minutes: int
+    stalled: bool
+
+
+class ModelFloorHostStatus(BaseModel):
+    """One host of the host table: availability, slots, occupants and health, each value from its own source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    label: str
+    condition: HostCondition
+    # Availability as the host table states it; ``state`` is unread when the table was not read or holds no row.
+    available: ModelHostFlag
+    unavailable_reason: str
+    cap: ModelHostNumber
+    # Placed units (every slot marker: remote lanes, landing-worker leases and lab-run jobs) against the cap.
+    slots_used: ModelHostNumber
+    slots_free: ModelHostNumber
+    admission_refusal: str
+    lanes: tuple[ModelHostLaneUse, ...]
+    landing_workers: tuple[ModelHostLaneUse, ...]
+    # Placed units that are not remote lanes: lab-run jobs and the landing workers' own leases (a marker does not say which).
+    other_units: ModelHostNumber
+    load_per_core: ModelHostNumber
+    mem_free_gb: ModelHostNumber
+    mem_pressure: ModelHostNumber
+    swap_used_pct: ModelHostNumber
+    disk_free_gb: ModelHostNumber
+    disk_used_pct: ModelHostNumber
+    heartbeat_age_min: ModelHostNumber
+    drift_open: ModelHostNumber
+    docker: ModelHostFlag
+    reading_age: ModelHostNumber
+
+
+class ModelFloorStoppedLane(BaseModel):
+    """A lane that ended short with work left (OMN-22934): what it named, its last rows and where its report is."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    # The ticket the lane worked on: the first of its tickets that is not an umbrella, else its first ticket.
+    ticket: str
+    # The lane's tickets that are not umbrellas: what ties a live lane to the same work.
+    tickets: tuple[str, ...] = ()
+    outcome: str
+    ended_at: str
+    age_minutes: int
+    # What the ending row names: any of "branch", "ask", "next-step".
+    names: tuple[str, ...]
+    branch: str = ""
+    head: str = ""
+    prs: tuple[str, ...] = ()
+    # The lane's last rows, newest last, each cut; the continuation lane's brief carries them.
+    rows: tuple[str, ...]
+    report_path: str
+
+
+class ModelFloorStoppedSkip(BaseModel):
+    """A lane whose newest TERMINAL ended short but is not listed, with the cause."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    outcome: str
+    cause: str
+
+
 class ModelFloorSection(BaseModel):
     """The floor around the lines."""
 
@@ -395,6 +513,7 @@ class ModelFloorSection(BaseModel):
     machines: tuple[ModelFloorMachine, ...]
     cloud: ModelFloorCloud
     lanes: tuple[ModelFloorLane, ...]
+    inactive_lanes: tuple[ModelFloorLane, ...] = ()
     stall_minutes: int
     lane_window_minutes: int
     bays: tuple[ModelFloorBay, ...]
@@ -404,6 +523,14 @@ class ModelFloorSection(BaseModel):
     phoenix_traces: ModelFloorPhoenixTraces
     # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
     merged_running: ModelMergedRunningCountResult | None = None
+    # One status per host of the host table (the Machines tab); empty only in a record written before it existed.
+    host_status: tuple[ModelFloorHostStatus, ...] = ()
+    # Lanes that ended partial, blocked or failed with a branch, an ask or a next step named and no lane on them since.
+    stopped: tuple[ModelFloorStoppedLane, ...] = ()
+    # Lanes inside the window that ended short and are not listed, each with its cause.
+    stopped_skipped: tuple[ModelFloorStoppedSkip, ...] = ()
+    # Why no stopped lane could be listed (an unread goal scope); empty when the source was read.
+    stopped_cause: str = ""
 
 
 class ModelFloorSources(BaseModel):
@@ -421,6 +548,7 @@ class ModelFloorSources(BaseModel):
     host_table_read: bool
     placement_markers_read: bool
     receipts_read: bool
+    lane_processes_read: bool = False
     cloud_accounts_read: bool
     runner_fleet_read: bool
     # False when no reader supplied the running-on-dev records, so no merge could be shown running.

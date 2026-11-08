@@ -30,12 +30,18 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     load_runtime,
     run_process,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
+    HandlerProcessHealthPayload,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelReportData,
     ModelReportEntry,
     ModelReportsPublishRequest,
     ModelReportsPublishResult,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadRequest,
 )
 
 MANIFEST_SCHEMA = "omni.reports-site/1"
@@ -165,10 +171,19 @@ class HandlerReportsPublish:
         path = home / item.relpath
         try:
             stat = path.stat()
-            if stat.st_size > MAX_DATA_BYTES:
+            if item.projection == "process_health_summary":
+                health = HandlerProcessHealthPayload().handle(
+                    ModelProcessHealthPayloadRequest(source_path=str(path))
+                )
+                if health.summary is None:
+                    row["reason"] = health.reason
+                    return row, None
+                raw = health.summary
+            elif stat.st_size > MAX_DATA_BYTES:
                 row["reason"] = f"larger than {MAX_DATA_BYTES} bytes"
                 return row, None
-            raw = path.read_bytes()
+            else:
+                raw = path.read_bytes()
         except OSError as exc:
             row["reason"] = f"not readable ({type(exc).__name__})"
             return row, None

@@ -1,0 +1,46 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22609
+title: "The onex.nodes entry points are kept sorted so two node-adding pull requests do not conflict"
+summary: >-
+  Every node-adding pull request appended one line at the end of the onex.nodes entry-point table, so any two of
+  them conflicted and a conflicted head gets no pull_request CI. The table is sorted by node name and a test fails
+  on an unsorted table, so two different nodes insert at different lines and merge cleanly.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22609-sorted-entry-points
+    statement: The onex.nodes table is sorted by name, an unsorted table fails a test, a node without an entry still fails the drift validator, and two different nodes added on two branches merge without a conflict.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the table is sorted by name and a table with two names swapped is reported out of order -- falsifier: uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov'
+      - id: AC2
+        statement: 'AC2: a node directory with no entry still fails the node drift validator -- falsifier: uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov'
+      - id: AC3
+        statement: 'AC3: two branches that add different nodes to the table merge with git merge and no conflict, and the append-at-the-end control conflicts -- falsifier: uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The sorted table, the report of a swapped pair, the drift validator on a left-out node, and the two-branch merge with its conflicting control.
+    command: uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22609-sorted-entry-points
+    description: The real table is sorted, a swapped pair is reported out of order, a node without an entry fails the drift validator, and two sorted insertions merge clean while two appends conflict.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov
+        cwd: .
+  - id: dod-omn22609-sorted-entry-points-integration-proof
+    description: The pushed head ran the suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22609 -- uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py -q --no-cov'
+        cwd: .

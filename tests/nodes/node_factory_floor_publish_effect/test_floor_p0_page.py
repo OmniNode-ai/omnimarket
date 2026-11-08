@@ -23,7 +23,7 @@ FIXTURE: dict[str, Any] = json.loads(
         / "tests/nodes/node_factory_floor_publish_effect/floor_p0_record.json"
     ).read_text(encoding="utf-8")
 )
-DASH_SRC = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+DASH_SRC = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 FLOOR_SRC = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
 LABEL = {
     "queued": "Queued",

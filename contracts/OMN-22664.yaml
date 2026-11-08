@@ -1,0 +1,40 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-22664
+title: T10a The delegation projection writer names its retired consumer group, so its fold into the dev runtime resumes from the container's committed offsets (one-runtime plan)
+summary: The omnimarket half of the one-runtime plan's T10. node_projection_delegation already dispatches in process (omnimarket#4799) and still runs as its own container on the dev lane. Its contract now declares the container's consumer group under consumer_group_handover, as the five writers folded on 2026-11-03 do (OMN-21753), so omnibase_infra's subscribe preflight seeds the runtime's groups from that group's committed offsets when the fold lands. On a runtime that does not carry the projection-writer-delegation profile the key is never read and nothing changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22664-delegation-declares-handover
+  statement: The delegation writer declares its retired container's consumer group, so the handover the omnibase_infra preflight performs at the fold has a source and no event published during the swap is skipped.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_projection_delegation''s contract declares consumer_group_handover from omnimarket-projections delegation-writer v1 with from_auto_offset_reset earliest, and the test fails without the declaration -- falsifier: uv run pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q'
+evidence_requirements:
+- kind: tests
+  description: The delegation writer's contract declares its retired group and carries its projection-writer runtime profile, beside the five writers already folded.
+  command: uv run pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22664-delegation-declares-handover
+  description: The declaration half of T10 in this repository. The test case for the delegation writer fails at the merge base (no consumer_group_handover key) and passes on this branch. The live handover is AC2 of the ticket, read on dev after the omnibase_infra fold deploys.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22664-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live handover itself is read on dev after the omnibase_infra fold deploys (ticket AC2).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22664 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q --no-cov
+    cwd: .

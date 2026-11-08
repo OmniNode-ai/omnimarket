@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_repo_state_watcher_refresh_effect
+version: "0.1.0"
+description: "Effect: the declared command that refreshes a host's PR watcher state (ask the watcher for a tick, bring the state to the host), reading the state's read time before and after. Run by the repository state query when a watcher read is behind the bus."
+pack: pipeline
+node_role: effect
+display_name: "Repository State Watcher Refresh Effect (per host)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_repo_state_watcher_refresh_effect: "omnimarket.nodes.node_repo_state_watcher_refresh_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "click>=8.1.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "repo-state", "watcher"]

@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -17,7 +16,6 @@ from types import MappingProxyType
 from typing import Any, Final
 from uuid import UUID, uuid4
 
-import yaml
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from pydantic import ValidationError
@@ -26,6 +24,7 @@ from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_modelled_terminal_savings import (
     apply_modelled_terminal_savings,
 )
@@ -43,6 +42,18 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_aggregate_coalescer import (
+    AggregateCoalescer,
+    window_s_from_contract,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_coercion import (
+    _as_decimal_local,
+    _as_int_local,
+    _coerce_gate_labels,
+    _gate_count,
+    _safe_int_or_none,
+    _safe_numeric_str,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
@@ -314,8 +325,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     ) -> None:
         super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(_path) as f:
-            self._contract: dict[str, Any] = yaml.safe_load(f)
+        self._contract: dict[str, Any] = load_contract(_path)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         self._standalone_db_tables = tuple(_tables)
@@ -438,6 +448,22 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # SECOND resolver over the same event -- the "two divergent resolvers"
         # class OMN-15919 and OMN-17422 were each an instance of.
         self._last_delegation_write_tenant: str | None = None
+        # OMN-22874: in the consume loop the aggregate republish is coalesced
+        # per contract window, off the commit path; per-delivery stays inline.
+        self._coalescer = AggregateCoalescer(
+            window_s_from_contract(self._contract), self._publish_aggregate_snapshots
+        )
+
+    async def run(self) -> None:
+        if self._coalescer.window_s is not None:
+            self._coalescer.enable()
+        await super().run()
+
+    async def _stop_producer(self) -> None:
+        # Every exit of run and shutdown stops the producer: publish what the
+        # coalescer still holds first.
+        await self._coalescer.drain()
+        await super()._stop_producer()
 
     def _resolve_aggregate_exposures(
         self, contract_path: Path
@@ -905,7 +931,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                     "recording the tenant that write ran under; refusing to "
                     "republish the aggregates under an unnamed tenant"
                 )
-            await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
+            if self._coalescer.enabled:
+                self._coalescer.mark_dirty(meta, tenant=write_tenant)
+            else:
+                await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
 
         if ok and self._terminal_topic:
             correlation_id = (
@@ -2342,83 +2371,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             proof["projection_owner"],
         )
         return True
-
-
-def _safe_numeric_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    try:
-        n = float(value)
-        if not math.isfinite(n):
-            return None
-        return str(n)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        n = float(value)
-        if not math.isfinite(n):
-            return None
-        return round(n)
-    except (ValueError, TypeError):
-        return None
-
-
-def _coerce_gate_labels(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        try:
-            decoded = json.loads(text)
-        except json.JSONDecodeError:
-            return [text]
-        return _coerce_gate_labels(decoded)
-    if isinstance(value, list | tuple | set):
-        return [str(item) for item in value if str(item)]
-    return [str(value)]
-
-
-def _gate_count(value: list[str] | None) -> int:
-    return len(value or [])
-
-
-def _as_decimal_local(value: object) -> Decimal:
-    if value is None:
-        return Decimal("0")
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, bool):
-        return Decimal(int(value))
-    if isinstance(value, int | float):
-        return Decimal(str(value))
-    if isinstance(value, str):
-        try:
-            return Decimal(value)
-        except (ValueError, ArithmeticError):
-            return Decimal("0")
-    return Decimal("0")
-
-
-def _as_int_local(value: object) -> int:
-    if value is None:
-        return 0
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int | float | Decimal):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return 0
-    return 0
 
 
 if __name__ == "__main__":

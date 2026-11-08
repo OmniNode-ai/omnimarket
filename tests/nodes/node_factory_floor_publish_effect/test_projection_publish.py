@@ -146,7 +146,16 @@ def test_published_site_pages_carry_memory_used_label(tmp_path: Path) -> None:
         environ={},
     )
 
-    pages = sorted(str(path.relative_to(site)) for path in site.rglob("index.html"))
-    assert pages == ["floor/index.html", "index.html"], (pages, result.published)
-    for page in pages:
+    pages = sorted(str(path.relative_to(site)) for path in site.rglob("*.html"))
+    assert pages == [
+        "compare.html",
+        "detail.html",
+        "floor/index.html",
+        "index.html",
+    ], (
+        pages,
+        result.published,
+    )
+    # The address shows the simple floor (OMN-19998); the pages with every figure are the detail page and the floor page.
+    for page in ("detail.html", "floor/index.html"):
         assert "Memory used" in (site / page).read_text(encoding="utf-8"), page

@@ -251,7 +251,6 @@ src/omnimarket/nodes/node_wave_scheduler_orchestrator/handlers/handler_wave_disp
 src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py
 src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_history_verification.py
 src/omnimarket/nodes/node_work_ledger_seq_gap_effect/gap_check.py
-src/omnimarket/nodes/node_worktree_reconcile_effect/__main__.py
 tests/formal/agent_call_adapter_tlc.sh
 tests/formal/andon_stop_tlc.sh
 tests/formal/ci_red_triage_tlc.sh

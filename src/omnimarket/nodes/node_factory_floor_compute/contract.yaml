@@ -59,6 +59,8 @@ config:
   andon_markers: [andon]
   gate_kind: gate
   gate_state: gate
+  # Gate runners also write subject=W0 (and W1a, etc.); these are the same wave's verdict, not a separate gate.
+  gate_wave_subject_template: "W{wave}"
   gate_fail_verdicts: [fail]
   gate_pass_verdicts: [pass]
   done_outcomes: [done, merged]
@@ -97,8 +99,9 @@ config:
   # first hold_exemption_slug_tokens words of the plan's file name (after its date), joined by hyphens.
   hold_exemption_markers: [exempt]
   hold_exemption_slug_tokens: 3
-  # Live lanes (OMN-21733): a lane is live while its newest CLAIM has no TERMINAL after it and it wrote a row inside
-  # lane_live_window_minutes; it is stalled after stall_minutes without a row of any kind.
+  # Unclosed claims inside lane_live_window_minutes are candidates. Finished receipts and absent processes
+  # move them to inactive_lanes and occupy no bay; unknown process evidence stays visible. Silence alone
+  # marks a live worker stalled after stall_minutes, never dead.
   lane_live_window_minutes: 180
   stall_minutes: 45
   status_chars: 140
@@ -138,9 +141,32 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # A lane that ended short is a stopped line (OMN-22934): its newest TERMINAL has one of these outcomes, no later CLAIM by
+  # it or by a lane on the same work, its ticket is in the goal's scope, and the ending row names a branch, an ask or a
+  # next step. The record lists it under floor.stopped with the lane's last rows and the path of its report. A lane that
+  # ended done, or ended short and names nothing, is never listed. An unread goal scope lists none.
+  stopped:
+    outcomes: [partial, blocked, failed]
+    max_age_minutes: 1440
+    # Tickets many lanes share; two lanes on one of these are not on the same work.
+    umbrella_tickets: [OMN-22478, OMN-19998, OMN-17427]
+    branch_patterns:
+    - '\b(omn-\d+-[a-z0-9][a-z0-9._-]*)'
+    - '\b((?:docs|fix|feat|chore|automation)/[a-z0-9][a-z0-9._/-]*)'
+    head_pattern: '\bheads?\s+([0-9a-f]{7,40})\b'
+    ask_markers: ["needs a decision", "needs a ruling", "an ask", "ask for", "one plain ask", "blocker"]
+    next_step_markers: ["next step", "next:", "what is left", "left to do", "still to do", "not yet", "not installed", "not proven", "follow-up", "follow up", "needs "]
+    # A lane name ends in its start time (floor-reds-1300, asks-1220, runners-r2-0930); the name without it is the stem.
+    lane_stem_suffix: '-\d{4}(?:-[a-z0-9]+)?$'
+    rows_kept: 4
+    row_chars: 400
+    report_path_template: .claude_scratch/reports/{lane}/result.md
   # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
   # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
   evidence_cells: [task, ticket, pr]
+  # Both manifest and fallback table items use the same PR ownership mapping. For a ticketed task, a watched title
+  # or branch must name its ticket; a dependency update with no ticket is unrelated even when a stale table lists it.
+  # An explicit link is retained when the watcher has not read the PR's identity. PR body mentions bind nothing.
   # The task-to-ticket map: a STATUS row whose state= cell is this value maps the task in its task= cell, of the plan
   # whose path contains its subject= cell (any plan when empty), to the ticket in its ticket= cell and the pull request
   # in its pr= cell. Both join the task's own; an outcome= in done_outcomes records that the mapped work merged.
@@ -154,6 +180,16 @@ config:
     publish_cycle_minutes: 5
     api_budget_usd: 200
     cloud_credit_expiry: "2026-11-05"
+  # The Machines tab's per-host record (OMN-22673). Each value is read from one source and judged against that source's
+  # own bound: the pool read uses pool_stale_minutes above; a capacity advertisement is a snapshot written once per publish
+  # cycle (5 min), so three cycles; a host-drift heartbeat comes about hourly (measured 2026-11-06: gaps of 42 to 56
+  # minutes on four lab hosts), so two cycles.
+  host_status:
+    heartbeat_stale_seconds: 7200
+    disk_cell: runs
+    advert_stale_minutes: 15
+    docker_tool: docker
+    landing_worker_kind: landing worker
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

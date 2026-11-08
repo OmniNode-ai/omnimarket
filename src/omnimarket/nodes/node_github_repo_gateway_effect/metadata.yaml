@@ -1,5 +1,5 @@
 name: node_github_repo_gateway_effect
-version: "1.1.0"
+version: "1.2.0"
 description: "Typed GitHub repo reader — PR status, Actions runs, jobs, log tails, artifacts, PR text, releases and review threads; one small typed object per read operation (EFFECT, read-only)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
@@ -18,9 +18,10 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "github", "read-only", "status"]
+tags: ["effect", "github", "read-only", "status", "shared-job-log-cache"]
 pack: "pr-lifecycle"
 display_name: "GitHub Repo Gateway (read)"
 node_role: "effect"

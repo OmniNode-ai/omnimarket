@@ -50,6 +50,7 @@ def next_customer_retry(
     workflow: _CustomerRetryWorkflow,
     *,
     max_retries_for: Callable[[str], int | None],
+    is_blocked: Callable[[str], bool],
 ) -> ModelRoutingDecision | ModelRoutingIntent | None:
     """Walk chosen models first; retain the bounded same-model retry afterward.
 
@@ -76,6 +77,9 @@ def next_customer_retry(
         index = candidates.index(decision.selected_model) + 1
         if index < len(candidates):
             next_model = candidates[index]
+    target = next_model or decision.selected_model
+    if is_blocked(target):
+        return None
     if workflow.customer_route_retry_backend_ref != backend_ref:
         workflow.customer_route_retry_backend_ref = backend_ref
         workflow.customer_route_retry_count = 0

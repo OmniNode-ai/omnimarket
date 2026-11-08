@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,11 +15,15 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.cloud_session_placement import ModelCloudSessionPlacementResult
+from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
+    ModelFloorCloudAccount,
     ModelFloorLimitsFacts,
     ModelFloorSelection,
     ModelFloorSourceReads,
+    ModelGoalTicketRoots,
 )
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
@@ -33,6 +39,7 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
     ModelFactoryFloorRunResult,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
+    ModelFactoryFloorCloudSource,
     ModelFactoryFloorOverlay,
 )
 from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
@@ -40,13 +47,15 @@ from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
+    host_drift_cause,
     load_api_keys,
-    load_cloud_accounts,
     load_compute_config,
     load_contract,
     load_engines,
+    load_host_drift,
     load_host_table,
     load_lane_containers,
+    load_lane_processes,
     load_linear,
     load_placed,
     load_placement,
@@ -76,6 +85,69 @@ OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 COMPUTE_CONTRACT = (
     Path(__file__).resolve().parents[2] / "node_factory_floor_compute" / "contract.yaml"
 )
+
+
+def read_cloud_account_source(
+    home: Path,
+    source: ModelFactoryFloorCloudSource,
+    command: tuple[str, ...] = (),
+) -> tuple[tuple[ModelFloorCloudAccount, ...] | None, str]:
+    """A command override is an argv prefix ending in ``onex node`` (SSH may precede it).
+
+    The request carries no publisher-local filename: the existing node resolves its
+    placement directory on the host that owns the state. Neither subprocess stream
+    nor exception text is forwarded to the public record.
+    """
+    # Stay in the publisher's installed revision, including a branch installation.
+    # A registry wrapper can select a different dispatch environment with an older node.
+    prefix = command or (str(Path(sys.executable).with_name("onex")), "node")
+    argv = [
+        *prefix,
+        source.node_name,
+        "--input",
+        "/dev/stdin",
+        "--output",
+        "receipt",
+        "--timeout",
+        str(source.timeout_seconds),
+    ]
+    if not command:
+        argv += ["--state-root", str(home / ".onex_state")]
+    try:
+        result = subprocess.run(
+            argv,
+            input=json.dumps({"action": source.action}),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=source.timeout_seconds + 10,
+            cwd=home,
+        )
+        if result.returncode:
+            return (
+                None,
+                f"cloud account node could not be read (exit {result.returncode})",
+            )
+        receipt = json.loads(result.stdout)
+        if receipt.get("status") != "success":
+            return None, "cloud account node returned no successful snapshot"
+        snapshot = ModelCloudSessionPlacementResult.model_validate(receipt["result"])
+        if (
+            snapshot.action != source.action
+            or snapshot.error
+            or snapshot.floor_accounts is None
+        ):
+            return None, "cloud account node returned no readable snapshot"
+        return snapshot.floor_accounts, ""
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        subprocess.TimeoutExpired,
+    ) as exc:
+        return None, f"cloud account node could not be read ({type(exc).__name__})"
 
 
 def _file_time(path: Path) -> datetime | None:
@@ -126,6 +198,23 @@ class HandlerFactoryFloorEffect:
             if not request.plan_path_contains:
                 raise
             overlay = None
+        try:
+            goal_scope: ModelGoalScope | None = load_structured_overlay(
+                rt.goal_scope_overlay_id,
+                ModelGoalScope,
+                file_env=rt.goal_scope_file_env,
+            )
+        except NodeOverlayError:
+            # An unread scope lists no stopped lane, and the record says so under floor.stopped_cause.
+            goal_scope = None
+        try:
+            scope_roots = load_structured_overlay(
+                rt.goal_ticket_rule_overlay_id,
+                ModelGoalTicketRoots,
+                file_env=rt.goal_ticket_rule_file_env,
+            ).ticket_roots
+        except NodeOverlayError:
+            scope_roots = ()
         contains = request.plan_path_contains or (
             overlay.plan_path_contains if overlay is not None else ()
         )
@@ -165,8 +254,25 @@ class HandlerFactoryFloorEffect:
             home / src.plans_today_dir, src.linear_titles_glob
         )
         fleet_path = home / src.runner_fleet_relpath
+        drift_path = home / src.host_drift_relpath
+        host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        ledger = read_ledger_rows(
+            window_days=rt.ledger_window_days,
+            cut_chars=rt.ledger_cut_chars,
+            timeout_seconds=rt.ledger_timeout_seconds,
+            plugin_root=Path(plugin_root) if plugin_root else None,
+            plugin_root_env=rt.plugin_root_env,
+            ledger_rows_file=Path(request.ledger_rows_file)
+            if request.ledger_rows_file
+            else None,
+        )
+        cloud_accounts, cloud_cause = read_cloud_account_source(
+            home,
+            rt.cloud_source,
+            overlay.cloud_accounts_node_command if overlay is not None else (),
+        )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -192,15 +298,18 @@ class HandlerFactoryFloorEffect:
                 task_links=overlay.plan_task_links if overlay is not None else (),
             ),
             watcher=watcher,
-            ledger=read_ledger_rows(
-                window_days=rt.ledger_window_days,
-                cut_chars=rt.ledger_cut_chars,
-                timeout_seconds=rt.ledger_timeout_seconds,
+            ledger=ledger,
+            goal_scope=goal_scope,
+            scope_ticket_roots=scope_roots,
+            lane_processes=load_lane_processes(
+                ledger,
+                directory=resolve_dir(
+                    os.environ, ls.controller_dir_env, ls.controller_dir_fallback
+                ),
                 plugin_root=Path(plugin_root) if plugin_root else None,
-                plugin_root_env=rt.plugin_root_env,
-                ledger_rows_file=Path(request.ledger_rows_file)
-                if request.ledger_rows_file
-                else None,
+                now=now,
+                grace_seconds=ls.process_start_grace_seconds,
+                window_minutes=config.lane_live_window_minutes,
             ),
             linear=merge_linear_titles(
                 load_linear(linear_snapshot),
@@ -228,10 +337,12 @@ class HandlerFactoryFloorEffect:
                 lane_dir,
                 now=now,
                 window_hours=ls.receipt_window_hours,
+                scan_workers=ls.receipt_scan_workers,
                 glob=ls.receipt_glob,
                 result_chars=ls.result_chars,
             ),
-            cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
+            cloud_accounts=cloud_accounts,
+            cloud_accounts_cause=cloud_cause,
             limits=ModelFloorLimitsFacts(
                 api_keys=load_api_keys(home / limit_sources.api_meter_relpath),
                 codex=codex,
@@ -239,6 +350,10 @@ class HandlerFactoryFloorEffect:
                 lab_rungs=lab_rungs,
                 token_pools=load_token_pools(token_glob.parent, token_glob.name),
             ),
+            host_drift=host_drift,
+            host_drift_cause=""
+            if host_drift is not None
+            else host_drift_cause(drift_path),
             runner_fleet=runner_fleet,
             runner_fleet_cause=""
             if runner_fleet is not None

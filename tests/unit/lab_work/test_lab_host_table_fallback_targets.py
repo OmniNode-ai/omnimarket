@@ -13,6 +13,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
+    EnumDodEvidenceExecutionScope,
+)
+from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
@@ -180,3 +185,61 @@ def test_a_login_jump_host_or_key_ssh_would_read_as_an_option_is_refused(
 ) -> None:
     with pytest.raises(ValidationError):
         ModelLabHostRow(name="h1", target="host-1", **{column: value})
+
+
+def test_lab_host_table_accepts_the_declared_fallback_route_columns(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab_run_hosts.yaml"
+    path.write_text(
+        "hosts:\n"
+        "- name: h1\n  target: host-1\n  fallback_targets: [host-1-alias]\n"
+        "  fallback_ssh_user: lab-user\n  fallback_proxy_jump: jump-host\n"
+        "  fallback_ssh_identity: ~/.ssh/id_lab\n",
+        encoding="utf-8",
+    )
+    [row] = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)}).hosts
+    assert (
+        row.fallback_ssh_user,
+        row.fallback_proxy_jump,
+        row.fallback_ssh_identity,
+    ) == ("lab-user", "jump-host", "~/.ssh/id_lab")
+    bare = ModelLabHostRow(name="h2", target="host-2")
+    assert (
+        bare.fallback_ssh_user,
+        bare.fallback_proxy_jump,
+        bare.fallback_ssh_identity,
+    ) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("fallback_ssh_user", "-oProxyCommand=x"),
+        ("fallback_ssh_user", "a b"),
+        ("fallback_proxy_jump", "-oProxyCommand=x"),
+        ("fallback_proxy_jump", "a;b"),
+        ("fallback_ssh_identity", "-oX=y"),
+        ("fallback_ssh_identity", "~/../etc/passwd"),
+    ],
+)
+def test_a_fallback_route_cell_ssh_would_read_as_an_option_is_refused(
+    column: str, value: str
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelLabHostRow(name="h1", target="host-1", **{column: value})
+
+
+def test_fallback_route_evidence_is_bound_for_the_hosted_control() -> None:
+    """The recorded control failed despite a red test because no check was bound."""
+    root = Path(__file__).resolve().parents[3]
+    contract = ModelTicketContract.model_validate(
+        yaml.safe_load((root / "contracts" / "OMN-21984.yaml").read_text())
+    )
+    [evidence] = [
+        item
+        for item in contract.dod_evidence
+        if item.id == "dod-omn21984-fallback-route-columns"
+    ]
+    assert evidence.execution_scope is EnumDodEvidenceExecutionScope.HOSTED_AND_LOCAL
+    assert evidence.binds_ac == ("AC1",)

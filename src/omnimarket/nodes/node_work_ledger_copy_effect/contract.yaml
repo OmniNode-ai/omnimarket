@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-22478, cutover step 1. The interim second copy of the work ledger: the projection tables and the
+# markdown file with its rolls, placed on a host other than the database host, read back by digest,
+# restored on a throwaway database and compared by row count and last row. It is NOT the L14 snapshot
+# to object storage; that stays open. Externally triggered (a timer or an operator), so no subscription.
+name: work_ledger_copy_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Dumps the work ledger projection and file to a second host and proves the copy restores.
+input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_copy.ModelCopyRequest
+output_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_copy.ModelCopyResult
+handler:
+  module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_copy
+  class: HandlerWorkLedgerCopy
+  input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_copy.ModelCopyRequest
+# OMN-22916: the snapshot job and the restore drill are built by the CLI (runtime_work_ledger_copy),
+# not resolved at boot, so they are declared here as bindings rather than as handler_routing.
+cli_operations:
+  - operation: work_ledger_snapshot
+    handler:
+      module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      class: HandlerWorkLedgerSnapshot
+  - operation: work_ledger_restore_drill
+    handler:
+      module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      class: HandlerWorkLedgerRestoreDrill
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [file-copy, ledger-append]
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+# The cadence the scheduler installs; the contract owns it.
+schedule:
+  unit_name: ai.omninode.work-ledger-copy
+  minute: 5
+  every_hours: 1
+overlay:
+  node: node_work_ledger_copy_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: ssh
+  ticket: OMN-22478

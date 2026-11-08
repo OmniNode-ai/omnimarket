@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_routing_overlay_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure check of the routing overlay of per-task-class bars (rebuild piece 15,
+  OMN-22976). Every task class in the task-class contract owns a bar: the score
+  its answers must reach, the bounds a request may move it within, the price
+  ceiling and the latency bound. The overlay freezes each bar under a full
+  sha256 hash that also names the class. The check refuses a class with no bar,
+  a bar that does not parse, a hash that is not a full sha256, a bar edited
+  without a new hash, a contract bar that moved away from the frozen one, a
+  contract class with no complete bar, and an overlay bar for a class the
+  contract does not declare. It reads no file, calls no model and holds no
+  clock; the two documents arrive parsed. The pre-commit hook and the CI step
+  run it per task class over the shipped contract and overlay.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_routing_overlay_check
+      handler:
+        name: HandlerDelegationRoutingOverlayCheck
+        module: omnimarket.nodes.node_delegation_routing_overlay_check_compute.handlers.handler_delegation_routing_overlay_check
+
+handler:
+  module: omnimarket.nodes.node_delegation_routing_overlay_check_compute.handlers.handler_delegation_routing_overlay_check
+  class: HandlerDelegationRoutingOverlayCheck
+  input_model: omnimarket.nodes.node_delegation_routing_overlay_check_compute.models.model_routing_overlay_check.ModelRoutingOverlayCheckRequest
+  output_model: omnimarket.nodes.node_delegation_routing_overlay_check_compute.models.model_routing_overlay_check.ModelRoutingOverlayCheckResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  task_class_contracts:
+    type: dict
+    required: true
+    description: Parsed task_class_contracts.v1.yaml, whose quality_gate, price ceiling and latency bound make each class's live bar.
+  bars_overlay:
+    type: dict
+    required: true
+    description: Parsed task_class_bars.v1.yaml, the routing overlay holding each class's frozen bar and its hash.
+
+outputs:
+  ok:
+    type: bool
+  checked_classes:
+    type: int
+  findings:
+    type: list
+
+topics:
+  overlay_check_requested: onex.cmd.omnimarket.delegation-routing-overlay-check-requested.v1
+  overlay_checked: onex.evt.omnimarket.delegation-routing-overlay-checked.v1
+  overlay_check_failed: onex.evt.omnimarket.delegation-routing-overlay-check-failed.v1
+
+terminal_event: onex.evt.omnimarket.delegation-routing-overlay-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-routing-overlay-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-routing-overlay-checked.v1
+    - onex.evt.omnimarket.delegation-routing-overlay-check-failed.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-routing-overlay-check-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-routing-overlay-checked.v1
+  - onex.evt.omnimarket.delegation-routing-overlay-check-failed.v1
