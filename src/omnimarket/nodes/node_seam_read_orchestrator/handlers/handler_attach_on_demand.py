@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerAttachOnDemand is resolved at boot from handler_routing in contract.yaml (operation attach_on_demand), by module path, not by a Python import
 """Attach one on-demand node to the bus, demand its command, read the result by the deadline (OMN-22909).
 
 Piece 3 of the base-first plan: 440 of 577 loaded command nodes have an on-demand path only, so no
