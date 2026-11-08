@@ -178,11 +178,21 @@ def load_compute_config(path: Path) -> ModelFactoryFloorConfig:
         )
 
 
+OWN_CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
+
+
+def contract_ledger_kinds() -> frozenset[str]:
+    """The row kinds this node's own contract keeps whole (``ledger_kinds``)."""
+    return frozenset(load_contract(OWN_CONTRACT_PATH).runtime.ledger_kinds)
+
+
 def parse_ledger_text(
-    text: str, kinds: frozenset[str]
+    text: str, kinds: frozenset[str] | None = None
 ) -> tuple[ModelFloorLedgerRow, ...]:
-    """The rows of one reader answer. ``kinds`` (the contract's ``ledger_kinds``) are kept whole; of the other kinds
-    only an ask to a recipient, the row that answers one and each lane's newest row are kept."""
+    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
+    kinds only each lane's newest row is kept."""
+    if kinds is None:
+        kinds = contract_ledger_kinds()
     kept: list[tuple[int, ModelFloorLedgerRow]] = []
     latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
     for order, line in enumerate(text.splitlines()):

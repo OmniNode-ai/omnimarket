@@ -382,18 +382,14 @@ def test_determinism_or_cli_refuses_an_invalid_manifest(
 # --------------------------------------------------------------------------------- the loaders
 
 
-def test_determinism_or_cli_ledger_parse_reads_cells_and_keeps_one_row_per_quiet_kind() -> (
+def test_determinism_or_cli_ledger_parse_reads_cells_and_keeps_every_row_of_a_contract_kind() -> (
     None
 ):
     rows = parse_ledger_text(LEDGER, LEDGER_KINDS)
     kinds = [r.kind for r in rows]
-    assert kinds == [
-        "CLAIM",
-        "HOLD",
-        "STATUS",
-        "MSG",
-    ]  # the older MSG of lane-b is dropped
-    claim, hold, status, msg = rows
+    # MSG is a contract ledger kind (OMN-22368), so the older MSG of lane-b with no recipient is kept too.
+    assert kinds == ["MSG", "CLAIM", "HOLD", "STATUS", "MSG"]
+    _older_msg, claim, hold, status, msg = rows
     assert (claim.task, claim.tickets, claim.text) == (
         "W0.2",
         ("OMN-100",),
