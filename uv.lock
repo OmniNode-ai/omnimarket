@@ -12,7 +12,7 @@ resolution-markers = [
 overrides = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261108014124-2fe30fd9dc47" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261108072811-e64fe3502b45" },
-    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261107135804-4e522a057d9c" },
+    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033" },
 ]
 
 [[package]]
@@ -3151,7 +3151,7 @@ dependencies = [
 [[package]]
 name = "omnibase-spi"
 version = "0.23.14"
-source = { git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261107135804-4e522a057d9c#4e522a057d9c25ad11cc4e3361003866229d1224" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033#ace601e12033e7930f64a0aef364f160efc1b17f" }
 dependencies = [
     { name = "omnibase-core" },
     { name = "pydantic" },
@@ -3237,8 +3237,8 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261108014124-2fe30fd9dc47" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261108072811-e64fe3502b45" },
-    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261107135804-4e522a057d9c" },
-    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3" },
+    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033" },
+    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261106074413-b4fa53dcb119" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyasn1", specifier = ">=0.6.4" },
@@ -3274,8 +3274,8 @@ parity = [{ name = "mutmut", specifier = ">=3.3,<4" }]
 
 [[package]]
 name = "omninode-memory"
-version = "0.18.7"
-source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3#971553debfa3df9157cb62646a3ae87a7c1d9834" }
+version = "0.18.11"
+source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261106074413-b4fa53dcb119#b4fa53dcb11963026d7a85a5a05a04e701c838f0" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

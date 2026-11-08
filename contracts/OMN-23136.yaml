@@ -1,0 +1,92 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-23136
+title: "The corrected cross-dependency baseline is frozen with a hash and a continuing gate goes red when the count rises above it"
+summary: 'node_network_graph_compute gains a dependency_gate_compute operation that reads the frozen baseline file (11 subsystems, five relations, 229 occurrences, with its own sha256) and the import relation report and reads RED when the count rises; the relation_map reading row carries the current and the frozen count'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn23136-ac1
+    statement: 'the corrected counts are frozen in a baseline file with a hash and the gate reads that file'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the corrected counts (11 subsystems, each of the five relations with its occurrence count) are written to a baseline file with a hash and the gate reads that file -- falsifier: uv run pytest src/omnimarket/nodes/node_network_graph_compute -q -k dependency_baseline_frozen'
+  - id: req-omn23136-ac2
+    statement: 'a planted back edge raises the count above the frozen value and the gate goes red; the same tree without it passes'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a planted back edge from a lower layer to a higher one raises the count above the frozen value and the gate goes red, and the same tree without it passes -- falsifier: uv run pytest src/omnimarket/nodes/node_network_graph_compute -q -k planted_back_edge'
+  - id: req-omn23136-ac3
+    statement: 'piece 1''s reading row carries the current count and the frozen count'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: piece 1''s reading row carries the current count and the frozen count so the floor shows both -- falsifier: uv run pytest src/omnimarket/nodes/node_network_graph_compute -q -k reading_row_carries_counts'
+evidence_requirements:
+  - kind: "tests"
+    description: "Baseline, gate and reading row tests, with the neighbouring tests of both nodes"
+    command: "uv run --frozen pytest src/omnimarket/nodes/node_network_graph_compute tests/unit/nodes/node_network_graph_compute tests/unit/nodes/node_reading_writer_effect tests/nodes/node_network_graph_compute tests/nodes/node_reading_writer_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: 'AC1: the committed baseline holds 11 subsystems and the five relations at 229 occurrences, its sha256 matches its content, the gate reads it and passes the fixture, and a changed number with the old hash reads RED'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k dependency_baseline_frozen'
+        cwd: "."
+  - id: "dod-002"
+    description: 'AC2: the fixture tree reads PASS at 229; planting one back edge reads 230 and RED; an extra occurrence on each frozen relation and a twelfth subsystem each read RED'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k planted_back_edge'
+        cwd: "."
+  - id: "dod-003"
+    description: 'AC3: the relation_map reading row carries count and frozen cells (229 and 229 on the fixture, 230 and 229 with the planted back edge, unread when no gate result is given); golden and error chain events of the reading writer'
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k reading_row_carries_counts'
+        cwd: "."
+  - id: "dod-omn23136-deploy-source-readback"
+    description: "Hosted-runner readback of the published gate handler, node contract and frozen counts file at the evaluated commit against this checkout, then the existing registration test. This checks published source, not a runtime rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_network_graph_compute;
+          for relative_path in handlers/handler_dependency_gate_compute.py contract.yaml frozen_dependency_counts.yaml; do
+            target="$readback_dir/$(basename "$relative_path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path" \
+              --output "$target";
+            cmp "$node_path/$relative_path" "$target";
+          done;
+          grep -F 'class HandlerDependencyGateCompute:' "$readback_dir/handler_dependency_gate_compute.py";
+          grep -F 'operation: dependency_gate_compute' "$readback_dir/contract.yaml";
+          printf 'dependency gate source readback matched %s\n' "$revision"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py -q --no-cov --tb=line'
+        cwd: "."
+  - id: "dod-omn23136-integration-proof"
+    description: "The pushed head ran the baseline, gate and reading row tests from the node's own path, and the existing tests of both nodes, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23136 -- uv run --frozen pytest src/omnimarket/nodes/node_network_graph_compute tests/unit/nodes/node_network_graph_compute tests/unit/nodes/node_reading_writer_effect tests/nodes/node_network_graph_compute tests/nodes/node_reading_writer_effect -q --no-cov
+        cwd: "."
