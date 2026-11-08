@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Final, Protocol
+
+import yaml
 
 from omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_private_reads import (
     EnumFailureCode,
@@ -28,8 +31,17 @@ from omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_pri
     ModelPrivateReadsEvent,
 )
 
-#: Declared in contract.yaml ``event_bus.publish_topics``.
-TOPIC_LISTED: Final = "onex.evt.omnimarket.landing-private-reads-listed.v1"
+_CONTRACT_PATH: Final = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _read_publish_topic() -> str:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    (topic,) = contract["event_bus"]["publish_topics"]
+    return str(topic)
+
+
+#: Read from contract.yaml ``event_bus.publish_topics``.
+TOPIC_LISTED: Final = _read_publish_topic()
 
 
 class ProtocolPrivateReadsEventSink(Protocol):
