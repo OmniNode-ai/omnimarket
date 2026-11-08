@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-22621
+title: The integration sweep reads its ssh user from the lab host table instead of a login in public source
+summary: The sweep's container-health, Kafka, database and golden-chain probes reach the runtime host over ssh. The destination is now built as the ssh_user of the lab host table row whose target or name is the runtime host, joined to that host. A host with no row, or a row without ssh_user, is refused, so the probe reports error and runs no ssh. No login remains in the node's source.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22621-ssh-user-from-host-row
+  statement: The ssh login the integration sweep uses is a deployment fact of the lab host table, not a literal in public source.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the sweep builds its ssh target from the ssh_user the host row carries and refuses a host row without one -- falsifier: pytest tests/nodes/node_integration_sweep_orchestrator -q on the lab'
+  - id: AC2
+    statement: 'AC2: no operator login remains in surface_probes.py -- falsifier: grep for the login in src/omnimarket/nodes/node_integration_sweep_orchestrator on the lab clone returns no line'
+evidence_requirements:
+- kind: tests
+  description: The destination is the row's ssh_user at the host for the container-health, Kafka and database probes; a row without ssh_user and a host without a row are refused with no ssh run.
+  command: uv run pytest tests/nodes/node_integration_sweep_orchestrator -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22621-ac1
+  description: AC1 the ssh destination is the host row's ssh_user at the host, and a row without ssh_user or a host without a row is refused with no ssh run. At the merge base the destination builder does not exist, so these fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_integration_sweep_orchestrator.py tests/test_integration_sweep_dispatch_path.py tests/test_integration_sweep_fail_closed_status.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22621-ac2
+  description: AC2 no ssh destination in the node's source is a literal login before an at sign and a brace (the pattern matches the merge base, where the login is in source).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py -q --no-cov --tb=line -k no_login_literal
+    cwd: .
+- id: dod-omn22621-deploy
+  description: The sweep node's surface probes build the ssh destination from the lab host row's ssh_user, so the deployed sweep carries no login literal and refuses a host without a row. The deploy check runs the destination tests against the changed handler.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_integration_sweep_orchestrator/handlers/surface_probes.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def ssh_destination(" > /dev/null'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py -q --no-cov --tb=line -k "destination or refus"
+    cwd: .
+- id: dod-omn22621-integration-proof
+  description: The pushed head runs the node's tests on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22621 -- uv run pytest tests/nodes/node_integration_sweep_orchestrator -q --no-cov
+    cwd: .
