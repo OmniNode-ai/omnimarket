@@ -132,14 +132,11 @@ _OPEN_PR_LIMIT: Final[int] = 2000
 #: a retry every scheduled pass in that stretch went red on one 504. The
 #: delays (seconds) are 5, 15, 45; a read still failing after that goes red
 #: with GitHub's own error. Writes are never retried: a re-run or a branch
-#: update that timed out may have been applied. A response body cut short
-#: ("unexpected end of JSON input", recorded on the 2026-11-07T18:46Z pass) is
-#: the same gateway trouble with no status line, so it is retried too.
+#: update that timed out may have been applied. A body cut short ("unexpected
+#: end of JSON input") is the same gateway trouble, so it is retried too.
 _READ_ATTEMPTS: Final[int] = 4
 _READ_BACKOFF_SECONDS: Final[float] = 5.0
-_GATEWAY_ERROR: Final[re.Pattern[str]] = re.compile(
-    r"\bHTTP 50[234]\b|\bunexpected end of JSON input\b"
-)
+_GATEWAY_ERROR: Final[re.Pattern[str]] = re.compile(r"HTTP 50[234]\b|end of JSON input")
 _sleep = time.sleep
 
 #: The refusal line of omnibase_core's ``check-release-identity`` hook. Both versions are
