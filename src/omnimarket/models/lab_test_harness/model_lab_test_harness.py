@@ -106,6 +106,46 @@ class ModelLabTestHarnessScheduleHost(BaseModel):
         return _plain(value)
 
 
+class ModelLabTestHarnessLedgerRows(BaseModel):
+    """The ledger rows that carry the chain events to a floor on another host (OMN-23007).
+
+    The floor draws a piece's golden and error events from the ledger rows its ``piece_events`` rule names, so a harness
+    that runs on a host other than the floor's writes one row a run (and one for the planted failure) through the bus
+    append command the environment variable ``command_env`` names.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    actor: str = Field(min_length=1)
+    command_env: str = Field(min_length=1)
+    host_env: str = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1)
+
+    @field_validator("lane")
+    @classmethod
+    def _check_lane(cls, value: str) -> str:
+        return _plain(value)
+
+
+class ModelLabTestHarnessEmission(BaseModel):
+    """Where and as whom the harness emits its golden and error chain events (OMN-23007).
+
+    The journal is the one the floor folds into receipts: ``journal_relpath`` is relative to the directory the
+    environment variable ``home_env`` names. ``piece_number`` is the floor piece the chains belong to and
+    ``chain_node`` the node name they carry.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    home_env: str = Field(min_length=1)
+    journal_relpath: str = Field(min_length=1)
+    piece_number: int = Field(ge=1, le=18)
+    chain_node: str = Field(min_length=1)
+    #: The ledger rows of the same events, for a floor on another host. Absent means the journal alone.
+    ledger: ModelLabTestHarnessLedgerRows | None = None
+
+
 class ModelLabTestHarnessOverlay(BaseModel):
     """Every setting of the harness. The node ships none of these values."""
 
@@ -135,6 +175,8 @@ class ModelLabTestHarnessOverlay(BaseModel):
     #: Environment the installed unit carries (the state root, the registry root, the workspace
     #: config root): the unit holds no setting of its own.
     unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: The floor's emission journal and the chain identity. Absent means the harness emits no chain events.
+    emission: ModelLabTestHarnessEmission | None = None
 
     @field_validator("piece", "tag", "lane")
     @classmethod
