@@ -132,6 +132,9 @@ runtime:
   piece_rank: {green: 0, grey: 1, amber: 2, red: 3}
   # The stoppage cost the simple floor prints in a cause's detail ("144 lane-minutes logged").
   stoppage_cost_pattern: '(\d+(?:\.\d+)?) lane-minutes'
+  # Stoppages whose logged cost is the reporter's estimate of idle capacity: the live floor leaves the figure out, so a dated copy's
+  # figure is not kept as lane-minutes lost either (the same ids as the floor overlay's estimated_cost_stoppages).
+  estimated_cost_stoppages: ["stoppage:lab-idle", "stoppage:lab-source-unreadable"]
   # Dated copies read once into the history at the first cycle that finds them. Nothing here is a guess about a host: a glob
   # that matches nothing backfills nothing, and the result says how many snapshots it added.
   backfill:
