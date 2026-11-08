@@ -1,0 +1,15 @@
+# Overlay of the live J8 run (OMN-23087): <root>/node_pr_landing_join_j8/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. Every key is required; the real values live in the overlays repository.
+watcher_state_path: ~/.claude_scratch/pr-watcher/state.json
+watcher_max_age_seconds: 900
+owner: OmniNode-ai
+# The lab-bound check the landing decision waits for, and the repositories whose pull requests carry it.
+lab_check_name: "private-repo-runner-placement / private-repo-runner-placement"
+lab_bound_repos:
+  - omnimarket
+max_candidates: 40
+poster_node: node_lab_check_poster
+poster_failure_code: lab_check_not_passed
+emission_journal: ~/.onex_state/floor-simple/emissions.jsonl
+drill: false
+allow_injected_break: false
