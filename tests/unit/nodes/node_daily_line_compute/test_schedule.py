@@ -17,6 +17,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
+    HandlerDailyLine,
+)
 from omnimarket.nodes.node_daily_line_effect.handlers import schedule as sched
 from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
     HandlerDailyLineRun,
@@ -102,6 +105,7 @@ def _runner(home: Path, ledger: Path, rows: list[str]) -> HandlerDailyLineRun:
         ledger=ledger,
         appender=rows.append,
         clock=lambda: NOW,
+        compute=HandlerDailyLine(),
     )
 
 

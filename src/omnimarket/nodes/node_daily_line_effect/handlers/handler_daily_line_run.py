@@ -13,10 +13,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,10 +27,8 @@ from omnimarket.models.model_daily_line import (
     ModelDailyLinePiece,
     ModelDailyLinePublication,
     ModelDailyLineRequest,
+    ModelDailyLineResult,
     ModelDailyLineRunCommand,
-)
-from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
-    HandlerDailyLine,
 )
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -37,6 +36,14 @@ NODE_NAME = "node_daily_line_effect"
 J1_JOIN_ID = "J1"
 
 LedgerAppender = Callable[[str], None]
+
+
+class ProtocolDailyLineCompute(Protocol):
+    """The computation of the line, injected by the composition root (it is another node's handler)."""
+
+    def handle(self, request: ModelDailyLineRequest) -> ModelDailyLineResult: ...
+
+
 Clock = Callable[[], datetime]
 
 
@@ -107,7 +114,7 @@ def read_floor_record(
     text = own.get("text")
     return (
         ModelDailyLinePiece(
-            state=state if isinstance(state, str) else "UNKNOWN",
+            state=state if isinstance(state, str) else "",
             detail=text if isinstance(text, str) else "",
         ),
         j1_state,
@@ -148,9 +155,18 @@ def command_appender(
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(text, encoding="utf-8")
-    os.replace(temporary, path)
+    # One temporary file per call: overlapping runs never share a name, so neither can take the other's.
+    handle, name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    temporary = Path(name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def status_row(
@@ -175,14 +191,14 @@ class HandlerDailyLineRun:
         ledger: Path,
         appender: LedgerAppender,
         clock: Clock = lambda: datetime.now(UTC),
-        compute: HandlerDailyLine | None = None,
+        compute: ProtocolDailyLineCompute,
     ) -> None:
         self._runtime = runtime
         self._home = home
         self._ledger = ledger
         self._append = appender
         self._clock = clock
-        self._compute = compute or HandlerDailyLine()
+        self._compute = compute
 
     @property
     def published_path(self) -> Path:
@@ -217,7 +233,9 @@ class HandlerDailyLineRun:
         return publication
 
 
-def build_runner(env: dict[str, str] | None = None) -> HandlerDailyLineRun:
+def build_runner(
+    compute: ProtocolDailyLineCompute, env: dict[str, str] | None = None
+) -> HandlerDailyLineRun:
     """The production wiring: the registry home and the ledger from the environment, the rest from the contract."""
     environment = dict(os.environ if env is None else env)
     runtime = load_runtime()
@@ -228,6 +246,7 @@ def build_runner(env: dict[str, str] | None = None) -> HandlerDailyLineRun:
         home=home,
         ledger=ledger,
         appender=command_appender(runtime.append_command, ledger),
+        compute=compute,
     )
 
 
