@@ -131,6 +131,7 @@ from omnimarket.handlers.delegation_model_scope import (
     model_scope_skip_reason,
     read_model_scope,
 )
+from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
@@ -189,7 +190,6 @@ from omnimarket.inference.provider_quota_state import (
     read_provider_quota_snapshot,
 )
 from omnimarket.inference.task_class_authority import (
-    resolve_paid_from_size_band,
     resolve_size_band_thresholds,
     resolve_task_class_execution_budget,
     resolve_task_class_execution_required,

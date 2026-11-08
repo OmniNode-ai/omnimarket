@@ -23,13 +23,14 @@ from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.delegation_paid_band import (
+    paid_from_size_band_for,
+    resolve_paid_from_size_band,
+)
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
-from omnimarket.inference.task_class_authority import (
-    load_task_class_authority,
-    resolve_paid_from_size_band,
-)
+from omnimarket.inference.task_class_authority import load_task_class_authority
 from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumTransitionKind,
@@ -185,7 +186,7 @@ def _dispatch(port: LocalDelegationDispatchPort, prompt: str) -> dict[str, Any]:
 def test_the_contract_declares_large_only_and_the_cause_is_a_skip() -> None:
     """The ruling is in the contract: L is the default, and the cause is a declared skip."""
     authority = load_task_class_authority()
-    assert authority.paid_from_size_band is EnumSizeBand.L
+    assert paid_from_size_band_for(authority, "research") is EnumSizeBand.L
     assert resolve_paid_from_size_band("research") is EnumSizeBand.L
     for name, entry in authority.task_classes.items():
         assert entry.transitions is not None, name
@@ -361,3 +362,27 @@ def test_the_decision_node_skips_a_paid_rung_below_the_band(
         assert verdict.transition.kind is EnumTransitionKind.SKIP
         assert verdict.transition.cause is EnumEscalationCause.SIZE_BAND_BELOW_PAID
         assert verdict.reason is not None
+
+
+def test_a_class_escalation_policy_value_overrides_the_default_and_a_bad_one_is_refused() -> (
+    None
+):
+    """The per-class value wins over the top-level default; a non-band value is a contract error."""
+    authority = load_task_class_authority()
+    entry = authority.task_classes["research"]
+    assert entry.escalation_policy is not None
+    policy = entry.escalation_policy.model_copy(update={"paid_from_size_band": "M"})
+    declared = authority.model_copy(
+        update={
+            "task_classes": {
+                **authority.task_classes,
+                "research": entry.model_copy(update={"escalation_policy": policy}),
+            }
+        }
+    )
+    assert paid_from_size_band_for(declared, "research") is EnumSizeBand.M
+
+    broken = declared.model_copy(update={"paid_from_size_band": "XL"})
+    other = next(n for n in authority.task_classes if n != "research")
+    with pytest.raises(ValueError, match="paid_from_size_band must be one of"):
+        paid_from_size_band_for(broken, other)
