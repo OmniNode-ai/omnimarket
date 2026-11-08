@@ -1,0 +1,24 @@
+name: node_work_state_projection_effect
+version: "0.1.0"
+description: "Work-state projection effect: reads the sources (ledger, PR watcher, plan files, Linear snapshot, receipts, readings) and writes the projection the floor and the fill dispatcher read"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_state_projection_effect: "omnimarket.nodes.node_work_state_projection_effect"
+capabilities:
+  standalone: true
+  # false until the floor publish tick runs it: auto-wiring prepares this node as SKIPPED.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "work-state", "projection"]
+pack: "routing"
+display_name: "Work-State Projection Effect"
+node_role: "effect"

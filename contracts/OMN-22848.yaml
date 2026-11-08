@@ -1,0 +1,108 @@
+schema_version: 1.0.0
+ticket_id: OMN-22848
+title: 'The lane runner''s lab start path becomes nodes: node_remote_lane_start_orchestrator and node_remote_lane_start_effect (first in order)'
+summary: 'Two new omnimarket nodes run the remote-lane runner''s run path for the Claude engine on lab placement: refuse other shapes, place through node_remote_lane_compute, append the CLAIM through node_work_ledger_append_effect with a deduplicated request id, start the engine detached through the spi ProtocolLaneHostTransport, supervise it, and close with one TERMINAL through node_remote_lane_close_compute. This omnimarket pull request carries AC2, AC3, AC4, AC5 and AC7; AC1 (the script-against-node parity harness) and AC6 (the runner shim) are carried by the pull request that changes the runner script, with this repository''s overlay check runner_command_names_node kept below as an unbound check.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22848-remote-lane-start-nodes
+  statement: The lab Claude run path of the remote-lane runner is a sequence of nodes whose leader appends the CLAIM itself before any engine-starting host call, starts the engine in a session of its own, and writes one TERMINAL only when the engine's end is known.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: *CLAIM first.* The first host command that starts the engine comes after the CLAIM append returned; a refused CLAIM and an `already-claimed` replay leave the host-command list empty -- falsifier: `-k claim_before_engine`, `-k claim_refused_starts_nothing` and `-k claim_request_id_dedup`, with the ordered call log of the scripted transport and ledger, and `-k claim_dedup_survives_restart` (against the real ledger effect and a ledger fixture file: append the CLAIM, recreate the effect, replay the request id, and assert one CLAIM row and no host command).'
+  - id: AC3
+    statement: 'AC3: *The facts the fill relies on.* With a real posix leader process and a stub transport whose engine is a `setsid` child, the CLAIM carries the lane name and `key=` given, only the leader appended it, and the engine is in another session -- falsifier: `-k fill_contract_facts`, on macOS and Linux.'
+  - id: AC4
+    statement: 'AC4: *Early refusals write nothing.* `no-host` (exit 75) and each unsupported shape (cloud placement, each other engine) write no CLAIM and issue no host command -- falsifier: `-k early_refusals_write_nothing`, one case per refusal.'
+  - id: AC5
+    statement: 'AC5: *Close.* A SIGTERM while the engine runs gives one TERMINAL with the stopped outcome after `stop_engine` confirmed the exit; an engine that survives the stop, and a start that does not settle, leave the CLAIM open and write no TERMINAL; a lane that wrote its own closing row gets a STATUS and no second TERMINAL -- falsifier: `-k sigterm_closes_once`, `-k sigterm_survivor_no_terminal`, `-k start_unresolved_no_terminal` and `-k no_double_terminal`.'
+  - id: AC7
+    statement: 'AC7: G-NODE holds for both nodes, and the placed, no-host, CLAIM-refused and engine-fails scenarios give equal decision projections on the in-memory and Redpanda legs with the scripted transport -- falsifier: `-m floor_fill_parity -k remote_lane_start` with the Redpanda receipt in the PR body.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of both lane start nodes.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22848-ac2
+  description: AC2 the CLAIM append comes before the first engine-starting host call; a refused CLAIM, a replayed request id and a replay after a restart over the same ledger file issue no host call.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'claim_before_engine or claim_refused_starts_nothing or claim_request_id_dedup or claim_dedup_survives_restart'
+    cwd: .
+- id: dod-omn22848-ac3
+  description: AC3 a real leader process appends the CLAIM with the lane and key it was given, is the only appender, and the engine runs in another session and process group.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_contract_facts'
+    cwd: .
+- id: dod-omn22848-ac4
+  description: AC4 no-host and each unsupported shape write no CLAIM, no receipt and issue no host call.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'early_refusals_write_nothing'
+    cwd: .
+- id: dod-omn22848-ac5
+  description: AC5 a stop closes once after a confirmed exit; a survivor and an unsettled start leave the CLAIM open with no TERMINAL; a lane that closed itself gets a STATUS.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'sigterm_closes_once or sigterm_survivor_no_terminal or start_unresolved_no_terminal or no_double_terminal'
+    cwd: .
+- id: dod-omn22848-ac6-overlay
+  description: 'AC6, the omnimarket part: the example overlay''s floor_fill.runner_command names the node and not onex_remote_lane. The runner shim and the moved-steps grep belong to the pull request that changes the runner.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'runner_command_names_node'
+    cwd: .
+- id: dod-omn22848-ac7
+  description: AC7 both contracts load with importable handlers, models and spi seams, a missing overlay key is refused naming it, and the in-memory leg of the four-scenario parity run equals the in-process decisions.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator -q --no-cov --tb=line -m floor_fill_parity -k remote_lane_start
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'contract_loads or missing_overlay_key'
+    cwd: .
+- id: dod-omn22848-ac7-redpanda
+  description: AC7 the Redpanda leg equals the in-memory leg on the four scenarios. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22848 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator -q --no-cov -m "floor_fill_parity and kafka" -k remote_lane_start
+    cwd: .
+- id: dod-omn22848-integration-proof
+  description: The pushed head ran both lane start nodes' focused tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22848 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov
+    cwd: .
+- id: dod-omn22848-deploy-probe
+  description: 'Deploy probe: load both packaged contracts and run the placed scenario through the scripted transport and a ledger fixture in process; the hosted runner needs no lab host or broker.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'contract_loads or claim_before_engine'
+    cwd: .

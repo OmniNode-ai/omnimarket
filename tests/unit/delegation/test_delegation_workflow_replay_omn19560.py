@@ -60,7 +60,7 @@ _CONTENT = "### ANSWER\ndef test_verify_registration():\n    assert True"
 # OMN-22822: a request older than the completion bound is expired, not routed, so
 # the live request these replays feed the workflow is stamped when each test starts
 # (one value per test, so the captured and the replayed run still compare byte for
-# byte, and a slow split cannot age the stamp past the bound before the test runs).
+# byte). A stamp taken at module load goes stale on a long split run.
 _EMITTED_AT = datetime.now(UTC)
 
 

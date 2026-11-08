@@ -69,6 +69,20 @@ class ModelRunnerStopIdleProofSettings(BaseModel):
     required_reads: int = Field(ge=2)
     min_gap_seconds: int = Field(gt=0)
     max_age_seconds: int = Field(gt=0)
+    # OMN-23156: the names of the queue runners that may stop only after the replacement pool is proven. Empty
+    # means the caller named none and the queue-pool subject is not judged.
+    queue_pool_stop_name_prefixes: tuple[str, ...] = ()
+    queue_pool_proof_max_age_seconds: int = Field(default=1800, gt=0)
+
+
+class ModelQueuePoolProof(BaseModel):
+    """The replacement queue pool's reading: its verdict, when it was read and the merge-group run that proved it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    read_at: datetime
+    verdict: EnumReadingVerdict
+    proven_run_id: int | None = None
 
 
 class ModelRunnerStopIdleProofRequest(BaseModel):
@@ -80,6 +94,8 @@ class ModelRunnerStopIdleProofRequest(BaseModel):
     now: datetime
     settings: ModelRunnerStopIdleProofSettings
     reads: tuple[ModelProofRead, ...] = ()
+    stop_request_names: tuple[str, ...] = ()
+    queue_pool_proof: ModelQueuePoolProof | None = None
 
 
 class ModelIdleProofSubject(BaseModel):
@@ -104,3 +120,4 @@ class ModelRunnerStopIdleProofResult(BaseModel):
     reads_judged: int
     busy_runners: tuple[str, ...] = ()
     blocking_job_ids: tuple[int, ...] = ()
+    refused_stop_names: tuple[str, ...] = ()

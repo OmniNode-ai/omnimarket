@@ -125,6 +125,8 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_work_state_projection_effect/runtime_work_state.py:find_node_overlay(overlay_id)"
+    reason: finds the overlay files of the work-state projection (its rules, the goal scope and the goal scope ticket rule); they hold plan patterns, state rules and the in-scope ticket list and choose no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
     reason: maps caller-owned source and installation roots to relative tree directories; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_overlay_drift_effect/runtime_overlay_drift.py:find_node_overlay(NODE_NAME)"
@@ -135,10 +137,14 @@ not_routing_resolution_sites:
     reason: finds the overlay file of the host readings to pin its root in the installed unit; the overlay holds probe thresholds and host environments and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/adapters/landing_adapters.py:resolve_setting(PR_STATE_NODE)"
     reason: reads the projection_api_url of the pr_state read node overlay to find the projection address; it is an address and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_host_power_effect/handlers/ilo_port_runtime.py:find_node_overlay(ILO_NODE)"
+    reason: finds the overlay file of the iLO Redfish node to resolve the pinned-certificate directory beside it; the overlay holds host endpoints and credentials and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
     reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/closer_scope_overlay.py:resolve_overlay_file(NODE_NAME)"
+    reason: reads the closeout scope overlay, the ranking rules, reserve and caps of the ticket closer's bundle; it ranks tickets and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the rule data and bus transport of a guard that refuses a question a ruling in force answers; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_agent_review_gate_accept_effect/overlay.py:find_node_overlay(OVERLAY_ID)"

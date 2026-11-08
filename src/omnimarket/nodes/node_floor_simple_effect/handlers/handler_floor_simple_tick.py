@@ -62,6 +62,11 @@ from omnimarket.models.floor_17a.model_customer_health import (
     ModelCustomerHealthRequest,
     ModelHealthReadingIn,
 )
+from omnimarket.models.floor_17a.model_mvp_launch import (
+    ModelMvpLaunchBlock,
+    ModelMvpLaunchOverlay,
+    ModelMvpLaunchRequest,
+)
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -77,6 +82,10 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import 
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
     read_ledger_facts,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources import (
+    CommandMvpRunSource,
+    ProtocolMvpRunSource,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
@@ -104,6 +113,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent imp
     record_deploy_agent,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
+    CanaryPublishError,
     GitCanaryPublisher,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
@@ -119,6 +129,9 @@ from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
 )
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_mvp_launch import (
+    HandlerMvpLaunch,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
@@ -197,6 +210,16 @@ class ModelStatePaths(BaseModel):
     canary_clone: str
 
 
+class ModelMvpLaunchRuntime(BaseModel):
+    """The MVP launch block (OMN-23205): its overlay and the command route its run histories are read through."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    overlay: ModelOverlayRef
+    command_env: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
+
+
 class ModelFloorSimpleRuntime(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -206,6 +229,7 @@ class ModelFloorSimpleRuntime(BaseModel):
     alarm_overlay: ModelOverlayRef
     # The customer health line's overlay (OMN-22923, 17b): which pieces make up the customer path and the line's own bound.
     health_overlay: ModelOverlayRef
+    mvp_launch: ModelMvpLaunchRuntime
     goal_scope_overlay: ModelOverlayRef
     serve_overlay: ModelOverlayRef
     served_record_name: str
@@ -290,7 +314,9 @@ class HandlerFloorSimpleTick:
         | None = None,
         deploy_agent_fetch: Callable[[str], Mapping[str, Any] | None] | None = None,
         ledger_source: ProtocolLedgerRowSource | None = None,
+        mvp_source: ProtocolMvpRunSource | None = None,
     ) -> None:
+        self._mvp_source = mvp_source
         self._ledger_source = ledger_source
         self._deploy_agent_fetch = deploy_agent_fetch
         self._sink = sink
@@ -835,6 +861,7 @@ class HandlerFloorSimpleTick:
             lanes=record_lanes(record) if record else (),
             lab=lab,
             receipts=receipts,
+            receipts_covered_s=rt.state.emission_window_hours * 3600,
             readings=self._readings(
                 home / rt.sources.readings_relpath,
                 home / rt.sources.harness_result_relpath,
@@ -862,6 +889,7 @@ class HandlerFloorSimpleTick:
             },
         )
         doc = self._with_health(rt, env, doc, floor_ov, step)
+        doc = self._with_mvp_launch(rt, env, doc, floor_ov, step)
         payload = {
             "lab_reads": [r.model_dump(mode="json") for r in reads],
             "floor_input": floor_input.model_dump(mode="json"),
@@ -938,6 +966,68 @@ class HandlerFloorSimpleTick:
             },
         )
         return doc.model_copy(update={"health": health})
+
+    def _with_mvp_launch(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        doc: ModelFloorSimple,
+        floor_ov: ModelFloorSimpleOverlay,
+        step: Callable[..., Any],
+    ) -> ModelFloorSimple:
+        """Add the MVP launch block (OMN-23205, plan task M1), read from the producers' scheduled runs.
+
+        An overlay that cannot be read leaves every one of the 17 readings NOT WORKING with the reason, never absent and
+        never WORKING; the floor still publishes. A source that cannot be read is that reading's NOT WORKING reason.
+        """
+        try:
+            mvp_ov = load_structured_overlay(
+                rt.mvp_launch.overlay.overlay_id,
+                ModelMvpLaunchOverlay,
+                env,
+                file_env=rt.mvp_launch.overlay.file_env,
+            )
+        except NodeOverlayError as exc:
+            return doc.model_copy(
+                update={
+                    "mvp_launch": HandlerMvpLaunch.refused(
+                        now=doc.generated_at,
+                        max_age_s=floor_ov.freshness_max_age_s,
+                        reason="overlay-unreadable",
+                        detail=type(exc).__name__,
+                    )
+                }
+            )
+        source = self._mvp_source or CommandMvpRunSource(
+            env.get(rt.mvp_launch.command_env, ""), rt.mvp_launch.timeout_seconds
+        )
+
+        def decide() -> ModelMvpLaunchBlock:
+            specs = {s.id: s for s in (*mvp_ov.readings, *mvp_ov.scenarios)}
+            histories = {
+                i: source.read_history(s)
+                for i, s in specs.items()
+                if s.kind == "scheduled"
+            }
+            return HandlerMvpLaunch().handle(
+                ModelMvpLaunchRequest(
+                    now=doc.generated_at,
+                    overlay=mvp_ov,
+                    histories=histories,
+                    candidate=source.read_candidate(),
+                )
+            )
+
+        block: ModelMvpLaunchBlock = step(
+            "node_product_floor_verdict_compute:decide_mvp_launch",
+            decide,
+            lambda out: {
+                "readings": len(out.readings),
+                "named": len(out.named),
+                "working": int(out.state == "WORKING"),
+            },
+        )
+        return doc.model_copy(update={"mvp_launch": block})
 
     @staticmethod
     def _drill(step: Callable[..., Any]) -> None:
@@ -1137,12 +1227,20 @@ class HandlerFloorSimpleTick:
         if times is None:
             # Nothing new is published: the canary then reads the old status as silent once it is older than its bound.
             return "unpublished_served_page_unread"
-        publisher = (
+        publish_status = (
             self._canary_publisher
             or GitCanaryPublisher(
                 canary, home / rt.state.dir_relpath / rt.state.canary_clone
             ).publish
         )
+
+        def publisher(status: ModelCanaryStatus) -> None:
+            # A failed push is its own typed code, never the generic unexpected-error code of a step (OMN-22924, AC2).
+            try:
+                publish_status(status)
+            except CanaryPublishError as exc:
+                raise FloorSourceError("canary_push_failed", str(exc)) from exc
+
         status = ModelCanaryStatus(
             floor_generated_at=times[0],
             alarm_heartbeat_at=times[1],

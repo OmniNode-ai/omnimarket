@@ -94,3 +94,66 @@ runtime_dispatch:
 externally_consumed_topics:
   - onex.evt.omnimarket.golden-chain-sweep-completed.v1
   - onex.evt.omnimarket.golden-chain-sweep-result.v1
+
+# OMN-19998: typed scenarios the golden and error chain tests are generated from. The node
+# reports a failed sweep in-band on its completed event (overall_status), so the failure
+# shares the success topic and is told apart by that field.
+chain_scenarios:
+  schema_version: 1
+  success_topic: onex.evt.omnimarket.golden-chain-sweep-completed.v1
+  failures:
+    - name: sweep_failed
+      topic: onex.evt.omnimarket.golden-chain-sweep-completed.v1
+      discriminators:
+        overall_status: fail
+  cases:
+    - case_name: golden_complete_row_passes_the_sweep
+      kind: GOLDEN
+      input:
+        topic: onex.cmd.omnimarket.golden-chain-sweep-start.v1
+        correlation_field: correlation_id
+        payload:
+          chains:
+            - name: registration
+              head_topic: onex.evt.omniclaude.routing-decision.v1
+              tail_table: agent_routing_decisions
+              expected_fields: [correlation_id, selected_agent]
+          projected_rows:
+            registration:
+              correlation_id: golden-chain-reg-123
+              selected_agent: agent-api-architect
+      expected_events:
+        - topic: onex.evt.omnimarket.golden-chain-sweep-completed.v1
+          fields: {overall_status: pass, chains_total: 1, chains_passed: 1, chains_failed: 0}
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: One chain whose projected row carries every expected field passes, and a sweep of one passing chain is a pass.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
+    - case_name: error_row_missing_a_field_fails_the_sweep
+      kind: ERROR
+      input:
+        topic: onex.cmd.omnimarket.golden-chain-sweep-start.v1
+        correlation_field: correlation_id
+        payload:
+          chains:
+            - name: delegation
+              head_topic: onex.evt.omniclaude.task-delegated.v1
+              tail_table: delegation_events
+              expected_fields: [correlation_id, delegated_to]
+          projected_rows:
+            delegation:
+              correlation_id: golden-chain-del-456
+      fault:
+        kind: BAD_PAYLOAD
+      expected_events:
+        - topic: onex.evt.omnimarket.golden-chain-sweep-completed.v1
+          fields: {overall_status: fail, chains_failed: 1}
+      failure: sweep_failed
+      ledger_failure_row:
+        row_type: FRICTION
+        subject: golden_chain_sweep
+      reading: NOT_WORKING
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: A projected row that lacks an expected field is a failed chain, and one failed chain fails the sweep; it is never reported as a pass.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
