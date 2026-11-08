@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runner_stop_idle_proof_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Read, without I/O, whether the runners of the proof groups (groups 3 and 7) are idle and no queued
+  job names a stop-set label, from the reads a fetching effect already took. The proof needs the
+  overlay's number of reads, each at least the overlay's gap after the one before. Subjects: the read
+  count, the spacing of the reads, the age of the newest read, the read failures, the proof groups
+  each read, a busy runner in each proof group (NOT WORKING), and a queued job naming a stop-set label
+  (NOT WORKING). WORKING only when every subject is WORKING; UNKNOWN when the reads are too few, too
+  close together, stale, failed, or did not cover a proof group. The operator runs the stop; this node
+  only reads. Settings live in overlay.yaml.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: prove_runner_stop_idle
+    handler:
+      name: HandlerRunnerStopIdleProof
+      module: omnimarket.nodes.node_runner_stop_idle_proof_compute.handlers.handler_runner_stop_idle_proof
+    input_model: omnimarket.nodes.node_runner_stop_idle_proof_compute.models.model_runner_stop_idle_proof.ModelRunnerStopIdleProofRequest
+    output_model: omnimarket.nodes.node_runner_stop_idle_proof_compute.models.model_runner_stop_idle_proof.ModelRunnerStopIdleProofResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.runner-stop-idle-proof-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.runner-stop-idle-proof-computed.v1
+terminal_event: onex.evt.omnimarket.runner-stop-idle-proof-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-stop-idle-proof-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.runner-stop-idle-proof-requested.v1
+  producer: "the operator's stop readback, an effect that reads the runners of the proof groups and the queued jobs twice and asks for the proof (a later piece wires it)"
+externally_consumed_topics:
+- onex.evt.omnimarket.runner-stop-idle-proof-computed.v1
+metadata:
+  ticket: OMN-22952
+  transport_type: kafka
+lifecycle: experimental
