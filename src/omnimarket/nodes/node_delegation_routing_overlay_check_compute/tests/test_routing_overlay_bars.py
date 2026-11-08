@@ -159,3 +159,34 @@ def test_a_contract_class_with_no_complete_bar_is_refused() -> None:
     assert (CLASSES[0], Finding.CONTRACT_BAR_MISSING) in findings(
         check(contract_doc=contract_doc)
     )
+
+
+def test_a_non_string_class_key_in_the_contract_is_a_finding_not_a_crash() -> None:
+    """Tessl finding (OMN-23064): a YAML key like ``1`` must not escape as ValidationError."""
+    contract_doc = contracts()
+    classes = contract_doc["task_classes"]
+    assert isinstance(classes, dict)
+    classes[1] = contract_class(contract_doc, CLASSES[0])
+    result = check(contract_doc=contract_doc)
+    assert result.ok is False
+    assert ("<overlay>", Finding.OVERLAY_INVALID) in findings(result)
+    assert not [f for f in result.findings if f.finding_class is Finding.BAR_MISSING]
+
+
+def test_a_non_string_class_key_in_the_overlay_is_a_finding_not_a_crash() -> None:
+    doc = overlay()
+    wide: dict[object, object] = {}
+    wide.update(bars(doc))
+    wide[1] = bars(doc)[CLASSES[0]]
+    doc["task_class_bars"] = wide
+    result = check(overlay_doc=doc)
+    assert result.ok is False
+    assert ("<overlay>", Finding.OVERLAY_INVALID) in findings(result)
+
+
+@pytest.mark.parametrize("task_class", CLASSES)
+def test_string_class_keys_still_pass_after_non_string_keys_are_judged(
+    task_class: str,
+) -> None:
+    """Control: the shipped documents hold only string keys and stay clean."""
+    assert not [f for f in check().findings if f.task_class == task_class]
