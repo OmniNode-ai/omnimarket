@@ -27,7 +27,7 @@ from omnibase_spi.contracts.services import (
 from omnimarket.nodes.node_lane_process_effect.overlay import ModelLaneProcessOverlay
 
 
-class HandlerPosixProcess:
+class AdapterPosixProcess:
     """Starts processes on this host; the log directory is the overlay key floor_fill.output_dir."""
 
     synchronous_execution: ClassVar[bool] = True
@@ -38,7 +38,7 @@ class HandlerPosixProcess:
         self._output_dir = Path(output_dir)
 
     @classmethod
-    def from_overlay(cls, overlay: ModelLaneProcessOverlay) -> HandlerPosixProcess:
+    def from_overlay(cls, overlay: ModelLaneProcessOverlay) -> AdapterPosixProcess:
         return cls(overlay.floor_fill.output_dir)
 
     def _log_path(self, lane: str) -> Path:
