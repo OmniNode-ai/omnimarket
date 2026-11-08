@@ -59,6 +59,12 @@ canary:
   wrapper_end_marker: EXAMPLE-WRAPPER-END
   pool_admitted_marker: "admitted ("
   pool_unreadable_marker: unreadable
+  pool_parked_markers:
+    - "host table:"
+    - not in the pool
+    - "over the "
+    - "hot:"
+    - short of free memory
   disk_paths: ["~", /tmp]
   disk_floor_gb: 10
   advertisements_command_env: EXAMPLE_ADVERTISEMENTS_COMMAND
