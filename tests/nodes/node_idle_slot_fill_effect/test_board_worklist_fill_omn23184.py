@@ -5,7 +5,7 @@
 The operator, 2026-11-08 about 23:00Z: the board has a list of everything that is stopped and everything that is red and needs
 help, so a free slot should take from it. The floor's published document carries one row per work class with every member and
 its owner state; the fill takes the unowned members first, in the board's order, and takes nothing a lane or lease owns.
-The failing control is the same input with the overlay's ``board`` block taken away: the fill sends the stored backlog item
+The failing control is the same input with the ``idle_slot_fill_board`` overlay taken away: the fill sends the stored backlog item
 and not the board's.
 """
 
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.models.floor_17a.model_worklist import ModelWorklistItemIn
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
@@ -57,13 +58,16 @@ def setup(
     *,
     board: dict[str, Any] | None = BOARD,
 ) -> ModelLabFillRequest:
-    overlay = {**IDLE_SLOT_FILL, **({"board": board} if board is not None else {})}
+    roots = tmp_path / "overlays"
     monkeypatch.setenv(
         "ONEX_SKILL_OVERLAY_ROOTS",
-        write_overlay(tmp_path / "overlays", idle_slot_fill=overlay)[
-            "ONEX_SKILL_OVERLAY_ROOTS"
-        ],
+        write_overlay(roots, idle_slot_fill=IDLE_SLOT_FILL)["ONEX_SKILL_OVERLAY_ROOTS"],
     )
+    if board is not None:
+        (roots / "idle_slot_fill_board").mkdir()
+        (roots / "idle_slot_fill_board" / "overlay.yaml").write_text(
+            yaml.safe_dump(board), encoding="utf-8"
+        )
     registry = tmp_path / "registry"
     monkeypatch.setenv("ONEX_REGISTRY_ROOT", str(registry))
     monkeypatch.setenv("OMNI_LAB_FILL_GENERATE", "off")
@@ -134,7 +138,7 @@ def test_golden_the_fill_sends_the_oldest_unowned_board_item_before_the_stored_b
     assert arg(sent[0], "--ticket") == "OMN-23184"
 
 
-def test_error_control_without_the_overlays_board_block_the_stored_item_is_sent(
+def test_error_control_without_the_board_overlay_the_stored_item_is_sent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = setup(tmp_path, monkeypatch, floor_document(UNOWNED), board=None)

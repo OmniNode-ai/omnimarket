@@ -315,7 +315,7 @@ def _priority(kind: str, repo: str) -> str:
 
 
 def read_board(now: str, env: Mapping[str, str]) -> tuple[list[dict[str, Any]], str]:
-    """Read the board's floor document the ``idle_slot_fill`` overlay's ``board`` names; no ``board`` declared reads none.
+    """Read the board's floor document the `idle_slot_fill_board` overlay names; no overlay declared reads none.
 
     Returns the unowned work items the fill takes first and a reason when the board could not be used (an overlay that does
     not load, a floor document that is absent or not JSON, a stale one).

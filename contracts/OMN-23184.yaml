@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: every red or conflicting open in-scope pull request, every stopped in-scope ticket with a named follow-up and no successor, and every required check red over an hour on several pull requests with no cause lease is listed with its owner state, and a class row is red while any member is unowned -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov -k "golden or error"'
   - id: AC3
-    statement: 'AC3: the lab fill takes the unowned board rows before its other candidates and takes none a lane or lease owns, and without the overlay block it sends the stored item -- falsifier: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov'
+    statement: 'AC3: the lab fill takes the unowned board rows before its other candidates and takes none a lane or lease owns, and without the idle_slot_fill_board overlay it sends the stored item -- falsifier: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The work list's golden and error tests, the failing control from tonight's watcher state, and the fill tests
@@ -43,7 +43,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov
     cwd: .
 - id: dod-omn23184-ac3
-  description: The lab fill takes unowned board rows first and the control without the overlay block sends the stored item -- proven by the named tests.
+  description: The lab fill takes unowned board rows first and the control without the idle_slot_fill_board overlay sends the stored item -- proven by the named tests.
   source: manual
   binds_ac:
   - AC3

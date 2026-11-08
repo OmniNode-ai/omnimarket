@@ -21,6 +21,7 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill_ove
 )
 
 OVERLAY_ID = "idle_slot_fill"
+BOARD_OVERLAY_ID = "idle_slot_fill_board"
 REPOS_ID = "repos"
 ROLES = ("private_data", "plugin_source", "deploy", "knowledge_base")
 
@@ -94,6 +95,7 @@ def repo_required_kinds(
 
 
 def board(environ: Mapping[str, str] | None = None) -> ModelBoardOverlay | None:
-    """Where the fill reads the board's work list, or ``None`` when the overlay declares none (the fill reads no board)."""
-    declaration = load_structured_overlay(OVERLAY_ID, ModelIdleSlotFillOverlay, environ)
-    return declaration.board if declaration is not None else None
+    """Where the fill reads the board's work list: the ``idle_slot_fill_board`` overlay, or ``None`` when no root declares it
+    (the fill reads no board). It is its own overlay so the ``idle_slot_fill`` document, which lives in a frozen repository,
+    is not edited for it."""
+    return load_structured_overlay(BOARD_OVERLAY_ID, ModelBoardOverlay, environ)

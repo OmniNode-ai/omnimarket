@@ -42,7 +42,7 @@ class ModelCloudBacklogOverlay(BaseModel):
 
 
 class ModelBoardOverlay(BaseModel):
-    """Where the fill reads the board's work list (OMN-23184) and how old it may be.
+    """Where the fill reads the board's work list (OMN-23184) and how old it may be: the ``idle_slot_fill_board`` overlay.
 
     The floor's published document (``floor-simple.json``) holds one row per work class with every member and its owner state.
     ``classes`` names the classes whose unowned members the fill takes first; ``floor_relpath`` is under the registry root.
@@ -66,6 +66,4 @@ class ModelIdleSlotFillOverlay(BaseModel):
     # Kinds whose backlog items must name a repository (ModelBacklogItem); unset requires none.
     repo_required_kinds: list[str] | None = None
     cloud_backlog: ModelCloudBacklogOverlay | None = None
-    # The board's work list the fill draws its candidates from first; unset reads none.
-    board: ModelBoardOverlay | None = None
     experiment_designs: list[dict[str, Any]] | None = None
