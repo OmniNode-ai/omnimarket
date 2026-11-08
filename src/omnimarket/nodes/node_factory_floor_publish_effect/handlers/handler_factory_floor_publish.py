@@ -195,6 +195,9 @@ def _tail(raw: bytes) -> str:
     return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
 
 
+SSH_CONTROL_PERSIST_SECONDS = 120
+
+
 def ssh_argv(
     rt: ModelFactoryFloorPublishRuntime,
     overlay: ModelFactoryFloorPublishOverlay,
@@ -206,6 +209,15 @@ def ssh_argv(
         "BatchMode=yes",
         "-o",
         f"ConnectTimeout={rt.transport.connect_timeout_seconds}",
+        # One connection serves every copy, listing and removal of a cycle (OMN-23081): a serving host busy with disk work
+        # took 1.7 to 5 s to open each of the cycle's 20 or more connections, which spent the 40 s copy budget on handshakes.
+        # The socket lives in the user's ssh directory (a short path: the socket path limit is 104 characters).
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPath=~/.ssh/ffp-%C",
+        "-o",
+        f"ControlPersist={SSH_CONTROL_PERSIST_SECONDS}",
         "--",
         overlay.ssh_target,
         remote_command,
