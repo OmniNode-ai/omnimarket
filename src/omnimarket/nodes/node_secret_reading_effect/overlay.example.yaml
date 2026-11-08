@@ -43,3 +43,9 @@ open_exposures:
     recorded_at: "2026-01-01T00:00:00Z"
     awaiting: operator rotation consent
 injected_fault: Revoke one consumer's scope in the test store, or point one consumer at a key outside the identity's scope
+schedule_hosts:
+  - name: example-host
+    scheduler: systemd-user
+    venv: omni_worktrees/EXAMPLE/omnimarket/.venv
+unit_environment:
+  ONEX_LEDGER_HOST_NAME: example-host

@@ -24,6 +24,8 @@ description: >
   verdict for the nodes host discovery and placement depend on and publishes a typed result under
   the graph run's correlation id: both pieces' chains on success, the graph run's failure and the
   host stage's typed upstream_ failure with no start when a verdict is missing (OMN-22904).
+  ledger-durability appends one probe row through the bus and reads it back from the durable
+  store (the read node over the database projection) by a deadline.
   A source that cannot be read gives UNKNOWN; an append that does not land and a bad command are
   typed failures.
 

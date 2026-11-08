@@ -3,7 +3,8 @@
 """``python -m omnimarket.nodes.node_host_reading_effect <verb>``.
 
 ``hourly``   read this host's probes and append the rows (what the schedule runs).
-``probe``    the same reads, appending nothing.
+``probe``    the same reads, appending no reading row (the ledger-durability probe still
+             appends its one probe row: that append is what it reads).
 ``schedule`` check | install | uninstall | status | run-now, for a host in the overlay.
 
 Exit codes: 0 every probe was read and written (a probe reading NOT WORKING is still 0: a probe
@@ -58,6 +59,7 @@ from omnimarket.nodes.node_host_reading_effect.overlay import (
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
+    build_row_source,
 )
 
 
@@ -122,6 +124,17 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         wanted or (set(declared.probes) if declared else set())
     )
     graph_source, sink = _join_j1_ports(overlay) if wants_join else (None, None)
+    durability = overlay.durability
+    # The durability probe appends its probe row even on a probe run: the append is what it reads.
+    probes_durability = (
+        durability is not None
+        and declared is not None
+        and EnumHostProbe.LEDGER_DURABILITY in declared.probes
+        and (
+            not arguments.only
+            or EnumHostProbe.LEDGER_DURABILITY.value in arguments.only
+        )
+    )
     handler = HandlerHostReading(
         overlay=overlay,
         host=host,
@@ -131,6 +144,12 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         else None,
         clock=lambda: datetime.now(UTC),
         environ=os.environ,
+        probe_appender=build_appender(durability.append, durability.probe_lane)
+        if probes_durability and durability is not None
+        else None,
+        durable_reader=build_row_source(durability.read)
+        if probes_durability and durability is not None
+        else None,
         inventory=HostTableInventory(os.environ),
         canary_runner=SubprocessCanaryRoute(os.environ),
         adverts=_adverts(overlay),
