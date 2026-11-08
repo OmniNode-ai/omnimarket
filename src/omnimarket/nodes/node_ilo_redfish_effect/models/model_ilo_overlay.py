@@ -36,13 +36,17 @@ class ModelIloTlsPin(BaseModel):
     ca_file: NonEmptyStr
     # SHA-256 of the DER certificate, lower-case hex. The PEM file must hash to the same value.
     sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    # Present when the certificate is signed by the lab CA (OMN-22870): the CA's PEM file, relative to
+    # the overlay directory. The connection then verifies the chain to that CA and still requires the
+    # presented certificate to hash to ``sha256``; ``ca_file`` stays the pinned certificate itself.
+    issuer_file: NonEmptyStr | None = None
 
-    @field_validator("ca_file")
+    @field_validator("ca_file", "issuer_file")
     @classmethod
-    def _relative_and_contained(cls, value: str) -> str:
-        if value.startswith("/") or ".." in value.split("/"):
+    def _relative_and_contained(cls, value: str | None) -> str | None:
+        if value is not None and (value.startswith("/") or ".." in value.split("/")):
             raise ValueError(
-                "ca_file must be a relative path inside the overlay directory"
+                "ca_file and issuer_file must be relative paths inside the overlay directory"
             )
         return value
 
@@ -113,6 +117,14 @@ class ModelIloOverlay(BaseModel):
 
 
 _TEMPLATE_FIELDS = re.compile(r"\{(HOST|ROLE|FIELD)\}")
+
+
+# The lane secret resolver covers every host's READ and WRITE account names with one namespace rule (the
+# dev lane's ``secret_resolver.namespaces`` in the lab bus lane declaration), so the setup verb never has
+# to add a host's names to the lane's resolver config: a new host's keys already match this pattern. The
+# lane declaration carries the same text; the test beside the setup verb pins that the key template yields
+# names this pattern covers.
+ILO_ACCOUNT_REF_PATTERN = r"^ILO_[A-Z0-9_]+_(READ|WRITE)_(USERNAME|PASSWORD)$"
 
 
 def credential_key(template: str, *, host: str, role: str, field: str) -> str:

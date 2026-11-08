@@ -42,7 +42,12 @@ def env_with_overlay(tmp_path: Path) -> dict[str, str]:
 
 
 def full_watcher() -> dict[str, Any]:
-    return watcher(*(pr(REPO_A, i) for i in range(1, 12)))
+    """94 open pull requests: they are not work sent to lanes and refuse nothing."""
+    return watcher(*(pr(REPO_A, i) for i in range(1, 95)))
+
+
+def claims_over_the_bound() -> tuple[set[str], dict[str, str]]:
+    return {f"OMN-{i}" for i in range(1, 12)}, {}
 
 
 def no_claims() -> tuple[set[str], dict[str, str]]:
@@ -64,10 +69,16 @@ def gate(
     )
 
 
+def test_94_open_pull_requests_do_not_hold_new_work(tmp_path: Path) -> None:
+    refusal, finding = gate(tmp_path)
+    assert finding is None
+    assert refusal({"kind": "ticket", "repo": REPO_A, "key": "k"}) is None
+
+
 def test_new_work_in_a_full_repository_waits_and_a_fix_kind_does_not(
     tmp_path: Path,
 ) -> None:
-    refusal, finding = gate(tmp_path)
+    refusal, finding = gate(tmp_path, claims=claims_over_the_bound)
     assert finding is None
     why = refusal({"kind": "ticket", "repo": REPO_A, "key": "k"})
     assert why is not None
@@ -81,7 +92,7 @@ def test_new_work_in_an_empty_fleet_goes_on(tmp_path: Path) -> None:
     assert refusal({"kind": "ticket", "repo": REPO_A, "key": "k"}) is None
 
 
-def test_live_claims_count_beside_the_pull_requests(tmp_path: Path) -> None:
+def test_live_claims_are_the_count_whatever_the_pull_requests(tmp_path: Path) -> None:
     claims = {f"OMN-{i}" for i in range(1, 12)}
     refusal, _ = gate(tmp_path, claims=lambda: (claims, {}), state=watcher())
     assert refusal({"kind": "ticket", "repo": "", "key": "k"}) is not None
