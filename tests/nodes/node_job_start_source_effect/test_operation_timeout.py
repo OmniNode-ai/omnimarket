@@ -20,6 +20,7 @@ from omnimarket.nodes.node_job_start_source_effect.models.model_job_start import
     EnumJobStartFailure,
     ModelJobStartRequest,
 )
+from omnimarket.nodes.node_job_start_source_effect.overlay import ModelGithubSource
 from tests.nodes.node_job_start_source_effect.support import (
     NOW,
     REPO_A,
@@ -79,7 +80,8 @@ def test_error_chain_slow_calls_past_the_declared_timeout_end_in_a_typed_failure
     fields = overlay("overlay.github.example.yaml", repositories=[REPO_A])
     http = _slow_http(clock)
     # The shipped call budget alone would allow every one of these calls.
-    assert fields.source.max_calls > RUNS  # type: ignore[union-attr]
+    assert isinstance(fields.source, ModelGithubSource)
+    assert fields.source.max_calls > RUNS
     handler = HandlerJobStartSource(
         overlay=fields, http_get=http, environ={TOKEN_ENV: TOKEN_VALUE}
     )
@@ -109,7 +111,8 @@ def test_a_call_never_waits_longer_than_the_time_left() -> None:
         clock=lambda: clock[0],
     ).handle(ModelJobStartRequest(correlation_id="c-left", now=NOW))
     declared = declared_timeout_seconds()
-    per_call = fields.source.timeout_seconds  # type: ignore[union-attr]
+    assert isinstance(fields.source, ModelGithubSource)
+    per_call = fields.source.timeout_seconds
     spent = 0.0
     for timeout in http.timeouts:
         assert timeout == pytest.approx(min(per_call, declared - spent))
