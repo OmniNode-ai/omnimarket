@@ -22,7 +22,7 @@ class SavingsProjectionWriter(RuntimeProjectionWriter):
 
     runner_type = SavingsProjectionRunner
 
-    def handle(self, request: dict[str, Any]) -> dict[str, Any]:
+    def ignores_delivery(self, request: dict[str, Any]) -> bool:
         """Pass over a hook event the projection ignores before any database setup.
 
         OMN-23043. The hook-event topic carries every Claude Code hook event and
@@ -34,9 +34,7 @@ class SavingsProjectionWriter(RuntimeProjectionWriter):
         the runner's own result for such an event, reached without that setup.
         """
         topic = str(request.get("_topic", ""))
-        if (
+        return (
             topic.endswith(_HOOK_EVENT_TOPIC_SUFFIX)
             and request.get("hook_event_name") != POST_COMPACT_HOOK_EVENT
-        ):
-            return {"projected": True}
-        return super().handle(request)
+        )
