@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunResult
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_schedule import (
     ModelWorktreeSchedule,
     ModelWorktreeScheduleOverlay,
@@ -153,6 +154,16 @@ class HandlerWorktreeSchedule:
             f"IOSchedulingPriority={resources.io_scheduling_priority}\n"
             f"CPUWeight={resources.cpu_weight}\n"
         )
+        if request.mode != "status":
+            # A unit that runs from a worktree dies when this node removes the tree: refuse before
+            # anything is written or returned, naming the path (OMN-22783).
+            refuse_worktree_roots(
+                {
+                    f"{schedule.unit_name}.service": service,
+                    f"{schedule.unit_name}.timer": timer,
+                    f"{schedule.unit_name}.service.d/{DROPIN_NAME}": dropin,
+                }
+            )
         result = ModelWorktreeScheduleResult(
             exit_code=0,
             service=service,
