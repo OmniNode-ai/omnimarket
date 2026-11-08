@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
+ReadingVerdict = Literal["fresh", "stale", "failing", "unread"]
 SourceKind = Literal[
     "hosts",
     "runner_groups",
@@ -94,6 +95,20 @@ class ModelPieceChains(_Frozen):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelJoinEnd(_Frozen):
+    """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
+
+    A join normally ends at its ``to_piece``: when the from piece fails, the to piece must answer with a typed refusal under
+    the same correlation id. Where no node of the to piece can give that refusal, the join is respecified to end at the last
+    node that does emit a typed outcome: ``node``, a node of the from piece. The join is then judged on that node's chain
+    alone: it must end in a success or a typed failure within the chain deadline. A typed failure is the end of the join, not
+    a break, and no answer from the to piece is demanded.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    node: str = Field(min_length=1)
+
+
 class ModelFloorReceiptInput(_Frozen):
     now: datetime
     emissions: tuple[ModelNodeEmission, ...]
@@ -107,6 +122,8 @@ class ModelFloorReceiptInput(_Frozen):
     judged_to_pieces: tuple[int, ...] | None = None
     # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
     declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -471,6 +488,39 @@ class ModelRedRule(_Frozen):
     red_rows: int
     red_with_work_under_way: int
     violations: tuple[str, ...] = ()
+    # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
+    # is on these by construction, so the ids are shown rather than counted.
+    unowned_red: tuple[str, ...] = ()
+
+
+class ModelHealthReadingUsed(_Frozen):
+    """One piece reading the customer health line used, with the age it was judged at (OMN-22923, piece 17b)."""
+
+    piece: int = Field(ge=1, le=18)
+    name: str
+    state: ReadingState | None
+    age_s: int | None
+    max_age_s: int | None
+    verdict: ReadingVerdict
+
+
+class ModelFloorHealthLine(_Frozen):
+    """The one customer health line: its state, its words, when it was computed and the readings behind it.
+
+    Computed by ``node_product_floor_verdict_compute`` from the piece readings of the same floor record, so a stale
+    reading turns the line NOT WORKING and is named in ``named``.
+    """
+
+    schema_id: Literal["omni.floor-health/1"] = "omni.floor-health/1"
+    state: ReadingState
+    line: str = Field(min_length=1)
+    generated_at: datetime
+    # How old this line may be before the page stops drawing it as current; from the overlay.
+    max_age_s: int = Field(gt=0)
+    readings: tuple[ModelHealthReadingUsed, ...]
+    # One entry per reading that keeps the line from WORKING, each naming the piece and why.
+    named: tuple[str, ...] = ()
+    oldest_age_s: int | None = None
 
 
 class ModelFloorSimple(_Frozen):
@@ -495,6 +545,8 @@ class ModelFloorSimple(_Frozen):
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
+    # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
+    health: ModelFloorHealthLine | None = None
 
 
 class ModelGoRule(_Frozen):

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_two_backend_suite_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default.
+#
+#   report.route     `in_memory` (an empty effect list, the default backend) or `file` (the JSON the
+#                    core effect-backends validator wrote)
+#   report.path_env  the variable that holds that file's path
+#   workdir_env      the variable that holds the directory scenarios may write under
+#   publish          the lane and actor of the STATUS row the piece 4 reading reads
+#   ledger_append    the append command's variable, the variable holding the host name, its timeout
+report:
+  route: file
+  path_env: EXAMPLE_EFFECT_BACKEND_REPORT
+workdir_env: EXAMPLE_TWO_BACKEND_WORKDIR
+publish:
+  lane: two-backend-suite
+  actor: node:node_two_backend_suite_effect
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60

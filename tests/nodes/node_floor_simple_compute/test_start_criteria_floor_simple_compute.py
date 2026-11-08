@@ -32,12 +32,14 @@ PREREQUISITE = 8
 
 
 def _reading(piece: int, state: str) -> ModelReadingRow:
-    return ModelReadingRow(
-        piece=piece,
-        state=state,  # type: ignore[arg-type]
-        probed_at=NOW - timedelta(minutes=5),
-        published_at=NOW - timedelta(minutes=4),
-        max_age_s=86400,
+    return ModelReadingRow.model_validate(
+        {
+            "piece": piece,
+            "state": state,
+            "probed_at": NOW - timedelta(minutes=5),
+            "published_at": NOW - timedelta(minutes=4),
+            "max_age_s": 86400,
+        }
     )
 
 

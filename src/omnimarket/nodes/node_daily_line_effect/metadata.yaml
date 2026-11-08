@@ -1,0 +1,23 @@
+name: node_daily_line_effect
+version: "0.1.0"
+description: "One scheduled run of the daily line: read the sources, publish the line, write one STATUS row"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_daily_line_effect: "omnimarket.nodes.node_daily_line_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "floor", "OMN-22925"]
+pack: "pipeline"
+display_name: "Daily Line Effect"
+node_role: "effect"
