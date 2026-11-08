@@ -1,0 +1,38 @@
+schema_version: 1.0.0
+ticket_id: OMN-23025
+title: The placement alarm reads each lane of a lab-fill run from the ledger's own rows and names the reason every unplaced lane carries
+summary: On 2026-11-08 the placement alarm read two lab-fill runs as 9 of 33 lanes placed and named no reason (no-refusal-reported). The fill writes its STATUS row while its detached send jobs are still building, so 24 lanes read pending there and every one got its CLAIM row one to ten minutes later; the 23 lanes the fill skipped named their reason in the same row; and the runner's lane-end report has been a STATUS row since OMN-21822 while the alarm read only MSG rows. The alarm now settles a run from the ledger rows, reads lane-end STATUS rows, names each unplaced lane with its reason in a lane-reasons cell, and judges a pending lane inside the fill's send cap neither way. No threshold, share, window or check is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23025-placement-lane-reasons
+  statement: The placement alarm settles each lab-fill run from the CLAIM rows of its pending lanes, reads the runner's lane-end STATUS rows, and writes the reason of every unplaced lane into its FRICTION row; the unfixed reader fails the same tests.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: pending lanes with a CLAIM row read placed and raise nothing, pending lanes with no CLAIM past the send cap alarm and each is named with send-job-no-claim, lanes inside the cap are judged neither way, lanes the fill skipped are named by the fill reason, and lane-end STATUS rows with a non-zero exit name the runner refusal -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_placement_lane_reasons_omn23025.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The lane-reasons tests with their controls, and the alarm's existing compute and effect tests.
+  command: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23025-placement-lane-reasons-ac1
+  description: The lane-reasons tests pass; six of the ten fail when the two handlers are the pre-change ones.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_placement_lane_reasons_omn23025.py -q --no-cov
+- id: dod-omn23025-alarm-suites
+  description: The alarm's existing compute and effect suites still pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect -q --no-cov
