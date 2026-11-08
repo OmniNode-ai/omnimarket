@@ -85,6 +85,8 @@ runtime:
   alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
   # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
   # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
+  health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
@@ -108,6 +110,7 @@ runtime:
     - node_floor_emission_compute:compute_floor_receipts
     - node_floor_simple_compute:compute_floor_simple
     - node_lab_state_alarm_effect:publish_canary
+    - node_product_floor_verdict_compute:decide_customer_health
   # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
   # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
   # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
