@@ -304,8 +304,9 @@ def read_ledger_rows(
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
-    kinds: frozenset[str],
+    kinds: frozenset[str] | None = None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
+    kinds = contract_ledger_kinds() if kinds is None else kinds
     if ledger_rows_file is not None:
         with _source(ledger_rows_file):
             return parse_ledger_text(
