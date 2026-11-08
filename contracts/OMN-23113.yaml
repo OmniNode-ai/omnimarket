@@ -59,7 +59,6 @@ dod_evidence:
       The charge log of the launching host, counted per lane after the branch is installed, shows fewer charged job-log reads per lane over one hour than 206 over 97 lanes. Runs at the local Done gate.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: []
     checks:
       - check_type: command
         check_value: test -s "${ONEX_STATE_DIR:-$OMNI_HOME/.onex_state}/gh-calls.log"
@@ -68,7 +67,6 @@ dod_evidence:
       The integration proof: the installed onex CLI, not a test fixture, lists the job-log-cached verb the wrapper probes (a miss makes no GitHub call), and its own contract reader, handed the merge-base contract and this head's, answers with exactly one ADDED policy key, job_log_cache_probe_timeout_seconds, and nothing removed or changed, which is the whole of this change's contract effect. onex contract diff exits 2 on any difference, so the proof asserts on its output and never on its exit code. Hosted CI cannot run a local_done_gate item, so it binds no criterion.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: []
     checks:
       - check_type: command
         check_value: |-
