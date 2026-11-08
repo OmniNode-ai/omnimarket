@@ -25,7 +25,6 @@ from pydantic import (
 NonEmpty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 TicketId = Annotated[str, StringConstraints(pattern=r"^OMN-\d+$")]
 SNAPSHOT_SCHEMA = "omni.linear-snapshot/1"
-STATE_SCHEMA = "omni.linear-snapshot-state/1"
 
 
 class ModelSnapshotIssue(BaseModel):
@@ -110,7 +109,7 @@ class ModelLinearSnapshotState(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     schema_id: Literal["omni.linear-snapshot-state/1"] = Field(
-        default=STATE_SCHEMA, alias="schema"
+        default="omni.linear-snapshot-state/1", alias="schema"
     )
     last_good_read_at: NonEmpty
     last_full_read_at: NonEmpty
