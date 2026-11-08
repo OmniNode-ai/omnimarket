@@ -1,0 +1,35 @@
+# overlay.yaml: the closeout sweep's scope ranking (OMN-20655). Every value the ranking and the
+# bundle read is here, never in the handler. The rank rules run in the order listed; a rule that
+# does not apply to a ticket ranks it last for that rule. Ties fall to the oldest closeout
+# comment, then the ticket id.
+version: 1
+# A ticket in any other state is never examined.
+eligible_states:
+  - in progress
+  - in review
+  - backlog
+# waiting_on: a ticket whose closeout comment records a post-merge condition is re-checked first.
+# has_contract: a ticket with contracts/<id>.yaml on a product default branch can reach a
+#   verdict from dod_verify; one without cannot, so the verifiable tickets go first (the
+#   2026-11-08 sweep spent 9 of 12 slots on tickets with no contract and flipped none).
+# merged_in_review: an In Review ticket with a merged PR.
+rank_rules:
+  - waiting_on
+  - has_contract
+  - merged_in_review
+# Of the selected slots, this many are kept for the oldest tickets with no contract, so the
+# binder can still author a contract for them and they are not starved by the rule above.
+no_contract_reserve: 2
+# The bundle is returned inline by an agent, so it stays small whatever the scope.
+bundle_max_bytes: 16384
+held_cap: 200
+waiting_cap: 40
+# Where a contract is looked for: every git clone directly under the registry root (and the
+# root itself) plus any extra clone root the caller names. A non-empty list restricts the
+# search to the clones whose directory names it lists.
+contract_repos: []
+default_refs:
+  - origin/dev
+  - origin/main
+# A verify run that printed this detail found no contract; the ticket reads "no contract".
+no_contract_detail_prefix: "contract unresolved"

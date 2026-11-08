@@ -11,6 +11,7 @@ returns the decision. It reads nothing, has no clock and writes nothing.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from datetime import datetime, timedelta
@@ -30,10 +31,17 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     read_receipts,
     zero_flip_alert,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
+    load_scope_overlay,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rules import (
+    bundle_text,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     box_ticks,
     chunk_list,
     comment_signature,
+    could_not_run_reading,
     decide_ticket,
     open_comment,
     read_dod_verify,
@@ -848,6 +856,30 @@ def rotate_candidates(
     )
 
 
+def bundle_scope(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """The bounded scope the sweep selects from, ranked over the whole scope by the
+    overlay's rules (OMN-20655)."""
+    assert request.scope_candidates is not None
+    assert request.scope_pr_state is not None
+    assert request.scope_text_state is not None
+    assert request.max_candidates is not None
+    overlay = request.scope_overlay or load_scope_overlay()
+    text = bundle_text(
+        request.scope_candidates,
+        request.scope_pr_state,
+        request.scope_text_state,
+        request.scope_contract_state,
+        request.max_candidates,
+        overlay,
+    )
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
+        scope_bundle=json.loads(text),
+    )
+
+
 def judge_ticket(
     *, request: ModelDodCloseoutDecisionRequest
 ) -> ModelDodCloseoutDecisionResult:
@@ -860,9 +892,12 @@ def judge_ticket(
         if request.dod_verify_receipt is None
         else read_dod_verify(request.dod_verify_receipt)
     )
+    if request.verify_detail:
+        dod_verify = could_not_run_reading(request.verify_detail)
     decision, unmet = decide_ticket(
         acs=request.acs,
         dod_verify=dod_verify,
+        no_contract_prefix=load_scope_overlay().no_contract_detail_prefix,
         criteria_note=request.criteria_note,
         criteria_amendment=request.criteria_amendment,
     )
@@ -989,6 +1024,8 @@ class HandlerDodCloseoutSweep:
             )
         if kind is EnumCloseoutDecisionKind.SELECT_CANDIDATES:
             return rotate_candidates(request=request)
+        if kind is EnumCloseoutDecisionKind.SCOPE_BUNDLE:
+            return bundle_scope(request=request)
         if kind is EnumCloseoutDecisionKind.DECIDE_TICKET:
             return judge_ticket(request=request)
         if kind is EnumCloseoutDecisionKind.COMPLETION:

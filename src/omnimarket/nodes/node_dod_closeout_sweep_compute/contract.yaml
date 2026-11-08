@@ -3,8 +3,8 @@
 name: node_dod_closeout_sweep_compute
 node_type: compute
 runtime_profiles: [main]
-contract_version: {major: 1, minor: 1, patch: 0}
-node_version: "1.1.0"
+contract_version: {major: 1, minor: 2, patch: 0}
+node_version: "1.2.0"
 description: >-
   Definition-B deterministic decisions of the DoD closeout sweep (OMN-20675), the decisions the
   dod-closeout-sweep workflow left to agents. precheck says whether a date's sweep is already
@@ -19,7 +19,9 @@ description: >-
   (a source grep, a file-exists probe or a pull request read is refused), check_identities says
   whether two lanes are one actor, select_candidates picks the tickets a bounded run examines,
   least recently examined first, holds those awaiting a text amendment and cuts the rest into
-  chunks, decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
+  chunks, scope_bundle ranks the whole enumerated scope by the overlay's ordered rules (waiting on a
+  post-merge condition, then a contract on a default branch, then merged In Review) and returns the
+  bounded bundle the sweep selects from (OMN-20655), decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
   comment an open ticket receives. completion reads the closer's completed-run receipts from the
   ledger rows given (a run key counts once), counts the zero-flip streak and the top deferral
   reason, and renders the rows that complete the run: a FRICTION row and a zero-flip alert event
@@ -53,7 +55,7 @@ descriptor:
   idempotent: true
   timeout_ms: 1000
 inputs:
-  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, decide_ticket, completion, ground_state]}
+  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, scope_bundle, decide_ticket, completion, ground_state]}
   date: {type: str, required: true, description: "YYYY-MM-DD the sweep is for."}
   force: {type: bool, required: false, description: "precheck: bypass the idempotency guard."}
   clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ; completion: the stamp of the rows it renders."}
@@ -105,6 +107,12 @@ inputs:
   max_candidates: {type: int, required: false}
   run_summary: {type: object, required: false, description: "completion: the closer's run summary, verbatim; fields it does not count are ignored."}
   report_ref: {type: str, required: false, description: "completion: the report path the TERMINAL cites; empty when no report was written."}
+  scope_candidates: {type: list, required: false, description: "scope_bundle: every enumerated candidate row ({id, state, sources, last_closeout_comment_at, ...}); rows pass through to the bundle unchanged (OMN-20655)."}
+  scope_pr_state: {type: list, required: false, description: "scope_bundle: the PR state row of each candidate ({id, merged, open, error})."}
+  scope_text_state: {type: list, required: false, description: "scope_bundle: the text-state row of each candidate ({id, last_closeout_comment_at, text_sha, held_text_sha, waiting_on})."}
+  scope_contract_state: {type: list, required: false, description: "scope_bundle: {id, has_contract} per candidate; absent ranks every ticket as having a contract, so the script's own ranking holds."}
+  scope_overlay: {type: object, required: false, description: "scope_bundle: the ranking overlay (rank rules, no-contract reserve, caps, eligible states); absent loads this node's overlay.yaml."}
+  verify_detail: {type: str, required: false, description: "decide_ticket: the detail the verify command printed with outcome could_not_run; a detail starting with the overlay's no_contract_detail_prefix reads 'no contract'."}
   zero_flip_threshold_runs: {type: int, required: false, default: 3, description: "completion, ground_state: N consecutive zero-flip runs that raise the FRICTION row, RED health and, while tickets are deferred, the zero-flip alert event (OMN-21146)."}
 outputs:
   kind: {type: str}
@@ -146,6 +154,7 @@ outputs:
   selected: {type: list}
   deferred: {type: list}
   held: {type: list}
+  scope_bundle: {type: object, description: "scope_bundle: the bounded scope: the top tickets' rows, held, waiting, the selected tickets with no contract, and the totals."}
   decision: {type: str, enum: [done, open]}
   ticket_unmet: {type: list}
   needs_amendment: {type: bool}
