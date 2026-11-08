@@ -82,6 +82,14 @@ _MEDIUM_PROMPT = "explain the tradeoff\n" + "".join(
 )
 
 
+@pytest.fixture(autouse=True)
+def _real_paid_rung_band(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bind the real resolver back: tests/conftest.py declares no band by default."""
+    monkeypatch.setattr(
+        port_mod, "resolve_paid_from_size_band", resolve_paid_from_size_band
+    )
+
+
 def _backend(tier: str) -> ModelResolvedDelegationBackend:
     return ModelResolvedDelegationBackend(
         backend_id=_BACKEND[tier],

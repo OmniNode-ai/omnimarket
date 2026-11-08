@@ -75,9 +75,6 @@ def profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         )
     )
     monkeypatch.setenv("DELEGATION_ROUTING_OVERLAY_PATH", str(overlay_path))
-    # OMN-23180: these tests walk the whole ladder to a registered key; which size
-    # band may reach a paid rung is the subject of test_size_band_paid_rule.py.
-    monkeypatch.setattr(port_mod, "resolve_paid_from_size_band", lambda _t: None)
     monkeypatch.setattr(routing, "_config", None)
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()

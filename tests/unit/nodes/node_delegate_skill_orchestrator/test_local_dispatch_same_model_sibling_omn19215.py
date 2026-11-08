@@ -207,10 +207,6 @@ def _fixture_env(
         ),
     )
 
-    # OMN-23180: these tests are about sibling hops across paid rungs, not about
-    # which size band may reach one; the fixture declares no paid-rung band.
-    monkeypatch.setattr(port_mod, "resolve_paid_from_size_band", lambda _t: None)
-
     routing._config = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
