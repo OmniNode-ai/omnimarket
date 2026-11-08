@@ -30,6 +30,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_
     SnapshotFileLaneHostPool,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.handler_remote_lane_start import (
+    HandlerRemoteLaneStart,
     build_real,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
@@ -106,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
     stop = {"requested": False}
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("requested", True))
-    handler = build_real(
+    handler: HandlerRemoteLaneStart = build_real(
         settings,
         SnapshotFileLaneHostPool(Path(args.pool_snapshot)),
         stop_requested=lambda: stop["requested"],
