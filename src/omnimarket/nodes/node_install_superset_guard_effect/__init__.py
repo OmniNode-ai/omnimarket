@@ -4,7 +4,9 @@
 
 from pathlib import Path
 
-from .handlers.handler_install_superset import HandlerInstallSuperset, SupersetError
+from omnimarket.handlers.install_file_list import SupersetError
+
+from .handlers.handler_install_superset import HandlerInstallSuperset
 from .models.model_install_superset import ModelSupersetRequest
 
 

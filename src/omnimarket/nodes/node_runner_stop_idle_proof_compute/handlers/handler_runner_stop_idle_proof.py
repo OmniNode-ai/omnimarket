@@ -27,6 +27,7 @@ SUBJECT_READ_SPACING = "read_spacing"
 SUBJECT_READ_AGE = "read_age"
 SUBJECT_READ_FAILURES = "read_failures"
 SUBJECT_QUEUED_STOP_SET_LABEL = "queued_stop_set_label_jobs"
+SUBJECT_QUEUE_POOL_PROVEN = "queue_pool_proven_before_stop"
 
 _W = EnumReadingVerdict.WORKING
 _N = EnumReadingVerdict.NOT_WORKING
@@ -66,6 +67,10 @@ class HandlerRunnerStopIdleProof:
             busy_names.extend(names)
         queued, job_ids = self._queued_labels(window, settings.stop_set_labels)
         subjects.append(queued)
+        refused: list[str] = []
+        if settings.queue_pool_stop_name_prefixes:
+            pool, refused = self._queue_pool_proven(request)
+            subjects.append(pool)
         verdicts = {s.verdict for s in subjects}
         verdict = _N if _N in verdicts else _U if _U in verdicts else _W
         return ModelRunnerStopIdleProofResult(
@@ -75,6 +80,78 @@ class HandlerRunnerStopIdleProof:
             reads_judged=len(window),
             busy_runners=tuple(sorted(set(busy_names))),
             blocking_job_ids=tuple(sorted(set(job_ids))),
+            refused_stop_names=tuple(refused),
+        )
+
+    @staticmethod
+    def _queue_pool_proven(
+        request: ModelRunnerStopIdleProofRequest,
+    ) -> tuple[ModelIdleProofSubject, list[str]]:
+        """OMN-23156 AC3: a queue runner is on the stop request only after the replacement pool's proof reads WORKING."""
+        prefixes = tuple(
+            p.casefold() for p in request.settings.queue_pool_stop_name_prefixes
+        )
+        queued = sorted(
+            name
+            for name in set(request.stop_request_names)
+            if name.casefold().startswith(prefixes)
+        )
+        if not queued:
+            return (
+                ModelIdleProofSubject(
+                    name=SUBJECT_QUEUE_POOL_PROVEN,
+                    verdict=_W,
+                    count=0,
+                    reason="no queue runner is on the stop request",
+                ),
+                [],
+            )
+        proof = request.queue_pool_proof
+        if proof is None:
+            return (
+                ModelIdleProofSubject(
+                    name=SUBJECT_QUEUE_POOL_PROVEN,
+                    verdict=_U,
+                    count=len(queued),
+                    reason=f"stop refused: {len(queued)} queue runner(s) requested and the replacement pool's proof was not read",
+                ),
+                queued,
+            )
+        age = request.now - proof.read_at
+        limit = request.settings.queue_pool_proof_max_age_seconds
+        if age < timedelta(0) or age > timedelta(seconds=limit):
+            return (
+                ModelIdleProofSubject(
+                    name=SUBJECT_QUEUE_POOL_PROVEN,
+                    verdict=_U,
+                    count=len(queued),
+                    reason=f"stop refused: the replacement pool's proof is dated outside its {limit} s bound",
+                ),
+                queued,
+            )
+        if proof.verdict is not _W or proof.proven_run_id is None:
+            return (
+                ModelIdleProofSubject(
+                    name=SUBJECT_QUEUE_POOL_PROVEN,
+                    verdict=_N,
+                    count=len(queued),
+                    reason=(
+                        f"stop refused: {len(queued)} queue runner(s) requested and the replacement pool reads "
+                        f"{proof.verdict.value} with no proven merge-group run"
+                        if proof.proven_run_id is None
+                        else f"stop refused: {len(queued)} queue runner(s) requested and the replacement pool reads {proof.verdict.value}"
+                    ),
+                ),
+                queued,
+            )
+        return (
+            ModelIdleProofSubject(
+                name=SUBJECT_QUEUE_POOL_PROVEN,
+                verdict=_W,
+                count=len(queued),
+                reason=f"the replacement pool is proven by merge-group run {proof.proven_run_id}",
+            ),
+            [],
         )
 
     @staticmethod
