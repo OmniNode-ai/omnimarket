@@ -69,6 +69,16 @@ def test_an_undeclared_read_reads_not_working_and_is_named() -> None:
     ]
 
 
+def test_an_overlay_with_no_declared_reads_reads_not_working() -> None:
+    # The undeclared-overlay control: the same copy that reads WORKING under the declared overlay.
+    result = _handle(ov=overlay(declared=[]))
+    assert result.verdict == "NOT_WORKING"
+    assert result.failure_code == "undeclared_private_read"
+    assert [(u.file, u.root) for u in result.undeclared] == [
+        ("scripts/controller.py", "example-private-tools")
+    ]
+
+
 def test_no_sources_reads_not_working() -> None:
     result = _handle(src=[])
     assert (result.verdict, result.failure_code) == ("NOT_WORKING", "no_sources")
