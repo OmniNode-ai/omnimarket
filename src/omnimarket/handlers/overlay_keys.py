@@ -133,8 +133,15 @@ def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable
             f"{spec.key}: {LAB_HOSTS_FILE_ENV} names {path}, which is unreadable "
             f"({type(exc).__name__})"
         ) from None
+    # The overlay document also carries registry_root_candidates (the overlay store materializes the whole document);
+    # the host table is its base, so a document that declares the key is read as the overlay and answered as its table.
+    document = (
+        ModelLabHostsOverlay
+        if isinstance(raw, dict) and "registry_root_candidates" in raw
+        else ModelLabHostsTable
+    )
     try:
-        return ModelLabHostsTable.model_validate(raw)
+        return document.model_validate(raw)
     except ValidationError as exc:
         fields = sorted(
             {
