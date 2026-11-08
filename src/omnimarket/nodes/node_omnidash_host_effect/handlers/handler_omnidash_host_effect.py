@@ -55,6 +55,15 @@ class OmnidashHostPorts(Protocol):
         sha: str,
     ) -> str | None: ...
 
+    def config_drifted(
+        self,
+        host: ModelOmnidashHostRow,
+        schedule: ModelOmnidashHostSchedule,
+        sha: str,
+    ) -> bool:
+        """True when the built commit's backend settings are not the host row's (OMN-22478)."""
+        ...
+
     def check_health(
         self,
         host: ModelOmnidashHostRow,
@@ -155,7 +164,12 @@ class HandlerOmnidashHostEffect:
         seen = base.model_copy(
             update={"newest_branch": target.branch, "newest_sha": target.sha}
         )
-        if target.sha == previous.served_sha:
+        # The served commit is the newest, but the host row may have moved since it was built: the build
+        # carries the row's backend settings, so a changed row is applied by rebuilding the same commit
+        # and switching to it, never by waiting for the dashboard's next commit (OMN-22478).
+        if target.sha == previous.served_sha and not self._ports.config_drifted(
+            host, schedule, target.sha
+        ):
             status = seen.model_copy(
                 update={
                     "last_result": "unchanged",

@@ -120,6 +120,29 @@ def http_status(url: str, host_header: str | None, timeout: float) -> int:
         return 0
 
 
+CONTRACT_LOCAL = "contract.local.yaml"
+
+
+def contract_local_text(host: ModelOmnidashHostRow) -> str:
+    """The backend settings a build carries, as the host row declares them."""
+    return yaml.safe_dump(
+        {
+            "data_source": {
+                "url": host.projection_api_url,
+                "projection_tenant_id": host.projection_tenant_id,
+            }
+        },
+        sort_keys=True,
+    )
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 class SystemOmnidashHostPorts:
     """Real ports for one host row."""
 
@@ -234,6 +257,52 @@ class SystemOmnidashHostPorts:
         )
 
     # -- build ---------------------------------------------------------------------------------
+    def config_drifted(
+        self,
+        host: ModelOmnidashHostRow,
+        schedule: ModelOmnidashHostSchedule,
+        sha: str,
+    ) -> bool:
+        """True when a finished build's backend settings differ from the host row's (OMN-22478)."""
+        target = self.builds_dir(host) / sha
+        if not (target / BUILD_OK_MARKER).is_file():
+            return False
+        return _read_text(target / CONTRACT_LOCAL) != contract_local_text(host)
+
+    def _reapply_config(
+        self,
+        host: ModelOmnidashHostRow,
+        schedule: ModelOmnidashHostSchedule,
+        target: Path,
+    ) -> str | None:
+        """Write the row's settings into a finished build and regenerate what reads them.
+
+        Nothing else of the build changes. A failed step puts the previous settings back, so the
+        build that is serving is never left half-edited.
+        """
+        if not self.config_drifted(host, schedule, target.name):
+            return None
+        previous = _read_text(target / CONTRACT_LOCAL)
+        env = {**os.environ, **service_env(host)}
+        (target / CONTRACT_LOCAL).write_text(
+            contract_local_text(host), encoding="utf-8"
+        )
+        for name, argv in (
+            ("generate:config", ["npm", "run", "generate:config"]),
+            ("build", ["npm", "run", "build"]),
+        ):
+            done = _run(
+                argv, cwd=target, env=env, timeout=schedule.build_timeout_seconds
+            )
+            if done.returncode:
+                reason = f"{name} failed (exit {done.returncode}): {_tail(done)}"
+                if previous is None:
+                    (target / CONTRACT_LOCAL).unlink(missing_ok=True)
+                else:
+                    (target / CONTRACT_LOCAL).write_text(previous, encoding="utf-8")
+                return reason
+        return None
+
     def build(
         self,
         host: ModelOmnidashHostRow,
@@ -242,7 +311,7 @@ class SystemOmnidashHostPorts:
     ) -> str | None:
         target = self.builds_dir(host) / sha
         if (target / BUILD_OK_MARKER).is_file():
-            return None
+            return self._reapply_config(host, schedule, target)
         shutil.rmtree(target, ignore_errors=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **service_env(host)}
@@ -264,17 +333,8 @@ class SystemOmnidashHostPorts:
             if done.returncode:
                 shutil.rmtree(target, ignore_errors=True)
                 return f"{name} failed (exit {done.returncode}): {_tail(done)}"
-        (target / "contract.local.yaml").write_text(
-            yaml.safe_dump(
-                {
-                    "data_source": {
-                        "url": host.projection_api_url,
-                        "projection_tenant_id": host.projection_tenant_id,
-                    }
-                },
-                sort_keys=True,
-            ),
-            encoding="utf-8",
+        (target / CONTRACT_LOCAL).write_text(
+            contract_local_text(host), encoding="utf-8"
         )
         for name, argv in (
             ("npm ci", ["npm", "ci", "--no-audit", "--no-fund"]),
