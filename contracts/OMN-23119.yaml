@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23119
+title: Every rebuild piece's floor reading is refreshed inside its 2-hour bound, and only pieces in scope can draw a red row
+summary: 'At 2026-11-08T07:16Z the floor read pieces 6 and 7 NOT WORKING because their readings were 7,257 seconds old against a 7,200 second bound: the writer''s 06:15Z tick appended 16 of 18 rows, and an hourly tick that misses a piece leaves no slack inside a two hour bound. The writer now retries a piece whose append failed, inside the same run and the same window, as many passes as its overlay declares (the retry reuses the row key and content, so a row that did land is read back as already written), keeps one replay-check ledger read for the pieces of a pass, and reads a source again when its read timed out. This contract binds AC1 only; the scope rule (AC2) needs the readiness overlay''s in_scope_pieces, which is not on dev yet, and stays on omnimarket#5422.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23119-readings-inside-bound
+  statement: Every piece's reading is written on schedule, and a failed append or a timed-out source read is tried again inside the same run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every piece''s reading is written on schedule and stays inside its bound, with the writer''s unit read running on its host -- falsifier: the floor''s reading_age_s for every piece below reading_max_age_s over two hours'
+evidence_requirements:
+- kind: tests
+  description: The append retry and source read retry controls of the reading writer.
+  command: uv run --frozen pytest tests/nodes/node_reading_writer_effect -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23119-ac1-writer-retry
+  description: 'The writer''s append retry passes on the branch: a piece whose first append fails is written by the retry pass, a piece that fails every pass is reported append-failed, and a retry after a row that did land reads it back as already written.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_append_retry_omn23119.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23119-ac1-source-read-retry
+  description: 'A source read that times out is read again for the passes the overlay declares: a source that times out once reads WORKING on the retry, a source that times out on every pass still reads UNKNOWN, a clean run never pauses, and with no read_retry block the writer reads each source once.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_source_read_retry_omn23119.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23119-ac1-served-ages
+  description: After the writer is reinstalled from the branch, the served floor lists every piece's reading_age_s below its reading_max_age_s except a piece whose own source is unread. The floor is reachable only from the lab network, so hosted CI cannot run this check and only the local Done gate runs it, with FLOOR_SIMPLE_JSON_URL set to the floor page JSON address from the lab overlay.
+  source: manual
+  binds_ac:
+  - AC1
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -c 'curl -fsS "$FLOOR_SIMPLE_JSON_URL" | python3 -I -c "import json,sys; d=json.load(sys.stdin); bad=[p[\"piece\"] for p in d[\"pieces\"] if p.get(\"reading_age_s\") is not None and p[\"reading_age_s\"] > p[\"reading_max_age_s\"]]; sys.exit(1 if bad else 0)"'
+- id: dod-omn23119-integration-proof
+  description: Run the writer suites on a lab host at the pushed head. Hosted CI cannot place a lab job, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23119 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_reading_writer_effect -q -n 0 --no-cov
