@@ -32,6 +32,9 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_infra.models.event_bus.model_consumer_group_handover import (
+    ModelConsumerGroupHandover,
+)
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _extract_rows_upserted,
     _is_standalone_projection_runner,
@@ -235,17 +238,45 @@ def test_the_contract_routes_only_the_writer() -> None:
 
 
 def test_the_handover_names_the_group_the_old_consumer_commits_under() -> None:
-    declared = _load_contract()["retired_consumer_group"]
+    contract = _load_contract()
+    assert "retired_consumer_group" not in contract, (
+        "the inert key is gone: the subscribe preflight never read it"
+    )
+    declared = contract["consumer_group_handover"]
     old_default = ConfigInfraRoutingDecisionsConsumer.model_fields["kafka_group_id"]
     assert old_default.default == _OLD_GROUP
-    assert declared["group_id"] == old_default.default
-    assert declared["topics"] == [_TOPIC]
+    assert declared["from_group_id"] == old_default.default
     # The old consumer used auto_offset_reset=earliest on a partition it never
     # committed; the successor continues the same way.
     assert (
         declared["from_auto_offset_reset"]
         == ConfigInfraRoutingDecisionsConsumer.model_fields["auto_offset_reset"].default
     )
+    assert declared["from_auto_offset_reset"] == "earliest"
+
+
+def _assert_handover_names_old_group(block: dict[str, Any], environment: str) -> None:
+    handover = ModelConsumerGroupHandover.model_validate(block)
+    assert handover.source_group(environment) == _OLD_GROUP
+    assert handover.from_auto_offset_reset == "earliest"
+
+
+@pytest.mark.parametrize("environment", ["dev", "ci", "qa", "prod"])
+def test_the_handover_parses_and_names_the_old_group_in_every_environment(
+    environment: str,
+) -> None:
+    """omnibase_infra's own model reads the declared block (extra keys refused)."""
+    _assert_handover_names_old_group(
+        _load_contract()["consumer_group_handover"], environment
+    )
+
+
+def test_a_planted_wrong_group_id_fails_the_handover_check() -> None:
+    """Injected break: the same check, given a wrong group id, fails."""
+    block = dict(_load_contract()["consumer_group_handover"])
+    block["from_group_id"] = _OLD_GROUP + "-wrong"
+    with pytest.raises(AssertionError):
+        _assert_handover_names_old_group(block, "dev")
 
 
 # --------------------------------------------------------------------------

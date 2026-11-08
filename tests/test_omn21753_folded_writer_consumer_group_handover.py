@@ -71,3 +71,20 @@ def test_each_listed_writer_is_one_the_runtime_can_own(node_dir: str) -> None:
         "_", "-"
     )
     assert profile in _runtime_profiles(contract)
+
+
+def test_infra_routing_decisions_declares_its_literal_retired_group() -> None:
+    """OMN-23128 (T14): the retired infra routing consumer commits under a bare
+    group id, so the handover names it with ``from_group_id`` and the inert
+    ``retired_consumer_group`` key the preflight never read is gone."""
+    contract = yaml.safe_load(
+        (
+            NODES / "node_projection_infra_routing_decisions" / "contract.yaml"
+        ).read_text()
+    )
+
+    assert "retired_consumer_group" not in contract
+    assert contract["consumer_group_handover"] == {
+        "from_group_id": "infra-routing-decisions-postgres",
+        "from_auto_offset_reset": "earliest",
+    }

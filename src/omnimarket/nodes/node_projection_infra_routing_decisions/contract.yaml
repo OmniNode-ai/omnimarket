@@ -79,17 +79,17 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-infra-routing-decisions-applied.v1
 
-# The consumer group this node takes over from. The retired container committed
-# offsets for the topic under this bare group id (the consumer's config default,
-# no environment prefix), so the group cannot be spelled with the
-# consumer_group_handover shape (from_service/from_node/from_version), which
-# always derives {env}.{service}.{node}.consume.{version}. The runtime's subscribe
-# preflight does not read this key yet; until it does, the retired group's
-# commits are not copied and the runtime group starts at the bus default.
-retired_consumer_group:
-  group_id: infra-routing-decisions-postgres
-  topics:
-    - onex.evt.omnibase-infra.routing-decision.v1
+# OMN-23128 (one-runtime plan T14, under OMN-21288): the retired container
+# committed offsets for the topic under the bare group id
+# infra-routing-decisions-postgres (the consumer's config default, no
+# environment prefix), which the derived from_service/from_node/from_version
+# form cannot spell. from_group_id (OMN-21932) names it literally, returned
+# verbatim by ModelConsumerGroupHandover.source_group in every environment.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key and copies
+# the retired group's committed offsets into the runtime group before it joins;
+# a partition the old consumer never committed starts at earliest, as it did.
+consumer_group_handover:
+  from_group_id: infra-routing-decisions-postgres
   from_auto_offset_reset: earliest
 
 metadata:
