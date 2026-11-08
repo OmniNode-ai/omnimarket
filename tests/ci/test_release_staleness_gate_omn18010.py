@@ -323,6 +323,7 @@ def test_added_gates_do_not_displace_release_staleness_checks(
     for name in (
         "ci_summary_external_check_modes.contract.json",
         "ci_summary_external_check_modes.json",
+        "ci_summary_gate_tables.json",
     ):
         (tmp_path / name).write_text(
             CI_SUMMARY_GATE.with_name(name).read_text(encoding="utf-8"),

@@ -2543,6 +2543,7 @@ def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
         "scripts/ci/ci_summary_sweep_exclusions.json",
         "scripts/ci/ci_summary_external_check_modes.contract.json",
         "scripts/ci/ci_summary_external_check_modes.json",
+        "scripts/ci/ci_summary_gate_tables.json",
     ):
         assert text.count(filename) >= 2, (
             f"{filename} must appear in both the head sparse-checkout "
