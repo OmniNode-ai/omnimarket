@@ -62,6 +62,7 @@ from omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run impor
 )
 from omnimarket.nodes.node_lab_check_run_effect.overlay import (
     ModelInMemorySource,
+    ModelJournalEmission,
     ModelLabCheckRunOverlay,
     load_overlay,
 )
@@ -144,7 +145,7 @@ class HandlerLabCheckRunEffect:
             emission = overlay.emission
             self._sink = (
                 JsonlEmissionSink(emission.journal())
-                if emission.backend == "journal"
+                if isinstance(emission, ModelJournalEmission)
                 else InMemoryEmissionSink()
             )
         return self._sink
@@ -160,7 +161,9 @@ class HandlerLabCheckRunEffect:
             piece=overlay.emission.piece,
             clock=self._clock,
             correlation_id=request.correlation_id,
-            backend="in_memory" if overlay.source.backend == "inmemory" else "real",
+            backend="in_memory"
+            if isinstance(overlay.source, ModelInMemorySource)
+            else "real",
         )
         chain.start()
         try:

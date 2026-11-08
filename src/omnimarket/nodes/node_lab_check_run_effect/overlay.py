@@ -83,28 +83,36 @@ ModelCheckRunSource = Annotated[
 ]
 
 
-class ModelEmissionSettings(BaseModel):
-    """The floor emission identity of this node's chain and where the chain's events go."""
+class ModelEmissionBase(BaseModel):
+    """The floor emission identity of this node's chain."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     node: str = Field(min_length=1)
     #: The piece this node is on the floor (rebuild plan 3.6: piece 8).
     piece: int = Field(ge=1)
-    #: ``inmemory`` keeps events in the handler's sink; ``journal`` appends them to a JSON-lines file.
-    backend: Literal["inmemory", "journal"]
-    journal_path: str | None = None
 
-    @model_validator(mode="after")
-    def _journal_names_path(self) -> ModelEmissionSettings:
-        if self.backend == "journal" and not self.journal_path:
-            raise ValueError("a journal emission names its journal_path")
-        return self
+
+class ModelInMemoryEmission(ModelEmissionBase):
+    """Events stay in the handler's sink."""
+
+    backend: Literal["inmemory"]
+
+
+class ModelJournalEmission(ModelEmissionBase):
+    """Events are appended to a JSON-lines file."""
+
+    backend: Literal["journal"]
+    journal_path: str = Field(min_length=1)
 
     def journal(self) -> Path:
-        if self.journal_path is None:
-            raise ValueError("the emission has no journal_path")
         return Path(self.journal_path)
+
+
+#: The backend key picks the model; no code compares it with a literal.
+ModelEmissionSettings = Annotated[
+    ModelInMemoryEmission | ModelJournalEmission, Field(discriminator="backend")
+]
 
 
 class ModelLabCheckRunOverlay(BaseModel):
@@ -122,9 +130,12 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabCheckRunOv
 __all__ = [
     "NODE_NAME",
     "ModelCheckRunSource",
+    "ModelEmissionBase",
     "ModelEmissionSettings",
     "ModelGithubSource",
+    "ModelInMemoryEmission",
     "ModelInMemorySource",
+    "ModelJournalEmission",
     "ModelLabCheckRunOverlay",
     "ModelLabCheckRunSettings",
     "load_overlay",

@@ -38,6 +38,7 @@ from omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run impor
 )
 from omnimarket.nodes.node_lab_check_run_effect.overlay import (
     ModelGithubSource,
+    ModelJournalEmission,
     ModelLabCheckRunOverlay,
 )
 from omnimarket.nodes.node_lab_check_run_effect.protocols.protocol_check_run_api import (
@@ -292,6 +293,7 @@ def test_post_on_exact_head_api_down_ends_in_a_typed_failure() -> None:
     assert rig.phases() == [("start", None), ("failure", "lab_check_api_failed")]
     topic, payload = rig.handler.event_for(result)
     assert topic == load_topics()["check_run_failed"]
+    assert topic == "onex.evt.omnimarket.lab-check-run-failed.v1"
     assert payload["outcome"] == "failed_api"
 
 
@@ -299,6 +301,8 @@ def test_post_on_exact_head_golden_event_goes_to_the_completed_topic() -> None:
     rig = Rig()
     topic, _ = rig.handler.event_for(rig.handler.handle(request()))
     assert topic == load_topics()["check_run_completed"]
+    # The topic the floor and the J8 landing join subscribe to, spelled out so a rename of the contract topic fails here.
+    assert topic == "onex.evt.omnimarket.lab-check-run-completed.v1"
 
 
 # ------------------------------------------------------------------------------------------------ AC2
@@ -440,8 +444,11 @@ def test_overlay_has_no_defaults_an_absent_key_refuses() -> None:
 
 def test_a_journal_emission_keeps_the_chain_for_the_floor(tmp_path: Path) -> None:
     ov = overlay()
-    emission = ov.emission.model_copy(
-        update={"backend": "journal", "journal_path": str(tmp_path / "j.jsonl")}
+    emission = ModelJournalEmission(
+        node=ov.emission.node,
+        piece=ov.emission.piece,
+        backend="journal",
+        journal_path=str(tmp_path / "j.jsonl"),
     )
     handler = HandlerLabCheckRunEffect(
         overlay=ov.model_copy(update={"emission": emission}),
