@@ -49,6 +49,11 @@ handler_routing:
       name: HandlerFleetObservationSource
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
   - operation: prepare_process_health
     handler:
       name: HandlerProcessHealthPayload
@@ -216,6 +221,23 @@ runtime:
     required: false
     timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
+  - name: friction_classed
+    concurrent: true
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 90
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      ledger_path_env: ONEX_LEDGER_PATH
+      archive_subdir: archive
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
   - name: factory_floor
     kind: module
     required: true
