@@ -1,0 +1,24 @@
+name: node_commitment_check_runner_effect
+version: "0.1.0"
+description: "Commitment check runner: runs each open commitment's check on a schedule and closes or reopens it on the ledger"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_commitment_check_runner_effect: "omnimarket.nodes.node_commitment_check_runner_effect"
+capabilities:
+  standalone: true
+  # false until the schedule's unit is installed on a host: auto-wiring prepares this node as SKIPPED.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "commitments", "ledger"]
+pack: "routing"
+display_name: "Commitment Check Runner Effect"
+node_role: "effect"
