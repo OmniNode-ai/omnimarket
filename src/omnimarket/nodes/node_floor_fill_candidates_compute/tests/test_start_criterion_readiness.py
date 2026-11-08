@@ -150,6 +150,67 @@ def test_start_criterion_readiness_flips_with_the_reading_the_failing_control() 
     assert refusal.unmet == ("piece 2 WORKING (reading is old)",)
 
 
+def test_start_criterion_readiness_reading_age_counts_the_time_since_the_record_was_generated() -> (
+    None
+):
+    """A reading aged 7190 s of 7200 s when the record was generated is 7335 s old at the request's now (145 s later)."""
+    task = {"A": ("ready", "Start when: piece 1 reads WORKING")}
+    near = pieces_text(pieces={1: {"reading_age_s": 7190}})
+    [refusal] = run_tasks(task, pieces_record=near).not_ready
+    assert refusal.unmet == ("piece 1 WORKING (reading is old)",)
+    inside = pieces_text(pieces={1: {"reading_age_s": 7000}})
+    assert ready_ids(run_tasks(task, pieces_record=inside)) == ["A"]
+
+
+def test_start_criterion_readiness_an_unread_piece_does_not_invalidate_the_other_pieces() -> (
+    None
+):
+    """The served record carries ``reading_state: null`` for a piece with no reading; a task on another piece still reads."""
+    task = {"A": ("ready", "Start when: piece 1 reads WORKING")}
+    data = json.loads(pieces_text())
+    data["pieces"][1]["reading_state"] = None
+    assert ready_ids(run_tasks(task, pieces_record=json.dumps(data))) == ["A"]
+    on_unread = {"B": ("ready", "Start when: piece 2 reads WORKING")}
+    [refusal] = run_tasks(on_unread, pieces_record=json.dumps(data)).not_ready
+    assert refusal.unmet == ("piece 2 WORKING (reads nothing)",)
+
+
+def test_start_criterion_readiness_a_condition_inside_parentheses_is_still_read() -> (
+    None
+):
+    """``(and piece 2 reads WORKING)`` is a condition, not an aside: piece 2 is NOT WORKING, so the task is not ready."""
+    parsed = parse_start_when(
+        "Start when: piece 1 reads WORKING (and piece 2 reads WORKING)"
+    )
+    assert [p.piece for p in parsed.prerequisites] == [1, 2]
+    line = run_tasks(
+        {
+            "A": (
+                "ready",
+                "Start when: piece 1 reads WORKING (and piece 2 reads WORKING)",
+            )
+        }
+    )
+    assert ready_ids(line) == []
+    [refusal] = line.not_ready
+    assert refusal.unmet == ("piece 2 WORKING (reads NOT WORKING)",)
+
+
+def test_start_criterion_readiness_an_operator_go_inside_parentheses_is_unparseable() -> (
+    None
+):
+    parsed = parse_start_when("Start when: piece 1 reads WORKING (operator go)")
+    assert parsed.unparseable_cause.startswith("cannot read 'operator go'")
+
+
+def test_start_criterion_readiness_a_plain_aside_is_still_dropped() -> None:
+    parsed = parse_start_when(
+        "Start when: piece 1 reads WORKING (see the plan, section 4)"
+    )
+    assert parsed.unparseable_cause == ""
+    assert [p.piece for p in parsed.prerequisites] == [1]
+
+
 @pytest.mark.parametrize(
     ("pieces", "cause"),
     [

@@ -63,7 +63,8 @@ class ModelPieceReading(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     piece: int
-    reading_state: str = ""
+    # A piece with no reading is served with ``reading_state: null``; it reads as unmet and never invalidates the list.
+    reading_state: str | None = None
     reading_age_s: int | None = Field(default=None, ge=0)
     reading_max_age_s: int | None = Field(default=None, gt=0)
 

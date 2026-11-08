@@ -10,7 +10,7 @@ a semicolon or ``&``:
 * ``<repo>#<n> merged`` or ``<ticket id> merged``: the reference is on the request's merged list;
 * ``M0 PASS``: the request carries the M0 verdict PASS.
 
-A parenthesised aside after a prerequisite is dropped. Anything else, an operator go included, is unparseable: the task reads not ready with the cause named.
+A parenthesised aside after a prerequisite is dropped, unless it holds a condition word (piece, merged, M0, PASS, WORKING, operator, go): the aside is then read as part of the line, so a condition kept in parentheses is evaluated or refused, never erased. Anything else, an operator go included, is unparseable: the task reads not ready with the cause named.
 """
 
 from __future__ import annotations
@@ -49,9 +49,29 @@ _MERGED = re.compile(
 _M0 = re.compile(
     r"M0\s+(?:reads?\s+|is\s+|has\s+a\s+)?PASS(?:ES)?(?:\s+verdict)?\b", re.I
 )
-_ASIDE = re.compile(r"\s*\([^()]*\)")
+_ASIDE = re.compile(r"\s*\((?P<inner>[^()]*)\)")
+_CONDITION_WORD = re.compile(
+    r"\b(?:pieces?|merged|M0|PASS|WORKING|operator|go)\b", re.I
+)
 _NUMBER = re.compile(r"\d+")
 _SHOWN = 40
+
+
+def _resolve_aside(match: re.Match[str]) -> str:
+    """An aside holding a condition word is unwrapped so that its words are read; any other aside is dropped."""
+    inner = match.group("inner").strip()
+    if _CONDITION_WORD.search(inner):
+        return f" {inner}"
+    return ""
+
+
+def _resolve_asides(body: str) -> str:
+    """Resolve parenthesised spans innermost first until none is left."""
+    while True:
+        resolved = _ASIDE.sub(_resolve_aside, body)
+        if resolved == body:
+            return body
+        body = resolved
 
 
 def normalize_ref(ref: str) -> str:
@@ -69,7 +89,7 @@ def parse_start_when(text: str) -> ModelStartCriterionParse:
         return _unparseable("empty line")
     if _NONE.match(body):
         return ModelStartCriterionParse()
-    body = _ASIDE.sub("", body).strip()
+    body = _resolve_asides(body).strip()
     prerequisites: list[ModelStartPrerequisite] = []
     pos = 0
     while True:
@@ -124,6 +144,9 @@ class PrerequisiteReader:
         self.m0_verdict = m0_verdict
         self.pieces: dict[int, ModelPieceReading] = {}
         self.pieces_unread: PiecesUnreadCause = ""
+        # Seconds between the record's generation and the request's now; a reading ages by this much on top of the age
+        # the producer served.
+        self.elapsed_s = 0
         self._read_pieces(now, pieces_record)
 
     def _read_pieces(self, now: str, text: str | None) -> None:
@@ -139,6 +162,7 @@ class PrerequisiteReader:
         if age > timedelta(seconds=record.freshness_max_age_s):
             self.pieces_unread = "old"
             return
+        self.elapsed_s = max(0, int(age.total_seconds()))
         self.pieces = {p.piece: p for p in record.pieces}
 
     def unmet(self, prerequisite: ModelStartPrerequisite) -> str:
@@ -159,6 +183,6 @@ class PrerequisiteReader:
             return f"reads {reading.reading_state or 'nothing'}"
         if reading.reading_age_s is None or reading.reading_max_age_s is None:
             return "reading has no age"
-        if reading.reading_age_s > reading.reading_max_age_s:
+        if reading.reading_age_s + self.elapsed_s > reading.reading_max_age_s:
             return "reading is old"
         return ""
