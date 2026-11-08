@@ -32,6 +32,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, get_args
 from urllib.parse import urlparse
@@ -55,6 +56,7 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.handlers.routing.byok_model_discovery import get_models_json
 from omnimarket.handlers.routing.byok_provider_backends import (
+    byok_declared_price_per_1m,
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.local_byok_route import (
@@ -75,10 +77,13 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
     ModelProvider,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelCostClass,
+    ModelModelLadderEntry,
     ModelModelSetupResult,
     ModelModelStatus,
     ModelModelTestResult,
 )
+from omnimarket.pricing import manifest_price_per_1k
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
@@ -333,6 +338,38 @@ def _text(value: object) -> str | None:
     return str(value) if value else None
 
 
+#: The providers whose models the developer runs: no price, no key.
+_LOCAL_PROVIDERS: tuple[ModelProvider, ...] = ("local", "ollama")
+
+
+def model_cost_class(provider: ModelProvider, model: str) -> ModelCostClass:
+    """Whether ``model`` on ``provider`` is free, paid, or of unknown cost (OMN-23167).
+
+    ``free``: a model the developer runs, an OpenRouter ``:free`` id, a model the
+    catalogue tags free, a provider the catalogue bills as a free tier, or a
+    declared price of zero. ``paid``: a declared price above zero, in the
+    catalogue or the pricing manifest. A model with
+    no price in the catalogue is ``unknown``, never ``free``.
+    """
+    if provider in _LOCAL_PROVIDERS or model.endswith(":free"):
+        return "free"
+    row = resolve_byok_provider_backend(provider)
+    if row is None:
+        return "unknown"
+    if row.limit_model.billing == "free_tier" or any(
+        "free" in preference.tags and preference.generation_of(model) is not None
+        for preference in row.model_preference
+    ):
+        return "free"
+    price = byok_declared_price_per_1m(row.endpoint_url, model)
+    if price is None:
+        # The pricing manifest names a model by its own id, per 1k tokens.
+        price = manifest_price_per_1k(model)
+    if price is None:
+        return "unknown"
+    return "free" if price == (Decimal(0), Decimal(0)) else "paid"
+
+
 class HandlerModelSetup:
     """Status and pinned test delegations for the models delegation can use."""
 
@@ -355,6 +392,10 @@ class HandlerModelSetup:
                 operation="status",
                 providers=tuple(statuses),
                 only=read_model_scope(),
+            )
+        if request.operation == "ladder":
+            return ModelModelSetupResult(
+                operation="ladder", ladder=self._ladder(), only=read_model_scope()
             )
         # OMN-21267: the developer's local-only or free-only rule.
         if request.operation == "set_only":
@@ -394,6 +435,54 @@ class HandlerModelSetup:
         )
         return ModelModelSetupResult(
             operation="test", tests=tuple(self._test(p) for p in providers)
+        )
+
+    # -- the order models are tried in ---------------------------------------
+
+    def _ladder(self) -> tuple[ModelModelLadderEntry, ...]:
+        """Every routable model in the order delegation tries it (OMN-23167).
+
+        The model chosen with ``onex models first`` leads, then the local models
+        (a URL's, then Ollama's) in the order declared, then each key's models in
+        its own order. A key whose last test failed is not routed, so it is not
+        listed; the model the rule ``only`` would skip is still listed, with its
+        cost class.
+        """
+        statuses = {p: self._status(p) for p in PROVIDERS}
+        ordered: list[tuple[ModelProvider, str]] = []
+        for provider in (
+            *_LOCAL_PROVIDERS,
+            *(p for p in PROVIDERS if p not in _LOCAL_PROVIDERS),
+        ):
+            status = statuses[provider]
+            if not status.set_up:
+                continue
+            if provider not in _LOCAL_PROVIDERS and local_byok_key_test_failed(
+                provider
+            ):
+                continue
+            # Ollama declares its routes, not model names: its backend is the rung.
+            names = status.models or (self.backend_for(provider) or provider,)
+            ordered.extend((provider, name) for name in names)
+        first = next(
+            (
+                (s.provider, s.first_model)
+                for s in statuses.values()
+                if s.tried_first and s.first_model
+            ),
+            None,
+        )
+        if first is not None and first in ordered:
+            ordered.remove(first)
+            ordered.insert(0, first)
+        return tuple(
+            ModelModelLadderEntry(
+                position=index,
+                provider=provider,
+                model=model,
+                cost_class=model_cost_class(provider, model),
+            )
+            for index, (provider, model) in enumerate(ordered, start=1)
         )
 
     # -- the model onboarding registers ------------------------------------

@@ -74,6 +74,20 @@ def get_manifest_version_int() -> int:
         return 0
 
 
+def manifest_price_per_1k(model: str) -> tuple[Decimal, Decimal] | None:
+    """The manifest's ``(input, output)`` USD per 1k tokens for ``model``, or ``None``.
+
+    ``None`` means the manifest does not name the model; it never means free.
+    """
+    entry = _load_table().get_entry(model)
+    if entry is None:
+        return None
+    return (
+        Decimal(str(entry.input_cost_per_1k)),
+        Decimal(str(entry.output_cost_per_1k)),
+    )
+
+
 class BaselineModelSelection(BaseModel):
     """Resolved baseline and the reason it was selected."""
 
