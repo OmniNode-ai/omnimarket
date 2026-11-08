@@ -22,6 +22,7 @@ values that only the store port and the Redfish body see.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import os
 import re
@@ -29,7 +30,8 @@ import secrets
 import ssl
 import string
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -1252,19 +1254,55 @@ class IloSetupSequence:
     def _write_private(self, path: Path, text: str) -> None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(path.name + ".tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(text)
-            os.replace(tmp, path)
+            # a name no other writer shares, created 0600, so that only this writer's finished text
+            # is ever renamed into place
+            fd, staged = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
+            tmp = Path(staged)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+                os.replace(tmp, path)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
         except OSError:
             raise _StopError(Refusal.OVERLAY_WRITE_FAILED, path.name) from None
 
+    @contextmanager
+    def _overlay_lock(self) -> Iterator[None]:
+        """Exclusive lock on the overlay for a whole read, merge and publish, across processes."""
+        try:
+            self._overlay_dir.mkdir(parents=True, exist_ok=True)
+            fd = os.open(
+                self._overlay_dir / "overlay.yaml.lock",
+                os.O_RDWR | os.O_CREAT,
+                0o600,
+            )
+        except OSError:
+            raise _StopError(Refusal.OVERLAY_WRITE_FAILED, "overlay lock") from None
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            except OSError:
+                raise _StopError(Refusal.OVERLAY_WRITE_FAILED, "overlay lock") from None
+            yield
+        finally:
+            os.close(fd)
+
     def _prepare_journal_dir(self) -> None:
-        self._journal_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self._journal_dir, 0o700)
+        try:
+            self._journal_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self._journal_dir, 0o700)
+        except OSError:
+            raise _StopError(
+                Refusal.OVERLAY_WRITE_FAILED, "journal directory"
+            ) from None
 
     def _write_overlay(self, row: dict[str, JsonValue]) -> None:
+        with self._overlay_lock():
+            self._publish_overlay_row(row)
+
+    def _publish_overlay_row(self, row: dict[str, JsonValue]) -> None:
         document = self._overlay_document()
         rows = _rows(document)
         merged: list[JsonValue] = [

@@ -6,6 +6,8 @@ Each test fails on the code the review was written against.
 
 from __future__ import annotations
 
+import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,9 @@ import pytest
 import yaml
 from pydantic import JsonValue
 
+from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
+    ilo_setup_runner as runner,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     setup_certificate as cert,
 )
@@ -196,3 +201,64 @@ def test_a_new_host_is_set_up_on_the_default_port(tmp_path: Path) -> None:
     rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
     assert rig.run("h9").hosts[0].status == "ready"
     assert [port for _, port in rig.fetches] == [443]
+
+
+# -- threads 11, 12, 13: the overlay and the files it points at --------------------------------
+
+
+def _row(name: str) -> dict[str, JsonValue]:
+    return runner._host_row(name, "gen9", "192.0.2.1", "Gen9", "ab" * 32, "x.pem", True)
+
+
+def test_two_writers_staging_the_same_file_each_publish_only_their_own_complete_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+    target = tmp_path / "published" / "file.pem"
+    real_replace = os.replace
+    raced: list[bool] = []
+
+    def replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        if not raced:
+            # a second writer runs to completion between this writer's close and its rename
+            raced.append(True)
+            rig.handler._write_private(target, "B" * 100)
+        real_replace(src, dst)
+
+    monkeypatch.setattr(runner.os, "replace", replace)
+    rig.handler._write_private(target, "A" * 100)
+    assert target.read_text() in ("A" * 100, "B" * 100)
+    assert sorted(p.name for p in target.parent.iterdir()) == ["file.pem"]
+
+
+def test_concurrent_host_updates_do_not_erase_each_others_overlay_rows(
+    tmp_path: Path,
+) -> None:
+    first = Rig(tmp_path, {"h1": SetupDevice("gen9")}).handler
+    second = Rig(tmp_path, {"h2": SetupDevice("gen9")}).handler
+    other = threading.Thread(target=lambda: second._write_overlay(_row("h2")))
+    real_document = first._overlay_document
+
+    def document_then_the_other_host_writes() -> dict[str, JsonValue]:
+        read = real_document()
+        other.start()
+        other.join(timeout=0.5)
+        return read
+
+    first._overlay_document = document_then_the_other_host_writes  # type: ignore[method-assign]
+    first._write_overlay(_row("h1"))
+    other.join()
+    document = yaml.safe_load(
+        (tmp_path / "overlays/node_ilo_redfish_effect/overlay.yaml").read_text()
+    )
+    assert sorted(r["name"] for r in document["hosts"]) == ["h1", "h2"]
+
+
+def test_a_journal_directory_that_cannot_be_made_refuses_that_host_and_the_batch_goes_on(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, {"h8": SetupDevice("gen8"), "h9": SetupDevice("gen9")})
+    rig.journal_dir.write_text("a file where the journal directory should be")
+    result = rig.run("h8", "h9")
+    assert [h.host for h in result.hosts] == ["h8", "h9"]
+    assert [h.refusal for h in result.hosts] == [R.OVERLAY_WRITE_FAILED] * 2
