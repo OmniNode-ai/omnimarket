@@ -19,7 +19,7 @@ class_rules:
   - name: local-hooks-fail-one-per-attempt
     owner: "the owners of the pre-commit and pre-push hook set of the repository that refused"
     # Only text that says the hooks failed one at a time over several attempts. A row that merely names the pre-commit or pre-push
-    # stage is a different cause (OMN-22865): it matched 8 rows of 8 causes and 3 of 3 recorded rows of other causes.
+    # stage is a different cause (OMN-23220): it matched 8 rows of 8 causes and 3 of 3 recorded rows of other causes.
     pattern: '(?:hook round|commit attempts|failing hooks|release-identity hook|mixed-category hook)'
   - name: installed-copy-behind-merged-code
     owner: "the host installer (the declared installer and adopt-merged), not the lane that met it"
@@ -135,7 +135,7 @@ class_rules:
   - name: commit-gates-conflict-local-paths-vs-file-shape-ratchet
     owner: "the owners of the check-local-paths-compute hook in omnibase_core and of the canonical-file-shape ratchet: the hook's only escape marker counts as suppression growth in the ratchet, so a file the hook flags cannot be changed"
     pattern: 'check-local-paths-compute hook'
-  # The 8 rows of 2026-11-07T21:01Z to 2026-11-08T15:21Z that the broad rule filed under local-hooks-fail-one-per-attempt (OMN-22865): one
+  # The 8 rows of 2026-11-07T21:01Z to 2026-11-08T15:21Z that the broad rule filed under local-hooks-fail-one-per-attempt (OMN-23220): one
   # cause each, named from their own text. A row that names the host table goes to that rule, which is above these.
   - name: hook-preflight-push-hook-before-first-commit
     owner: "the owner of hook-preflight in the remote-lane skill: its pass of the pre-push ticket-contract hook read HEAD, which cannot carry contracts/<ticket>.yaml before the first commit (fixed in the installed plugin tree of a host that has taken the fix)"

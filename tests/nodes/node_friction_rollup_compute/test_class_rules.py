@@ -40,7 +40,7 @@ EXPECTED = {
         "lab-stack-reaper-pass-refused",
         "ledger-window-file-unreadable",
     },
-    # The broad pre-commit / pre-push alternatives of the hooks rule filed the first and third under it (OMN-22865).
+    # The broad pre-commit / pre-push alternatives of the hooks rule filed the first and third under it (OMN-23220).
     "b0-m0-1530": {"pre-commit-stash-in-registry-clone-opens-ledger-path-window"},
     "dropped-prs-1545": {"local-hooks-fail-one-per-attempt"},
     "review-keystone-1845": {"landing-deferred-by-criteria-drift"},

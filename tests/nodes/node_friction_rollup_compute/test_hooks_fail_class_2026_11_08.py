@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The floor row ``stoppage:local-hooks-fail-one-per-attempt`` read 8 rows and 214 lane-minutes; the rows were 8 causes (OMN-22865).
+"""The floor row ``stoppage:local-hooks-fail-one-per-attempt`` read 8 rows and 214 lane-minutes; the rows were 8 causes (OMN-23220).
 
 The class meant one thing: the local hooks failed one at a time, a round per failure. Its rule also matched any row
 that named the ``pre-commit`` or ``pre-push`` stage, so a slow hook set, a hook that cannot read the pull request, a
