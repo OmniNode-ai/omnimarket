@@ -5,6 +5,13 @@
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute bundle \\
         --candidates C.json --pr-state P.json --text-state T.json --max 12 \\
         [--contract-state K.json] [--overlay overlay.yaml]
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute prs OMN-1 OMN-2 \\
+        [--wait-s 60] [--deadline ISO8601] [--overlay overlay.yaml]
+
+``prs`` prints the PR row of each ticket ({id, merged, open, error}): merged PRs are read on
+each overlay repository's own default branch (every repository the overlay lists),
+open PRs from the PR watcher's state; an unread repository is named on stderr and an unread or
+stale watcher state is an error on every row.
 
 Without --contract-state the contract index reads contracts/ on each overlay repository's
 default branch under OMNI_HOME (the real backend); the handler itself reads nothing. Prints
@@ -18,10 +25,16 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     GitCloneContractIndex,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources import (
+    GitCloneMergeSubjects,
+    wait_for_watcher_state,
+    watcher_state_path,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
     load_scope_overlay,
@@ -55,6 +68,42 @@ def read_array(path: Path, name: str) -> list[dict[str, object]]:
     return [r if isinstance(r, dict) else {} for r in rows]
 
 
+def run_prs(args: argparse.Namespace) -> int:
+    """The `prs` command: read the clones and the watcher state, decide through the handler."""
+    try:
+        overlay = load_scope_overlay(args.overlay)
+        # node-purity-ok: CLI boundary names the registry root
+        home = os.environ.get("OMNI_HOME", "")  # node-purity-ok: CLI boundary
+        if not home:
+            raise ScopeInputUnreadableError("OMNI_HOME is not set")
+        subjects = GitCloneMergeSubjects(Path(home), overlay).subjects()
+        state, why = wait_for_watcher_state(
+            watcher_state_path(Path(home)),
+            overlay,
+            wait_s=args.wait_s,
+            deadline=args.deadline,
+        )
+        request = ModelDodCloseoutDecisionRequest(
+            kind=EnumCloseoutDecisionKind.PR_ROWS,
+            date="1970-01-01",
+            pr_tickets=args.tickets,
+            pr_subjects=subjects,
+            pr_watcher_state=state,
+            pr_watcher_error=why,
+            scope_overlay=overlay,
+        )
+        result = HandlerDodCloseoutSweep().handle(request)
+    except (ScopeInputUnreadableError, OSError, ValueError) as exc:
+        sys.stderr.write(f"closeout-scope: REFUSED: {exc}\n")
+        return 2
+    if result.unread_repositories:
+        sys.stderr.write(
+            f"closeout-scope: clones not read: {', '.join(result.unread_repositories)}\n"
+        )
+    sys.stdout.write(json.dumps(result.pr_rows) + "\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -74,7 +123,18 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="a clone outside the registry root whose contracts/ also counts (repeatable)",
     )
+    prs = sub.add_parser("prs", help="merged and open PRs per ticket")
+    prs.add_argument("tickets", nargs="+")
+    prs.add_argument("--wait-s", type=int, default=60)
+    prs.add_argument("--deadline", type=datetime.fromisoformat)
+    prs.add_argument("--overlay", type=Path)
     args = parser.parse_args(argv)
+    if args.mode == "prs":
+        if args.wait_s < 0:
+            parser.error("--wait-s must not be negative")
+        if args.deadline is not None and args.deadline.tzinfo is None:
+            parser.error("--deadline needs a timezone")
+        return run_prs(args)
     if args.limit < 1:
         parser.error("--max must be a positive integer")
     try:

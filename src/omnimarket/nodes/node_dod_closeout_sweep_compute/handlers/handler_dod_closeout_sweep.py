@@ -31,6 +31,11 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     read_receipts,
     zero_flip_alert,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_rules import (
+    merged_prs,
+    open_prs,
+    pr_rows,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
     load_scope_overlay,
 )
@@ -827,7 +832,12 @@ def refuse_binding(
     check = request.check
     if check is not None and not check.label and request.criterion_label:
         check = check.model_copy(update={"label": request.criterion_label})
-    refusal = refusal_of(check)
+    refusal = refusal_of(
+        check,
+        load_scope_overlay()
+        if request.scope_overlay is None
+        else request.scope_overlay,
+    )
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
         refused=refusal is not None,
@@ -877,6 +887,25 @@ def bundle_scope(
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
         scope_bundle=json.loads(text),
+    )
+
+
+def report_prs(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Each ticket's merged and open PRs; a watcher state that was not read is an error on every
+    row, never an empty open set (OMN-20655)."""
+    assert request.pr_tickets is not None
+    assert request.pr_subjects is not None
+    overlay = request.scope_overlay or load_scope_overlay()
+    merged, unread = merged_prs(request.pr_subjects, overlay)
+    state = request.pr_watcher_state
+    opened = None if state is None else open_prs(state, overlay)
+    why = request.pr_watcher_error or "PR watcher state was not given"
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.PR_ROWS,
+        pr_rows=[dict(r) for r in pr_rows(request.pr_tickets, merged, opened, why)],
+        unread_repositories=unread,
     )
 
 
@@ -1026,6 +1055,8 @@ class HandlerDodCloseoutSweep:
             return rotate_candidates(request=request)
         if kind is EnumCloseoutDecisionKind.SCOPE_BUNDLE:
             return bundle_scope(request=request)
+        if kind is EnumCloseoutDecisionKind.PR_ROWS:
+            return report_prs(request=request)
         if kind is EnumCloseoutDecisionKind.DECIDE_TICKET:
             return judge_ticket(request=request)
         if kind is EnumCloseoutDecisionKind.COMPLETION:

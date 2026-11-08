@@ -47,6 +47,7 @@ class EnumCloseoutDecisionKind(StrEnum):
     DECIDE_TICKET = "decide_ticket"
     COMPLETION = "completion"
     GROUND_STATE = "ground_state"
+    PR_ROWS = "pr_rows"
 
 
 class EnumPrecheckVerdict(StrEnum):
@@ -375,7 +376,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     friction: str = "none"
     released_probe_run: bool = True
     released_positive_control: str = ""
-    # refuse_binding
+    # refuse_binding (scope_overlay, shared with scope_bundle and pr_rows, names each
+    # repository's default branch; absent loads this node's overlay.yaml)
     check: ModelBindingCheck | None = None
     criterion_label: str = ""
     # check_identities
@@ -402,6 +404,14 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     scope_text_state: list[dict[str, JsonValue]] | None = None
     scope_contract_state: list[dict[str, JsonValue]] | None = None
     scope_overlay: ModelCloseoutScopeOverlay | None = None
+    # pr_rows (scope_overlay is shared with scope_bundle): the tickets to report on, the squash
+    # merge subjects read from each overlay repository's default branch (a repository the caller
+    # could not read is absent, never empty), and the PR watcher's state (absent when it could
+    # not be read, with pr_watcher_error saying why).
+    pr_tickets: list[str] | None = None
+    pr_subjects: dict[str, list[str]] | None = None
+    pr_watcher_state: dict[str, JsonValue] | None = None
+    pr_watcher_error: str = ""
     # decide_ticket: the detail the verify command printed with outcome could_not_run.
     verify_detail: str = ""
     # completion (clock_utc is the completion stamp, ledger_rows the history; both shared
@@ -449,6 +459,7 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "run_summary",
             ),
             EnumCloseoutDecisionKind.GROUND_STATE: ("ledger_rows",),
+            EnumCloseoutDecisionKind.PR_ROWS: ("pr_tickets", "pr_subjects"),
         }
         optional: dict[EnumCloseoutDecisionKind, tuple[str, ...]] = {
             EnumCloseoutDecisionKind.PRECHECK: (
@@ -480,7 +491,11 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "released_probe_run",
                 "released_positive_control",
             ),
-            EnumCloseoutDecisionKind.REFUSE_BINDING: ("check", "criterion_label"),
+            EnumCloseoutDecisionKind.REFUSE_BINDING: (
+                "check",
+                "criterion_label",
+                "scope_overlay",
+            ),
             EnumCloseoutDecisionKind.CHECK_IDENTITIES: ("proposed_by", "accepted_by"),
             EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("chunk_size", "text_state"),
             EnumCloseoutDecisionKind.SCOPE_BUNDLE: (
@@ -502,6 +517,11 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "zero_flip_threshold_runs",
             ),
             EnumCloseoutDecisionKind.GROUND_STATE: ("zero_flip_threshold_runs",),
+            EnumCloseoutDecisionKind.PR_ROWS: (
+                "pr_watcher_state",
+                "pr_watcher_error",
+                "scope_overlay",
+            ),
         }
         for field in required[kind]:
             if getattr(self, field) is None:
@@ -601,6 +621,9 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     held: list[str] | None = None
     # scope_bundle
     scope_bundle: dict[str, JsonValue] | None = None
+    # pr_rows
+    pr_rows: list[dict[str, JsonValue]] | None = None
+    unread_repositories: list[str] | None = None
     # decide_ticket
     decision: EnumTicketDecision | None = None
     ticket_unmet: list[ModelUnmetCriterion] | None = None

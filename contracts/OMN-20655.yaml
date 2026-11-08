@@ -20,6 +20,12 @@ requirements:
       - id: "DoD3"
         statement: |-
           DoD3: the scope_bundle kind is dispatched through the contract on the in-memory bus and a request missing its PR state is refused with no result -- falsifier: test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_bus and test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus in the same file
+      - id: "DoD4"
+        statement: |-
+          DoD4: the PR reader runs in the node with the repository list and each repository's default branch in overlay.yaml, so a ticket whose only merged PR is on a repository whose default branch is main and that the frozen list left out (OMN-18470) reads as merged, and the same read with the frozen list reads no merged PR -- falsifier: test_failing_control_the_frozen_list_reads_omn_18470_as_having_no_merged_pr and test_failing_control_the_ticket_is_waiting_with_the_old_list_and_selected_with_the_new in tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py
+      - id: "DoD5"
+        statement: |-
+          DoD5: the binding rule accepts a merged ref on a repository's own default branch (origin/main for a repository whose default branch is main) and still refuses a ref on any other branch -- falsifier: test_failing_control_a_ref_off_the_default_branch_is_still_refused and test_failing_control_the_binding_refuses_origin_main_with_the_frozen_rule_and_accepts_it_now in the same file
 evidence_requirements:
   - kind: "tests"
     description: "Golden-chain, error-chain, parity and failing-control tests for the scope ranking."
@@ -62,3 +68,19 @@ dod_evidence:
         check_value: |-
           onex run-node node_dod_closeout_sweep_compute --input '{"kind":"scope_bundle","date":"2026-11-08","scope_candidates":[{"id":"OMN-20675","state":"In Review","sources":["started"],"last_closeout_comment_at":""}],"scope_pr_state":[{"id":"OMN-20675","merged":["omnimarket#1"],"open":[],"error":""}],"scope_text_state":[],"scope_contract_state":[{"id":"OMN-20675","has_contract":false}],"max_candidates":1}' | grep -q '"no_contract":\["OMN-20675"\]'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20655-pr-reader-knowledge-base"
+    description: "A ticket whose only merged PR is on a main-default repository the frozen list left out reads as merged with the overlay's list; the frozen list reads none."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py::test_failing_control_the_frozen_list_reads_omn_18470_as_having_no_merged_pr -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD4"]
+  - id: "dod-omn20655-binding-default-branch"
+    description: "The binding rule accepts origin/main for a repository whose default branch is main and refuses a ref off the default branch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py::test_failing_control_a_ref_off_the_default_branch_is_still_refused -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD5"]
