@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_drift_compute
+version: 1.0.0
+description: Compares each overlay value with the value its consumer depends on and names a park list held outside an overlay, as a reading row the floor can show.
+pack: operator_tooling
+node_role: compute
+display_name: Overlay Consumer Join Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_overlay_drift_compute: omnimarket.nodes.node_overlay_drift_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- reading
+- drift
+- overlay
