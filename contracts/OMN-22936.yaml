@@ -64,5 +64,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_gate_store_effect/contract.yaml?ref=omn-22936-j6-gate-store-join" --jq .content | base64 -d | grep -q 'HandlerGateStoreJoinJ6'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_gate_store_effect/contract.yaml?ref=omn-22936-j6-gate-store-join" --jq .content | base64 -d | grep -c 'HandlerGateStoreJoinJ6' | grep -qv '^0$'
     cwd: .
