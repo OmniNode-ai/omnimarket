@@ -65,6 +65,42 @@ class ModelLagSettings(BaseModel):
     record_condition: str = Field(min_length=1)
 
 
+class ModelLabAlarmScheduleHost(BaseModel):
+    """A host that runs the broker lag read on the schedule."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    scheduler: Literal["systemd-user", "launchd"]
+    #: The venv whose interpreter runs the unit, relative to the registry root. A kept tree, never a worktree.
+    venv: str = Field(min_length=1)
+    #: Environment the host's unit carries; ``$OMNI_HOME`` and ``$HOME`` are filled in at install.
+    environment: dict[str, str]
+
+
+class ModelLabAlarmSchedule(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    launchd_label: str = Field(min_length=1)
+    #: Relative to the registry root: the unit's log directory.
+    state_directory: str = Field(min_length=1)
+    #: Seconds between two runs. The floor reads the record no older than its own bound, so keep it well under.
+    interval_seconds: int = Field(ge=60)
+    timeout_seconds: int = Field(ge=1)
+    hosts: tuple[ModelLabAlarmScheduleHost, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_hosts(self) -> ModelLabAlarmSchedule:
+        names = [host.name for host in self.hosts]
+        if len(names) != len(set(names)):
+            raise ValueError("a schedule host is declared twice")
+        return self
+
+    def host(self, name: str) -> ModelLabAlarmScheduleHost | None:
+        return next((host for host in self.hosts if host.name == name), None)
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -72,6 +108,7 @@ class ModelLabAlarmOverlay(BaseModel):
     manifest: ModelManifestSettings
     groups: ModelGroupDerivation
     lag: ModelLagSettings
+    schedule: ModelLabAlarmSchedule
     injected_fault: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -92,6 +129,8 @@ __all__ = [
     "ModelDeclaredNode",
     "ModelGroupDerivation",
     "ModelLabAlarmOverlay",
+    "ModelLabAlarmSchedule",
+    "ModelLabAlarmScheduleHost",
     "ModelLagSettings",
     "ModelManifestSettings",
     "load_overlay",

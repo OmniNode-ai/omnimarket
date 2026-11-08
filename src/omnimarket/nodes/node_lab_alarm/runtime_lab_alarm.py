@@ -4,18 +4,20 @@
 
 ``broker-lag``  read the declared nodes' live consumer groups and keep the sample (what a schedule runs).
 ``probe``       the same read, keeping nothing.
+``schedule``    install | uninstall | status | run-now, for a host in the overlay's schedule hosts.
 
 ``--fault`` injects a drill fault; a drill never keeps its sample.
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
-1 the command was refused, 4 the run record the floor reads could not be written.
+1 the command was refused (a schedule verb exits with its own result's code), 4 the run record the floor reads could not be written.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,6 +38,10 @@ from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
     events_for,
     load_topics,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.schedule import (
+    LabAlarmScheduler,
+    ModelLabAlarmScheduleResult,
 )
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     EnumBrokerLagOutcome,
@@ -125,11 +131,68 @@ def run(
     return _EXIT[result.outcome]
 
 
+def run_schedule(
+    action: str,
+    host: str,
+    *,
+    overlay: ModelLabAlarmOverlay,
+    scheduler: LabAlarmScheduler | None = None,
+    omni_root: Path | None = None,
+    overlay_root: Path | None = None,
+    dry_run: bool = False,
+    out: Callable[[str], object] | None = None,
+    err: Callable[[str], object] | None = None,
+) -> int:
+    """One schedule verb on one declared host; the exit code is the result's."""
+    scheduler = scheduler or LabAlarmScheduler(overlay=overlay, home=Path.home())
+    result: ModelLabAlarmScheduleResult
+    if action == "install":
+        if omni_root is None or overlay_root is None:
+            result = ModelLabAlarmScheduleResult(
+                exit_code=1,
+                stderr="install needs the registry root (OMNI_HOME) and an overlay root\n",
+            )
+        else:
+            result = scheduler.install(
+                host, omni_root=omni_root, overlay_root=overlay_root, dry_run=dry_run
+            )
+    elif action == "uninstall":
+        result = scheduler.uninstall(host)
+    elif action == "run-now":
+        result = scheduler.run_now(host)
+    else:
+        result = scheduler.status(host)
+    (out or sys.stdout.write)(result.stdout)
+    (err or sys.stderr.write)(result.stderr)
+    return result.exit_code
+
+
+def _first_overlay_root(environ: Mapping[str, str]) -> Path | None:
+    roots = [
+        r for r in environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(os.pathsep) if r
+    ]
+    return Path(roots[0]) if roots else None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="node_lab_alarm")
-    parser.add_argument("verb", choices=("broker-lag", "probe"))
-    parser.add_argument(
-        "--fault", choices=[f.value for f in EnumLabAlarmFault], default="none"
+    sub = parser.add_subparsers(dest="verb", required=True)
+    for verb in ("broker-lag", "probe"):
+        reader = sub.add_parser(verb)
+        reader.add_argument(
+            "--fault", choices=[f.value for f in EnumLabAlarmFault], default="none"
+        )
+    schedule = sub.add_parser("schedule")
+    schedule.add_argument(
+        "action", choices=("install", "uninstall", "status", "run-now")
+    )
+    schedule.add_argument("--host", required=True)
+    schedule.add_argument("--dry-run", action="store_true")
+    schedule.add_argument(
+        "--overlay-root",
+        type=Path,
+        default=None,
+        help="the root the unit reads overlays from",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
@@ -137,6 +200,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     except NodeOverlayError as exc:
         sys.stderr.write(f"LAB-ALARM-REFUSED {exc}\n")
         return 1
+    if args.verb == "schedule":
+        registry_root = os.environ.get("OMNI_HOME")
+        return run_schedule(
+            args.action,
+            args.host,
+            overlay=overlay,
+            omni_root=Path(registry_root) if registry_root else None,
+            overlay_root=args.overlay_root or _first_overlay_root(os.environ),
+            dry_run=args.dry_run,
+        )
     return run(args.verb, EnumLabAlarmFault(args.fault), overlay=overlay)
 
 

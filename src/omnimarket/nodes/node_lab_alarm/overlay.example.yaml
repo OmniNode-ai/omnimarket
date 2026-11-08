@@ -19,4 +19,20 @@ lag:
   state_path: .onex_state/lab-alarm/broker-lag-sample.json
   record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl
   record_condition: consumer_group_lag
+schedule:
+  unit_name: example-lab-alarm
+  launchd_label: example.lab-alarm
+  state_directory: .onex_state/lab-alarm
+  interval_seconds: 300
+  timeout_seconds: 120
+  hosts:
+    - name: example-mac
+      scheduler: launchd
+      venv: examplepkg/.venv
+      environment:
+        EXAMPLE_SETTING: $OMNI_HOME/example
+    - name: example-linux
+      scheduler: systemd-user
+      venv: examplepkg/.venv
+      environment: {}
 injected_fault: A watched group's lag grows between two samples
