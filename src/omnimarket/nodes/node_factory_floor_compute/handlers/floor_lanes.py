@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 from collections import Counter
 from collections.abc import Mapping
@@ -109,6 +110,7 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
 DOTTED_TASK_RE = re.compile(r"[A-Za-z]+\.\d+")
 
 
+@functools.lru_cache(maxsize=65536)
 def name_tokens(text: str) -> tuple[str, ...]:
     """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
     return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)

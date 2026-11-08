@@ -73,7 +73,8 @@ def _id_pattern(task_id: str) -> re.Pattern[str]:
 
 
 def _id_in(task_id: str, text: str) -> bool:
-    return _id_pattern(task_id).search(text) is not None
+    # A plain substring test first: the pattern can match only where the id itself appears, and almost no title does.
+    return task_id in text and _id_pattern(task_id).search(text) is not None
 
 
 def _is_work_of(
