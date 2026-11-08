@@ -9,7 +9,7 @@ tick, and decides nothing the reducer decided.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_floor_fill_lines_compute.models import (
+from omnimarket.models.floor_fill import (
     EnumFloorFillLinesEntryState,
     EnumFloorFillLinesLevel,
     EnumFloorFillLinesSource,
