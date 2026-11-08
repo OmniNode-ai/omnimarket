@@ -76,7 +76,6 @@ dod_evidence:
       - check_type: command
         check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_start_admission_effect/handlers/handler_start_admission.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerStartAdmission'
         cwd: ${OMNI_HOME}/omnimarket
-    binds_ac: []
   - id: dod-omn23055-integration-proof
     description: >-
       The pushed head ran the three node test directories on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
