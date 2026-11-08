@@ -35,6 +35,12 @@ TOKEN_ENV = "EXAMPLE_JOB_READ_TOKEN"
 TOKEN_VALUE = "synthetic-token-value-0001"
 
 
+def declared_timeout_seconds() -> float:
+    """The operation timeout the contract declares, in seconds."""
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    return float(contract["descriptor"]["timeout_ms"]) / 1000
+
+
 def example_fields(name: str = "overlay.example.yaml") -> dict[str, Any]:
     return copy.deepcopy(yaml.safe_load((NODE_DIR / name).read_text(encoding="utf-8")))
 

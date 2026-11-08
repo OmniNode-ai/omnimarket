@@ -24,6 +24,7 @@ class EnumJobStartFailure(StrEnum):
     ORG_READ_DENIED = "org-read-denied"
     RATE_LIMITED = "rate-limited"
     BUDGET_EXHAUSTED = "budget-exhausted"
+    OPERATION_TIMEOUT = "operation-timeout"
     UNREADABLE = "unreadable"
     WINDOW_TRUNCATED = "window-truncated"
     READER_RAISED = "reader-raised"

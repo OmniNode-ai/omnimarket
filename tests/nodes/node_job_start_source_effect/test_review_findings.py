@@ -40,6 +40,7 @@ from tests.nodes.node_job_start_source_effect.support import (
     TOKEN_VALUE,
     FakeHttp,
     FakeReader,
+    declared_timeout_seconds,
     good_read,
     job_item,
     json_route,
@@ -58,7 +59,11 @@ def _github(http: FakeHttp, **changes: Any) -> Any:
     assert isinstance(fields.source, ModelGithubSource)
     source = fields.source.model_copy(update=changes)
     return GithubJobStartReader(
-        source, http, {TOKEN_ENV: TOKEN_VALUE}, run_lookback_seconds=86400
+        source,
+        http,
+        {TOKEN_ENV: TOKEN_VALUE},
+        run_lookback_seconds=86400,
+        operation_timeout_seconds=declared_timeout_seconds(),
     ).read(repositories=(REPO_A,), since=SINCE, until=NOW, now=NOW)
 
 

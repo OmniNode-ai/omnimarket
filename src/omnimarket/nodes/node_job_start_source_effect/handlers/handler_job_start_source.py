@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,15 @@ SUBJECT_PUBLIC = "js_public_starts_off_baseline"
 def load_topics() -> dict[str, str]:
     """The topics by role, read from the contract (the handler holds no topic string)."""
     return dict(yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))["topics"])
+
+
+def load_operation_timeout_seconds() -> float:
+    """The operation timeout the contract declares (``descriptor.timeout_ms``), in seconds.
+
+    The whole read, every call included, must end inside it; the handler holds no duration of its own.
+    """
+    document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    return float(document["descriptor"]["timeout_ms"]) / 1000
 
 
 def _sha(text: str) -> str:
@@ -155,6 +165,7 @@ class HandlerJobStartSource:
         http_get: ProtocolHttpGet | None = None,
         appender: ProtocolReadingAppender | None = None,
         environ: Mapping[str, str] | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._overlay = overlay
         self._reader = reader
@@ -162,6 +173,7 @@ class HandlerJobStartSource:
         self._http_get = http_get
         self._appender = appender
         self._environ = environ
+        self._clock = clock
 
     def _reader_for(self, overlay: ModelJobStartOverlay) -> ProtocolJobStartReader:
         if self._reader is not None:
@@ -174,6 +186,8 @@ class HandlerJobStartSource:
             self._http_get or UrllibHttpTransport(),
             os.environ if self._environ is None else self._environ,
             run_lookback_seconds=overlay.settings.run_lookback_seconds,
+            operation_timeout_seconds=load_operation_timeout_seconds(),
+            clock=self._clock or time.monotonic,
         )
 
     def _store_for(self, overlay: ModelJobStartOverlay) -> ProtocolJobStartStore:
@@ -280,5 +294,6 @@ __all__ = [
     "HandlerJobStartSource",
     "is_public_off_baseline",
     "judge",
+    "load_operation_timeout_seconds",
     "load_topics",
 ]

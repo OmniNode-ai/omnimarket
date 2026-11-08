@@ -33,6 +33,7 @@ from tests.nodes.node_job_start_source_effect.support import (
     TOKEN_VALUE,
     FakeHttp,
     Route,
+    declared_timeout_seconds,
     job_item,
     json_route,
     overlay,
@@ -60,7 +61,11 @@ def _read(
 ) -> ModelJobStartRead:
     environ = {TOKEN_ENV: token} if token is not None else {}
     return GithubJobStartReader(
-        source or _source(), http, environ, run_lookback_seconds=lookback
+        source or _source(),
+        http,
+        environ,
+        run_lookback_seconds=lookback,
+        operation_timeout_seconds=declared_timeout_seconds(),
     ).read(repositories=repositories, since=SINCE, until=NOW, now=NOW)
 
 

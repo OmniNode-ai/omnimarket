@@ -6,18 +6,21 @@ For each declared repository it lists the workflow runs created since the lookba
 skips the runs last updated before the window opened (none of their jobs can have started in it), and
 lists the jobs of each remaining run. A job is a start when it carries a ``started_at`` inside the
 window. Every call is counted against the overlay's ``max_calls``; the call past it is not made and
-the read ends in ``budget-exhausted``. Reads only (GET). The token comes from the environment
+the read ends in ``budget-exhausted``. The whole read is also bound in time: it may not run longer than
+the operation timeout the contract declares, and a call waits no longer than the time left, so slow
+calls that each succeed end the read in ``operation-timeout`` rather than running on. Reads only (GET). The token comes from the environment
 variable the overlay names, at call time, and is never put in a result, an error or a log line.
 
 Every way the read can fail is a typed failure and none returns the starts found so far as if they
-were all: a rate limit, a denial, a broken body, a call budget and a listing with more pages than the
+were all: a rate limit, a denial, a broken body, a call budget, the operation timeout and a listing with more pages than the
 overlay allows (``window-truncated``) all end the read with no starts.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -56,18 +59,31 @@ class GithubJobStartReader:
         environ: Mapping[str, str],
         *,
         run_lookback_seconds: int,
+        operation_timeout_seconds: float,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._s = source
         self._http = http_get
         self._environ = environ
         self._lookback = run_lookback_seconds
+        self._operation_timeout = operation_timeout_seconds
+        self._clock = clock or time.monotonic
+        self._started = 0.0
         self._calls = 0
 
     # -- transport -----------------------------------------------------------------------
+    def _time_left(self) -> float:
+        return self._operation_timeout - (self._clock() - self._started)
+
     def _get(self, path: str, repository: str) -> Any:
         if self._calls >= self._s.max_calls:
             raise JobStartReaderError(
                 EnumJobStartFailure.BUDGET_EXHAUSTED, repository, self._calls
+            )
+        left = self._time_left()
+        if left <= 0:
+            raise JobStartReaderError(
+                EnumJobStartFailure.OPERATION_TIMEOUT, repository, self._calls
             )
         token = self._environ.get(self._s.token_env, "")
         if not token:
@@ -81,7 +97,7 @@ class GithubJobStartReader:
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
             },
-            self._s.timeout_seconds,
+            min(self._s.timeout_seconds, left),
         )
         if status == _RATE_LIMITED or (status == 403 and b"rate limit" in body.lower()):
             raise JobStartReaderError(
@@ -182,6 +198,7 @@ class GithubJobStartReader:
         now: datetime,
     ) -> ModelJobStartRead:
         self._calls = 0
+        self._started = self._clock()
         created_since = since - timedelta(seconds=self._lookback)
         created = quote(f">={_stamp(created_since)}", safe="")
         starts: list[ModelJobStart] = []
@@ -201,6 +218,10 @@ class GithubJobStartReader:
                         continue
                     starts.extend(self._starts_of_run(repository, run, since, until))
                 done.append(repository)
+            if self._time_left() < 0:
+                raise JobStartReaderError(
+                    EnumJobStartFailure.OPERATION_TIMEOUT, current, self._calls
+                )
         except JobStartReaderError as stop:
             return ModelJobStartRead(
                 read_at=now,
