@@ -15,6 +15,7 @@ from omnimarket.nodes.node_runner_stop_idle_proof_compute.handlers.handler_runne
 from omnimarket.nodes.node_runner_stop_idle_proof_compute.models import (
     EnumIdleProofReadFailure,
     ModelProofRunner,
+    ModelRunnerStopIdleProofResult,
 )
 from omnimarket.nodes.node_runner_stop_idle_proof_compute.tests.support import (
     GAP_SECONDS,
@@ -29,10 +30,10 @@ _N = EnumReadingVerdict.NOT_WORKING
 _U = EnumReadingVerdict.UNKNOWN
 
 
-def _subject(result: object, name: str) -> EnumReadingVerdict:
-    for s in result.subjects:  # type: ignore[attr-defined]
+def _subject(result: ModelRunnerStopIdleProofResult, name: str) -> EnumReadingVerdict:
+    for s in result.subjects:
         if s.name == name:
-            return s.verdict  # type: ignore[no-any-return]
+            return s.verdict
     raise AssertionError(f"no subject {name}")
 
 
