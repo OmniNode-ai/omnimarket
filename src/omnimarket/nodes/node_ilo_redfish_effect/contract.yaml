@@ -53,6 +53,13 @@ handler_routing:
       event_model:
         name: ModelIloRedfishRequest
         module: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request
+    - operation: ilo_redfish_in_process
+      handler:
+        name: HandlerIloRedfish
+        module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish
+      event_model:
+        name: ModelIloRedfishRequest
+        module: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request
     - operation: ilo_setup
       handler:
         name: HandlerIloSetupEnvelope
