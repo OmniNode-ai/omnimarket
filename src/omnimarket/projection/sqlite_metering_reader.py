@@ -69,6 +69,8 @@ _SELECT = f"SELECT {', '.join(METERING_COLUMNS)} FROM delegation_events"
 # existed holds real rows only.
 _DATA_SOURCE_COLUMN = "data_source"
 _FIXTURE = "fixture"
+# OMN-23169: typed synthetic traffic. Never in a measured figure, with no opt-in.
+_EXPERIMENT = "experiment"
 
 
 class MeteringRecordsUnavailableError(RuntimeError):
@@ -148,6 +150,8 @@ def read_metering_records(
     OMN-19970: rows the dev and demo seed wrote (``data_source = 'fixture'``)
     are measured nothing and are skipped unless ``include_fixtures`` is set, so
     a seeded store never inflates a measured spend or savings figure.
+    OMN-23169: rows typed ``experiment`` (synthetic traffic) are skipped always;
+    ``include_fixtures`` does not bring them back.
 
     Both bounds are optional; omitting ``window_start`` reads all time. The
     window is applied in Python against normalised instants, never in SQL --
@@ -161,12 +165,13 @@ def read_metering_records(
     resolved = db_path if db_path is not None else default_metering_db_path()
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
-        if (
-            not include_fixtures
-            # sqlite3.Row: `in row` tests values, so the column names are keys().
-            and _DATA_SOURCE_COLUMN in row.keys()  # noqa: SIM118
-            and row[_DATA_SOURCE_COLUMN] == _FIXTURE
-        ):
+        # sqlite3.Row: `in row` tests values, so the column names are keys().
+        source = (
+            row[_DATA_SOURCE_COLUMN]
+            if _DATA_SOURCE_COLUMN in row.keys()  # noqa: SIM118
+            else None
+        )
+        if source == _EXPERIMENT or (source == _FIXTURE and not include_fixtures):
             continue
         record = _to_record(row)
         if record is None:

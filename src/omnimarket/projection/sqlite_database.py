@@ -564,6 +564,16 @@ _DELEGATION_SUMMARY_VIEW_SQL = (
     "omnimarket.nodes.node_projection_delegation",
     "sqlite/delegation_summary_view.sql",
 )
+# OMN-23169: the counterpart of migration 0065, which leaves experiment rows out of
+# the summary. Its own step after the OMN-20709 one: a store that has recorded that
+# step would never run it again.
+_DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP = (
+    "omn23169_delegation_summary_excludes_experiment"
+)
+_DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_SQL = (
+    "omnimarket.nodes.node_projection_delegation",
+    "sqlite/delegation_summary_view_v2.sql",
+)
 # OMN-20754: the counterparts of migration 0055's model-routing view and 0045's
 # quality-gate view, the relations the Overview's Run locally, Tier mix and
 # Quality rows read. Same home and pattern as the summary view.
@@ -899,6 +909,16 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "created the delegation summary view",
                 )
             )
+        if not cls._store_step_recorded(
+            conn, _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP
+        ):
+            pending.append(
+                (
+                    _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP,
+                    cls._replace_delegation_summary_view,
+                    "left experiment runs out of the delegation summary view",
+                )
+            )
         if not cls._store_step_recorded(conn, _DELEGATION_ROUTING_QUALITY_VIEWS_STEP):
             pending.append(
                 (
@@ -1111,6 +1131,18 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         this one; a later revision is a new step, never an edit to this one.
         """
         package, resource = _DELEGATION_SUMMARY_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _replace_delegation_summary_view(conn: sqlite3.Connection) -> None:
+        """OMN-23169: the summary view that leaves experiment runs out.
+
+        Runs after the OMN-20709 step, which created the first definition; this
+        one drops it and creates the revision. A later revision is a new step.
+        """
+        package, resource = _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_SQL
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
         conn.execute(ddl)
