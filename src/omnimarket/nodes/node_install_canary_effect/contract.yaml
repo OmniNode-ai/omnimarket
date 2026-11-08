@@ -76,6 +76,7 @@
     "canary_hold",
     "adopt_marketplace",
     "canary_cap",
+    "first_reading",
     "merged_plugin_sha",
     "installed_commit",
     "shipped_plugin_sha",
