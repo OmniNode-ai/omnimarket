@@ -23,8 +23,13 @@ class EnumGraphFault(StrEnum):
     NONE = "none"
     #: The first declared repository cannot be read.
     UNREADABLE_REPO = "unreadable-repo"
-    #: Contracts stop linking their node packages to the modules they name.
+    #: Contracts stop linking their node packages to the modules they name. On the live sample this cannot fail the
+    #: reading: 2 of its 30 entries and none of its 4 controls reach a module only through a contract link (measured on
+    #: h053 2026-11-06: 28 of 30 against a bar of 27, controls 4 of 4). It fails the small fixtures the chain tests use.
     DROP_CONTRACT_LINKS = "drop-contract-links"
+    #: The pyproject entry points stop being roots. On the live sample 7 of its 30 entries lose their reach (23 of 30
+    #: against a bar of 27, measured on h053 2026-11-06), so this is the break that fails the real reading.
+    DROP_ENTRY_POINTS = "drop-entry-points"
 
 
 class ModelRepoSnapshot(BaseModel):

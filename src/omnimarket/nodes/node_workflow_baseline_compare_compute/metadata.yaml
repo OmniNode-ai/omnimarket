@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_workflow_baseline_compare_compute
+version: "1.0.0"
+description: "Pure comparison of one scheduled baseline run to the frozen baseline: command time, correlated result, counts before times, WORKING or NOT WORKING"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_workflow_baseline_compare_compute: "omnimarket.nodes.node_workflow_baseline_compare_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "baseline", "schedule", "receipt", "deterministic"]
+pack: "core"
+display_name: "Workflow Baseline Compare"
+node_role: "compute"

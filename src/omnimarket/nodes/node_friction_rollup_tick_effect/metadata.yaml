@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_friction_rollup_tick_effect
+version: "1.0.0"
+description: One friction rollup tick - reads the ledger and archive, rolls up each window, writes the dated and latest reports and appends one STATUS row
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_friction_rollup_tick_effect: omnimarket.nodes.node_friction_rollup_tick_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0.2
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, ledger, friction, scheduled]
+node_role: effect
+pack: "routing"
+display_name: "Friction Rollup Tick Effect"
