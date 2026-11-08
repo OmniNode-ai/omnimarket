@@ -12,9 +12,13 @@ from __future__ import annotations
 import pytest
 
 from tests.unit.nodes.node_network_graph_compute.test_dependency_gate import (
+    test_break_a_gate_that_never_reads_red_turns_the_error_chain_assertion_red,
     test_dependency_baseline_frozen_break_a_changed_number_without_a_new_hash_reads_red,
     test_dependency_baseline_frozen_holds_the_corrected_counts_and_its_hash,
     test_dependency_baseline_frozen_is_read_by_the_gate_and_the_fixture_passes,
+    test_error_chain_a_bad_gate_request_is_the_typed_failed_event_never_dropped,
+    test_error_chain_a_planted_back_edge_is_a_computed_event_that_reads_red,
+    test_golden_chain_the_gate_command_gives_one_computed_event_that_reads_pass,
     test_planted_back_edge_a_new_subsystem_in_the_component_goes_red,
     test_planted_back_edge_on_a_frozen_relation_names_that_relation,
     test_planted_back_edge_raises_the_count_above_the_frozen_value_and_goes_red,
@@ -30,9 +34,13 @@ from tests.unit.nodes.node_network_graph_compute.test_dependency_gate import (
 pytestmark = pytest.mark.unit
 
 __all__ = [
+    "test_break_a_gate_that_never_reads_red_turns_the_error_chain_assertion_red",
     "test_dependency_baseline_frozen_break_a_changed_number_without_a_new_hash_reads_red",
     "test_dependency_baseline_frozen_holds_the_corrected_counts_and_its_hash",
     "test_dependency_baseline_frozen_is_read_by_the_gate_and_the_fixture_passes",
+    "test_error_chain_a_bad_gate_request_is_the_typed_failed_event_never_dropped",
+    "test_error_chain_a_planted_back_edge_is_a_computed_event_that_reads_red",
+    "test_golden_chain_the_gate_command_gives_one_computed_event_that_reads_pass",
     "test_planted_back_edge_a_new_subsystem_in_the_component_goes_red",
     "test_planted_back_edge_on_a_frozen_relation_names_that_relation",
     "test_planted_back_edge_raises_the_count_above_the_frozen_value_and_goes_red",

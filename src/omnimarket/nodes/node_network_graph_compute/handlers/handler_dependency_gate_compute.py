@@ -12,9 +12,12 @@ the frozen value, or when the baseline's own hash no longer matches its content.
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
+from collections.abc import Mapping
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.models.import_relations import (
     EnumDependencyRiseKind,
@@ -139,3 +142,26 @@ class HandlerDependencyGateCompute:
             baseline_intact=intact,
             rises=tuple(rises),
         )
+
+
+def answer_gate_command(
+    payload: bytes, handler: HandlerDependencyGateCompute, topics: Mapping[str, str]
+) -> list[tuple[str, bytes]]:
+    """One command message in, its event out. A payload that is no request is a typed failure.
+
+    ``topics`` is handed in from the contract: ``computed`` for a verdict (PASS or RED) and
+    ``failed`` for a request that could not be read.
+    """
+    try:
+        request = ModelDependencyGateRequest.model_validate_json(payload)
+    except ValidationError as exc:
+        fields = sorted(
+            {".".join(str(p) for p in e["loc"]) or "<document>" for e in exc.errors()}
+        )
+        failure = {
+            "correlation_id": "unknown",
+            "failure": f"bad-payload:{fields}",
+        }
+        return [(topics["failed"], json.dumps(failure).encode())]
+    result = handler.handle(request)
+    return [(topics["computed"], result.model_dump_json().encode())]

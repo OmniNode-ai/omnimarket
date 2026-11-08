@@ -94,6 +94,7 @@ event_bus:
   - onex.evt.omnimarket.network-graph-computed.v1
   - onex.evt.omnimarket.import-relation-computed.v1
   - onex.evt.omnimarket.dependency-gate-computed.v1
+  - onex.evt.omnimarket.dependency-gate-failed.v1
 metadata:
   transport_type: kafka
 runtime_dispatch:
@@ -107,3 +108,4 @@ externally_consumed_topics:
 - onex.evt.omnimarket.network-graph-computed.v1
 - onex.evt.omnimarket.import-relation-computed.v1
 - onex.evt.omnimarket.dependency-gate-computed.v1
+- onex.evt.omnimarket.dependency-gate-failed.v1

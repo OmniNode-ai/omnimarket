@@ -56,6 +56,32 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k reading_row_carries_counts'
         cwd: "."
+  - id: "dod-omn23136-deploy-source-readback"
+    description: "Hosted-runner readback of the published gate handler, node contract and frozen counts file at the evaluated commit against this checkout, then the existing registration test. This checks published source, not a runtime rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_network_graph_compute;
+          for relative_path in handlers/handler_dependency_gate_compute.py contract.yaml frozen_dependency_counts.yaml; do
+            target="$readback_dir/$(basename "$relative_path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path" \
+              --output "$target";
+            cmp "$node_path/$relative_path" "$target";
+          done;
+          grep -F 'class HandlerDependencyGateCompute:' "$readback_dir/handler_dependency_gate_compute.py";
+          grep -F 'operation: dependency_gate_compute' "$readback_dir/contract.yaml";
+          printf 'dependency gate source readback matched %s\n' "$revision"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py -q --no-cov --tb=line'
+        cwd: "."
   - id: "dod-omn23136-integration-proof"
     description: "The pushed head ran the baseline, gate and reading row tests from the node's own path, and the existing tests of both nodes, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"

@@ -9,7 +9,9 @@ committed baseline file; the injected breaks (a planted back edge, a tampered ba
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
@@ -17,6 +19,7 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.import_relations import (
     EnumDependencyRiseKind,
@@ -31,6 +34,7 @@ from omnimarket.models.import_relations import (
 )
 from omnimarket.nodes.node_network_graph_compute.handlers.handler_dependency_gate_compute import (
     HandlerDependencyGateCompute,
+    answer_gate_command,
     baseline_from_text,
 )
 from omnimarket.nodes.node_network_graph_compute.handlers.handler_import_relation_compute import (
@@ -53,7 +57,7 @@ pytestmark = pytest.mark.unit
 
 BASELINE_FILE = (
     Path(__file__).resolve().parents[4]
-    / "src/omnimarket/nodes/node_network_graph_compute/dependency_baseline.yaml"
+    / "src/omnimarket/nodes/node_network_graph_compute/frozen_dependency_counts.yaml"
 )
 NOW = datetime(2026, 11, 8, 13, 0, tzinfo=UTC)
 PUBLISH = ModelReadingPublish(
@@ -327,3 +331,116 @@ def test_reading_row_carries_counts_error_chain_a_bad_gate_payload_is_a_failed_e
 def test_the_baseline_file_is_plain_yaml_with_the_hash_cell() -> None:
     document = yaml.safe_load(BASELINE_FILE.read_text(encoding="utf-8"))
     assert document["sha256"] == _baseline().body_digest()
+
+
+# -- the gate operation on the in-memory bus: golden and error chain events ----------------------
+
+GATE_CONTRACT = BASELINE_FILE.parent / "contract.yaml"
+
+
+def _gate_topics() -> dict[str, str]:
+    contract = yaml.safe_load(GATE_CONTRACT.read_text(encoding="utf-8"))
+    publish = contract["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimarket.dependency-gate-computed.v1" in publish
+    assert "onex.evt.omnimarket.dependency-gate-failed.v1" in publish
+    return {
+        "computed": "onex.evt.omnimarket.dependency-gate-computed.v1",
+        "failed": "onex.evt.omnimarket.dependency-gate-failed.v1",
+    }
+
+
+async def _run_on_bus(payload: bytes) -> list[tuple[str, dict[str, Any]]]:
+    topics = _gate_topics()
+    command_topic = "onex.cmd.omnimarket.dependency-gate-compute-requested.v1"
+    bus = EventBusInmemory()
+    seen: list[tuple[str, dict[str, Any]]] = []
+    done = asyncio.Event()
+
+    async def on_command(message: Any) -> None:
+        for topic, body in answer_gate_command(
+            message.value, HandlerDependencyGateCompute(), topics
+        ):
+            await bus.publish(topic, key=None, value=body)
+
+    def collector(topic: str) -> Callable[[Any], Awaitable[None]]:
+        async def collect(message: Any) -> None:
+            seen.append((topic, json.loads(message.value)))
+            done.set()
+
+        return collect
+
+    await bus.start()
+    try:
+        await bus.subscribe(command_topic, on_message=on_command, group_id="gate")
+        for topic in topics.values():
+            await bus.subscribe(
+                topic, on_message=collector(topic), group_id=f"test-{topic}"
+            )
+        await bus.publish(command_topic, key=None, value=payload)
+        await asyncio.wait_for(done.wait(), timeout=5)
+    finally:
+        await bus.close()
+    return seen
+
+
+def _request_bytes(
+    report: ModelImportRelationReport, baseline: ModelDependencyBaseline
+) -> bytes:
+    return (
+        ModelDependencyGateRequest(
+            correlation_id="gate-bus-1", report=report, baseline=baseline
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+
+def test_golden_chain_the_gate_command_gives_one_computed_event_that_reads_pass() -> (
+    None
+):
+    events = asyncio.run(_run_on_bus(_request_bytes(_report(), _baseline())))
+    assert [topic for topic, _ in events] == [
+        "onex.evt.omnimarket.dependency-gate-computed.v1"
+    ]
+    assert events[0][1]["state"] == "PASS"
+    assert events[0][1]["current_count"] == events[0][1]["frozen_count"] == 229
+
+
+def test_error_chain_a_planted_back_edge_is_a_computed_event_that_reads_red() -> None:
+    events = asyncio.run(
+        _run_on_bus(_request_bytes(_report(planted=True), _baseline()))
+    )
+    assert [topic for topic, _ in events] == [
+        "onex.evt.omnimarket.dependency-gate-computed.v1"
+    ]
+    assert events[0][1]["state"] == "RED"
+    assert events[0][1]["current_count"] == 230
+
+
+def test_error_chain_a_bad_gate_request_is_the_typed_failed_event_never_dropped() -> (
+    None
+):
+    events = asyncio.run(_run_on_bus(b'{"correlation_id": "x"}'))
+    assert [topic for topic, _ in events] == [
+        "onex.evt.omnimarket.dependency-gate-failed.v1"
+    ]
+    assert str(events[0][1]["failure"]).startswith("bad-payload:")
+
+
+def test_break_a_gate_that_never_reads_red_turns_the_error_chain_assertion_red() -> (
+    None
+):
+    class Lenient(HandlerDependencyGateCompute):
+        def handle(
+            self, request: ModelDependencyGateRequest
+        ) -> ModelDependencyGateResult:
+            result = super().handle(request)
+            return result.model_copy(update={"state": "PASS", "rises": ()})
+
+    topics = _gate_topics()
+    body = _request_bytes(_report(planted=True), _baseline())
+    (topic, payload), *_ = answer_gate_command(body, Lenient(), topics)
+    assert topic == topics["computed"]
+    assert json.loads(payload)["state"] == "PASS"
+    with pytest.raises(AssertionError):
+        assert json.loads(payload)["state"] == "RED"
