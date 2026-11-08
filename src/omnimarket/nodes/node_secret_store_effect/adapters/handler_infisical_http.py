@@ -30,10 +30,12 @@ from __future__ import annotations
 import logging
 import time
 import urllib.parse
+from collections.abc import Sequence
 from typing import Any, NoReturn
 
 from pydantic import SecretStr
 
+from omnimarket.models.secret_store.plain_http_rule import require_safe_store_address
 from omnimarket.nodes.node_secret_store_effect.adapters.http_exchange import (
     HttpExchange,
 )
@@ -71,6 +73,10 @@ class HandlerInfisicalHttp:
 
     One instance is one machine identity in one project and environment. The
     access token is cached in memory and renewed on expiry or on one 401.
+
+    Raises:
+        PlainHttpRefusedError: (at construction) the address is plain http to a
+            host that is neither loopback nor in ``plain_http_hosts``.
     """
 
     def __init__(
@@ -83,7 +89,11 @@ class HandlerInfisicalHttp:
         client_secret: SecretStr,
         exchange: HttpExchange,
         timeout_seconds: float,
+        plain_http_hosts: Sequence[str] = (),
     ) -> None:
+        # Before anything is stored or sent: the login and every Bearer token
+        # are built from this address (OMN-23193).
+        require_safe_store_address(address, plain_http_hosts)
         self._address = address.rstrip("/")
         self._project_id = project_id
         self._environment = environment
