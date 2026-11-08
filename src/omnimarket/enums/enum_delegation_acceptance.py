@@ -87,6 +87,9 @@ class EnumDelegationAcceptanceReason(StrEnum):
     REQUIRED_BAR_UNRESOLVED = "required_bar_unresolved"
     """No required-bar authority resolved, so no accept/climb decision was reachable."""
 
+    COMPLETION_BOUND_EXPIRED = "completion_bound_expired"
+    """The rung answered after the run's completion bound, so its answer was not judged (OMN-22822)."""
+
 
 __all__: list[str] = [
     "EnumDelegationAcceptanceDecision",

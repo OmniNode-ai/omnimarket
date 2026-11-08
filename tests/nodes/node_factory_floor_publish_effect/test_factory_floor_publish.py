@@ -189,6 +189,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     site = tmp_path / "site"
     assert sorted(p.name for p in site.iterdir()) == [
         "apple-touch-icon.png",
+        "compare.html",
         "detail.html",
         "factory-floor.json",
         "favicon-32.png",
@@ -228,6 +229,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "floor/index.html",
         "detail.html",
         "index.html",
+        "compare.html",
         "publish-status.json",
         "factory-floor.json",
     )
@@ -236,6 +238,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert [
         c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
     ] == [
+        False,
         False,
         False,
         False,
@@ -332,6 +335,7 @@ class Scripted(LocalSsh):
 
 FACTORY = "omnimarket.nodes.node_factory_floor_effect"
 FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
+FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
 
@@ -366,6 +370,9 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     calls = _program_calls(runner)
     # The canary status is published after the page is served: the last call is the floor node's canary step.
     assert calls[-1] == FLOOR_SIMPLE
+    calls = calls[:-1]
+    # OMN-23018: the comparison reads the simple floor just written, so it is the last refresh step.
+    assert calls[-1] == FLOOR_COMPARE
     calls = calls[:-1]
     assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE])
     assert calls[-2] == FACTORY
@@ -414,7 +421,12 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
         def __call__(
             self, argv: Sequence[str], stdin: bytes | None, timeout: int
         ) -> subprocess.CompletedProcess[bytes]:
-            if argv[0] != "ssh" and FACTORY not in argv and FLOOR_SIMPLE not in argv:
+            if (
+                argv[0] != "ssh"
+                and FACTORY not in argv
+                and FLOOR_SIMPLE not in argv
+                and FLOOR_COMPARE not in argv
+            ):
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)
 
@@ -569,6 +581,7 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "floor/index.html",
         "detail.html",
         "index.html",
+        "compare.html",
         "publish-status.json",
         "process-health.json",
         "factory-floor.json",
@@ -1645,11 +1658,11 @@ def test_the_record_step_keeps_its_place_among_the_refresh_steps_when_it_is_flag
     env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "plugin")
     result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
     names = [s.name for s in result.steps]
-    assert names[-2] == load_runtime().record_step
-    assert names[-1] == "floor_simple"
+    assert names[-3] == load_runtime().record_step
+    assert names[-2:] == ["floor_simple", "floor_compare"]
     assert names.count(load_runtime().record_step) == 1
-    assert result.steps[-2].status == "failed"
-    assert "alpha-plan" in result.steps[-2].detail
+    assert result.steps[-3].status == "failed"
+    assert "alpha-plan" in result.steps[-3].detail
 
 
 def test_nothing_is_flagged_when_the_overlay_declares_nothing_readable(

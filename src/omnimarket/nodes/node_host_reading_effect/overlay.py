@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_host_reading import EnumHostProbe
+from omnimarket.models.model_join_j2 import ModelJoinJ2Settings
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
     ModelLedgerAppendRoute,
@@ -196,6 +197,20 @@ class ModelHostReadingHost(BaseModel):
     environment: dict[str, str]
 
 
+class ModelJoinJ2Overlay(BaseModel):
+    """The J2 join (piece 2 to piece 3): its settings, how long the caller listens for
+    advertisements, and the emission journal the floor reads its two chains from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    settings: ModelJoinJ2Settings
+    #: Seconds the caller listens for advertisements before it runs the join (the cadence plus slack).
+    collect_window_seconds: int = Field(ge=1)
+    #: The variable naming the floor's state directory, and the journal's path under it.
+    emission_home_env: str = Field(min_length=1)
+    emission_journal_relpath: str = Field(min_length=1)
+
+
 class ModelHostReadingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -208,6 +223,8 @@ class ModelHostReadingOverlay(BaseModel):
     canary: ModelHostCanaryProbeSettings | None = None
     #: Absent means no host declares the join-j1 probe.
     join_j1: ModelJoinJ1Settings | None = None
+    #: Absent means the join-j2 verb refuses to run on this deployment.
+    join_j2: ModelJoinJ2Overlay | None = None
     hosts: tuple[ModelHostReadingHost, ...]
 
     @model_validator(mode="after")
