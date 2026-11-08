@@ -15,6 +15,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
     ModelDelegationFailed,
     ModelDelegationResult,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_expired_inference_response import (
+    ModelExpiredInferenceResponse,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
 )
@@ -40,6 +43,7 @@ __all__: list[str] = [
     "ModelDelegationFailed",
     "ModelDelegationRequest",
     "ModelDelegationResult",
+    "ModelExpiredInferenceResponse",
     "ModelInferenceIntent",
     "ModelInferenceResponseData",
     "ModelQualityGateIntent",
