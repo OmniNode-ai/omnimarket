@@ -11,6 +11,8 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a state query on a current mirror returns from the mirror with no GitHub call; on a stale mirror it pulls once and then returns, and both paths are tested with a planted stale mirror and a planted current one -- falsifier: uv run pytest of the workflow''s handler tests with GitHub calls counted'
+  - id: AC2
+    statement: 'AC2: the workflow runs on the bus on every lab host and the orchestrator Mac, and one consumer of each kind reads through it -- falsifier: a request and reply read on each host''s bus'
   - id: AC3
     statement: 'AC3: concurrent queries for the same stale repository cause one pull, not one per query -- falsifier: uv run pytest of the coalescing test'
 evidence_requirements:
@@ -39,6 +41,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_query_coalescing.py -q --no-cov
+    cwd: .
+- id: dod-omn23033-unit-declaration
+  description: Runs the unit declaration tests; the overlay's unit block renders the serve unit for a declared host, an undeclared host or a worktree root is refused, and an overlay missing a value for a variable it names is refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_unit.py -q --no-cov
     cwd: .
 - id: dod-omn23033-integration-proof
   description: The pushed head ran the node's handler, coalescing and bus chain tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

@@ -134,7 +134,9 @@ class EnumLandingLandSkipReason(StrEnum):
     A suspension (``hold``, ``do_not_land``, ``draft``, ``owned``, ``gate`` with
     its reasons), a collaborator's PR, an open merge-order parent, a live lease
     whose verified head is not this one, a runtime PR inside an open companion,
-    or a runtime PR while another holds the token.
+    or a runtime PR while another holds the token. A PR that carries a lab-bound
+    check (J8, OMN-22919) is also held, by name, while that check is missing, from
+    a superseded attempt, failing or still running on the exact head.
     """
 
     HOLD = "hold"
@@ -147,6 +149,10 @@ class EnumLandingLandSkipReason(StrEnum):
     LEASED = "leased"
     COMPANION_MEMBER = "companion_member"
     TOKEN_HELD = "token_held"
+    LAB_CHECK_MISSING = "lab_check_missing"
+    LAB_CHECK_SUPERSEDED = "lab_check_superseded"
+    LAB_CHECK_FAILED = "lab_check_failed"
+    LAB_CHECK_PENDING = "lab_check_pending"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;
