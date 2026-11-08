@@ -556,3 +556,17 @@ def test_runner_group_control_break_a_read_that_ignores_the_public_flag_reads_cl
         }
     )
     assert public_repos_reaching_lab(closed) == (), "the break must turn the read clean"
+
+
+@pytest.mark.unit
+def test_handler_constructs_without_injected_dependencies() -> None:
+    """The boot resolver builds the handler with no arguments: the policy loads from the contract."""
+    handler = HandlerLandingJoinJ8()
+    assert handler._policy == load_join_j8_policy()
+
+
+@pytest.mark.unit
+def test_handler_without_sink_refuses_to_emit() -> None:
+    handler = HandlerLandingJoinJ8()
+    with pytest.raises(RuntimeError, match="no emission sink"):
+        handler._emit("cid-1", "phase")

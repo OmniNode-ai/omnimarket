@@ -62,6 +62,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/validation/test_runtime_profile_contract_ownership.py tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov
         cwd: .
+  - id: dod-omn22809-j8-no-arg-construction
+    description: HandlerLandingJoinJ8 constructs with no arguments and refuses to emit without a sink; both fail at the merge base.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -k "without_injected_dependencies or without_sink"
+        cwd: .
   - id: dod-omn22809-j8-bound-grep
     description: The node contract binds HandlerLandingJoinJ8 in handler_routing.
     source: manual
