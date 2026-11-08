@@ -141,7 +141,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "id": 100 + i,
                     "event": event,
                     "path": PATH,
-                    "repository": {"full_name": REPO},
+                    "repository": {"full_name": REPO, "private": True},
                     "head_repository": {"full_name": REPO},
                 }
                 for i, event in enumerate(s.job_events)
@@ -194,6 +194,7 @@ def _fixture(s: Scenario) -> dict[str, object]:
                 "run_event": event,
                 "head_is_fork": False,
                 "workflow_ref": PATH,
+                "repository_private": True,
             }
             for i, event in enumerate(s.job_events)
         ],

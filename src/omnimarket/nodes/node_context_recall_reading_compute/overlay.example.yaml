@@ -1,0 +1,10 @@
+# Overlay of node_context_recall_reading_compute (OMN-22980). Every threshold of the reading is
+# here; the handler holds none. The caller loads this and sends it on the read request.
+# max_age_seconds is the nightly cadence (86400) plus its run bound (3600).
+max_age_seconds: 90000
+# An eval run with no end this long after it started has ended in no result.
+eval_run_deadline_seconds: 3600
+# Passing probes the window needs.
+min_probes: 1
+# Eval runs that ended in a result the window needs.
+min_eval_runs: 1
