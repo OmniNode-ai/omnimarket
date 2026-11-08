@@ -108,10 +108,16 @@ handler_routing:
       handler:
         name: "HandlerPrLandingDecision"
         module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
-    - operation: "join_j8_landing_decision"
-      handler:
-        name: "HandlerLandingJoinJ8"
-        module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
+# HandlerLandingJoinJ8 is deliberately NOT a handler_routing entry. It is an
+# EFFECT handler that takes an emission sink and a ModelJoinJ8Policy through its
+# constructor, and the auto-wiring has no way to supply either: an entry that
+# declares no event_model is granted EVERY contract subscribe_topic, so it would
+# be wired as an independent consumer of the command topic below and throw on
+# the mismatched payload, exactly the silent no-op node_build_loop_orchestrator
+# records in its own contract. Nothing publishes `join_j8_landing_decision`:
+# before this was removed, the operation appeared in this file and nowhere else
+# in src, and only the J8 unit tests construct the handler. The landing
+# controller calls it in process. OMN-23076; the entry arrived with OMN-22919.
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
 runtime_dispatch:
