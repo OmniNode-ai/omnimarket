@@ -85,6 +85,7 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 )
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.cloud.completion_bound import read_declared_completion_bound
 from omnimarket.config import get_settings
 from omnimarket.delegation.acceptance_directives import (
     acceptance_rule_names,
@@ -235,6 +236,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_termi
     ModelDelegationTerminalFailedRoutedV2,
     ModelDelegationTerminalFailedUnroutedV2,
     ModelQualityBarEvaluation,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_expired_inference_response import (
+    ModelExpiredInferenceResponse,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -2367,6 +2371,10 @@ class DelegationWorkflowState:
     stale_response_rejections: list[ModelStaleInferenceResponseRejection] = field(
         default_factory=list
     )
+    # OMN-22822: the response that arrived after the run's completion bound and
+    # closed it as expired instead of retrying or escalating. None on every run
+    # that finished inside its bound; an older row decodes to None.
+    expired_inference_response: ModelExpiredInferenceResponse | None = None
     routing_intent_replayed: bool = False
     # Escalation state (OMN-12254). Tracks tier escalation across quality gate
     # failures. ``escalation_count`` is incremented on each escalation;
@@ -2532,7 +2540,12 @@ class HandlerDelegationWorkflow:
         quota_reader: ProtocolProviderQuotaReader | None = None,
         named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
         | None = None,
+        completion_bound_seconds: int | None = None,
     ) -> None:
+        # OMN-22822: an inference response older than this bound is expired, not
+        # an answer. None reads ``completion_bound.max_wall_seconds`` from this
+        # node's contract on first use, so construction does no I/O.
+        self._completion_bound_seconds = completion_bound_seconds
         # OMN-17427: runs the tests a code-class request names against the
         # answer, before its gate intent leaves this node. None takes the
         # sandboxed runner the in-process port uses, so the deployed lane
@@ -3319,6 +3332,13 @@ class HandlerDelegationWorkflow:
         )
         return self._emit_terminal(terminal_inputs)
 
+    def _completion_bound(self) -> int:
+        if self._completion_bound_seconds is None:
+            self._completion_bound_seconds = (
+                read_declared_completion_bound().max_wall_seconds
+            )
+        return self._completion_bound_seconds
+
     def handle_inference_response(
         self,
         response: ModelInferenceResponseData,
@@ -3518,6 +3538,21 @@ class HandlerDelegationWorkflow:
                 rejection.current_endpoint_url,
             )
             return []
+
+        # OMN-22822: a response for the live attempt that arrives after the
+        # run's completion bound is a re-delivery (a dead-letter replay, a
+        # consumer catching up), not an answer: the caller stopped waiting at the
+        # bound. Acting on it retried or escalated runs days old and called a
+        # provider again for each. It is recorded as expired and the run closes
+        # FAILED here, before any retry, escalation or gate intent is built.
+        # The comparison keeps nanosecond precision: a response 0.5 s past the
+        # bound is past it. Only the evidence is whole seconds, rounded up so it
+        # never reads as not exceeding the bound it exceeded.
+        elapsed_ns = time.time_ns() - workflow.started_at_ns
+        if elapsed_ns > self._completion_bound() * 1_000_000_000:
+            return self._expire_late_response(
+                workflow, response, -(-elapsed_ns // 1_000_000_000)
+            )
 
         # OMN-18278 (bus half): apply the OMN-18379 boundary rule HERE, at the
         # one point every downstream reader of this response takes it from — the
@@ -3815,6 +3850,122 @@ class HandlerDelegationWorkflow:
 
         # Compliance-loop path.
         return _evaluate_compliance(workflow, response, self._advance)
+
+    def _expire_late_response(
+        self,
+        workflow: DelegationWorkflowState,
+        response: ModelInferenceResponseData,
+        elapsed_seconds: int,
+    ) -> list[BaseModel]:
+        """Close a run whose live attempt answered after the completion bound (OMN-22822).
+
+        Records the response as expired and emits the FAILED terminal with a
+        timeout outcome. Opens no attempt: no routing, retry or gate intent.
+        """
+        assert workflow.request is not None
+        assert workflow.routing_decision is not None
+        bound = self._completion_bound()
+        model_used = response.model_used or workflow.routing_decision.selected_model
+        workflow.expired_inference_response = ModelExpiredInferenceResponse(
+            correlation_id=response.correlation_id,
+            attempt_id=response.inference_attempt_id,
+            response_model_used=model_used,
+            response_was_error=bool(response.error_message),
+            elapsed_seconds=elapsed_seconds,
+            completion_bound_seconds=bound,
+            current_tier_name=workflow.current_tier_name,
+            expired_at=datetime.now(UTC).isoformat(),
+        )
+        _logger.warning(
+            "OMN-22822: expired inference response, run closed without re-route: "
+            "correlation_id=%s attempt=%s elapsed_seconds=%d bound_seconds=%d "
+            "response_was_error=%s current_tier=%s",
+            response.correlation_id,
+            response.inference_attempt_id,
+            elapsed_seconds,
+            bound,
+            bool(response.error_message),
+            workflow.current_tier_name,
+        )
+        reason = (
+            f"inference response for attempt {response.inference_attempt_id} "
+            f"arrived {elapsed_seconds}s after the run started, past the "
+            f"contract-declared completion bound of {bound}s; recorded as "
+            f"expired and not re-routed. Resubmit the request."
+        )
+        # The answering attempt is the final rung of this run, so it is recorded
+        # in the history like every other failure terminal's final attempt. This
+        # appends history only: the spend is priced once by ``_emit_terminal``
+        # from the response's tokens and is not banked into the cumulative
+        # totals, so nothing is counted twice.
+        self._record_escalation_attempt(
+            workflow,
+            ModelDelegationEscalationAttempt(
+                tier_name=workflow.current_tier_name or "unknown",
+                model_used=model_used,
+                quality_score=0.0,
+                failure_reasons=(
+                    "inference response arrived after the completion bound",
+                ),
+                latency_ms=response.latency_ms,
+                fallback_recommended=False,
+                attempted_at=datetime.now(UTC),
+                routing_decision_id=workflow.routing_decision.selected_backend_id,
+                acceptance_decision=EnumDelegationAcceptanceDecision.TERMINATE,
+                acceptance_reason=EnumDelegationAcceptanceReason.COMPLETION_BOUND_EXPIRED,
+            ),
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+        )
+        _, history_dicts = _terminal_response_fields(workflow, "")
+        terminal_inputs = TerminalEmissionInputs(
+            completed=False,
+            correlation_id=response.correlation_id,
+            task_type=workflow.request.task_type,
+            model_used=model_used,
+            endpoint_url=workflow.routing_decision.endpoint_url,
+            content="",
+            quality_passed=False,
+            quality_score=None,
+            operational_outcome=EnumDelegationOperationalOutcome.TIMEOUT,
+            content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
+            latency_ms=elapsed_seconds * 1000,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+            total_tokens=response.prompt_tokens + response.completion_tokens,
+            fallback_to_claude=False,
+            failure_reason=reason,
+            tokens_to_compliance=workflow.accumulated_tokens,
+            compliance_attempts=workflow.compliance_attempts or 1,
+            cost_tier_name=workflow.current_tier_name or "",
+            premium_counterfactual=None,
+            escalation_count=workflow.escalation_count,
+            escalation_history=history_dicts,
+            terminal_failure_reason=None,
+            terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
+            routing_tiers_hash=self._routing_tiers_hash(),
+            escalation_config_hash=None,
+            attempts_count=self._truthful_attempts_count(workflow, completed=False),
+            model_name=workflow.routing_decision.selected_model,
+            session_id=None,
+            tenant_id=_resolve_tenant_id(workflow),
+            quality_gates_checked=[],
+            quality_gates_failed=[],
+            llm_call_id=response.llm_call_id,
+            context_pack_hash=workflow.context_pack_hash,
+            provenance=workflow.request.provenance,
+            route=response.route or workflow.inference_route,
+            provider=response.provider or workflow.inference_provider,
+            credential_source=response.credential_source,
+            prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
+            prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
+            prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
+            backend_ref=_route_identity(workflow)[0],
+            pricing_manifest_version=_route_identity(workflow)[1],
+        )
+        workflow.inference_intent_in_flight = False
+        self._advance(workflow, EnumDelegationState.FAILED)
+        return self._emit_terminal(terminal_inputs)
 
     @staticmethod
     def _terminal_failed_fields(
