@@ -19,6 +19,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -61,7 +62,11 @@ ROLLS = 6
 LEDGER_READ_BOUND_S = 5.0
 CYCLE_BOUND_S = 5.0
 
-EVENT_KEY = lambda e: (e.emitted_at, e.correlation_id, e.phase)  # noqa: E731
+
+def event_key(e: Any) -> tuple[Any, Any, Any]:
+    return (e.emitted_at, e.correlation_id, e.phase)
+
+
 FILLER_TYPES = ("STATUS", "CLAIM", "TERMINAL", "MSG", "FRICTION", "ACK")
 
 
@@ -134,7 +139,7 @@ def count_opens(monkeypatch: pytest.MonkeyPatch, live: Path) -> dict[str, int]:
     opened: dict[str, int] = {}
     real_open = Path.open
 
-    def counting(self: Path, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def counting(self: Path, *args: Any, **kwargs: Any) -> Any:
         if self.name.startswith("ROLLING_WORK_LEDGER"):
             opened[self.name] = opened.get(self.name, 0) + 1
         return real_open(self, *args, **kwargs)
@@ -211,8 +216,8 @@ def test_the_single_pass_read_gives_the_same_facts_as_one_read_per_query(
         assert once.facts.shadows == other.facts.shadows
         assert once.facts.shadows_rejected == other.facts.shadows_rejected
         assert once.facts.shadows_unread == other.facts.shadows_unread
-        assert sorted(once.facts.events, key=EVENT_KEY) == sorted(
-            other.facts.events, key=EVENT_KEY
+        assert sorted(once.facts.events, key=event_key) == sorted(
+            other.facts.events, key=event_key
         )
     # The recorded rows are read: a parity over empty facts would prove nothing (positive control).
     assert once.facts.events

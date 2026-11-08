@@ -40,3 +40,10 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23081 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
     cwd: .
+- id: dod-omn23081-floor-simple-step-time
+  description: Runs the floor_simple step-time tests, which fail on a ledger read that opens each ledger file once per query, and the parity of the batched read with one read per query.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_step_time_floor_simple.py -q --no-cov
+    cwd: .
