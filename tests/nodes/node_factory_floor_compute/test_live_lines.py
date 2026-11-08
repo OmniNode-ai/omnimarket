@@ -117,7 +117,7 @@ def test_a_stop_on_the_plans_own_ticket_stops_the_line_when_no_lane_works_on_it(
     assert "the gate refused" in line.andon.causes[0]
 
 
-def test_a_live_lane_on_the_line_keeps_it_building_with_its_stop_still_listed() -> None:
+def test_a_live_lane_on_the_line_does_not_turn_a_lane_ended_stop_to_building() -> None:
     result = compute_factory_floor(
         request(
             plans=(plan_of(scoped("T3", "OMN-3"), scoped("T10")),),
@@ -128,9 +128,12 @@ def test_a_live_lane_on_the_line_keeps_it_building_with_its_stop_still_listed() 
         )
     )
     line = result.lines[0]
-    assert line.condition == "building"
+    # T5 narrows the rule: a lane that ended blocked is its own stop kind, not a soft andon cause, so a live lane no
+    # longer turns the line to building. The andon cause stays listed.
+    assert line.condition == "stopped"
     assert line.andon.flag
     assert line.andon.causes
+    assert [stop.kind for stop in line.stops] == ["lane-ended-blocked"]
 
 
 def test_a_hold_stops_the_line_whatever_runs_on_it() -> None:

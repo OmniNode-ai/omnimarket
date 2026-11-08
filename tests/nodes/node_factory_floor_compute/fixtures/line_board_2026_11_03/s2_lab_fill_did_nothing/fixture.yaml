@@ -152,6 +152,9 @@ expected:
   absent:
   - line: process:lab-fill
     kind: process-did-nothing
+    evidence:
+    - FRICTION 2026-11-03T11:22:19Z lane=lab-fill
+    - FRICTION 2026-11-03T11:42:00Z lane=lab-fill
     why: runs 1110Z and 1130Z were lab-source-unreadable, not did-nothing, so the chain of matching runs
       starts at 1150Z
 scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every

@@ -190,6 +190,83 @@ config:
     advert_stale_minutes: 15
     docker_tool: docker
     landing_worker_kind: landing worker
+  # Line selection (OMN-22369, lean line board plan T4): six classes in order, each line once at its lowest class. A
+  # class is chosen from the sources named here; its coverage is the worst health among them (unread, stale, read-empty,
+  # read) and an unread class prints no count. The caller names the classes a run draws (selection.line_classes).
+  line_select:
+    classes:
+      - {line_class: declared, id_prefix: "", label: declared lines, sources: [plans_clone]}
+      - {line_class: plan, id_prefix: "", label: plan selection, sources: [plans_today]}
+      - {line_class: goal, id_prefix: "goal:", label: goal rows, sources: [goal_file]}
+      - {line_class: ruling, id_prefix: "ruling:", label: rulings, sources: [ledger_window]}
+      - {line_class: ticket, id_prefix: "ticket:", label: unplanned work, sources: [ledger_window, pr_watcher, linear_snapshot, running_evidence]}
+      - {line_class: process, id_prefix: "process:", label: factory processes, sources: []}
+    selection_window_days: 14
+    in_progress_statuses: [In Progress]
+    closed_status_types: [completed, canceled]
+    claim_kind: CLAIM
+    terminal_kind: TERMINAL
+    ruling_kind: RULING
+    stale_note: "UNREAD: {label} from {read_at}"
+    unread_note: "UNREAD: {label}, lines unknown"
+    missing_health_cause: no health entry for the source
+    bare_progress_note: Stages not computed for this class
+    ticket_line_note: unplanned work
+
+  # Stage counts and stop kinds (OMN-22370, lean line board plan T5). Every stage, stop kind, sentence, source name,
+  # outcome and bar the stop rules use is here; deleting a key fails the run naming it.
+  line_stops:
+    # The thirteen stop kinds in the order a line's stops print; the sentence is filled from the stop's own facts.
+    stop_kinds:
+      - {kind: unread, sentence: "UNREAD: {source} {cause}"}
+      - {kind: andon, sentence: "{reason}"}
+      - {kind: lane-ended-blocked, sentence: "lane {lane} ended blocked {age} ago: {said}"}
+      - {kind: lane-ended-partial, sentence: "lane {lane} ended partial {age} ago: {said}"}
+      - {kind: handed-off-unmerged, sentence: "handed off {prs} {age} ago, {where}"}
+      - {kind: merged-not-running, sentence: "merged {prs} {age} ago, not running on dev{more}"}
+      - {kind: held-with-real-red, sentence: "held by {gate}, also red on {contexts}"}
+      - {kind: release-at-old-head, sentence: "RELEASE at {old} written {written}, head now {head}, {moved}"}
+      - {kind: blocked-on-person, sentence: "waiting on {role} since {since}"}
+      - {kind: person-blocker-unverified, sentence: "names {role} with no open ask to them"}
+      - {kind: ruled-not-started, sentence: "ruled {ruling}, no work since"}
+      - {kind: process-did-nothing, sentence: "{runs} runs did nothing since {first}, {detail}"}
+      - {kind: idle, sentence: "nothing moved in {hours} h, no owner"}
+    stage_order: [planned, building, pr-open, merged, running]
+    unread_stage: unread
+    # The sources each class of line depends on (source health names). One of them unread or stale is an unread stop.
+    unread_sources:
+      declared: [plans_clone, pr_watcher, ledger_window, running_evidence]
+      plan: [plans_today, plans_clone, pr_watcher, ledger_window, running_evidence]
+      goal: [goal_file, pr_watcher, ledger_window, running_evidence]
+      ruling: [ledger_window]
+      ticket: [linear_snapshot, pr_watcher, ledger_window, running_evidence]
+      process: [ledger_window]
+    required_contexts_source: required_contexts
+    pr_watcher_source: pr_watcher
+    ledger_source: ledger_window
+    running_source: running_evidence
+    process_did_nothing_runs: 3
+    # Two run records of a process up to this multiple of its interval apart are consecutive; a longer gap ends the run.
+    run_gap_factor: 1.5
+    idle_hours: 24
+    sentence_chars: 240
+    cause_missing: "cause not recorded: run lean_five_whys"
+    cause_row_kinds: [CORRECTION, FRICTION, TERMINAL]
+    cause_cells: [cause, root-cause]
+    failing_results: [failure, cancelled, timed_out, action_required, startup_failure]
+    blocked_outcomes: [blocked]
+    partial_outcomes: [partial]
+    handoff_outcomes: [handed-off]
+    handoff_status_cell: handed-off
+    done_outcomes: [done]
+    release_kind: RELEASE
+    person_row_kinds: [TERMINAL, MSG, STATUS]
+    ask_kind: MSG
+    ask_status_kind: ask
+    ask_status_state: open
+    answer_kinds: [ACK, RELEASE, RULING, MSG]
+    head_chars: 12
+    idle_ignored_classes: [process]
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

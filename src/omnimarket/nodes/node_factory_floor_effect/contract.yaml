@@ -68,7 +68,8 @@ descriptor:
   timeout_ms: 600000
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
-  - reads the rolling ledger through the plugin's reader
+  - reads the rolling ledger through the plugin's reader, the window and, for unresolved hand-offs, the live ledger and every archive roll through the same reader
+  - reads the goal file in the plans repository clone and the queue-status tick's saved required-contexts map
   - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
@@ -97,6 +98,29 @@ runtime:
   ledger_cut_chars: 1200
   # The reader returns 14 days (57 MB) in 8 s in the foreground and 69 s as the Background-class module tick runs it on a Mac at load 56.
   ledger_timeout_seconds: 480
+  # The kinds kept from the window. The first five were read before OMN-22368; RULING, MSG, ACK, CORRECTION and FRICTION
+  # rows are forwarded whole so the line board can map a ruling to its line and a stop to its cause.
+  ledger_kinds: [CLAIM, TERMINAL, HOLD, RELEASE, STATUS, RULING, MSG, ACK, CORRECTION, FRICTION]
+  # Unresolved evidence outlives the window: the same ledger reader, over the live ledger and every archive roll with no
+  # age limit, filtered by kind and text. Whether a row is resolved is the compute's call, not the effect's.
+  unresolved_reads:
+    - {kind: TERMINAL, grep: "outcome=blocked"}
+    - {kind: TERMINAL, grep: "outcome=partial"}
+    - {kind: TERMINAL, grep: "outcome=handed-off"}
+    - {kind: STATUS, grep: "handed-off="}
+  # Minutes after which a source reads stale. The ledger is read live, so its bar measures the reader's own read time.
+  source_max_age_min:
+    plans_clone: 1440
+    pr_watcher: 90
+    ledger_window: 30
+    plans_today: 1440
+    linear_snapshot: 1440
+    running_evidence: 60
+    required_contexts: 120
+    goal_file: 1440
+  # The goal file in the plans repository: rows are ``id | what | verdict | next action | probe``; these verdicts close a row.
+  goal_relpath: beta/GOAL.md
+  goal_closed_verdicts: [LANDED, DONE]
   watcher_max_age_min: 90
   manifest_suffix: .tasks.yaml
   # A plan without a plans-today entry maps tickets and pull requests only from the header lines that start with
@@ -126,6 +150,8 @@ runtime:
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     # The host-drift fleet projection (node_host_drift_fleet's persisted fold): each host's newest heartbeat and open items.
     host_drift_relpath: .onex_state/host-drift/fleet.json
+    # The queue-status tick's saved required contexts, a map keyed by repository (or repository:branch).
+    required_contexts_relpath: .claude_scratch/queue-status/required-contexts.json
   # Limits status mirrors under the registry home; absent or invalid files remain unread.
   limit_sources:
     api_meter_relpath: .claude_scratch/limits/api-credit-meter.json

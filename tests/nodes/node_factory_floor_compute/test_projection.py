@@ -129,7 +129,7 @@ def test_percent_rounds_half_up_to_one_decimal() -> None:
     assert line.progress.percent == 33.3
 
 
-def test_one_condition_building_keeps_blocker() -> None:
+def test_a_lane_ended_stop_is_listed_with_a_live_lane_and_keeps_the_blocker() -> None:
     # Line C: a ledger stop on T3 while a live lane named for T10 works the line.
     stop = row(
         "TERMINAL",
@@ -147,11 +147,12 @@ def test_one_condition_building_keeps_blocker() -> None:
             row("CLAIM", 5, "one-rt-t10-delegation-1101", tickets=(EPIC,)),
         ),
     )
-    assert line.condition == "building"
+    # A lane that ended blocked is a stop of its own (OMN-22370): a live lane on the line does not turn it to building.
+    assert line.condition == "stopped"
     assert line.blocker is not None
     assert "the gate refused" in line.blocker.reason
     assert "stop-1" in line.blocker.evidence
-    assert "stopped" not in values(line.model_dump(mode="json"))
+    assert [stop.kind for stop in line.stops] == ["lane-ended-blocked"]
 
 
 def test_a_soft_stop_without_a_live_lane_is_stopped_with_the_same_blocker() -> None:
@@ -198,13 +199,16 @@ def test_scope_under_review_is_unknown_progress_and_needs_review() -> None:
     assert len(line.stations) == 2  # no task is silently removed
 
 
-def test_review_scope_keeps_a_soft_blocker_without_stopping_the_line() -> None:
+def test_review_scope_with_a_lane_ended_stop_reads_stopped_and_keeps_the_blocker() -> (
+    None
+):
     stop = row(
         "TERMINAL", 30, "ended-lane", tickets=("OMN-3",), outcome="blocked", reason="R8"
     )
     plan = plan_of(work("T3", "OMN-3"), scope_status="needs_review")
     line = line_of(plans=(plan,), ledger=(stop,))
-    assert line.condition == "needs_review"
+    # The blocked lane is a stop (OMN-22370), and a line with a stop reads stopped; the blocker is kept.
+    assert line.condition == "stopped"
     assert line.blocker is not None
 
 

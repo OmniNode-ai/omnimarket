@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22368
+title: 'Lean line board T3: facts and source health forwarded by the factory floor effect'
+summary: >-
+  The lean line board plan (approved, RULING 2026-11-03T15:20:04Z) T3: the factory floor effect forwards each pull request's head sha and per-context results, the ledger's RULING, MSG, ACK, CORRECTION and FRICTION rows, the unresolved blocked, partial and handed-off rows kept in the live ledger and every archive roll, the per-merge running evidence, the saved required contexts, the open goal rows, the selected plans-today paths and the overlay's process, role, release and held-gate declarations to the compute request, and writes one health entry per source (read, read-empty, stale, unread) into the record. Overlay and contract keys fail closed by name.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22368-facts-and-health
+    statement: >-
+      The listed facts reach the compute request, the health reaches the record, the effect opens nothing new except the goal file, the required-contexts map and the archive rolls, the three read states stay apart, and every key fails closed by name.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: the listed facts reach the compute request and the health reaches the record, including an unresolved blocked TERMINAL and a handed-off STATUS kept only in an archive roll older than the window -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect -q with a recorded archive roll
+      - id: AC2
+        statement: >-
+          AC2: the effect opens no file, host or service it did not open before except the goal file, the saved required-contexts map and the ledger archive rolls -- falsifier: a test records the reads over recorded sources and compares the set with the base set, run with uv run pytest tests/nodes/node_factory_floor_effect -q
+      - id: AC3
+        statement: >-
+          AC3: unread, read-empty and stale are three different states -- falsifier: one fixture each in uv run pytest tests/nodes/node_factory_floor_effect -q
+      - id: AC4
+        statement: >-
+          AC4: overlay and contract keys fail closed naming the key -- falsifier: one run per key with the key removed in uv run pytest tests/nodes/node_factory_floor_effect -q
+      - id: AC5
+        statement: >-
+          AC5: on h051 the head sha and failing contexts of five held pull requests and the source health table match independent reads -- falsifier: the lab-run printout of the five pairs and the table shows any difference
+evidence_requirements:
+  - kind: tests
+    description: The line board facts tests, the existing floor effect tests and the floor compute tests pass at the pushed head.
+    command: uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22368-ac1
+    description: AC1 the facts reach the compute request and the health reaches the record; the archive roll test shows a blocked TERMINAL and a handed-off STATUS older than the window arriving through the ledger reader.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q --no-cov -k "facts_reach or archive_roll or failing_archive"
+        cwd: .
+  - id: dod-omn22368-ac2
+    description: AC2 the recorded reads equal the base set plus the goal file, the required-contexts map and the archive roll; the control test shows an injected extra read changes the set.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q --no-cov -k "opens_nothing or recorder"
+        cwd: .
+  - id: dod-omn22368-ac3
+    description: AC3 one fixture each for unread, read-empty and stale, and the four-state unit test.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q --no-cov -k "three_different_states or four_states or read_in_part or no_evidence_method"
+        cwd: .
+  - id: dod-omn22368-ac4
+    description: AC4 one run per overlay key and per contract key with the key removed; each refuses naming the key.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q --no-cov -k "fails_closed"
+        cwd: .
+  - id: dod-omn22368-integration-proof-ac5
+    description: AC5 the lab readback on h051 of five held pull requests and the source health table. The hosted verifier cannot dispatch lab work, so this check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22368 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q --no-cov -k facts_reach
+        cwd: .

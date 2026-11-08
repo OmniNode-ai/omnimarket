@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-22370
+title: 'Lean line board T5: stage counts and the thirteen stop kinds with evidence in the floor compute'
+summary: >-
+  Every line of the factory floor compute carries its work tasks counted per stage (planned, building, pr-open, merged, running, or unread), its owner (the lane holding a live CLAIM on one of its tickets), and its stops. A stop is one of thirteen kinds, in the contract's order, each with a sentence, a time, a non-empty evidence tuple (ledger rows, pull request check contexts, source health entries, merges, running reads) and a cause row or the line cause not recorded. A task is counted at no stage its evidence does not prove: a recorded done, a terminal outcome or a closed ticket proves none; a task is merged only when every pull request it names that is not closed unmerged is merged, and running only when each of those merges has running evidence. A line with a stop beyond a soft andon cause reads stopped, and its percent built, line evidence and progress count only work that is merged, running and proven. The stop kinds, their sentences, the stage order, the sources each class of line depends on, the outcomes, the run-chain length and the idle bar are the contract's line_stops block; deleting a key fails closed naming it. The effect now draws all six line classes, names its source health after the plan's eight dependencies, and reads an absent pull request watcher state, ledger or plans directory as unread instead of refusing. T2's seven frozen cases and their repaired variants pass with the strict expected-failure wrapper removed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22370-line-stops
+  statement: Every line states, per task, the stage its evidence proves and every reason it is stopped with the evidence behind each reason, and an unread source is unread, never a zero or fine.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: S1 to S6, the unread case and their repaired variants pass -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py -q'
+  - id: AC2
+    statement: 'AC2: for every stop kind an item carrying it is counted at no stage its evidence does not prove, and percent_built, line_evidence, pill, progress and board text show no progress the evidence does not prove -- falsifier: one mixed-line fixture per stop kind in uv run pytest tests/nodes/node_factory_floor_compute -q -k "stop or stage or line_board"'
+  - id: AC3
+    statement: 'AC3: an unread source gives unread, never a zero, fine or a missing stop -- falsifier: one fixture per source health state in uv run pytest tests/nodes/node_factory_floor_compute -q -k "stop or stage or line_board"'
+  - id: AC4
+    statement: 'AC4: an unanswered ask on the same subject gives blocked-on-person, and an ask on another subject, an answered ask or none gives person-blocker-unverified -- falsifier: four fixtures in uv run pytest tests/nodes/node_factory_floor_compute -q -k "stop or stage or line_board"'
+  - id: AC5
+    statement: 'AC5: a stop with an empty evidence tuple cannot be built, and every stop without a cause row says cause not recorded at any age -- falsifier: a constructor-raises test and the S2 fixture at 101 minutes in uv run pytest tests/nodes/node_factory_floor_compute -q'
+  - id: AC6
+    statement: 'AC6: every value is contract config and deleting stop_kinds fails closed naming the key -- falsifier: a test with the key removed in uv run pytest tests/nodes/node_factory_floor_compute -q'
+  - id: AC7
+    statement: 'AC7: on h051 a second reader agrees with 10 of 10 stops sampled at random against the ledger and the watcher -- falsifier: any disagree in the recorded sample'
+evidence_requirements:
+- kind: tests
+  description: The stop and stage tests with their named injected breaks (an ask that ignores its subject, a task merged when any pull request merged, a stop that may carry no evidence, an unread source read as fine) and the rest of the factory floor compute and effect tests.
+  command: uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22370-ac1
+  description: AC1 the seven frozen cases (S1 to S6 and the all-sources-unread case) and their repaired variants assert their stop kinds, evidence ids and absences with no expected-failure wrapper. AC7 the same cases are what the lab-run sample reads; the second reader's ten-of-ten sample on h051 is in the pull request's Lab comment.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py -q --no-cov
+    cwd: .
+- id: dod-omn22370-ac2
+  description: AC2 one mixed line per stop kind (a proven task beside a stopped task) asserts the stop with its evidence, the pill, the built count, line evidence and progress, plus the two mixed pull request fixtures and the closed-unmerged fixture; the injected break that counts a task merged when any of its pull requests merged fails it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_stops.py -q --no-cov -k "stop_kind or merged or closed or idle or process or order"
+    cwd: .
+- id: dod-omn22370-ac3
+  description: AC3 one fixture per source health state (read, read-empty, stale, unread) and an unread watcher that leaves no task counted past unread; the injected break that reads an unread source as fine fails it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_stops.py -q --no-cov -k "health_state or unread_watcher"
+    cwd: .
+- id: dod-omn22370-ac4
+  description: AC4 four fixtures (unanswered ask on the same subject, ask on another subject, answered ask, no ask); the injected break that ignores the subject fails the other-subject fixture.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_stops.py -q --no-cov -k "ask or blocker"
+    cwd: .
+- id: dod-omn22370-ac5
+  description: AC5 a stop with an empty evidence tuple raises on construction, and a stop with no cause row says cause not recorded at 30, 101 and 2400 minutes and the S2 process stop says it too.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_stops.py -q --no-cov -k "empty_evidence or cause"
+    cwd: .
+- id: dod-omn22370-ac6
+  description: AC6 deleting stop_kinds, stage_order, unread_sources, cause_missing or the whole line_stops block fails closed naming the key, and a sentence changed in the contract changes the stop.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_stops.py -q --no-cov -k "deleting or contract"
+    cwd: .
+- id: dod-omn22370-ac7-integration-proof
+  description: AC7 the lab-run of the stop tests on a lab host; the second reader's sample of ten stops on h051 against the ledger and the watcher is recorded in the pull request comment that starts Lab. Hosted CI cannot reach the lab sources, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22370 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov
