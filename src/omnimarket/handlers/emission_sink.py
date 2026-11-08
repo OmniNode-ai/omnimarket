@@ -23,6 +23,9 @@ from pydantic import ValidationError
 
 from omnimarket.models.floor_17a import ModelNodeEmission
 
+# The floor's join fold reads a failure with no start as a refusal only with this prefix.
+UPSTREAM_PREFIX = "upstream_"
+
 
 class ProtocolEmissionSink(Protocol):
     def emit(self, event: ModelNodeEmission) -> None: ...
@@ -119,6 +122,22 @@ class ChainEmitter:
 
     def failure(self, code: str, detail: str = "") -> None:
         self._close()
+        self._emit("failure", failure_code=code, failure_detail=detail[:300])
+
+    def refuse(self, code: str, detail: str = "") -> None:
+        """A typed refusal: a failure that never started, the shape of a join's error case.
+
+        The receipt fold reads it as a refusal only when ``code`` carries the upstream prefix, and only when the
+        chain never started, so a started chain or any other code is refused here.
+        """
+        if self._started:
+            raise RuntimeError("a refusal is a failure that never started")
+        if not code.startswith(UPSTREAM_PREFIX):
+            raise ValueError(
+                f"a refusal carries a code starting with {UPSTREAM_PREFIX!r}"
+            )
+        self._started = True
+        self._closed = True
         self._emit("failure", failure_code=code, failure_detail=detail[:300])
 
     def _close(self) -> None:

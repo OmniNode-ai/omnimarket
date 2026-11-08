@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_landing_canary_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   target           the test repository, the base branch, the bar the canary must land inside and how often the
+#                    pull request is read while waiting; backend inmemory (default for tests) or scm (a real
+#                    test repository, written and read through the commands the scm block names)
+#   publish          the lane and actor of the reading row, the piece it is for, whether the run is a drill
+#   hosts            where the daily schedule may be installed, and the unit environment of each
+#   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+target:
+  backend: inmemory
+  repo: example-org/example-landing-canary
+  base: main
+  branch_prefix: canary/
+  title_prefix: "canary: synthetic landing probe"
+  landing_bound_seconds: 3600
+  poll_seconds: 60
+  scm:
+    clone_dir_env: EXAMPLE_CANARY_CLONE_DIR
+    pr_create_command_env: EXAMPLE_CANARY_PR_CREATE_COMMAND
+    pr_state_command_env: EXAMPLE_CANARY_PR_STATE_COMMAND
+    command_timeout_seconds: 120
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: landing-canary
+  actor: node:node_landing_canary_effect
+  piece: 9
+  drill: false
+  publish_max_age_seconds: 93600
+hosts:
+  - name: example-host
+    scheduler: systemd-user
+    venv: .venv
+    environment:
+      EXAMPLE_HOST_NAME: example-host
+      EXAMPLE_LEDGER_APPEND_COMMAND: "$OMNI_HOME/bin/example-ledger-append"
+injected_fault: Disable the landing tick so the canary pull request stays open past the bound

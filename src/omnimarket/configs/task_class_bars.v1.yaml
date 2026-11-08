@@ -1,0 +1,206 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# task_class_bars.v1.yaml: the routing overlay of per-task-class bars (rebuild piece 15, OMN-22976).
+#
+# Each task class in task_class_contracts.v1.yaml owns one entry here: the bar its delegated
+# answers are held to, frozen under bar_hash. bar_hash is the full sha256 of the canonical JSON
+# of {"task_class": <name>, "bar": <bar>} (sorted keys, no spaces, ASCII), so a hash cannot be
+# copied from one class to another. Read by node_delegation_routing_overlay_check_compute, which
+# refuses a class with no entry, a bar edited without a new hash, and a contract bar that has
+# moved away from the frozen one. To change a bar: edit the contract, rewrite the bar here and
+# recompute its hash from ModelTaskClassBar.frozen_hash(<class>) in the same change; the
+# checker's hash_mismatch finding names the class if the hash was left behind.
+
+bars_version: task-class-bars.v1
+hash_algorithm: sha256
+task_class_bars:
+  code_generation:
+    bar:
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 30000
+    bar_hash: c11b11d3d68fc5a58e44a677fe82523e4c9e7e790400258744350a32ce235bec
+  refactor:
+    bar:
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 30000
+    bar_hash: 0e6f12fe196789c7a78aa2110cd3e681c7a4a375ebbd0ba4dcf45e5c6ff6f99c
+  documentation:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 20000
+    bar_hash: d44f28c623b41d53ad7593a6b7976048dd6dabcf7faf593a9fbc498b0531576e
+  document:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 20000
+    bar_hash: 2ade5f891c05da26f6ff66d3870eafe921ae347905433a13b727861cdcc8bed0
+  evidence_comment:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 120000
+    bar_hash: 31b5eedcefc55c2a7ed66424d6b28e3494b73545eac3737fb0ac636b737d2242
+  research:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 60000
+    bar_hash: baca49ef969551990239c625f8eceb07e61000055d0e47c9d5189fc4714aaf46
+  test:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 30000
+    bar_hash: 8c3f5ca80eebfb3c4e2e8916e11e0a0031befb84bdf1b358036b8cd96cf128a3
+  validator_generation:
+    bar:
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 30000
+    bar_hash: f658787e029875f45e52ee07616fb9111c574f3921a307a8fbcdd921be4a3d20
+  reasoning:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 60000
+    bar_hash: ef49665635dfeb88d303991584fb160c7e457b8a35633278ecaf24d8e1b0ce6b
+  complex_reasoning:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 120000
+    bar_hash: 7d8d455cda3dfb9f0b5c37ac00299818d982faba0c212f0f6dcc2dc39593fad0
+  planning:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 60000
+    bar_hash: ff534193c2c56700f81b313f4cd08674789a86508a76c3f85ecc67944e029cc1
+  review:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 60000
+    bar_hash: f70fc01d16500aed8dcd8d4aa82496dc372cdf35dcc3de95b117f62107ed76f4
+  code_review:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 60000
+    bar_hash: 5142cc5d02f416bb0e5ce19c31a14da107d2d4d8ff581a79f064766ba9ec6fc6
+  summarization:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 10000
+    bar_hash: b4d2fb3a0516b0d1307071a9cd904c73480d8607b1082e318c7f955374b3096f
+  agent_delegation:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 120000
+    bar_hash: 04c12a4b87b7778bc76cacd1cd4294202111326c7ead417eacb1a9fd45fa08e8
+  escalation:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.015
+      latency_sla_p99_ms: 120000
+    bar_hash: 78f76ee1e950078319fdda8581360126d5f32dd13c687b6e8ce39911a40b4fe8
+  brief_drafting:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.0
+      latency_sla_p99_ms: 60000
+    bar_hash: 25aa42ef95ce4887da4c5222d169bb689c5120404d613eb76918e16c109bda08
+  extraction_proposer:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 120000
+    bar_hash: 9af5c36bf252a16595431fb55e9125837a3e6113968ba206bea7454dba97e6fb
+  tail_summary:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 120000
+    bar_hash: be318f17e2a2a33da76556354ebb90ebf1e457f1757ade7989dd88a96f1c9659
+  context_selection:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 120000
+    bar_hash: 13eb6ad8117b0c25193498bd139b314b56e64496f8e5793aed4929cb5e35b38c
+  context_compaction:
+    bar:
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+      pricing_ceiling_per_1k_tokens: 0.002
+      latency_sla_p99_ms: 120000
+    bar_hash: 8245d57b83f6c6e1d0d4886baf760fe98544c5a109003de46e45f79eae3e04ce
