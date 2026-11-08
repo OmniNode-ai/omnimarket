@@ -141,7 +141,7 @@ def test_golden_a_checker_can_repeat_the_block_from_the_same_histories(
     assert again == block
 
 
-def test_a_failed_latest_run_makes_the_written_block_not_working_and_names_the_reading(
+def test_golden_a_failed_latest_run_makes_the_written_block_not_working_and_names_the_reading(
     tmp_path: Path,
 ) -> None:
     home = build_home(tmp_path)
