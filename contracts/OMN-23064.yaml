@@ -1,0 +1,93 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23064
+title: The real Tessl findings on merged omnimarket pull requests 5225, 5333 and 5345 reach a pull request with a contract
+summary: >-
+  Fixes the six real review findings left on the merged omnimarket pull requests 5333 (one, in the delegation routing overlay check) and 5225 (five, in the local alerts writer and the local environment writer). Also fixes the nine real review findings left on the merged pull request 5345 (floor metrics, floor history and the compare step of node_floor_compare_effect). Each finding has a test that fails on dev and passes on this branch.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23064-tessl-followups
+    statement: >-
+      The routing overlay check, the local alerts writer and the local environment writer handle the six findings, each shown by a test that is red on dev.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the branch is renamed to this ticket, carries contracts/this-ticket.yaml, is pushed and opened as a pull request with this ticket in the title, and is handed to the landing controller -- falsifier: uv run pytest of each added test, red on the base commit first"
+      - id: AC2
+        statement: "AC2: each of the six findings has a test that fails on dev and passes on the branch -- falsifier: uv run pytest of the six added tests"
+      - id: AC3
+        statement: "AC3: each of the nine real findings on the merged pull request 5345 has a test in tests/nodes/node_floor_compare_effect/test_tessl_review_findings.py that fails on dev and passes on the branch -- falsifier: uv run pytest of that file, 11 failed on dev and 16 passed on the branch"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The three focused test files holding the six added tests.
+    command: uv run --frozen pytest tests/test_omn19988_local_environment_writer.py tests/test_omn19991_local_alerts_writer.py src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/tests/test_routing_overlay_bars.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The floor compare findings test file.
+    command: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_tessl_review_findings.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23064-ac1-pull-request
+    description: >-
+      The added tests pass on the branch; on the dev commit the six finding tests and two related tests fail (8 failed, 209 passed with the three source files taken from dev).
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn19988_local_environment_writer.py tests/test_omn19991_local_alerts_writer.py src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/tests/test_routing_overlay_bars.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23064-ac2-six-findings
+    description: >-
+      Each of the six findings has a test that is red on dev and green on the branch: non-string task class key (routing overlay check), refused tenant classified as poison, snapshot delta published under the key lock, missing publisher for a pending transition, clear republished on redelivery, replay publishes no transition built from the current row.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn19991_local_alerts_writer.py tests/test_omn19988_local_environment_writer.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23064-writers
+    description: >-
+      The two writer handlers and the routing overlay check load and run their focused tests on the in-memory profile, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn19991_local_alerts_writer.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn23064-integration-proof
+    description: >-
+      The pushed head ran the three focused test files holding the six added tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane tessl-fix-5-c-0315 -- uv run --frozen pytest tests/test_omn19988_local_environment_writer.py tests/test_omn19991_local_alerts_writer.py src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/tests/test_routing_overlay_bars.py -q -n 0 --no-cov
+        cwd: .
+  - id: dod-omn23064-ac3-floor-compare-findings
+    description: >-
+      The nine real findings on the merged pull request 5345 each have a test that is red on dev and green on the branch (11 failed, 5 passed with the source taken from dev; 16 passed on the branch).
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_tessl_review_findings.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23064-deploy-assessment
+    description: >-
+      Deploy assessment: the pull request changes the routing overlay check, two projection writers and the floor compare node. None adds a Kafka topic, a migration or a prod mutation; they reach the runtime through the package on the next standard image rebuild and deploy cycle. The check reads the changed handler and model files from GitHub at the pull request branch and fails when the symbol each fix introduces is missing.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/models/model_floor_compare.py?ref=omn-23064-tessl-merged-followups')\" && case \"$body\" in *_at_has_a_timezone*) exit 0;; *) exit 1;; esac"
+        cwd: "."
+      - check_type: command
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/handlers/handler_delegation_routing_overlay_check.py?ref=omn-23064-tessl-merged-followups')\" && case \"$body\" in *raw_classes*) exit 0;; *) exit 1;; esac"
+        cwd: "."

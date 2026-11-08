@@ -48,6 +48,20 @@ def host(tmp_path: Path, *, prs: int, ledger: str = "") -> dict[str, str]:
     }
 
 
+def claim_rows(n: int) -> str:
+    """``n`` live CLAIM rows in ``REPO_A``: the work sent to lanes."""
+    return "".join(
+        f"2026-10-30T11:{i:02d}:00Z | CLAIM | lane=fixture-l{i} | ticket=OMN-{i} | "
+        f"worktree=omni_worktrees/OMN-{i}/{REPO_A} | est\n"
+        for i in range(1, n + 1)
+    )
+
+
+def full_host(tmp_path: Path) -> dict[str, str]:
+    """A host whose repository is over its bound with lane claims."""
+    return host(tmp_path, prs=1, ledger=claim_rows(11))
+
+
 def ask(env: dict[str, str], **extra: Any) -> str | None:
     args: dict[str, Any] = {
         "lane": "fixture-lane",
@@ -61,26 +75,36 @@ def ask(env: dict[str, str], **extra: Any) -> str | None:
 
 
 def test_new_work_is_refused_at_the_limit_and_admitted_under_it(tmp_path: Path) -> None:
-    full = host(tmp_path / "full", prs=11)
-    why = ask(full)
+    why = ask(full_host(tmp_path / "full"))
     assert why is not None
     assert why.startswith("REMOTE-LANE-WIP-REFUSED lane=fixture-lane REFUSE ")
     assert ask(host(tmp_path / "empty", prs=0)) is None
 
 
+def test_94_open_pull_requests_do_not_refuse_a_dispatch(tmp_path: Path) -> None:
+    """AC1 control (OMN-23028): the host's watcher state holds 94 open pull requests."""
+    env = host(tmp_path, prs=94)
+    assert ask(env) is None
+    # The same host with lane claims over the bound is still refused (AC2).
+    claims = host(tmp_path / "claims", prs=94, ledger=claim_rows(11))
+    why = ask(claims)
+    assert why is not None
+    assert "reason=at_repo_limit" in why
+
+
 def test_a_lane_working_a_named_pull_request_is_never_refused(tmp_path: Path) -> None:
-    full = host(tmp_path, prs=11)
+    full = full_host(tmp_path)
     assert ask(full, prs=(f"fixture-org/{REPO_A}#1",)) is None
 
 
 def test_a_lane_named_for_a_fix_is_never_refused(tmp_path: Path) -> None:
-    assert ask(host(tmp_path, prs=11), lane="fixture-cause-core-0000") is None
+    assert ask(full_host(tmp_path), lane="fixture-cause-core-0000") is None
 
 
 def test_the_watcher_state_path_is_read_with_the_environment_substituted(
     tmp_path: Path,
 ) -> None:
-    env = host(tmp_path / "full", prs=11)
+    env = full_host(tmp_path / "full")
     overlay = tmp_path / "full" / "overlay" / "wip_admission" / "overlay.yaml"
     doc = yaml.safe_load(overlay.read_text(encoding="utf-8"))
     doc["watcher_state_path"] = "${FIXTURE_ROOT}/watcher.json"
@@ -110,15 +134,8 @@ def test_an_unread_state_refuses_new_work_naming_why_and_admits_a_fix(
     assert ask(env, prs=(f"{REPO_A}#1",)) is None
 
 
-def test_live_claims_from_the_ledger_count_beside_the_pull_requests(
-    tmp_path: Path,
-) -> None:
-    rows = "".join(
-        f"2026-10-30T11:{i:02d}:00Z | CLAIM | lane=fixture-l{i} | ticket=OMN-{i} | "
-        f"worktree=omni_worktrees/OMN-{i}/{REPO_A} | est\n"
-        for i in range(1, 12)
-    )
-    assert ask(host(tmp_path, prs=0, ledger=rows)) is not None
+def test_live_claims_from_the_ledger_are_the_count(tmp_path: Path) -> None:
+    assert ask(host(tmp_path, prs=0, ledger=claim_rows(11))) is not None
 
 
 def test_a_claim_ends_with_its_terminal_and_with_a_quiet_lane() -> None:
@@ -138,7 +155,7 @@ def test_the_command_line_prints_the_refusal_and_exits_3(
 ) -> None:
     from omnimarket.nodes.node_wip_admission_compute import runtime_brief_gate as gate
 
-    for key, value in host(tmp_path, prs=11).items():
+    for key, value in full_host(tmp_path).items():
         monkeypatch.setenv(key, value)
     assert gate.main(["--lane", "fixture-lane", "--repo", REPO_A]) == gate.EXIT_REFUSE
     assert capsys.readouterr().out.startswith("REMOTE-LANE-WIP-REFUSED ")
