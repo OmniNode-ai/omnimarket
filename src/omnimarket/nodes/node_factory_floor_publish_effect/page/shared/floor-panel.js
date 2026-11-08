@@ -3,7 +3,7 @@
  * One component for the first page and the Better or worse page. It draws nothing until something is opened.
  *
  *   FloorPanel.mount(el, items, {id})   a paged list (25 rows) into any element, with a search box when it holds more than
- *                                        25 items. An item is {title, sub, group, href, at, count, tag, tone, opens}.
+ *                                        25 items. An item is {title, sub, group, href, at, count, tag, tone, opens, find}.
  *   FloorPanel.reset(id)                forget a list's search and page (a page does this when its filters change).
  *   FloorPanel.configure({resolve})     resolve(key) returns the panel spec for a key, or null. A spec is {key, title,
  *                                        kicker, summary, tone, facts:[{label,value,at}], sources:[text], total, lead
@@ -47,7 +47,7 @@
     if (it.at) { var s = sinceIso(it.at); if (s != null) right += '<span title="' + esc(it.at) + '">' + esc(agoText(s)) + "</span>"; }
     return '<li class="fp-it"><div><span class="t">' + head + chip + "</span>" + (it.sub ? '<span class="s">' + esc(it.sub) + "</span>" : "") + "</div>" + (right ? '<div class="r">' + right + "</div>" : "") + "</li>";
   }
-  var hay = function (it) { return [it.title, it.sub, it.group, it.tag].join(" ").toLowerCase(); };
+  var hay = function (it) { return [it.title, it.sub, it.group, it.tag, it.find].join(" ").toLowerCase(); };   // find: text the search matches and the line does not draw
   function listBody(items, st) {
     var q = st.q.trim().toLowerCase();
     var rows = q ? items.filter(function (it) { return hay(it).indexOf(q) >= 0; }) : items;
