@@ -172,3 +172,12 @@ class ModelPublicConsumerCheckFailed(BaseModel):
 
     batch_id: str
     reason: str
+    terminal_failure_cause: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _cause_is_the_reason(cls, data: object) -> object:
+        """The runtime's failure-terminal guard reads ``terminal_failure_cause``."""
+        if isinstance(data, dict) and data.get("terminal_failure_cause") is None:
+            return {**data, "terminal_failure_cause": data.get("reason")}
+        return data

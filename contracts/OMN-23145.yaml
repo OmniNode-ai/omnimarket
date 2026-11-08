@@ -35,8 +35,8 @@ dod_evidence:
   binds_ac:
   - AC1
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k records_evidence
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute/tests/test_public_consumer_check.py -q --no-cov -k records_evidence
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-ac2-unresolved-consumer
   description: An unresolved consumer or an unreadable scope keeps the entity and refuses the batch; the blind-source break flips the reading.
@@ -44,8 +44,8 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k unresolved_consumer_keeps_entity
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute/tests/test_public_consumer_check.py -q --no-cov -k unresolved_consumer_keeps_entity
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-ac3-rare-path
   description: A rare-path declaration naming a drill keeps the entity; one naming none exempts nothing.
@@ -53,8 +53,8 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k rare_path_declaration
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute/tests/test_public_consumer_check.py -q --no-cov -k rare_path_declaration
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23145-integration-proof-lab-run
   description: >-
@@ -74,4 +74,3 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'class HandlerPublicConsumerCheck' src/omnimarket/nodes/node_public_consumer_check_compute/handlers/handler_public_consumer_check.py
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac: []

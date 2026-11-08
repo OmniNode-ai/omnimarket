@@ -37,6 +37,11 @@ descriptor:
 terminal_event: onex.evt.omnimarket.public-consumer-checked.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.public-consumer-check-requested.v1
+  # ModelPublicConsumerCheckFailed carries terminal_failure_cause, so the runtime's
+  # failure-terminal guard publishes it on the failure topic.
+  terminal_events:
+    success: onex.evt.omnimarket.public-consumer-checked.v1
+    failure: onex.evt.omnimarket.public-consumer-check-failed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.public-consumer-check-requested.v1
