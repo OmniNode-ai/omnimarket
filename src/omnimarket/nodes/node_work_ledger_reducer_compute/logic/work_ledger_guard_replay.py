@@ -60,7 +60,10 @@ class WorkLedgerGuardReplay:
         self._judge = judge
 
     def handle(self, request: ModelGuardReplayRequest) -> ModelGuardReplayResult:
-        accepted: list[str] = [row.rstrip("\n") for row in request.prior_accepted]
+        accepted: list[str] = [
+            line for line in request.preceding_ledger.splitlines() if line.strip()
+        ]
+        accepted.extend(row.rstrip("\n") for row in request.prior_accepted)
         opened = _opened_ids(accepted)
         differences: list[ModelReplayDifference] = []
         for position, entry in enumerate(request.entries, start=1):
