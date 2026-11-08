@@ -179,12 +179,22 @@ HARNESS = textwrap.dedent(
     const src = fs.readFileSync(pagePath, "utf8");
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(src)[1];
     const els = {};
-    const mk = id => ({id, innerHTML: "", textContent: "", value: "", open: false, h: {},
-      addEventListener(t, f) { (this.h[t] = this.h[t] || []).push(f); }, scrollIntoView() {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id))};
-    for (const id of ["alert", "sw", "intro", "cards", "dbody", "dsum", "cat", "q", "ver", "sort", "details"]) document.getElementById(id);
+    const mk = id => {
+      const body = {innerHTML: ""}, q = {value: "", h: {}, addEventListener(t, f) { (this.h[t] = this.h[t] || []).push(f); }};
+      return {id, innerHTML: "", textContent: "", value: "", open: false, h: {}, body, q, classList: {add() {}},
+        addEventListener(t, f) { (this.h[t] = this.h[t] || []).push(f); },
+        removeEventListener(t, f) { this.h[t] = (this.h[t] || []).filter(x => x !== f); },
+        querySelector(sel) { return sel === ".fp-body" ? body : sel === ".fp-q" ? (this.innerHTML.includes("fp-q") ? q : null) : null; },
+        getBoundingClientRect: () => ({top: 10}), scrollIntoView() {}};
+    };
+    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}, body: {append() {}}, createElement: () => ({})};
+    for (const id of ["alert", "sw", "intro", "cards", "dbody", "dsum", "cat", "ver", "sort", "details"]) document.getElementById(id);
     const win = {h: {}, addEventListener(t, f) { (this.h[t] = this.h[t] || []).push(f); }};
     globalThis.window = win;
+    globalThis.history = {state: null};
+    // The page's shared list is the real floor-panel.js, run against the small DOM above.
+    new Function("window", fs.readFileSync(process.argv[6], "utf8"))(win);
+    globalThis.FloorPanel = win.FloorPanel;
     let current = hash;
     globalThis.location = {get hash() { return current; }, set hash(v) { current = "#" + v; (win.h.hashchange || []).forEach(f => f()); }};
     const now = Date.parse(nowIso);
@@ -193,8 +203,10 @@ HARNESS = textwrap.dedent(
     globalThis.fetch = async url => (url in files
       ? {ok: true, status: 200, json: async () => JSON.parse(files[url])}
       : {ok: false, status: 404, json: async () => ({})});
+    // dbody holds the details' own markup, the shared list's host (dlist) holds the lines: both are read together.
+    const dlist = () => els.dlist ? els.dlist.innerHTML + els.dlist.body.innerHTML : "";
     const grab = () => ({alert: els.alert.innerHTML, sw: els.sw.innerHTML, intro: els.intro.textContent, cards: els.cards.innerHTML,
-      dbody: els.dbody.innerHTML, dsum: els.dsum.textContent, cat: els.cat.innerHTML, catValue: els.cat.value,
+      dbody: els.dbody.innerHTML + dlist(), dsum: els.dsum.textContent, cat: els.cat.innerHTML, catValue: els.cat.value,
       detailsOpen: els.details.open, title: document.title});
     (async () => {
       new Function(script)();
@@ -203,7 +215,9 @@ HARNESS = textwrap.dedent(
       for (const s of steps) {
         const el = els[s.on];
         if (s.value !== undefined) el.value = s.value;
-        for (const f of el.h[s.type] || []) f({target: s.dataset ? {closest: () => ({dataset: s.dataset})} : el});
+        if (s.on === "dlist" && s.type === "input") { el.q.value = s.value; for (const f of el.q.h.input || []) f(); }
+        else if (s.on === "dlist") for (const f of el.h.click || []) f({target: {closest: sel => sel.includes("data-pg") ? {disabled: false, getAttribute: () => String(s.page)} : null}});
+        else for (const f of el.h[s.type] || []) f({target: s.dataset ? {closest: () => ({dataset: s.dataset})} : el});
         out.push(grab());
       }
       process.stdout.write(JSON.stringify(out));
@@ -226,6 +240,7 @@ def _render_steps(doc: bytes | None, hash_: str, steps: list[dict]) -> list[dict
             hash_,
             NOW.isoformat(),
             json.dumps(steps),
+            str(NODE_DIR / "page/shared/floor-panel.js"),
         ],
         capture_output=True,
         text=True,
@@ -245,7 +260,14 @@ def _doc(comparison) -> bytes:
 
 
 def _rows(html: str) -> int:
-    return html.count('<tr><td class="nm">')
+    return html.count('<li class="fp-it">')
+
+
+def _names(html: str) -> list[str]:
+    return re.findall(
+        r'<li class="fp-it"><div><span class="t"><span class="t[^"]*">([^<]*)</span>',
+        html,
+    )
 
 
 def _many_doc(n: int, *, overlay=OVERLAY) -> bytes:
@@ -293,52 +315,46 @@ def test_the_details_are_closed_and_hold_the_whole_window_behind_the_disclosure(
 
 
 def test_failing_control_the_details_are_paged_twenty_five_to_a_page() -> None:
-    steps = [
-        {"on": "dbody", "type": "click", "dataset": {"act": "next"}},
-        {"on": "dbody", "type": "click", "dataset": {"act": "next"}},
-        {"on": "dbody", "type": "click", "dataset": {"act": "next"}},
-        {"on": "dbody", "type": "click", "dataset": {"act": "prev"}},
+    steps = [{"on": "dlist", "type": "click", "page": 1} for _ in range(3)] + [
+        {"on": "dlist", "type": "click", "page": -1}
     ]
     first, second, third, over, back = _render_steps(_many_doc(60), "", steps)
+    dash = "\N{EN DASH}"
     assert _rows(first["dbody"]) == 25
-    assert "Page 1 of 3" in first["dbody"]
-    assert "showing 1 to 25" in first["dbody"]
-    assert '<button type="button" data-act="prev" disabled>' in first["dbody"]
+    assert f"1{dash}25 of 60" in first["dbody"]
+    assert 'data-pg="-1" disabled' in first["dbody"]
     assert _rows(second["dbody"]) == 25
-    assert "Page 2 of 3" in second["dbody"]
-    assert "showing 26 to 50" in second["dbody"]
+    assert f"26{dash}50 of 60" in second["dbody"]
     assert _rows(third["dbody"]) == 10
-    assert "Page 3 of 3" in third["dbody"]
-    assert '<button type="button" data-act="next" disabled>' in third["dbody"]
+    assert f"51{dash}60 of 60" in third["dbody"]
+    assert 'data-pg="1" disabled' in third["dbody"]
     # A click past the last page stays on it; Previous goes back one.
-    assert "Page 3 of 3" in over["dbody"]
-    assert "Page 2 of 3" in back["dbody"]
-    # A page of fewer numbers than a page has no pager at all.
+    assert f"51{dash}60 of 60" in over["dbody"]
+    assert f"26{dash}50 of 60" in back["dbody"]
+    # A page of fewer numbers than a page has no pager and no search box at all.
     small = _render(_many_doc(10), "")
     assert _rows(small["dbody"]) == 10
-    assert "Page 1 of" not in small["dbody"]
+    assert "fp-pg" not in small["dbody"]
+    assert "fp-q" not in small["dbody"]
 
 
 def test_search_filters_by_name_or_category_and_returns_to_the_first_page() -> None:
     steps = [
-        {"on": "dbody", "type": "click", "dataset": {"act": "next"}},
-        {"on": "q", "type": "input", "value": "repo012"},
-        {"on": "q", "type": "input", "value": "landing and"},
-        {"on": "q", "type": "input", "value": "zzz-no-such-number"},
-        {"on": "dbody", "type": "click", "dataset": {"act": "clear"}},
+        {"on": "dlist", "type": "click", "page": 1},
+        {"on": "dlist", "type": "input", "value": "repo012"},
+        {"on": "dlist", "type": "input", "value": "landing and"},
+        {"on": "dlist", "type": "input", "value": "zzz-no-such-number"},
+        {"on": "dlist", "type": "input", "value": ""},
     ]
     moved, one, by_category, none, cleared = _render_steps(_many_doc(60), "", steps)[1:]
-    assert "Page 2 of 3" in moved["dbody"]
+    assert "26\N{EN DASH}50 of 60" in moved["dbody"]
     assert _rows(one["dbody"]) == 1
     assert "repo012" in one["dbody"]
-    assert "1 of 60 numbers match" in one["dbody"]
-    assert "Page 1" not in one["dbody"]
-    assert "60 numbers" in by_category["dbody"]
-    assert "Page 1 of 3" in by_category["dbody"]
+    assert "1 of 60 match" in one["dbody"]
+    assert "1\N{EN DASH}25 of 60 matching" in by_category["dbody"]
     assert _rows(none["dbody"]) == 0
-    assert "No number matches." in none["dbody"]
+    assert "No line matches" in none["dbody"]
     assert _rows(cleared["dbody"]) == 25
-    assert "Page 1 of 3" in cleared["dbody"]
 
 
 def test_the_category_filter_the_result_filter_and_the_sort() -> None:
@@ -365,12 +381,12 @@ def test_the_category_filter_the_result_filter_and_the_sort() -> None:
     assert "Red rows on the floor" in alarms["dbody"]
     assert "Alarm deploy" in alarms["dbody"]
     assert _rows(unread["dbody"]) == 2
-    assert '<span class="unread">unread</span>' in unread["dbody"]
-    names = re.findall(r'<td class="nm">([^<]*)</td>', by_name["dbody"])
+    assert "? Unread" in unread["dbody"]
+    names = _names(by_name["dbody"])
     assert names == sorted(names)
     # Biggest change first starts with the biggest move; smallest change first starts with the smallest.
-    first = re.findall(r'<td class="nm">([^<]*)</td>', start["dbody"])[0]
-    smallest = re.findall(r'<td class="nm">([^<]*)</td>', small["dbody"])[0]
+    first = _names(start["dbody"])[0]
+    smallest = _names(small["dbody"])[0]
     assert first != smallest
     assert first.startswith("Rebuild piece")
 

@@ -62,7 +62,9 @@ button{appearance:none;font:inherit;cursor:pointer}
  .dt td::before{content:attr(data-l);color:var(--mute);font-size:12px;flex:none}
  .dt td.nm{display:block}.dt td.nm::before{content:none}
 }
-</style></head><body><main>
+</style>
+<link rel="stylesheet" href="floor-panel.css">
+</head><body><main>
 <div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" id="tab-compare" href="compare.html" aria-selected="true">Better or worse</a></div>
 <div id="alert"><div class="frozen">Reading the comparison...</div></div>
 <div id="sw" class="sw" role="group" aria-label="Compare with"></div>
@@ -71,7 +73,6 @@ button{appearance:none;font:inherit;cursor:pointer}
 <details id="details" class="details">
 <summary>Details <small id="dsum">every number, with a search</small></summary>
 <div class="dctl">
-<label>Search<input id="q" type="search" placeholder="Name or category" autocomplete="off"></label>
 <label>Category<select id="cat"></select></label>
 <label>Result<select id="ver"><option value="">All results</option><option value="worse">Worse</option><option value="better">Better</option><option value="same">The same</option><option value="unread">Unread</option></select></label>
 <label>Sort by<select id="sort"><option value="big">Biggest change first</option><option value="small">Smallest change first</option><option value="name">Name</option></select></label>
@@ -80,6 +81,7 @@ button{appearance:none;font:inherit;cursor:pointer}
 </details>
 <div class="more"><a href="index.html">Back to the floor</a></div>
 </main>
+<script src="floor-panel.js"></script>
 <script>
 "use strict";
 const DATA = "floor-compare.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000;
@@ -87,7 +89,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
 const $ = id => document.getElementById(id);
 let doc = null, failure = "", catSig = null;
-const st = {q: "", cat: "", ver: "", sort: "big", page: 1};
+const st = {cat: "", ver: "", sort: "big"};
 const DAYS = () => (doc ? doc.windows.map(w => String(w.days)) : ["1", "7", "30"]);
 const pick = () => { const h = String(location.hash || "").replace(/^#/, ""); return DAYS().includes(h) ? h : "1"; };
 const MARK = {better: "✓ Better", worse: "▼ Worse", same: "– Same", unread: "? Unread"};
@@ -127,9 +129,7 @@ function fillSelect(w){
 }
 function matches(w, r){
   if (st.cat && r.category !== st.cat) return false;
-  if (st.ver && r.verdict !== st.ver) return false;
-  const q = st.q.trim().toLowerCase();
-  return !q || (r.name + " " + r.key + " " + titleOf(w, r.category)).toLowerCase().includes(q);
+  return !st.ver || r.verdict === st.ver;
 }
 // The biggest move first; a number with no reading has no size and stays last in either direction.
 const order = {
@@ -137,27 +137,23 @@ const order = {
   small: (a, b) => (a.size == null) - (b.size == null) || (a.size || 0) - (b.size || 0) || a.name.localeCompare(b.name),
   name: (a, b) => a.name.localeCompare(b.name),
 };
-function drawRow(w, r, label){
-  const un = t => t === "unread" ? `<span class="unread">unread</span>` : esc(t);
-  return `<tr><td class="nm">${esc(r.name)}</td><td class="ct" data-l="Category">${esc(titleOf(w, r.category) || "-")}</td>`
-    + `<td data-l="${esc(label)} ago">${un(r.old_text)}</td><td data-l="Now">${un(r.new_text)}</td>`
-    + `<td data-l="Change">${esc(r.change_text)}</td><td data-l="Result"><span class="verdict ${esc(r.verdict)}">${MARK[r.verdict] || esc(r.verdict)}</span></td></tr>`;
+// One line of the shared list per number; the list (floor-panel.js, also the first page's panel) searches and pages it.
+const TONE = {better: "green", worse: "red"};
+function rowItem(w, r){
+  const un = t => t === "unread" ? "unread" : t;
+  return {title: r.name, sub: `${w.label} ago ${un(r.old_text)}, now ${un(r.new_text)}, ${r.change_text} \u00b7 ${titleOf(w, r.category) || "-"}`, find: r.key,
+    tag: MARK[r.verdict] || r.verdict, tone: TONE[r.verdict] || null};
 }
 function drawDetails(w){
   const all = rowsOf(w), size = Math.max(1, Number(doc.details_page_size) || 25);
   const hit = all.filter(r => matches(w, r)).sort(order[st.sort] || order.big);
   const pages = Math.max(1, Math.ceil(hit.length / size));
-  st.page = Math.min(Math.max(1, st.page), pages);
-  const from = (st.page - 1) * size, shown = hit.slice(from, from + size);
-  let h = `<p class="dinfo">${hit.length === all.length ? `${all.length} numbers` : `${hit.length} of ${all.length} numbers match`}`
-    + (hit.length ? `, showing ${from + 1} to ${from + shown.length}` : "") + `. A number with no reading from ${esc(w.label)} ago is unread, never zero.</p>`;
-  if (!all.length) h = `<p class="empty-row">This comparison file carries no details yet; it is rewritten every few minutes.</p>`;
-  else if (!hit.length) h += `<p class="empty-row">No number matches. <button type="button" data-act="clear">Clear the search and filters</button></p>`;
-  else h += `<table class="dt"><thead><tr><th>Number</th><th>Category</th><th>${esc(w.label)} ago</th><th>Now</th><th>Change</th><th>Result</th></tr></thead><tbody>`
-    + shown.map(r => drawRow(w, r, w.label)).join("") + `</tbody></table>`;
-  if (hit.length > size) h += `<div class="pager"><button type="button" data-act="prev"${st.page <= 1 ? " disabled" : ""}>Previous</button><span>Page ${st.page} of ${pages}</span><button type="button" data-act="next"${st.page >= pages ? " disabled" : ""}>Next</button></div>`;
-  $("dbody").innerHTML = h;
   $("dsum").textContent = all.length ? `${all.length} numbers, searchable, ${pages > 1 ? pages + " pages" : "one page"}` : "none yet";
+  if (!all.length) { $("dbody").innerHTML = `<p class="empty-row">This comparison file carries no details yet; it is rewritten every few minutes.</p>`; return; }
+  const info = `<p class="dinfo">${hit.length === all.length ? `${all.length} numbers` : `${hit.length} of ${all.length} numbers match`}. A number with no reading from ${esc(w.label)} ago is unread, never zero.</p>`;
+  if (!hit.length) { $("dbody").innerHTML = info + `<p class="empty-row">No number matches. <button type="button" data-act="clear">Clear the filters</button></p>`; return; }
+  $("dbody").innerHTML = info + `<div id="dlist"></div>`;
+  FloorPanel.mount($("dlist"), hit.map(r => rowItem(w, r)), {id: "compare-details"});
 }
 function drawAlert(){
   if (!doc) {
@@ -191,18 +187,15 @@ function draw(){
 function act(el){
   const d = el.dataset || {};
   if (d.act === "days") location.hash = d.days;
-  else if (d.act === "see") { st.cat = d.cat; st.page = 1; $("cat").value = d.cat; $("details").open = true; draw(); if ($("details").scrollIntoView) $("details").scrollIntoView({behavior: "smooth", block: "start"}); }
-  else if (d.act === "prev") { st.page -= 1; drawDetails(win()); }
-  else if (d.act === "next") { st.page += 1; drawDetails(win()); }
-  else if (d.act === "clear") { st.q = ""; st.cat = ""; st.ver = ""; st.page = 1; $("q").value = ""; $("cat").value = ""; $("ver").value = ""; drawDetails(win()); }
+  else if (d.act === "see") { st.cat = d.cat; FloorPanel.reset("compare-details"); $("cat").value = d.cat; $("details").open = true; draw(); if ($("details").scrollIntoView) $("details").scrollIntoView({behavior: "smooth", block: "start"}); }
+  else if (d.act === "clear") { st.cat = ""; st.ver = ""; FloorPanel.reset("compare-details"); $("cat").value = ""; $("ver").value = ""; drawDetails(win()); }
 }
 const delegate = e => { const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null; if (el) act(el); };
 for (const id of ["sw", "cards", "dbody"]) $(id).addEventListener("click", delegate);
-const refilter = (key, id) => () => { st[key] = $(id).value; st.page = 1; if (doc) drawDetails(win()); };
-$("q").addEventListener("input", refilter("q", "q"));
+const refilter = (key, id) => () => { st[key] = $(id).value; FloorPanel.reset("compare-details"); if (doc) drawDetails(win()); };
 $("cat").addEventListener("change", refilter("cat", "cat"));
 $("ver").addEventListener("change", refilter("ver", "ver"));
 $("sort").addEventListener("change", refilter("sort", "sort"));
-window.addEventListener("hashchange", () => { st.page = 1; if (doc) draw(); });
+window.addEventListener("hashchange", () => { FloorPanel.reset("compare-details"); if (doc) draw(); });
 load(); setInterval(load, REFRESH_MS); setInterval(drawAlert, 10000);
 </script></body></html>
