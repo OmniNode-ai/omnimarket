@@ -327,9 +327,10 @@ class HandlerLaneGithubBudget:
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         key = hashlib.sha256(json.dumps(request.args).encode()).hexdigest()
         cache = root / f"{key}.json"
+        args_verb = request.args[1]
         ttl = (
             POLICY["job_log_ttl_seconds"]
-            if request.args[1] == "job-log"
+            if args_verb == "job-log"
             else POLICY["run_view_ttl_seconds"]
         )
         # One host-wide key lock: two lanes missing the same job make one gateway request.
@@ -340,6 +341,15 @@ class HandlerLaneGithubBudget:
                 result = ModelLaneGithubResult(0, data["stdout"], data["stderr"])
                 self.record(policy, cls, "GET", endpoint, 0, "cache")
                 return result
+            if args_verb == "job-log":
+                # A window or step of a job this host's gateway already holds in full is
+                # not a GitHub read: serve it without taking a budget unit. A miss makes
+                # no GitHub call either, so the probe is free and a miss only falls
+                # through to the charged read below.
+                probed = self.probe_gateway_job_log(request)
+                if probed is not None:
+                    self.record(policy, cls, "GET", endpoint, 0, "cache")
+                    return probed
             # The hidden option is required, never an environment-only hint: an older
             # CLI refuses it before it can dispatch. Import crashes also leave this
             # receipt untouched. Unknown or corrupt receipts keep the reservation.
@@ -410,6 +420,32 @@ class HandlerLaneGithubBudget:
                     "pre-dispatch" if refunded else "allowed",
                 )
                 return self.store(cache, executed)
+
+    def probe_gateway_job_log(
+        self, request: ModelLaneGithubCall
+    ) -> ModelLaneGithubResult | None:
+        """Answer a job-log read from the gateway's cache with no GitHub call, else None.
+
+        `onex scm job-log-cached` takes the same window options as `job-log` and, by
+        construction, never turns into a live read (a miss exits non-zero). Measured on
+        h053 (OMN-22862): 110 of 462 successful job-log reads were a second window of a
+        job already read, each charged one of the lane's eight units.
+        """
+        probe = replace(
+            request,
+            args=(
+                request.args[0],
+                "job-log-cached",
+                *request.args[2:],
+            ),
+        )
+        try:
+            answer = self.execute(
+                probe, timeout=POLICY["job_log_cache_probe_timeout_seconds"]
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return answer if answer.code == 0 and answer.stdout.strip() else None
 
     def auth_status(
         self, request: ModelLaneGithubCall, cls: str, endpoint: str

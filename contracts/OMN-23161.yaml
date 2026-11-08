@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23161
+title: The delegate request decoder accepts and ignores an optional probe_ladder key, so a later release can carry it without breaking the pinned consumer
+summary: ModelDelegateSkillRequest now decodes a probe_ladder key without declaring it and drops it, whatever it holds, the same tolerate-before-declare order as client_call. A later release declares the field once this one is out and the consumer pin advances.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23161-probe-ladder-tolerated
+  statement: A delegate request carrying a probe_ladder key decodes with the key ignored, and the wire compatibility gate passes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a request carrying an optional probe_ladder key decodes with the key ignored -- falsifier: `uv run pytest tests/unit/delegation/test_probe_ladder.py -q -k tolerated`'
+  - id: AC2
+    statement: 'AC2: the wire compatibility gate passes with the new optional key -- falsifier: `uv run python scripts/ci/check_wire_compatibility.py`'
+evidence_requirements:
+- kind: tests
+  description: The probe_ladder tolerance tests pass.
+  command: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23161-ac1-tolerated
+  description: A request with probe_ladder set to a ladder or to null decodes, the key is absent from the dump, the dump equals a request without the key, and another unknown key is still refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated
+    cwd: .
+- id: dod-omn23161-ac2-wire-gate
+  description: The gate grades the maximal key set the request model can emit; the probe_ladder key is outside that set (read with the gate's own probe from the real module) while a request carrying it still decodes. The test imports the new key constant, so it fails at the merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k wire_gate_graded_keys
+    cwd: .
+- id: dod-omn23161-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23161 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated
+    cwd: .

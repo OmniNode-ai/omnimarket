@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: overlay_store_load_effect
+version: "1.0.0"
+description: "Validates one overlay of the overlay home by the model the home names for it and publishes one version on the bus."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_overlay_store_load_effect: omnimarket.nodes.node_overlay_store_load_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, overlay, configuration]
+pack: "data"
+display_name: "Effect: Overlay Store Loader"
+node_role: "effect"
+license: "MIT"

@@ -11,6 +11,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from pydantic import SecretStr
 
@@ -45,16 +46,25 @@ class FileTokenFile:
             return None
         return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8] if value else None
 
+    @staticmethod
+    def _private_handle(path: Path) -> TextIO:
+        """Open ``path`` for writing with mode 0600 set before any secret is written.
+
+        ``os.open`` applies its mode only when it creates the file, so an existing, more permissive
+        file is narrowed on the open descriptor first.
+        """
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        return os.fdopen(fd, "w", encoding="utf-8")
+
     def write(self, value: SecretStr) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if self._path.exists():
             prev = self._path.with_name(self._path.name + ".prev")
-            fd = os.open(prev, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            with self._private_handle(prev) as handle:
                 handle.write(self._path.read_text(encoding="utf-8"))
         tmp = self._path.with_name(self._path.name + ".new")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with self._private_handle(tmp) as handle:
             handle.write(value.get_secret_value() + "\n")
         os.replace(tmp, self._path)
 
