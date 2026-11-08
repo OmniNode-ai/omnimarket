@@ -20,6 +20,8 @@ requirements:
     statement: 'AC4: three new dev tags roll into one move and a second run in the same night updates the open PR in place -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k one_pr_per_night'
   - id: AC5
     statement: 'AC5: no required context, ratchet baseline, allowlist or gate condition is widened or removed: the new workflow mints no pull_request context and the changed file list holds none -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k gates_unchanged'
+  - id: AC6
+    statement: 'AC6: the sibling pins sit at or past the train''s rolled tags, uv.lock resolves them, and the work-contract corpus pins the refreshed uv.lock -- falsifier: uv run pytest tests/nodes/test_sibling_pin_train_floor.py tests/nodes/test_model_work_contract.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The cited tests pass at the PR head.
@@ -89,6 +91,8 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/test_model_work_contract.py -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC6
 - id: dod-omn21895-pin-floor
   description: The sibling pins sit at or past the train's rolled tags and uv.lock resolves them; the test fails at the merge base.
   source: manual
@@ -96,3 +100,5 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/test_sibling_pin_train_floor.py -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC6
