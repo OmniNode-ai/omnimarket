@@ -141,6 +141,8 @@ not_routing_resolution_sites:
     reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/closer_scope_overlay.py:resolve_overlay_file(NODE_NAME)"
+    reason: reads the closeout scope overlay, the ranking rules, reserve and caps of the ticket closer's bundle; it ranks tickets and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the rule data and bus transport of a guard that refuses a question a ruling in force answers; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_agent_review_gate_accept_effect/overlay.py:find_node_overlay(OVERLAY_ID)"

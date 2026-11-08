@@ -34,6 +34,9 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline
 from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     ModelSeamDeadlineOverlay,
 )
+from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
+    HandlerRequiredSender,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -73,6 +76,7 @@ def _handler(bus: InMemorySeamBus, ledger: InMemoryLedger) -> HandlerSeamDeadlin
         bus=bus,
         appender=ledger,
         clock=lambda: _NOW,
+        required_sender=HandlerRequiredSender(),
         new_id=lambda: f"00000000-0000-4000-8000-{next(counter):012d}",
     )
 
