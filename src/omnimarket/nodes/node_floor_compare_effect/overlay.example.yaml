@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Each live rebuild piece against the old way for its first 7 days (OMN-23081). Read by node_floor_compare_effect; a host
+# names its own copy with ONEX_FLOOR_PIECE_MEASURES_OVERLAY. Every key is a key of the compare history; its dated points
+# come from the source named. The live dates are the day the piece lanes handed their pieces off (ledger TERMINAL rows of
+# the piece*-1320-r lanes, 2026-11-06 ~15:00Z) and the 7-day judge date those lanes wrote (judge_on=2026-11-13).
+piece_measures:
+  baseline_days: 7
+  trial_days: 7
+  min_points: 3
+  verdicts_relpath: .onex_state/floor-compare/piece-verdicts.jsonl
+  pieces:
+    - piece: 1
+      name: Code graph
+      call: keep, schedule
+      live_at: "2026-11-06T15:00:00Z"
+      live_source: "ledger: piece lanes handed off 2026-11-06 ~15:00Z; judge_on=2026-11-13 (MSG 2026-11-06T17:24:07Z)"
+      measures:
+        - {key: "piece_golden_age_h:1", label: "Age of the code graph's last good run", unit: hours, polarity: lower_is_better, source: "floor piece row golden_age_s (published floor and its dated copies); the old way ran the graph once by hand"}
+    - piece: 2
+      name: Hosts and capacity
+      call: wire
+      live_at: "2026-11-06T15:00:00Z"
+      live_source: "ledger TERMINAL lane=piece2-1320-r 2026-11-06T15:05:23Z handed-off omnimarket#5192"
+      measures:
+        - {key: slots_free, label: "Lab slots available", unit: slots free, polarity: higher_is_better, source: "factory floor record bays[].free summed over the hosts read fresh (record and its dated copies since 2026-11-01)"}
+        - {key: capacity_refusals, label: "Lanes refused for capacity", unit: rows in 24 h, polarity: lower_is_better, source: "work ledger FRICTION, STATUS and TERMINAL rows naming a capacity refusal (exit 75, over the load bar, no free slot)"}
+    - piece: 3
+      name: Bus, runtime and seams
+      call: wire
+      live_at: "2026-11-06T15:00:00Z"
+      live_source: "ledger: piece lanes handed off 2026-11-06 ~15:00Z; judge_on=2026-11-13"
+      measures:
+        - {key: "piece_golden_age_h:3", label: "Age of the seam reading's last good run", unit: hours, polarity: lower_is_better, source: "floor piece row golden_age_s (published floor and its dated copies); the old way had no scheduled seam reading"}
+    - piece: 5
+      name: Secrets
+      call: keep (provisional)
+      live_at: "2026-11-06T15:00:00Z"
+      live_source: "ledger STATUS lane=piece5-1320-r 2026-11-06T15:13:32Z; judged=2026-11-13 (MSG 2026-11-06T17:50:20Z)"
+      measures:
+        - {key: "piece_golden_age_h:5", label: "Age of the last passing consumer probe", unit: hours, polarity: lower_is_better, source: "floor piece row golden_age_s (published floor and its dated copies); the old way had no consumer probe"}
+    - piece: 6
+      name: Ledger and state
+      call: wire, move code, then remove the file
+      live_at: "2026-11-06T15:00:00Z"
+      live_source: "ledger TERMINAL lane=piece6-1320-r 2026-11-06T15:01:07Z handed-off"
+      measures:
+        - {key: ledger_read_lag_s, label: "Ledger read freshness (newest row read behind the floor's read)", unit: seconds behind, polarity: lower_is_better, source: "factory floor record generated_at minus sources.ledger_newest_row (record and its dated copies since 2026-11-01)"}
+        - {key: parity_failures, label: "Ledger parity failures", unit: rows in 24 h, polarity: lower_is_better, source: "work ledger FRICTION, STATUS and TERMINAL rows naming a parity failure or mismatch"}
