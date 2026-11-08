@@ -49,6 +49,11 @@ handler_routing:
       name: HandlerFleetObservationSource
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
   - operation: prepare_process_health
     handler:
       name: HandlerProcessHealthPayload
@@ -216,6 +221,35 @@ runtime:
     required: false
     timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
+  - name: friction_classed
+    concurrent: true
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 90
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      ledger_path_env: ONEX_LEDGER_PATH
+      archive_subdir: archive
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
+  # OMN-22864: the downstream piece's typed refusal of every real upstream failure (the joins its overlay declares), written to
+  # the emission journal before the simple floor reads it. node_join_refusal_effect runs only when something calls it; with no step here
+  # each failure of piece 2 to 5 read downstream_missing_typed_failure 900 s later. It is independent of the other input steps
+  # (it reads the ledger and appends to the journal), so it joins their group and adds nothing to the longest declared path.
+  # Not required: when it fails the floor still reads, and the floor's chains row names the joins that stayed unanswered.
+  - name: join_refusal
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_refusal_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
