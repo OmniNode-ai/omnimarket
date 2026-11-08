@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from omnimarket.handlers.cycle_interrupt import CycleInterrupted
 from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare import (
     HandlerFloorCompare,
 )
@@ -41,15 +42,19 @@ def main(argv: list[str] | None = None) -> int:
         "--history-days", type=int, help="days to backfill (default: the contract's)"
     )
     args = ap.parse_args(argv)
-    result = HandlerFloorCompare().run(
-        ModelFloorCompareRequest(
-            home=args.home,
-            drill_error=args.drill_error,
-            backfill_only=args.backfill_only,
-            backfill_history=args.backfill_history,
-            history_days=args.history_days,
+    try:
+        result = HandlerFloorCompare().run(
+            ModelFloorCompareRequest(
+                home=args.home,
+                drill_error=args.drill_error,
+                backfill_only=args.backfill_only,
+                backfill_history=args.backfill_history,
+                history_days=args.history_days,
+            )
         )
-    )
+    except CycleInterrupted as exc:
+        sys.stderr.write(f"INTERRUPTED floor-compare: {exc.code}: {exc.detail}\n")
+        return 3
     sys.stdout.write(result.model_dump_json(indent=1) + "\n")
     if result.failure_code == "simple_payload_invalid" and args.drill_error:
         return 0
