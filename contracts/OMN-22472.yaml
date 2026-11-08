@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: OMN-22472
+title: omnimarket registers the node contract overlay resolver that reads a node's overlay contract section
+summary: omnibase_core declares a node contract overlay resolver protocol and loads the one provider registered under the onex.node_contract_overlay_resolvers entry-point group. omnimarket owns the per-node overlay.yaml that broker binding already reads, so it now registers NodeContractOverlayResolver, which answers that file's contract section through node_overlay_path and refuses an unreadable or malformed overlay with a typed error naming the path.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn22472-overlay-contract-resolver
+    statement: omnimarket answers a node's overlay contract section through the one registered resolver and refuses a bad overlay with a typed error instead of an empty contract.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: for a node whose overlay.yaml carries a contract section the resolver answers that section with the overlay path, and for a node with no overlay file it answers an empty contract and no path -- falsifier: uv run pytest tests -q --no-cov -k "contract_overlay_resolver and (section or no_overlay)"'
+      - id: AC2
+        statement: 'AC2: an overlay that cannot be read or parsed, or whose contract section is not a mapping, raises ModelNodeContractOverlayResolutionError naming the overlay path and never answers an empty contract -- falsifier: uv run pytest tests -q --no-cov -k "contract_overlay_resolver and (unreadable or malformed or not_a_mapping)"'
+      - id: AC3
+        statement: 'AC3: the resolver is the one provider registered under onex.node_contract_overlay_resolvers, so ModelNodeContractOverlay.for_node reaches it in an installed omnimarket -- falsifier: uv run pytest tests -q --no-cov -k "contract_overlay_resolver and entry_point"'
+evidence_requirements:
+  - kind: tests
+    description: The resolver cases; at the merge base the resolver module does not exist, so the file cannot be collected and every bound check fails.
+    command: uv run pytest tests/unit/handlers/test_node_contract_overlay_resolver.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22472-ac1-section-and-absent
+    description: AC1 the overlay's contract section is answered with its path, and a node with no overlay answers an empty contract and no path.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_node_contract_overlay_resolver.py -q --no-cov -k "contract_overlay_resolver and (section or no_overlay)"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22472-ac2-bad-overlay-refused
+    description: AC2 an unreadable, unparseable or non-mapping overlay raises the typed error naming the overlay path.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_node_contract_overlay_resolver.py -q --no-cov -k "contract_overlay_resolver and (unreadable or malformed or not_a_mapping)"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22472-ac3-entry-point
+    description: AC3 the resolver is the single registered provider and ModelNodeContractOverlay.for_node reaches it.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_node_contract_overlay_resolver.py -q --no-cov -k "contract_overlay_resolver and entry_point"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22472-integration-proof
+    description: The pushed head runs the resolver tests on a lab host through onex lab-work and exits 0, so the registered entry point and the real overlay path resolution are exercised on a live surface. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22472 -- uv run --frozen pytest tests/unit/handlers/test_node_contract_overlay_resolver.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

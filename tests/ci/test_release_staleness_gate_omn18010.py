@@ -314,6 +314,10 @@ def test_added_gates_do_not_displace_release_staleness_checks(
         ),
         encoding="utf-8",
     )
+    (tmp_path / "ci_summary_rules.json").write_text(
+        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     (tmp_path / "ci_summary_sweep_exclusions.json").write_text(
         CI_SUMMARY_GATE.with_name("ci_summary_sweep_exclusions.json").read_text(
             encoding="utf-8"

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import copy
 import shutil
+import tempfile
+from collections.abc import Iterator
 from importlib import resources
 from pathlib import Path
 from typing import Any, cast
@@ -99,7 +101,24 @@ def _new_contract_issues(paths: list[Path]) -> list[str]:
     return [i.message for i in result.issues]
 
 
+@pytest.fixture
+def tmp_path(tmp_path: Path) -> Iterator[Path]:
+    """A temp root the walker can read.
+
+    The walker's own contract excludes every path under a `.git` directory. A runner
+    that keeps pytest's temp root inside a git directory (the lane hook-preflight does)
+    made every copied contract read as absent: the planted faults went unrefused and
+    the check read red. The walker's exclusion stays as it is; the corpus moves out.
+    """
+    if ".git" not in tmp_path.parts:
+        yield tmp_path
+        return
+    with tempfile.TemporaryDirectory(prefix="seam-corpus-") as outside:
+        yield Path(outside)
+
+
 def _copy_corpus(tmp_path: Path) -> dict[str, Path]:
+    assert ".git" not in tmp_path.parts, "the walker skips every path under .git"
     copies: dict[str, Path] = {}
     for name in SEAM_NODES:
         target = tmp_path / name / "contract.yaml"
