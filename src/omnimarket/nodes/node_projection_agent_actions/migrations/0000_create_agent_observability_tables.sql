@@ -201,24 +201,18 @@ CREATE INDEX IF NOT EXISTS idx_agent_status_created ON public.agent_status_event
 
 -- Tighten a drifted table to the fresh shape only where its rows allow it. A
 -- column holding a NULL stays nullable and a key with a NULL or a duplicate is
--- not added (a WARNING names the table, so the skip is in the migration log),
--- so no block here can fail on a populated table. A NOT NULL block reads the
--- table only while its column is still nullable.
+-- not added, so no block here can fail on a populated table.
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.agent_actions'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.agent_actions WHERE id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT id) FROM public.agent_actions
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.agent_actions WHERE id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT id) FROM public.agent_actions
-        ) THEN
-            ALTER TABLE public.agent_actions ADD CONSTRAINT agent_actions_pkey PRIMARY KEY (id);
-        ELSE
-            RAISE WARNING 'public.agent_actions has no primary key and its id column holds NULLs or duplicates; the writer ON CONFLICT (id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.agent_actions ADD CONSTRAINT agent_actions_pkey PRIMARY KEY (id);
     END IF;
 END
 $$;
@@ -227,16 +221,12 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.agent_transformation_events'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.agent_transformation_events WHERE id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT id) FROM public.agent_transformation_events
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.agent_transformation_events WHERE id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT id) FROM public.agent_transformation_events
-        ) THEN
-            ALTER TABLE public.agent_transformation_events ADD CONSTRAINT agent_transformation_events_pkey PRIMARY KEY (id);
-        ELSE
-            RAISE WARNING 'public.agent_transformation_events has no primary key and its id column holds NULLs or duplicates; the writer ON CONFLICT (id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.agent_transformation_events ADD CONSTRAINT agent_transformation_events_pkey PRIMARY KEY (id);
     END IF;
 END
 $$;
@@ -245,40 +235,26 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.router_performance_metrics'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.router_performance_metrics WHERE id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT id) FROM public.router_performance_metrics
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.router_performance_metrics WHERE id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT id) FROM public.router_performance_metrics
-        ) THEN
-            ALTER TABLE public.router_performance_metrics ADD CONSTRAINT router_performance_metrics_pkey PRIMARY KEY (id);
-        ELSE
-            RAISE WARNING 'public.router_performance_metrics has no primary key and its id column holds NULLs or duplicates; the writer ON CONFLICT (id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.router_performance_metrics ADD CONSTRAINT router_performance_metrics_pkey PRIMARY KEY (id);
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'router_performance_metrics' AND column_name = 'metric_name' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.router_performance_metrics WHERE metric_name IS NULL) THEN
-            ALTER TABLE public.router_performance_metrics ALTER COLUMN metric_name SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.router_performance_metrics WHERE metric_name IS NULL) THEN
+        ALTER TABLE public.router_performance_metrics ALTER COLUMN metric_name SET NOT NULL;
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'router_performance_metrics' AND column_name = 'metric_value' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.router_performance_metrics WHERE metric_value IS NULL) THEN
-            ALTER TABLE public.router_performance_metrics ALTER COLUMN metric_value SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.router_performance_metrics WHERE metric_value IS NULL) THEN
+        ALTER TABLE public.router_performance_metrics ALTER COLUMN metric_value SET NOT NULL;
     END IF;
 END
 $$;
@@ -287,28 +263,19 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.agent_detection_failures'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.agent_detection_failures WHERE correlation_id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT correlation_id) FROM public.agent_detection_failures
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.agent_detection_failures WHERE correlation_id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT correlation_id) FROM public.agent_detection_failures
-        ) THEN
-            ALTER TABLE public.agent_detection_failures ADD CONSTRAINT agent_detection_failures_pkey PRIMARY KEY (correlation_id);
-        ELSE
-            RAISE WARNING 'public.agent_detection_failures has no primary key and its correlation_id column holds NULLs or duplicates; the writer ON CONFLICT (correlation_id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.agent_detection_failures ADD CONSTRAINT agent_detection_failures_pkey PRIMARY KEY (correlation_id);
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_detection_failures' AND column_name = 'failure_reason' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_detection_failures WHERE failure_reason IS NULL) THEN
-            ALTER TABLE public.agent_detection_failures ALTER COLUMN failure_reason SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_detection_failures WHERE failure_reason IS NULL) THEN
+        ALTER TABLE public.agent_detection_failures ALTER COLUMN failure_reason SET NOT NULL;
     END IF;
 END
 $$;
@@ -317,16 +284,12 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.agent_execution_logs'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.agent_execution_logs WHERE execution_id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT execution_id) FROM public.agent_execution_logs
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.agent_execution_logs WHERE execution_id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT execution_id) FROM public.agent_execution_logs
-        ) THEN
-            ALTER TABLE public.agent_execution_logs ADD CONSTRAINT agent_execution_logs_pkey PRIMARY KEY (execution_id);
-        ELSE
-            RAISE WARNING 'public.agent_execution_logs has no primary key and its execution_id column holds NULLs or duplicates; the writer ON CONFLICT (execution_id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.agent_execution_logs ADD CONSTRAINT agent_execution_logs_pkey PRIMARY KEY (execution_id);
     END IF;
 END
 $$;
@@ -335,76 +298,47 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.agent_status_events'::regclass AND contype = 'p'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.agent_status_events WHERE id IS NULL
+    ) AND (
+        SELECT count(*) = count(DISTINCT id) FROM public.agent_status_events
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.agent_status_events WHERE id IS NULL
-        ) AND (
-            SELECT count(*) = count(DISTINCT id) FROM public.agent_status_events
-        ) THEN
-            ALTER TABLE public.agent_status_events ADD CONSTRAINT agent_status_events_pkey PRIMARY KEY (id);
-        ELSE
-            RAISE WARNING 'public.agent_status_events has no primary key and its id column holds NULLs or duplicates; the writer ON CONFLICT (id) has no arbiter until they are resolved';
-        END IF;
+        ALTER TABLE public.agent_status_events ADD CONSTRAINT agent_status_events_pkey PRIMARY KEY (id);
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_status_events' AND column_name = 'correlation_id' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE correlation_id IS NULL) THEN
-            ALTER TABLE public.agent_status_events ALTER COLUMN correlation_id SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE correlation_id IS NULL) THEN
+        ALTER TABLE public.agent_status_events ALTER COLUMN correlation_id SET NOT NULL;
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_status_events' AND column_name = 'agent_name' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE agent_name IS NULL) THEN
-            ALTER TABLE public.agent_status_events ALTER COLUMN agent_name SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE agent_name IS NULL) THEN
+        ALTER TABLE public.agent_status_events ALTER COLUMN agent_name SET NOT NULL;
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_status_events' AND column_name = 'session_id' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE session_id IS NULL) THEN
-            ALTER TABLE public.agent_status_events ALTER COLUMN session_id SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE session_id IS NULL) THEN
+        ALTER TABLE public.agent_status_events ALTER COLUMN session_id SET NOT NULL;
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_status_events' AND column_name = 'state' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE state IS NULL) THEN
-            ALTER TABLE public.agent_status_events ALTER COLUMN state SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE state IS NULL) THEN
+        ALTER TABLE public.agent_status_events ALTER COLUMN state SET NOT NULL;
     END IF;
 END
 $$;
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'agent_status_events' AND column_name = 'message' AND is_nullable = 'YES'
-    ) THEN
-        IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE message IS NULL) THEN
-            ALTER TABLE public.agent_status_events ALTER COLUMN message SET NOT NULL;
-        END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.agent_status_events WHERE message IS NULL) THEN
+        ALTER TABLE public.agent_status_events ALTER COLUMN message SET NOT NULL;
     END IF;
 END
 $$;

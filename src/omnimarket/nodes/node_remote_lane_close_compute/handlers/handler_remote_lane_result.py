@@ -16,13 +16,14 @@ import json
 import re
 from typing import Any
 
-from ..models import (
+from omnimarket.models.remote_lane_close import (
     FAILED_OUTCOME,
     LANE_OUTCOMES,
     REJECTED_OUTCOME,
     ModelRemoteLaneResult,
     ModelRemoteLaneResultRequest,
 )
+
 from .first_turn_context import first_turn_context
 from .receipt_usage import receipt_usage
 

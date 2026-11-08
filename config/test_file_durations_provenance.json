@@ -118,5 +118,52 @@
     "basis": "Sum of measured pytest setup, call and teardown seconds for tests/nodes/node_remote_lane_effect/test_publish_recovery.py from one serial focused run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; 19 passed; existing entries unchanged",
     "runner": "lab host h051, lane pr-5051-1745, Python 3.12; the next CI refresh replaces this entry",
     "base_sha": "b23cbdc382f56ba50903c4c7f309731d624b8dee"
+  },
+  "supplement_omn22867_split5_freshness": {
+    "ticket": "OMN-22867",
+    "recorded_on": "2026-11-08",
+    "files_added": 56,
+    "files_without_measurement": 1,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. tests/nodes/node_factory_floor_publish_effect/test_compare_page.py is not recorded: its render tests need Node.js, which the runner lacked, so five of its tests failed early and its time is not a measurement.",
+    "runner": "lab host h051, lane splits-5-19-fl0527, Python 3.13.15; the next CI refresh replaces these entries",
+    "base_sha": "a10bd9b2317af97d9fa9b75b97826ed630b6d7f9"
+  },
+  "supplement_omn23054": {
+    "ticket": "OMN-23054",
+    "recorded_on": "2026-11-08",
+    "files_added": 9,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. tests/nodes/node_factory_floor_publish_effect/test_compare_page.py is recorded here because this host has Node.js and its 9 render tests passed; the earlier supplement for OMN-22867 had left it out.",
+    "runner": "lab host h202, lane durations-c0825, Python 3.13.15; the next CI refresh replaces these entries",
+    "base_sha": "370eb11de08d810bb8dc445f9401c19de3091846"
+  },
+  "supplement_omn22573": {
+    "recorded_on": "2026-11-08",
+    "files_added": 51,
+    "basis": "summed per-test seconds per file from one serial run of the CI shard pytest flags without coverage",
+    "runner": "lab host h053, not a GitHub-hosted runner; the next refresh from source runs replaces these entries"
+  },
+  "supplement_omn22909": {
+    "ticket": "OMN-22909",
+    "recorded_on": "2026-11-08",
+    "files_added": 58,
+    "basis": "Each file the record did not hold, summed from its measured pytest per-test seconds (junit) in one serial run with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. Tests that need Postgres or other lab services failed or errored early on this host, so their entries are lower bounds.",
+    "runner": "lab host h101, lane landing-L31260, Python 3.14.7; the next CI refresh replaces these entries",
+    "base_sha": "47f6f503831ed507cf75475a273b007ce72e00d4"
+  },
+  "supplement_omn22906": {
+    "ticket": "OMN-22906",
+    "recorded_on": "2026-11-08",
+    "files_added": 58,
+    "basis": "Each test file this branch adds that the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The real-postgres projection test errored for want of a database on the runner, so its entry covers only the tests that ran.",
+    "runner": "lab host h106, lane landing-L31273, Python 3.12; the next CI refresh replaces these entries",
+    "base_sha": "ec58c63e8c202dc6d26a8ca791e587082fbcbba1"
+  },
+  "supplement_omn22935": {
+    "ticket": "OMN-22935",
+    "recorded_on": "2026-11-08",
+    "files_added": 4,
+    "basis": "Four work-state projection test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were.",
+    "runner": "lab host h101, lane landing-L31295; the next CI refresh replaces these entries",
+    "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
   }
 }

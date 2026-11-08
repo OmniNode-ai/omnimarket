@@ -418,6 +418,15 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # AgentActionsProjectionWriter (OMN-21920) is node_projection_agent_actions'
     # only DB writer, dispatched once per consumed event by runtime auto-wiring
     # through the shared RuntimeProjectionWriter base.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only
+    # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
+    # ContextAuditProjectionWriter is node_projection_context_audit's only DB
+    # writer, dispatched once per consumed audit event by runtime auto-wiring;
+    # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
+    # writer, dispatched once per consumed overlay event by runtime
+    # auto-wiring; its pure fold does NOT declare the capability.
     assert declared == {
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
@@ -425,6 +434,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
+        "ContextAuditProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
@@ -458,6 +468,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
         "DelegationProjectionWriter",
+        "OverlayStoreProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

@@ -14,14 +14,14 @@ from collections.abc import Callable
 from pydantic import SecretStr
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloRefusal,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     CredentialSourceNotStoreError,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
     IloRefusalError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloRefusal,
 )
 
 SecretResolverFn = Callable[[str], tuple[SecretStr | None, EnumSecretSource | None]]

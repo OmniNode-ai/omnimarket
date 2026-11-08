@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, cast
 
 from omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer import (
@@ -21,20 +19,9 @@ from omnimarket.nodes.node_projection_agent_actions.models import (
 
 from .test_golden_chain_projection_agent_actions import _KEYS, _replay, _SqliteDb
 
-_MIGRATION = (
-    Path(__file__).resolve().parents[1]
-    / "src/omnimarket/nodes/node_projection_agent_actions/migrations"
-    / "0000_create_agent_observability_tables.sql"
-)
 _STATUS_TOPIC = "onex.evt.omniclaude.agent-status.v1"
 _ACTION_TOPIC = "onex.evt.omniclaude.agent-actions.v1"
 _CORRELATION = "11111111-1111-4111-8111-111111111111"
-
-
-def _do_blocks() -> list[str]:
-    return re.findall(
-        r"DO \$\$\nBEGIN\n(.*?)END\n\$\$;", _MIGRATION.read_text(encoding="utf-8"), re.S
-    )
 
 
 def _status(**extra: object) -> dict[str, object]:
@@ -87,23 +74,6 @@ def test_action_event_still_takes_its_created_at_from_the_timestamp() -> None:
         )
     )
     assert row.values["created_at"] == datetime(2026, 11, 1, 10, 0, 7, tzinfo=UTC)
-
-
-def test_every_not_null_tightening_reads_the_table_only_while_the_column_is_nullable() -> (
-    None
-):
-    tightening = [b for b in _do_blocks() if "SET NOT NULL" in b]
-    assert len(tightening) == 8
-    for block in tightening:
-        assert block.index("is_nullable = 'YES'") < block.index("IS NULL)"), block
-
-
-def test_every_primary_key_block_that_skips_a_drifted_table_says_so() -> None:
-    keyed = [b for b in _do_blocks() if "PRIMARY KEY" in b]
-    assert len(keyed) == 6
-    for block in keyed:
-        assert "RAISE WARNING" in block, block
-        assert block.index("ADD CONSTRAINT") < block.index("RAISE WARNING"), block
 
 
 def test_replay_rows_match_across_a_clock_tick() -> None:

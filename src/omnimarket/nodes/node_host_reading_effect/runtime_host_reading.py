@@ -231,8 +231,12 @@ def _join_j2(arguments: Sequence[str]) -> int:
     home = os.environ.get(join.emission_home_env, "").strip()
     if not home:
         raise ValueError(f"{join.emission_home_env} is not set")
-    hosts = tuple(args.host or ()) or tuple(
-        host.name for host in HostTableInventory(os.environ).hosts() if host.pooled
+    hosts = (
+        tuple(args.host or ())
+        or join.hosts
+        or tuple(
+            host.name for host in HostTableInventory(os.environ).hosts() if host.pooled
+        )
     )
 
     async def main() -> tuple[bool, list[str]]:
