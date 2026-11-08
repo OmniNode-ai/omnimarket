@@ -24,7 +24,11 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     HandlerReadingWriter,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelAppendOutcome,
+    ModelLedgerQuery,
+    ModelLedgerRead,
+)
 from tests.nodes.node_reading_writer_effect.reading_support import (
     RUN_AT,
     START,
@@ -143,3 +147,61 @@ def test_error_a_row_that_landed_before_its_reply_was_lost_is_not_written_twice(
     outcomes, _ = _run(ledger, 1)
     assert outcomes[6] == "already-written"
     assert len(_rows(ledger, 6)) == 1
+
+
+class SlowBusLedger(InMemoryLedger):
+    """Counts the replay-check reads (the reading-writer lane) and times out the first ``timeouts`` of them."""
+
+    def __init__(self, *, timeouts: int) -> None:
+        super().__init__(healthy_ledger())
+        self.timeouts = timeouts
+        self.replay_reads = 0
+
+    def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        if query.lane != "reading-writer":
+            return super().read(query)
+        self.replay_reads += 1
+        if self.replay_reads <= self.timeouts:
+            return ModelLedgerRead(error="read-command-exit-1-timeouterror")
+        return super().read(query)
+
+
+def _slow_run(ledger: SlowBusLedger, passes: int | None) -> dict[int, str]:
+    writer = HandlerReadingWriter(
+        overlay=_overlay(passes),
+        source=ledger,
+        appender=ledger,
+        clock=lambda: RUN_AT,
+        pause=lambda _seconds: None,
+    )
+    result = writer.handle(
+        ModelReadingWindowCommand(
+            correlation_id="c-slow", window_start=START, pieces=(), write=True
+        )
+    )
+    return {o.piece: o.ledger for o in result.pieces}
+
+
+def test_golden_one_answer_of_the_ledger_serves_every_piece_of_a_pass() -> None:
+    ledger = SlowBusLedger(timeouts=0)
+    outcomes = _slow_run(ledger, None)
+    assert set(outcomes.values()) == {"written"}
+    assert ledger.replay_reads == 1
+
+
+def test_error_a_timed_out_read_is_not_kept_and_the_next_piece_asks_again() -> None:
+    """The board of 2026-11-08: one reply times out and costs one piece, not the pass."""
+    ledger = SlowBusLedger(timeouts=1)
+    outcomes = _slow_run(ledger, None)
+    failed = [
+        p for p, o in outcomes.items() if o.startswith("append-failed:replay-check")
+    ]
+    assert len(failed) == 1
+    assert ledger.replay_reads == 2
+
+
+def test_golden_the_retry_pass_asks_the_ledger_again() -> None:
+    ledger = SlowBusLedger(timeouts=1)
+    outcomes = _slow_run(ledger, 1)
+    assert set(outcomes.values()) == {"written"}
+    assert ledger.replay_reads == 3

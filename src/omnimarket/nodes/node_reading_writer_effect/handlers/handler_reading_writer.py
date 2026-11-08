@@ -49,6 +49,7 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOver
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLandingRead,
     ModelLedgerQuery,
+    ModelLedgerRead,
     ProtocolLandingSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
@@ -169,6 +170,7 @@ class HandlerReadingWriter:
         pause: Callable[[float], None] = time.sleep,
     ) -> None:
         self._pause = pause
+        self._window_read: tuple[ModelLedgerQuery, ModelLedgerRead] | None = None
         self._landing = landing
         self._two_backend_source = two_backend_source
         self._overlay = overlay
@@ -182,6 +184,7 @@ class HandlerReadingWriter:
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
         now = self._clock().astimezone(UTC)
+        self._window_read = None
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
         start = command.window_start.astimezone(UTC)
@@ -240,6 +243,8 @@ class HandlerReadingWriter:
             if not failed:
                 break
             self._pause(retry.pause_seconds)
+            # A row a lost reply left behind must be read back, so a retry pass asks the ledger again.
+            self._window_read = None
             for i in failed:
                 current[i] = self._piece(
                     self._overlay.spec(current[i].piece), start, end, cutoff, now, True
@@ -311,17 +316,22 @@ class HandlerReadingWriter:
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
     ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         publish = self._overlay.publish
-        read = self._source.read(
-            ModelLedgerQuery(
-                since=window_end,
-                until=now + timedelta(seconds=1),
-                row_type=_ROW_TYPE,
-                lane=publish.lane,
-                term=publish.reading_term,
-            )
+        query = ModelLedgerQuery(
+            since=window_end,
+            until=now + timedelta(seconds=1),
+            row_type=_ROW_TYPE,
+            lane=publish.lane,
+            term=publish.reading_term,
         )
-        if read.error is not None:
-            return (), read.error
+        # Every piece of one pass asks the same question, so one answer serves them all (OMN-23119): eighteen reads of a
+        # slow ledger bus were eighteen chances for a reply to time out. An error is never kept; the next piece asks again.
+        if self._window_read is not None and self._window_read[0] == query:
+            read = self._window_read[1]
+        else:
+            read = self._source.read(query)
+            if read.error is not None:
+                return (), read.error
+            self._window_read = (query, read)
         mine = tuple(
             row
             for row in read.rows
