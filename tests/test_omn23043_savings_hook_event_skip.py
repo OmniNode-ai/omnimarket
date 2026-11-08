@@ -41,6 +41,9 @@ class _RecordingRunner:
         type(self).seen.append(data)
         return True
 
+    async def close_runtime_resources(self) -> None:
+        return None
+
 
 @pytest.fixture
 def writer(monkeypatch: pytest.MonkeyPatch) -> SavingsProjectionWriter:

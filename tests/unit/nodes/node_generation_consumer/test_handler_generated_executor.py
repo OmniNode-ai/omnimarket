@@ -640,6 +640,7 @@ _CANONICAL_PACKAGE_FILES = {
     "models/model_sentiment_result.py",
     "tests/__init__.py",
     "tests/test_golden_chain.py",
+    "tests/test_chain_scenarios.py",
 }
 
 
