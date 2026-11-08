@@ -22,7 +22,9 @@ h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}.dot.quiet{background:var(--grey)}
 .row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
 .strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
-.p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center}
+.p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
+.p:focus-visible,.line .n a:focus-visible,#pclose:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.line .n a{font-size:inherit;color:inherit;text-decoration:underline dotted}
 .p.cur{background:var(--blue);color:#fff;font-weight:650}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
 .piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
 .line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
@@ -30,7 +32,22 @@ h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .line.red .t b{color:var(--red)}.line.amber .t b{color:var(--amber)}.line.grey{color:var(--mute)}
 .rule{margin-top:14px;font-size:13px;color:var(--mute)}.rule.bad{color:var(--red);font-weight:650}
 a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
-@media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}}
+@media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}.strip{grid-template-columns:repeat(9,1fr);gap:4px}.p{height:40px;font-size:14px}}
+#tip{position:fixed;z-index:30;max-width:280px;background:var(--ink);color:#fff;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.35;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#tip[hidden]{display:none}#tip b{font-weight:650}#tip span{display:block;opacity:.85}
+#pback{position:fixed;inset:0;z-index:40;background:rgba(20,24,28,.35);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
+#pback.open{opacity:1;visibility:visible;transition:opacity .2s,visibility 0s}
+#ppanel{position:fixed;z-index:41;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--card);border-left:1px solid var(--line);box-shadow:-6px 0 24px rgba(0,0,0,.18);overflow:auto;overscroll-behavior:contain;transform:translateX(100%);visibility:hidden;transition:transform .22s ease,visibility 0s linear .22s;padding:16px 18px 24px}
+#ppanel.open{transform:none;visibility:visible;transition:transform .22s ease,visibility 0s}
+@media(max-width:600px){#ppanel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:82vh;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);transform:translateY(100%)}}
+@media(prefers-reduced-motion:reduce){#pback,#ppanel{transition:none!important}}
+.ph{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.ph h2{margin:0;font-size:20px;line-height:1.25}.pn{font-size:13px;color:var(--mute)}
+#pclose{flex:none;font:inherit;font-size:14px;font-weight:650;padding:8px 14px;min-height:40px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;cursor:pointer}
+#ppanel h3{font-size:13px;font-weight:650;color:var(--mute);margin:16px 0 4px;text-transform:uppercase;letter-spacing:.03em}#ppanel p{margin:0 0 4px;font-size:15px}
+.pst{display:inline-block;margin-top:8px;font-size:12px;font-weight:650;padding:3px 9px;border-radius:999px;border:1px solid currentColor}
+.pst.green{color:var(--green)}.pst.red{color:var(--red)}.pst.amber{color:var(--amber)}.pst.grey{color:var(--mute)}.pst.blue{color:var(--blue)}
+.pcnt{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pcnt div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.pcnt b{display:block;font-size:22px;line-height:1.1}.pcnt span{font-size:13px;color:var(--mute)}
+#ppanel .mute{color:var(--mute)}
 .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
 .tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
 .tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
@@ -102,22 +119,143 @@ function draw(){
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
   const cur = doc.rebuild.current_piece;
-  h += `<h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<div class="p ${p.piece === cur ? "cur" : p.status === "not_started" ? "" : esc(p.draw)}" title="${esc(p.name)}">${p.piece}</div>`).join("") + `</div>`;
+  h += `<h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.piece === cur ? "cur" : p.status === "not_started" ? "" : esc(p.draw)}" href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
   h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div>`;
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
   for (const p of doc.pieces) {
     const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
-    h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n">${p.piece}</span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+    h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
+  // The strip is redrawn every ten seconds: keep the keyboard focus on the same piece, and keep the open panel current.
+  const held = document.activeElement && document.activeElement.getAttribute ? document.activeElement.getAttribute("data-fk") : null;
   app.innerHTML = h;
+  if (held) { const again = app.querySelector(`[data-fk="${held}"]`); if (again) again.focus({preventScroll: true}); }
+  if (!hashApplied) { hashApplied = true; syncPanel(); } else if (openPiece != null) renderPanel();
 }
+// ---- The rebuild strip: a tooltip on hover or focus, and a side panel on click or tap. Everything is read from the record
+// the page already loads (doc.pieces, doc.causes); the address carries #piece-N, so a piece can be linked and Back closes it.
+const STATUS_WORD = {working: "Working", not_working: "Not working", unknown: "Unknown", started: "Started, no reading yet", not_started: "Not started"};
+const STATUS_DRAW = p => p.status === "not_started" ? "grey" : p.draw;
+let hashApplied = false, openPiece = null, returnFocus = null, quiet = false;
+const pieceOf = n => doc && doc.pieces ? doc.pieces.find(p => p.piece === n) : null;
+function whoIsOn(p){
+  const ids = [p.cause_id, "piece:" + p.piece].filter(Boolean);
+  const cs = (doc.causes || []).filter(c => ids.includes(c.id));
+  const uniq = xs => [...new Set(xs)];
+  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || []))};
+}
+const prWords = r => { const m = /^(.+)#(\d+)$/.exec(r); return m ? m[1] + " pull request " + m[2] : r; };
+function whoLine(p){
+  if (p.status === "not_started") return "Not started.";
+  const w = whoIsOn(p);
+  if (w.lanes.length) return "On it: " + w.lanes.slice(0, 2).join(", ") + (w.lanes.length > 2 ? " and " + (w.lanes.length - 2) + " more" : "") + ".";
+  return p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it.";
+}
+function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
+const tip = document.createElement("div");
+tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
+function showTip(a){
+  const p = pieceOf(Number(a.getAttribute("data-piece")));
+  if (!p || openPiece != null || quiet) return;
+  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(STATUS_WORD[p.status] || p.status)}</span><span>${esc(p.reason || p.text)}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
+  tip.hidden = false;
+  const r = a.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), document.documentElement.clientWidth - t.width - 8);
+  const above = r.top - t.height - 8;
+  tip.style.left = left + "px"; tip.style.top = (above >= 8 ? above : r.bottom + 8) + "px";
+  a.setAttribute("aria-describedby", "tip");
+}
+function hideTip(){ tip.hidden = true; document.querySelectorAll(".p[aria-describedby]").forEach(e => e.removeAttribute("aria-describedby")); }
+const back = document.createElement("div"); back.id = "pback";
+const panel = document.createElement("aside");
+panel.id = "ppanel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "ptitle"); panel.setAttribute("aria-hidden", "true");
+panel.innerHTML = `<div class="ph"><div><div class="pn" id="pnum"></div><h2 id="ptitle"></h2></div><button id="pclose" type="button" aria-label="Close the piece details">Close</button></div><div id="pbody"></div>`;
+document.body.append(tip, back, panel);
+function panelBody(p){
+  const w = whoIsOn(p), win = p.window_s ? Math.round(p.window_s / 3600) : 24;
+  const winText = win % 24 === 0 ? (win / 24 === 1 ? "24 hours" : win / 24 + " days") : win + " hours";
+  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
+  h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
+  if (p.status === "not_started") return h + `<h3>State</h3><p>Not started. It has no reading and no events yet.</p><h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+  h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
+  const cnt = v => v == null ? "not read" : String(v);
+  h += `<h3>Events in the last ${esc(winText)}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`;
+  h += `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
+  h += `<h3>Against the old way, 7 days</h3><p class="mute">The floor record carries no 7-day comparison for this piece yet.</p>`;
+  h += `<h3>Who is on it</h3>`;
+  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
+  h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
+  const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
+  if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
+  return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+}
+const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
+function renderPanel(){
+  const p = pieceOf(openPiece);
+  if (!p) { hidePanel(); return; }
+  document.getElementById("pnum").textContent = "Piece " + p.piece + " of " + doc.pieces.length;
+  document.getElementById("ptitle").textContent = p.name;
+  document.getElementById("pbody").innerHTML = panelBody(p);
+}
+function showPanel(n){
+  if (!pieceOf(n)) return;
+  hideTip();
+  const first = openPiece == null;
+  openPiece = n; renderPanel();
+  back.classList.add("open"); panel.classList.add("open"); panel.setAttribute("aria-hidden", "false");
+  if (first) document.getElementById("pclose").focus({preventScroll: true});
+}
+function hidePanel(){
+  if (openPiece == null) return;
+  const n = openPiece;
+  openPiece = null;
+  back.classList.remove("open"); panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true");
+  const again = document.querySelector(`#app [data-piece="${n}"]`) || returnFocus;
+  quiet = true;   // putting the focus back must not raise the tooltip
+  if (again && again.focus) again.focus({preventScroll: true});
+  quiet = false;
+}
+const pieceFromHash = () => { const m = /^#piece-(\d{1,2})$/.exec(location.hash || ""); return m ? Number(m[1]) : null; };
+function syncPanel(){ const n = pieceFromHash(); if (n != null && pieceOf(n)) showPanel(n); else hidePanel(); }
+function closePanel(){
+  if (openPiece == null) return;
+  if (history.state && history.state.piece === openPiece) history.back();   // the panel pushed the address: Back is the close
+  else { history.replaceState(null, "", location.pathname + location.search); hidePanel(); }
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest ? e.target.closest("a[data-piece]") : null;
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+  e.preventDefault(); returnFocus = a;
+  const n = Number(a.getAttribute("data-piece"));
+  if (pieceFromHash() !== n) history.pushState({piece: n}, "", "#piece-" + n);
+  showPanel(n);
+});
+back.addEventListener("click", closePanel);
+panel.addEventListener("click", e => { if (e.target.id === "pclose") closePanel(); });
+document.addEventListener("keydown", e => {
+  if (openPiece == null) { if (e.key === "Escape") hideTip(); return; }
+  if (e.key === "Escape") { e.preventDefault(); closePanel(); return; }
+  if (e.key !== "Tab") return;
+  const fs = [...panel.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])")];
+  if (!fs.length) return;
+  const first = fs[0], last = fs[fs.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+const stripPiece = e => e.target.closest ? e.target.closest(".strip a[data-piece]") : null;
+document.addEventListener("mouseover", e => { const a = stripPiece(e); if (a) showTip(a); });
+document.addEventListener("mouseout", e => { if (stripPiece(e)) hideTip(); });
+document.addEventListener("focusin", e => { const a = stripPiece(e); if (a) showTip(a); });
+document.addEventListener("focusout", e => { if (stripPiece(e)) hideTip(); });
+window.addEventListener("popstate", syncPanel);
+window.addEventListener("hashchange", syncPanel);
 // ---- Tabs. The address picks the view: #process (also no hash or an unknown one) and #machines are deep links.
 const tabFromHash = () => { const h = String(location.hash || "").replace(/^#/, ""); return TABS.includes(h) ? h : "process"; };
 function showTab(){

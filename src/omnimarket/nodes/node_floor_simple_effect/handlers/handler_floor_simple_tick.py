@@ -54,6 +54,7 @@ from omnimarket.models.floor_17a import (
     ModelLabStateOverlay,
     ModelNodeEmission,
     ModelOutsideGoal,
+    ModelPieceChains,
     ModelReadingRow,
 )
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
@@ -195,6 +196,9 @@ class ModelFloorSimpleRuntime(BaseModel):
     served_record_name: str
     served_fetch_timeout_seconds: int
     cycle_deadline_seconds: int
+    # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
+    # among them, because no downstream piece can answer a row that reads a bad value.
+    pipeline_chains: tuple[str, ...] = Field(min_length=1)
     # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
@@ -940,6 +944,11 @@ class HandlerFloorSimpleTick:
                 error_max_age_s=ov.error_receipt_max_age_s,
                 chain_deadline_s=ov.chain_deadline_s,
                 judged_to_pieces=judged,
+                declared_chains=(
+                    ModelPieceChains(
+                        piece=ov.rebuild.lab_state_piece, nodes=rt.pipeline_chains
+                    ),
+                ),
             )
         )
 

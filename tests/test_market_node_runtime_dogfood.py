@@ -119,6 +119,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
+    # OMN-22809: the host table copies drift compute takes its overlay, copy
+    # source, appender and clock as constructor parameters and runs through its
+    # own `python -m` CLI; it subscribes to no topic, so it has no onex.nodes
+    # entry point.
+    "node_host_table_copies_drift_compute",
     # OMN-19988: the local alert compute is called in process by the local
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.
@@ -141,8 +146,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
-    # OMN-19991: migration-only until its contract and entry point land.
-    "node_projection_local_alerts",
     # OMN-19986: migration-only until its contract and entry point land.
     "node_projection_local_identity",
 }
@@ -151,9 +154,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
 MIGRATION_ONLY_NODE_DIRS: set[str] = {
-    # OMN-19991: the local alerts migrations precede its contract, which
-    # follows the omnibase_infra release that vendors them.
-    "node_projection_local_alerts",
     # OMN-19986: the local identity migrations precede its contract, which
     # follows the omnibase_infra release that vendors them.
     "node_projection_local_identity",

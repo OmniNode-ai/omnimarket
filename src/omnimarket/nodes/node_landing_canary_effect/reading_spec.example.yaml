@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Piece 9's entry in the reading writer's overlay (node_reading_writer_effect, `pieces:`): the canary's newest
+# operational row decides. A deployment copies this entry with its own lane; the values here are synthetic. The
+# row's age bound is the daily cadence plus the run bound, the same number as publish_max_age_seconds.
+piece: 9
+name: landing and merge queue
+readable_today: true
+basis: daily-landing-canary
+sources:
+- source_id: canary
+  row_type: STATUS
+  lane: landing-canary
+  cells:
+    src: landing-canary
+    tag: operational
+  mode: newest
+  pass_when:
+  - cell: verdict
+    op: eq
+    value: WORKING
+  max_age_seconds: 93600
+injected_fault: Disable the landing tick so the canary pull request stays open past the bound
