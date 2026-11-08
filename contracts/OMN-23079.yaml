@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23079
+title: CI Summary reads its job and asserted-context tables from overlay data, and its verdict on recorded heads is unchanged
+summary: >-
+  First step of porting the CI Summary gate to the canonical validator shape. The six hard-coded rule tables of scripts/ci/ci_summary_gate.py (STRICT_GATE_JOBS, SKIPPABLE_GATE_JOBS, QUEUE_HEAVY_GATE_JOBS, DOCS_ONLY_SKIPPABLE_GATE_JOBS, SOFT_ALLOWLIST and EXPECTED_EXTERNAL_CONTEXTS) move into the overlay scripts/ci/ci_summary_rules.json, each entry keeping the derivation note it carried in code. The gate reads them at import and refuses a missing or malformed overlay, so CI Summary fails closed. The gate file shrinks from 2376 to 1931 lines. No table entry, bound or conclusion set changes. A replay test feeds pull request heads recorded by the PR watcher mirror to the ported gate and asserts every layer's exit code and exact report bytes match the verdicts the pre-port gate gave them.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23079-rules-are-overlay-data
+    statement: >-
+      CI Summary's job and asserted-context tables are read from overlay data, and its verdict on recorded heads is identical before and after the port.
+    acceptance:
+      - id: AC1
+        statement: "AC1: CI Summary's verdict on a set of recorded heads is identical before and after the port, with its rules read from overlay data -- falsifier: uv run pytest of the gate's replay tests against the old and new verdicts"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The replay test of this change plus the existing tests that read the rule tables, now from the overlay.
+    command: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py tests/unit/scripts/ci/test_ci_summary_gate.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23079-ac1-replay-and-overlay
+    description: >-
+      The ported gate replays the recorded verdict of every fixture head under pull_request, merge_group and push to dev, byte for byte; dropping one strict gate job from a copy of the overlay changes a replayed verdict; a missing, unparsable or malformed overlay refuses at import. At the merge base the six overlay tests fail, because the gate there reads no overlay.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
