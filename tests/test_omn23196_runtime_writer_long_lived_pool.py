@@ -113,8 +113,8 @@ def pools(monkeypatch: pytest.MonkeyPatch) -> list[_FakePool]:
         created.append(pool)
         return pool
 
-    def dsn(binding: object, resolver: object = None) -> str:
-        return f"postgresql://fixture.invalid/{binding.principal}"  # type: ignore[attr-defined]
+    def dsn(binding: Any, resolver: object = None) -> str:
+        return f"postgresql://fixture.invalid/{binding.principal}"
 
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "local")
     monkeypatch.setattr(handler_wiring, "_resolve_binding_dsn", dsn)
@@ -212,7 +212,9 @@ def test_a_failing_delivery_rolls_back_alone_and_the_next_one_commits(
 
 
 def test_a_connection_failure_reopens_the_pools_for_the_next_delivery(
-    pools: list[_FakePool], writer: SavingsProjectionWriter
+    pools: list[_FakePool],
+    writer: SavingsProjectionWriter,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     writer.handle(_request(0))
     first = list(pools)
@@ -223,14 +225,14 @@ def test_a_connection_failure_reopens_the_pools_for_the_next_delivery(
         raise ConnectionResetError("fixture connection lost")
 
     original = _FakeConnection.fetch
-    _FakeConnection.fetch = lambda self, *a: (  # type: ignore[method-assign]
-        refuse() if self.pool is victim else original(self, *a)
-    )
-    try:
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            _FakeConnection,
+            "fetch",
+            lambda self, *a: refuse() if self.pool is victim else original(self, *a),
+        )
         with pytest.raises(ConnectionResetError):
             writer.handle(_request(1))
-    finally:
-        _FakeConnection.fetch = original  # type: ignore[method-assign]
 
     assert all(pool.closed for pool in first)
     assert writer.handle(_request(2)) == {"projected": True}
@@ -243,7 +245,7 @@ def test_close_closes_every_pool_once_and_the_writer_can_start_again(
 ) -> None:
     writer.handle(_request(0))
     opened = list(pools)
-    thread = writer._thread
+    thread = writer._host.thread
     assert thread is not None
     assert thread.is_alive()
 

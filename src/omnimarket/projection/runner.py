@@ -31,6 +31,7 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
@@ -431,28 +432,6 @@ def coalesce(*values: Any) -> Any:
     return values[-1] if values else None
 
 
-def _invalidates_runtime_pools(err: BaseException) -> bool:
-    """Whether a delivery failure says the kept pools can no longer be trusted.
-
-    A transport, driver-state or login failure means a pool may hold dead
-    connections or credentials since rotated, so the next delivery opens and
-    attests fresh ones. Every other failure (a bad payload, a constraint, a
-    missing column) belongs to the delivery alone and leaves the pools open.
-    """
-    import asyncpg
-
-    return isinstance(
-        err,
-        (
-            OSError,
-            TimeoutError,
-            asyncpg.InterfaceError,
-            asyncpg.exceptions.PostgresConnectionError,
-            asyncpg.exceptions.InvalidAuthorizationSpecificationError,
-        ),
-    )
-
-
 class BaseProjectionRunner(ABC):
     """Base class for Kafka->DB projection consumers.
 
@@ -512,9 +491,11 @@ class BaseProjectionRunner(ABC):
         self._standalone_db_tables: tuple[dict[str, Any], ...] = ()
         self._standalone_bindings: Any | None = None
         self._db_by_binding: dict[str, AsyncpgAdapter] = {}
-        # OMN-23196: True while the pools a runtime delivery opened are kept
-        # open for the next one.
-        self._runtime_pools_open = False
+        self._kept_pools = KeptPools(
+            lambda: self._connect_standalone_databases(),
+            lambda: self._close_standalone_databases(),
+            lambda: self._stop_producer(),
+        )
         self._stats = ProjectionStats()
         self._running = False
         self._schema_faults: dict[
@@ -540,50 +521,17 @@ class BaseProjectionRunner(ABC):
     async def project_runtime_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Apply one runtime delivery on pools this runner keeps for its lifetime.
+        """Apply one runtime delivery with topology-bound resources kept open.
 
-        OMN-23196. No Kafka consumer is started. The existing per-binding
-        resolver gives each declared table its workload identity, including
-        writers spanning tenant and internal schemas; the bindings are opened
-        and attested on the first delivery and reused by every later one, so a
-        delivery no longer pays for opening and closing a pool per binding
-        before its offset can commit. The commit stays per delivery: each
-        statement runs in its own transaction on a connection taken from the
-        pool, so a failing delivery rolls back only its own statement.
-
-        The runner must stay on one event loop for its life (asyncpg pools
-        belong to the loop that opened them); ``RuntimeProjectionWriter`` runs
-        it on a dedicated loop. The producer is still stopped after each
-        delivery. A connection-class failure closes the pools, so the next
-        delivery re-resolves its credentials and attests them again, as every
-        delivery did before. :meth:`close_runtime_resources` closes the pools
-        at shutdown.
+        No Kafka consumer is started. The per-binding resolver gives each
+        declared table its workload identity. The pools open on the first
+        delivery and stay on the caller's loop (OMN-23196, see KeptPools).
         """
-        await self._open_runtime_resources()
-        try:
-            return await self.project_event(topic, data, meta)
-        except BaseException as err:
-            if _invalidates_runtime_pools(err):
-                await self.close_runtime_resources()
-            raise
-        finally:
-            await self._stop_producer()
-
-    async def _open_runtime_resources(self) -> None:
-        """Open and attest the pools once; later deliveries find them open."""
-        if self._runtime_pools_open:
-            return
         self._standalone_db_tables = tuple(self._contract["db_io"]["db_tables"])
-        await self._connect_standalone_databases()
-        self._runtime_pools_open = True
+        return await self._kept_pools.project(self.project_event, topic, data, meta)
 
     async def close_runtime_resources(self) -> None:
-        """Stop the producer and close every pool the runtime deliveries opened."""
-        try:
-            await self._stop_producer()
-        finally:
-            self._runtime_pools_open = False
-            await self._close_standalone_databases()
+        await self._kept_pools.close()
 
     def _start_health_server_if_configured(self) -> None:
         """Start the readiness/liveness HTTP server iff configured.

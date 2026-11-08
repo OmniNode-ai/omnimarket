@@ -129,6 +129,7 @@ def test_runtime_deliveries_write_typed_rows_and_close_real_pools(
             assert len(adapters) == 1
             assert all(adapter.is_connected for adapter in adapters)
         writer.close()
+        writer.close()  # a second close finds nothing open and is harmless
         assert all(not adapter.is_connected for adapter in adapters)
         rows = asyncio.run(readback())
         assert len(rows) == 1
