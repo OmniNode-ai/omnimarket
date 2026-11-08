@@ -86,6 +86,13 @@ class HandlerLabFillOwnership:
                     readings.append(("pr-claims", "owned", registry[pr]))
                 else:
                     readings.append(("pr-claims", "free", ""))
+            work_state = request.work_state_owners
+            if isinstance(work_state, str):
+                readings.append(("work-state", "unreadable", _clean(work_state)))
+            elif work_state and work_state.get(ticket):
+                readings.append(
+                    ("work-state", "owned", ",".join(sorted(work_state[ticket])))
+                )
             owned = [v for _, s, v in readings if s == "owned"]
             free = any(s == "free" for _, s, _ in readings)
             failed = any(s == "unreadable" for _, s, _ in readings)
