@@ -56,5 +56,5 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py -q --no-cov -n 0 -p no:randomly
     cwd: .
   - check_type: command
-    check_value: 'grep -q "math.floor(self.remaining())" src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py'
+    check_value: 'gh api -H "Accept: application/vnd.github.raw" "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py?ref=omn-23133-publish-phase-budget-bound" | grep -q "math.floor(self.remaining())"'
     cwd: .
