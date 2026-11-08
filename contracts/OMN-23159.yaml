@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-23159
+title: omnibase_infra's exposure-reader-coverage check is green on the open pull requests it reads red, from a fix at its shared cause
+summary: >-
+  The required check exposure-reader-coverage in omnibase_infra reads every bus_backed projection exposure in the
+  omnimarket contracts at the omnimarket sha that repository pins. The local-alerts exposure
+  (onex.snapshot.projection.local-alerts.v1, node_projection_local_alerts) shipped bus_backed with no reader and no
+  reasoned opt-out, so every omnibase_infra pull request whose pin moved past that change read red with code no_reader.
+  This change declares the exposure's reasoned, self-expiring consumers opt-out through the gate's own declared route
+  (option 3 of its fix list). No reader is claimed that does not exist; the gate, its workflow and its input are not
+  touched.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23159-local-alerts-exposure
+  statement: The local-alerts exposure declares its reader state through the exposure-reader-coverage gate's declared route, and the gate reads green on the pins that read red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the shared cause of exposure-reader-coverage''s red on #5804 and #5809 is named and fixed at the cause, with a failing control built from the recorded failure -- falsifier: the check''s run on both heads after the fix, and the control test'
+  - id: AC2
+    statement: 'AC2: the check is never widened, skipped or made advisory -- falsifier: diff of the check''s workflow and its declared exposure list'
+evidence_requirements:
+- kind: tests
+  description: The control test pinning the two rules of the gate this exposure broke.
+  command: uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23159-ac1-control-test
+  description: >-
+    The control test fails at the merge base (the local-alerts contract has no consumers key) and passes with the
+    opt-out declared.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23159-ac2-gate-untouched
+  description: >-
+    This change touches no omnibase_infra file: the gate's workflow and validator are unchanged and the exposure is
+    declared on its own contract, not deleted or hidden from the gate's input.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: test -z "$(git diff --name-only origin/dev...HEAD | grep -v -e '^contracts/OMN-23159.yaml$' -e '^src/omnimarket/nodes/node_projection_local_alerts/contract.yaml$' -e '^tests/test_omn23159_local_alerts_exposure_reader_declared.py$')"
+    cwd: .
+- id: dod-omn23159-integration-proof
+  description: >-
+    The pushed head ran the control test on a lab host through the lab work runner and exited 0. The gate's own run
+    against the pinned reader surface was taken on h053 from the branch with the omnibase_infra validator: exit 1 with
+    code no_reader at the shas pinned by omnibase_infra 5804 and 5809 without the change, exit 0 with it; that readback
+    is in the pull request's Lab line. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23159 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q --no-cov'
+    cwd: .
