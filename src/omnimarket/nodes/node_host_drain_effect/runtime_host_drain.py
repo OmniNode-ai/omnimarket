@@ -68,7 +68,7 @@ _REFUSED = {
 }
 
 
-class _MissingFactError(Exception):
+class _MissingFactError(ValueError):
     """A deployment fact the profile needs is not in the environment."""
 
 

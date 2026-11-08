@@ -84,14 +84,8 @@ class HandlerMorningPhaseLabWork(HandlerMorningPhaseBus):
                     ProtocolLabRunBus,
                 )
                 from omnimarket.lab_work.bus import LabWorkCaller
-                from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
-                    read_draining_hosts,
-                )
 
-                self._caller = LabWorkCaller(
-                    cast(ProtocolLabRunBus, self._event_bus),
-                    draining_hosts=read_draining_hosts,
-                )
+                self._caller = LabWorkCaller(cast(ProtocolLabRunBus, self._event_bus))
             if not self._started:
                 await self._caller.start()
                 self._started = True

@@ -51,7 +51,9 @@ class _WatchingProbe(FakeRunnerProbe):
 
 
 class _WriteFailsStore(InMemoryDrainStore):
-    def set_draining(self, *args: object, **kwargs: object) -> None:  # type: ignore[override]
+    def set_draining(
+        self, host_name: str, draining: bool, *, reason: str, at: datetime
+    ) -> None:
         raise OSError("drain store down")
 
 
