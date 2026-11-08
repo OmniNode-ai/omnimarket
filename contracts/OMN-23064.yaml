@@ -84,7 +84,6 @@ dod_evidence:
     description: >-
       Deploy assessment: the pull request changes the routing overlay check, two projection writers and the floor compare node. None adds a Kafka topic, a migration or a prod mutation; they reach the runtime through the package on the next standard image rebuild and deploy cycle. The check reads the changed handler and model files from GitHub at the pull request branch and fails when the symbol each fix introduces is missing.
     source: manual
-    binds_ac: []
     checks:
       - check_type: command
         check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/models/model_floor_compare.py?ref=omn-23064-tessl-merged-followups')\" && case \"$body\" in *_at_has_a_timezone*) exit 0;; *) exit 1;; esac"
