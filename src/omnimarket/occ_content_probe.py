@@ -43,6 +43,7 @@ so the whole derivation is unit-testable with no live GitHub.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import tomllib
@@ -64,6 +65,7 @@ __all__ = [
     "build_considered_paths",
     "build_content_read_check",
     "classify_dependency_pin_only",
+    "classify_precommit_hook_rev_pin_train_only",
     "classify_workflow_core_pin_only",
     "declaration_count",
     "describe_uncandidated_path",
@@ -1395,3 +1397,127 @@ def classify_plugin_manifest_version_only(
     if not moved:
         return False, "no plugin version moved"
     return True, "plugin manifest version only: " + "; ".join(moved)
+
+
+# ---------------------------------------------------------------------------
+# OMN-22478 -- sibling hook rev bumps (the pin train's .pre-commit-config.yaml).
+# ---------------------------------------------------------------------------
+
+# The one file a hook rev bump may touch besides the dependency manifest and
+# lockfile, and the only line shape in it that may move. An EXEMPTION surface,
+# scoped as narrowly as :data:`DEPENDENCY_MANIFEST_BASENAMES`: since
+# omniclaude#3207 the sibling pin train also moves the ``rev:`` of the
+# first-party hook blocks, and every such PR read as owing evidence because
+# ``classify_dependency_pin_only`` refuses any path outside pyproject.toml and
+# uv.lock. Any other edit to the file (a new or removed hook, changed args or
+# files, a repo url, a rev outside a first-party block, a rev that is not a dev
+# merge tag) is refused here exactly as before.
+PRECOMMIT_CONFIG_PATH = ".pre-commit-config.yaml"
+FIRST_PARTY_HOOK_REPO_PREFIX = "https://github.com/OmniNode-ai/"
+
+_HOOK_REPO_LINE_RE = re.compile(r"^[ ]*-[ ]+repo:[ ]+(?P<url>\S+)[ ]*$")
+_HOOK_REV_LINE_RE = re.compile(
+    r"^(?P<lead>[ ]*rev:[ ]+)(?P<value>dev-[0-9]{14}-[0-9a-f]{12})(?P<tail>[ ]*)$"
+)
+
+
+def _precommit_rev_swap_problem(head: str, base: str) -> str | None:
+    """Pure: ``None`` when head differs from base only by hook ``rev:`` swaps."""
+    head_lines = head.splitlines(keepends=True)
+    base_lines = base.splitlines(keepends=True)
+    # The first-party test reads the repo block each rev line sits in, from the
+    # base (the line numbers of an equal-length replace are the same at head).
+    repo_of_line: dict[int, str] = {}
+    current = ""
+    for number, line in enumerate(base_lines):
+        m_repo = _HOOK_REPO_LINE_RE.match(line.rstrip("\r\n"))
+        if m_repo:
+            current = m_repo.group("url")
+        repo_of_line[number] = current
+    moved = 0
+    for tag, base_start, base_end, head_start, head_end in difflib.SequenceMatcher(
+        None, base_lines, head_lines, autojunk=False
+    ).get_opcodes():
+        if tag == "equal":
+            continue
+        if tag != "replace" or base_end - base_start != head_end - head_start:
+            return "a line is added or removed"
+        for offset in range(base_end - base_start):
+            base_line = base_lines[base_start + offset]
+            head_line = head_lines[head_start + offset]
+            base_body, head_body = base_line.rstrip("\r\n"), head_line.rstrip("\r\n")
+            old = _HOOK_REV_LINE_RE.fullmatch(base_body)
+            new = _HOOK_REV_LINE_RE.fullmatch(head_body)
+            if (
+                old is None
+                or new is None
+                or base_line[len(base_body) :] != head_line[len(head_body) :]
+                or old["lead"] != new["lead"]
+                or old["tail"] != new["tail"]
+                or old["value"] == new["value"]
+            ):
+                return f"line {head_start + offset + 1} is not solely a hook rev swap"
+            if not repo_of_line.get(base_start + offset, "").startswith(
+                FIRST_PARTY_HOOK_REPO_PREFIX
+            ):
+                return f"line {head_start + offset + 1} is a rev outside a first-party hook block"
+            moved += 1
+    if not moved:
+        return "no hook rev moved"
+    return None
+
+
+def classify_precommit_hook_rev_pin_train_only(
+    changed_paths: Sequence[str],
+    *,
+    pyproject_head: str | None,
+    pyproject_base: str | None,
+    precommit_head: str | None,
+    precommit_base: str | None,
+) -> tuple[bool, str]:
+    """Pure: is this diff the sibling pin train's dependency pins plus hook revs?
+
+    OMN-22478. ``(verdict, reason)``. The pin train (OMN-19998, OMN-21282) moves
+    sibling dependency pins in ``pyproject.toml``/``uv.lock`` and, since
+    omniclaude#3207, the ``rev:`` of first-party hook blocks in
+    ``.pre-commit-config.yaml``. :func:`classify_dependency_pin_only` refuses the
+    whole diff on that one extra path. This function admits it, and nothing
+    wider:
+
+    * ``.pre-commit-config.yaml`` must be among the changed paths; a diff
+      without it is :func:`classify_dependency_pin_only`'s to judge;
+    * every other changed path goes to :func:`classify_dependency_pin_only`
+      unchanged, so a source file, a workflow or another YAML file still refuses
+      the diff;
+    * the config's head and base must both be readable, and every changed line
+      must replace one ``rev:`` value with another, both a dev merge tag, in a
+      block whose ``repo:`` is a first-party repository, with the same
+      indentation and line ending; an added, removed or reworded line (a hook,
+      its args or files, a repo url) refuses the diff.
+
+    Whether the producer is the pin train is not decided here: the gate calls
+    this only for a diff the OCC writer app authored.
+
+    FAIL-CLOSED in every ambiguous direction, as the other classifiers are.
+    """
+    if not changed_paths:
+        return False, "no changed files observed (unobservable diff, not an empty one)"
+    if PRECOMMIT_CONFIG_PATH not in changed_paths:
+        return False, f"{PRECOMMIT_CONFIG_PATH} is not among the changed files"
+    others = [path for path in changed_paths if path != PRECOMMIT_CONFIG_PATH]
+    pin_reason = "hook rev swap only: no dependency manifest changed"
+    if others:
+        pin_only, pin_reason = classify_dependency_pin_only(
+            others, pyproject_head=pyproject_head, pyproject_base=pyproject_base
+        )
+        if not pin_only:
+            return (
+                False,
+                f"changes beyond the hook revs are not dependency-pin-only: {pin_reason}",
+            )
+    if precommit_head is None or precommit_base is None:
+        return False, f"{PRECOMMIT_CONFIG_PATH} unreadable at one or both refs"
+    problem = _precommit_rev_swap_problem(precommit_head, precommit_base)
+    if problem is not None:
+        return False, f"{PRECOMMIT_CONFIG_PATH} changes beyond hook revs: {problem}"
+    return True, f"dependency pins and first-party hook revs only: {pin_reason}"
