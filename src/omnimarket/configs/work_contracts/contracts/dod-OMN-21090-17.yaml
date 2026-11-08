@@ -32,7 +32,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 575ae6c2e8af8da441011be4d1bd40a62a19648bbbc437f7d8e34b5551bd11a4
+      sha256: 384d50336b4ccda9b562a38c9d4bf71e2090c41c6d3cd92b5103869a7256cdae
     expected_exit: 0
     ticket: OMN-21090
     evidence_id: dod-omn21090-ac3-measurement-canonical-node
