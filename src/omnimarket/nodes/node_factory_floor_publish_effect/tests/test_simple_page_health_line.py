@@ -48,7 +48,9 @@ def _served(health: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _row(html: str) -> str:
-    match = re.search(r'<div class="row" id="health-line">.*?</div></div>', html)
+    match = re.search(
+        r'<div class="row(?: fp-tap)?" id="health-line"[^>]*>.*?</div></div>', html
+    )
     assert match is not None, "the page drew no health line row"
     return match.group(0)
 

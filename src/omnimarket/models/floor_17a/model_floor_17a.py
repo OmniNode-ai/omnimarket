@@ -374,6 +374,40 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # Where the lane runs and since when, for the details panels (OMN-23018); empty when the record names none.
+    host: str = ""
+    started_at: datetime | None = None
+
+
+class ModelFloorBay(_Frozen):
+    """One host's lane slots as the floor record's bay row gives them (the source of the slots number)."""
+
+    host: str
+    slots: int = Field(ge=0)
+    running: int = Field(ge=0)
+    stale: bool = False
+
+
+class ModelFloorPrItem(_Frozen):
+    """One pull request behind the merges number or the open pull requests number, with the facts a panel shows."""
+
+    key: str
+    repo: str
+    number: int
+    title: str = ""
+    # The watcher's class of an open pull request ("red", "pending", ...); empty for a merge.
+    cls: str = ""
+    # Why an open pull request waits, as the watcher's own reading says it; empty for a merge.
+    reason: str = ""
+    # Names of the required checks that are red now (a few), for an open pull request.
+    red_checks: tuple[str, ...] = ()
+    # When it merged (a merge) or was opened (an open pull request).
+    at: datetime | None = None
+    tickets: tuple[str, ...] = ()
+    draft: bool = False
+    armed: bool = False
+    # A merge that counts in scope only because the landing controller admitted it.
+    admitted_by_controller: bool = False
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -476,6 +510,16 @@ class ModelFloorLabLine(_Frozen):
     cause_id: str | None = None
 
 
+class ModelFloorAlarmSend(_Frozen):
+    """One send of an open alarm: the history a details panel shows."""
+
+    channel: str
+    role: Literal["primary", "second"]
+    sent_at: datetime
+    delivery: Literal["pending", "delivered", "failed"]
+    detail: str = ""
+
+
 class ModelFloorAlarmLine(_Frozen):
     alarm_id: str
     source_id: str
@@ -483,6 +527,8 @@ class ModelFloorAlarmLine(_Frozen):
     raised_at: datetime
     delivery: Literal["pending", "delivered", "undelivered"]
     channel: str
+    sends: tuple[ModelFloorAlarmSend, ...] = ()
+    escalated: bool = False
 
 
 class ModelRebuild(_Frozen):
@@ -535,6 +581,68 @@ class ModelFloorHealthLine(_Frozen):
     oldest_age_s: int | None = None
 
 
+# --- the details panels (OMN-23018) ------------------------------------------------------------------------------------
+
+
+class ModelFloorDetailItem(_Frozen):
+    """One line of a details panel: a pull request, a lane, a ticket, a check, a finding.
+
+    ``count`` is how many units of the number this line stands for (a lane is 1 slot); a panel of a number holds lines
+    whose counts add up to the number. ``href`` is a link to the thing itself (a ticket, a pull request). ``at`` is the
+    time the line is about; the page draws its age.
+    """
+
+    title: str
+    sub: str = ""
+    group: str = ""
+    href: str = ""
+    at: datetime | None = None
+    count: int = 1
+    tag: str = ""
+    tone: Draw | None = None
+    # The key of another panel this line opens in place (a red row opens its own details); empty for a plain line.
+    opens: str = ""
+
+
+class ModelFloorDetailFact(_Frozen):
+    """A label and a value at the top of a panel; ``at`` is a time the page draws as an age beside the value."""
+
+    label: str
+    value: str
+    at: datetime | None = None
+
+
+class ModelFloorDetailSection(_Frozen):
+    heading: str
+    note: str = ""
+    items: tuple[ModelFloorDetailItem, ...] = ()
+    # What the page says when the section has no line, so an empty section is explained and never silent.
+    empty: str = "None."
+
+
+class ModelFloorDetail(_Frozen):
+    """What opens when a number, a row or a piece card is tapped: the reading, its sources and the lines behind it."""
+
+    key: str
+    title: str
+    # One plain line: the reading itself.
+    summary: str = ""
+    tone: Draw | None = None
+    # Label and value pairs shown at the top (state, age, size, limit).
+    facts: tuple[ModelFloorDetailFact, ...] = ()
+    # Where the reading comes from, named.
+    sources: tuple[str, ...] = ()
+    # For the panel of a number: the number itself and the sum of its lines' counts. ``None`` when the number is unread.
+    total: int | None = None
+    counted: int | None = None
+    sections: tuple[ModelFloorDetailSection, ...] = ()
+
+    @property
+    def reconciles(self) -> bool:
+        """True when the lines add up to the number (a panel that explains no number reconciles trivially)."""
+        return self.total is None or self.total == self.counted
+
+
 class ModelFloorSimple(_Frozen):
     schema_id: Literal["omni.floor-simple/1"] = "omni.floor-simple/1"
     generated_at: datetime
@@ -559,6 +667,9 @@ class ModelFloorSimple(_Frozen):
     )
     # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
     health: ModelFloorHealthLine | None = None
+    # What each number, row and piece opens (OMN-23018): ``number:merges``, ``number:open_prs``, ``number:slots``,
+    # ``number:red_rows``, ``cause:<id>``, ``lab:<id>``, ``piece:<n>``. Built from the same readings as the page's rows.
+    details: dict[str, ModelFloorDetail] = Field(default_factory=dict)
 
 
 class ModelGoRule(_Frozen):
@@ -706,6 +817,13 @@ class ModelCauseOverlay(_Frozen):
     still_occurring_within_s: int | None = Field(default=None, gt=0)
 
 
+class ModelFloorLinks(_Frozen):
+    """Where a ticket or a pull request named in a details panel links to; ``{ticket}``, ``{repo}`` and ``{number}`` fill in."""
+
+    ticket_url: str = "https://linear.app/omninode/issue/{ticket}"
+    pr_url: str = "https://github.com/OmniNode-ai/{repo}/pull/{number}"
+
+
 class ModelFloorSimpleOverlay(_Frozen):
     """The overlay of node_floor_simple_compute: the pieces, the joins, the numbers' goal and the cause wording."""
 
@@ -724,6 +842,7 @@ class ModelFloorSimpleOverlay(_Frozen):
     error_drill_after_s: int = Field(gt=0)
     chain_deadline_s: int = Field(gt=0)
     details_href: str = Field(min_length=1)
+    links: ModelFloorLinks = Field(default_factory=ModelFloorLinks)
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -779,6 +898,11 @@ class ModelFloorSimpleInput(_Frozen):
     receipts: ModelFloorReceipts | None
     readings: dict[int, ModelReadingRow] | None = None
     shadows: tuple[ModelShadowReading, ...] = ()
+    # The pull requests behind the merges number and the open pull requests number, and the bays behind the slots number
+    # (OMN-23018): each list is built in the same pass as its number, so the panel's lines add up to it.
+    merge_items: tuple[ModelFloorPrItem, ...] = ()
+    open_pr_items: tuple[ModelFloorPrItem, ...] = ()
+    bays: tuple[ModelFloorBay, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
     alarms: tuple[ModelFloorAlarmLine, ...] = ()

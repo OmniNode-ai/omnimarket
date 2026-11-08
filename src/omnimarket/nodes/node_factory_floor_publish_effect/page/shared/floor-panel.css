@@ -1,0 +1,45 @@
+/* The floor's shared details panel and searchable paged list (OMN-23018). Linked by the first page and by the Better or worse
+   page; both read the same file. Colours come from the page's own custom properties (--ink --mute --line --bg --card --red
+   --amber --green --blue --grey), with the fallbacks below so a page that declares none still draws. */
+.fp-tap{cursor:pointer}
+.fp-tap:hover{border-color:var(--mute,#646b73)}
+.fp-tap:focus-visible,.fp-lnk:focus-visible,.fp-x:focus-visible,.fp-pg button:focus-visible,.fp-open:focus-visible{outline:2px solid var(--ink,#1c2024);outline-offset:2px}
+button.fp-lnk{font:inherit;color:inherit;background:none;border:0;padding:0;text-decoration:underline dotted;cursor:pointer}
+#fp-back{position:fixed;inset:0;z-index:40;background:rgba(20,24,28,.35);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
+#fp-back.open{opacity:1;visibility:visible;transition:opacity .2s,visibility 0s}
+#fp-panel{position:fixed;z-index:41;top:0;right:0;bottom:0;width:min(440px,100vw);background:var(--card,#fff);color:var(--ink,#1c2024);border-left:1px solid var(--line,#dfe2e6);box-shadow:-6px 0 24px rgba(0,0,0,.18);overflow:auto;overscroll-behavior:contain;transform:translateX(100%);visibility:hidden;transition:transform .22s ease,visibility 0s linear .22s;padding:16px 18px 24px}
+#fp-panel.open{transform:none;visibility:visible;transition:transform .22s ease,visibility 0s}
+@media(max-width:600px){#fp-panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:82vh;border-left:0;border-top:1px solid var(--line,#dfe2e6);border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);transform:translateY(100%)}}
+@media(prefers-reduced-motion:reduce){#fp-back,#fp-panel{transition:none!important}}
+.fp-h{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.fp-h h2{margin:0;font-size:20px;line-height:1.25;font-weight:650}
+.fp-kicker{font-size:13px;color:var(--mute,#646b73)}
+.fp-x{flex:none;font:inherit;font-size:14px;font-weight:650;padding:8px 14px;min-height:40px;border:1px solid var(--line,#dfe2e6);background:var(--bg,#f6f7f8);color:var(--ink,#1c2024);border-radius:8px;cursor:pointer}
+#fp-panel h3{font-size:13px;font-weight:650;color:var(--mute,#646b73);margin:16px 0 4px;text-transform:uppercase;letter-spacing:.03em}
+#fp-panel p{margin:0 0 4px;font-size:15px}
+#fp-panel .mute,.fp-note{color:var(--mute,#646b73)}
+.fp-note{font-size:13px;margin:0 0 6px}
+.fp-pill{display:inline-block;margin-top:8px;font-size:12px;font-weight:650;padding:3px 9px;border-radius:999px;border:1px solid currentColor}
+.fp-pill.green,.fp-t.green{color:var(--green,#1f7a4d)}.fp-pill.red,.fp-t.red{color:var(--red,#b3261e)}.fp-pill.amber,.fp-t.amber{color:var(--amber,#a56a00)}.fp-pill.grey,.fp-t.grey{color:var(--mute,#646b73)}
+.fp-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.fp-facts div{background:var(--bg,#f6f7f8);border:1px solid var(--line,#dfe2e6);border-radius:8px;padding:8px 10px;min-width:0}
+.fp-facts b{display:block;font-size:15px;line-height:1.25;font-weight:600;overflow-wrap:anywhere}.fp-facts span{font-size:13px;color:var(--mute,#646b73)}
+.fp-src{margin:0;padding-left:18px;font-size:14px;color:var(--mute,#646b73)}
+.fp-sum{font-size:13px;margin:10px 0 0;color:var(--mute,#646b73)}.fp-sum.bad{color:var(--red,#b3261e);font-weight:650}
+.fp-list{margin:0;padding:0;list-style:none}
+.fp-grp{font-size:13px;font-weight:650;color:var(--mute,#646b73);padding:10px 0 2px;border-bottom:1px solid var(--line,#dfe2e6);overflow-wrap:anywhere}
+.fp-it{display:flex;gap:8px 10px;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line,#dfe2e6);font-size:14px}
+.fp-it>div{min-width:0}
+.fp-it .t{display:block;overflow-wrap:anywhere;font-weight:600}
+.fp-it .s{display:block;color:var(--mute,#646b73);font-size:13px;overflow-wrap:anywhere}
+.fp-it .r{flex:none;text-align:right;font-size:12px;color:var(--mute,#646b73);max-width:45%}
+.fp-it a,.fp-it .fp-open{font-size:inherit;color:var(--blue,#2b6cb0);text-decoration:none}
+.fp-it .fp-open{font:inherit;font-weight:600;background:none;border:0;padding:0;cursor:pointer;text-align:left;overflow-wrap:anywhere}
+.fp-it a:hover,.fp-it .fp-open:hover{text-decoration:underline}
+.fp-chip{display:inline-block;margin-left:6px;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--bg,#f6f7f8);border:1px solid var(--line,#dfe2e6);color:var(--mute,#646b73);font-weight:400}
+.fp-cnt{font-weight:650;color:var(--ink,#1c2024)}
+.fp-empty{font-size:14px;color:var(--mute,#646b73);font-style:italic;margin:4px 0}
+.fp-q{width:100%;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line,#dfe2e6);border-radius:8px;margin:4px 0 6px;background:var(--card,#fff);color:var(--ink,#1c2024)}
+.fp-pg{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px;font-size:13px;color:var(--mute,#646b73)}
+.fp-pg button{font:inherit;font-size:14px;font-weight:650;padding:6px 12px;min-height:36px;border:1px solid var(--line,#dfe2e6);background:var(--bg,#f6f7f8);color:var(--ink,#1c2024);border-radius:8px;cursor:pointer}
+.fp-pg button[disabled]{opacity:.45;cursor:default}

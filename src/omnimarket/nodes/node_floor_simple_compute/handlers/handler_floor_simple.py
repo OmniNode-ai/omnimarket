@@ -36,6 +36,9 @@ from omnimarket.models.floor_17a import (
     ModelRedRule,
     ModelShadowReading,
 )
+from omnimarket.nodes.node_floor_simple_compute.handlers.floor_details import (
+    build_details,
+)
 
 
 def _ago(seconds: int | None) -> str:
@@ -211,9 +214,10 @@ class HandlerFloorSimple:
                 "outside_goal": request.outside_goal,
             }
         )
-        return document.model_copy(
+        document = document.model_copy(
             update={"red_rule": check_red_rule(document, request.lanes)}
         )
+        return document.model_copy(update={"details": build_details(request, document)})
 
     @staticmethod
     def _level(causes: tuple[ModelFloorCause, ...]) -> str:

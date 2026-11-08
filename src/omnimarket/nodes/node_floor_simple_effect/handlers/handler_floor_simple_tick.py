@@ -39,6 +39,7 @@ from omnimarket.models.floor_17a import (
     ModelAlarmState,
     ModelCanaryStatus,
     ModelFloorAlarmLine,
+    ModelFloorAlarmSend,
     ModelFloorHealthLine,
     ModelFloorReceiptInput,
     ModelFloorReceipts,
@@ -95,6 +96,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     read_queue_age,
     read_runner_groups,
     read_watcher,
+    record_bays,
     record_lanes,
     record_slots,
     record_stoppages,
@@ -868,6 +870,9 @@ class HandlerFloorSimpleTick:
             slots_working=slots_working,
             slots_total=slots_total,
             slots_unread_hosts=slots_unread,
+            bays=record_bays(record) if record is not None else (),
+            merge_items=watcher.merge_items if watcher and watcher.scoped else (),
+            open_pr_items=watcher.open_items if watcher and watcher.scoped else (),
             record_read_at=record_read_at,
             pr_class_counts=watcher.class_counts if watcher else {},
             pr_class_tickets=watcher.class_tickets if watcher else {},
@@ -1233,6 +1238,17 @@ class HandlerFloorSimpleTick:
                     if delivered
                     else "pending",
                     channel=send.channel,
+                    sends=tuple(
+                        ModelFloorAlarmSend(
+                            channel=x.channel,
+                            role=x.role,
+                            sent_at=x.sent_at,
+                            delivery=x.delivery,
+                            detail=x.detail,
+                        )
+                        for x in open_alarm.sends
+                    ),
+                    escalated=open_alarm.escalated,
                 )
             )
         return tuple(lines)
