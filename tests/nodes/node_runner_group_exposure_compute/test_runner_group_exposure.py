@@ -85,7 +85,14 @@ def _request(**changes: object) -> ModelRunnerGroupExposureRequest:
             repositories=(REPO,),
         ),
         "files": SAFE_FILES,
-        "jobs": (ModelGroupJob(run_id=1, run_event="schedule", workflow_ref="a"),),
+        "jobs": (
+            ModelGroupJob(
+                run_id=1,
+                run_event="schedule",
+                workflow_ref="a",
+                repository_private=True,
+            ),
+        ),
     }
     fields.update(changes)
     return ModelRunnerGroupExposureRequest.model_validate(fields)
