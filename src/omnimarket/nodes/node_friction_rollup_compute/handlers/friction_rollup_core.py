@@ -30,6 +30,7 @@ _ROW_PATTERN = re.compile(
     r"\s*\|\s*([A-Z][A-Z-]*)\s*\|"
 )
 _FIELD_PATTERN = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*?)\s*$")
+_MARKED_COST = re.compile(r"lane-|~", re.IGNORECASE)
 _COST_COLON_PATTERN = re.compile(r"^\s*(costs?)\s*:\s*(.*?)\s*$", re.IGNORECASE)
 _TICKET_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _TRAILING_PARENTHETICAL = re.compile(r"\s*\(([^()]*)\)\s*$")
@@ -411,11 +412,25 @@ def _cost(row: LedgerRow) -> tuple[str, str, float | None]:
         # refused command and the guard's message, whose durations ("the
         # 10-minute ceiling") are not what the refusal cost anyone.
         return "", "hook-no-cost", None
-    inline = COST_DURATION_PATTERN.search(row.text)
+    inline = _inline_cost(row.text)
     if inline is not None:
         text = inline.group(0)
         return text, "inline", parse_cost_minutes(text)
     return "", "missing", None
+
+
+def _inline_cost(text: str) -> re.Match[str] | None:
+    """The duration in a row's free text that is its cost.
+
+    A lane writes its own cost as lane time (``~0.5 lane-hours``) or with an estimate marker (``~20 minutes``); a
+    bare duration is often an age or a limit (``390 hours old against a 24 hour limit``). The first marked
+    duration is the cost; only a row with none falls back to the first duration of any kind.
+    """
+    matches = list(COST_DURATION_PATTERN.finditer(text))
+    for match in matches:
+        if _MARKED_COST.search(match.group(0)):
+            return match
+    return matches[0] if matches else None
 
 
 def _parse_aliases(values: Sequence[str]) -> dict[str, str]:
