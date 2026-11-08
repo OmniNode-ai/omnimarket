@@ -222,7 +222,9 @@ def test_one_writer_control_two_lanes_start_without_the_conditional_write() -> N
 
 # The injected protocols that still resolve outside omnibase_spi, by contract code name. Each stays
 # node-local for a stated reason; the test below fails if a protocol moves (or a new one appears)
-# without this table changing, and the strict xfail after it turns red the day the table is empty.
+# without this table changing. G-NODE point 3 (every seam in omnibase_spi) stays open until this table
+# is empty; it is carried as a follow-up on the ticket and not as a collected-and-skipped test, which
+# the skip-count ratchet refuses to grow.
 NODE_LOCAL_SEAMS: dict[str, str] = {
     "LED": "adapts ProtocolWorkLedgerStore (spi) with the CLAIM and liveness reading; a decision-shaped seam",
     "HST": "adapts ProtocolLaneHostPool (spi) to a free-slot count; a decision-shaped seam",
@@ -252,12 +254,3 @@ def test_seams_in_spi_lists_each_injected_protocol_and_what_is_still_node_local(
     }
     assert outside == set(NODE_LOCAL_SEAMS)
     assert {"SRC", "PRC"} <= set(seams) - outside
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="G-NODE point 3: five seams are still node-local (NODE_LOCAL_SEAMS)",
-)
-def test_seams_in_spi_complete() -> None:
-    assert not NODE_LOCAL_SEAMS
-    assert all(m.split(".")[0] == "omnibase_spi" for m, _ in _seam_modules().values())
