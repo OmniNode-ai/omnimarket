@@ -11,8 +11,10 @@ count is shown able to fail. The last test draws the row through the floor's own
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     shadow_readings,
@@ -35,6 +37,11 @@ from omnimarket.nodes.node_validator_estate_reading_effect.protocols import (
 )
 
 pytestmark = pytest.mark.unit
+
+CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_validator_estate_reading_effect/contract.yaml"
+)
 
 NOW = datetime(2026, 11, 8, 4, 30, tzinfo=UTC)
 HOST = "host-a"
@@ -248,6 +255,19 @@ def test_golden_estate_numbers_and_row() -> None:
     assert cells["tasks_open"] == "1"
     assert cells["tasks_no_ticket"] == "1"
     assert cells["max_age"] == "3600"
+
+
+def test_contract_terminal_event_is_the_declared_completed_topic() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    completed = "onex.evt.omnimarket.validator-estate-run-completed.v1"
+    failed = "onex.evt.omnimarket.validator-estate-run-failed.v1"
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.validator-estate-run-completed.v1"
+    )
+    assert contract["topics"]["validator_estate_run_completed"] == completed
+    assert contract["topics"]["validator_estate_run_failed"] == failed
+    assert sorted(contract["externally_consumed_topics"]) == sorted([completed, failed])
 
 
 def test_a_ticket_in_the_plans_falsifier_text_is_not_the_tasks_ticket() -> None:
