@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """The lab Claude ``run`` path of the remote-lane runner, as a sequence of nodes (OMN-22848, plan T15).
 
-(1) Refuse early: a shape other than the overlay's engines and placements is ``unsupported-shape``
-    before any read; the ledger path is a required request field.
+(1) Refuse early: a shape other than the overlay's engines and placements, or a repository named
+    without its sha, is ``unsupported-shape`` before any read; the ledger path is a required request field.
 (2) Place: ``node_remote_lane_compute`` decides from the readings ``ProtocolLaneHostPool`` gives;
     no host is ``no-host`` (exit 75) and nothing is written.
 (3) Claim: the CLAIM row (``host=``, ``key=``, ``ticket=``, ``run=``, the lane) goes through
@@ -220,15 +220,22 @@ class RemoteLaneStartOrchestrator:
         outcome: EnumRemoteLaneStartOutcome,
         receipt: ModelRemoteLaneStartReceipt,
         exit_code: int | None = None,
+        durable: bool = True,
     ) -> ModelRemoteLaneStartResult:
         code = EXIT_CODES[outcome] if exit_code is None else exit_code
         if outcome not in (
             EnumRemoteLaneStartOutcome.START_UNRESOLVED,
             EnumRemoteLaneStartOutcome.STOP_REFUSED,
         ):
-            # Every ending that writes no TERMINAL-less open CLAIM is final, as the script's one exit is.
-            receipt.final = True
-        receipt.status = script_status(outcome, code)
+            # Every ending that writes no TERMINAL-less open CLAIM is final, as the script's one exit is;
+            # a close that did not land leaves the CLAIM open, so it is not final.
+            receipt.final = durable
+        if durable:
+            receipt.status = script_status(outcome, code)
+        else:
+            # The script's word for a refused ledger write; the exit is never 0 for a close that did not land.
+            receipt.status = "ledger-refused"
+            code = code or 1
         self._finish_line(receipt, code)
         self._receipts.write(receipt)
         return ModelRemoteLaneStartResult(
@@ -381,6 +388,16 @@ class RemoteLaneStartOrchestrator:
                 f"REMOTE-LANE-UNSUPPORTED-SHAPE lane={request.lane} engine={request.engine} "
                 f"placement={request.placement}: the node runs {list(self._s.supported_engines)} on "
                 f"{list(self._s.supported_placements)}; the script keeps every other shape"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE.value
+            return self._result(EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE, receipt)
+
+        if request.repo and not request.sha:
+            # A repository without a revision has no checkout to prepare: refuse it here rather than
+            # claim the lane and start the engine in the generic run directory.
+            self._say(
+                f"REMOTE-LANE-UNSUPPORTED-SHAPE lane={request.lane} repo={request.repo} without a sha: "
+                f"a repository request names the revision to check out"
             )
             receipt.state = EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE.value
             return self._result(EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE, receipt)
@@ -697,10 +714,11 @@ class RemoteLaneStartOrchestrator:
             cells,
             f"remote lane on {host_ref.name} {status_text}",
         )
-        if appended.status not in (
+        durable = appended.status in (
             EnumWorkLedgerAppendStatus.ACCEPTED,
             EnumWorkLedgerAppendStatus.DUPLICATE,
-        ):
+        )
+        if not durable:
             self._say(
                 f"REMOTE-LANE-LEDGER-REFUSED lane={request.lane} kind={kind} rc={appended.exit_code}: {appended.message[-300:]}"
             )
@@ -711,14 +729,17 @@ class RemoteLaneStartOrchestrator:
             close_row=row,
             final_message=message,
             engine_rc=engine_rc,
-            final=True,
+            final=durable,
+            error=None
+            if durable
+            else f"close not persisted ({kind} rc={appended.exit_code}): {appended.message[-400:]}",
         )
         exit_code = None
         if outcome is EnumRemoteLaneStartOutcome.ENDED:
             exit_code = (
                 0 if engine_rc == 0 and decided.outcome in ("done", "handed-off") else 1
             )
-        return self._result(outcome, receipt, exit_code)
+        return self._result(outcome, receipt, exit_code, durable=durable)
 
 
 __all__ = [
