@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Two review findings on the skill lifecycle projection (OMN-21933).
 
-1. The migration adds ``received_at`` with ``DEFAULT NOW()`` only through
-   ``ADD COLUMN IF NOT EXISTS``, a no-op when the column already exists, then sets it NOT
-   NULL. The writer's INSERT omits ``received_at``, so a pre-existing column without a
-   default broke every insert. The migration must set the default itself, before NOT NULL.
+1. Migration 0001 adds ``received_at`` with ``DEFAULT NOW()`` only through
+   ``ADD COLUMN IF NOT EXISTS``, a no-op when the column already exists. The writer's
+   INSERT omits ``received_at``, so a pre-existing column without a default broke every
+   insert. 0001 stays byte-identical to the vendored copy, so migration 0004 sets the
+   default itself.
 2. The real-Postgres proof skipped on any connection error, even when a DSN or password
    was configured, so a configured database that failed read as a skip. Only an unset
    configuration may skip.
@@ -26,7 +27,7 @@ pytestmark = pytest.mark.unit
 _MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_skill_lifecycle/migrations"
-    / "0001_create_skill_executions.sql"
+    / "0004_set_received_at_default_skill_executions.sql"
 )
 _ENV = (
     "INTEGRATION_POSTGRES_DSN",
@@ -37,13 +38,12 @@ _ENV = (
 
 def test_migration_sets_the_received_at_default_on_an_existing_column() -> None:
     sql = _MIGRATION.read_text()
-    default = re.search(
-        r"ALTER COLUMN received_at SET DEFAULT NOW\(\)", sql, re.IGNORECASE
-    )
-    not_null = re.search(r"ALTER COLUMN received_at SET NOT NULL", sql, re.IGNORECASE)
-    assert default, "no ALTER COLUMN received_at SET DEFAULT NOW() in the migration"
-    assert not_null
-    assert default.start() < not_null.start()
+    assert re.search(
+        r"^ALTER TABLE public\.skill_executions ALTER COLUMN received_at "
+        r"SET DEFAULT NOW\(\);$",
+        sql,
+        re.IGNORECASE | re.MULTILINE,
+    ), "no ALTER COLUMN received_at SET DEFAULT NOW() in migration 0004"
 
 
 def _outcome_of_connect(monkeypatch: pytest.MonkeyPatch, **env: str) -> str:

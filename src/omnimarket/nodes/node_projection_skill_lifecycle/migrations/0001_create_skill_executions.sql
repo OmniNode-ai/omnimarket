@@ -48,7 +48,6 @@ ALTER TABLE public.skill_executions ADD COLUMN IF NOT EXISTS session_id TEXT;
 ALTER TABLE public.skill_executions ADD COLUMN IF NOT EXISTS emitted_at TIMESTAMPTZ;
 ALTER TABLE public.skill_executions ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ      DEFAULT NOW();
 
-ALTER TABLE public.skill_executions ALTER COLUMN received_at SET DEFAULT NOW();
 ALTER TABLE public.skill_executions ALTER COLUMN event_id SET NOT NULL;
 ALTER TABLE public.skill_executions ALTER COLUMN run_id SET NOT NULL;
 ALTER TABLE public.skill_executions ALTER COLUMN event_type SET NOT NULL;
