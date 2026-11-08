@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Completion Rate Compute (OMN-23108, a floor reading of rebuild piece 15)
+#
+# Pure compute: handle(ModelDelegationCompletionRateRequest) -> ModelDelegationCompletionRate. The caller reads the rows of
+# delegation_events and the time; the window, the data source word, the harness prefix and every bound travel on the request
+# from the node's overlay (overlays/node_delegation_completion_rate_compute/overlay.yaml); this contract holds none.
+name: node_delegation_completion_rate_compute
+contract_name: node_delegation_completion_rate_compute
+node_name: node_delegation_completion_rate_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The delegation completion rate over delegation_events for a window, as lane delegation-why-fl0510 defined it. R_all counts
+  real, non-shadow rows that ended terminal_ok and passed the quality gate; R_dep counts the ones the deployed lane answered;
+  failed_rate is the share of real, non-shadow rows that did not end terminal_ok. WORKING while R_all and R_dep are at or over
+  their bounds and failed_rate is at or under its bound. NOT WORKING when any bound is broken, an empty window included. UNKNOWN
+  when the rows could not be read. The reading is carried as one STATUS ledger row that the floor's ledger_shadows rule reads
+  under piece 15. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_completion_rate
+      handler:
+        name: HandlerDelegationCompletionRate
+        module: omnimarket.nodes.node_delegation_completion_rate_compute.handlers.handler_delegation_completion_rate
+
+handler:
+  module: omnimarket.nodes.node_delegation_completion_rate_compute.handlers.handler_delegation_completion_rate
+  class: HandlerDelegationCompletionRate
+  input_model: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate.ModelDelegationCompletionRateRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelDelegationCompletionRateRequest
+  module: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate
+  description: The delegation_events rows read, the overlay and the time to read at.
+output_model:
+  name: ModelDelegationCompletionRate
+  module: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate
+  description: The verdict, R_all, R_dep, failed_rate, the broken bounds and the ledger row that carries them to the floor.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.delegation-completion-rate-requested.v1"
+    operation: "delegation_completion_rate"
+
+terminal_event: onex.evt.omnimarket.delegation-completion-rate-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-completion-rate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-completion-rate-read.v1
+
+# The delegation_events reader sends the request and appends the row; neither is a node contract yet (follow-up on OMN-23108).
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.delegation-completion-rate-requested.v1
+    producer: "the delegation_events reader, which reads the hour's rows; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-completion-rate-read.v1
+
+metadata:
+  description: "Delegation completion rate floor reading: R_all, R_dep and failed_rate over delegation_events against an owner-set overlay bound"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-08"
+  tags: [compute, delegation, reading, pure]
+  related_tickets: ["OMN-22478", "OMN-23108"]
