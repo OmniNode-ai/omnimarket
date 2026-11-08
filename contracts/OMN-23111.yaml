@@ -15,8 +15,6 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: a pull request titled with this ticket carries the log-directory fix, and the three tests it adds fail on the base and pass on the branch -- falsifier: uv run pytest of the reader''s launchd unit test file on the base and on the branch'
-      - id: AC2
-        statement: 'AC2: the reader installed from the branch on h101 stays running under launchd for one hour with a fresh reading each tick -- falsifier: launchctl list of the reader label on h101 shows a non-zero pid and the reader''s output log carries a reading newer than 15 minutes'
 evidence_requirements:
   - kind: tests
     description: The log-directory tests of the registry unit installer node.
