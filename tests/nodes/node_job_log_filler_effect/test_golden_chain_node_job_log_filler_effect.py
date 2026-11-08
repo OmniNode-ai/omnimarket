@@ -34,12 +34,12 @@ from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.nodes.node_job_log_filler_effect.handlers import (
     handler_job_log_filler as hjf,
 )
-from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_readers import (
-    InMemoryJobLogReader,
-)
-from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler_cli import (
+from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_filler_cli import (
     load_topics,
     result_from_terminal,
+)
+from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_readers import (
+    InMemoryJobLogReader,
 )
 from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler import (
     EnumJobLogFillOutcome,

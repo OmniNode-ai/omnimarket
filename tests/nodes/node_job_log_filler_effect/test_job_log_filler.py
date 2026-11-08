@@ -294,7 +294,7 @@ def test_the_bus_reader_names_the_profile_lane_and_maps_a_miss(
 
 
 def test_a_runtime_failure_terminal_becomes_a_failed_result() -> None:
-    from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler_cli import (
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_filler_cli import (
         result_from_terminal,
     )
 

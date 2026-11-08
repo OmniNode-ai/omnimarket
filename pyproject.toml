@@ -1332,7 +1332,7 @@ lab-work = "omnimarket.lab_work.cli:lab_work_group"
 # OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
 work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
 # OMN-23032: `onex job-log-fill` -- fill the job-log cache from the merge-relevant runs of open pull requests.
-job-log-fill = "omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler_cli:job_log_fill_group"
+job-log-fill = "omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_filler_cli:job_log_fill_group"
 # OMN-20275: `onex bus-binding` -- the binding a command used (durable or the in-memory fallback) and the
 # ledger outbox it holds while degraded.
 bus-binding = "omnimarket.handlers.bus_binding.cli:bus_binding_group"
