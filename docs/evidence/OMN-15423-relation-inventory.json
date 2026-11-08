@@ -104,7 +104,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 40,
-    "table": 122,
+    "table": 123,
     "view": 10
   },
   "relations": [
@@ -7310,6 +7310,62 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_overlay_store"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0000_create_overlay_store.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "overlay_store_current_idx"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (overlay_id, digest)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_overlay_store",
+      "name": "overlay_store",
+      "owner_declaration": "node_projection_overlay_store",
+      "partitioning": [],
+      "producer": "node_projection_overlay_store",
+      "readers": [
+        "node_floor_simple_effect",
+        "node_overlay_store_load_effect",
+        "node_overlay_store_read_effect"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_overlay_store"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_overnight",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -10379,8 +10435,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 112,
-    "source_declared_tables": 122
+    "source_created_tables": 113,
+    "source_declared_tables": 123
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -10396,7 +10452,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 112 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 113 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
