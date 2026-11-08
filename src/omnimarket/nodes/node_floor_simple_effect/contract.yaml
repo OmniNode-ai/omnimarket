@@ -99,6 +99,11 @@ runtime:
   # killed cannot close its own start, and the journal is append-only. It is above the publish node's 120 s limit for the cycle
   # steps, so a cycle that is still running is never closed from under itself, and below the receipts' chain deadline.
   abandon_after_seconds: 300
+  # Starts of other nodes of piece 17 that run as publish steps are closed the same way (OMN-22864). They are not pipeline
+  # chains: no join reads them, so adding one here changes no join. The comparison cycle ends itself below its own 15 s step
+  # limit; a kill it could not answer leaves its start for this cycle to close.
+  abandon_chains:
+    - node_floor_compare_effect:run_floor_compare_cycle
   # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
   # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
   # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
@@ -140,6 +145,10 @@ runtime:
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    # The lag condition comes from node_lab_alarm's finished runs (its overlay's lag.record_path and
+    # lag.record_condition), not from the alarm script's record: see read_broker_lag.
+    broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
+    broker_lag_condition: consumer_group_lag
     overlay_store_relpath: .onex_state/overlay-store/fleet.json
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json

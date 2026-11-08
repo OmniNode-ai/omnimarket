@@ -46,6 +46,8 @@ class ModelPlacementShareRequest(BaseModel):
     # One refusal reason on more than this share of a run's lanes alarms on its own.
     refusal_share: float = Field(default=0.5, gt=0, lt=1)
     refusal_min_lanes: int = Field(default=2, ge=1)
+    # Lanes the FRICTION row names one by one with their reason; the rest are counted (a row is one line).
+    lanes_named: int = Field(default=24, ge=1)
 
 
 class ModelPlacementShareResult(BaseModel):

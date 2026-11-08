@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the ledger store (the real-backend overlay of the retained store). Each read
+# appends one STATUS row through the command the named variable holds; the host name comes from the
+# variable host_env names. The in-memory source below is replaced by the GitHub one in
+# overlay.github.example.yaml for a real read.
+settings:
+  repositories: [example-org/example-repo, example-org/example-other]
+  window_seconds: 3600
+  run_lookback_seconds: 86400
+  max_age_seconds: 1800
+  watched_runner_groups: [example-private-group]
+  baseline_public_repositories: []
+source:
+  backend: inmemory
+  fixture:
+    read_age_seconds: 60
+    starts:
+      - repository: example-org/example-repo
+        run_id: 1001
+        job_id: 5001
+        job_name: build
+        workflow_name: ci
+        run_event: push
+        head_is_fork: false
+        repository_private: true
+        runner_group_name: example-private-group
+        runner_name: example-runner-1
+        labels: [example-label]
+        started_at: "2026-11-07T11:30:00Z"
+store:
+  backend: ledger
+  ledger_append:
+    command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+    host_env: EXAMPLE_HOST_NAME
+    timeout_seconds: 90
+  lane: job-start-source
+  actor: node:node_job_start_source_effect
+  publish_max_age_seconds: 7200
+  injected_fault: Start a job from a fork on a watched runner group, in a sandbox fixture

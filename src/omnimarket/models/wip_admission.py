@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Types of the work-in-progress admission: the read, the limits, the request and the decision.
 
-Work in progress is started-but-unlanded work: an open non-draft pull request, or a
-ticket in a started state that a live CLAIM holds and that no counted pull request
-already carries. It is counted per repository and for the whole fleet. Nothing here
+Work in progress is work sent to lanes: a ticket in a started state that a live CLAIM
+holds. It is counted per repository and for the whole fleet. Open pull requests are not
+counted (RULING 2026-11-07T20:02:38Z); the read carries them only so a fix-forward request
+can be verified against the red or blocked pull request it names. Nothing here
 names a repository, a host or an organization; the names arrive as data, and every
 number arrives from the contract's ``config.wip_admission`` block or the
 ``wip_admission`` overlay.
@@ -86,11 +87,10 @@ class ModelWipRead(_Frozen):
 
 
 class ModelWipCounts(_Frozen):
-    """Started-but-unlanded counts: per repository and for the fleet."""
+    """Work sent to lanes: started tickets with a live CLAIM, per repository and for the fleet."""
 
     by_repo: dict[str, int]
     fleet: int
-    pull_requests: int
     ticket_claims: int
 
 
