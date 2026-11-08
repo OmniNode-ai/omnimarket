@@ -17,8 +17,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.contract_topics import contract_section
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+from omnimarket.models.seam_reading.model_required_sender import (
     EnumSeamTrigger,
     ModelRequiredSenderRequest,
     ModelRequiredSenderResult,
@@ -26,6 +25,7 @@ from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender imp
     ModelSeamDeclaration,
     ModelSeamVerdict,
 )
+from omnimarket.nodes.contract_topics import contract_section
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 

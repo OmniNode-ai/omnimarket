@@ -51,6 +51,9 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     load_overlay,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
+from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
+    HandlerRequiredSender,
+)
 
 _SEAM_BUSES: dict[str, Callable[[str], ProtocolSeamBus]] = {
     "inmemory": lambda _lane: InMemorySeamBus(),
@@ -74,6 +77,7 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         if write
         else None,
         clock=lambda: datetime.now(UTC),
+        required_sender=HandlerRequiredSender(),
     )
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(

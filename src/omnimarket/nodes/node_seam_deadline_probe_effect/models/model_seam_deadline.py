@@ -10,8 +10,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
-    ModelSeamCounts,
+from omnimarket.models.seam_reading.model_required_sender import ModelSeamCounts
+from omnimarket.models.seam_reading.model_seam_demand import (
+    EnumSeamCrossing,
+    ModelSeamDemand,
 )
 
 
@@ -28,17 +30,6 @@ class EnumSeamFault(StrEnum):
     DEADLINE_ZERO = "deadline-zero"
 
 
-class EnumSeamCrossing(StrEnum):
-    """What came back for one demanded command."""
-
-    RESULT = "result"
-    RESULT_ERROR = "result-error"
-    NO_RESULT_BY_DEADLINE = "no-result-by-deadline"
-    BUS_UNREADABLE = "bus-unreadable"
-    #: An on-demand seam whose node could not be attached, so its command was never sent.
-    ATTACH_FAILED = "attach-failed"
-
-
 class ModelSeamDeadlineCommand(BaseModel):
     """Run every seam the overlay declares, or the ones named."""
 
@@ -48,21 +39,6 @@ class ModelSeamDeadlineCommand(BaseModel):
     seams: tuple[str, ...] = ()
     write: bool = False
     fault: EnumSeamFault = EnumSeamFault.NONE
-
-
-class ModelSeamDemand(BaseModel):
-    """One command to send and the result topic to read for its correlated answer."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    seam: str = Field(min_length=1)
-    command_topic: str = Field(min_length=1)
-    result_topic: str = Field(min_length=1)
-    consumer_group_prefix: str = Field(min_length=1)
-    correlation_id: str = Field(min_length=1)
-    payload: dict[str, str | int | bool]
-    error_keys: tuple[str, ...] = Field(min_length=1)
-    deadline_seconds: float = Field(ge=0)
 
 
 class ModelSeamAnswer(BaseModel):

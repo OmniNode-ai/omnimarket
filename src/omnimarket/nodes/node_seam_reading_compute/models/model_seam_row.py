@@ -12,7 +12,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+from omnimarket.models.seam_reading.model_required_sender import (
     EnumSeamTrigger,
 )
 

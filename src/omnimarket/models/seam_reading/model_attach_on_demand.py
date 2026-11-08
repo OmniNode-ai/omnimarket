@@ -9,9 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline import (
-    EnumSeamCrossing,
-)
+from omnimarket.models.seam_reading.model_seam_demand import EnumSeamCrossing
 
 
 class ModelAttachOnDemandRequest(BaseModel):

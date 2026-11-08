@@ -16,6 +16,9 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingVerdict
+from omnimarket.models.seam_reading.model_required_sender import (
+    EnumSeamTrigger,
+)
 from omnimarket.nodes.node_seam_reading_compute.adapters.inmemory_seam_row_store import (
     InMemorySeamRowStore,
 )
@@ -23,9 +26,6 @@ from omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_row_append
     HandlerSeamRowAppend,
     answer_command,
     load_topics,
-)
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
-    EnumSeamTrigger,
 )
 from omnimarket.nodes.node_seam_reading_compute.models.model_seam_row import (
     EnumRowAppendStatus,

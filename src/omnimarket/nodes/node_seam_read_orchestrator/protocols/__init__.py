@@ -8,7 +8,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand import (
+from omnimarket.models.seam_reading.model_attach_on_demand import (
     ModelAttachOnDemandRequest,
 )
 

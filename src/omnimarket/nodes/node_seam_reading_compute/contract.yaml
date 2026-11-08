@@ -41,8 +41,8 @@ handler_routing:
       handler:
         name: HandlerRequiredSender
         module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender
-      input_model: omnimarket.nodes.node_seam_reading_compute.models.model_required_sender.ModelRequiredSenderRequest
-      output_model: omnimarket.nodes.node_seam_reading_compute.models.model_required_sender.ModelRequiredSenderResult
+      input_model: omnimarket.models.seam_reading.model_required_sender.ModelRequiredSenderRequest
+      output_model: omnimarket.models.seam_reading.model_required_sender.ModelRequiredSenderResult
     - operation: append_seam_rows
       topic: onex.cmd.omnimarket.seam-rows-append-requested.v1
       handler:

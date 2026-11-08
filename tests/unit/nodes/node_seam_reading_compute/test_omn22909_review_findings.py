@@ -16,7 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+from omnimarket.models.seam_reading.model_required_sender import (
     EnumSeamTrigger,
     ModelDemandedVerdict,
     ModelRequiredSenderRequest,

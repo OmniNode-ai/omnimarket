@@ -17,11 +17,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+from omnimarket.models.seam_reading.model_required_sender import (
     EnumSeamTrigger,
     ModelSeamDeclaration,
 )
+from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_seam_deadline_probe_effect"
 

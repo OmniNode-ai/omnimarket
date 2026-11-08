@@ -35,6 +35,12 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
 from omnimarket.nodes.node_seam_read_orchestrator.adapters.inmemory_node_attacher import (
     InMemoryNodeAttacher,
 )
+from omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_demand import (
+    HandlerAttachOnDemand,
+)
+from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
+    HandlerRequiredSender,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -104,7 +110,10 @@ def _handler(
             bus=bus,
             appender=ledger,
             clock=lambda: _NOW,
-            attacher=attacher,
+            required_sender=HandlerRequiredSender(),
+            attach_on_demand=HandlerAttachOnDemand(attacher=attacher, bus=bus)
+            if attacher is not None
+            else None,
         ),
         attacher,
     )

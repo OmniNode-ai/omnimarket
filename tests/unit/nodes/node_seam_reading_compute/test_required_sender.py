@@ -15,16 +15,16 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
-    HandlerRequiredSender,
-    answer_command,
-    load_topics,
-)
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
+from omnimarket.models.seam_reading.model_required_sender import (
     EnumSeamTrigger,
     ModelDemandedVerdict,
     ModelRequiredSenderRequest,
     ModelSeamDeclaration,
+)
+from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
+    HandlerRequiredSender,
+    answer_command,
+    load_topics,
 )
 
 pytestmark = pytest.mark.unit

@@ -4,12 +4,12 @@
 
 from __future__ import annotations
 
+from omnimarket.models.seam_reading.model_attach_on_demand import (
+    ModelAttachOnDemandRequest,
+)
 from omnimarket.nodes.node_seam_deadline_probe_effect.adapters.inmemory_seam_bus import (
     InMemorySeamBus,
     Responder,
-)
-from omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand import (
-    ModelAttachOnDemandRequest,
 )
 from omnimarket.nodes.node_seam_read_orchestrator.protocols import ModelAttachOutcome
 

@@ -17,6 +17,9 @@ import json
 import pytest
 
 from omnimarket.models.model_reading import EnumReadingVerdict
+from omnimarket.models.seam_reading.model_attach_on_demand import (
+    ModelAttachOnDemandRequest,
+)
 from omnimarket.nodes.node_seam_deadline_probe_effect.adapters.inmemory_seam_bus import (
     InMemorySeamBus,
     Responder,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_dem
     HandlerAttachOnDemand,
     answer_command,
     load_topics,
-)
-from omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand import (
-    ModelAttachOnDemandRequest,
 )
 
 pytestmark = pytest.mark.unit

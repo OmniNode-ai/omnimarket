@@ -19,15 +19,15 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline import (
+from omnimarket.models.seam_reading.model_attach_on_demand import (
+    ModelAttachOnDemandRequest,
+    ModelAttachOnDemandResult,
+)
+from omnimarket.models.seam_reading.model_seam_demand import (
     EnumSeamCrossing,
     ModelSeamDemand,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
-from omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand import (
-    ModelAttachOnDemandRequest,
-    ModelAttachOnDemandResult,
-)
 from omnimarket.nodes.node_seam_read_orchestrator.protocols import ProtocolNodeAttacher
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"

@@ -23,6 +23,15 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.seam_reading.model_attach_on_demand import (
+    ModelAttachOnDemandRequest,
+)
+from omnimarket.models.seam_reading.model_required_sender import (
+    EnumSeamTrigger,
+    ModelDemandedVerdict,
+    ModelRequiredSenderRequest,
+    ModelSeamCounts,
+)
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
     stamp_text,
@@ -43,22 +52,10 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     ModelSeamDeadlineOverlay,
     ModelSeamSpec,
 )
-from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
-from omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_demand import (
-    HandlerAttachOnDemand,
-)
-from omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand import (
-    ModelAttachOnDemandRequest,
-)
-from omnimarket.nodes.node_seam_read_orchestrator.protocols import ProtocolNodeAttacher
-from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
-    HandlerRequiredSender,
-)
-from omnimarket.nodes.node_seam_reading_compute.models.model_required_sender import (
-    EnumSeamTrigger,
-    ModelDemandedVerdict,
-    ModelRequiredSenderRequest,
-    ModelSeamCounts,
+from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import (
+    ProtocolAttachOnDemand,
+    ProtocolRequiredSender,
+    ProtocolSeamBus,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -97,9 +94,11 @@ class HandlerSeamDeadline:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
-        attacher: ProtocolNodeAttacher | None = None,
+        required_sender: ProtocolRequiredSender,
+        attach_on_demand: ProtocolAttachOnDemand | None = None,
     ) -> None:
-        self._attacher = attacher
+        self._attach_on_demand = attach_on_demand
+        self._required_sender = required_sender
         self._overlay = overlay
         self._host = host
         self._bus = bus
@@ -127,11 +126,11 @@ class HandlerSeamDeadline:
         """Demand a seam's command; an on-demand seam's node is attached for the demand only."""
         if not seam.on_demand:
             return self._bus.demand(demand)
-        if self._attacher is None:
+        if self._attach_on_demand is None:
             return ModelSeamAnswer(
                 crossing=EnumSeamCrossing.ATTACH_FAILED, detail="no-attacher"
             )
-        attached = HandlerAttachOnDemand(attacher=self._attacher, bus=self._bus).handle(
+        attached = self._attach_on_demand.handle(
             ModelAttachOnDemandRequest(
                 correlation_id=demand.correlation_id,
                 seam=demand.seam,
@@ -161,7 +160,7 @@ class HandlerSeamDeadline:
         on_demand = {
             d.seam for d in declarations if d.trigger is EnumSeamTrigger.ON_DEMAND
         }
-        read = HandlerRequiredSender().handle(
+        read = self._required_sender.handle(
             ModelRequiredSenderRequest(
                 declarations=declarations,
                 demanded=tuple(

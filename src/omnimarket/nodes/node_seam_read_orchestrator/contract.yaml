@@ -198,8 +198,8 @@ handler_routing:
       handler:
         name: HandlerAttachOnDemand
         module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_demand
-      input_model: omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand.ModelAttachOnDemandRequest
-      output_model: omnimarket.nodes.node_seam_read_orchestrator.models.model_attach_on_demand.ModelAttachOnDemandResult
+      input_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandRequest
+      output_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandResult
 
 topics:
   attach_on_demand_requested: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
