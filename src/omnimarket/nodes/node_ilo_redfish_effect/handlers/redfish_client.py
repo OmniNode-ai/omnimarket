@@ -15,13 +15,13 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr
 
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloRefusal,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ModelRedfishResponse,
     ProtocolRedfishTransport,
     RedfishTransportError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloRefusal,
 )
 
 ROOT_PATH = "/redfish/v1/"
