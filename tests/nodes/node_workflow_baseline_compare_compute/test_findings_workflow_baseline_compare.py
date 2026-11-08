@@ -166,9 +166,7 @@ def test_finite_tolerance_refuses_inf_and_nan(bad: float) -> None:
 
 @pytest.mark.parametrize("bad", ["Infinity", "NaN"])
 def test_finite_json_payload_is_refused(bad: str) -> None:
-    payload = (
-        '{"name": "m", "kind": "time", "value": %s}' % bad  # noqa: UP031
-    )
+    payload = '{"name": "m", "kind": "time", "value": ' + bad + "}"
     with pytest.raises(ValidationError):
         ModelBaselineReading.model_validate_json(payload)
 
