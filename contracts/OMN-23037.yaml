@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-23037
+title: The deploy-lag reader reads a running revision's ancestry from the runtime host's clone, and a row it could not read says so
+summary: >-
+  The floor's deploy_lag row read "merged, not running" for omnibase_infra#5663 and #5674 although both are ancestors of the running revision d800442cc52a. The reader asked its own omnibase_infra clone for the history of that revision, the clone never fetched it, the call exited 128, the failure was recorded as unread evidence, and read_deploy_lag ignored the unread cause. The host read overlay gains runtime_clone_home; provenance reads the history from the runtime host's clone over ssh when the local clone cannot answer; a running ref that is not a hex commit id is refused before a command is built; and a row whose count could not read the running build appends "evidence unread: <cause>" to its note.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23037-runtime-clone-ancestry
+    statement: >-
+      A merge that is an ancestor of the running revision counts as running whichever clone holds the revision, and a count that could not read the running build says so in its row note instead of reading as a plain "merged, not running".
+    acceptance:
+      - id: AC1
+        statement: "AC1: with the reader's clone lacking the running commit, the reader still counts both merges as running when the runtime host's clone holds it, and a count that could not read the running build says so in the row note -- falsifier: uv run pytest of the deploy-lag reader tests with the three source files restored to origin/dev, 4 tests fail"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The deploy-lag reader tests: four new tests in the deployed-provenance file using real git repositories (the reader's clone holds the two merges, the runtime host's clone holds the running commit) and one new test in the deploy-agent source file for the row note.
+    command: uv run --frozen pytest tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23037-ac1-runtime-clone-ancestry
+    description: >-
+      The two reader test files pass on the branch (19 pass). With the model, the sources handler and the provenance source restored to origin/dev, 4 of the 19 fail: the ancestor of a running commit the reader never fetched, the commit neither clone holds, the ref that is not a commit id, and the row note naming the unread running build. The named control without runtime_clone_home passes on both, showing the pair is not placed without the overlay field.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23037-ac2-floor-row-clears
+    description: >-
+      After the build is installed on the host that runs factory-floor-publish and the overlay value is landed, one publish later the floor serves a lab:deploy_lag row that does not name omnibase_infra#5663 and #5674 as merged, not running. The floor is reachable only from the lab network, so hosted CI cannot run this check and only the local Done gate runs it, with FLOOR_SIMPLE_JSON_URL set to the floor page JSON address from the lab overlay.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -c 'curl -fsS "$FLOOR_SIMPLE_JSON_URL" | python3 -I -c "import json,sys; d=json.load(sys.stdin); t=[r.get(\"text\",\"\") for r in d[\"lab_state\"] if r.get(\"id\")==\"deploy_lag\"]; sys.exit(1 if any(\"omnibase_infra#5663: merged, not running\" in x or \"omnibase_infra#5674: merged, not running\" in x for x in t) else 0)"'
+  - id: dod-omn23037-integration-proof
+    description: >-
+      Run the two reader test files on a lab host at the pushed head. The tests build real git repositories for the reader's clone and the runtime host's clone, so the proof needs a host with git and the repository's dependencies. Hosted CI cannot place a lab job, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23037 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_merged_running_count_effect/test_deployed_provenance.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov

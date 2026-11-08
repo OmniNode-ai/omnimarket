@@ -10,9 +10,9 @@ requirements:
   statement: Piece 11 reads NOT WORKING when a runtime-affecting merge past its deadline has no PASS receipt for its exact sha on the required lane inside the deadline, or when the newest probe is missing, stale, failing or saw another sha.
   acceptance:
   - id: AC1
-    statement: 'AC1: the reading is NOT WORKING when no PASS receipt exists within an hour of a runtime-affecting merge or the 24-hour probe is missing or failing -- falsifier: uv run pytest src/omnimarket/nodes/node_dev_deploy_reading_compute -q -k receipt_and_probe'
+    statement: 'AC1: the reading is NOT WORKING when no PASS receipt exists within an hour of a runtime-affecting merge or the 24-hour probe is missing or failing -- falsifier: uv run pytest tests/nodes/node_dev_deploy_reading_compute -q -k receipt_and_probe'
   - id: AC2
-    statement: 'AC2: generated golden and error chain tests exist and a named mutation turns each red -- falsifier: uv run pytest src/omnimarket/nodes/node_dev_deploy_reading_compute -q -k chain'
+    statement: 'AC2: generated golden and error chain tests exist and a named mutation turns each red -- falsifier: uv run pytest tests/nodes/node_dev_deploy_reading_compute -q -k chain'
 evidence_requirements:
 - kind: tests
   description: The receipt and probe rule tests and the golden and error chain tests with their named mutations
