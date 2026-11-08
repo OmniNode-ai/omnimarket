@@ -62,6 +62,16 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_order_advance_effect/test_order_advance.py tests/nodes/node_start_admission_effect/test_start_admission.py -q -n 0 --no-cov -k "golden_chain"
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: []
+  - id: dod-deploy-omn23055-live-content
+    description: >-
+      The pushed head carries the three new handlers on the repository, read live from GitHub at the head commit; the check fails when any handler class is absent at that commit.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          for p in nodes/node_gate_store_effect/handlers/store_postgres.py:PostgresGateStore nodes/node_order_advance_effect/handlers/handler_order_advance.py:HandlerOrderAdvance nodes/node_start_admission_effect/handlers/handler_start_admission.py:HandlerStartAdmission; do f="${p%%:*}"; c="${p##*:}"; gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/$f?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^class $c" | grep -qx 1 || exit 1; done
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
   - id: dod-omn23055-integration-proof
     description: >-
       The pushed head ran the three node test directories on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
