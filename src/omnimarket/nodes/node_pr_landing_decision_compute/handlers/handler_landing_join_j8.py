@@ -71,13 +71,13 @@ class HandlerLandingJoinJ8:
     def __init__(
         self,
         *,
-        sink: ProtocolEmissionSink,
-        policy: ModelJoinJ8Policy,
+        sink: ProtocolEmissionSink | None = None,
+        policy: ModelJoinJ8Policy | None = None,
         clock: Callable[[], datetime] | None = None,
         backend: Literal["in_memory", "real"] = "real",
     ) -> None:
         self._sink = sink
-        self._policy = policy
+        self._policy = policy if policy is not None else load_join_j8_policy()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._backend = backend
 
@@ -164,6 +164,10 @@ class HandlerLandingJoinJ8:
         )
 
     def _emit(self, cid: str, phase: str, **extra: object) -> None:
+        if self._sink is None:
+            raise RuntimeError(
+                "HandlerLandingJoinJ8 has no emission sink; inject one before handling a request"
+            )
         self._sink.emit(
             ModelNodeEmission.model_validate(
                 {
