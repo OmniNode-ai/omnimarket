@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _Frozen(BaseModel):
@@ -23,13 +23,15 @@ class EnumSyntheticProbeReason(StrEnum):
     OK = "ok"
     #: No terminal event came back for the task.
     NO_TERMINAL = "no_terminal"
+    #: A terminal came back, but it is not the delegation's success terminal.
+    NOT_SUCCESS_TERMINAL = "not_success_terminal"
     #: A terminal came back after the bound.
     OVER_BOUND = "over_bound"
     #: A terminal came back with no result text.
     RESULT_DROPPED = "result_dropped"
     #: The result text does not hold the answer the task asked for.
     WRONG_ANSWER = "wrong_answer"
-    #: A terminal came back with no cost.
+    #: A terminal came back with no cost, or one that is not a finite amount.
     COST_MISSING = "cost_missing"
 
 
@@ -39,6 +41,8 @@ class ModelSyntheticProbeRules(_Frozen):
     task_class: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
     expected_substring: str = Field(min_length=1)
+    #: Class name of the terminal event that is a successful delegation outcome.
+    success_terminal_event_type: str = Field(min_length=1)
     bound_seconds: int = Field(ge=1)
     cadence_seconds: int = Field(ge=1)
     require_cost: bool
@@ -60,6 +64,20 @@ class ModelSyntheticProbeRequest(_Frozen):
     result_text: str | None = None
     #: The terminal's cumulative attempt cost in US dollars; None when it carried none.
     cost_usd: float | None = None
+
+    @model_validator(mode="after")
+    def _interval_is_ordered_and_comparable(self) -> ModelSyntheticProbeRequest:
+        if self.observed_at is None:
+            return self
+        if (self.issued_at.utcoffset() is None) != (
+            self.observed_at.utcoffset() is None
+        ):
+            raise ValueError(
+                "issued_at and observed_at must both be aware or both naive"
+            )
+        if self.observed_at < self.issued_at:
+            raise ValueError("observed_at must not be before issued_at")
+        return self
 
 
 class ModelSyntheticProbeResult(_Frozen):
