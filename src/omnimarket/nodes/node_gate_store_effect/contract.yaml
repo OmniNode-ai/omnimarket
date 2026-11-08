@@ -69,6 +69,22 @@ externally_consumed_topics:
   - onex.evt.omnimarket.gate-store-answered.v1
   - onex.evt.omnimarket.gate-store-failed.v1
 
+# OMN-22936, rebuild plan 4.1 join J6 (piece 6 to piece 7): a stop committed in the gate store lands as one durable audit
+# row and one projected audit row, and another send of that piece is refused; a stop whose commit gets no answer by the
+# deadline leaves the piece's send fence closed. Nothing of this is spelled in code.
+join_j6:
+  join_id: "J6"
+  from_piece: 6
+  to_piece: 7
+  commit_deadline_seconds: 5.0
+  audit_kinds:
+    committed: "stop_committed"
+    unanswered: "stop_unanswered"
+    refused: "stop_refused"
+  failure_codes:
+    audit_row_missing: "audit_row_missing"
+    projected_row_missing: "projected_row_missing"
+
 overlay:
   node: gate_store
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
