@@ -568,5 +568,5 @@ def test_handler_constructs_without_injected_dependencies() -> None:
 @pytest.mark.unit
 def test_handler_without_sink_refuses_to_emit() -> None:
     handler = HandlerLandingJoinJ8()
-    with pytest.raises(RuntimeError, match="no emission sink"):
+    with pytest.raises(ValueError, match="without an emission sink"):
         handler._emit("cid-1", "phase")

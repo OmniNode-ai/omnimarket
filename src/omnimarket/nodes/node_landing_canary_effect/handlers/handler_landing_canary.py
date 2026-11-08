@@ -270,6 +270,7 @@ class HandlerLandingCanary:
             f"host={self._host}",
             f"piece={publish.piece}",
             f"tag={'drill' if publish.drill else 'operational'}",
+            f"drill={'yes' if publish.drill else 'no'}",
             f"backend={self._overlay.target.backend}",
             f"verdict={result.verdict.value}",
             f"outcome={result.outcome.value}",

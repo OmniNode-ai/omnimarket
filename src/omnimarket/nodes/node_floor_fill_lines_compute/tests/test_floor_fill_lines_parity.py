@@ -30,6 +30,9 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.floor_fill import (
+    ModelFloorFillLinesRequest,
+)
 from omnimarket.models.model_scenario_row import ModelScenarioRow
 from omnimarket.models.model_scenario_run import ModelScenarioRun
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
@@ -40,9 +43,6 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 )
 from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines import (
     HandlerFloorFillLines,
-)
-from omnimarket.nodes.node_floor_fill_lines_compute.models import (
-    ModelFloorFillLinesRequest,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]

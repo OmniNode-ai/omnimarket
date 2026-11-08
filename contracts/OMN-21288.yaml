@@ -74,6 +74,13 @@ requirements:
         statement: "AC21288101: against the live zero-consumer names, the contract's patterns after the change classify the runtime_local_terminal_t<N>_run_<hex12> and host_drift_fleet.<host>.<hex12> names as reapable and the stable names as protected or unmatched -- falsifier: the fixture test fails on origin/dev's contract and passes on the branch"
       - id: "AC21288104"
         statement: "AC21288104: the focused live-family test passes on the branch (pre-commit runs as its own hook and CI check) -- falsifier: the focused test fails"
+  - id: "req-omn21288-roster-model-loads-light"
+    statement: "The dev lane roster model of node_local_environment_observe_effect lives in the node's overlay module and loads with only pydantic and the standard library, so the overlays repository's check can validate the lane's overlay through it."
+    acceptance:
+      - id: "AC21288201"
+        statement: "AC21288201: the roster model loads, and a roster of services validates, in an interpreter where httpx, omnibase_core and omnibase_infra cannot be imported -- falsifier: uv run pytest tests/test_local_environment_roster_overlay_loads_light.py -q --no-cov -k roster_model_loads_where_the_handlers_packages_are_absent fails when overlay.py imports httpx"
+      - id: "AC21288202"
+        statement: "AC21288202: an empty roster and an entry with an unknown key are each refused by the model, and the handler names the same model classes -- falsifier: uv run pytest tests/test_local_environment_roster_overlay_loads_light.py -q --no-cov -k 'empty_roster or unknown_key or same_models' fails when the model accepts either"
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -90,6 +97,9 @@ evidence_requirements:
   - kind: "tests"
     description: "T17: a cross-tenant read through the node returns nothing on real Postgres under a NOBYPASSRLS role."
     command: "uv run pytest tests/projection/test_t17_projection_query_node_cross_tenant_real_postgres.py -q --no-cov --refuse-skips"
+  - kind: "tests"
+    description: "The lane roster model loads without the handler's packages, refuses an empty roster and an unknown key."
+    command: "uv run pytest tests/test_local_environment_roster_overlay_loads_light.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -395,3 +405,19 @@ dod_evidence:
           print(json.dumps({"run_id": receipt["run_id"], "broker": broker, "groups_total": len(states), "groups_empty": len(empty), "terminal_reapable": len(terminal), "drift_reapable": len(drift), "persistent_excluded": len(persistent), "groups_reaped": census["groups_reaped"]}))
           '
         cwd: "."
+  - id: "dod-omn21288-roster-model-loads-light"
+    description: "The roster model loads in an interpreter that cannot import httpx, omnibase_core or omnibase_infra. The test fails at the merge base, which has no overlay module, and fails with an import of httpx added to overlay.py."
+    source: "manual"
+    binds_ac: ["AC21288201"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_local_environment_roster_overlay_loads_light.py -q --no-cov -p no:cacheprovider -k roster_model_loads_where_the_handlers_packages_are_absent"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-roster-model-refusals"
+    description: "An empty roster and an entry with an unknown key are refused; the handler and the overlay module name the same classes; the overlay loads through load_structured_overlay."
+    source: "manual"
+    binds_ac: ["AC21288202"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_local_environment_roster_overlay_loads_light.py -q --no-cov -p no:cacheprovider -k 'empty_roster or unknown_key or same_models or overlay_module_models'"
+        cwd: "${OMNI_HOME}/omnimarket"

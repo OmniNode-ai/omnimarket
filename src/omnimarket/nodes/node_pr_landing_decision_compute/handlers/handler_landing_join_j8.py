@@ -165,8 +165,8 @@ class HandlerLandingJoinJ8:
 
     def _emit(self, cid: str, phase: str, **extra: object) -> None:
         if self._sink is None:
-            raise RuntimeError(
-                "HandlerLandingJoinJ8 has no emission sink; inject one before handling a request"
+            raise ValueError(
+                "HandlerLandingJoinJ8 was built without an emission sink; inject one to emit"
             )
         self._sink.emit(
             ModelNodeEmission.model_validate(

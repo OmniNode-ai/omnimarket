@@ -5,7 +5,9 @@
 ``ModelRoutingDecision`` is ``extra="forbid"``, and omniclaude decodes it with the
 omnimarket its pin names. A producer that stamps the selected key's ordered
 models would be refused by that pinned consumer, so this consumer lands first:
-it accepts the key and drops it, and still refuses every other unknown key.
+it accepted the key and dropped it. The producer change now declares the field,
+so the decision keeps the ordered models, and every other unknown key is still
+refused.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ def test_a_decision_carrying_model_candidates_decodes() -> None:
     )
 
     assert decision.selected_model == "model-a"
-    assert "model_candidates" not in decision.model_dump()
+    assert decision.model_candidates == ("model-a", "model-b")
 
 
 @pytest.mark.unit
