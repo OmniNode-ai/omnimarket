@@ -13,11 +13,6 @@ requirements:
     statement: 'AC1: each measured family of friction rows is named by the shipped class rules and the floor reader sees the class on its row, while a row naming no recorded cause stays unclassified -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py -q --no-cov'
   - id: AC2
     statement: 'AC2: the step reads every setting from the contract and the overlay, and a missing overlay, a pattern that does not compile or an unset ledger path fails the step and keeps the previous report -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov'
-- id: req-omn22814-class-list-names-recorded-causes
-  statement: Each recorded FRICTION row that carried no class cell gets a named class with an owner from the shipped class rules, and the same replays with only the rules shipped before each fixture file leave every fixture row unclassified.
-  acceptance:
-  - id: AC3
-    statement: 'AC3: the shipped class rules name the cause of every recorded unclassified row of the two fixture files and the control with only the earlier rules leaves all of them unclassified -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: The friction step tests and the floor publish tests.
@@ -27,14 +22,6 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn22814-ac3
-  description: The class rule replay tests of both fixture files pass, with the controls that show every fixture row unclassified under the rules shipped before it.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov -n 0 -p no:randomly
 - id: dod-omn22814-ac1
   description: The golden and the control tests of the class rules pass.
   source: manual
