@@ -44,6 +44,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k test_the_runtime_preflight_reads"
         cwd: "."
+  - id: "dod-omn23065-deploy-probe"
+    description: "Hosted structural smoke needing no lab route, broker or database: read the node contract at the checked-out PR head and require the consumer_group_handover key naming the retired group, then run the handover tests. Fails at the merge base, whose contract holds the inert retired_consumer_group key."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_infra_routing_decisions/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "from_group_id: infra-routing-decisions-postgres" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k handover"
+        cwd: "."
   - id: "dod-omn23065-integration-proof"
     description: "The pushed head ran the handover tests on a lab host through the lab work runner with the pinned omnibase_infra preflight loader and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
