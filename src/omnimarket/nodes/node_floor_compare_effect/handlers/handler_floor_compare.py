@@ -280,6 +280,34 @@ class HandlerFloorCompare:
             if doc is not None
             else None
         )
+        if snapshot is None and request.backfill_only and raw is None:
+            # Archive-only operation reads the dated copies into the history and records no tick: it needs no live floor.
+            archived, bad_lines = read_history(history_path)
+            imported = self._backfill(rt, home, history_path, archived)
+            wrote_by_source: dict[str, int] = {}
+            source_notes: tuple[str, ...] = ()
+            if request.backfill_history:
+                wrote_by_source, source_notes = self._backfill_history(
+                    request, rt, home, now, env, history_path
+                )
+            points = len(read_history(history_path)[0])
+            chain.success(
+                {
+                    "history_points": points,
+                    "backfilled": imported,
+                    "recorded": 0,
+                    "skipped_lines": bad_lines,
+                    "history_written": sum(wrote_by_source.values()),
+                    "source_notes": len(source_notes),
+                }
+            )
+            return ModelFloorCompareResult(
+                ok=True,
+                backfilled=imported,
+                history_points=points,
+                history_written=wrote_by_source,
+                source_notes=source_notes,
+            )
         if snapshot is None:
             chain.failure(
                 "simple_payload_invalid",
@@ -413,7 +441,7 @@ class HandlerFloorCompare:
                 update={
                     "values": {**snapshot.values, **values},
                     "labels": {**snapshot.labels, **labels},
-                    "complete": complete,
+                    "complete": tuple(dict.fromkeys((*snapshot.complete, *complete))),
                 }
             ),
             tuple(notes),
@@ -491,10 +519,13 @@ class HandlerFloorCompare:
                     rel = f"{source.kind}:{rel}"
                 if rel in done or not path.is_file():
                     continue
-                done.add(rel)
                 doc = self._read_json(path)
                 snap = parse(doc, rt, source=f"backfill:{source.kind}") if doc else None
-                if snap is None or (snap.source, snap.at) in have or not snap.values:
+                if snap is None:
+                    # Unreadable or incomplete now: not checkpointed, so a copy that becomes valid is still imported.
+                    continue
+                done.add(rel)
+                if (snap.source, snap.at) in have or not snap.values:
                     continue
                 have.add((snap.source, snap.at))
                 fresh.append(snap)

@@ -54,16 +54,20 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict
-
+from omnimarket.handlers.tenant_model_candidates import selected_key_models
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    ModelTenantRoutingOverlayBackend as ModelTenantRoutingOverlayBackend,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     TENANT_CREDENTIALS_TABLE,
     ProtocolTenantOverlayReader,
     _select_pool_secret_ref,
-    _selected_key_model,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     _not_expired as _not_expired,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
+    _selected_key_model as _selected_key_model,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
@@ -111,27 +115,6 @@ BYOK_ALL_TASK_TYPES = "*"
 #: bring-your-own-key spend, which is a reporting defect that stays invisible
 #: until someone reads a bill and finds house GPU time in a customer's column.
 HOUSE_OVERLAY_COST_TIER = "house_overlay"
-
-
-class ModelTenantRoutingOverlayBackend(BaseModel):
-    """Resolved tenant-overlay backend binding for one (tenant_id, task_type).
-
-    A 1:1 field mapping of one ``delegation_routing_tenant_overlay`` row (see
-    module docstring for the AC6 seam). Frozen -- a routing decision snapshot,
-    never mutated after resolution.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    tenant_id: str
-    task_type: str
-    backend_id: str
-    endpoint_url: str
-    model_name: str
-    provider: str | None = None
-    secret_ref: str | None = None
-    timeout_ms: int | None = None
-    max_tokens: int | None = None
 
 
 def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:
@@ -272,6 +255,13 @@ def resolve_tenant_overlay(
         selector_key=selector_key,
         now=now if now is not None else datetime.now(UTC),
     )
+    models = selected_key_models(
+        db,
+        tenant_id=tenant_id,
+        provider=provider,
+        secret_ref=secret_ref,
+        overlay_model=str(row["model_name"]),
+    )
     return ModelTenantRoutingOverlayBackend(
         tenant_id=str(row["tenant_id"]),
         # OMN-17372: the REQUESTED task type, not the stored one. A sentinel
@@ -285,13 +275,8 @@ def resolve_tenant_overlay(
         backend_id=str(row["backend_id"]),
         provider=provider,
         endpoint_url=str(row["endpoint_url"]),
-        model_name=_selected_key_model(
-            db,
-            tenant_id=tenant_id,
-            provider=provider,
-            secret_ref=secret_ref,
-            overlay_model=str(row["model_name"]),
-        ),
+        model_name=models[0],
+        models=models,
         secret_ref=secret_ref,
         timeout_ms=_optional_int(row.get("timeout_ms")),
         max_tokens=_optional_int(row.get("max_tokens")),
