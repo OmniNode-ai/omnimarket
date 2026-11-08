@@ -19,7 +19,7 @@ from omnibase_core.models.contracts.subcontracts.model_chain_scenario_case impor
     ModelChainScenarioCase,
 )
 
-from omnimarket.chain_scenarios import support
+from omnimarket.handlers.chain_scenarios import support
 
 pytestmark = pytest.mark.unit
 

@@ -15,11 +15,13 @@ from omnibase_core.models.contracts.subcontracts.model_chain_scenario_subcontrac
     ModelChainScenarioSubcontract,
 )
 
-from omnimarket.chain_scenarios.errors import (
+from omnimarket.handlers.chain_scenarios.errors import (
     ChainScenarioAssertionError,
     EnumChainAssertionCode,
 )
-from omnimarket.chain_scenarios.model_chain_scenario_run import ModelChainScenarioRun
+from omnimarket.handlers.chain_scenarios.model_chain_scenario_run import (
+    ModelChainScenarioRun,
+)
 
 _C = EnumChainAssertionCode
 

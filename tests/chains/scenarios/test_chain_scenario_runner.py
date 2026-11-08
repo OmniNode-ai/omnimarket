@@ -60,13 +60,15 @@ from omnibase_core.models.contracts.subcontracts.model_chain_scenario_subcontrac
 )
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.chain_scenarios.assertions import assert_scenario
-from omnimarket.chain_scenarios.errors import (
+from omnimarket.handlers.chain_scenarios.assertions import assert_scenario
+from omnimarket.handlers.chain_scenarios.errors import (
     ChainScenarioAssertionError,
     EnumChainAssertionCode,
 )
-from omnimarket.chain_scenarios.model_chain_scenario_overlay import load_overlay
-from omnimarket.chain_scenarios.runner import ChainScenarioNode
+from omnimarket.handlers.chain_scenarios.model_chain_scenario_overlay import (
+    load_overlay,
+)
+from omnimarket.handlers.chain_scenarios.runner import ChainScenarioNode
 
 pytestmark = pytest.mark.unit
 
@@ -76,7 +78,7 @@ _F = "tests.chains.scenarios.fixture_handlers"
 _SUBJECT = "node_fixture_record_effect"
 _BROKER_OVERLAY = (
     Path(__file__).resolve().parents[3]
-    / "src/omnimarket/chain_scenarios/overlays/chain_scenario.redpanda.overlay.yaml"
+    / "src/omnimarket/handlers/chain_scenarios/overlays/chain_scenario.redpanda.overlay.yaml"
 )
 _K = EnumChainScenarioFaultKind
 _B = EnumChainScenarioBreak

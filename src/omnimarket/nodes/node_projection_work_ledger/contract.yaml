@@ -146,7 +146,7 @@ chain_scenarios:
       target: ATTRIBUTE
       attribute: _db
       role: REDUCER_STATE
-      in_memory_factory: omnimarket.chain_scenarios.doubles:recording_ledger_db
+      in_memory_factory: omnimarket.handlers.chain_scenarios.doubles:recording_ledger_db
   cases:
     - case_name: golden_claim_event_is_folded_into_state
       kind: GOLDEN

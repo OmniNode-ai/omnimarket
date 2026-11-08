@@ -7,7 +7,7 @@ from __future__ import annotations
 from omnibase_core.enums.enum_chain_scenario_reading import EnumChainScenarioReading
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.chain_scenarios.model_chain_scenario_observed_event import (
+from omnimarket.handlers.chain_scenarios.model_chain_scenario_observed_event import (
     ModelChainScenarioObservedEvent,
 )
 

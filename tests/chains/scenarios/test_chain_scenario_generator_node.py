@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -44,8 +45,8 @@ _VALIDATOR_CLASS = (
 )
 
 
-def _declaration(name: str) -> dict[str, object]:
-    loaded: dict[str, object] = yaml.safe_load(
+def _declaration(name: str) -> dict[str, Any]:
+    loaded: dict[str, Any] = yaml.safe_load(
         (_FIXTURES / name / "declaration.yaml").read_text(encoding="utf-8")
     )
     return loaded
@@ -102,7 +103,7 @@ def test_golden_every_generated_case_names_a_break_and_the_validator_exits_zero(
 
     declared = {
         (case["case_name"], named)
-        for case in _declaration("clean")["chain_scenarios"]["cases"]  # type: ignore[index]
+        for case in _declaration("clean")["chain_scenarios"]["cases"]
         for named in case["breaks"]
     }
     generated = {(c.case_name, c.named_break) for c in result.generated_cases}

@@ -107,9 +107,9 @@ chain_scenarios:
     - name: emitter
       target: CONSTRUCTOR_KWARG
       attribute: emitter
-      in_memory_factory: omnimarket.chain_scenarios.doubles:spool_emitter
+      in_memory_factory: omnimarket.handlers.chain_scenarios.doubles:spool_emitter
       fault_factories:
-        DEPENDENCY_DOWN: omnimarket.chain_scenarios.doubles:unavailable_emitter
+        DEPENDENCY_DOWN: omnimarket.handlers.chain_scenarios.doubles:unavailable_emitter
   cases:
     - case_name: golden_claim_row_is_taken_in
       kind: GOLDEN

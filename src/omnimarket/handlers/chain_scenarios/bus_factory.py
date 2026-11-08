@@ -19,7 +19,7 @@ from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
     ProtocolLocalRuntimeBus,
 )
 
-from omnimarket.chain_scenarios.model_chain_scenario_overlay import (
+from omnimarket.handlers.chain_scenarios.model_chain_scenario_overlay import (
     ModelChainScenarioOverlay,
 )
 

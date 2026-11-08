@@ -8,7 +8,7 @@ import asyncio
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.chain_scenarios.doubles import BindingContext
+from omnimarket.handlers.chain_scenarios.doubles import BindingContext
 
 
 class ModelFixtureRequest(BaseModel):

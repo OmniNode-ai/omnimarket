@@ -25,10 +25,12 @@ from omnibase_core.models.contracts.subcontracts.model_chain_scenario_receipt_se
     ModelChainScenarioReceiptSet,
 )
 
-from omnimarket.chain_scenarios.assertions import assert_scenario
-from omnimarket.chain_scenarios.errors import ChainScenarioAssertionError
-from omnimarket.chain_scenarios.model_chain_scenario_overlay import load_overlay
-from omnimarket.chain_scenarios.runner import ChainScenarioNode
+from omnimarket.handlers.chain_scenarios.assertions import assert_scenario
+from omnimarket.handlers.chain_scenarios.errors import ChainScenarioAssertionError
+from omnimarket.handlers.chain_scenarios.model_chain_scenario_overlay import (
+    load_overlay,
+)
+from omnimarket.handlers.chain_scenarios.runner import ChainScenarioNode
 
 RECEIPTS_FILE = "chain_scenario_receipts.json"
 WRITE_ENV = "CHAIN_GEN_WRITE"
