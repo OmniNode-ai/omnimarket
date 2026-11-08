@@ -46,6 +46,12 @@ class ModelIntegrationSweepOverlay(_ModelOverlayDocument):
     projection_api_url: NonBlank
 
 
+class ModelPrStateReadOverlay(_ModelOverlayDocument):
+    """``node_pr_state_read_effect``: the projection API the pull request state is read from (OMN-23038)."""
+
+    projection_api_url: NonBlank
+
+
 class ModelLabDiskHygieneOverlay(_ModelOverlayDocument):
     """``node_lab_disk_hygiene_effect``: the lane census the sweep reads, relative to the registry root."""
 

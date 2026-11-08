@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
     ModelIloJournalRecord,
 )

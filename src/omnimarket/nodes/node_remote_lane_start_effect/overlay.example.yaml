@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The start effect reads its settings from the remote_lane_start section of the orchestrator's
+# overlay (node_remote_lane_start_orchestrator/overlay.example.yaml): ssh_argv, host_run_root and
+# host_call_timeout_seconds build the ssh adapter. All values here are synthetic.
+remote_lane_start:
+  ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
+  # Starts the engine in a session of its own; a host with no setsid binary names a shim.
+  detach_argv: [setsid]
+  host_run_root: /var/lib/example/lane-runs
+  host_call_timeout_seconds: 60

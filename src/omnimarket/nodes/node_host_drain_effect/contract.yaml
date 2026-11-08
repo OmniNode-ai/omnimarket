@@ -1,0 +1,101 @@
+name: node_host_drain_effect
+contract_name: node_host_drain_effect
+node_name: node_host_drain_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
+  The drain verb sets one host draining in the drain store and reads it back: the lab placement judge refuses
+  every new unit for a draining host, running lanes are counted and left to finish, and the host reads drained
+  when the count is 0. The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
+  while it reads and acts, then stops a runner only when its process table shows no worker process; a busy or
+  unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner
+  stopped. Each command is one chain on the
+  emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
+  drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
+  runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
+  file on one host). Every setting is in the overlay.
+
+handler:
+  module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain
+  class: HandlerHostDrain
+  input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainRequest
+  output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainResult
+
+# HandlerHostDrain and HandlerIdleRunnerStop take the overlay settings, the ports, the sink and the clock as
+# constructor parameters, so the node runs through its own command line (python -m), not a bus topic.
+handlers:
+  - name: HandlerHostDrain
+    module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain
+    input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainRequest
+    output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainResult
+  - name: HandlerIdleRunnerStop
+    module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
+    input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopRequest
+    output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopResult
+
+# The second handler is bound by its own handler block, not by a routing entry: its constructor takes the runner ports,
+# so a runtime that builds routed handlers with no arguments cannot boot it (the command line builds it).
+runner_stop_handler:
+  handler:
+    name: HandlerIdleRunnerStop
+    module: omnimarket.nodes.node_host_drain_effect.handlers.handler_idle_runner_stop
+    input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopRequest
+    output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelIdleRunnerStopResult
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain:HandlerHostDrain
+  handlers: []
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: []
+  purity: impure
+  idempotent: true
+  side_effects: [drain-state-write, runner-service-stop]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelHostDrainRequest
+  module: omnimarket.nodes.node_host_drain_effect.models.model_host_drain
+  description: A drain, undrain, status or start check for one host.
+output_model:
+  name: ModelHostDrainResult
+  module: omnimarket.nodes.node_host_drain_effect.models.model_host_drain
+  description: The outcome, whether the host is draining, its running lanes and whether it is drained.
+
+terminal_event: onex.evt.omnimarket.host-drain-completed.v1
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_host_drain_effect (runtime_host_drain.py), which reads the overlay, runs HandlerHostDrain.handle for the drain verb and prints the result"
+
+# The topics by role; the stores and the chains hold no topic string.
+topics:
+  host_drain_requested: onex.cmd.omnimarket.host-drain-requested.v1
+  host_drain_completed: onex.evt.omnimarket.host-drain-completed.v1
+  host_drain_failed: onex.evt.omnimarket.host-drain-failed.v1
+  runner_stop_requested: onex.cmd.omnimarket.runner-stop-requested.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-drain-completed.v1
+  - onex.evt.omnimarket.host-drain-failed.v1
+
+overlay:
+  node: node_host_drain_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+# Both handlers take their ports as constructor parameters; the runtime wiring owns them.
+requires_external_dependencies: true
+
+metadata:
+  ticket: OMN-22905
+  transport_type: local
