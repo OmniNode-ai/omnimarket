@@ -72,9 +72,21 @@ class HandlerDelegationRoutingOverlayCheck:
         self, request: ModelRoutingOverlayCheckRequest
     ) -> ModelRoutingOverlayCheckResult:
         findings: list[ModelRoutingOverlayFinding] = []
-        classes = _mapping(request.task_class_contracts.get("task_classes"))
-        bars = _mapping(request.bars_overlay.get("task_class_bars"))
-        if not bars:
+        raw_classes = _mapping(request.task_class_contracts.get("task_classes"))
+        raw_bars = _mapping(request.bars_overlay.get("task_class_bars"))
+        classes = {k: v for k, v in raw_classes.items() if isinstance(k, str)}
+        bars = {k: v for k, v in raw_bars.items() if isinstance(k, str)}
+        for source, raw in (("contract", raw_classes), ("overlay", raw_bars)):
+            findings.extend(
+                self._finding(
+                    OVERLAY_SUBJECT,
+                    EnumOverlayFindingClass.OVERLAY_INVALID,
+                    f"the {source} holds a task class key that is not a string: {key!r}",
+                )
+                for key in raw
+                if not isinstance(key, str)
+            )
+        if not raw_bars:
             findings.append(
                 self._finding(
                     OVERLAY_SUBJECT,
