@@ -81,6 +81,16 @@ handler_routing:
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_status
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusResult
+  # OMN-23025: the STATUS row's states and refusals cells, settled from the placements and the
+  # lanes' CLAIM rows: a lane whose send job was still building is placed once it has a CLAIM,
+  # and every lane the dispatch never started is named with its reason.
+  - operation: settle_lab_fill_lane_states
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillLaneStates
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_lane_states
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_states.ModelLabFillLaneStatesRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_states.ModelLabFillLaneStatesResult
   - operation: plan_lab_fill_headroom
     topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:

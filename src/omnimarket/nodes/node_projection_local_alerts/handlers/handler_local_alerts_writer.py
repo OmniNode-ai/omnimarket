@@ -39,6 +39,7 @@ from omnimarket.nodes.node_projection_local_alerts.models.model_local_alerts_pla
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
+from omnimarket.projection.error_classification import PoisonEventError
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import TENANT_GUC
@@ -86,6 +87,10 @@ _UPSERT_ROW = (
 )
 
 
+class LocalAlertTenantRefusedError(PoisonEventError, ValueError):
+    """A transition whose tenant can never name a stored one: dead-lettered, not retried."""
+
+
 def require_canonical_tenant(tenant_id: str) -> str:
     """The tenant as a canonical uuid, or a refusal the runtime dead-letters."""
     try:
@@ -93,7 +98,7 @@ def require_canonical_tenant(tenant_id: str) -> str:
     except ValueError:
         canonical = ""
     if canonical != tenant_id:
-        raise ValueError(
+        raise LocalAlertTenantRefusedError(
             f"local alert transition refused: tenant {tenant_id!r} is not a "
             "canonical tenant uuid"
         )
@@ -212,18 +217,23 @@ class HandlerLocalAlertsProjectionRunner(BaseProjectionRunner):
                     *(_parameter(name, planned.get(name)) for name in _COLUMNS),
                 )
                 written = _wire_row(dict(returned[0]))
-        row = written or replayed
-        if self._snapshot_exposure is not None and row is not None:
-            await self.publish_snapshot_delta(
-                self._snapshot_exposure,
-                op="upsert",
-                row=row,
-                source_event_id=str(transition.transition_id),
-                source_topic=meta.topic,
-                source_partition=meta.partition,
-                source_offset=meta.offset,
-                tenant_id=tenant,
-            )
+            # Published before the key lock ends: deltas for one key reach the
+            # bus in lock order, and a failed publish rolls the write back so
+            # the redelivery plans it again. After the lock, two partitions'
+            # deltas for one key could be reordered, and the cache accepts a
+            # stale delta from a different source partition.
+            row = written or replayed
+            if self._snapshot_exposure is not None and row is not None:
+                await self.publish_snapshot_delta(
+                    self._snapshot_exposure,
+                    op="upsert",
+                    row=row,
+                    source_event_id=str(transition.transition_id),
+                    source_topic=meta.topic,
+                    source_partition=meta.partition,
+                    source_offset=meta.offset,
+                    tenant_id=tenant,
+                )
         return written
 
 
