@@ -19,6 +19,7 @@ import math
 import os
 import shlex
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -163,6 +164,31 @@ def write_atomic(path: Path, data: bytes) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_bytes(data)
     tmp.replace(path)
+
+
+def _within_seconds[T](seconds: float, work: Callable[[], T], message: str) -> T:
+    """The result of ``work``, or ``TimeoutError(message)`` once ``seconds`` have passed.
+
+    The work runs in a daemon thread so a stuck read or a backtracking pattern cannot hold the publication: the caller
+    reports the step failed and goes on. The thread is left to finish on its own; it holds no lock the cycle needs.
+    """
+    outcome: list[T] = []
+    failure: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            outcome.append(work())
+        except BaseException as exc:
+            failure.append(exc)
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError(message)
+    if failure:
+        raise failure[0]
+    return outcome[0]
 
 
 def _tail(raw: bytes) -> str:
@@ -630,8 +656,13 @@ class HandlerFactoryFloorPublish:
                     raise ValueError(
                         "a friction rollup step names its settings and an output"
                     )
-                report = HandlerFrictionRollupSource().handle(
-                    step.rollup, now=self._wall_clock(), environ=env
+                settings = step.rollup
+                report = _within_seconds(
+                    step.timeout_seconds,
+                    lambda: HandlerFrictionRollupSource().handle(
+                        settings, now=self._wall_clock(), environ=env
+                    ),
+                    f"the friction rollup ran past its {step.timeout_seconds} s budget",
                 )
                 write_atomic(
                     home / step.output_relpath,

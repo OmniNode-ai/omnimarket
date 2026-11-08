@@ -100,10 +100,12 @@ def friction_step() -> ModelPublishStep:
     return next(s for s in load_runtime().steps if s.name == "friction_classed")
 
 
-def run_step(tmp_path: Path, env: dict[str, str]) -> tuple[str, str, Path]:
+def run_step(
+    tmp_path: Path, env: dict[str, str], *, step: ModelPublishStep | None = None
+) -> tuple[str, str, Path]:
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
-    step = friction_step()
+    step = step if step is not None else friction_step()
     handler = HandlerFactoryFloorPublish(wall_clock=lambda: NOW)
     result = handler._run_step(
         step,
