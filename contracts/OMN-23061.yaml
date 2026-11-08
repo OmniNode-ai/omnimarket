@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23061
 title: ModelLabHostsTable accepts the registry_root_candidates key the host-list projection carries
-summary: ModelLabHostsTable refused the projection key registry_root_candidates, which node_host_capability_compute reads to try registry roots in order on a probed host. The field itself reached dev through OMN-23036 (#5431) while this branch was open, so the merged branch changes no source except the field comment; it adds the regression tests that hold the field (a non-empty tuple of registry roots, default None). No check and no bound changes.
+summary: ModelLabHostsTable refused the projection key registry_root_candidates, which node_host_capability_compute reads to try registry roots in order on a probed host. The field itself reached dev through OMN-23036 (#5431) while this branch was open, so the merged branch changes no source; it adds the regression tests that hold the field (a non-empty tuple of registry roots, default None). No check and no bound changes.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
