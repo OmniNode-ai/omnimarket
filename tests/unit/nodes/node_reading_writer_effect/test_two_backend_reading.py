@@ -6,6 +6,10 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.model_effect_backend_report import (
+    ModelEffectBackendEntry,
+    ModelEffectBackendReport,
+)
 from omnimarket.models.model_reading import (
     EnumReadingVerdict,
     ModelReadingWindowCommand,
@@ -21,10 +25,6 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
 from omnimarket.nodes.node_two_backend_suite_effect.adapters.report_sources import (
     InMemoryReportSource,
-)
-from omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite import (
-    ModelEffectBackendEntry,
-    ModelEffectBackendReport,
 )
 from tests.nodes.node_floor_simple_effect.test_ledger_readings_floor_simple import (
     overlay as floor_overlay,
@@ -143,9 +143,7 @@ def test_two_backend_floor_shows_the_count() -> None:
 def test_two_backend_unreadable_report_reads_unread_not_zero() -> None:
     class Broken:
         def read(self):
-            from omnimarket.nodes.node_two_backend_suite_effect.protocols import (
-                ModelReportRead,
-            )
+            from omnimarket.models.model_effect_backend_report import ModelReportRead
 
             return ModelReportRead(error="report-unreadable:FileNotFoundError")
 
@@ -164,3 +162,72 @@ def test_two_backend_red_suite_row_turns_the_reading_not_working() -> None:
 def test_two_backend_no_setting_means_no_cell() -> None:
     _, rows = write(InMemoryReportSource(report(("a", False))), setting=False)
     assert "two_backend_pending" not in cells(rows[0])
+
+
+def write_twice_on_one_ledger(first, second):
+    """Two runs of the same closed window against one ledger, the second after the report changed."""
+    ledger = InMemoryLedger([suite_row(0)])
+    outcomes = []
+    for report_in in (first, second):
+        writer = HandlerReadingWriter(
+            overlay=overlay_with_piece_4(True),
+            source=ledger,
+            appender=ledger,
+            clock=lambda: RUN_AT,
+            two_backend_source=report_in,
+        )
+        result = writer.handle(
+            ModelReadingWindowCommand(
+                correlation_id="c-1", window_start=START, pieces=(PIECE,)
+            )
+        )
+        outcomes.append(result.pieces[0])
+    return outcomes
+
+
+def test_two_backend_same_report_replayed_is_already_written() -> None:
+    same = InMemoryReportSource(report(("a", False), ("b", False)))
+    first, second = write_twice_on_one_ledger(same, same)
+    assert first.ledger != "already-written"
+    assert second.ledger == "already-written"
+
+
+def test_two_backend_changed_report_is_not_silently_reused_as_already_written() -> None:
+    """The pending count is part of the row's content identity: a retry with another count is a replay failure, not a reuse."""
+    _, second = write_twice_on_one_ledger(
+        InMemoryReportSource(report(("a", False), ("b", False))),
+        InMemoryReportSource(report(("a", False), ("b", False), ("c", False))),
+    )
+    assert second.ledger != "already-written"
+    assert second.outcome.value == "replay-failed"
+
+
+def test_two_backend_incomplete_inventory_reads_unread_not_a_count() -> None:
+    incomplete = ModelEffectBackendReport(
+        entries=(entry("a", True),), unreadable=("node_x/contract.yaml",)
+    )
+    _, rows = write(InMemoryReportSource(incomplete))
+    assert cells(rows[0])["two_backend_pending"] == "unread"
+
+
+def test_reading_writer_does_not_import_the_suite_nodes_private_package() -> None:
+    """The report and its source port are shared models: the reading writer takes them from shared ownership, not from the suite's models or protocols."""
+    import ast
+    from pathlib import Path
+
+    import omnimarket.nodes.node_reading_writer_effect as writer_package
+
+    offenders = []
+    for path in Path(writer_package.__file__).parent.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            module = getattr(node, "module", None) or ""
+            names = [a.name for a in getattr(node, "names", [])]
+            suite = "node_two_backend_suite_effect"
+            private = (f"{suite}.models", f"{suite}.protocols")
+            if isinstance(node, (ast.Import, ast.ImportFrom)) and any(
+                part.startswith(f"omnimarket.nodes.{private[0]}")
+                or part.startswith(f"omnimarket.nodes.{private[1]}")
+                for part in [module, *names]
+            ):
+                offenders.append(f"{path.name}: {module or names}")
+    assert offenders == []

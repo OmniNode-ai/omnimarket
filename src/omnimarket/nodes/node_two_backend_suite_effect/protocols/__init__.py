@@ -7,24 +7,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict
-
-from omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite import (
-    ModelEffectBackendReport,
+from omnimarket.models.model_effect_backend_report import ModelReportRead
+from omnimarket.protocols.protocol_effect_backend_report_source import (
+    ProtocolEffectBackendReportSource,
 )
-
-
-class ModelReportRead(BaseModel):
-    """The report, or the reason it could not be read. An error is never an empty list."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    report: ModelEffectBackendReport | None = None
-    error: str | None = None
-
-
-class ProtocolEffectBackendReportSource(Protocol):
-    def read(self) -> ModelReportRead: ...
 
 
 class ProtocolDottedResolver(Protocol):

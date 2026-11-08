@@ -162,12 +162,13 @@ class ModelReadingOverlay(BaseModel):
 
     def overlay_hash(self, piece: int) -> str:
         """Hash of what a piece's reading depends on: its spec and the window settings."""
-        return _digest(
-            {
-                "window": self.window.model_dump(mode="json"),
-                "spec": self.spec(piece).model_dump(mode="json"),
-            }
-        )
+        depends: dict[str, object] = {
+            "window": self.window.model_dump(mode="json"),
+            "spec": self.spec(piece).model_dump(mode="json"),
+        }
+        if self.two_backend is not None and self.two_backend.piece == piece:
+            depends["two_backend"] = self.two_backend.model_dump(mode="json")
+        return _digest(depends)
 
 
 def _digest(value: object) -> str:

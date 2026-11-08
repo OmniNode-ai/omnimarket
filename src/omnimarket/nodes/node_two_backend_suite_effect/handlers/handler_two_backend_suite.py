@@ -12,6 +12,8 @@ both backends are not run; they are counted, because the count is what the readi
 from __future__ import annotations
 
 import json
+import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,6 +32,7 @@ from omnimarket.nodes.node_two_backend_suite_effect.protocols import (
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+_MS_PER_S = 1000
 IN_MEMORY = "in_memory"
 REAL = "real"
 
@@ -39,6 +42,12 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
     return dict(yaml.safe_load(path.read_text(encoding="utf-8"))["topics"])
 
 
+def load_timeout_s(path: Path = CONTRACT) -> float:
+    """The bound on one backend attempt: the contract's declared ``descriptor.timeout_ms``, in seconds."""
+    descriptor = yaml.safe_load(path.read_text(encoding="utf-8"))["descriptor"]
+    return float(descriptor["timeout_ms"]) / _MS_PER_S
+
+
 class HandlerTwoBackendSuite:
     def __init__(
         self,
@@ -46,10 +55,39 @@ class HandlerTwoBackendSuite:
         source: ProtocolEffectBackendReportSource,
         resolver: ProtocolDottedResolver,
         workdir: Path,
+        timeout_s: float | None = None,
     ) -> None:
         self._source = source
         self._resolver = resolver
         self._workdir = workdir
+        self._timeout_s = load_timeout_s() if timeout_s is None else timeout_s
+
+    def _bounded(self, call: Callable[[], str]) -> str:
+        """Run one attempt on a daemon thread and raise ``TimeoutError`` when it does not return inside the bound.
+
+        The stalled call is abandoned, not killed; the suite goes on to the next effect and the timeout is the attempt's
+        visible verdict (``fail:TimeoutError``).
+        """
+        box: dict[str, object] = {}
+
+        def target() -> None:
+            try:
+                box["value"] = call()
+            except BaseException as exc:  # carried to the caller and raised there
+                box["error"] = exc
+
+        worker = threading.Thread(target=target, daemon=True)
+        worker.start()
+        worker.join(self._timeout_s)
+        if worker.is_alive():
+            raise TimeoutError(f"no result inside {self._timeout_s} s")
+        if "error" in box:
+            error = box["error"]
+            assert isinstance(error, BaseException)
+            raise error
+        value = box["value"]
+        assert isinstance(value, str)
+        return value
 
     def handle(self, request: ModelTwoBackendRequest) -> ModelTwoBackendResult:
         read = self._source.read()
@@ -58,6 +96,12 @@ class HandlerTwoBackendSuite:
                 correlation_id=request.correlation_id,
                 status="failed",
                 failure=read.error or "report-unreadable",
+            )
+        if read.report.incomplete_cause:
+            return ModelTwoBackendResult(
+                correlation_id=request.correlation_id,
+                status="failed",
+                failure=read.report.incomplete_cause,
             )
         runs = tuple(self._run(entry) for entry in read.report.entries if entry.on_both)
         return ModelTwoBackendResult(
@@ -76,8 +120,12 @@ class HandlerTwoBackendSuite:
             workdir.mkdir(parents=True, exist_ok=True)
             scenario = self._resolver.resolve(entry.scenario)
             factory = self._resolver.resolve(factory_path)
-            result = scenario(factory, workdir)
-            return "pass", json.dumps(result, sort_keys=True, default=str)
+            encoded = self._bounded(
+                lambda: json.dumps(
+                    scenario(factory, workdir), sort_keys=True, default=str
+                )
+            )
+            return "pass", encoded
         except Exception as exc:  # a backend failing is the finding, whatever its type
             return f"fail:{type(exc).__name__}", ""
 

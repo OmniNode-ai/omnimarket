@@ -17,6 +17,7 @@ reading rows only and never a gate, a stop or an admission: a reading informs, i
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Callable
@@ -51,7 +52,7 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
-from omnimarket.nodes.node_two_backend_suite_effect.protocols import (
+from omnimarket.protocols.protocol_effect_backend_report_source import (
     ProtocolEffectBackendReportSource,
 )
 
@@ -65,6 +66,12 @@ _UNREAD = "unread"
 #: The row type and source cell of every reading row; other handlers of this node import them.
 ROW_TYPE = _ROW_TYPE
 ROW_SOURCE_CELL = _ROW_SOURCE_CELL
+
+
+def _identity_with(content_hash: str, token: str) -> str:
+    """The content hash widened with the two-backend token, at the length of the hash it replaces."""
+    digest = hashlib.sha256(f"{content_hash}|{token}".encode()).hexdigest()
+    return digest[: len(content_hash)]
 
 
 def load_revision(path: Path = COMPUTE_CONTRACT) -> str:
@@ -230,7 +237,7 @@ class HandlerReadingWriter:
         if self._two_backend_source is None:
             return _UNREAD
         read = self._two_backend_source.read()
-        if read.report is None:
+        if read.report is None or read.report.incomplete_cause:
             return _UNREAD
         return str(read.report.not_on_both_count)
 
@@ -323,10 +330,18 @@ class HandlerReadingWriter:
             else f"two-backend-pending-{pending}"
         )
 
+        base_content_hash = result.content_hash
+
         def tagged(final: ModelReadingComputeResult) -> ModelReadingComputeResult:
-            if token is None or token in final.reasons:
+            """The result with the two-backend reason and an identity that covers it, so another count is another content."""
+            if token is None:
                 return final
-            return final.model_copy(update={"reasons": (*final.reasons, token)})
+            update: dict[str, object] = {
+                "content_hash": _identity_with(base_content_hash, token)
+            }
+            if token not in final.reasons:
+                update["reasons"] = (*final.reasons, token)
+            return final.model_copy(update=update)
 
         result = tagged(result)
 

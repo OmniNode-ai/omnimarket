@@ -46,7 +46,7 @@ class FileReportSource:
             return ModelReportRead(
                 report=ModelEffectBackendReport.model_validate_json(text)
             )
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             return ModelReportRead(error=f"report-unreadable:{type(exc).__name__}")
         except ValidationError:
             return ModelReportRead(error="report-unreadable:ValidationError")
@@ -70,7 +70,7 @@ def build_report_source(
 def _in_memory_source(
     settings: ModelInMemoryReportSettings, environ: Mapping[str, str] | None = None
 ) -> ProtocolEffectBackendReportSource:
-    return InMemoryReportSource(ModelEffectBackendReport())
+    return InMemoryReportSource(ModelEffectBackendReport(entries=()))
 
 
 @build_report_source.register
