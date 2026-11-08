@@ -622,7 +622,15 @@ class HandlerFloorSimple:
         ]
         if findings:
             side = rd.finding_sides.get(findings[0].code, "to")
-            return side, "; ".join(f"{f.code}: {f.detail}" for f in findings[:3])
+            # One line per distinct finding, with how many chains it was found in.
+            counts: dict[str, int] = {}
+            for f in findings:
+                line = f"{f.code}: {f.detail}"
+                counts[line] = counts.get(line, 0) + 1
+            return side, "; ".join(
+                f"{line} (in {n} chains)" if n > 1 else line
+                for line, n in list(counts.items())[:3]
+            )
         if r.receipts is None:
             return "neither", "the join receipts could not be read"
         by_piece = {x.piece: x for x in rows}

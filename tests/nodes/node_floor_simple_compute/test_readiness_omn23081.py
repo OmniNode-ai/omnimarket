@@ -457,3 +457,17 @@ def test_golden_the_strip_names_the_first_piece_not_ready() -> None:
     assert (
         doc.rebuild.headline == "Piece 2, hosts and capacity: working, not integrated."
     )
+
+
+def test_golden_the_same_finding_in_many_chains_is_one_line_with_its_count() -> None:
+    finding = ModelChainFinding(
+        code="downstream_missing_typed_failure",
+        subject="J2 piece 2 to 3",
+        correlation_id="c1",
+        detail="A failed and B gave no typed failure in 900 s",
+    )
+    doc = board({"J2": "broken"}, findings=(finding, finding, finding))
+    row = next(j for p in doc.pieces for j in p.joins if j.id == "J2")
+    assert row.failed_reason == (
+        "downstream_missing_typed_failure: A failed and B gave no typed failure in 900 s (in 3 chains)"
+    )
