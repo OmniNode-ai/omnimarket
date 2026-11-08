@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22965
+title: "Piece 13's first task: the J12 join test: a lane returns one typed receipt and a class row appears within 15 minutes, golden and error"
+summary: The lane result sweep gains an optional join_j12 overlay block naming the class-row window; a typed receipt without its class row past that window reads NOT WORKING and the reading clears when the class row appears. tests/integration/test_join_j12.py holds the golden and error join tests.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22965-join-j12
+  statement: A lane's typed receipt gets a class row within 15 minutes, and a receipt withheld its class row for 16 minutes flips the reading and clears when the row appears.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden join test: a lane''s typed receipt gets a class row within 15 minutes -- falsifier: uv run pytest tests/integration/test_join_j12.py -q -k golden'
+  - id: AC2
+    statement: 'AC2: error join test: a receipt withheld its class row for 16 minutes flips the reading and clears when the row appears -- falsifier: uv run pytest tests/integration/test_join_j12.py -q -k error'
+evidence_requirements:
+- kind: tests
+  description: J12 join tests and the lane result sweep tests
+  command: uv run --frozen pytest tests/integration/test_join_j12.py tests/nodes/node_lane_result_sweep_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22965-golden
+  description: A done and a blocked TERMINAL swept ten minutes after they finished each get one class row inside 15 minutes and the reading is WORKING; a second sweep adds no second class row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j12.py -q --no-cov -k golden
+    cwd: .
+- id: dod-omn22965-error
+  description: A done and a blocked TERMINAL with no class row 16 minutes after they finished read NOT WORKING with state unclassified-late, the reading reads WORKING once the class row appears, and at 15 minutes or without the join block the reading is unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j12.py -q --no-cov -k error
+    cwd: .
+- id: dod-omn22965-integration-proof
+  description: Once the lane result sweep runs on the lab with the join_j12 overlay block set, its reading row for piece 12 reads back from work_ledger_rows over the dev bus with onex ledger query --lane lane-result-sweep, beside the class rows it appended.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --lane lane-result-sweep --since 2026-11-08T00:00:00Z | grep -q 'action=lane-result-reading'
+    cwd: .

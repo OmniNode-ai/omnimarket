@@ -1204,6 +1204,23 @@ def _terminate_effect_process(process: Any) -> None:
         process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
 
 
+def _tier_lost_to_absent_credential(tier_name: str, task_type: str) -> bool:
+    """Whether ``tier_name`` serves ``task_type`` only if its credential resolved.
+
+    OMN-23170: a rung whose declared key resolves to nothing is not routable,
+    so the ladder never selects it and no attempt is ever made on it. Counting
+    it among the rungs that can follow would reserve a floor of the run's time
+    for a rung that can only be skipped. Both probes run with no quota
+    snapshot, so the two answers differ in the credential term alone: a rung
+    withheld for any other reason stays counted.
+    """
+    if backend_id_for_tier(tier_name, task_type) is not None:
+        return False
+    return (
+        backend_id_for_tier(tier_name, task_type, require_credential=False) is not None
+    )
+
+
 def _next_rung_reserve_seconds(task_type: str) -> float:
     """The seconds a rung that may be followed by another leaves for it (OMN-17427).
 
@@ -2175,7 +2192,8 @@ class LocalDelegationDispatchPort:
         # rung can never eat the time the last rung needs. The rungs that can
         # follow are counted on the ladder this class can reach: its tier_order,
         # cut to ``max_escalations + 1`` and to as many rungs as the budget holds
-        # at one floor each; a pinned run has one rung. The last rung counted
+        # at one floor each, less any rung whose credential is absent (it is
+        # never attempted); a pinned run has one rung. The last rung counted
         # gets no cut of its own: the chain deadline is the handler's. A class
         # that declares no floor, or a budget too short for two floors, keeps no
         # reserve, as before.
@@ -2187,7 +2205,13 @@ class LocalDelegationDispatchPort:
             reachable_rungs = probe_walk.length
         else:
             try:
-                ladder_length = len(resolve_task_class_tier_order(task_type))
+                # OMN-23170: a rung with no credential is never attempted, so
+                # it holds no part of the run's time in reserve.
+                ladder_length = sum(
+                    1
+                    for tier_name in resolve_task_class_tier_order(task_type)
+                    if not _tier_lost_to_absent_credential(tier_name, task_type)
+                )
             except Exception:
                 ladder_length = 1
             reachable_rungs = max(1, min(max_escalations + 1, ladder_length))
