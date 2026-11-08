@@ -135,5 +135,12 @@
     "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. tests/nodes/node_factory_floor_publish_effect/test_compare_page.py is recorded here because this host has Node.js and its 9 render tests passed; the earlier supplement for OMN-22867 had left it out.",
     "runner": "lab host h202, lane durations-c0825, Python 3.13.15; the next CI refresh replaces these entries",
     "base_sha": "370eb11de08d810bb8dc445f9401c19de3091846"
+  },
+  "supplement_omn22917": {
+    "recorded_on": "2026-11-08",
+    "files_added": 52,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; files with a failing or erroring test on this host are left out; existing entries left as they were.",
+    "runner": "lab host h101, Python 3.12; the next CI refresh replaces these entries",
+    "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
   }
 }
