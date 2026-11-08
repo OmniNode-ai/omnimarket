@@ -81,6 +81,27 @@
     "stoppage:unclassified": [
       "OMN-22879",
       "OMN-22865"
+    ],
+    "join:J0": [
+      "OMN-23022"
+    ],
+    "join:J1": [
+      "OMN-23082"
+    ],
+    "join:J2": [
+      "OMN-23083"
+    ],
+    "join:J3": [
+      "OMN-23084"
+    ],
+    "join:J4": [
+      "OMN-23085"
+    ],
+    "join:J5": [
+      "OMN-23086"
+    ],
+    "join:J8": [
+      "OMN-23087"
     ]
   }
 }
