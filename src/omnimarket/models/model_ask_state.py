@@ -20,7 +20,10 @@ class EnumAskState(StrEnum):
     """Where one operator ask stands.
 
     ``new`` is an ask younger than the grace window with no row yet: it becomes ``dropped``
-    when the window passes with still no owner, ticket or parked row.
+    when the window passes with still no owner, ticket or parked row. ``unverified`` is an ask a
+    lane reported done or a merge was cited for, with no done check read true yet: it is open,
+    and no lane runs for it (orchestrator 2026-11-06T14:27:51Z: an ask closes only when its done
+    check reads the running system true, never on a lane's report or a merge).
     """
 
     OWNED = "owned"
@@ -29,6 +32,7 @@ class EnumAskState(StrEnum):
     DONE = "done"
     DROPPED = "dropped"
     NEW = "new"
+    UNVERIFIED = "unverified"
 
 
 class EnumAskLink(StrEnum):
@@ -113,6 +117,18 @@ class ModelAskStateConfig(BaseModel):
     reason_cell: str = Field(min_length=1)
     seq_cell: str = Field(min_length=1)
     excerpt_chars: int = Field(ge=20)
+    checked_resolutions: tuple[str, ...] = Field(
+        description="resolutions that close an ask only once its done check reads true (a lane's report, a merge)",
+    )
+    check_lane: str = Field(
+        min_length=1, description="the lane whose STATUS rows carry done-check verdicts"
+    )
+    check_verdict_cell: str = Field(min_length=1)
+    check_pass_verdict: str = Field(min_length=1)
+    done_check_cell: str = Field(
+        min_length=1,
+        description="the cell naming an ask's done check on its owning row",
+    )
     owned_state: str = Field(min_length=1)
     owner_cell: str = Field(min_length=1)
     done_state: str = Field(min_length=1)
@@ -168,7 +184,17 @@ class ModelAskEntry(BaseModel):
     link: EnumAskLink = EnumAskLink.NONE
     resolution: str | None = Field(
         default=None,
-        description="how a done ask closed: terminal, closes-ask, ruling or withdrawn",
+        description="how a done ask closed: checked, answered, ruling or withdrawn",
+    )
+    claimed_resolution: str | None = Field(
+        default=None,
+        description="a report or merge that claimed the ask done (terminal, closes-ask) before any check",
+    )
+    done_check: str | None = Field(
+        default=None, description="the done check its owning row declared"
+    )
+    check_verdict: str | None = Field(
+        default=None, description="the newest done-check verdict read for it"
     )
     evidence: tuple[str, ...] = Field(
         default=(), description="the deciding rows as '<TYPE> <stamp> lane=<lane>'"
@@ -223,6 +249,7 @@ class ModelAskCounts(BaseModel):
     done: int = 0
     dropped: int = 0
     new: int = 0
+    unverified: int = 0
     total: int = 0
 
 

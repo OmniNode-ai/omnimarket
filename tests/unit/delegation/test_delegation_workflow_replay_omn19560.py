@@ -57,12 +57,18 @@ _CID = UUID("9f77f33a-1956-4000-8000-000000000001")
 _CONTENT = "### ANSWER\ndef test_verify_registration():\n    assert True"
 
 
+# OMN-22822: a request older than the completion bound is expired, not routed, so
+# the live request these replays feed the workflow is stamped when the module loads
+# (one value, so the captured and the replayed run still compare byte for byte).
+_EMITTED_AT = datetime.now(UTC)
+
+
 def _request() -> ModelDelegationRequest:
     return ModelDelegationRequest(
         prompt="Write unit tests for verify_registration.py",
         task_type="test",
         correlation_id=_CID,
-        emitted_at=datetime(2026, 10, 3, tzinfo=UTC),
+        emitted_at=_EMITTED_AT,
     )
 
 

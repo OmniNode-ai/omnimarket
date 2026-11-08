@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_two_backend_suite_effect
+version: 1.0.0
+description: Runs every effect the core effect-backends validator lists as declared on both backends against both, and counts the effects not yet on both.
+pack: operator_tooling
+node_role: effect
+display_name: Two-Backend Suite Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_two_backend_suite_effect: omnimarket.nodes.node_two_backend_suite_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - pydantic>=2.0
+  - pyyaml>=6.0
+authors:
+  - OmniNode Platform Team
+license: MIT
+tags:
+  - effect
+  - two-backend
+  - piece-4

@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-23018
+title: The factory floor shows what is better and worse than 1 day, 7 days and 30 days ago, as a running comparison page
+summary: node_floor_compare_effect keeps the floor's published numbers as a dated history (backfilling dated copies once), reads each at now minus 1, 7 and 30 days with a missing point unread and never zero, and writes the better and worse lines; the floor publisher serves a new compare page (compare.html) that reads them behind a 1 day, 7 days, 30 days switch. No check and no bound changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23018-floor-compare
+  statement: The floor compares every published number with the same number 1, 7 and 30 days ago, listing better and worse in plain words with old value, new value and the better direction, and a missing point reads unread, with a planted gap as the failing control.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the floor''s published numbers are kept as a dated history from which the value at now minus 1, 7 and 30 days is read, and a planted gap reads unread and never zero -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_history_reader.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the comparison lists better and worse lines in plain words with old value, new value and which direction counts as better, per 1, 7 and 30 day window, and the compare page draws them -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect/test_compare_page.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the floor publisher serves the compare page and the comparison file and the publisher steps run the comparison node -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_compare_page.py -q --no-cov'
+  - id: AC4
+    statement: 'AC4: the history is backfilled for at least 30 days from the work ledger and its split copies, the throughput tick log, the canonical clones'' git history, the landing decisions file and the lab and floor alarm histories, each point naming its source, a planted ledger day yields the right point and a day the source did not record stays unread -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_backfill_history.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The comparison node and publisher tests pass
+  command: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23018-compare-tests
+  description: Runs the history reader with its planted gap, the comparison, the golden and error chain events and the publisher tests.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+    cwd: .
+- id: dod-omn23018-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23018 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+    cwd: .

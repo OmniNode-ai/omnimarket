@@ -22,12 +22,14 @@ import ast
 import re
 import tomllib
 from collections import deque
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 
 import yaml
 
+from omnimarket.models.import_relations import ModelImportEdge
 from omnimarket.models.model_code_graph import (
     ModelGraphCheckResult,
     ModelRepoGraph,
@@ -37,6 +39,7 @@ from omnimarket.models.model_code_graph import (
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     ModelGraphRoots,
     ModelGraphSample,
+    ModelWiringAllowance,
 )
 
 Entity = tuple[str, str]
@@ -79,10 +82,11 @@ def _matches(path: str, patterns: Iterable[str]) -> bool:
 
 @dataclass(frozen=True)
 class GraphRules:
-    """The overlay's root rules, with the drill switch that drops the contract links."""
+    """The overlay's root rules, with the drill switches that drop the contract links or the entry points."""
 
     roots: ModelGraphRoots
     contract_links: bool = True
+    entry_points: bool = True
 
     def wanted(self, path: str) -> bool:
         return (
@@ -219,8 +223,15 @@ def _contract_modules(text: str, keys: Sequence[str]) -> Iterator[str]:
     except yaml.YAMLError:
         return
     stack: list[object] = [document]
+    # A YAML alias can make a container hold itself, and a shared container is reached once per
+    # alias: each container is walked once.
+    seen: set[int] = set()
     while stack:
         item = stack.pop()
+        if isinstance(item, dict | list):
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
         if isinstance(item, dict):
             for key, value in item.items():
                 if (
@@ -271,6 +282,8 @@ class Graph:
     test_imports: frozenset[Entity]
     reached: frozenset[Entity]
     heads: tuple[tuple[str, str], ...]
+    #: Every file to the files it imports, across repositories; the relation report reads these.
+    edges: Mapping[Entity, frozenset[Entity]]
 
     def repo_graph(self, repo: str, head: str) -> ModelRepoGraph:
         mine = {entity for entity in self.modules if entity[0] == repo}
@@ -328,7 +341,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                     else name.split(".")[:-1]
                 )
                 scans[entity] = _scan(tree, package)
-            elif path == _PYPROJECT and rules.roots.entry_points:
+            elif path == _PYPROJECT and rules.entry_points and rules.roots.entry_points:
                 for module in _entry_point_modules(text):
                     roots.update(index.resolve(module, repo))
             elif rules.contract_links and _matches(path, rules.roots.contract_globs):
@@ -381,6 +394,26 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
         test_imports=frozenset(test_imports),
         reached=frozenset(reached),
         heads=tuple((snapshot.repo, snapshot.head) for snapshot in snapshots),
+        edges={entity: frozenset(targets) for entity, targets in edges.items()},
+    )
+
+
+def import_edges(graph: Graph) -> tuple[ModelImportEdge, ...]:
+    """The graph's edges as typed import occurrences, sorted; edges out of test files are left out.
+
+    Every direction of every repository pair is kept: the relation report decides what a cycle is,
+    and nothing here keeps only the stronger direction of a pair.
+    """
+    return tuple(
+        ModelImportEdge(
+            importer_repo=importer[0],
+            importer_path=importer[1],
+            imported_repo=imported[0],
+            imported_path=imported[1],
+        )
+        for importer, targets in sorted(graph.edges.items())
+        if importer not in graph.tests
+        for imported in sorted(targets)
     )
 
 
@@ -419,20 +452,44 @@ def judge_sample(graph: Graph, sample: ModelGraphSample) -> ModelSampleOutcome:
 
 
 def check_added(
-    base: ModelRepoSnapshot, head: ModelRepoSnapshot, rules: GraphRules
+    base: ModelRepoSnapshot,
+    head: ModelRepoSnapshot,
+    rules: GraphRules,
+    *,
+    allowlist: Sequence[ModelWiringAllowance] = (),
+    today: date | None = None,
 ) -> ModelGraphCheckResult:
-    """Modules the head adds that no root reaches at the head (tests excluded)."""
+    """Modules the head adds that no root reaches at the head (tests excluded).
+
+    A live allowlist entry of the repository excuses the added paths it covers; an entry whose date
+    has come excuses nothing and is itself a finding, so ``today`` is required with an allowlist.
+    """
+    entries = tuple(entry for entry in allowlist if entry.repo == head.repo)
+    if entries and today is None:
+        raise ValueError("an allowlist is judged on a day: pass today")
     graph = build_graph([head], rules)
     added = sorted(
         path
         for path in head.files
         if path.endswith(".py") and path not in base.files and not rules.is_test(path)
     )
-    flagged = tuple(path for path in added if (head.repo, path) not in graph.reached)
+    unreached = [path for path in added if (head.repo, path) not in graph.reached]
+    live = tuple(
+        entry for entry in entries if today is not None and not entry.expired_on(today)
+    )
+    allowed = tuple(
+        path for path in unreached if any(entry.covers(path) for entry in live)
+    )
     return ModelGraphCheckResult(
         repo=head.repo,
         base=base.head,
         head=head.head,
         added=len(added),
-        flagged=flagged,
+        flagged=tuple(path for path in unreached if path not in allowed),
+        allowed=allowed,
+        expired=tuple(
+            f"{entry.path} expired {entry.expires.isoformat()}"
+            for entry in entries
+            if today is not None and entry.expired_on(today)
+        ),
     )

@@ -49,6 +49,11 @@ handler_routing:
       name: HandlerFleetObservationSource
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
   - operation: prepare_process_health
     handler:
       name: HandlerProcessHealthPayload
@@ -59,9 +64,24 @@ handler_routing:
     handler:
       name: HandlerOperatorAccess
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_operator_access
+  - operation: emit_seam_count
+    handler:
+      name: HandlerSeamEmitter
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_seam_emitter
+    input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+    output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The publish effect emits the sender side of the publish seams once the steps that build them land.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
 descriptor:
@@ -72,7 +92,7 @@ descriptor:
   timeout_ms: 900000
   side_effects:
   - runs the lab host reading, the pool read of the machines (which writes its own receipt), the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
-  - reads the factory floor JSON and the packaged pages (the tab page and the factory floor page)
+  - reads the factory floor JSON and the packaged pages (the tab page, the compare page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
   - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
@@ -116,6 +136,9 @@ runtime:
   simple_page_relpath: page/simple.html
   simple_data_relpath: .claude_scratch/factory-floor/floor-simple.json
   simple_reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
+  # OMN-23018: the running comparison against 1, 7 and 30 days ago (page/compare.html, published as compare.html).
+  compare_page_relpath: page/compare.html
+  compare_data_relpath: .claude_scratch/factory-floor/floor-compare.json
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
@@ -161,7 +184,7 @@ runtime:
     concurrent: true
     kind: capture
     required: false
-    timeout_seconds: 300
+    timeout_seconds: 60
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
   # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
@@ -174,13 +197,13 @@ runtime:
     concurrent: true
     kind: command
     required: false
-    timeout_seconds: 300
+    timeout_seconds: 60
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
     concurrent: true
     kind: copy
     required: false
-    timeout_seconds: 30
+    timeout_seconds: 10
     source_relpath: .onex_state/friction-rollup/latest.json
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
@@ -188,7 +211,7 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 600
+    timeout_seconds: 90
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
     fresh_relpath: .onex_state/process-health/process-health.json
     fresh_seconds: 900
@@ -196,12 +219,55 @@ runtime:
     concurrent: true
     kind: runner_fleet
     required: false
-    timeout_seconds: 30
+    timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-23083: join J2 (piece 2 to piece 3), run for each host its overlay names. A canary on the host publishes one command,
+  # placement consumes the host's capacity advertisement and one correlated result returns on the bus; the node writes the
+  # canary's chain (piece 2) and the seam's chain (piece 3) under one correlation id to the emission journal, before the
+  # simple floor reads its receipts. With no step here the join was built and tested and never run: the floor read J2 with
+  # no golden chain from it (measured on the served board of 2026-11-08 05:07Z: golden_at and error_at both empty).
+  # Not required: when the bus cannot be read the step is recorded failed and no chain is written, which the floor reads
+  # as J2 not run, never as success. It runs with the other input steps, so it adds nothing past the slowest member.
+  - name: join_j2
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
+    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}"]
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
+  - name: friction_classed
+    concurrent: true
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 90
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      ledger_path_env: ONEX_LEDGER_PATH
+      archive_subdir: archive
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
+  # OMN-22864: the downstream piece's typed refusal of every real upstream failure (the joins its overlay declares), written to
+  # the emission journal before the simple floor reads it. node_join_refusal_effect runs only when something calls it; with no step here
+  # each failure of piece 2 to 5 read downstream_missing_typed_failure 900 s later. It is independent of the other input steps
+  # (it reads the ledger and appends to the journal), so it joins their group and adds nothing to the longest declared path.
+  # Not required: when it fails the floor still reads, and the floor's chains row names the joins that stayed unanswered.
+  - name: join_refusal
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_refusal_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 600
+    timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
@@ -209,15 +275,23 @@ runtime:
   - name: floor_simple
     kind: module
     required: false
-    timeout_seconds: 120
+    timeout_seconds: 15
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--defer-canary"]
+  # OMN-23018: the floor's numbers are kept as a dated history and compared with 1, 7 and 30 days ago. Not required: when it
+  # fails the previous floor-compare.json stays and the compare page draws its own age, red past 15 minutes.
+  - name: floor_compare
+    kind: module
+    required: false
+    timeout_seconds: 15
+    module: omnimarket.nodes.node_floor_compare_effect
+    args: ["--home", "{home}"]
   # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
   after_publish_steps:
   - name: floor_canary
     kind: module
     required: true
-    timeout_seconds: 120
+    timeout_seconds: 20
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--publish-canary"]
   names:
@@ -225,6 +299,8 @@ runtime:
     simple_page: index.html
     simple_data: floor-simple.json
     simple_reads: floor-simple-reads.json
+    compare_page: compare.html
+    compare_data: floor-compare.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json
@@ -235,6 +311,21 @@ runtime:
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
+  # OMN-22699: the cycle bound and the time each phase after the input steps may take. The longest path the contract
+  # allows is the sum of: each group of concurrent input steps at its slowest member's timeout_seconds, the delegation
+  # read, the copies, the history prune, the after-publish steps and the final status write. A test holds that sum under
+  # bound_seconds, so a timeout raised past the bound fails the build instead of showing as a slow page. The handler
+  # clamps every delegation read, copy, prune and status write to what its phase has left, so these numbers are real
+  # limits. Measured 2026-11-07 on the launching Mac (served publish-status.json): hosts 24 s, pool 18 to 22 s, the
+  # factory floor record 24 s, the simple floor 11 to 12 s, delegation 7 to 8 s, the whole input phase 59 to 60 s; the
+  # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
+  # timeout is recorded failed with the seconds it took.
+  cycle:
+    bound_seconds: 240
+    delegation_timeout_seconds: 15
+    copy_budget_seconds: 40
+    history_prune_budget_seconds: 8
+    final_status_seconds: 5
   # The record's history: every publish also stores the record as a timestamped snapshot under <history_root>/<subdirectory>/
   # (history_root is the overlay's, normally the serving directory), written to a temporary name and renamed in without
   # replacing an existing name. A snapshot is never rewritten. Pruning removes only snapshots older than days, oldest

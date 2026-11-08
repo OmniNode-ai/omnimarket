@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_repo_state_query_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_REPO_STATE_OVERLAY names.
+# No key has a default. Per-host facts are named by environment variables.
+clones_root_env: EXAMPLE_CLONES_ROOT
+watcher_state_env: EXAMPLE_PR_WATCHER_STATE
+state_dir_env: EXAMPLE_STATE_DIR
+bus_state_file: repo_state_bus_heads.json
+sync_command_env: EXAMPLE_REPO_STATE_SYNC_COMMAND
+watcher_refresh_command_env: EXAMPLE_REPO_STATE_WATCHER_REFRESH_COMMAND
+git_timeout_seconds: 30
+pull_timeout_seconds: 300
+max_file_chars: 200000
+reply_timeout_seconds: 60
+default_profile: inmemory
+profiles:
+  inmemory:
+    kind: inmemory
+  redpanda:
+    kind: kafka
+    lane: example-lane
+    workspace_root_env: EXAMPLE_WORKSPACE_ROOT
+# The unit declaration `repo-state unit` renders. $OMNI_HOME and $HOME are filled by the installing host.
+unit:
+  unit_name: example-repo-state-serve
+  description: Example repository state serve process
+  bus_profile: redpanda
+  python: $OMNI_HOME/example/.venv/bin/python
+  pythonpath: []
+  restart_seconds: 15
+  stop_timeout_seconds: 120
+  log_file: $OMNI_HOME/.onex_state/example-repo-state/serve.log
+  environment:
+    EXAMPLE_CLONES_ROOT: $OMNI_HOME
+    EXAMPLE_PR_WATCHER_STATE: $OMNI_HOME/.example/state.json
+    EXAMPLE_STATE_DIR: $OMNI_HOME/.onex_state/example-repo-state
+    EXAMPLE_REPO_STATE_SYNC_COMMAND: example-sync --repo {repo}
+    EXAMPLE_WORKSPACE_ROOT: $OMNI_HOME/example-workspace
+  hosts:
+    - {name: host-a, scheduler: systemd-user}

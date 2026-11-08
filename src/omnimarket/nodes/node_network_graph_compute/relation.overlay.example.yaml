@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The overlay of the import_relation_compute operation, loaded by its caller and handed in whole.
+# Labels, the five tracked relations and the owner of each label come from the plan's cycle cut
+# table (section 4.1) and its subsystem list (section 2.1); the join list is the plan's join table.
+# The owners below are the plan's reading of each label and are a proposal until piece 1 confirms them:
+# intelligence-memory spans the review nodes (piece 14) and the memory pilot (piece 16).
+#
+#   label_rules       first match wins; a file with no rule carries its repository name
+#   tracked_relations the relations the map must carry joins for
+#   label_owners      the piece owning each label
+#   joins             each join id with the pieces at its ends
+label_rules: []
+tracked_relations:
+- {source: dispatch, target: ledger-session}
+- {source: dispatch, target: tickets-plans}
+- {source: landing, target: tickets-plans}
+- {source: intelligence-memory, target: seams-verify}
+- {source: intelligence-memory, target: landing}
+label_owners:
+- {label: dispatch, piece: 12}
+- {label: ledger-session, piece: 6}
+- {label: tickets-plans, piece: 13}
+- {label: landing, piece: 9}
+- {label: intelligence-memory, piece: 16}
+- {label: seams-verify, piece: 3}
+joins:
+- {join_id: J0, pieces: [1]}
+- {join_id: J1, pieces: [1, 2]}
+- {join_id: J2, pieces: [2, 3]}
+- {join_id: J3, pieces: [3, 4]}
+- {join_id: J4, pieces: [4, 5]}
+- {join_id: J5, pieces: [5, 6]}
+- {join_id: J6, pieces: [6, 7]}
+- {join_id: J7, pieces: [7, 8]}
+- {join_id: J8, pieces: [8, 9]}
+- {join_id: J9, pieces: [9, 10]}
+- {join_id: J10, pieces: [10, 11]}
+- {join_id: J11, pieces: [11, 12]}
+- {join_id: J12, pieces: [12, 13]}
+- {join_id: J13, pieces: [13, 14]}
+- {join_id: J14, pieces: [14, 15]}
+- {join_id: J15, pieces: [15, 16]}
+- {join_id: J16, pieces: [16, 17]}
+- {join_id: J17, pieces: [17, 18]}
+- {join_id: J-cycle, pieces: [14, 9]}
+- {join_id: J-recover, pieces: [9, 11]}

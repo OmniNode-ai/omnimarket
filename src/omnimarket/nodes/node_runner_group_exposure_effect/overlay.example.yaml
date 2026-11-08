@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the in-memory overlay (the default way to run the probe). The deployment's
+# overlay lives at <root>/node_runner_group_exposure_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+settings:
+  public_reach_events: [pull_request_target, pull_request, issue_comment]
+  max_age_seconds: 3600
+source:
+  backend: inmemory
+  fixture:
+    read_age_seconds: 60
+    group:
+      group_id: 7
+      allows_public_repositories: false
+      restricted_to_workflows: true
+      selected_workflows: ["example-org/example-repo/.github/workflows/build.yml@main"]
+      repositories: ["example-org/example-repo"]
+    files:
+      - repository: example-org/example-repo
+        path: .github/workflows/build.yml
+        ref: main
+        selects_group_label: true
+        triggers: [push, workflow_dispatch]
+    jobs:
+      - run_id: 1001
+        run_event: push
+        head_is_fork: false
+        repository_private: true
+        workflow_ref: .github/workflows/build.yml

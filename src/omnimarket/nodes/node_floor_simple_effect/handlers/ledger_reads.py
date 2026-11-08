@@ -25,10 +25,12 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelGoRule,
     ModelLedgerReadingRule,
+    ModelLedgerShadowRule,
     ModelNodeEmission,
     ModelPieceEventRule,
     ModelReadingRow,
     ModelRowMatch,
+    ModelShadowReading,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
@@ -51,6 +53,12 @@ class ModelLedgerFacts(BaseModel):
     # The newest reading row of each piece the reading writer wrote, and how many matching rows could not be read as one.
     readings: tuple[ModelReadingRow, ...] = ()
     readings_rejected: int = 0
+    # The newest shadow row of each shadow rule that has one, and how many matching rows could not be read as one.
+    shadows: tuple[ModelShadowReading, ...] = ()
+    shadows_rejected: int = 0
+    # A shadow rule whose query failed, with its reason. The shadow rows are advisory: the go, the events and the readings
+    # stay readable without them, and the failure stays visible here.
+    shadows_unread: tuple[str, ...] = ()
 
 
 class ModelLedgerFloorRead(BaseModel):
@@ -119,7 +127,8 @@ def _chain(
     row: ModelLedgerEvidenceRow, rule: ModelPieceEventRule, *, failed: bool
 ) -> tuple[ModelNodeEmission, ...]:
     """The start and the terminal event one ledger row stands for, under a correlation id the row decides."""
-    correlation = hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
+    named = row.cells.get(rule.correlation_cell, "") if rule.correlation_cell else ""
+    correlation = named or hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
     start = ModelNodeEmission(
         node=rule.node,
         piece=rule.piece,
@@ -213,10 +222,46 @@ def reading_rows(
     return tuple(newest[p] for p in sorted(newest)), rejected
 
 
+def shadow_readings(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelLedgerShadowRule
+) -> tuple[ModelShadowReading | None, int]:
+    """The newest row of a shadow rule as a reading, and the count of matching rows whose cells were not usable."""
+    match = ModelRowMatch(row_type=rule.row_type, lane=rule.lane, cells=rule.cells)
+    newest: ModelShadowReading | None = None
+    rejected = 0
+    for row in rows:
+        if not _row_matches(row, match):
+            continue
+        try:
+            published = datetime.fromisoformat(row.cells[rule.published_at_cell])
+            max_age = int(row.cells[rule.max_age_cell])
+            values = tuple((f.label, row.cells[f.cell]) for f in rule.fields)
+            outcome = row.cells[rule.outcome_cell] if rule.outcome_cell else None
+        except (KeyError, ValueError):
+            rejected += 1
+            continue
+        if published.tzinfo is None or max_age <= 0:
+            rejected += 1
+            continue
+        if newest is None or published > newest.published_at:
+            newest = ModelShadowReading(
+                piece=rule.piece,
+                label=rule.label,
+                published_at=published,
+                max_age_s=max_age,
+                values=values,
+                failed_outcome=outcome if outcome != rule.outcome_ok else None,
+            )
+    return newest, rejected
+
+
 def read_ledger_facts(
     source: ProtocolLedgerRowSource, overlay: ModelFloorSimpleOverlay, now: datetime
 ) -> ModelLedgerFloorRead:
-    """Read the go rulings and the piece event rows. Any read that fails fails the whole read, with its reason."""
+    """Read the go rulings and the piece event rows. Any read of those that fails fails the whole read, with its reason.
+
+    A shadow row is advisory telemetry: a failed shadow query is listed in ``shadows_unread`` and costs no other fact.
+    """
     until = now + _FUTURE_SLACK
     go_rule = overlay.rebuild.go
     rulings = source.read(
@@ -268,6 +313,27 @@ def read_ledger_facts(
                 error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
             )
         readings, rejected = reading_rows(list(read.rows), reading_rule)
+    shadows: list[ModelShadowReading] = []
+    shadows_rejected = 0
+    shadows_unread: list[str] = []
+    for shadow_rule in overlay.ledger_shadows:
+        shadow_read = source.read(
+            ModelLedgerQuery(
+                since=now - timedelta(days=shadow_rule.lookback_days),
+                until=until,
+                row_type=shadow_rule.row_type,
+                lane=shadow_rule.lane,
+            )
+        )
+        if shadow_read.error is not None:
+            shadows_unread.append(
+                f"{shadow_rule.row_type} rows of {shadow_rule.lane} unread: {shadow_read.error}"
+            )
+            continue
+        reading, shadow_rejects = shadow_readings(list(shadow_read.rows), shadow_rule)
+        shadows_rejected += shadow_rejects
+        if reading is not None:
+            shadows.append(reading)
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(
@@ -282,5 +348,8 @@ def read_ledger_facts(
             events=piece_events(list(event_rows.values()), overlay.piece_events),
             readings=readings,
             readings_rejected=rejected,
+            shadows=tuple(shadows),
+            shadows_rejected=shadows_rejected,
+            shadows_unread=tuple(shadows_unread),
         )
     )
