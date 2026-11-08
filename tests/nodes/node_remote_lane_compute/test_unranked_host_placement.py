@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     ModelRemoteLaneHostReading,
     ModelRemoteLanePlacementRequest,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
 )
 
 
