@@ -647,6 +647,20 @@ handler_routing:
       input_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandRequest
       output_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandResult
 
+terminal_event: onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.seam-attach-on-demand-started.v1
+    - onex.evt.omnimarket.seam-on-demand-node-attached.v1
+    - onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+    - onex.evt.omnimarket.seam-attach-on-demand-failed.v1
+
 topics:
   attach_on_demand_requested: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
   attach_on_demand_started: onex.evt.omnimarket.seam-attach-on-demand-started.v1
