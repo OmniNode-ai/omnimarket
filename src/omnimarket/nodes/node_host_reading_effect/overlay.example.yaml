@@ -110,6 +110,8 @@ join_j2:
   collect_window_seconds: 14
   emission_home_env: EXAMPLE_FLOOR_STATE
   emission_journal_relpath: emissions.jsonl
+  # hosts: the hosts the join runs for; leave it out and every pooled host of the lab host table is run.
+  hosts: [example_host_a, example_host_b]
 hosts:
   - name: example-ledger-host
     scheduler: launchd

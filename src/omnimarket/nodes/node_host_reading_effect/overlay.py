@@ -221,6 +221,9 @@ class ModelJoinJ2Overlay(BaseModel):
     #: The variable naming the floor's state directory, and the journal's path under it.
     emission_home_env: str = Field(min_length=1)
     emission_journal_relpath: str = Field(min_length=1)
+    #: The hosts the join runs for; empty means every pooled host of the lab host table. A host named here that the
+    #: table does not pool is run anyway and reads its own typed failure.
+    hosts: tuple[str, ...] = ()
 
 
 class ModelHostReadingOverlay(BaseModel):
