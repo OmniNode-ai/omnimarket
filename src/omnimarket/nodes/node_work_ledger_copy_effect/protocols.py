@@ -11,8 +11,11 @@ from typing import Protocol
 
 from omnimarket.nodes.node_work_ledger_copy_effect.models import (
     ModelCopyResult,
+    ModelDrillResult,
     ModelFileFacts,
+    ModelLedgerRow,
     ModelRowFacts,
+    ModelSnapshotBundle,
 )
 
 
@@ -60,3 +63,38 @@ class ProtocolCopyDrill(Protocol):
 
 class ProtocolCopyReporter(Protocol):
     def report(self, result: ModelCopyResult) -> None: ...
+
+
+class ProtocolLedgerRowSource(Protocol):
+    """Rows of the accepted-row topic or of the projection, in sequence order."""
+
+    def rows(self) -> tuple[ModelLedgerRow, ...]: ...
+
+
+class ProtocolSnapshotStore(Protocol):
+    """Lab storage the snapshots are written to and read from."""
+
+    def write(self, bundle: ModelSnapshotBundle) -> None: ...
+
+    def read(self, run_id: str) -> ModelSnapshotBundle | None:
+        """The snapshot as it lies on storage; no verification is done here."""
+
+    def newest(self) -> str | None: ...
+
+    def prune(self, keep: int) -> tuple[str, ...]: ...
+
+
+class ProtocolSourceProbe(Protocol):
+    def reachable(self, host: str, port: int) -> bool:
+        """Whether this host can open a connection to ``host:port``; raises ``CopyStepError`` if unknowable."""
+
+
+class ProtocolTableRebuilder(Protocol):
+    def rebuild(
+        self, topic_rows: Sequence[ModelLedgerRow]
+    ) -> tuple[ModelLedgerRow, ...]:
+        """Build an empty scratch table from the topic rows alone; return what it then holds."""
+
+
+class ProtocolDrillReporter(Protocol):
+    def report(self, result: ModelDrillResult) -> None: ...

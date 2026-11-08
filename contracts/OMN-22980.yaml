@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-22980
+title: "Piece 16's reading: a planted fact is recalled after a forced compaction and an eval run ends in a result, and the reading flips when either fails"
+summary: node_context_recall_reading_compute is a pure compute node that reads piece 16 from supplied planted-fact probes and eval runs. It reads WORKING only while every planted fact in the window was recalled after a compaction that was forced and finished and every eval run ended in a result; every threshold comes from its overlay. The compaction itself belongs to the compaction epic.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22980-context-recall-reading
+  statement: Piece 16's reading is computed by a node from probe and eval-run evidence, flips to NOT_WORKING on a planted fact that is not recalled or an eval run that ends with no result, and holds no threshold of its own.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a planted fact is recalled after a forced compaction and a non-recall flips the reading to NOT WORKING -- falsifier: uv run pytest tests/nodes/node_context_recall_reading_compute -q -k planted_fact'
+  - id: AC2
+    statement: 'AC2: an eval run that ends with no result flips the reading -- falsifier: uv run pytest tests/nodes/node_context_recall_reading_compute -q -k eval_without_result'
+evidence_requirements:
+- kind: tests
+  description: Unit and golden and error chain event tests of node_context_recall_reading_compute
+  command: uv run --frozen pytest tests/nodes/node_context_recall_reading_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22980-planted-fact
+  description: A planted fact recalled after a forced compaction reads WORKING; a non-recall, an unforced or unfinished compaction, an out-of-order probe, a stale or future-dated probe each read NOT_WORKING; the golden and error chain event tests and the named recall break pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_recall_reading_compute -q --no-cov -k planted_fact
+    cwd: .
+- id: dod-omn22980-eval-without-result
+  description: An eval run that ended with no result, or stayed open past its deadline, reads NOT_WORKING; a run inside its deadline flips nothing; the named eval-result break turns the chain red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_recall_reading_compute -q --no-cov -k eval_without_result
+    cwd: .
+- id: dod-omn22980-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22980 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_recall_reading_compute -q --no-cov

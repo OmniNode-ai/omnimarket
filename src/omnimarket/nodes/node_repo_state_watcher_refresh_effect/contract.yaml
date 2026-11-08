@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Repository State Watcher Refresh Effect (OMN-23033)
+#
+# WHAT IT IS. The command a host declares for the PR watcher mirror. A pull request, checks or
+# job read whose watcher state is older than the bus's last event for the repository answered
+# `mirror_behind` because no host declared a command to refresh that state. This node is that
+# command: `onex repo-state-refresh --repo <owner/name>`. A host's repo-state overlay names it
+# in the environment variable the query's `watcher_refresh_command_env` points at.
+#
+# WHO RUNS IT. The same hosts that run `repo-state serve` (the orchestrator Mac and each lab pool
+# host). It is run as a subprocess by the query's puller, never by a shared runtime, so the
+# contract declares no event_bus block and no handler_routing.
+#
+# STEPS. Every step is a command the host's overlay environment names: `tick` (ask the PR watcher
+# for one tick over the bus and wait for its terminal) and, on a host that does not run the
+# watcher, `state-sync` (bring the tick's state to this host). Nothing here names a machine, a
+# path or a command line.
+name: "node_repo_state_watcher_refresh_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Refreshes this host's PR watcher state: runs the declared tick step and, where declared, the
+  state-sync step, then reads the state's read time again. It answers refreshed only when the
+  read time moved forward; a command that changed nothing answers unchanged and is not ok.
+input_model:
+  name: "ModelWatcherRefreshRequest"
+  module: "omnimarket.nodes.node_repo_state_watcher_refresh_effect.models.model_watcher_refresh"
+  description: "The repository whose watcher read found the state behind."
+output_model:
+  name: "ModelWatcherRefreshResult"
+  module: "omnimarket.nodes.node_repo_state_watcher_refresh_effect.models.model_watcher_refresh"
+  description: "refreshed, unchanged or failed, the read time before and after, and each step's outcome."
+handler:
+  module: "omnimarket.nodes.node_repo_state_watcher_refresh_effect.handlers.handler_watcher_refresh"
+  class: "HandlerWatcherRefresh"
+  input_model: "omnimarket.nodes.node_repo_state_watcher_refresh_effect.models.model_watcher_refresh.ModelWatcherRefreshRequest"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 330000
+overlay:
+  id: node_repo_state_watcher_refresh_effect
+  file_env: ONEX_REPO_STATE_WATCHER_REFRESH_OVERLAY
+  example: overlay.example.yaml
+reading:
+  name: repo_state_watcher_refresh_moved
+  description: "Share of refresh runs after which the watcher state's read time moved forward."
+  injected_fault: "A tick step that succeeds and writes nothing (planted in tests as a command that exits 0 without touching the state): the result reads unchanged and not ok, and the query still answers mirror_behind."
+metadata:
+  transport_type: command
+  description: "A declared command run by the repository state query on each host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-11-07"
+  tags: ["effect", "repo-state", "watcher", "OMN-23033"]
+  related_tickets: ["OMN-23033"]
