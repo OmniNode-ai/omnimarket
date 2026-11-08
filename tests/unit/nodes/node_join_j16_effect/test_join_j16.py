@@ -25,6 +25,7 @@ import yaml
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
     JsonlEmissionSink,
+    ProtocolEmissionSink,
 )
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
@@ -44,7 +45,10 @@ from omnimarket.nodes.node_join_j16_effect.handlers.handler_join_j16 import (
     FAIL_RECORD_UNREADABLE,
     FAIL_STALE,
 )
-from omnimarket.nodes.node_join_j16_effect.models import ModelJoinJ16Command
+from omnimarket.nodes.node_join_j16_effect.models import (
+    ModelJoinJ16Command,
+    ModelJoinJ16Result,
+)
 from omnimarket.nodes.node_join_j16_effect.overlay import ModelJoinJ16Overlay
 from omnimarket.nodes.node_join_j16_effect.runtime_join_j16 import main
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
@@ -53,6 +57,7 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ModelLedgerRead,
+    ProtocolLedgerRowSource,
 )
 
 pytestmark = pytest.mark.unit
@@ -122,7 +127,11 @@ class _DropsPiece(InMemoryEmissionSink):
             super().emit(event)
 
 
-def _handler(source, sink, floor_record: Path) -> HandlerJoinJ16:  # type: ignore[no-untyped-def]
+def _handler(
+    source: ProtocolLedgerRowSource,
+    sink: ProtocolEmissionSink,
+    floor_record: Path,
+) -> HandlerJoinJ16:
     return HandlerJoinJ16(
         overlay=_overlay(),
         source=source,
@@ -160,7 +169,9 @@ def _state(sink: InMemoryEmissionSink) -> tuple[str, list[str]]:
     return receipts.joins[0].state, [f.code for f in receipts.findings]
 
 
-def _run(tmp_path: Path, row: str | None, floor_record: Path | None = None):  # type: ignore[no-untyped-def]
+def _run(
+    tmp_path: Path, row: str | None, floor_record: Path | None = None
+) -> tuple[ModelJoinJ16Result, InMemoryEmissionSink]:
     rows = (row,) if row else ()
     sink = InMemoryEmissionSink()
     result = _handler(
@@ -371,3 +382,20 @@ class TestRuntime:
             monkeypatch.setenv(key, value)
         monkeypatch.delenv("EXAMPLE_FLOOR_HOME")
         assert main(["run"]) == 3
+
+
+class TestContractTopics:
+    def test_the_contract_declares_the_run_completed_terminal_event(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[4]
+            / "src/omnimarket/nodes/node_join_j16_effect/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.join-sixteen-run-completed.v1"
+        )
+        assert (
+            contract["topics"]["join_j16_run_failed"]
+            == "onex.evt.omnimarket.join-sixteen-run-failed.v1"
+        )
