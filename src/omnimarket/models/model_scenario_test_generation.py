@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from omnimarket.nodes.node_event_chain_generator_compute.models.model_generated_chain_case import (
+from omnimarket.models.model_generated_chain_case import (
     ModelGeneratedChainCase,
 )
 

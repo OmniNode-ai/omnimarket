@@ -23,14 +23,14 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.models.model_scenario_test_generation import (
+    ModelScenarioTestGenerationRequest,
+)
 from omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_scenario_test_generator import (
     HandlerScenarioTestGenerator,
 )
 from omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_scenario_declaration_error import (
     ChainScenarioDeclarationError,
-)
-from omnimarket.nodes.node_event_chain_generator_compute.models.model_scenario_test_generation import (
-    ModelScenarioTestGenerationRequest,
 )
 
 pytestmark = pytest.mark.unit

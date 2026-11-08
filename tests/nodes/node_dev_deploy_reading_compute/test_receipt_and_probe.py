@@ -18,6 +18,7 @@ from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_re
 )
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     LANE,
+    NOW,
     SHA_A,
     SHA_B,
     SHA_C,
@@ -201,3 +202,85 @@ def test_receipt_and_probe_malformed_request_is_refused_by_name(
         request(**edits)
     assert request().now is not None  # positive control: the good request validates
     assert good()["required_lane"] == LANE
+
+
+def test_receipt_and_probe_a_later_qualifying_pass_is_not_masked_by_an_earlier_pass() -> (
+    None
+):
+    receipts = [
+        receipt(SHA_A, "2026-11-08T07:00:00Z"),
+        receipt(SHA_A, "2026-11-08T08:20:00Z"),
+        receipt(SHA_B, "2026-11-08T09:20:00Z"),
+    ]
+    reading = _read(receipts=receipts)
+    assert reading.verdict is V.WORKING
+    assert reading.reasons == ()
+    assert (reading.merges_checked, reading.merges_receipted) == (2, 2)
+    late_then_good = [
+        receipt(SHA_A, "2026-11-08T09:30:00Z"),
+        receipt(SHA_A, "2026-11-08T08:20:00Z"),
+        receipt(SHA_B, "2026-11-08T09:20:00Z"),
+    ]
+    assert _read(receipts=late_then_good).verdict is V.WORKING
+
+
+def test_receipt_and_probe_a_pass_before_the_merge_does_not_fail_a_pending_merge() -> (
+    None
+):
+    merges = [merge(SHA_A, "2026-11-08T11:30:00Z")]
+    receipts = [receipt(SHA_A, "2026-11-08T11:00:00Z")]
+    reading = _read(merges=merges, receipts=receipts)
+    assert reading.verdict is V.WORKING
+    assert reading.pending == (f"receipt-pending:{SHA_A[:12]}",)
+    assert reading.merges_receipted == 0
+
+
+def test_receipt_and_probe_a_pass_finishing_after_the_read_time_does_not_count() -> (
+    None
+):
+    merges = [merge(SHA_A, "2026-11-08T11:30:00Z")]
+    late_future = [receipt(SHA_A, "2026-11-08T13:00:00Z")]
+    reading = _read(merges=merges, receipts=late_future)
+    assert reading.verdict is V.WORKING
+    assert reading.pending == (f"receipt-pending:{SHA_A[:12]}",)
+    assert reading.merges_receipted == 0
+    in_time_future = [receipt(SHA_A, "2026-11-08T12:00:01Z")]
+    reading = _read(merges=merges, receipts=in_time_future)
+    assert reading.pending == (f"receipt-pending:{SHA_A[:12]}",)
+    assert reading.merges_receipted == 0
+    assert _read(merges=merges, receipts=[receipt(SHA_A, NOW)]).merges_receipted == 1
+
+
+def test_receipt_and_probe_a_future_pass_on_an_old_merge_is_no_pass_receipt() -> None:
+    receipts = [
+        receipt(SHA_A, "2026-11-08T13:00:00Z"),
+        receipt(SHA_B, "2026-11-08T09:20:00Z"),
+    ]
+    assert _reasons(receipts=receipts) == (
+        f"no-pass-receipt:{SHA_A[:12]}:age-14400s-over-3600s",
+    )
+
+
+def test_receipt_and_probe_probe_age_is_an_exact_timedelta_not_a_truncated_second() -> (
+    None
+):
+    future = probe(probed_at="2026-11-08T12:00:00.500000Z")
+    assert _reasons(probes=[future]) == ("probe-future-dated:probe-1",)
+    stale = probe(probed_at="2026-11-07T11:59:59.500000Z")
+    assert _reasons(probes=[stale]) == ("probe-stale:probe-1:age-86401s-over-86400s",)
+    on_the_bound = probe(probed_at="2026-11-07T12:00:00Z")
+    assert _read(probes=[on_the_bound]).verdict is V.WORKING
+    just_inside = probe(probed_at="2026-11-07T12:00:00.500000Z")
+    assert _read(probes=[just_inside]).verdict is V.WORKING
+
+
+def test_receipt_and_probe_sha_with_a_trailing_newline_is_refused() -> None:
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(merges=[merge(SHA_A + "\n", "2026-11-08T08:00:00Z")])
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(receipts=[receipt(SHA_A + "\n", "2026-11-08T08:20:00Z")])
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(probes=[probe(expected=SHA_B + "\n")])
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(probes=[probe(observed=SHA_B + "\n")])
+    assert request(probes=[probe(observed=SHA_B)]).probes[0].observed_sha == SHA_B

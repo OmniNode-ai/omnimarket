@@ -29,15 +29,15 @@ from omnibase_core.models.contracts.subcontracts.model_validator_subcontract imp
 )
 from omnibase_core.validation.checker_chain_scenario import check_chain_scenarios
 
-from omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_scenario_declaration_error import (
-    ChainScenarioDeclarationError,
-)
-from omnimarket.nodes.node_event_chain_generator_compute.models.model_generated_chain_case import (
+from omnimarket.models.model_generated_chain_case import (
     ModelGeneratedChainCase,
 )
-from omnimarket.nodes.node_event_chain_generator_compute.models.model_scenario_test_generation import (
+from omnimarket.models.model_scenario_test_generation import (
     ModelScenarioTestGenerationRequest,
     ModelScenarioTestGenerationResult,
+)
+from omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_scenario_declaration_error import (
+    ChainScenarioDeclarationError,
 )
 
 _VALIDATION_CONTRACT = (
