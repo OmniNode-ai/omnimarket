@@ -90,6 +90,24 @@ class ModelLandingRoute(BaseModel):
     conflict_merge_states: tuple[str, ...] = ()
 
 
+class ModelLandingProjectionRoute(BaseModel):
+    """Where piece 9's snapshot comes from on a lab host: the pr_state projection, read through the pr_state read node.
+
+    The projection API address is not a key here. It is the ``projection_api_url`` of the
+    ``node_pr_state_read_effect`` overlay, found under ``ONEX_SKILL_OVERLAY_ROOTS`` like every other overlay.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The only discriminator of this shape against the watcher file route: a value of ``projection``.
+    source: Literal["projection"]
+    #: The goal scope overlay: its id, and the variable that pins its file.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    #: The watcher classes that are green and waiting (an eligible head).
+    queue_classes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelReadingScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -146,7 +164,7 @@ class ModelReadingOverlay(BaseModel):
     order: tuple[int, ...]
     pieces: tuple[ModelPieceReadingSpec, ...]
     #: Required when a piece carries landing requirements.
-    landing_route: ModelLandingRoute | None = None
+    landing_route: ModelLandingRoute | ModelLandingProjectionRoute | None = None
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
     #: A piece whose append failed is written again by up to ``passes`` passes; absent, each piece is written once.
     append_retry: ModelReadingAppendRetry | None = None

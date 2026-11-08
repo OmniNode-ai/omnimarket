@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23054
+title: omnimarket's test durations record covers every test file, so Tests (Split 13/20) passes on dev and every pull request
+summary: >-
+  The freshness test tests/unit/test_ci_shard_plan_record_freshness_omn17427.py failed Tests (Split 13/20) on pull request heads whose tree held 60 of 4433 test files absent from config/test_file_durations.json, limit 50. Dev after omnimarket#5406 reads 9 of 4438 unrecorded; this change records measured seconds for those 9 with a provenance supplement, so the record covers every test file on dev. No limit, check or test bound is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23054-durations-record-covers-dev
+    statement: >-
+      The committed durations record names every test file on dev, so the freshness test and the shard plan tests pass with the limit of 50 unchanged.
+    acceptance:
+      - id: AC1
+        statement: "AC1: config/test_file_durations.json is regenerated from CI run timings through its declared route and covers every test file on dev, so the freshness test passes -- falsifier: uv run pytest of the freshness test on dev"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The freshness test, the supplement test and the shard plan tests.
+    command: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py tests/unit/test_ci_duration_record_supplement.py tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23054-ac1-durations-record
+    description: >-
+      The supplement test finds all 9 measured files in the record on this branch. On dev (370eb11de) the 9 files are absent and the test fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/test_ci_duration_record_supplement.py tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23054-durations-record
+    description: >-
+      The shard plan tests that read the changed record still pass, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
