@@ -1,0 +1,85 @@
+---
+name: projection_local_identity
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.models.model_local_identity_minted.ModelLocalIdentityMinted
+description: >
+  OMN-19986. This install's local identity, one row per tenant: the tenant id and
+  when it was minted, folded from local-identity-minted events and served to the
+  API Keys page. The earliest mint wins, so a replay, a duplicate or a later
+  announcement changes nothing, through the same plan the local store applies.
+  The tenant must be one tenant_registry_mirror records; any other tenant is
+  refused to the DLQ and nothing is stored.
+runtime_profiles: [tenant-projection]
+
+handler:
+  module: omnimarket.nodes.node_projection_local_identity.handlers.handler_projection_local_identity
+  class: HandlerProjectionLocalIdentity
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: local_identity_projection_writer
+      handler:
+        name: LocalIdentityProjectionWriter
+        module: omnimarket.nodes.node_projection_local_identity.handlers.handler_local_identity_writer
+      handler_module: omnimarket.nodes.node_projection_local_identity.handlers.handler_local_identity_writer
+terminal_event: onex.evt.omnimarket.projection-local-identity-applied.v1
+golden_path:
+  - "Validate a mint event that names its tenant uuid and an aware mint time"
+  - "Confirm the tenant against tenant_registry_mirror; refuse an unknown one"
+  - "Lock the tenant and read its stored row"
+  - "Plan the row; a replay or a later mint plans nothing"
+  - "Upsert the planned row under tenant_id"
+  - "Publish the written row to the bus-backed projection API"
+  - "Emit onex.evt.omnimarket.projection-local-identity-applied.v1"
+db_io:
+  db_tables:
+    - name: local_identity
+      database_ref: application
+      schema: public
+      migration: "0000_create_local_identity.sql"
+      access: read_write
+      role: local_identity
+    # Confirms each mint's tenant, read through the mirror's own binding as the
+    # other tenant writers read it. NOT `tenant`: the mirror is a cross-tenant index.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
+  dedupe_key: [tenant_id]
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.local-identity-minted.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-local-identity-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-local-identity-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-local-identity-applied.v1
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.local-identity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  key_grain: "mutable"
+  table: "local_identity"
+  schema: "omnidash_analytics"
+  columns:
+    - tenant_id
+    - minted_at
+    - event_id
+    - updated_at
+    - projection_cursor
+  order_by: "tenant_id ASC"
+  cursor_column: projection_cursor
+  freshness_column: updated_at
+  limit: 500
+  bus_backed: true
+  key_columns: [tenant_id]
+  tenant_column: tenant_id
+metadata:
+  transport_type: kafka
