@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -90,12 +91,16 @@ def test_the_protocol_carries_the_fifteen_provisioning_steps() -> None:
 
 
 def test_a_transport_missing_one_step_is_not_the_protocol() -> None:
-    class Short(ScriptedLaneHostTransport):
-        stop_lane_guard = None  # type: ignore[assignment]
-
-    assert not isinstance(
-        Short(ModelScriptedTransportScript()), ProtocolLaneHostTransport
+    full = ScriptedLaneHostTransport(ModelScriptedTransportScript())
+    short = SimpleNamespace(
+        **{
+            name: getattr(full, name)
+            for name in dir(full)
+            if not name.startswith("_") and name != "stop_lane_guard"
+        }
     )
+
+    assert not isinstance(short, ProtocolLaneHostTransport)
 
 
 def test_scripted_transport_logs_every_provisioning_step_in_order() -> None:
