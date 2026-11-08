@@ -1,0 +1,240 @@
+{
+  "recorded_by": "WriterContextAuditPostgres.write_audit_events from omnibase_infra, the executemany parameters per event, one event per call",
+  "columns": [
+    "task_id",
+    "parent_task_id",
+    "correlation_id",
+    "contract_id",
+    "event_type",
+    "enforcement_level",
+    "enforcement_action",
+    "violation_details",
+    "context_tokens_used",
+    "context_budget_tokens",
+    "return_tokens",
+    "return_max_tokens"
+  ],
+  "events": [
+    {
+      "topic": "onex.evt.omniclaude.audit-dispatch-validated.v1",
+      "partition": 0,
+      "offset": 100,
+      "value": {
+        "task_id": "t-1",
+        "parent_task_id": null,
+        "correlation_id": "c-1",
+        "contract_id": "OMN-1001",
+        "event_type": "dispatch_validated",
+        "enforcement_level": "strict",
+        "enforcement_action": "allow",
+        "violation_details": null,
+        "context_tokens_used": 812,
+        "context_budget_tokens": 8000,
+        "return_tokens": null,
+        "return_max_tokens": null
+      },
+      "old_writer_params": [
+        "t-1",
+        null,
+        "c-1",
+        "OMN-1001",
+        "dispatch_validated",
+        "strict",
+        "allow",
+        null,
+        812,
+        8000,
+        null,
+        null
+      ]
+    },
+    {
+      "topic": "onex.evt.omniclaude.audit-scope-violation.v1",
+      "partition": 1,
+      "offset": 101,
+      "value": {
+        "task_id": "t-2",
+        "parent_task_id": "t-1",
+        "correlation_id": "c-2",
+        "contract_id": "OMN-1002",
+        "event_type": "scope_violation",
+        "enforcement_level": "strict",
+        "enforcement_action": "block",
+        "violation_details": {
+          "scope": "repo",
+          "path": "src/z.py",
+          "attempted": [
+            "write",
+            "delete"
+          ],
+          "allowed": {
+            "zeta": 1,
+            "alpha": [
+              1,
+              2,
+              {
+                "k": "v"
+              }
+            ]
+          }
+        },
+        "context_tokens_used": null,
+        "context_budget_tokens": null,
+        "return_tokens": null,
+        "return_max_tokens": null
+      },
+      "old_writer_params": [
+        "t-2",
+        "t-1",
+        "c-2",
+        "OMN-1002",
+        "scope_violation",
+        "strict",
+        "block",
+        "{\"scope\": \"repo\", \"path\": \"src/z.py\", \"attempted\": [\"write\", \"delete\"], \"allowed\": {\"zeta\": 1, \"alpha\": [1, 2, {\"k\": \"v\"}]}}",
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "topic": "onex.evt.omniclaude.audit-context-budget-exceeded.v1",
+      "partition": 0,
+      "offset": 102,
+      "value": {
+        "task_id": "t-3",
+        "parent_task_id": "t-1",
+        "correlation_id": "c-3",
+        "contract_id": null,
+        "event_type": "context_budget_exceeded",
+        "enforcement_level": "warn",
+        "enforcement_action": "compress",
+        "violation_details": {
+          "used": 9100,
+          "budget": 8000,
+          "ratio": 1.1375,
+          "note": "dépassement — テスト"
+        },
+        "context_tokens_used": 9100,
+        "context_budget_tokens": 8000,
+        "return_tokens": null,
+        "return_max_tokens": null,
+        "producer_extra": "ignored"
+      },
+      "old_writer_params": [
+        "t-3",
+        "t-1",
+        "c-3",
+        null,
+        "context_budget_exceeded",
+        "warn",
+        "compress",
+        "{\"used\": 9100, \"budget\": 8000, \"ratio\": 1.1375, \"note\": \"d\\u00e9passement \\u2014 \\u30c6\\u30b9\\u30c8\"}",
+        9100,
+        8000,
+        null,
+        null
+      ]
+    },
+    {
+      "topic": "onex.evt.omniclaude.audit-return-bounded.v1",
+      "partition": 1,
+      "offset": 103,
+      "value": {
+        "task_id": "t-4",
+        "parent_task_id": null,
+        "correlation_id": "c-4",
+        "contract_id": "OMN-1004",
+        "event_type": "return_bounded",
+        "enforcement_level": "strict",
+        "enforcement_action": "truncate",
+        "violation_details": {},
+        "context_tokens_used": null,
+        "context_budget_tokens": null,
+        "return_tokens": 4096,
+        "return_max_tokens": 2048
+      },
+      "old_writer_params": [
+        "t-4",
+        null,
+        "c-4",
+        "OMN-1004",
+        "return_bounded",
+        "strict",
+        "truncate",
+        "{}",
+        null,
+        null,
+        4096,
+        2048
+      ]
+    },
+    {
+      "topic": "onex.evt.omniclaude.audit-compression-triggered.v1",
+      "partition": 0,
+      "offset": 104,
+      "value": {
+        "task_id": "t-5",
+        "correlation_id": "c-5",
+        "event_type": "compression_triggered",
+        "enforcement_level": "advisory"
+      },
+      "old_writer_params": [
+        "t-5",
+        null,
+        "c-5",
+        null,
+        "compression_triggered",
+        "advisory",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "topic": "onex.evt.omniclaude.audit-scope-violation.v1",
+      "partition": 0,
+      "offset": 105,
+      "value": {
+        "task_id": "t-6",
+        "parent_task_id": "t-2",
+        "correlation_id": "c-6",
+        "contract_id": "OMN-1006",
+        "event_type": "scope_violation",
+        "enforcement_level": "strict",
+        "enforcement_action": "block",
+        "violation_details": {
+          "b": null,
+          "a": true,
+          "c": false,
+          "nested": {
+            "y": [],
+            "x": {}
+          }
+        },
+        "context_tokens_used": 0,
+        "context_budget_tokens": 0,
+        "return_tokens": 0,
+        "return_max_tokens": 0
+      },
+      "old_writer_params": [
+        "t-6",
+        "t-2",
+        "c-6",
+        "OMN-1006",
+        "scope_violation",
+        "strict",
+        "block",
+        "{\"b\": null, \"a\": true, \"c\": false, \"nested\": {\"y\": [], \"x\": {}}}",
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

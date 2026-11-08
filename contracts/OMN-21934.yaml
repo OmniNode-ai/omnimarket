@@ -1,18 +1,64 @@
 ---
 schema_version: "1.0.0"
-ticket_id: OMN-21934
-title: 'The omnimarket application relation ownership manifest declares public.context_audit_events_id_seq'
-summary: 'Declares the context_audit_events id sequence once in scripts/application-relation-ownership.yaml (kind sequence, application database, public schema, domain TENANT, owner the projection migration runner, no writers), so the omnibase_infra SQL ownership gate resolves the sequence grant that its context_audit migration names. This is the manifest half of the context_audit work; the node itself lands separately.'
+ticket_id: "OMN-21934"
+title: "The context_audit consumer runs as a projection node writing context_audit_events on replayed events, with the node-orphan-graph and grant gates passing"
+summary: >
+  One-runtime plan T13, omnimarket half. node_projection_context_audit replaces the
+  omnibase_infra context-audit consumer module: it reads the same five audit topics
+  and writes the same twelve context_audit_events columns, plus a deterministic
+  event_key derived from the event's Kafka coordinates, with an UPSERT on that key
+  so a second replay leaves one row per key. The contract declares publish_topics
+  beside subscribe_topics and a test names the output topic literal. The tenant
+  projection writer's grant on public.context_audit_events is declared in the
+  omnibase_infra topology instances (omnibase_infra#5566, merged). The contract
+  declares its handover from the retired consumer's literal group
+  context-audit-postgres through from_group_id, and a recorded-input test holds
+  the node's twelve bound parameters byte for byte against the ones the retired
+  writer bound, with two named injected breaks that turn it red.
+  The sequence ownership declaration and its evidence from the earlier change
+  are retained alongside the node requirements. Retiring the consumer container
+  is the omnibase_infra half of T13.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+  - "public_api"
 requirements:
+  - id: "req-omn21934-orphan-graph-publish-topics"
+    statement: "The node contract declares both subscribe_topics and publish_topics, and a test names the output topic."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the contract declares publish_topics beside subscribe_topics, a test names the output topic literal, and the node-orphan-graph hook passes -- falsifier: pre-commit run node-orphan-graph --all-files exit 0 on the branch
+  - id: "req-omn21934-grants-declared"
+    statement: "The grants the auto-wiring test requires for context_audit_events are declared where the test reads them."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: the grants the node-auto-wiring-in-process test requires for context_audit_events are declared where the test reads them -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q against the branch
+  - id: "req-omn21934-replay-one-row-per-key"
+    statement: "The node writes the retired module's rows on replayed events with a deterministic key and an UPSERT."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: the node writes the same context_audit_events rows as the consumer module on replayed events with a deterministic key and UPSERT, one row per key on a second replay -- falsifier: uv run pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q through /omni:lab-run on a pre-PR slot, red when the key is mutated to a random uuid
   - id: req-omn21934-sequence-ownership
     statement: 'public.context_audit_events_id_seq has exactly one ownership declaration in the omnimarket manifest, under domain TENANT and the projection migration runner'
     acceptance:
       - id: AC4
         statement: 'AC4: public.context_audit_events_id_seq has exactly one ownership declaration in scripts/application-relation-ownership.yaml, under domain TENANT and the projection migration runner -- falsifier: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov'
+  - id: "req-omn21934-handover-and-parity"
+    statement: "The node declares its handover from the retired group and writes the retired writer's parameters byte for byte on recorded input."
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          AC5: the contract declares consumer_group_handover from_group_id context-audit-postgres with earliest, valid against the omnibase_infra handover model -- falsifier: uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k handover
+      - id: "AC6"
+        statement: >-
+          AC6: on recorded audit events the node binds the same twelve parameters, violation_details text included, as the retired writer recorded beside them -- falsifier: uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k "recorded_events or parity_read_fails"
 evidence_requirements:
+  - kind: "tests"
+    description: "The context-audit node replays to one row per key and its contract declares the output topic."
+    command: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
   - kind: "tests"
     description: "The sequence is declared exactly once with the expected kind, database, schema, domain, owner and no writers"
     command: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov"
@@ -21,6 +67,127 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21934-ac1-publish-topics"
+    description: >-
+      The node contract declares publish_topics beside subscribe_topics and the
+      golden-chain contract test names the projection-applied topic literal. It
+      fails at the merge base, which has no such node.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k contract_declares"
+  - id: "dod-omn21934-ac2-grants"
+    description: >-
+      The auto-wiring test finds a declared grant for the tenant projection writer
+      on public.context_audit_events. It reads the grant from the omnibase_infra
+      topology instances, so it passes only with the paired omnibase_infra change.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov"
+  - id: "dod-omn21934-ac3-replay"
+    description: >-
+      The context-audit node writes the retired module's twelve columns from the
+      five audit topics on replayed events, refuses an event missing a required
+      field before any write, and a second replay leaves one row per key. It
+      fails at the merge base, which has no such node.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
+  - id: "dod-omn21934-ac5-handover"
+    description: >-
+      The contract names the retired consumer's group context-audit-postgres
+      through from_group_id and its earliest reset, and the infra handover model
+      accepts the key. It fails at the merge base, which has no such node.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k handover"
+  - id: "dod-omn21934-ac6-parity"
+    description: >-
+      Recorded events and the parameters the retired writer bound for each are
+      held in tests/fixtures/context_audit/recorded_audit_events.json; the node's
+      parameters equal them exactly. Two injected breaks (the first draft's sorted
+      compact detail encoding, a dropped enforcement_action) turn the same read red.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k "recorded_events or parity_read_fails"'
+  - id: "dod-omn21934-deploy-probe"
+    description: >-
+      Hosted structural deployment smoke, requiring no lab route, broker or
+      database: read the writer at the checked-out PR head and require its
+      UPSERT on event_key, then run the golden chain. It fails against the merge
+      base, which has no such module. The runtime serves the node only after the
+      deploy step mounts it and the infra change vendors its migration.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          python3 - <<'PY'
+          from pathlib import Path
+          node = Path("src/omnimarket/nodes/node_projection_context_audit")
+          writer = (node / "handlers/handler_context_audit_writer.py").read_text()
+          migration = (node / "migrations/0000_add_context_audit_event_key.sql").read_text()
+          assert "ON CONFLICT (event_key) DO UPDATE" in writer
+          assert "CREATE TABLE IF NOT EXISTS public.context_audit_events" in migration
+          assert "id must generate values from its owned sequence" in migration
+          assert "SET lock_timeout = '5s'" in migration
+          assert "SET statement_timeout = '60s'" in migration
+          PY
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
+  - id: "dod-omn21934-integration-proof"
+    description: >-
+      The pushed head ran the context-audit node golden chain and its real-Postgres
+      replay test on a lab host and exited 0. Hosted CI cannot reach the lab, so only
+      the local Done gate runs this unbound check.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21934 -- uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: "dod-omn21934-hosted-postgres-deploy"
+    description: >-
+      A private PostgreSQL 16 container receives both shipped node migrations,
+      including the tenant projection writer grants. The real writer then
+      replays all five topics through standalone and runtime delivery against
+      that database, requiring one row per event key after the second replay.
+      This probe needs Docker on the runner, without a lab route or lane service.
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export COMPOSE_PROJECT_NAME=landing-l27010-lab
+          export PYTHONDONTWRITEBYTECODE=1
+          container=$(docker run --detach --rm --publish 127.0.0.1::5432 --env POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine)
+          trap 'docker rm --force "$container" >/dev/null' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "$container" psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE ROLE tenant_projection_writer NOLOGIN'
+          node=src/omnimarket/nodes/node_projection_context_audit
+          for migration in "$node"/migrations/*.sql; do
+            docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$migration"
+          done
+          published=$(docker port "$container" 5432/tcp)
+          export INTEGRATION_POSTGRES_HOST=127.0.0.1
+          export INTEGRATION_POSTGRES_PORT="${published##*:}"
+          export INTEGRATION_POSTGRES_DB=postgres
+          export INTEGRATION_POSTGRES_USER=postgres
+          export INTEGRATION_POSTGRES_PASSWORD=unused
+          uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q --no-cov -p no:randomly --refuse-skips
   - id: "dod-omn21934-sequence-ownership"
     description: 'AC4: the sequence is declared exactly once; the test fails at the merge base, which declares no such sequence'
     source: "manual"
