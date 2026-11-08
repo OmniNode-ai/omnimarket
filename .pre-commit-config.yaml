@@ -31,6 +31,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: envelope-example-route-nodes
+        name: Example-envelope route nodes (runtime HTTP mount)
+        entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_envelope_example_.*|src/omnimarket/handlers/envelope_example/.*|src/omnimarket/models/model_(envelope_example|onex_envelope)\.py|tests/nodes/(envelope_example_.*|node_envelope_example_.*))$
+        pass_filenames: false
+        stages: [pre-commit]
       # OMN-22156: the same guard runs in the required CI lint job, on every PR.
       - id: morning-phase-tools-guard
         name: Morning phase tools guard and wiring
