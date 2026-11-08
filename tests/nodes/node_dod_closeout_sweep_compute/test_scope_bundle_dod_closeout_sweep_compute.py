@@ -414,9 +414,10 @@ async def test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_
     result = runtime.handler_result
     assert isinstance(result, ModelDodCloseoutDecisionResult)
     assert result.scope_bundle is not None
-    selected = [c["id"] for c in result.scope_bundle["candidates"]]  # type: ignore[index, union-attr]
+    bundle: dict[str, Any] = dict(result.scope_bundle)
+    selected = [c["id"] for c in bundle["candidates"]]
     assert "OMN-27" in selected
-    assert result.scope_bundle["totals"]["selected"] == 12  # type: ignore[index]
+    assert bundle["totals"]["selected"] == 12
 
 
 @pytest.mark.asyncio
@@ -478,7 +479,7 @@ def _cli(
     tmp_path: Path, candidates: object, prs: object, texts: object, *extra: str
 ) -> subprocess.CompletedProcess[str]:
     command = [
-        sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute", "bundle",
+        sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep", "bundle",
         "--candidates", str(_write(tmp_path / "c.json", candidates)),
         "--pr-state", str(_write(tmp_path / "p.json", prs)),
         "--text-state", str(_write(tmp_path / "t.json", texts)),
@@ -515,7 +516,7 @@ def test_the_bundle_command_with_no_contract_state_reads_the_clones(
     cands, prs, texts = _scope(30)
     run = subprocess.run(
         [
-            sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute", "bundle",
+            sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep", "bundle",
             "--candidates", str(_write(tmp_path / "c.json", cands)),
             "--pr-state", str(_write(tmp_path / "p.json", prs)),
             "--text-state", str(_write(tmp_path / "t.json", texts)),

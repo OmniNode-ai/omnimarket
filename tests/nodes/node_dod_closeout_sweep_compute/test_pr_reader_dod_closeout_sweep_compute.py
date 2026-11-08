@@ -62,6 +62,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scop
     ModelCloseoutScopeOverlay,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+    EnumCloseoutDecisionKind,
     ModelBindingCheck,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
@@ -314,7 +315,7 @@ def test_a_command_check_with_no_repo_keeps_the_fallback_branch() -> None:
 
 def test_the_refuse_binding_decision_reads_the_overlay_it_is_given() -> None:
     request = ModelDodCloseoutDecisionRequest(
-        kind="refuse_binding",  # type: ignore[arg-type]
+        kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
         date="2026-11-08",
         check=_test_check("docs_main", "origin/main"),
         scope_overlay=_overlay(),
@@ -545,7 +546,7 @@ def test_error_chain_a_watcher_state_that_was_not_read_puts_the_reason_on_every_
     None
 ):
     request = ModelDodCloseoutDecisionRequest(
-        kind="pr_rows",  # type: ignore[arg-type]
+        kind=EnumCloseoutDecisionKind.PR_ROWS,
         date="2026-11-08",
         pr_tickets=["OMN-1"],
         pr_subjects={"omnimarket": ["fix(OMN-1): x (#2)"]},
@@ -565,7 +566,7 @@ def test_error_chain_a_watcher_state_that_was_not_read_puts_the_reason_on_every_
 def test_error_chain_pr_rows_refuses_a_field_it_does_not_take() -> None:
     with pytest.raises(ValueError, match="does not take"):
         ModelDodCloseoutDecisionRequest(
-            kind="pr_rows",  # type: ignore[arg-type]
+            kind=EnumCloseoutDecisionKind.PR_ROWS,
             date="2026-11-08",
             pr_tickets=["OMN-1"],
             pr_subjects={},
@@ -596,7 +597,7 @@ def test_the_prs_command_reads_a_main_default_merge_and_the_watcher(
         yaml.safe_dump(_overlay().model_dump(mode="json")), encoding="utf-8"
     )
     run = subprocess.run(
-        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute", "prs",
+        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep", "prs",
          "--overlay", str(overlay_file), "OMN-18470", "OMN-21083", "OMN-404"],
         capture_output=True, text=True, check=False, timeout=60,
         env={"OMNI_HOME": str(home), "ONEX_PR_WATCHER_STATE": str(state),
@@ -617,7 +618,7 @@ def test_error_chain_the_prs_command_with_an_unreadable_watcher_marks_every_row(
     home = tmp_path / "root_main"
     home.mkdir()
     run = subprocess.run(
-        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute", "prs",
+        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep", "prs",
          "--wait-s", "0", "OMN-20718"],
         capture_output=True, text=True, check=False, timeout=60,
         env={"OMNI_HOME": str(home), "PATH": "/usr/bin:/bin",
@@ -632,7 +633,7 @@ def test_error_chain_the_prs_command_with_an_unreadable_watcher_marks_every_row(
 
 def test_error_chain_the_prs_command_refuses_without_omni_home() -> None:
     run = subprocess.run(
-        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute", "prs",
+        [sys.executable, "-m", "omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep", "prs",
          "OMN-1"],
         capture_output=True, text=True, check=False, timeout=60,
         env={"PATH": "/usr/bin:/bin"},
@@ -647,7 +648,7 @@ def test_the_refusal_names_the_branch_the_repository_merges_to() -> None:
             HandlerDodCloseoutSweep()
             .handle(
                 ModelDodCloseoutDecisionRequest(
-                    kind="refuse_binding",  # type: ignore[arg-type]
+                    kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
                     date="2026-11-08",
                     check=_test_check(repo, "origin/feature"),
                     scope_overlay=_overlay(),

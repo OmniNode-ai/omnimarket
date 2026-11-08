@@ -22,6 +22,7 @@ from typing import Any, Protocol
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.handlers.closeout_boundary_reads import read_text_file
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
     EnumCloneLocation,
     ModelCloseoutScopeOverlay,
@@ -111,8 +112,7 @@ def read_watcher_state(
 ) -> tuple[dict[str, Any] | None, str]:
     """The state and an empty reason, or None and why it cannot be read as current."""
     try:
-        # node-purity-ok: the watcher-state reader is this node's read boundary
-        raw = json.loads(path.read_text(encoding="utf-8"))  # node-purity-ok: boundary
+        raw = json.loads(read_text_file(path))
     except (OSError, ValueError) as exc:
         return None, f"PR watcher state unreadable: {path} is not readable: {exc}"
     schema = overlay.watcher_state_schema

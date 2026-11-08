@@ -23,11 +23,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from omnimarket.handlers.closeout_boundary_reads import (
+    read_text_file,
+    registry_root_from_environment,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     GitCloneContractIndex,
 )
@@ -53,8 +56,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_
 
 def read_array(path: Path, name: str) -> list[dict[str, object]]:
     try:
-        # node-purity-ok: CLI boundary reads its argument files
-        text = path.read_text(encoding="utf-8")  # node-purity-ok: CLI boundary
+        text = read_text_file(path)
     except OSError as exc:
         raise ScopeInputUnreadableError(f"{name} {path}: unreadable: {exc}") from exc
     try:
@@ -72,8 +74,7 @@ def run_prs(args: argparse.Namespace) -> int:
     """The `prs` command: read the clones and the watcher state, decide through the handler."""
     try:
         overlay = load_scope_overlay(args.overlay)
-        # node-purity-ok: CLI boundary names the registry root
-        home = os.environ.get("OMNI_HOME", "")  # node-purity-ok: CLI boundary
+        home = registry_root_from_environment()
         if not home:
             raise ScopeInputUnreadableError("OMNI_HOME is not set")
         subjects = GitCloneMergeSubjects(Path(home), overlay).subjects()
@@ -143,8 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.contract_state is not None:
             contract_state = read_array(args.contract_state, "--contract-state")
         else:
-            # node-purity-ok: CLI boundary names the registry root
-            home = os.environ.get("OMNI_HOME", "")  # node-purity-ok: CLI boundary
+            home = registry_root_from_environment()
             if not home:
                 raise ScopeInputUnreadableError("OMNI_HOME is not set")
             ids = GitCloneContractIndex(
