@@ -63,6 +63,13 @@ _CONTENT = "### ANSWER\ndef test_verify_registration():\n    assert True"
 _EMITTED_AT = datetime.now(UTC)
 
 
+@pytest.fixture(autouse=True)
+def _restamp_emitted_at(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A long suite run can age the import-time stamp past the completion bound,
+    # so each test re-stamps it (still one value within a test).
+    monkeypatch.setitem(globals(), "_EMITTED_AT", datetime.now(UTC))
+
+
 def _request() -> ModelDelegationRequest:
     return ModelDelegationRequest(
         prompt="Write unit tests for verify_registration.py",
