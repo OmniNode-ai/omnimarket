@@ -936,6 +936,7 @@
   "tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py": 0.45,
   "tests/nodes/node_floor_simple_compute/test_golden_and_error_chain_floor_simple_compute.py": 0.25,
   "tests/nodes/node_floor_simple_compute/test_piece_panel_cells_floor_simple_compute.py": 0.17,
+  "tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py": 0.17,
   "tests/nodes/node_floor_simple_effect/test_contract_topics.py": 0.03,
   "tests/nodes/node_floor_simple_effect/test_controller_admissions_floor_simple.py": 0.17,
   "tests/nodes/node_floor_simple_effect/test_cycle_exits_floor_simple.py": 1.3,
