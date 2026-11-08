@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23161
+title: The delegate request decoder accepts and ignores an optional probe_ladder key, so a later release can carry it without breaking the pinned consumer
+summary: ModelDelegateSkillRequest now decodes a probe_ladder key without declaring it and drops it, whatever it holds, the same tolerate-before-declare order as client_call. A later release declares the field once this one is out and the consumer pin advances.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23161-probe-ladder-tolerated
+  statement: A delegate request carrying a probe_ladder key decodes with the key ignored, and the wire compatibility gate passes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a request carrying an optional probe_ladder key decodes with the key ignored -- falsifier: `uv run pytest tests/unit/delegation/test_probe_ladder.py -q -k tolerated`'
+  - id: AC2
+    statement: 'AC2: the wire compatibility gate passes with the new optional key -- falsifier: `uv run python scripts/ci/check_wire_compatibility.py`'
+evidence_requirements:
+- kind: tests
+  description: The probe_ladder tolerance tests pass.
+  command: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23161-ac1-tolerated
+  description: A request with probe_ladder set to a ladder or to null decodes, the key is absent from the dump, the dump equals a request without the key, and another unknown key is still refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated
+    cwd: .
+- id: dod-omn23161-ac2-wire-gate
+  description: The wire compatibility gate decodes the changed request model through every pinned consumer's dev-merge tag; its own regression tests pass at this head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov
+    cwd: .
