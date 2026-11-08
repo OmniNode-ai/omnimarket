@@ -160,3 +160,11 @@ join_j8:
   superseded_failure_code: "upstream_lab_check_superseded"
   failed_failure_code: "upstream_lab_check_failed"
   not_merged_failure_code: "landing_not_merged"
+# The in-process join handler, bound here and not in handler_routing so the
+# canonical-file-shape ratchet finds it inside this node while the auto-wiring,
+# which reads only handler_routing, never constructs it (OMN-23076).
+in_process_handlers:
+  join_j8:
+    handler:
+      module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
+      class: "HandlerLandingJoinJ8"
