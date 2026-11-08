@@ -41,6 +41,9 @@ class ModelFloorFillConfig(BaseModel):
     process_working_directory: str = Field(min_length=1)
     max_age_minutes: int = Field(gt=0)
     max_fill_lanes_per_line: int = Field(ge=1)
+    stopped_max_lanes: int = Field(ge=1)
+    stopped_report_chars: int = Field(gt=0)
+    stopped_continue_rule: str = Field(min_length=1)
 
     @model_validator(mode="before")
     @classmethod

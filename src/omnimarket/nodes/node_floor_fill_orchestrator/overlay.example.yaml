@@ -32,3 +32,9 @@ floor_fill:
   max_age_minutes: 15
   # The most lanes the fill holds on one line.
   max_fill_lanes_per_line: 2
+  # The most continuation lanes of stopped lanes that run at once.
+  stopped_max_lanes: 2
+  # How much of a stopped lane's last report a continuation brief carries, in characters.
+  stopped_report_chars: 2000
+  # The rule a continuation brief ends with.
+  stopped_continue_rule: "Continue the predecessor's work; do not repeat what its report says is done."
