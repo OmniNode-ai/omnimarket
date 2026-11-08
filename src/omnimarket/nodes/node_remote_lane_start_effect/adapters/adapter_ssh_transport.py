@@ -37,8 +37,8 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict
 
-#: The exit code the wrapper never writes; read_engine_exit answers it for an engine that is
-#: gone with no exit file (killed with its wrapper by a signal to the process group).
+#: The exit code the wrapper never writes; read_engine_exit answers it for an engine whose whole
+#: process group is gone with no exit file (killed with its wrapper by a signal to the group).
 SIGNALLED_EXIT = 143
 
 
@@ -47,6 +47,12 @@ SIGNALLED_EXIT = 143
 #: Any other end without a pid (ssh's 255, a timeout, a pid that never came back) may follow a launch.
 START_REFUSED_EXIT = 3
 HOST_COMMAND_UNAVAILABLE_EXIT = 127
+
+
+#: Shell test on ``$pid``: the wrapper is alive, or any process of its group is. The group is what
+#: stop_engine signals, so a wrapper that exited while an engine process survived still counts. The
+#: wrapper is tested too, as it is not yet a group leader in the moment before its setsid.
+_ALIVE = "{ kill -0 $pid 2>/dev/null || kill -0 -$pid 2>/dev/null; }"
 
 
 class ModelHostCommandResult(BaseModel):
@@ -202,7 +208,7 @@ class SshLaneHostTransport:
         run = shlex.quote(self.run_dir(request.run_id))
         script = (
             f"if [ -f {run}/exit ]; then echo EXIT=$(cat {run}/exit); "
-            f"elif kill -0 $(cat {run}/pid) 2>/dev/null; then echo RUNNING; else echo GONE; fi"
+            f"elif pid=$(cat {run}/pid) && {_ALIVE}; then echo RUNNING; else echo GONE; fi"
         )
         out = self._sh(request.host, script).stdout.strip()
         if out.startswith("EXIT=") and out[5:].lstrip("-").isdigit():
@@ -220,9 +226,9 @@ class SshLaneHostTransport:
         grace = max(1, int(request.grace_seconds))
         script = (
             f"pid=$(cat {run}/pid) || exit 3; kill -TERM -$pid 2>/dev/null; i=0; "
-            f"while kill -0 $pid 2>/dev/null && [ $i -lt {grace} ]; do sleep 1; i=$((i+1)); done; "
-            f"if kill -0 $pid 2>/dev/null; then kill -KILL -$pid 2>/dev/null; sleep 1; fi; "
-            f"if kill -0 $pid 2>/dev/null; then echo ALIVE; else echo GONE; fi"
+            f"while {_ALIVE} && [ $i -lt {grace} ]; do sleep 1; i=$((i+1)); done; "
+            f"if {_ALIVE}; then kill -KILL -$pid 2>/dev/null; sleep 1; fi; "
+            f"if {_ALIVE}; then echo ALIVE; else echo GONE; fi"
         )
         result = self._sh(request.host, script, request.grace_seconds + self._timeout)
         confirmed = result.stdout.strip().endswith("GONE")
@@ -240,7 +246,9 @@ class SshLaneHostTransport:
             request.host,
             f"tail -n +{request.offset + 1} {run}/engine.log 2>/dev/null || true",
         )
-        lines = tuple(result.stdout.splitlines())
+        # tail counts newline-ended lines: only those are consumed, and the text after the last
+        # newline (a record the engine is still writing) is read again by the next call.
+        lines = tuple(result.stdout.split("\n")[:-1])
         return ModelLaneReadLogTailResult(
             lines=lines, next_offset=request.offset + len(lines)
         )
