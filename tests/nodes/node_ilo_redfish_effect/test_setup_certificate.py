@@ -28,6 +28,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from pydantic import JsonValue, SecretStr
 
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+    ModelIloOverlay,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     setup_certificate as cert,
 )
@@ -49,10 +53,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https im
     build_legacy_pinned_transport,
     build_pinned_transport,
     pinned_context,
-)
-from omnimarket.models.ilo_redfish.model_ilo_overlay import (
-    ModelIloHost,
-    ModelIloOverlay,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     EnumIloSetupRefusal as R,

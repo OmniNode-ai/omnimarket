@@ -16,6 +16,9 @@ import pytest
 import yaml
 from pydantic import JsonValue
 
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     ilo_setup_runner as runner,
 )
@@ -24,9 +27,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ProtocolRedfishTransport,
-)
-from omnimarket.models.ilo_redfish.model_ilo_overlay import (
-    ModelIloHost,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     EnumIloSetupRefusal as R,
