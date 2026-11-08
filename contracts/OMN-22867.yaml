@@ -33,7 +33,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py::test_j8_join_handler_is_cli_bound_not_boot_routed -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn22867-ac2-landing-node-tests
     description: >-
