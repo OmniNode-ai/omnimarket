@@ -33,6 +33,7 @@ from pathlib import Path
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.models.silent_failure_alarm import (
+    ModelCloserStalenessRequest,
     ModelDrainerRepair,
     ModelDrainerRequest,
     ModelDrainerResult,
@@ -48,7 +49,11 @@ from omnimarket.models.silent_failure_alarm import (
     ModelThroughputResultsRequest,
     ModelTickLivenessRequest,
 )
+from omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm import (
+    ModelCloserStalenessResult,
+)
 from omnimarket.nodes.node_silent_failure_alarm_compute import (
+    HandlerCloserStalenessAlarm,
     HandlerDrainerAlarm,
     HandlerJobExitAlarm,
     HandlerPlacementShareAlarm,
@@ -65,6 +70,11 @@ from ..models import (
 )
 from ..protocols import ProtocolDrainerWatch
 from .alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
+from .closer_record_reader import (
+    declared_interval,
+    ledger_record_at,
+    receipt_record_at,
+)
 from .command_drainer_watch import CommandDrainerWatchProbe
 from .drainer_watch import DrainerWatchProbe
 from .lab_fill_lane_reading import LabFillRunRow, parse_lanes, settle_run
@@ -90,6 +100,7 @@ RESULTS = "throughput-results"
 HOUR = timedelta(hours=1)
 DRAINER = "drainer-dead"
 JOB_EXIT = "job-exit"
+CLOSER = "closer-staleness"
 _EPISODE = re.compile(r"ep-\d{8}T\d{4}Z-[a-z0-9.-]+")
 _JOB_RUNS = re.compile(r"^\s*runs\s*=\s*(\d+)\s*$", re.MULTILINE)
 _JOB_EXIT = re.compile(r"^\s*last exit code\s*=\s*(-?\d+)\s*$", re.MULTILINE)
@@ -210,6 +221,7 @@ class HandlerSilentFailureAlarm:
         )
         self._placement = HandlerPlacementShareAlarm()
         self._liveness = HandlerTickLivenessAlarm()
+        self._closer = HandlerCloserStalenessAlarm()
         self._quiet = HandlerQuietHostAlarm()
         self._results = HandlerThroughputResultsAlarm()
         self._job_exit = HandlerJobExitAlarm()
@@ -334,6 +346,13 @@ class HandlerSilentFailureAlarm:
             warnings,
         )
 
+        readings, readable, unconfigured, job_problem = self._read_jobs()
+        closer = self._decide_closer(
+            now,
+            text,
+            tuple(r.label for r in readings) if readable and not unconfigured else None,
+        )
+
         alarms: list[str] = []
         rows: list[str] = []
         friction = "not-needed"
@@ -343,6 +362,7 @@ class HandlerSilentFailureAlarm:
             QUIET: quiet_state,
             RESULTS: results.state,
             DRAINER: drainer_state,
+            CLOSER: closer.state,
         }
         raising = (
             (
@@ -374,6 +394,13 @@ class HandlerSilentFailureAlarm:
                 drainer_decision.alert_text,
                 "drainer_dead",
             ),
+            (
+                CLOSER,
+                closer.alarm,
+                closer.friction_cells,
+                closer.alert_text,
+                "closer_staleness",
+            ),
         )
         alarm_hosts = {QUIET: set(quiet.quiet_hosts), DRAINER: {self._drainer_host()}}
         # A condition that ended is resolved only when its own decision reads it healthy; an
@@ -384,6 +411,7 @@ class HandlerSilentFailureAlarm:
             QUIET: quiet_state == "LIVE",
             RESULTS: results.state == "PRODUCING",
             DRAINER: drainer_state == "LIVE",
+            CLOSER: closer.state == "LIVE",
         }
         open_notes: list[str] = []
         resolved: list[str] = []
@@ -459,6 +487,7 @@ class HandlerSilentFailureAlarm:
                 QUIET: "QUIET",
                 RESULTS: results.state,
                 DRAINER: "DEAD",
+                CLOSER: "STALE",
             }[name]
             row = f"{_stamp(now)} | {cells}"
             alarms.append(name)
@@ -512,7 +541,6 @@ class HandlerSilentFailureAlarm:
             else ()
         )
 
-        readings, readable, unconfigured, job_problem = self._read_jobs()
         if job_problem:
             warnings.append(
                 f"silent_failure_alarm: job table could not be read: {job_problem}"
@@ -623,6 +651,7 @@ class HandlerSilentFailureAlarm:
             f"quiet_host={verdicts[QUIET]} results={verdicts[RESULTS]} "
             f"merges_1h={'unread' if merges is None else merges} placed_1h={placed} "
             f"drainer={verdicts[DRAINER]} drainer_repair={drainer_repair} "
+            f"closer_staleness={verdicts[CLOSER]} closer_age={closer.age_seconds if closer.age_seconds is not None else 'none'} "
             f"trend_age={_minutes(now, trend_at)} "
             f"job_exit={job_state} failing={','.join(jobs.failing) or 'none'} "
             f"episodes_opened={len(jobs.opened)} pushed={len(jobs.push)} "
@@ -686,6 +715,43 @@ class HandlerSilentFailureAlarm:
             summary="host drainer observation",
             observation=before,
             repair=repair,
+        )
+
+    def _decide_closer(
+        self, now: datetime, ledger_text: str, loaded_labels: tuple[str, ...] | None
+    ) -> ModelCloserStalenessResult:
+        """The closer's staleness from its declared interval and newest run record."""
+        closer = self._options.closer
+        if closer is None:
+            return self._closer.handle(
+                ModelCloserStalenessRequest(
+                    now=now, lane="unconfigured", unit_label="unconfigured"
+                )
+            )
+        newest = ledger_record_at(ledger_text, closer.lane)
+        readable = True
+        if closer.fire_receipts is not None:
+            fired, readable = receipt_record_at(
+                closer.fire_receipts, closer.lane, closer.run_phases
+            )
+            if fired is not None and (newest is None or fired > newest):
+                newest = fired
+        return self._closer.handle(
+            ModelCloserStalenessRequest(
+                now=now,
+                lane=closer.lane,
+                unit_label=closer.unit_label,
+                interval_seconds=declared_interval(
+                    closer.liveness_overlay, closer.process_id
+                ),
+                stale_multiple=closer.stale_multiple,
+                last_record_at=newest,
+                # A ledger TERMINAL is a record even when the receipts file is unreadable.
+                records_readable=readable or newest is not None,
+                unit_loaded=None
+                if loaded_labels is None
+                else closer.unit_label in loaded_labels,
+            )
         )
 
     def _read_jobs(self) -> tuple[tuple[ModelJobExitReading, ...], bool, bool, str]:
@@ -1031,7 +1097,9 @@ class HandlerSilentFailureAlarm:
                 if kind == JOB_EXIT:
                     continue
                 family = (
-                    kind if kind in (LIVENESS, QUIET, RESULTS, DRAINER) else PLACEMENT
+                    kind
+                    if kind in (LIVENESS, QUIET, RESULTS, DRAINER, CLOSER)
+                    else PLACEMENT
                 )
                 raised[family] = max(raised.get(family, stamp), stamp)
                 if family in (QUIET, DRAINER) and stamp > now - DEDUPE:
