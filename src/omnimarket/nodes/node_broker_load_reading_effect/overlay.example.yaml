@@ -8,6 +8,7 @@
 #                    deadline after which the start reads as a timeout
 #   bars             the most partitions one shard may hold and the slowest consumer start that is inside the bar
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+#   schedule_hosts   hosts that install the hourly systemd user timer: the venv its unit runs and the environment it carries
 metrics_source:
   ssh_host_env: EXAMPLE_BROKER_SSH_HOST
   compose_project: example-project
@@ -32,3 +33,9 @@ publish:
   actor: node:node_broker_load_reading_effect
   publish_max_age_seconds: 7200
 injected_fault: Raise the shard's partitions above the bar, or give the probe consumer a deadline it cannot meet
+schedule_hosts:
+- name: example-lab-host
+  venv: example-venv
+  environment:
+    EXAMPLE_HOST_NAME: example-lab-host
+    EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
