@@ -99,7 +99,7 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_pilot_manifest_check.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_pilot_manifest_check.py tests/nodes/node_pilot_manifest_check_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23069-node-dispatch
     description: >-
