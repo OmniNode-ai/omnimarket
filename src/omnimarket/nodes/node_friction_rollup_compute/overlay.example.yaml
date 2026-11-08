@@ -56,7 +56,8 @@ class_rules:
     pattern: 'Bootstrap failed: 5: Input/output error'
   - name: step-timed-out-on-loaded-mac
     owner: "the owner of the timed step; the Mac that ran it was at a load of 35 or more when it was cut"
-    pattern: 'Mac load (?:average was |runs |near )?\d+'
+    # Both conditions the owner text asserts: a step that ran out of time and a load of 35 or more, in either order.
+    pattern: '(?:(?:ran past \d+ s|timed out|was cut).{0,200}?Mac load (?:average was |runs |near )?(?:3[5-9]|[4-9]\d|\d{3,})(?!\d)|Mac load (?:average was |runs |near )?(?:3[5-9]|[4-9]\d|\d{3,})(?!\d).{0,200}?(?:ran past \d+ s|timed out|was cut))'
   - name: step-longer-than-its-time-limit
     owner: "the owner of the step whose measured duration is above the limit the caller gave it"
     pattern: '(?:timed out (?:twice )?at the forked executor|timed out after 900 s|transport push .{0,80}timed out at 600 s|took about 20 minutes on a loaded host)'
@@ -119,6 +120,19 @@ class_rules:
   - name: pr-handoff-argument-list-too-long
     owner: "the owner of pr-handoff's handoff.sh: it passes a large pull request diff as arguments and the shell refuses"
     pattern: 'Argument list too long'
+  # The 4 rows of 2026-11-08T00:13Z to 05:15Z that the 37 rules above did not name (OMN-23109), one cause each, named from their own text.
+  - name: lane-launch-by-hand-refused-by-brief-checks
+    owner: "the owner of the lane brief checks and the remote-lane mint refusal (slot queueing, the ticket-mint sentence regex, the dev-tag brief refusal and the one-claim-per-parent premise check): launching successor lanes by hand meets each of them"
+    pattern: 'Launching \d+ successor lanes by hand'
+  - name: hook-preflight-minutes-per-commit
+    owner: "the owner of the repository's pre-commit hook set that hook-preflight runs (the type check and the direct-model-call check take most of the minutes of each commit)"
+    pattern: 'hook-preflight runs \d+ to \d+ minutes per commit'
+  - name: clone-sync-dirty-converge-resets-deploy-build-clone
+    owner: "the owner of node_canonical_clone_dirty_converge_effect (it resets the deploy agent's build clone while the agent holds its reconcile lock)"
+    pattern: 'node_canonical_clone_dirty_converge_effect'
+  - name: commit-gates-conflict-local-paths-vs-file-shape-ratchet
+    owner: "the owners of the check-local-paths-compute hook in omnibase_core and of the canonical-file-shape ratchet: the hook's only escape marker counts as suppression growth in the ratchet, so a file the hook flags cannot be changed"
+    pattern: 'check-local-paths-compute hook'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness

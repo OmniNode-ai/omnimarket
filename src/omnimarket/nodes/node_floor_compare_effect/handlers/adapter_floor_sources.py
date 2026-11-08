@@ -162,6 +162,11 @@ def load_ledger(
         *(f"lanes_ended:{o}" for o in hs.ledger_lane_outcomes),
     ):
         book.declare(SRC_LEDGER, key)
+    patterns = [
+        (lp.key, set(lp.row_types), re.compile(lp.pattern)) for lp in hs.ledger_patterns
+    ]
+    for key, _types, _rx in patterns:
+        book.declare(SRC_LEDGER, key)
     seen: set[str] = set()
     since_ts = since.timestamp()
     wanted = set(hs.ledger_lane_outcomes)
@@ -177,6 +182,9 @@ def load_ledger(
                 continue
             seen.add(row.text)
             book.alive.setdefault(SRC_LEDGER, []).append(at)
+            for key, types, rx in patterns:
+                if row.row_type in types and rx.search(row.text):
+                    book.add_event(SRC_LEDGER, key, at)
             if row.row_type == "CLAIM":
                 book.add_event(SRC_LEDGER, "lanes_started", at)
             elif row.row_type == "TERMINAL":
