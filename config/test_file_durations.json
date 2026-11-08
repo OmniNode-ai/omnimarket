@@ -4428,5 +4428,6 @@
   "tests/validators/test_provider_model_catalogue.py": 1.25,
   "tests/validators/test_publisher_fixture_one_copy_omn17427.py": 16.05,
   "tests/validators/test_routing_input_model_fit_effective_model.py": 7.47,
-  "tests/validators/test_topic_graph_closure_gates.py": 11.85
+  "tests/validators/test_topic_graph_closure_gates.py": 11.85,
+  "tests/nodes/node_factory_floor_publish_effect/test_compare_page.py": 1.51
 }
