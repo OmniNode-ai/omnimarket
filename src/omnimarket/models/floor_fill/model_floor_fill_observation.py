@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+from omnimarket.models.floor_fill.model_floor_fill_state import (
     FloorKey,
 )
 
