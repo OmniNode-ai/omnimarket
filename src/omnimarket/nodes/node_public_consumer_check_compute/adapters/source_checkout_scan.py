@@ -5,7 +5,8 @@ each published package, at roots the overlay names by environment variable (OMN-
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from functools import partial
 from pathlib import Path
 
 from omnimarket.nodes.node_public_consumer_check_compute.adapters.source_in_memory import (
@@ -19,9 +20,7 @@ from omnimarket.nodes.node_public_consumer_check_compute.protocols.protocol_publ
     PublicConsumerSourceError,
 )
 
-
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")  # node-purity-ok: injected source
+_UTF8_READER: Callable[[Path], str] = partial(Path.read_text, encoding="utf-8")
 
 
 class SourceCheckoutScan:
@@ -32,7 +31,9 @@ class SourceCheckoutScan:
         roots: Mapping[tuple[str, str], Path],
         max_file_bytes: int,
         skip_dirs: frozenset[str],
+        read_text: Callable[[Path], str] = _UTF8_READER,
     ) -> None:
+        self._read_text = read_text
         self._roots = dict(roots)
         self._max_file_bytes = max_file_bytes
         self._skip_dirs = skip_dirs
@@ -51,7 +52,7 @@ class SourceCheckoutScan:
             if not path.is_file() or path.stat().st_size > self._max_file_bytes:
                 continue
             try:
-                text = _read_text(path)
+                text = self._read_text(path)
             except UnicodeDecodeError:
                 continue  # a binary file holds no import or reference to read
             except OSError as exc:
