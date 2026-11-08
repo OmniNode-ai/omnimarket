@@ -40,7 +40,7 @@ from omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity impor
 from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
     ModelFactoryBindingsOverlay,
 )
-from omnimarket.nodes.node_lane_process_effect.adapters import AdapterScriptedRunner
+from omnimarket.nodes.node_lane_process_effect.adapters import HandlerScriptedRunner
 from omnimarket.nodes.node_lane_process_effect.models import (
     EnumLaneProcessOperation,
     ModelLaneProcessRequest,
@@ -121,7 +121,7 @@ def scenarios() -> dict[str, dict[str, Any]]:
 
 def decide(payload: dict[str, Any]) -> dict[str, Any]:
     scripted = payload["scenario"]
-    runner = AdapterScriptedRunner(
+    runner = HandlerScriptedRunner(
         starts=(ModelLaneProcessStartResult.model_validate(scripted["start"]),)
         if "start" in scripted
         else (),

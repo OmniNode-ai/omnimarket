@@ -79,3 +79,40 @@ def test_an_undeclared_host_is_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "not in the node_code_graph_effect overlay" in result.stderr
+
+
+def test_the_shadow_unit_renders_its_own_timer_and_runs_the_shadow_verb(
+    tmp_path: Path,
+) -> None:
+    scheduler = CodeGraphScheduler(
+        schedule=load_schedule(block="shadow_schedule"),
+        overlay=overlay(),
+        home=tmp_path / "home",
+        run=_Runner(),
+    )
+    result = scheduler.install(
+        "example-host",
+        omni_root=tmp_path / "root",
+        overlay_root=tmp_path / "overlays",
+        dry_run=True,
+    )
+    assert result.exit_code == 0, result.stderr
+    assert "OnCalendar=*-*-* *:20:00 UTC" in result.stdout
+    assert "-m omnimarket.nodes.node_code_graph_effect shadow\n" in result.stdout
+    assert "code-graph-shadow.out.log" in result.stdout
+    assert (
+        f'Environment="EXAMPLE_PR_STATE_PATH={tmp_path / "root"}/.onex_state'
+        in result.stdout
+    )
+    assert scheduler.timer_name == "onex-code-graph-shadow.timer"
+
+
+def test_the_two_units_do_not_share_a_name_and_the_nightly_text_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    nightly = load_schedule()
+    shadow = load_schedule(block="shadow_schedule")
+    assert nightly.unit_name != shadow.unit_name
+    assert nightly.verb == "nightly"
+    assert nightly.timer_description == "ONEX nightly code graph tick"
+    assert nightly.description == "ONEX nightly code graph (piece 1 reading)"

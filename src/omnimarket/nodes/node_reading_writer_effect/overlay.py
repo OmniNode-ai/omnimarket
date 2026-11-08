@@ -90,6 +90,24 @@ class ModelLandingRoute(BaseModel):
     conflict_merge_states: tuple[str, ...] = ()
 
 
+class ModelLandingProjectionRoute(BaseModel):
+    """Where piece 9's snapshot comes from on a lab host: the pr_state projection, read through the pr_state read node.
+
+    The projection API address is not a key here. It is the ``projection_api_url`` of the
+    ``node_pr_state_read_effect`` overlay, found under ``ONEX_SKILL_OVERLAY_ROOTS`` like every other overlay.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The only discriminator of this shape against the watcher file route: a value of ``projection``.
+    source: Literal["projection"]
+    #: The goal scope overlay: its id, and the variable that pins its file.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    #: The watcher classes that are green and waiting (an eligible head).
+    queue_classes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelReadingScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -98,6 +116,16 @@ class ModelReadingScheduleHost(BaseModel):
     #: The venv whose interpreter runs the installed unit, relative to the registry root (or absolute). A
     #: dedicated venv of a worktree or a release, never a dispatch venv.
     venv: str = Field(min_length=1)
+
+
+class ModelTwoBackendReading(BaseModel):
+    """The piece whose row carries the count of effects not yet on both backends (OMN-22911)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    #: The variable that holds the path of the core effect-backends validator's report file.
+    report_path_env: str = Field(min_length=1)
 
 
 class ModelReadingOverlay(BaseModel):
@@ -114,10 +142,12 @@ class ModelReadingOverlay(BaseModel):
     order: tuple[int, ...]
     pieces: tuple[ModelPieceReadingSpec, ...]
     #: Required when a piece carries landing requirements.
-    landing_route: ModelLandingRoute | None = None
+    landing_route: ModelLandingRoute | ModelLandingProjectionRoute | None = None
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
     #: Environment the installed unit carries (the routes' commands and their roots).
     unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: The piece whose row also carries the two-backend count; absent, no row does.
+    two_backend: ModelTwoBackendReading | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelReadingOverlay:
@@ -132,6 +162,8 @@ class ModelReadingOverlay(BaseModel):
             raise ValueError(
                 "a piece reads landing and the overlay has no landing_route"
             )
+        if self.two_backend is not None and self.two_backend.piece not in ids:
+            raise ValueError("two_backend names a piece that is not declared")
         names = [host.name for host in self.schedule_hosts]
         if len(names) != len(set(names)):
             raise ValueError("a schedule host is declared twice")
@@ -148,12 +180,13 @@ class ModelReadingOverlay(BaseModel):
 
     def overlay_hash(self, piece: int) -> str:
         """Hash of what a piece's reading depends on: its spec and the window settings."""
-        return _digest(
-            {
-                "window": self.window.model_dump(mode="json"),
-                "spec": self.spec(piece).model_dump(mode="json"),
-            }
-        )
+        depends: dict[str, object] = {
+            "window": self.window.model_dump(mode="json"),
+            "spec": self.spec(piece).model_dump(mode="json"),
+        }
+        if self.two_backend is not None and self.two_backend.piece == piece:
+            depends["two_backend"] = self.two_backend.model_dump(mode="json")
+        return _digest(depends)
 
 
 def _digest(value: object) -> str:

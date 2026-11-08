@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runner_group_reading_compute
+version: "1.0.0"
+description: "Pure reading that is NOT WORKING when a runner group allows public repositories and holds lab runners, when a public repository can see one, or when the canary public workflow started on one"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_runner_group_reading_compute: "omnimarket.nodes.node_runner_group_reading_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ci", "runners", "runner-group", "reading", "deterministic"]
+pack: "core"
+display_name: "Runner Group Reading"
+node_role: "compute"

@@ -26,8 +26,8 @@ from omnibase_spi.protocols.lane import ProtocolLaneProcessRunner
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_lane_process_effect.adapters import (
-    AdapterPosixProcess,
-    AdapterScriptedRunner,
+    HandlerPosixProcess,
+    HandlerScriptedRunner,
 )
 from omnimarket.nodes.node_lane_process_effect.handlers.handler_lane_process import (
     HandlerLaneProcess,
@@ -70,8 +70,8 @@ def stray() -> Iterator[list[int]]:
 
 
 @pytest.fixture
-def adapter(tmp_path: Path) -> AdapterPosixProcess:
-    return AdapterPosixProcess(str(tmp_path / "out"))
+def adapter(tmp_path: Path) -> HandlerPosixProcess:
+    return HandlerPosixProcess(str(tmp_path / "out"))
 
 
 def log_text(adapter_dir: Path, lane: str = LANE) -> str:
@@ -83,7 +83,7 @@ def log_text(adapter_dir: Path, lane: str = LANE) -> str:
 
 
 def test_start_detached_returns_early(
-    tmp_path: Path, adapter: AdapterPosixProcess, stray: list[int]
+    tmp_path: Path, adapter: HandlerPosixProcess, stray: list[int]
 ) -> None:
     marker = tmp_path / "marker"
     script = write_script(
@@ -112,7 +112,7 @@ def test_start_detached_returns_early(
 
 
 def test_working_directory_applied(
-    tmp_path: Path, adapter: AdapterPosixProcess, stray: list[int]
+    tmp_path: Path, adapter: HandlerPosixProcess, stray: list[int]
 ) -> None:
     work = tmp_path / "work"
     work.mkdir()
@@ -130,7 +130,7 @@ def test_working_directory_applied(
 
 def test_environment_applied_and_nothing_inherited(
     tmp_path: Path,
-    adapter: AdapterPosixProcess,
+    adapter: HandlerPosixProcess,
     stray: list[int],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -158,7 +158,7 @@ def test_environment_applied_and_nothing_inherited(
 
 
 def test_runner_in_own_session(
-    tmp_path: Path, adapter: AdapterPosixProcess, stray: list[int]
+    tmp_path: Path, adapter: HandlerPosixProcess, stray: list[int]
 ) -> None:
     script = write_script(tmp_path, "sleep.py", LONG_SLEEP)
     result = adapter.start_detached(python_spec(script, tmp_path))
@@ -182,7 +182,7 @@ def test_runner_in_own_session(
 )
 def test_start_failures_typed(tmp_path: Path, kind: str, cause_has: str) -> None:
     out = tmp_path / "out"
-    adapter = AdapterPosixProcess(str(out))
+    adapter = HandlerPosixProcess(str(out))
     work = tmp_path
     if kind == "executable-absolute":
         spec = spec_for((str(tmp_path / "no-such-exe"),), work)
@@ -203,7 +203,7 @@ def test_start_failures_typed(tmp_path: Path, kind: str, cause_has: str) -> None
 
 
 def test_a_lane_that_is_not_a_file_name_starts_nothing(tmp_path: Path) -> None:
-    adapter = AdapterPosixProcess(str(tmp_path / "out"))
+    adapter = HandlerPosixProcess(str(tmp_path / "out"))
     result = adapter.start_detached(
         python_spec(write_script(tmp_path, "s.py", "pass"), tmp_path, lane="../escape")
     )
@@ -223,7 +223,7 @@ def test_a_lane_that_is_not_a_file_name_starts_nothing(tmp_path: Path) -> None:
 def test_refuses_script_runner(
     tmp_path: Path, operation: EnumLaneProcessOperation
 ) -> None:
-    scripted = AdapterScriptedRunner(
+    scripted = HandlerScriptedRunner(
         starts=(ModelLaneProcessStartResult(state="started", pid=7),),
         runs=(ModelLaneProcessRunResult(state="exited", exit_code=0),),
     )
@@ -254,7 +254,7 @@ def test_refuses_script_runner(
 
 
 def test_run_bounded_exit_returns_the_code_and_the_standard_output(
-    tmp_path: Path, adapter: AdapterPosixProcess
+    tmp_path: Path, adapter: HandlerPosixProcess
 ) -> None:
     script = write_script(
         tmp_path,
@@ -275,14 +275,14 @@ def test_run_bounded_exit_returns_the_code_and_the_standard_output(
     assert "to stderr" in log_text(tmp_path / "out")
 
 
-def test_run_bounded_exit_zero(tmp_path: Path, adapter: AdapterPosixProcess) -> None:
+def test_run_bounded_exit_zero(tmp_path: Path, adapter: HandlerPosixProcess) -> None:
     script = write_script(tmp_path, "ok.py", "print('fine')")
     result = adapter.run_bounded(python_spec(script, tmp_path), 20.0)
     assert (result.state, result.exit_code, result.stdout) == ("exited", 0, "fine\n")
 
 
 def test_run_bounded_timeout_kills_child(
-    tmp_path: Path, adapter: AdapterPosixProcess
+    tmp_path: Path, adapter: HandlerPosixProcess
 ) -> None:
     grandchild_file = tmp_path / "grandchild.pid"
     script = write_script(
@@ -313,7 +313,7 @@ def test_run_bounded_timeout_kills_child(
 
 @pytest.mark.parametrize("kind", ["executable", "working-directory", "timeout"])
 def test_run_bounded_failure_typed(
-    tmp_path: Path, adapter: AdapterPosixProcess, kind: str
+    tmp_path: Path, adapter: HandlerPosixProcess, kind: str
 ) -> None:
     script = write_script(tmp_path, "ok.py", "print('x')")
     timeout = 5.0
@@ -346,7 +346,7 @@ class PosixHarness:
     def __init__(self, directory: Path, stray: list[int]) -> None:
         self.directory = directory
         self.stray = stray
-        self.runner: ProtocolLaneProcessRunner = AdapterPosixProcess(
+        self.runner: ProtocolLaneProcessRunner = HandlerPosixProcess(
             str(directory / "out")
         )
 
@@ -377,7 +377,7 @@ class ScriptedHarness:
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
-        self.scripted = AdapterScriptedRunner(
+        self.scripted = HandlerScriptedRunner(
             starts=(
                 ModelLaneProcessStartResult(state="started", pid=4242),
                 ModelLaneProcessStartResult(
@@ -445,7 +445,7 @@ def test_protocol_conformance_refuses_an_adapter_that_reports_a_timeout_as_an_ex
     class Broken(ScriptedHarness):
         def __init__(self, directory: Path) -> None:
             super().__init__(directory)
-            self.scripted = AdapterScriptedRunner(
+            self.scripted = HandlerScriptedRunner(
                 starts=(
                     ModelLaneProcessStartResult(state="started", pid=4242),
                     ModelLaneProcessStartResult(state="failed", cause="c"),
@@ -468,7 +468,7 @@ def test_protocol_conformance_refuses_an_adapter_that_reports_a_timeout_as_an_ex
 
 
 def test_handler_maps_each_operation_and_outcome(tmp_path: Path) -> None:
-    scripted = AdapterScriptedRunner(
+    scripted = HandlerScriptedRunner(
         starts=(
             ModelLaneProcessStartResult(state="started", pid=9),
             ModelLaneProcessStartResult(
@@ -585,7 +585,7 @@ def test_seams_in_spi_each_injected_protocol_resolves_into_omnibase_spi() -> Non
     ]
     assert all(module.startswith("omnibase_spi") for _, module in listed)
     # The handler asks its container for exactly the declared protocol, and only when an operation runs.
-    runner = AdapterScriptedRunner(
+    runner = HandlerScriptedRunner(
         starts=(ModelLaneProcessStartResult(state="started", pid=5),)
     )
     container = FakeContainer(runner)
@@ -622,7 +622,7 @@ def test_config_variation_output_dir_changes_where_the_log_is_written(
         overlay = ModelLaneProcessOverlay.model_validate(
             {"floor_fill": {"output_dir": str(out)}}
         )
-        adapter = AdapterPosixProcess.from_overlay(overlay)
+        adapter = HandlerPosixProcess.from_overlay(overlay)
         result = adapter.run_bounded(
             python_spec(script, tmp_path, lane=f"lane-{name}"), 20.0
         )
@@ -648,7 +648,7 @@ def test_missing_key_refused_naming_the_overlay_key(
 
 def test_missing_key_refused_by_the_adapter_naming_the_overlay_key() -> None:
     with pytest.raises(ValueError, match=r"floor_fill\.output_dir"):
-        AdapterPosixProcess("")
+        HandlerPosixProcess("")
 
 
 def test_the_example_overlay_loads_and_names_no_script_runner() -> None:

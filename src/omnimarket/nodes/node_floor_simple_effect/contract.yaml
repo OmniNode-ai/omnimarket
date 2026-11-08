@@ -85,6 +85,8 @@ runtime:
   alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
   # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
   # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
+  health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
@@ -93,6 +95,10 @@ runtime:
   # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
   # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
   cycle_deadline_seconds: 100
+  # A start with no terminal older than this is closed by the next cycle with a typed failure (OMN-22864): a process that is
+  # killed cannot close its own start, and the journal is append-only. It is above the publish node's 120 s limit for the cycle
+  # steps, so a cycle that is still running is never closed from under itself, and below the receipts' chain deadline.
+  abandon_after_seconds: 300
   # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
   # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
   # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
@@ -104,6 +110,14 @@ runtime:
     - node_floor_emission_compute:compute_floor_receipts
     - node_floor_simple_compute:compute_floor_simple
     - node_lab_state_alarm_effect:publish_canary
+    - node_product_floor_verdict_compute:decide_customer_health
+  # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
+  # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
+  # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
+  # it, the cycle: the cycle must end in a success or a typed failure within the chain deadline. Every other join is unchanged.
+  join_ends:
+    - join: J0
+      node: node_floor_simple_effect:run_floor_simple_cycle
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
@@ -126,6 +140,10 @@ runtime:
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    # The lag condition comes from node_lab_alarm's finished runs (its overlay's lag.record_path and
+    # lag.record_condition), not from the alarm script's record: see read_broker_lag.
+    broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
+    broker_lag_condition: consumer_group_lag
     overlay_store_relpath: .onex_state/overlay-store/fleet.json
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json

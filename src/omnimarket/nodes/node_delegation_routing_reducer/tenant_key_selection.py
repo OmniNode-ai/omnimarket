@@ -13,9 +13,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
-from omnimarket.tenant_credential_ref import is_tenant_credential_ref
+from omnimarket.handlers.tenant_model_candidates import selected_key_models
 
 # The resolver's logger name, so these warnings read exactly as before the move.
 logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")
@@ -53,52 +52,13 @@ def _selected_key_model(
     that cannot prove its own choices keeps that ref and the existing no-model
     sentinel, so the effect refuses it before transport or model discovery.
     """
-    if secret_ref is None or provider is None:
-        return overlay_model
-    try:
-        # OMN-21819: a row stamped with the tenant's other form (name or registry
-        # UUID) is the same tenant's key; the first form that holds it answers.
-        rows = []
-        for tenant_form in sync_tenant_identity_forms(db, tenant_id):
-            rows = db.query(
-                TENANT_CREDENTIALS_TABLE,
-                filters={
-                    "tenant_id": tenant_form,
-                    "provider": provider,
-                    "api_key_ref": secret_ref,
-                },
-            )
-            if rows:
-                break
-    except Exception:
-        logger.warning(
-            "selected credential choices unreadable for tenant_id=%s",
-            tenant_id,
-            exc_info=True,
-        )
-        return (
-            BYOK_MODEL_UNRESOLVED
-            if is_tenant_credential_ref(secret_ref)
-            else overlay_model
-        )
-    if not rows:
-        return (
-            BYOK_MODEL_UNRESOLVED
-            if is_tenant_credential_ref(secret_ref)
-            else overlay_model
-        )
-    models = rows[0].get("models")
-    if (
-        isinstance(models, list)
-        and models
-        and all(
-            isinstance(model, str) and model.strip() and len(model) <= 200
-            for model in models
-        )
-        and len(set(models)) == len(models)
-    ):
-        return str(models[0])
-    return BYOK_MODEL_UNRESOLVED
+    return selected_key_models(
+        db,
+        tenant_id=tenant_id,
+        provider=provider,
+        secret_ref=secret_ref,
+        overlay_model=overlay_model,
+    )[0]
 
 
 def _select_pool_secret_ref(
@@ -122,6 +82,13 @@ def _select_pool_secret_ref(
     * Candidates are this tenant's keys for the overlay's provider that are not
       revoked and whose ``expires_at`` is unset or still ahead of ``now``.
       Nothing routes to a lapsed key (ruling 2026-10-11T16:02:35Z).
+    * A key with a ``bound_host`` is not a candidate (OMN-22822). Its value
+      lives only in that host's local secret store and the host's own caller
+      (the review gateway) reads it there; the shared delegation lane resolves a
+      tenant key from the lane secret store, where a host-bound key is never
+      written. On the dev lane on 2026-11-04 and 2026-11-05 the h200 review key
+      was chosen here for 1,262 delegations, and every one failed with
+      "Failed to resolve secret from Infisical".
     * With ``selector_key`` (the request's correlation id) the choice is a hash
       of it over the candidates sorted by ref: stable for one request, spread
       across the pool over many, and independent of the order a read returns.
@@ -173,6 +140,7 @@ def _select_pool_secret_ref(
         if row.get("api_key_ref")
         and row.get("revoked_at") is None
         and _not_expired(row.get("expires_at"), now)
+        and not row.get("bound_host")
     )
     if not live:
         logger.warning(

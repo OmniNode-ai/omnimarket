@@ -89,6 +89,8 @@ class ModelLabPoolPlaceRequest(BaseModel):
     need_tools: tuple[str, ...] = ()
     only_host: str | None = None
     table: ModelLabHostsTable | None = None
+    #: Hosts the drain verb (node_host_drain_effect, OMN-22905) has set draining: no new unit is placed on them.
+    draining_hosts: tuple[str, ...] = ()
 
 
 __all__ = [
