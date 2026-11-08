@@ -264,6 +264,7 @@ class HandlerLabTestHarnessEffect:
         except BaseException as exc:
             if chain is not None and chain.open:
                 chain.failure(FAILURE_RAISED, f"{type(exc).__name__}: {exc}")
+            self._append_raised_row(overlay, request.run_id)
             raise
         finished = self._now()
         result = ModelLabTestHarnessResult(
@@ -278,10 +279,50 @@ class HandlerLabTestHarnessEffect:
         reading = reading_from_result(
             result, max_age_seconds=overlay.max_age_seconds, now=finished
         )
-        self.store().write(reading)
+        try:
+            self.store().write(reading)
+        except BaseException as exc:
+            # A failed write leaves no reading, but the chain still ends: a start with no terminal reads as a hung run.
+            if chain is not None and chain.open:
+                chain.failure(FAILURE_RAISED, f"{type(exc).__name__}: {exc}")
+            self._append_raised_row(overlay, request.run_id)
+            raise
         self._close_chains(overlay, request.run_id, chain, reading)
         self._append_rows(overlay, request.run_id, reading)
         return reading
+
+    def _append_raised_row(
+        self, overlay: ModelLabTestHarnessOverlay, run_id: str
+    ) -> None:
+        """The run's typed failure as a ledger row, so a floor on another host sees a run that raised.
+
+        Called while an exception is in flight: a ledger that cannot take the row must not replace the exception the
+        caller needs, so this never raises.
+        """
+        emission = overlay.emission
+        if emission is None or emission.ledger is None:
+            return
+        try:
+            if self._appender is None:
+                self._appender = appender_from_overlay(overlay)
+            host = os.environ.get(emission.ledger.host_env, "").strip()
+            if self._appender is None or not host:
+                return
+            row = ledger_row(
+                overlay,
+                run_id=run_id,
+                host=host,
+                verdict="NOT_WORKING",
+                drill=False,
+                reason=FAILURE_RAISED,
+                at=self._now(),
+                piece_number=emission.piece_number,
+            )
+            self._appender.append(
+                row, str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}|run"))
+            )
+        except Exception:
+            return
 
     def _append_rows(
         self,

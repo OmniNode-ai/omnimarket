@@ -10,7 +10,8 @@ handler as the ``run`` verb and the schedule node's request. Every setting comes
 The harness writes its reading to the overlay's ``current_result_path``, where the floor reads it. The timer's own
 evidence is ``DIR/last-run.json``: the run id, the reading state and the exit code, written after every run, so a
 timer that stopped can be told from a harness that reads NOT WORKING. The exit code is 0 when the reading is
-WORKING, 1 when it is not, 69 when the bus is unavailable and 65 when the overlay refuses.
+WORKING, 1 when it is not, 69 when the bus is unavailable, 65 when the overlay refuses and 74 when the ledger did
+not take the run's rows.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
     open_lab_work_runner,
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers.handler_lab_test_harness_effect import (
+    LabHarnessLedgerAppendError,
     sink_from_overlay,
 )
 
@@ -48,6 +50,7 @@ EXIT_WORKING = 0
 EXIT_NOT_WORKING = 1
 EXIT_OVERLAY_REFUSED = 65
 EXIT_BUS_UNAVAILABLE = 69
+EXIT_LEDGER_UNCONFIRMED = 74
 NODE_NAME = "node_lab_test_harness_effect"
 
 
@@ -84,6 +87,10 @@ def run_once(
     except LabRunBusError as exc:
         emit_error(f"bus: {exc}")
         return EXIT_BUS_UNAVAILABLE, request.run_id, ""
+    except LabHarnessLedgerAppendError as exc:
+        # The reading was stored; only the other-host rows are missing. The timer's evidence still says so.
+        emit_error(f"ledger: {exc}")
+        return EXIT_LEDGER_UNCONFIRMED, request.run_id, ""
     emit(reading.model_dump_json(indent=2))
     code = (
         EXIT_WORKING
