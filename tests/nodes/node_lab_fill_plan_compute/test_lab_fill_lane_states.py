@@ -66,8 +66,8 @@ def test_golden_recorded_row_settles_to_final_placed_and_names_the_lanes() -> No
         "lab-fill-omn23021-11080910",
     )
     assert result.refusals_cell == (
-        "refusals=lab-fill-omn22908-11080910:never-started:brief-check-refused,"
-        "lab-fill-omn23021-11080910:never-started:brief-rules-unreadable"
+        "refusals=lab-fill-omn22908-11080910@h051:brief-check-refused,"
+        "lab-fill-omn23021-11080910@h051:brief-rules-unreadable"
     )
 
 
@@ -92,9 +92,9 @@ def test_error_chain_every_failure_outcome_is_named_with_its_reason() -> None:
     )
     assert result.states_cell == "states=refused:3,never-started:2,other:1,placed:1"
     assert result.refusals_cell == (
-        "refusals=a:refused,b:engine-failed:codex-missing,"
-        "c:deferred:pinned-host-refused,d:never-started:not-started,"
-        "e:never-started:lane-timeout:40s,f:other:strange"
+        "refusals=a@h1:refused,b@h1:engine-failed:codex-missing,"
+        "c@h2:deferred:pinned-host-refused,d@h2:not-started,"
+        "e@h3:lane-timeout:40s,f@h3:other:strange"
     )
     assert result.placed == 1
 
