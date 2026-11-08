@@ -4,24 +4,24 @@
 # The 18 pieces are the rebuild plan's list (section 2.1). reading_max_age_s is the plan's reading rule (3.5): 24 hours
 # by default, 8 days for the weekly walk (piece 18), 15 minutes for the lab-state piece (17).
 pieces:
-  - {piece: 1, name: Code graph, reading_max_age_s: 86400}
-  - {piece: 2, name: Hosts and capacity, reading_max_age_s: 86400}
-  - {piece: 3, name: "Bus, runtime and seams", reading_max_age_s: 86400}
-  - {piece: 4, name: "Contracts, overlays and injected dependencies", reading_max_age_s: 86400}
-  - {piece: 5, name: Secrets, reading_max_age_s: 86400}
-  - {piece: 6, name: Ledger and state, reading_max_age_s: 86400}
-  - {piece: 7, name: Process spine, reading_max_age_s: 86400}
-  - {piece: 8, name: "CI, runners and the central test location", reading_max_age_s: 86400}
-  - {piece: 9, name: Landing and merge queue, reading_max_age_s: 86400}
-  - {piece: 10, name: Install and release, reading_max_age_s: 86400}
-  - {piece: 11, name: Dev deploy and runtime, reading_max_age_s: 86400}
-  - {piece: 12, name: Dispatch and placement, reading_max_age_s: 86400}
-  - {piece: 13, name: Results and tracking, reading_max_age_s: 86400}
-  - {piece: 14, name: Review, reading_max_age_s: 86400}
-  - {piece: 15, name: "Delegation and the chain of responders", reading_max_age_s: 86400}
-  - {piece: 16, name: "Context, memory and evals", reading_max_age_s: 86400}
-  - {piece: 17, name: Observability and the floor, reading_max_age_s: 900}
-  - {piece: 18, name: Onboarding and the customer path, reading_max_age_s: 691200}
+  - {piece: 1, name: Code graph, reading_max_age_s: 86400, what: "A map of how the code of every repository connects, rebuilt on a schedule, so a change can be traced to what it touches."}
+  - {piece: 2, name: Hosts and capacity, reading_max_age_s: 86400, what: "The list of lab machines, how many lanes each can carry and whether each one answers, checked on a timer."}
+  - {piece: 3, name: "Bus, runtime and seams", reading_max_age_s: 86400, what: "The message bus and the one runtime, and the places where one node hands work to another."}
+  - {piece: 4, name: "Contracts, overlays and injected dependencies", reading_max_age_s: 86400, what: "Every node says what it does in a contract, takes its settings from an overlay and is given what it uses from outside."}
+  - {piece: 5, name: Secrets, reading_max_age_s: 86400, what: "Where the keys and passwords live, who can read them and how they are rotated, never in code or in chat."}
+  - {piece: 6, name: Ledger and state, reading_max_age_s: 86400, what: "The one record of what every lane claimed, did and finished, kept on the bus and read back."}
+  - {piece: 7, name: Process spine, reading_max_age_s: 86400, what: "The rules that stop a line, hold new work and let it in again, run by the system and not by hand."}
+  - {piece: 8, name: "CI, runners and the central test location", reading_max_age_s: 86400, what: "Where tests and checks run, on which machines, and the one place their results are kept."}
+  - {piece: 9, name: Landing and merge queue, reading_max_age_s: 86400, what: "How a finished change reaches the main branch, through checks, queue and merge, without anyone watching it."}
+  - {piece: 10, name: Install and release, reading_max_age_s: 86400, what: "How a merged change gets onto the machines that run it, and how a release is cut."}
+  - {piece: 11, name: Dev deploy and runtime, reading_max_age_s: 86400, what: "Putting the merged code on the dev lab runtime and showing that it runs."}
+  - {piece: 12, name: Dispatch and placement, reading_max_age_s: 86400, what: "How a piece of work is handed to a lane and put on the lab machine with room for it."}
+  - {piece: 13, name: Results and tracking, reading_max_age_s: 86400, what: "What each lane's result really was, success or failure, recorded in one place and counted."}
+  - {piece: 14, name: Review, reading_max_age_s: 86400, what: "Checking each change before it merges, with a model reviewer, and recording what it found."}
+  - {piece: 15, name: "Delegation and the chain of responders", reading_max_age_s: 86400, what: "Sending work to the cheapest model that can do it, measured, and moving up only on a measured miss."}
+  - {piece: 16, name: "Context, memory and evals", reading_max_age_s: 86400, what: "What a lane knows when it starts, what it remembers, and the tests that say whether that helps."}
+  - {piece: 17, name: Observability and the floor, reading_max_age_s: 900, what: "The factory floor page itself and the readings behind it, so a stopped line shows up as it happens."}
+  - {piece: 18, name: Onboarding and the customer path, reading_max_age_s: 691200, what: "A new person's walk from sign-up to a first working result, walked every week."}
 
 # The joins (plan 4.1). J0 is step 0 (the floor, piece 17) to piece 1; J-cycle is review back to landing.
 joins:
@@ -121,6 +121,41 @@ ledger_readings:
   max_age_cell: max_age
   reason_cell: reason
   lookback_days: 3
+
+# A piece's shadow results (OMN-22902): the code graph's pull request check logs what it would refuse and holds no merge. The
+# floor shows the newest row under piece 1 with its age against the max age the row declares, and never draws the piece red from it.
+ledger_shadows:
+  # The delegation completion rate (OMN-23108): the compute node of piece 15 carries R_all, R_dep and failed_rate as one STATUS row;
+  # the floor shows the newest one with its age against the max age the row declares, and its own verdict word.
+  - piece: 15
+    label: Delegation completion rate
+    row_type: STATUS
+    lane: delegation-rate
+    cells: {src: delegation-rate, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: verdict, label: verdict}
+      - {cell: r_all, label: completions an hour}
+      - {cell: r_dep, label: by the deployed lane}
+      - {cell: failed_rate, label: failed share}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
+  - piece: 1
+    label: Pull request check in shadow
+    row_type: STATUS
+    lane: code-graph
+    cells: {src: code-graph-shadow, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: checked, label: checked}
+      - {cell: would_refuse, label: would refuse}
+      - {cell: indeterminate, label: unreadable}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
 
 freshness_max_age_s: 900
 error_receipt_max_age_s: 86400

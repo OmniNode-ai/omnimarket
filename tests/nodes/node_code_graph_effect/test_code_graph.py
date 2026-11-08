@@ -3,8 +3,8 @@
 """The code graph on both backends, its row, and the piece 1 reading it feeds (OMN-22651).
 
 The last tests are the reading's failing controls: stop the timer and advance the clock and the
-reading goes NOT WORKING; drop the contract links in a drill and the row goes NOT WORKING while the
-operational reading does not read it.
+reading goes NOT WORKING; drop the contract links or the entry points in a drill and the row goes NOT WORKING
+while the operational reading does not read it.
 """
 
 from __future__ import annotations
@@ -22,13 +22,13 @@ from omnimarket.models.model_reading import (
     ModelReadingComputeRequest,
     ModelReadingSourceRows,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
+    CodeGraphRun,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     build_graph,
     glob_regex,
-)
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
-    HandlerCodeGraph,
 )
 from omnimarket.nodes.node_code_graph_effect.protocols import ProtocolRepoSource
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
@@ -77,10 +77,8 @@ def repos(request: pytest.FixtureRequest, tmp_path: Path) -> ProtocolRepoSource:
     return source(request.param, tmp_path)
 
 
-def _handler(
-    repos: ProtocolRepoSource, ledger: InMemoryLedger | None
-) -> HandlerCodeGraph:
-    return HandlerCodeGraph(
+def _handler(repos: ProtocolRepoSource, ledger: InMemoryLedger | None) -> CodeGraphRun:
+    return CodeGraphRun(
         overlay=overlay(),
         host=HOST,
         source=repos,
@@ -226,6 +224,30 @@ def test_failing_control_drop_the_contract_links(repos: ProtocolRepoSource) -> N
     assert result.verdict is EnumReadingVerdict.NOT_WORKING
     assert any(reason.startswith("control-unreached") for reason in result.reasons)
     # the operational reading reads no drill row, so with only this row it is stale
+    assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.NOT_WORKING
+
+
+def test_failing_control_drop_the_entry_points_fails_the_reading(
+    repos: ProtocolRepoSource,
+) -> None:
+    """The break that fails the real reading (OMN-22651): on the live sample dropping the contract links leaves
+    28 of 30 against a bar of 27, so it cannot fail it; dropping the pyproject entry points leaves 23 of 30."""
+    ledger = InMemoryLedger()
+    result = _handler(repos, ledger).handle(
+        ModelCodeGraphCommand(
+            correlation_id="e", fault=EnumGraphFault.DROP_ENTRY_POINTS
+        )
+    )
+    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.reasons[0].startswith("below-bar")
+    assert result.sample is not None
+    assert result.sample.agree < overlay().sample.min_agree
+    # the clean run on the same repositories passes, so it is the break and not the fixture
+    clean = _handler(repos, InMemoryLedger()).handle(
+        ModelCodeGraphCommand(correlation_id="c")
+    )
+    assert clean.verdict is EnumReadingVerdict.WORKING
+    # a drill row is not read by the operational reading
     assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.NOT_WORKING
 
 

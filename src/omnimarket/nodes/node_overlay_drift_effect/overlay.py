@@ -17,7 +17,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
+from omnimarket.models.floor_17a import ModelPieceEventRule
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+    ModelFileLedgerReadRoute,
+    ModelLedgerAppendRoute,
+)
 
 NODE_NAME = "node_overlay_drift_effect"
 
@@ -106,6 +111,40 @@ class ModelOverlayDriftScheduleHost(BaseModel):
     venv: str = Field(min_length=1)
 
 
+class ModelOverlayDriftEmission(BaseModel):
+    """Where the read stands on the floor: its piece and node, and the journal its chain events go to.
+
+    With this block set, every run emits one chain (a start, then a success or a typed failure) under the
+    command's correlation id into the journal the variable names, and the reading row carries the piece. The
+    floor then joins this piece to the one that sent the command (J3, bus to overlays). Absent: no chain.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    node: str = Field(min_length=1)
+    #: The variable naming the append-only emission journal the floor folds into receipts.
+    journal_env: str = Field(min_length=1)
+
+
+class ModelOverlayDriftUpstream(BaseModel):
+    """The upstream piece whose newest success this read takes as its input (join J3, bus to overlays).
+
+    ``rule`` is the floor's own piece event rule of the upstream piece, as it stands in the floor overlay, so the correlation id
+    found here is the one the floor derives for the same row. A run reads the ledger through ``ledger_read``, takes the newest
+    successful chain of the upstream piece that no earlier run of this lane answered, and names its id in the cell ``cid_cell``
+    of the row it writes. With no such chain the run writes the row without the cell and no join is claimed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger_read: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
+        discriminator="route"
+    )
+    rule: ModelPieceEventRule
+    cid_cell: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
+
+
 class ModelOverlayDriftOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -121,6 +160,10 @@ class ModelOverlayDriftOverlay(BaseModel):
     #: When set, each pin's revision is checked against the merged branch and an unmerged pin is
     #: counted on its own (pin_unmerged); when absent the check does not run.
     pin_history: ModelPinHistorySettings | None = None
+    #: The emission chain and the piece cell of the row; absent means neither is written.
+    emission: ModelOverlayDriftEmission | None = None
+    #: The upstream piece this read answers; absent means the row never names an upstream chain.
+    upstream: ModelOverlayDriftUpstream | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelOverlayDriftOverlay:
@@ -141,6 +184,11 @@ class ModelOverlayDriftOverlay(BaseModel):
                     if self.pin_history
                     else {}
                 ),
+                **(
+                    {"emission": self.emission.model_dump(mode="json")}
+                    if self.emission
+                    else {}
+                ),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -154,6 +202,7 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelOverlayDriftO
 
 __all__ = [
     "NODE_NAME",
+    "ModelOverlayDriftEmission",
     "ModelOverlayDriftOverlay",
     "ModelOverlayDriftPublish",
     "ModelOverlayDriftScheduleHost",

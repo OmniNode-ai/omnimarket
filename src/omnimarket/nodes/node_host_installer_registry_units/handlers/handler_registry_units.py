@@ -69,6 +69,18 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
 # launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
 DEFAULT_PROCESS_TYPE = "Background"
 PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
+# launchd has no run limit for a StartInterval job, so a hung run holds the job and no tick follows (the overlay store
+# refresh hung 40 minutes at 0% CPU on 2026-11-06 and the alarm opened a missed-interval episode). A unit that declares
+# run_timeout_s runs under this wrapper: it puts the command in its own process group, ends the whole group with TERM
+# and then KILL when the limit passes, and exits 124 so the job-exit alarm reads a failed exit instead of silence.
+TIMEOUT_PROGRAM = (
+    "my $limit = shift; my $pid = fork(); defined $pid or exit 71; "
+    "if (!$pid) { setpgrp(0, 0); exec @ARGV; exit 127 } "
+    "$SIG{ALRM} = sub { kill 'TERM', -$pid; sleep 5; kill 'KILL', -$pid; exit 124 }; "
+    "alarm $limit; waitpid($pid, 0); "
+    "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
+)
+TIMEOUT_INTERPRETER = "/usr/bin/perl"
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -359,6 +371,21 @@ class HandlerRegistryUnits:
             temporary.unlink(missing_ok=True)
         return kept
 
+    @staticmethod
+    def timeout_args(unit: dict[str, Any]) -> str:
+        """The wrapper's ProgramArguments entries for a unit that declares run_timeout_s, else nothing."""
+        limit = unit.get("run_timeout_s")
+        if limit is None:
+            return ""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError(
+                f"{unit['label']} declares run_timeout_s {limit!r}; it must be a whole number of seconds, at least 1"
+            )
+        return "".join(
+            f"<string>{escape(part)}</string>\n    "
+            for part in (TIMEOUT_INTERPRETER, "-e", TIMEOUT_PROGRAM, str(limit))
+        )
+
     def render(
         self,
         request: ModelRegistryUnitsRequest,
@@ -373,6 +400,7 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
             )
+        timeout_args = self.timeout_args(unit)
         home, root = Path(request.home), Path(request.registry_root)
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
@@ -403,6 +431,7 @@ class HandlerRegistryUnits:
             "<true/>" if unit["schedule"]["run_at_load"] else "<false/>",
         )
         text = text.replace("__ENVIRONMENT__", environment)
+        text = text.replace("__TIMEOUT_ARGS__", timeout_args)
         text = text.replace(
             "__TICK_SYNC_ARGS__",
             "<string>--no-sync</string>" if unit.get("tick_no_sync") else "",

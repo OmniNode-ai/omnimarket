@@ -4,6 +4,8 @@
 
 ``hourly``   probe the latest closed window and append the reading rows (what the timer runs).
 ``probe``    the same reads and computation, appending nothing.
+``relation-map`` write the relation map's reading row from an import relation report file
+             (``--report``); ``--probe`` builds the row and appends nothing.
 ``schedule`` check | install | uninstall | status | run-now, for a host in the overlay.
 
 Exit codes: 0 every reading was computed and written (a piece reading NOT WORKING is still 0:
@@ -24,6 +26,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.models.import_relations import (
+    ModelImportRelationReport,
+    ModelRelationMapReadingCommand,
+)
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
     ModelReadingWindowCommand,
@@ -32,6 +38,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     stamp_text,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.landing_adapters import (
+    ProjectionLandingSource,
     WatcherFileLandingSource,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
@@ -43,15 +50,37 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     HandlerReadingWriter,
     window_for,
 )
+from omnimarket.nodes.node_reading_writer_effect.handlers.handler_relation_map_reading import (
+    HandlerRelationMapReading,
+)
 from omnimarket.nodes.node_reading_writer_effect.handlers.schedule import (
     ReadingScheduler,
     load_schedule,
 )
-from omnimarket.nodes.node_reading_writer_effect.overlay import NODE_NAME, load_overlay
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    NODE_NAME,
+    ModelLandingProjectionRoute,
+    ModelReadingOverlay,
+    load_overlay,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import ProtocolLandingSource
+from omnimarket.nodes.node_two_backend_suite_effect.adapters.report_sources import (
+    FileReportSource,
+)
 
 
 def _stamp_arg(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _landing_source(overlay: ModelReadingOverlay) -> ProtocolLandingSource | None:
+    """The overlay's landing route names the backend: the pr_state projection or the watcher's state file."""
+    route = overlay.landing_route
+    if route is None:
+        return None
+    if isinstance(route, ModelLandingProjectionRoute):
+        return ProjectionLandingSource(route, os.environ)
+    return WatcherFileLandingSource(route, os.environ)
 
 
 def _run_window(arguments: argparse.Namespace, write: bool) -> int:
@@ -66,16 +95,15 @@ def _run_window(arguments: argparse.Namespace, write: bool) -> int:
             now, overlay.window.length_seconds, overlay.window.close_delay_seconds
         )[0]
     )
+    two_backend = overlay.two_backend
+    report_path = os.environ.get(two_backend.report_path_env) if two_backend else None
     handler = HandlerReadingWriter(
         overlay=overlay,
         source=source,
         appender=appender,
         clock=lambda: datetime.now(UTC),
-        landing=(
-            WatcherFileLandingSource(overlay.landing_route, os.environ)
-            if overlay.landing_route is not None
-            else None
-        ),
+        landing=_landing_source(overlay),
+        two_backend_source=FileReportSource(Path(report_path)) if report_path else None,
     )
     result = handler.handle(
         ModelReadingWindowCommand(
@@ -105,6 +133,45 @@ def _run_window(arguments: argparse.Namespace, write: bool) -> int:
         f"failed={len(broken)} write={'yes' if write else 'no'}\n"
     )
     return 1 if broken else 0
+
+
+def _relation_map(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="relation-map")
+    parser.add_argument(
+        "--report", required=True, help="an import relation report, JSON"
+    )
+    parser.add_argument(
+        "--piece", type=int, required=True, help="the piece the row is for"
+    )
+    parser.add_argument("--probe", action="store_true", help="append nothing")
+    args = parser.parse_args(list(arguments))
+    overlay = load_overlay()
+    now = datetime.now(UTC)
+    start = window_for(
+        now, overlay.window.length_seconds, overlay.window.close_delay_seconds
+    )[0]
+    report = ModelImportRelationReport.model_validate_json(
+        Path(args.report).read_text(encoding="utf-8")
+    )
+    handler = HandlerRelationMapReading(
+        publish=overlay.publish,
+        appender=build_appender(overlay.ledger_append, overlay.publish.lane),
+        clock=lambda: datetime.now(UTC),
+    )
+    result = handler.handle(
+        ModelRelationMapReadingCommand(
+            correlation_id=f"relation-map-{stamp_text(start)}",
+            piece=args.piece,
+            window_start=start,
+            report=report,
+            write=not args.probe,
+        )
+    )
+    sys.stdout.write(
+        f"RELATION-MAP piece={args.piece} verdict={result.verdict} status={result.status} "
+        f"reason={result.reason}\n"
+    )
+    return 1 if result.status == "failed" else 0
 
 
 def _schedule(arguments: Sequence[str]) -> int:
@@ -157,6 +224,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments and arguments[0] == "schedule":
             return _schedule(arguments[1:])
+        if arguments and arguments[0] == "relation-map":
+            return _relation_map(arguments[1:])
         parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
         parser.add_argument("verb", choices=("hourly", "probe"))
         parser.add_argument(

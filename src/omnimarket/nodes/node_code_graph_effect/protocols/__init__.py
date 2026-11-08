@@ -7,7 +7,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol
 
-from omnimarket.models.model_code_graph import ModelRepoSnapshot
+from omnimarket.models.model_code_graph import (
+    ModelRepoSnapshot,
+    ModelShadowPullRequest,
+)
 
 
 class RepoSourceError(RuntimeError):
@@ -27,4 +30,21 @@ class ProtocolRepoSource(Protocol):
         ...
 
 
-__all__ = ["ProtocolRepoSource", "RepoSourceError"]
+class PullRequestSourceError(RuntimeError):
+    """The open pull requests could not be read. Never an empty answer."""
+
+
+class ProtocolPullRequestSource(Protocol):
+    """The open pull requests of one repository."""
+
+    def open_pull_requests(self, repo: str) -> tuple[ModelShadowPullRequest, ...]:
+        """Newest first. Raises :class:`PullRequestSourceError` when they cannot be read."""
+        ...
+
+
+__all__ = [
+    "ProtocolPullRequestSource",
+    "ProtocolRepoSource",
+    "PullRequestSourceError",
+    "RepoSourceError",
+]

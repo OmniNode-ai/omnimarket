@@ -1,0 +1,25 @@
+# Synthetic values: the real overlay is <root>/node_claude_token_pool_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. A host's place in this list is its rank: it sets which token the host draws first.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    venv: omnimarket/.venv
+    token_file: .config/omni/claude-oauth-token
+  - name: host-b
+    scheduler: systemd-user
+    venv: omnimarket/.venv
+    token_file: .config/omni/claude-oauth-token
+  - name: mac
+    scheduler: launchd
+    venv: omnimarket/.venv
+    token_file: .config/omni/claude-oauth-token
+# The one source of limited and revoked marks: this host's pool status mirror.
+marks_source:
+  host: host-a
+  ssh_target: host-a.example.invalid
+  mirror_path: .cache/omni/claude-token-pool.json
+  max_age_seconds: 900
+events_file: token-rotations.jsonl
+unit_environment: {}
+schedule:
+  interval_seconds: 300

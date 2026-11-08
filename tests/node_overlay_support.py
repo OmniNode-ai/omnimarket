@@ -40,3 +40,23 @@ INTEGRATION_SWEEP_OVERLAY: dict[str, str] = {
     "infra_runtime_host": "192.0.2.10",
     "projection_api_url": "http://192.0.2.10:3002",
 }
+
+
+def install_lab_host_table(
+    monkeypatch: pytest.MonkeyPatch,
+    root: Path,
+    rows: list[Mapping[str, object]],
+) -> Path:
+    """Write a lab host table under ``root`` and pin it through ``ONEX_LAB_RUN_HOSTS``."""
+    path = root / "lab_hosts_table.yaml"
+    path.write_text(yaml.safe_dump({"hosts": rows}), encoding="utf-8")
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    return path
+
+
+#: The lab host row the suite's runtime host (an RFC 5737 address) resolves to.
+RUNTIME_HOST_ROW: dict[str, object] = {
+    "name": "h-example",
+    "target": INTEGRATION_SWEEP_OVERLAY["runtime_host"],
+    "ssh_user": "lab-user",
+}
