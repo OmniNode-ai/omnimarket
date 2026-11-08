@@ -23,6 +23,8 @@ import signal
 import subprocess
 import threading
 from collections import deque
+from io import BufferedReader
+from typing import cast
 
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage import (
     ModelHostStorageRun,
@@ -49,14 +51,14 @@ def _transport_argv(prefix: tuple[str, ...], words: list[str]) -> list[str]:
 class _TailReader(threading.Thread):
     """Reads one pipe to its end, keeping only the last ``_KEEP_BYTES`` bytes."""
 
-    def __init__(self, stream: object) -> None:
+    def __init__(self, stream: BufferedReader) -> None:
         super().__init__(daemon=True)
         self._stream = stream
         self._chunks: deque[bytes] = deque()
         self._kept = 0
 
     def run(self) -> None:
-        read = self._stream.read1  # type: ignore[attr-defined]
+        read = self._stream.read1
         while True:
             try:
                 chunk = read(_READ_CHUNK)
@@ -93,7 +95,10 @@ def _run_bounded(
     )
     assert proc.stdout is not None
     assert proc.stderr is not None
-    readers = (_TailReader(proc.stdout), _TailReader(proc.stderr))
+    readers = (
+        _TailReader(cast(BufferedReader, proc.stdout)),
+        _TailReader(cast(BufferedReader, proc.stderr)),
+    )
     for reader in readers:
         reader.start()
     timed_out = False
