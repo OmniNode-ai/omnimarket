@@ -99,16 +99,18 @@ class HandlerHostStorage:
         after = self._backend.free_bytes(host, command.measured_path)
         ok = run.exit_code == 0 and not run.timed_out
         detail = None
+        outcome = EnumHostStorageOutcome.OK if ok else EnumHostStorageOutcome.FAILED
         if run.timed_out:
             detail = "timed out"
         elif not ok:
             detail = f"exit {run.exit_code}: {run.output_tail}".strip()
+        elif after is None:
+            outcome = EnumHostStorageOutcome.COMPLETED_UNOBSERVED
+            detail = "command exited 0; free bytes after the command could not be read"
         return ModelHostStorageResult(
             host=request.host,
             command=request.command,
-            outcome=(
-                EnumHostStorageOutcome.OK if ok else EnumHostStorageOutcome.FAILED
-            ),
+            outcome=outcome,
             detail=detail,
             exit_code=run.exit_code,
             timed_out=run.timed_out,

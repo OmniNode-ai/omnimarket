@@ -29,6 +29,9 @@ class EnumHostStorageOutcome(StrEnum):
     REFUSED = "refused"
     # The command ran and exited non-zero or timed out.
     FAILED = "failed"
+    # The command exited zero without timing out, but the free bytes AFTER it could not be read: the
+    # write happened and the before/after reading the contract promises is incomplete.
+    COMPLETED_UNOBSERVED = "completed_unobserved"
 
 
 @unique

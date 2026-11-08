@@ -43,7 +43,11 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     if result.outcome is EnumHostStorageOutcome.OK:
         return 0
-    return 2 if result.outcome is EnumHostStorageOutcome.REFUSED else 3
+    if result.outcome is EnumHostStorageOutcome.REFUSED:
+        return 2
+    if result.outcome is EnumHostStorageOutcome.COMPLETED_UNOBSERVED:
+        return 5
+    return 3
 
 
 if __name__ == "__main__":
