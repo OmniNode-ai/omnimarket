@@ -20,13 +20,13 @@ import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.models.floor_17a import ModelFloorHealthLine, ModelFloorSimple
-from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
-    HandlerCustomerHealth,
-)
-from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
+from omnimarket.models.floor_17a.model_customer_health import (
     ModelCustomerHealthOverlay,
     ModelCustomerHealthRequest,
     ModelHealthReadingIn,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
+    HandlerCustomerHealth,
 )
 from tests.nodes.node_floor_simple_effect.support import (
     NOW,

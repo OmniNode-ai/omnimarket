@@ -38,7 +38,7 @@ handler_routing:
       handler:
         name: HandlerCustomerHealth
         module: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health
-      input_model: omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health.ModelCustomerHealthRequest
+      input_model: omnimarket.models.floor_17a.model_customer_health.ModelCustomerHealthRequest
       output_model: omnimarket.models.floor_17a.ModelFloorHealthLine
 descriptor:
   node_archetype: compute

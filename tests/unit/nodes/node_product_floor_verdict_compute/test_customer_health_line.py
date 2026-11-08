@@ -17,11 +17,11 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.floor_17a import ModelFloorHealthLine
+from omnimarket.models.floor_17a.model_customer_health import (
+    ModelCustomerHealthRequest,
+)
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
-)
-from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
-    ModelCustomerHealthRequest,
 )
 
 pytestmark = pytest.mark.unit

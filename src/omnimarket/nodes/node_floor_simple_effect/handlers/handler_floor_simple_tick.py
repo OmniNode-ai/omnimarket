@@ -58,6 +58,11 @@ from omnimarket.models.floor_17a import (
     ModelPieceChains,
     ModelReadingRow,
 )
+from omnimarket.models.floor_17a.model_customer_health import (
+    ModelCustomerHealthOverlay,
+    ModelCustomerHealthRequest,
+    ModelHealthReadingIn,
+)
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -112,11 +117,6 @@ from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
 )
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
-)
-from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
-    ModelCustomerHealthOverlay,
-    ModelCustomerHealthRequest,
-    ModelHealthReadingIn,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,

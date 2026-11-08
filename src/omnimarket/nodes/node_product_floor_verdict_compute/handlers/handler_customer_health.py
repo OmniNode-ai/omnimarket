@@ -15,7 +15,7 @@ from omnimarket.models.floor_17a import (
     ModelHealthReadingUsed,
     ReadingState,
 )
-from omnimarket.nodes.node_product_floor_verdict_compute.models.model_customer_health import (
+from omnimarket.models.floor_17a.model_customer_health import (
     ModelCustomerHealthRequest,
     ModelHealthReadingIn,
 )

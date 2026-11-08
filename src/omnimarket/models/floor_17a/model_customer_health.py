@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.models.floor_17a import ReadingState
+from omnimarket.models.floor_17a.model_floor_17a import ReadingState
 
 
 class _Frozen(BaseModel):
