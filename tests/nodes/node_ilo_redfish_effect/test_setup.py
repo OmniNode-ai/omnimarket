@@ -503,15 +503,6 @@ def test_an_account_missing_a_needed_privilege_is_refused(tmp_path: Path) -> Non
     assert rig.run("h9").hosts[0].refusal is R.ACCOUNT_PRIVILEGE_SHORT
 
 
-def test_only_half_of_an_account_in_the_store_is_refused(tmp_path: Path) -> None:
-    rig = Rig(
-        tmp_path,
-        {"h9": SetupDevice("gen9")},
-        secrets_values={"ILO_H9_READ_USERNAME": "x"},
-    )
-    assert rig.run("h9").hosts[0].refusal is R.STORE_INCONSISTENT
-
-
 def test_the_administrator_credential_comes_from_the_store_when_it_is_there(
     tmp_path: Path,
 ) -> None:

@@ -486,7 +486,9 @@ class IloSetupSequence:
 
         collection = self._accounts_collection(session, root)
         for role in ("READ", "WRITE"):
-            self._account(name, role, session, root, collection, stored, steps)
+            self._account(
+                name, role, session, root, collection, stored, steps, existing
+            )
 
         ca_file = f"{name}-ilo.pem"
         row = _host_row(
@@ -523,7 +525,7 @@ class IloSetupSequence:
             "written live; first read passed and serial recorded",
         )
         self._note(steps, "live", "done", "live true; serial recorded")
-        ready = self._reader_ready(name)
+        ready = self._reader_ready(name, row)
         self._emit(
             "   node reader sees the stored accounts: "
             + {True: "yes", False: "NO (see the note below)", None: "not checked"}[
@@ -598,6 +600,26 @@ class IloSetupSequence:
 
     def _key(self, host: str, role: str, field: str) -> str:
         return credential_key(self._template, host=host, role=role, field=field)
+
+    def _account_keys(
+        self, host: str, role: str, row: dict[str, JsonValue] | None
+    ) -> tuple[str, str]:
+        """The store keys of one account: the names the host's row retains, else the template's.
+
+        This is the mapping the node's own reads resolve, so provisioning, the first read and the
+        readiness check all use the same keys.
+        """
+        names = row.get("credentials") if row else None
+        if not isinstance(names, dict):
+            return self._key(host, role, "USERNAME"), self._key(host, role, "PASSWORD")
+        user = names.get(f"{role.lower()}_username_key")
+        password = names.get(f"{role.lower()}_password_key")
+        if not isinstance(user, str) or not isinstance(password, str):
+            raise _StopError(
+                Refusal.STORE_INCONSISTENT,
+                f"the overlay row's credentials do not name a {role.lower()} account",
+            )
+        return user, password
 
     def _admin(
         self,
@@ -1109,16 +1131,19 @@ class IloSetupSequence:
         collection: str,
         stored: frozenset[str],
         steps: list[ModelIloSetupStep],
+        row: dict[str, JsonValue] | None,
     ) -> None:
         label = f"{role.lower()} account"
-        user_entry = self._key(host, role, "USERNAME")
-        pw_entry = self._key(host, role, "PASSWORD")
+        user_entry, pw_entry = self._account_keys(host, role, row)
         has_user, has_pass = user_entry in stored, pw_entry in stored
-        if has_user != has_pass:
+        if has_pass and not has_user:
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"the store holds only one of {user_entry} and {pw_entry}",
+                f"the store holds {pw_entry} but not {user_entry}",
             )
+        # A username alone is what a run that stopped between its two create-only writes leaves: no
+        # password exists and no account has been created for it. It is resumed below unless the iLO
+        # already has that account, which is refused because its password is not ours to replace.
         try:
             stored_user = self._secrets.get(user_entry) if has_user else None
             password = self._secrets.get(pw_entry) if has_pass else None
@@ -1165,19 +1190,27 @@ class IloSetupSequence:
             )
             return
         if password is None:
-            password = self._store_new_account(host, role, username, steps)
+            password = self._store_new_account(
+                role, username, user_entry, pw_entry, has_user, steps
+            )
         self._create_account(session, collection, username, password, wanted, label)
         self._verify_login(root, username, password, label)
         self._note(steps, label, "done", f"{username} created with {sorted(wanted)}")
 
     def _store_new_account(
-        self, host: str, role: str, username: str, steps: list[ModelIloSetupStep]
+        self,
+        role: str,
+        username: str,
+        user_entry: str,
+        pw_entry: str,
+        has_user: bool,
+        steps: list[ModelIloSetupStep],
     ) -> SecretStr:
-        user_entry = self._key(host, role, "USERNAME")
-        pw_entry = self._key(host, role, "PASSWORD")
         password = self._generate()
         try:
-            created_user = self._secrets.create(user_entry, SecretStr(username))
+            created_user = has_user or self._secrets.create(
+                user_entry, SecretStr(username)
+            )
             created_pass = self._secrets.create(pw_entry, password)
         except SetupStoreError as exc:
             raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
@@ -1190,7 +1223,9 @@ class IloSetupSequence:
             steps,
             f"{role.lower()} store keys",
             "done",
-            f"{user_entry}, {pw_entry} created",
+            f"{pw_entry} created; {user_entry} was already stored"
+            if has_user
+            else f"{user_entry}, {pw_entry} created",
         )
         return password
 
@@ -1392,14 +1427,14 @@ class IloSetupSequence:
         self._note(steps, "identity", "done", f"serial {serial}")
         return serial
 
-    def _reader_ready(self, name: str) -> bool | None:
+    def _reader_ready(self, name: str, row: dict[str, JsonValue]) -> bool | None:
         if self._node_reader is None:
             return None
         try:
             return all(
-                self._node_reader(self._key(name, role, field)) is not None
+                self._node_reader(key) is not None
                 for role in ("READ", "WRITE")
-                for field in ("USERNAME", "PASSWORD")
+                for key in self._account_keys(name, role, row)
             )
         except Exception:  # any reader failure means the node cannot read them yet
             return False

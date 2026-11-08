@@ -6,6 +6,7 @@ Each test fails on the code the review was written against.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 from pathlib import Path
@@ -33,6 +34,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
 from tests.nodes.node_ilo_redfish_effect.test_setup import (
     Rig,
     SetupDevice,
+    _account_keys,
     make_certificate,
 )
 
@@ -262,3 +264,103 @@ def test_a_journal_directory_that_cannot_be_made_refuses_that_host_and_the_batch
     result = rig.run("h8", "h9")
     assert [h.host for h in result.hosts] == ["h8", "h9"]
     assert [h.refusal for h in result.hosts] == [R.OVERLAY_WRITE_FAILED] * 2
+
+
+# -- thread 8: provisioning and readiness follow the row's own credential key names -------------
+
+MAPPED = {
+    "read_username_key": "MAPPED_READ_USER",
+    "read_password_key": "MAPPED_READ_PASS",
+    "write_username_key": "MAPPED_WRITE_USER",
+    "write_password_key": "MAPPED_WRITE_PASS",
+}
+
+
+def _seed_row(rig: Rig, credentials: dict[str, str] | None) -> None:
+    """An operator-written overlay row, pinned to the certificate the rig's iLO presents."""
+    row: dict[str, Any] = {
+        "name": "h9",
+        "generation": "gen9",
+        "address": "192.0.2.10",
+        "expected_product": "unverified",
+        "tls": {
+            "ca_file": "h9-ilo.pem",
+            "sha256": hashlib.sha256(rig.der).hexdigest(),
+        },
+        "live": False,
+    }
+    if credentials is not None:
+        row["credentials"] = credentials
+    rig.overlay_dir.mkdir(parents=True)
+    (rig.overlay_dir / "overlay.yaml").write_text(
+        yaml.safe_dump({"hosts": [row], "journal_dir": str(rig.journal_dir)})
+    )
+
+
+def test_the_accounts_are_stored_under_the_keys_the_overlay_row_names(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+    _seed_row(rig, MAPPED)
+    asked: list[str] = []
+    rig.handler._node_reader = lambda key: asked.append(key) or object()  # type: ignore[assignment]
+    result = rig.run("h9")
+    assert result.hosts[0].status == "ready"
+    assert sorted(_account_keys(rig)) == sorted(MAPPED.values())
+    assert sorted(asked) == sorted(MAPPED.values())
+    assert result.hosts[0].node_reader_ready is True
+
+
+def test_a_row_that_names_no_write_account_is_refused_not_given_template_keys(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+    _seed_row(rig, {k: v for k, v in MAPPED.items() if k.startswith("read")})
+    result = rig.run("h9")
+    assert result.hosts[0].refusal is R.STORE_INCONSISTENT
+    assert not any(k.startswith("ILO_H9_WRITE") for k in rig.secrets.created)
+
+
+# -- thread 10: a partial credential write of the setup's own is resumed on the rerun -------------
+
+
+def test_a_username_the_setup_stored_before_a_failure_is_resumed_not_refused(
+    tmp_path: Path,
+) -> None:
+    device = SetupDevice("gen9")
+    rig = Rig(
+        tmp_path,
+        {"h9": device},
+        secrets_values={"ILO_H9_READ_USERNAME": "onex-ilo-read"},
+    )
+    assert rig.run("h9").hosts[0].status == "ready"
+    assert "ILO_H9_READ_USERNAME" not in rig.secrets.created
+    assert "ILO_H9_READ_PASSWORD" in rig.secrets.created
+    posted = {str(p["UserName"]): p["Password"] for p in device.account_posts}
+    assert posted["onex-ilo-read"] == rig.secrets.values["ILO_H9_READ_PASSWORD"]
+
+
+def test_a_stored_username_whose_account_already_exists_is_never_given_a_new_password(
+    tmp_path: Path,
+) -> None:
+    device = SetupDevice("gen9", accounts={"onex-ilo-read": {"LoginPriv"}})
+    rig = Rig(
+        tmp_path,
+        {"h9": device},
+        secrets_values={"ILO_H9_READ_USERNAME": "onex-ilo-read"},
+    )
+    result = rig.run("h9")
+    assert result.hosts[0].refusal is R.ACCOUNT_EXISTS_NO_CREDENTIAL
+    assert device.account_posts == []
+    assert _account_keys(rig) == []
+
+
+def test_a_stored_password_with_no_username_is_still_inconsistent(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(
+        tmp_path,
+        {"h9": SetupDevice("gen9")},
+        secrets_values={"ILO_H9_READ_PASSWORD": "left-over"},
+    )
+    assert rig.run("h9").hosts[0].refusal is R.STORE_INCONSISTENT
