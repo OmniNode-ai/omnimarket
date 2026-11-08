@@ -250,6 +250,8 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
+    disk_unprobed_hosts: tuple[str, ...] = ()
     # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
     conflict_merge_states: tuple[str, ...] = ()
     # The host table and plan rules that split the offline runners into parked on purpose and real problems.
