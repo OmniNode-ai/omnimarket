@@ -15,6 +15,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
+from omnimarket.models.model_floor_line_select import (
+    LineClass,
+    ModelFloorGoalRow,
+    ModelFloorLineSelectConfig,
+    ModelFloorProcessDecl,
+    ModelFloorSourceHealth,
+)
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -205,6 +212,12 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+    # The plan files the newest readable plans-today output selected (class plan). None: no output was supplied, and
+    # a run that declares no line draws every plan it is given, as before.
+    plans_today_paths: tuple[str, ...] | None = None
+    # The line classes this run draws. Declared and plan lines are the floor's own; the other four are drawn only when
+    # the run names them, so a caller that does not forward their facts yet draws the record it always did.
+    line_classes: tuple[LineClass, ...] = ("declared", "plan")
     # The declared line (a plan_path_contains text) that shows each lane's application containers; empty shows none.
     container_read_line: str = ""
 
@@ -627,6 +640,7 @@ class ModelFactoryFloorConfig(BaseModel):
     limits: ModelFloorLimitsConfig
     host_status: ModelFloorHostStatusConfig
     stopped: ModelFloorStoppedConfig
+    line_select: ModelFloorLineSelectConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -691,5 +705,9 @@ class ModelFactoryFloorRequest(BaseModel):
     # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
     # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
     scope_ticket_roots: tuple[str, ...] = ()
+    # Line selection facts (classes goal and process) and the health of every source the selection read.
+    goal_rows: tuple[ModelFloorGoalRow, ...] = ()
+    processes: tuple[ModelFloorProcessDecl, ...] = ()
+    source_health: tuple[ModelFloorSourceHealth, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)
