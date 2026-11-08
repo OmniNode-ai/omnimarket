@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Every setting of the friction rollup tick (OMN-22987, from the timer of OMN-19715). The handler reads this file as its
+# in-memory default profile and holds no value of its own; a deployment copies it to <root>/node_friction_rollup_tick_effect/
+# overlay.yaml. No key has a default.
+schema: friction-rollup-timer/v1
+ticket: OMN-19715
+umbrella_ticket: OMN-17427
+lane: friction-rollup-timer
+actor: "launchd:friction-rollup"
+model: none
+# The first window is the one the top classes, needs-ticket flags and trend are read from; the second feeds the 2h totals.
+windows:
+  - name: 24h
+    hours: 24
+  - name: 2h
+    hours: 2
+top_n: 5
+keep_days: 7
+max_row_chars: 3000
+bucket_hours: 2
+# Under the registry root when the request names no state_dir; the status row names reports under it.
+state_subdir: ".onex_state/friction-rollup"
+latest_stem: latest
+# Beside the ledger when the request names no archive_dir; the sorted files matching the glob are read after the ledger.
+archive_subdir: archive
+archive_glob: "*-split.md"
+# The status row's character budgets for the top classes, the new classes and the needs-ticket classes.
+top_budget_chars: 900
+new_classes_budget_chars: 500
+needs_ticket_budget_chars: 900
+# The command that appends one row: it runs `<command> <ledger> --append <row>`.
+appender_command: [onex-ledger]
+appender_timeout_seconds: 60
+# The class rules and class owners the compute node ships (relative to this file); the tick passes them to the rollup.
+class_rules_path: "../node_friction_rollup_compute/overlay.example.yaml"

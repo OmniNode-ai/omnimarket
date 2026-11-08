@@ -61,6 +61,8 @@ class ModelDelegationReportRequest(BaseModel):
     probe: bool = False
     lanes_running: int = Field(default=0, ge=0)
     overlay: ModelDelegationReadOverlay | None = None
+    # The seconds the lab projection read may take; the publish node passes its contract's cycle number (OMN-22699).
+    timeout_seconds: int = Field(default=120, gt=0)
 
 
 class ModelDelegationReportResult(BaseModel):

@@ -31,6 +31,8 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
 )
 from tests.node_overlay_support import (
     INTEGRATION_SWEEP_OVERLAY,
+    RUNTIME_HOST_ROW,
+    install_lab_host_table,
     install_node_overlay,
 )
 
@@ -40,12 +42,15 @@ def _deployment_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """The sweep's hosts and endpoints are deployment facts the suite supplies (OMN-20935)."""
+    root = tmp_path_factory.mktemp("overlay_root")
     install_node_overlay(
         monkeypatch,
-        tmp_path_factory.mktemp("overlay_root"),
+        root,
         "node_integration_sweep_orchestrator",
         INTEGRATION_SWEEP_OVERLAY,
     )
+    fixture_row = {**RUNTIME_HOST_ROW, "name": "h-fixture", "target": _HOST}
+    install_lab_host_table(monkeypatch, root, [RUNTIME_HOST_ROW, fixture_row])
 
 
 def test_integration_sweep_writes_drift_artifact(tmp_path: Path) -> None:
@@ -292,7 +297,7 @@ def test_probe_container_health_pass() -> None:
     args = run_mock.call_args.args[0]
     assert args == [
         "ssh",
-        f"jonah@{host}",
+        f"lab-user@{host}",
         "docker ps --format '{{.Names}}\t{{.Status}}'",
     ]
     assert result["surface"] == "CONTAINER_HEALTH"
