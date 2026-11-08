@@ -67,6 +67,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelPublishHistory,
     ModelPublishStep,
     ModelPublishStepResult,
+    ModelPublishTarget,
     group_steps,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
@@ -236,6 +237,47 @@ class PhaseBudget:
         return min(self._cap, left)
 
 
+class CopyOutcome:
+    """Where one file went: the hosts that stored it and, for each that did not, why (OMN-23081)."""
+
+    def __init__(self) -> None:
+        self.delivered: list[str] = []
+        self.failed: dict[str, str] = {}
+
+
+class DeliveryTally:
+    """What one run delivered to each serving host: a host that missed any file is named with its first reason."""
+
+    def __init__(self, targets: Sequence[str]) -> None:
+        self._targets = tuple(targets)
+        self.failed: dict[str, str] = {}
+
+    def record(self, outcome: CopyOutcome) -> None:
+        for target, reason in outcome.failed.items():
+            self.failed.setdefault(target, reason)
+
+    def served_to(self) -> tuple[str, ...]:
+        return tuple(t for t in self._targets if t not in self.failed)
+
+
+def local_copy_root(
+    overlay: ModelFactoryFloorPublishOverlay, home: Path
+) -> Path | None:
+    """The directory the publishing machine keeps its own copy of every published file in, or ``None`` when the overlay names none."""
+    if overlay.local_copy_relpath is None:
+        return None
+    return home / overlay.local_copy_relpath
+
+
+def _write_local_copy(
+    local_root: Path, name: str, payload: bytes, *, exclusive: bool
+) -> None:
+    path = local_root / name
+    if exclusive and path.exists():
+        return
+    write_atomic(path, payload)
+
+
 def copy_to_server(
     run: Runner,
     rt: ModelFactoryFloorPublishRuntime,
@@ -244,13 +286,35 @@ def copy_to_server(
     payload: bytes,
     *,
     root: str | None = None,
+    history: bool = False,
     exclusive: bool = False,
     budget: PhaseBudget | None = None,
-) -> None:
-    """Store ``payload`` as ``name`` under the serving host's directory (``root`` when given) over ssh; a failure leaves the old file.
+    local_root: Path | None = None,
+    unreachable: set[str] | None = None,
+) -> CopyOutcome:
+    """Store ``payload`` as ``name`` on the publishing machine and on every serving host over ssh; a failed host keeps its old file.
+
+    The local copy (``local_root``, when the overlay names one) is written first, so it holds the file even when every
+    host is down. Each serving host is tried on its own: one host failing never stops another from being served, and a
+    host whose connection did not open is skipped for the rest of the run (``unreachable``). The call raises
+    ``PublishRefusedError`` only when no serving host stored the file. ``root`` writes under one explicit directory of
+    a single-host overlay (the access include); ``history`` writes under each host's own history root.
 
     With a ``budget`` each attempt and each wait between attempts is clamped to what the phase has left.
     """
+    outcome = CopyOutcome()
+    targets = overlay.targets
+    if root is not None and len(targets) > 1:
+        raise ValueError(
+            "an explicit root names a path on one host: pass a single-host overlay"
+        )
+    if local_root is not None and root is None:
+        try:
+            _write_local_copy(local_root, name, payload, exclusive=exclusive)
+        except OSError as exc:
+            outcome.failed["local"] = f"writing {name} to the local copy failed: {exc}"
+    down = unreachable if unreachable is not None else set()
+    fanned = len(targets) > 1
 
     def limit() -> int:
         return (
@@ -259,27 +323,59 @@ def copy_to_server(
             else rt.transport.transfer_timeout_seconds
         )
 
-    argv = ssh_argv(
-        rt,
-        overlay,
-        remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
-    )
-    done = run(argv, payload, limit())
-    for _ in range(SSH_CONNECT_RETRIES):
-        if done.returncode != SSH_CONNECTION_ERROR:
-            break
-        # ssh's own exit 255 is a connection that did not open (2026-11-02 18:23Z: "Network is unreachable" for a few
-        # seconds on the launching Mac refused a whole 10-minute run); the remote command did not run, so it is tried again.
-        wait = SSH_RETRY_SECONDS
-        if budget is not None:
-            wait = max(0.0, min(wait, budget.remaining()))
-        time.sleep(wait)
-        done = run(argv, payload, limit())
-    if done.returncode != 0:
-        raise PublishRefusedError(
+    def one(target: ModelPublishTarget) -> str | None:
+        """The reason this host did not store the file, or ``None`` when it did."""
+        if target.ssh_target in down:
+            return "unreachable earlier in this run; skipped"
+        view = overlay.for_target(target)
+        directory = root or (target.history_root if history else target.remote_dir)
+        argv = ssh_argv(
+            rt, view, remote_write_command(directory, name, exclusive=exclusive)
+        )
+        try:
+            done = run(argv, payload, limit())
+            # A fanned-out publish does not retry a connection that did not open: the other host is served now and this one on the
+            # next run, so a down host costs one connect timeout, not a retry ladder per file.
+            for _ in range(0 if fanned else SSH_CONNECT_RETRIES):
+                if done.returncode != SSH_CONNECTION_ERROR:
+                    break
+                # ssh's own exit 255 is a connection that did not open (2026-11-02 18:23Z: "Network is unreachable" for a few
+                # seconds on the launching Mac refused a whole 10-minute run); the remote command did not run, so it is tried again.
+                wait = SSH_RETRY_SECONDS
+                if budget is not None:
+                    wait = max(0.0, min(wait, budget.remaining()))
+                time.sleep(wait)
+                done = run(argv, payload, limit())
+        except PublishRefusedError as exc:
+            return str(exc)
+        if done.returncode == 0:
+            return None
+        if done.returncode == SSH_CONNECTION_ERROR:
+            down.add(target.ssh_target)
+        return (
             f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
             "the previous file on the server is untouched"
         )
+
+    if fanned:
+        with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+            reasons = list(pool.map(one, targets))
+    else:
+        reasons = [one(targets[0])]
+    for target, reason in zip(targets, reasons, strict=True):
+        if reason is None:
+            outcome.delivered.append(target.ssh_target)
+        else:
+            outcome.failed[target.ssh_target] = reason
+    if not outcome.delivered:
+        raise PublishRefusedError(
+            str(reasons[0])
+            if not fanned
+            else "; ".join(
+                f"{t.ssh_target}: {r}" for t, r in zip(targets, reasons, strict=True)
+            )
+        )
+    return outcome
 
 
 class HandlerFactoryFloorPublish:
@@ -290,10 +386,15 @@ class HandlerFactoryFloorPublish:
         runner: Runner = run_process,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        unreachable: set[str] | None = None,
     ) -> None:
         self._run = runner
         self._clock = clock
         self._wall_clock = wall_clock
+        # The serving hosts whose connection did not open in this run: later copies skip them (OMN-23081).
+        self._unreachable: set[str] = unreachable if unreachable is not None else set()
+        self._tally = DeliveryTally(())
+        self._local_root: Path | None = None
         self._served: (
             tuple[
                 ModelFactoryFloorPublishRuntime,
@@ -326,6 +427,8 @@ class HandlerFactoryFloorPublish:
             )
         home = Path(home_value)
         now = request.now or datetime.now(UTC)
+        self._local_root = local_copy_root(overlay, home)
+        self._tally = DeliveryTally([t.ssh_target for t in overlay.targets])
 
         cycle_start = self._clock()
         phases: dict[str, float] = {}
@@ -395,6 +498,8 @@ class HandlerFactoryFloorPublish:
             "process_health_reason": health_payload.reason,
             "delegation": "published" if delegation is not None else "absent",
             "lines_declared": self._declared_lines(rt, env),
+            "serve_urls": list(overlay.serve_urls),
+            "local_copy": overlay.local_copy_relpath or "",
         }
         status = self._status_bytes(status_document)
 
@@ -423,6 +528,8 @@ class HandlerFactoryFloorPublish:
         files.append((rt.names.data, data))
         # The snapshot is stored before the live record, so a record that is shown has always been kept.
         snapshot = snapshot_name(rt.history, rt.names.data, now)
+        # The local copy is complete before any host is tried, so it holds the whole publish even when every host is down.
+        self._keep_local_copy([(snapshot, data), *files], snapshot)
         copy_start = self._clock()
         copy_budget = PhaseBudget(
             self._clock,
@@ -431,15 +538,18 @@ class HandlerFactoryFloorPublish:
             rt.transport.transfer_timeout_seconds,
         )
         try:
-            copy_to_server(
-                self._run,
-                rt,
-                overlay,
-                snapshot,
-                data,
-                root=overlay.history_root,
-                exclusive=True,
-                budget=copy_budget,
+            self._tally.record(
+                copy_to_server(
+                    self._run,
+                    rt,
+                    overlay,
+                    snapshot,
+                    data,
+                    history=True,
+                    exclusive=True,
+                    budget=copy_budget,
+                    unreachable=self._unreachable,
+                )
             )
             for name, payload in files:
                 self._copy(rt, overlay, name, payload, copy_budget)
@@ -505,7 +615,30 @@ class HandlerFactoryFloorPublish:
             delegation_published=delegation is not None,
             history_snapshot=snapshot,
             history_pruned=pruned,
+            serve_urls=overlay.serve_urls,
+            served_to=self._tally.served_to(),
+            failed_targets=dict(self._tally.failed),
+            local_copy=overlay.local_copy_relpath or "",
         )
+
+    def _keep_local_copy(
+        self, files: Sequence[tuple[str, bytes]], snapshot: str
+    ) -> None:
+        """Write every file of this publish under the overlay's local copy directory; a failure is named in the tally, never raised."""
+        if self._local_root is None:
+            return
+        try:
+            for name, payload in files:
+                _write_local_copy(
+                    self._local_root,
+                    name,
+                    payload,
+                    exclusive=name == snapshot,
+                )
+        except OSError as exc:
+            self._tally.failed.setdefault(
+                "local", f"the local copy could not be written: {exc}"
+            )
 
     def _prune_history(
         self,
@@ -513,7 +646,33 @@ class HandlerFactoryFloorPublish:
         overlay: ModelFactoryFloorPublishOverlay,
         now: datetime,
     ) -> tuple[str, ...]:
-        """Remove the past-window snapshots the retention allows; only files inside the history subdirectory are named."""
+        """Remove the past-window snapshots the retention allows on each serving host; only files inside the history subdirectory are named.
+
+        A host that cannot be pruned is named in the tally and does not stop the others; the call raises only when no host could be pruned.
+        """
+        pruned: list[str] = []
+        reasons: list[str] = []
+        pruned_any = False
+        for target in overlay.targets:
+            if target.ssh_target in self._unreachable:
+                reasons.append(f"{target.ssh_target}: unreachable; nothing was pruned")
+                continue
+            try:
+                pruned.extend(self._prune_target(rt, overlay.for_target(target), now))
+                pruned_any = True
+            except PublishRefusedError as exc:
+                reasons.append(f"{target.ssh_target}: {exc}")
+                self._tally.failed.setdefault(target.ssh_target, str(exc))
+        if not pruned_any and reasons:
+            raise PublishRefusedError("; ".join(reasons))
+        return tuple(dict.fromkeys(pruned))
+
+    def _prune_target(
+        self,
+        rt: ModelFactoryFloorPublishRuntime,
+        overlay: ModelFactoryFloorPublishOverlay,
+        now: datetime,
+    ) -> tuple[str, ...]:
         directory = str(PurePosixPath(overlay.history_root) / rt.history.subdirectory)
         budget = PhaseBudget(
             self._clock,
@@ -527,6 +686,8 @@ class HandlerFactoryFloorPublish:
             budget.timeout(),
         )
         if listing.returncode != 0:
+            if listing.returncode == SSH_CONNECTION_ERROR:
+                self._unreachable.add(overlay.ssh_target)
             raise PublishRefusedError(
                 f"listing the history failed with exit {listing.returncode}: {_tail(listing.stderr)}; "
                 "nothing was pruned"
@@ -819,7 +980,17 @@ class HandlerFactoryFloorPublish:
         payload: bytes,
         budget: PhaseBudget | None = None,
     ) -> None:
-        copy_to_server(self._run, rt, overlay, name, payload, budget=budget)
+        self._tally.record(
+            copy_to_server(
+                self._run,
+                rt,
+                overlay,
+                name,
+                payload,
+                budget=budget,
+                unreachable=self._unreachable,
+            )
+        )
 
     @staticmethod
     def _status_bytes(document: Mapping[str, Any]) -> bytes:
@@ -847,6 +1018,8 @@ class HandlerFactoryFloorPublish:
                     r.model_dump(exclude={"diagnostic"}) for r in after
                 ],
                 "slowest_step": timing["slowest_step"],
+                "served_to": list(self._tally.served_to()),
+                "failed_targets": dict(self._tally.failed),
             }
         )
         self._served = (rt, overlay, document)
@@ -856,13 +1029,16 @@ class HandlerFactoryFloorPublish:
             "final status",
             rt.transport.transfer_timeout_seconds,
         )
-        copy_to_server(
-            self._run,
-            rt,
-            overlay,
-            rt.names.status,
-            self._status_bytes(document),
-            budget=budget,
+        self._tally.record(
+            copy_to_server(
+                self._run,
+                rt,
+                overlay,
+                rt.names.status,
+                self._status_bytes(document),
+                budget=budget,
+                unreachable=self._unreachable,
+            )
         )
 
     def record_tick(self, tick_seconds: Mapping[str, float]) -> None:
@@ -881,13 +1057,16 @@ class HandlerFactoryFloorPublish:
             "tick status",
             rt.transport.transfer_timeout_seconds,
         )
-        copy_to_server(
-            self._run,
-            rt,
-            overlay,
-            rt.names.status,
-            self._status_bytes(document),
-            budget=budget,
+        self._tally.record(
+            copy_to_server(
+                self._run,
+                rt,
+                overlay,
+                rt.names.status,
+                self._status_bytes(document),
+                budget=budget,
+                unreachable=self._unreachable,
+            )
         )
 
     @staticmethod
@@ -919,10 +1098,13 @@ class HandlerFactoryFloorPublish:
 
 __all__ = [
     "NODE_DIR",
+    "CopyOutcome",
+    "DeliveryTally",
     "HandlerFactoryFloorPublish",
     "PublishRefusedError",
     "copy_to_server",
     "load_runtime",
+    "local_copy_root",
     "prunable_snapshots",
     "remote_write_command",
     "run_process",
