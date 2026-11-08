@@ -38,7 +38,8 @@ handler_routing:
         name: "HandlerLandingPrivateReads"
         module: "omnimarket.nodes.node_landing_private_reads_effect.handlers.handler_landing_private_reads"
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.cmd.omnimarket.landing-private-reads-list.v1"
   publish_topics:
     - "onex.evt.omnimarket.landing-private-reads-listed.v1"
 externally_consumed_topics:
