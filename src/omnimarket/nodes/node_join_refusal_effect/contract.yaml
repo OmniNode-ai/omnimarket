@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Join Refusal Effect (OMN-23022, the floor's chains:broken row)
+#
+# For each join the overlay declares, reads the upstream piece's real failure chains from the ledger (the same rule and rows the
+# floor reads) and writes the downstream piece's typed upstream_ refusal, with no start, to the emission journal under each
+# correlation id the downstream piece has not answered. It writes refusals and nothing else: it changes no verdict and no bound.
+name: node_join_refusal_effect
+contract_name: node_join_refusal_effect
+node_name: node_join_refusal_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers an upstream piece's real typed failure with the downstream piece's typed upstream_ refusal. A drill failure is not
+  answered (a drill is not evidence for a join), a failure is answered once, and a ledger that cannot be read is reported as
+  unread and writes nothing.
+
+handler:
+  module: omnimarket.nodes.node_join_refusal_effect.handlers.handler_join_refusal
+  class: HandlerJoinRefusal
+  input_model: omnimarket.nodes.node_join_refusal_effect.models.model_join_refusal.ModelJoinRefusalCommand
+
+# HandlerJoinRefusal takes the overlay, the ledger row source, the emission sink, the backend and the clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [emission-journal-append]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelJoinRefusalCommand
+  module: omnimarket.nodes.node_join_refusal_effect.models.model_join_refusal
+  description: Which joins, and whether to write the refusals.
+output_model:
+  name: ModelJoinRefusalResult
+  module: omnimarket.nodes.node_join_refusal_effect.models.model_join_refusal
+  description: Per join what was owed, answered and written.
+
+terminal_event: onex.evt.omnimarket.join-refusal-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  join_refusal_requested: onex.cmd.omnimarket.join-refusal-requested.v1
+  join_refusal_run_completed: onex.evt.omnimarket.join-refusal-run-completed.v1
+  join_refusal_run_failed: onex.evt.omnimarket.join-refusal-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.join-refusal-run-completed.v1
+  - onex.evt.omnimarket.join-refusal-run-failed.v1
+
+overlay:
+  node: node_join_refusal_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23022
+  transport_type: inmemory

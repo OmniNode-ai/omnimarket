@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: ask_done_check_effect
+version: "1.0.0"
+description: "Runs each operator ask's done check against the running system and records the verdict as a ledger row; an ask closes only on a TRUE verdict."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ask_done_check_effect: omnimarket.nodes.node_ask_done_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, operator-asks, done-check]
+pack: "data"
+display_name: "Effect: Ask Done Check"
+node_role: "effect"
+license: "MIT"

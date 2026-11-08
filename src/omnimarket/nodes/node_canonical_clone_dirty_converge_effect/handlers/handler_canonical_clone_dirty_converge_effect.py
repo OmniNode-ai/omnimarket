@@ -285,7 +285,12 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         if not branch:
             return self._reattach_detached(clone, refused_for, outcome)
         if branch not in self.declaration.tracking_branches:
-            return outcome(skipped, f"checked out on {branch}, not a tracking branch")
+            # A canonical clone parked on a lane branch serves that branch to every reader and the
+            # engine refuses it on every run, so it is returned to its remote default branch the
+            # same way a detached HEAD is reattached (OMN-23032).
+            return self._reattach_detached(
+                clone, refused_for, outcome, parked_on=branch
+            )
         if refused_for < self.age:
             return outcome(
                 skipped,
@@ -313,8 +318,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             ).splitlines()
             if c
         ]
-        if not dirty:
-            return outcome(skipped, "no tracked changes: the refusal has another cause")
+        if not dirty and not commits:
+            return outcome(
+                skipped,
+                "no tracked changes or local commits: the refusal has another cause",
+            )
         lane = self._open_claim_naming(clone)
         if lane:
             return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
@@ -328,9 +336,10 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             more = f" and {len(items) - listed} more" if len(items) > listed else ""
             return ", ".join(items[:listed]) + more
 
-        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+        parts = [f"{len(dirty)} tracked path(s) ({named(dirty)})"] if dirty else []
         if commits:
-            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+            parts.append(f"{len(commits)} local commit(s) ({named(commits)})")
+        dropped = " and ".join(parts)
         note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
@@ -377,6 +386,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         clone: Path,
         refused_for: int,
         outcome: Callable[..., ModelDirtyConvergeOutcome],
+        *,
+        parked_on: str = "",
     ) -> ModelDirtyConvergeOutcome:
         """Reattach a clone left on a detached HEAD to its tracking branch (OMN-20344).
 
@@ -387,10 +398,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         """
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        where = f"on {parked_on}" if parked_on else "detached"
         if refused_for < self.detached_age:
             return outcome(
                 skipped,
-                f"detached for {refused_for}s, below the declared {int(self.detached_age)}s",
+                f"{where} for {refused_for}s, below the declared {int(self.detached_age)}s",
             )
         # A raw ref can name a missing object. Require the commit before allowing
         # the converge script to move HEAD and potentially lose its only reference.
@@ -428,7 +440,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                 f"; {len(only_here)} commit(s) reachable only from it "
                 f"({', '.join(only_here[:listed])}{more}) saved as patches by the script"
             )
-        note = f"reattached from a detached HEAD at {before[:12]}{kept}"
+        origin = f"the lane branch {parked_on}" if parked_on else "a detached HEAD"
+        note = f"reattached from {origin} at {before[:12]}{kept}"
         script = self.registry_root / self.declaration.converge_script
         try:
             done = self._run(
