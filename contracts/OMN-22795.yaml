@@ -1,0 +1,41 @@
+schema_version: 1.0.0
+ticket_id: OMN-22795
+title: The house-model-key CLI gains an exec mode that resolves declared house keys into the environment and then execs a command, so a launcher pulls keys without printing a value
+summary: runtime_house_model_key_cli --exec-names "A B" -- <command> resolves each named house key the environment does not already set into the process environment, names an unresolved key on stderr with its typed refusal, and then replaces itself with the command. No value is printed, written or put on a command line. The --name and --value-only forms are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22795-exec-mode
+  statement: A launcher hands its command the declared house keys the store resolves without any value appearing in output, a file or a command line.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: exec mode hands the command the resolved key, keeps a value the environment sets, names an unresolved key and still starts the command, refuses a name that is not a house model key, and prints no value -- falsifier: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov -k exec_mode'
+  - id: AC2
+    statement: 'AC2: the --name and --value-only behaviour is unchanged -- falsifier: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The house-model-key tests, with the exec mode tests failing on the base.
+  command: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22795-ac1
+  description: The exec mode tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov
+- id: dod-omn22795-integration-proof
+  description: After the dispatch venv on the dev host carries this change and the deploy agent starts through exec mode (OMN-22792), the dev runtime-effects container holds a non-empty LLM_TYPESAFE_API_KEY. The check prints no value.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: []
+  checks:
+  - check_type: command
+    check_value: ssh "$DEPLOY_PROBE_HOST" docker exec omninode-runtime-effects sh -c 'test -n "$LLM_TYPESAFE_API_KEY"'
