@@ -178,6 +178,9 @@ runtime:
       - key: parity_failures
         row_types: [FRICTION, STATUS, TERMINAL]
         pattern: '(?i)parity[^|]{0,40}(?:fail|mismatch|not working|under 100)'
+  # The cycle ends itself with a typed failure when it has not finished in this time (OMN-22864). It stays below the publish
+  # node's own 15 s limit for the floor_compare step, whose kill cannot be answered and leaves a start with no terminal.
+  cycle_deadline_seconds: 12
   emission_journal_relpath: .onex_state/floor-simple/emissions.jsonl
   emission_node: "node_floor_compare_effect:run_floor_compare_cycle"
   emission_piece: 17
