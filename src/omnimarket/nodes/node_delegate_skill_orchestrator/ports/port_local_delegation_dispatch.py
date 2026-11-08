@@ -126,10 +126,12 @@ from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublish
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.handlers.delegation_first_choice import first_choice_route
 from omnimarket.handlers.delegation_model_scope import (
+    is_free_model,
     model_scope_refusal,
     model_scope_skip_reason,
     read_model_scope,
 )
+from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
@@ -224,6 +226,10 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumMoveKind,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_paid_rung_decision import (
+    ModelPaidRungRequest,
+)
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
     ModelTransitionDecisionRequest,
@@ -1366,15 +1372,15 @@ def _start_in_flight_attempt(
 _ATTEMPT_SIZE_BANDS: dict[str, str] = {"S": "small", "M": "medium", "L": "large"}
 
 
-def _request_size_band(
+def _measured_size_band(
     *, task_type: str, prompt: str, acceptance_criteria: tuple[str, ...]
-) -> str | None:
-    """The request's size band, or None when the class declares no thresholds."""
+) -> EnumSizeBand | None:
+    """The request's measured size band, or None when the class declares no thresholds."""
     resolved = resolve_size_band_thresholds(task_type)
     if resolved is None:
         return None
     thresholds, reference = resolved
-    measured = measure_size_band(
+    return measure_size_band(
         task_class=task_type,
         prompt=prompt,
         context_pack="",
@@ -1382,8 +1388,17 @@ def _request_size_band(
         acceptance_criteria=acceptance_criteria,
         thresholds=thresholds,
         thresholds_reference=reference,
+    ).band
+
+
+def _request_size_band(
+    *, task_type: str, prompt: str, acceptance_criteria: tuple[str, ...]
+) -> str | None:
+    """The request's size band, or None when the class declares no thresholds."""
+    band = _measured_size_band(
+        task_type=task_type, prompt=prompt, acceptance_criteria=acceptance_criteria
     )
-    return _ATTEMPT_SIZE_BANDS.get(measured.band.value)
+    return None if band is None else _ATTEMPT_SIZE_BANDS.get(band.value)
 
 
 def _attempt_configuration(
@@ -2298,6 +2313,34 @@ class LocalDelegationDispatchPort:
             else None
         )
         route_skips: list[dict[str, object]] = []
+        # OMN-23180: the contract's smallest size band that may reach a paid
+        # rung. A pin and a probe ladder decide the rung themselves, as above.
+        band_rule_applies = pinned_backend_id is None and probe_walk is None
+        request_band = _measured_size_band(
+            task_type=task_type,
+            prompt=prompt,
+            acceptance_criteria=acceptance_criteria,
+        )
+
+        def size_band_skip_reason(
+            backend: ModelResolvedDelegationBackend,
+        ) -> str | None:
+            """Why the contract's size-band rule skips ``backend``, or ``None``."""
+            if not band_rule_applies or _is_customer_byok_route(backend):
+                return None
+            rung_is_paid = not (
+                is_free_tier(_routing_tier_name(backend))
+                or is_free_model(backend, is_local_rung=_is_local_ladder_rung)
+            )
+            verdict = _ESCALATION_DECIDER.decide_paid_rung(
+                ModelPaidRungRequest(
+                    rung_is_paid=rung_is_paid,
+                    size_band=request_band,
+                    paid_from_size_band=resolve_paid_from_size_band(task_type),
+                    transitions=resolve_task_class_transitions(task_type),
+                )
+            )
+            return None if verdict.allowed else verdict.reason
 
         def next_available(
             skipped: ModelResolvedDelegationBackend,
@@ -2383,8 +2426,16 @@ class LocalDelegationDispatchPort:
                 and (pinned_backend_id is not None or probe_walk is not None)
             ):
                 quota_block = None
-            skip_rule = scope_rule if scope_reason is not None else "provider_quota"
+            skip_rule: str = (
+                scope_rule
+                if scope_rule is not None and scope_reason is not None
+                else "provider_quota"
+            )
             route_skip_reason = scope_reason
+            if route_skip_reason is None:
+                route_skip_reason = size_band_skip_reason(backend)
+                if route_skip_reason is not None:
+                    skip_rule = EnumEscalationCause.SIZE_BAND_BELOW_PAID.value
             if route_skip_reason is None and quota_block is not None:
                 route_skip_reason = (
                     f"provider quota exhausted: {quota_block.provider_id}; "
@@ -2421,8 +2472,8 @@ class LocalDelegationDispatchPort:
                     backend = _with_model_choice(next_route)
                     continue
                 route_refused = (
-                    model_scope_refusal(skip_rule, route_skips)
-                    if skip_rule != "provider_quota"
+                    model_scope_refusal(scope_rule, route_skips)
+                    if scope_rule is not None and skip_rule == scope_rule
                     else ProtocolConfigurationError(route_skip_reason)
                 )
                 if not attempts:
