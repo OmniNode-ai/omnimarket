@@ -238,6 +238,18 @@ runtime:
       umbrella_tickets: [OMN-17427]
       class_overlay_id: node_friction_rollup_compute
       class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
+  # OMN-22864: the downstream piece's typed refusal of every real upstream failure (the joins its overlay declares), written to
+  # the emission journal before the simple floor reads it. node_join_refusal_effect runs only when something calls it; with no step here
+  # each failure of piece 2 to 5 read downstream_missing_typed_failure 900 s later. It is independent of the other input steps
+  # (it reads the ledger and appends to the journal), so it joins their group and adds nothing to the longest declared path.
+  # Not required: when it fails the floor still reads, and the floor's chains row names the joins that stayed unanswered.
+  - name: join_refusal
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_refusal_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
