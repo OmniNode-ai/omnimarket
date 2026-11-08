@@ -564,7 +564,7 @@ _DELEGATION_SUMMARY_VIEW_SQL = (
     "omnimarket.nodes.node_projection_delegation",
     "sqlite/delegation_summary_view.sql",
 )
-# OMN-23169: the counterpart of migration 0065, which leaves experiment rows out of
+# OMN-23169: the counterpart of migration 0068, which leaves experiment rows out of
 # the summary. Its own step after the OMN-20709 one: a store that has recorded that
 # step would never run it again.
 _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP = (

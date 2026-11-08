@@ -1,6 +1,6 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
--- OMN-23169: the SQLite counterpart of migration 0065. Same view as
+-- OMN-23169: the SQLite counterpart of migration 0068. Same view as
 -- delegation_summary_view.sql, except every aggregate reads `measured`, the
 -- delegation_events rows whose data_source is not 'experiment'. A typed synthetic
 -- run stays in delegation_events (and so on the Runs listing) but is left out of

@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23169
 title: Delegation rows typed experiment are left out of a user's run, token, spend and savings totals and stay listed on Runs
-summary: Migration 0064 stores data_source experiment for a synthetic terminal, but the Postgres delegation summary view, the Postgres metering refresh query and the SQLite metering reader and summary view left out only fixture rows. Migration 0065 and a new SQLite store step rebuild the summary view over the non-experiment rows, the metering refresh query and the SQLite reader skip experiment rows, and delegation_events still holds every row the Runs listing reads.
+summary: Migration 0064 stores data_source experiment for a synthetic terminal, but the Postgres delegation summary view, the Postgres metering refresh query and the SQLite metering reader and summary view left out only fixture rows. Migration 0068 and a new SQLite store step rebuild the summary view over the non-experiment rows, the metering refresh query and the SQLite reader skip experiment rows, and delegation_events still holds every row the Runs listing reads.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
