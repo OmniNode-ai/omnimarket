@@ -146,8 +146,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
-    # OMN-19991: migration-only until its contract and entry point land.
-    "node_projection_local_alerts",
     # OMN-19986: migration-only until its contract and entry point land.
     "node_projection_local_identity",
 }
@@ -156,9 +154,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
 MIGRATION_ONLY_NODE_DIRS: set[str] = {
-    # OMN-19991: the local alerts migrations precede its contract, which
-    # follows the omnibase_infra release that vendors them.
-    "node_projection_local_alerts",
     # OMN-19986: the local identity migrations precede its contract, which
     # follows the omnibase_infra release that vendors them.
     "node_projection_local_identity",
@@ -462,6 +457,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         "node_navigation_history_reducer",
         "node_projection_dep_health",
         "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3
+        "node_view_seam_reading_reducer",  # OMN-22020 projection reducer
     }
     assert not {
         item["node_name"]

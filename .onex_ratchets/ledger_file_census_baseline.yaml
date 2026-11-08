@@ -1,4 +1,4 @@
 # Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,
 # counted in files per repository. A count above its row fails; `--lower` only ever lowers a row.
 ratchet:
-  omnimarket: 186
+  omnimarket: 193

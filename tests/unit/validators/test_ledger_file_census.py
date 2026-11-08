@@ -13,6 +13,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -275,8 +276,8 @@ def test_a_write_that_dies_midway_leaves_the_ratchet_file_intact(
     before = path.read_text(encoding="utf-8")
     real = Path.write_text
 
-    def dying(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        real(self, data[: len(data) // 2], *args, **kwargs)  # type: ignore[arg-type]
+    def dying(self: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        real(self, data[: len(data) // 2], *args, **kwargs)
         raise OSError("disk full")
 
     monkeypatch.setattr(Path, "write_text", dying)
