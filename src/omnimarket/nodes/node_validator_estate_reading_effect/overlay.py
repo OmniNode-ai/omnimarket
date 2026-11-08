@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -91,6 +92,13 @@ class ModelEstatePublish(_Frozen):
     publish_max_age_seconds: int = Field(ge=1)
 
 
+class ModelEstateScheduleHost(_Frozen):
+    name: str = Field(min_length=1)
+    scheduler: Literal["systemd-user"]
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or absolute).
+    venv: str = Field(min_length=1)
+
+
 class ModelEstateOverlay(_Frozen):
     repos_root_env: str = Field(min_length=1)
     core_repo: str = Field(min_length=1)
@@ -102,6 +110,10 @@ class ModelEstateOverlay(_Frozen):
     publish: ModelEstatePublish
     git_timeout_seconds: int = Field(ge=1)
     injected_fault: str = Field(min_length=1)
+    #: Hosts that install the daily systemd user timer (``schedule install --host <name>``).
+    schedule_hosts: tuple[ModelEstateScheduleHost, ...] = ()
+    #: Environment the installed unit carries (the clones' root, the plan clone's root, the append command, the host).
+    unit_environment: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelEstateOverlay:
@@ -110,6 +122,9 @@ class ModelEstateOverlay(_Frozen):
             raise ValueError("a repository is declared twice")
         if self.core_repo not in names:
             raise ValueError("core_repo is not among the declared repositories")
+        hosts = [h.name for h in self.schedule_hosts]
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("a schedule host is declared twice")
         return self
 
     def overlay_hash(self) -> str:
@@ -130,6 +145,7 @@ __all__ = [
     "ModelEstateOverlay",
     "ModelEstatePublish",
     "ModelEstateRepo",
+    "ModelEstateScheduleHost",
     "ModelGenericFormat",
     "ModelHooksRule",
     "ModelPlanSource",

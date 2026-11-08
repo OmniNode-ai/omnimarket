@@ -4,6 +4,7 @@
 
 ``read``   read the estate and append the row.
 ``probe``  the same read, appending nothing.
+``schedule`` check | install | uninstall | status | run-now, for a host in the overlay (the daily timer runs ``read``).
 
 ``--fault core-unreadable`` injects the declared fault; the row then carries ``drill=yes`` and no numbers.
 
@@ -20,6 +21,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
@@ -30,10 +32,17 @@ from omnimarket.nodes.node_validator_estate_reading_effect.adapters.git_estate_s
 from omnimarket.nodes.node_validator_estate_reading_effect.handlers.handler_validator_estate import (
     HandlerValidatorEstate,
 )
+from omnimarket.nodes.node_validator_estate_reading_effect.handlers.schedule import (
+    EstateScheduler,
+    load_schedule,
+)
 from omnimarket.nodes.node_validator_estate_reading_effect.models.model_validator_estate import (
     ModelValidatorEstateCommand,
 )
-from omnimarket.nodes.node_validator_estate_reading_effect.overlay import load_overlay
+from omnimarket.nodes.node_validator_estate_reading_effect.overlay import (
+    NODE_NAME,
+    load_overlay,
+)
 
 
 def build_handler(write: bool) -> HandlerValidatorEstate:
@@ -65,11 +74,63 @@ def build_handler(write: bool) -> HandlerValidatorEstate:
     )
 
 
+def _schedule(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="schedule")
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    verbs.add_parser("check")
+    for verb in ("install", "uninstall", "status", "run-now"):
+        sub = verbs.add_parser(verb)
+        sub.add_argument("--host", required=True, help="the host's name in the overlay")
+        if verb == "install":
+            sub.add_argument(
+                "--workspace-root",
+                dest="workspace_root",
+                default=os.environ.get("OMNI_HOME", ""),
+            )
+            sub.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(list(arguments))
+    scheduler = EstateScheduler(
+        schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
+    )
+    if args.verb == "check":
+        result = scheduler.check()
+    elif args.verb == "install":
+        if not args.workspace_root:
+            raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
+        found = find_node_overlay(NODE_NAME)
+        if found is None:
+            raise NodeOverlayError(
+                "the overlay file cannot be found to pin its root in the unit"
+            )
+        result = scheduler.install(
+            args.host,
+            omni_root=Path(args.workspace_root),
+            overlay_root=found.parent.parent,
+            dry_run=args.dry_run,
+        )
+    elif args.verb == "uninstall":
+        result = scheduler.uninstall(args.host)
+    elif args.verb == "status":
+        result = scheduler.status(args.host)
+    else:
+        result = scheduler.run_now(args.host)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    given = list(sys.argv[1:] if argv is None else argv)
+    if given and given[0] == "schedule":
+        try:
+            return _schedule(given[1:])
+        except (NodeOverlayError, LedgerRouteError, ValueError) as exc:
+            sys.stderr.write(f"INDETERMINATE {exc}\n")
+            return 3
     parser = argparse.ArgumentParser(prog="node_validator_estate_reading_effect")
     parser.add_argument("verb", choices=("read", "probe"))
     parser.add_argument("--fault", choices=("none", "core-unreadable"), default="none")
-    arguments = parser.parse_args(argv)
+    arguments = parser.parse_args(given)
     write = arguments.verb == "read"
     try:
         handler = build_handler(write)

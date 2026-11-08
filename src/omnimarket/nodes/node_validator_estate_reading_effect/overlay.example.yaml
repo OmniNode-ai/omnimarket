@@ -10,6 +10,7 @@
 #   hooks            which pre-commit blocks count as the repositories' own validators
 #   plan             the validators plan: a task is a heading line the task_pattern matches, its tickets are the ones its bold text names
 #                    plus the minted_pattern entries; a ticket counts merged when a commit on a merge_repos ref cites it
+#   schedule_hosts   hosts that install the daily systemd user timer; unit_environment is the environment the unit carries
 #   publish          the row's lane and actor, and how long a row stays fresh on the floor
 repos_root_env: EXAMPLE_CLONES_ROOT
 core_repo: example_core
@@ -51,3 +52,10 @@ publish:
   publish_max_age_seconds: 129600
 git_timeout_seconds: 120
 injected_fault: The core repository cannot be read, so the row carries no numbers
+schedule_hosts:
+  - {name: host-a, scheduler: systemd-user, venv: example-venv}
+unit_environment:
+  EXAMPLE_CLONES_ROOT: /var/lib/example/clones
+  EXAMPLE_KB_ROOT: /var/lib/example/kb
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
+  EXAMPLE_HOST_NAME: host-a

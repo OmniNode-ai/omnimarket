@@ -63,6 +63,21 @@ externally_consumed_topics:
   - onex.evt.omnimarket.validator-estate-run-completed.v1
   - onex.evt.omnimarket.validator-estate-run-failed.v1
 
+# The node's own daily schedule, installed by `schedule install --host <name>` as a systemd user timer on each host the
+# overlay's schedule_hosts names, removed by `schedule uninstall`. The row stays fresh on the floor for the overlay's
+# publish_max_age_seconds (129600 s), so the cadence must be shorter than that.
+schedule:
+  unit_name: onex-validator-estate-daily
+  state_directory: .onex_state/validator-estate
+  timeout_seconds: 600
+  cadence:
+    on_calendar: "*-*-* 06:50:00"
+    randomized_delay: 60s
+    persistent: true
+    description: daily at 06:50 UTC, inside the 129600 s a validator estate row stays fresh on the floor
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+
 overlay:
   node: node_validator_estate_reading_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
