@@ -22,9 +22,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
+# stamp_text and reason_token are owned by omnimarket.handlers.reading_text; the other nodes that still
+# import them from here keep working through this explicit re-export.
+from omnimarket.handlers.reading_text import (
+    reason_token as reason_token,
+)
+from omnimarket.handlers.reading_text import (
+    stamp_text as stamp_text,
+)
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
     EnumReadingVerdict,
@@ -39,22 +46,10 @@ from omnimarket.models.model_reading import (
 )
 
 _KEY_LENGTH = 24
-_TOKEN_LIMIT = 120
-_NOT_TOKEN = re.compile(r"[^a-z0-9]+")
-
-
-def stamp_text(moment: datetime) -> str:
-    """The ledger's stamp form, UTC to the second."""
-    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def reason_token(text: str) -> str:
-    """A free-text reason as one cell-safe token."""
-    return _NOT_TOKEN.sub("-", text.lower()).strip("-")[:_TOKEN_LIMIT] or "unspecified"
 
 
 def row_key(

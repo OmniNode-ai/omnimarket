@@ -14,16 +14,13 @@ import hashlib
 import json
 import uuid
 
+from omnimarket.handlers.reading_text import reason_token, stamp_text
 from omnimarket.models.model_reading import EnumReadingOutcome
 from omnimarket.nodes.node_job_start_source_effect.models.model_job_start import (
     ModelJobStartResult,
     ModelJobStartStoreOutcome,
 )
 from omnimarket.nodes.node_job_start_source_effect.overlay import ModelLedgerStore
-from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
-    reason_token,
-    stamp_text,
-)
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolReadingAppender,
 )
