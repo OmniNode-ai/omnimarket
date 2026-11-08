@@ -541,6 +541,8 @@ node_delegation_admission_compute = "omnimarket.nodes.node_delegation_admission_
 node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_gate_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
+node_delegation_completion_rate_compute = "omnimarket.nodes.node_delegation_completion_rate_compute"
+node_delegation_completion_rate_effect = "omnimarket.nodes.node_delegation_completion_rate_effect"
 node_delegation_context_pack_budget_compute = "omnimarket.nodes.node_delegation_context_pack_budget_compute"
 node_delegation_dod_verify_request_compute = "omnimarket.nodes.node_delegation_dod_verify_request_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
@@ -699,6 +701,7 @@ node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"
 node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
 node_host_gap_unit_effect = "omnimarket.nodes.node_host_gap_unit_effect"
@@ -733,6 +736,7 @@ node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
 node_issuer_overlay_delivery_effect = "omnimarket.nodes.node_issuer_overlay_delivery_effect"
+node_job_log_filler_effect = "omnimarket.nodes.node_job_log_filler_effect"
 node_job_start_source_effect = "omnimarket.nodes.node_job_start_source_effect"
 node_join_refusal_effect = "omnimarket.nodes.node_join_refusal_effect"
 node_judge_verdict_parse_compute = "omnimarket.nodes.node_judge_verdict_parse_compute"
@@ -1300,6 +1304,7 @@ node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_comp
 [project.scripts]
 onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm:main"
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
+onex-host-drain = "omnimarket.nodes.node_host_drain_effect.runtime_host_drain:main"
 onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main"
 onex-automation-liveness-check = "omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.runtime_patch_apply_dispatch_cli:main"
@@ -1374,6 +1379,8 @@ repo-state = "omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_rep
 repo-state-refresh = "omnimarket.nodes.node_repo_state_watcher_refresh_effect.handlers.adapter_watcher_refresh_cli:watcher_refresh_command"
 # OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
 work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
+# OMN-23032: `onex job-log-fill` -- fill the job-log cache from the merge-relevant runs of open pull requests.
+job-log-fill = "omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_filler_cli:job_log_fill_group"
 # OMN-20275: `onex bus-binding` -- the binding a command used (durable or the in-memory fallback) and the
 # ledger outbox it holds while degraded.
 bus-binding = "omnimarket.handlers.bus_binding.cli:bus_binding_group"
@@ -1438,6 +1445,9 @@ code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:Plugi
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
+[project.entry-points."onex.node_contract_overlay_resolvers"]
+omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:NodeContractOverlayResolver"
+
 [tool.uv.sources]
 # OMN-21296: infra#5240 vendors migration 099; its dev tag also carries the
 # current error sanitizer from infra#5216. Keep the dated sanitizer replay
@@ -1469,16 +1479,17 @@ omnimarket = "omnimarket.nodes"
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261107125813-33b470fda2b8" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261108072811-e64fe3502b45" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261104102410-b002ec3ceab1" }
-omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261103062530-3580a8d986fd" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
+# OMN-22472: core and infra move together; this core tag is the one infra dev-20261108072811-e64fe3502b45 locks and carries omnibase_core#2258.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261108014124-2fe30fd9dc47" }
+omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108015921-ace601e12033" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261106074413-b4fa53dcb119" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
@@ -1844,6 +1855,7 @@ ignore = [
 "src/omnimarket/nodes/node_lab_host_key_distribution_effect/runtime_lab_host_key_distribution.py" = ["T201"]
 "src/omnimarket/nodes/node_read_only_principal_effect/runtime_read_only_principal.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_host_drain_effect/runtime_host_drain.py" = ["T201"]
 "src/omnimarket/nodes/node_host_thermal_observe_effect/runtime_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and
 # print their tables to stdout, like the recorder script above. The scorer tests
