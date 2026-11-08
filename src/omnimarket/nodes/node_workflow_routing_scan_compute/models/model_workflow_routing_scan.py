@@ -100,13 +100,17 @@ class ModelRoutingScanPolicy(_Frozen):
 
 
 class ModelWorkflowRoutingScanRequest(_Frozen):
-    """``expected_repositories`` is the set a complete read must cover; the caller reads it from its private overlay home."""
+    """``expected_repositories`` is the set a complete read must cover; the caller reads it from its private overlay home.
+
+    ``group7_labels`` are the runner labels of group 7, read by the caller from its private overlay home; none is
+    named in this repository. With none injected the group-7 reading is not made (``group7_labels_declared`` is 0)."""
 
     policy: ModelRoutingScanPolicy
     expected_repositories: tuple[str, ...]
     repositories: tuple[ModelScannedRepository, ...]
     routes: tuple[ModelRoutingRoute, ...] = ()
     variables: tuple[ModelRepositoryVariable, ...] = ()
+    group7_labels: tuple[str, ...] = ()
 
 
 class ModelRoutingScenario(_Frozen):
@@ -139,6 +143,15 @@ class ModelRepositorySummary(_Frozen):
     pending_execution: int
 
 
+class ModelGroup7Naming(_Frozen):
+    """A job of a public repository that selects a label of runner group 7, directly or through a ``uses:`` chain."""
+
+    repository: str
+    workflow: str
+    job: str
+    label: str
+
+
 class ModelWorkflowRoutingScanResult(_Frozen):
     """The scan's whole reading: every scenario, the counts, and what was never read."""
 
@@ -154,3 +167,6 @@ class ModelWorkflowRoutingScanResult(_Frozen):
     scenarios: tuple[ModelRoutingScenario, ...] = Field(default_factory=tuple)
     repositories: tuple[ModelRepositorySummary, ...] = ()
     stale_routes: tuple[ModelStaleRoute, ...] = ()
+    group7_labels_declared: int = 0
+    group7_public_count: int = 0
+    group7_public: tuple[ModelGroup7Naming, ...] = ()

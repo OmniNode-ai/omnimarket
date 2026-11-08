@@ -120,6 +120,24 @@ class TestNoLocalhostHardcode:
         )
 
 
+def _bootstrap_resolution_is_failfast(content: str) -> bool:
+    """Read a cli_run_node.py source for a fail-fast Kafka bootstrap resolution.
+
+    OMN-11757 root cause: a silent ``localhost:19092`` default. Accepted forms:
+    (1) bare key access ``os.environ["KAFKA_BOOTSTRAP_SERVERS"]``; (2) the OMN-13857
+    ``os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")`` form followed by an explicit
+    raise; (3) the bootstrap taken from the resolved binding
+    (``binding.bootstrap_servers``), which the pinned omnibase_core moved to after
+    the env read. Every form requires that no localhost literal appears in the file.
+    """
+    if "localhost:" in content or "127.0.0.1:" in content:
+        return False
+    has_key_access = 'os.environ["KAFKA_BOOTSTRAP_SERVERS"]' in content
+    has_failfast_get = 'os.environ.get("KAFKA_BOOTSTRAP_SERVERS"' in content
+    has_binding = "binding.bootstrap_servers" in content
+    return has_key_access or has_failfast_get or has_binding
+
+
 # ---------------------------------------------------------------------------
 # omnibase_core run-node bootstrap resolution
 # ---------------------------------------------------------------------------
@@ -167,26 +185,36 @@ class TestRunNodeBootstrapResolution:
             pytest.skip("omnibase_core not installed or cli_run_node.py not found")
 
         content = path.read_text(encoding="utf-8")
-        assert "KAFKA_BOOTSTRAP_SERVERS" in content, (
-            "cli_run_node.py must reference KAFKA_BOOTSTRAP_SERVERS"
+        assert _bootstrap_resolution_is_failfast(content), (
+            f"cli_run_node.py at {path} does not resolve the Kafka bootstrap "
+            "fail-fast. Expected os.environ['KAFKA_BOOTSTRAP_SERVERS'], the OMN-13857 "
+            "os.environ.get(..., '') + explicit-raise form, or the bootstrap taken "
+            "from the resolved binding (binding.bootstrap_servers) with no localhost "
+            "default (OMN-11757)."
         )
-        # Fail-fast contract (OMN-11757): cli_run_node.py must not silently default
-        # to a localhost bootstrap. Two accepted forms:
-        #   (1) bare key access  os.environ["KAFKA_BOOTSTRAP_SERVERS"]  (raises KeyError), or
-        #   (2) the OMN-13857 friendly form  os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
-        #       followed by an explicit "not set" raise. An empty-string default is
-        #       still fail-fast (no localhost fallback), just a clearer error message.
-        # Only the localhost:19092 silent default is the OMN-11757 root cause, and the
-        # sibling test_no_localhost_kafka_default bans exactly that literal.
-        has_key_access = 'os.environ["KAFKA_BOOTSTRAP_SERVERS"]' in content
-        has_failfast_get = (
-            'os.environ.get("KAFKA_BOOTSTRAP_SERVERS"' in content
-            and 'localhost:19092"' not in content
+
+    def test_failfast_reading_rejects_a_localhost_default(self) -> None:
+        """Failing control: the reading refuses the OMN-11757 silent localhost default."""
+        silent_default = (
+            'servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")\n'
         )
-        assert has_key_access or has_failfast_get, (
-            f"cli_run_node.py at {path} does not use fail-fast KAFKA_BOOTSTRAP_SERVERS "
-            "access. Expected os.environ['KAFKA_BOOTSTRAP_SERVERS'] or the OMN-13857 "
-            "os.environ.get(..., '') + explicit-raise form (OMN-11757)."
+        assert not _bootstrap_resolution_is_failfast(silent_default)
+        binding_with_localhost = (
+            "bootstrap_servers = binding.bootstrap_servers or 'localhost:9092'\n"
+        )
+        assert not _bootstrap_resolution_is_failfast(binding_with_localhost)
+        assert not _bootstrap_resolution_is_failfast("servers = None\n")
+
+    def test_failfast_reading_accepts_each_declared_form(self) -> None:
+        """Positive control: each fail-fast form the reading names is accepted."""
+        assert _bootstrap_resolution_is_failfast(
+            'servers = os.environ["KAFKA_BOOTSTRAP_SERVERS"]\n'
+        )
+        assert _bootstrap_resolution_is_failfast(
+            'servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")\n'
+        )
+        assert _bootstrap_resolution_is_failfast(
+            'bootstrap_servers = binding.bootstrap_servers or ""\n'
         )
 
     def test_kafka_bootstrap_servers_present_or_skip(self) -> None:

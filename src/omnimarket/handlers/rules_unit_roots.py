@@ -6,7 +6,8 @@ A unit installed from a worktree dies when the worktree is removed: its interpre
 directory or ledger commands are gone and every tick fails. Three units died that way on
 2026-11-06. Two readers of the same text close the class:
 
-* the installers call :func:`refuse_worktree_roots` before they write a unit, and
+* the installers call :func:`refuse_worktree_roots` (systemd text) or :func:`refuse_worktree_plists`
+  (launchd agents) before they write a unit, and
 * the worktree reconcile node asks :meth:`UnitRoots.naming` before it removes a tree.
 
 Everything here is pure: it reads text it is handed and does no I/O.
@@ -14,6 +15,7 @@ Everything here is pure: it reads text it is handed and does no I/O.
 
 from __future__ import annotations
 
+import plistlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -36,6 +38,18 @@ PATH_SETTINGS: frozenset[str] = frozenset(
         "RootDirectory",
         "Environment",
         "EnvironmentFile",
+    }
+)
+
+#: Launchd agent keys whose value names a path the agent runs from or reads at run time. The log
+#: paths (``StandardOutPath``, ``StandardErrorPath``) are not among them: a log is written, not run.
+PLIST_PATH_KEYS: frozenset[str] = frozenset(
+    {
+        "Program",
+        "ProgramArguments",
+        "WorkingDirectory",
+        "RootDirectory",
+        "EnvironmentVariables",
     }
 )
 
@@ -73,6 +87,30 @@ def unit_paths(text: str) -> frozenset[str]:
         for path in _ABSOLUTE_PATH.findall(value):
             if len(path) > 1:
                 found.add(path.rstrip("/"))
+    return frozenset(found)
+
+
+def _plist_strings(value: object) -> Iterable[str]:
+    """Every string inside a plist value: the value itself, list items, dictionary values."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _plist_strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _plist_strings(item)
+
+
+def plist_paths(data: bytes) -> frozenset[str]:
+    """Every absolute path named by a path-bearing key of a launchd agent plist."""
+    document = plistlib.loads(data)
+    found: set[str] = set()
+    for key in PLIST_PATH_KEYS:
+        for text in _plist_strings(document.get(key)):
+            for path in _ABSOLUTE_PATH.findall(text):
+                if len(path) > 1:
+                    found.add(path.rstrip("/"))
     return frozenset(found)
 
 
@@ -120,6 +158,14 @@ def refuse_worktree_roots(units: Mapping[str, str]) -> None:
     """Raise :class:`UnitRootRefusedError` for the first unit whose text names a worktree path."""
     for name, text in units.items():
         offending = worktree_paths(text)
+        if offending:
+            raise UnitRootRefusedError(name, offending)
+
+
+def refuse_worktree_plists(units: Mapping[str, bytes]) -> None:
+    """Raise :class:`UnitRootRefusedError` for the first agent plist that names a worktree path."""
+    for name, data in units.items():
+        offending = sorted(path for path in plist_paths(data) if under_worktrees(path))
         if offending:
             raise UnitRootRefusedError(name, offending)
 

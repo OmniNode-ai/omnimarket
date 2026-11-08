@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Test fixture: the customer health overlay of node_product_floor_verdict_compute (OMN-22923, piece 17b).
+title: Customer path
+required_pieces: [3, 11, 15, 18]
+max_age_s: 900

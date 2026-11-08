@@ -416,7 +416,7 @@ class HandlerDelegationReport:
                     "bash -s",
                 ],
                 script.encode(),
-                120,
+                request.timeout_seconds,
             )
             if result.returncode:
                 raise ValueError(f"lab projection read exited {result.returncode}")

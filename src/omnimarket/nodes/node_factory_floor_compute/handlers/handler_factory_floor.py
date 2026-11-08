@@ -43,6 +43,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping i
     pr_records,
     task_prs,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_stopped import (
+    build_stopped,
+)
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     Condition,
     EvidenceKind,
@@ -1399,7 +1402,11 @@ def _floor(
         lane for lane in inventory if lane.liveness in {"dead", "finished"}
     )[: request.config.lane_limit]
     machines = build_machines(request, lanes)
+    stopped, stopped_skipped, stopped_cause = build_stopped(request)
     return ModelFloorSection(
+        stopped=stopped,
+        stopped_skipped=stopped_skipped,
+        stopped_cause=stopped_cause,
         machines=machines,
         cloud=build_cloud(request),
         lanes=lanes,
