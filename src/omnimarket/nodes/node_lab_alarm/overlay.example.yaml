@@ -18,3 +18,17 @@ lag:
   timeout_seconds: 30
   state_path: .onex_state/lab-alarm/broker-lag-sample.json
 injected_fault: A watched group's lag grows between two samples
+# The effects-held condition (OMN-23106). Required like every key. The bound is the alarm script's
+# own 60 seconds, held here as data.
+effects_held:
+  group_prefix: local.examplepkg.node_example_consumer.consume.
+  group_suffix: .__i.runtime-effects.__t.onex.cmd.example.work-requested.v1
+  held_after_seconds: 60
+  timeout_seconds: 30
+  state_path: .onex_state/lab-alarm/effects-held-state.json
+  escalation:
+    command: [example-lane-dispatch]
+    model: example-model
+    ticket: OMN-1
+    settle_seconds: 20
+    brief_dir: .onex_state/lab-alarm/escalation-briefs

@@ -7,9 +7,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
+    ModelEffectsGroupReading,
+    ModelEscalationBrief,
+)
 from omnimarket.nodes.node_lab_alarm.protocols import (
+    EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
+    LaneDispatchError,
     ManifestUnreadableError,
 )
 
@@ -56,4 +62,48 @@ class InMemorySamples:
         self.sample = dict(sample)
 
 
-__all__ = ["InMemoryLag", "InMemoryManifest", "InMemorySamples"]
+class InMemoryEffectsGroups:
+    """Serves the readings it holds, or refuses with ``unreadable``."""
+
+    def __init__(self, readings: tuple[ModelEffectsGroupReading, ...]) -> None:
+        self.readings = readings
+        self.unreadable: str | None = None
+
+    def read(self) -> tuple[ModelEffectsGroupReading, ...]:
+        if self.unreadable is not None:
+            raise EffectsGroupReadError(self.unreadable)
+        return self.readings
+
+
+class InMemoryHeldState:
+    def __init__(self, state: Mapping[str, str] | None = None) -> None:
+        self.state: dict[str, str] = dict(state or {})
+
+    def load(self) -> dict[str, str]:
+        return dict(self.state)
+
+    def save(self, state: Mapping[str, str]) -> None:
+        self.state = dict(state)
+
+
+class InMemoryDispatcher:
+    """Records every brief it is given instead of starting a lane; ``refuse`` makes it raise."""
+
+    def __init__(self) -> None:
+        self.briefs: list[ModelEscalationBrief] = []
+        self.refuse: str | None = None
+
+    def dispatch(self, brief: ModelEscalationBrief) -> None:
+        if self.refuse is not None:
+            raise LaneDispatchError(self.refuse)
+        self.briefs.append(brief)
+
+
+__all__ = [
+    "InMemoryDispatcher",
+    "InMemoryEffectsGroups",
+    "InMemoryHeldState",
+    "InMemoryLag",
+    "InMemoryManifest",
+    "InMemorySamples",
+]
