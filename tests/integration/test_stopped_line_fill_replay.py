@@ -23,6 +23,8 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
+
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EnumFloorFillCommand,
     ModelFloorFillAnswer,
@@ -33,8 +35,6 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports 
 from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import (
     run_entry,
 )
-from pydantic import ValidationError
-
 from omnimarket.nodes.node_floor_fill_reducer.models import (
     EnumFloorFillEntryState,
     ModelFloorFillEntry,
@@ -250,6 +250,7 @@ def _entry(run: Replay, argv: list[str], *, host: str | None = None) -> Any:
         argv,
         {"floor_fill": dict(fixture.OVERLAY)},
         host_id=host or fixture.HOST,
+        hosts=[(fixture.HOST, True)],
         build_handler=lambda _config: run.handler(),
     )
 
@@ -331,6 +332,7 @@ def test_lines_entry_real_entry_points_a_timed_out_command_is_unreachable_and_ex
             ["tick"],
             {"floor_fill": config},
             host_id=fixture.HOST,
+            hosts=[(fixture.HOST, True)],
             build_handler=lambda cfg: _handler_with(run, cfg),
         )
     finally:
