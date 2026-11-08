@@ -194,3 +194,26 @@ def test_error_a_join_end_outside_the_pipeline_chains_is_refused_at_load() -> No
     raw["join_ends"] = [{"join": "J0", "node": "node_row:read_row"}]
     with pytest.raises(ValidationError, match="not among pipeline_chains"):
         ModelFloorSimpleRuntime.model_validate(raw)
+
+
+@pytest.mark.parametrize("end", ["success", "failure"])
+def test_error_a_cycle_that_ends_after_the_deadline_does_not_end_j0(end: str) -> None:
+    """The join is judged on a chain ending within the deadline, not on any terminal (Tessl, OMN-22864)."""
+    late = chain("c1", T0, end)
+    late[-1] = late[-1].model_copy(
+        update={"emitted_at": T0 + timedelta(seconds=DEADLINE + 60)}
+    )
+    receipts = fold(late, now=T0 + timedelta(seconds=DEADLINE + 120))
+    assert j0(receipts) == "broken"
+    assert [f.code for f in receipts.findings] == ["downstream_missing_typed_failure"]
+    assert receipts.findings[0].subject.startswith("J0 ")
+
+
+def test_golden_a_cycle_that_ends_exactly_at_the_deadline_still_ends_j0() -> None:
+    events = chain("c1", T0, "failure")
+    events[-1] = events[-1].model_copy(
+        update={"emitted_at": T0 + timedelta(seconds=DEADLINE)}
+    )
+    receipts = fold(events, now=T0 + timedelta(seconds=DEADLINE + 60))
+    assert receipts.findings == ()
+    assert j0(receipts) == "error_only"

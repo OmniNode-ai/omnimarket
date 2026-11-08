@@ -962,7 +962,17 @@ class HandlerFloorSimpleTick:
         ledger_events: tuple[ModelNodeEmission, ...],
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
-        emissions = (*sink.read(since), *ledger_events)
+        # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
+        # at the window edge it is inside the window while its start is not. Read back one bound further and keep
+        # every chain that has an event inside the window.
+        read = sink.read(since - timedelta(seconds=rt.abandon_after_seconds))
+        in_window = {
+            (e.piece, e.node, e.correlation_id) for e in read if e.emitted_at >= since
+        }
+        emissions = (
+            *(e for e in read if (e.piece, e.node, e.correlation_id) in in_window),
+            *ledger_events,
+        )
         # A join is judged only into a piece that exists: admitted by the go, a step 0 piece, or one that has emitted.
         judged = tuple(
             sorted(

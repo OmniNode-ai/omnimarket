@@ -24,6 +24,7 @@ import yaml
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
 )
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelFloorSimpleTickRequest,
@@ -214,3 +215,46 @@ def test_the_bound_is_above_the_publish_limit_and_below_the_chain_deadline() -> 
         )
     )
     assert bound < overlay["chain_deadline_s"]
+
+
+def test_error_a_failure_is_never_read_without_its_start_at_the_window_edge(
+    tmp_path: Path,
+) -> None:
+    """The closing failure is stamped start plus the bound, so near the window edge it outlives its start (Tessl, OMN-22864)."""
+    runtime = load_runtime()
+    window = timedelta(hours=runtime.state.emission_window_hours)
+    bound = timedelta(seconds=runtime.abandon_after_seconds)
+    beyond_edge = timedelta(seconds=bound.total_seconds() / 3)
+    sink = InMemoryEmissionSink()
+    first = start(EMIT_CYCLE, ORPHAN, window + beyond_edge)
+    sink.emit(first)
+    sink.emit(
+        ModelNodeEmission.model_validate(
+            {
+                "node": EMIT_CYCLE,
+                "piece": PIECE,
+                "correlation_id": ORPHAN,
+                "phase": "failure",
+                "emitted_at": first.emitted_at + bound,
+                "backend": "real",
+                "drill": False,
+                "failure_code": ABANDONED_CODE,
+                "failure_detail": "closed by a later cycle",
+            }
+        )
+    )
+    # the start is older than the window and the failure is inside it
+    assert first.emitted_at < NOW - window <= first.emitted_at + bound
+    home = build_home(tmp_path)
+    floor_ov = load_structured_overlay(
+        "node_floor_simple_compute",
+        ModelFloorSimpleOverlay,
+        environ(home),
+        file_env="X",
+    )
+    receipts = tick.HandlerFloorSimpleTick._receipts(
+        sink, floor_ov, NOW, runtime, None, ()
+    )
+    assert [
+        f.subject for f in receipts.findings if f.code == "failure_without_start"
+    ] == []

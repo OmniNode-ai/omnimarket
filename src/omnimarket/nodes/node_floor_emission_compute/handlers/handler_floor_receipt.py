@@ -282,12 +282,14 @@ class HandlerFloorReceipt:
     ) -> tuple[ModelJoinReceipt, list[ModelChainFinding]]:
         """A join that ends at a node of its from piece: it reads that node's chain and asks nothing of the to piece.
 
-        The chain ends the join when it ends in a success (golden) or a typed failure (error). A chain with no terminal past
-        the deadline, or a malformed one, breaks the join; the chain's own findings name it, so the join adds none.
+        The chain ends the join when it ends in a success (golden) or a typed failure (error) within the deadline. A chain
+        with no terminal past the deadline, or a malformed one, breaks the join; the chain's own findings name it, so the
+        join adds none. A chain whose terminal came after the deadline is well formed on its own, so the join names it.
         """
         golden_at: datetime | None = None
         error_at: datetime | None = None
         broken = False
+        found: list[ModelChainFinding] = []
         judged = request.judged_to_pieces
         if judged is None or jdef.to_piece in judged:
             for (_cid, piece, node), chain in sorted(by_chain.items()):
@@ -295,6 +297,24 @@ class HandlerFloorReceipt:
                     continue
                 if chain.kind == "broken":
                     broken = True
+                elif (
+                    chain.started_at is not None
+                    and chain.ended_at is not None
+                    and chain.kind in ("golden", "error")
+                    and (chain.ended_at - chain.started_at).total_seconds()
+                    > request.chain_deadline_s
+                ):
+                    broken = True
+                    found.append(
+                        ModelChainFinding.model_validate(
+                            {
+                                "code": "downstream_missing_typed_failure",
+                                "subject": f"{jdef.id} piece {jdef.from_piece} to {jdef.to_piece}",
+                                "correlation_id": chain.cid,
+                                "detail": f"the chain ended {request.chain_deadline_s} s or more after its start",
+                            }
+                        )
+                    )
                 elif chain.ended_at is not None and chain.kind == "golden":
                     golden_at = max(filter(None, (golden_at, chain.ended_at)))
                 elif chain.ended_at is not None and chain.kind == "error":
@@ -320,7 +340,7 @@ class HandlerFloorReceipt:
                     "state": state,
                 }
             ),
-            [],
+            found,
         )
 
     @staticmethod
