@@ -136,6 +136,8 @@ ledger_shadows:
       - {cell: checked, label: checked}
       - {cell: would_refuse, label: would refuse}
       - {cell: indeterminate, label: unreadable}
+    outcome_cell: outcome
+    outcome_ok: read
     lookback_days: 3
 
 freshness_max_age_s: 900

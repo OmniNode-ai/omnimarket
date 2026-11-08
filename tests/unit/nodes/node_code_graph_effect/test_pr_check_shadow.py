@@ -11,8 +11,10 @@ that says so.
 
 from __future__ import annotations
 
+import itertools
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,6 +31,9 @@ from omnimarket.models.model_code_graph import (
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     InMemoryPullRequestSource,
     WatcherStatePullRequestSource,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
+    _contract_modules,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.shadow_check import (
     CodeGraphShadowCheck,
@@ -262,6 +267,7 @@ def test_the_shadow_verb_on_real_clones_exits_zero_whatever_it_would_refuse(
     state.write_text(
         json.dumps(
             {
+                "last_tick": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "prs": {
                     "example_app#21": {
                         "facts": {
@@ -273,7 +279,7 @@ def test_the_shadow_verb_on_real_clones_exits_zero_whatever_it_would_refuse(
                             "head_sha": planted,
                         }
                     }
-                }
+                },
             }
         ),
         encoding="utf-8",
@@ -325,3 +331,112 @@ def test_a_run_reads_each_base_once_however_many_pull_requests_target_it() -> No
     handler.handle(_command(write=False))
     assert reads.count(("example_app", "origin/main")) == 1
     assert len(reads) == 1 + 3  # the base once, and each of the three heads
+
+
+class _ThenFails:
+    """The first repository gives its pull requests; a later one is unreadable."""
+
+    def __init__(self, first: InMemoryPullRequestSource) -> None:
+        self._first = first
+
+    def open_pull_requests(self, repo: str):
+        if repo == "example_app":
+            return self._first.open_pull_requests(repo)
+        raise PullRequestSourceError("later-repo-gone")
+
+
+def test_a_later_repository_source_error_keeps_the_verdicts_already_read() -> None:
+    shadow = {
+        **yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))["shadow"],
+        "repos": ["example_app", "example_core"],
+    }
+    ledger = InMemoryLedger()
+    handler = CodeGraphShadowCheck(
+        overlay=overlay(shadow=shadow),
+        host=HOST,
+        source=memory_source({CLEAN_SHA: WIRED, PLANTED_SHA: PLANTED}),
+        pull_requests=_ThenFails(_pulls()),
+        appender=ledger,
+        clock=lambda: RUN_AT,
+    )
+    result = handler.handle(_command())
+    assert result.status == "failed"
+    assert result.failure == "pull-requests-unreadable:later-repo-gone"
+    assert [v.number for v in result.verdicts] == [13, 12, 11]
+    row = evidence_row_from_text(ledger.lines[0])
+    assert row is not None
+    assert row.cells["outcome"] == "source-unreadable"
+    assert row.cells["checked"] == "3"
+    assert row.cells["would_refuse"] == "1"
+
+
+def _watcher_state(tmp_path: Path, document: object) -> Path:
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps(document), encoding="utf-8")
+    return state
+
+
+_OPEN = {
+    "repo": "example_app",
+    "number": 5,
+    "state": "OPEN",
+    "base": "dev",
+    "head_ref": "b",
+    "head_sha": "a" * 40,
+}
+
+
+def test_a_watcher_state_older_than_the_freshness_bound_is_a_source_error(
+    tmp_path: Path,
+) -> None:
+    state = _watcher_state(
+        tmp_path,
+        {"last_tick": "2026-11-07T04:00:00Z", "prs": {"x#5": {"facts": _OPEN}}},
+    )
+    source = WatcherStatePullRequestSource(
+        state, max_age=timedelta(seconds=3600), clock=lambda: RUN_AT
+    )
+    with pytest.raises(PullRequestSourceError, match="watcher-state-stale"):
+        source.open_pull_requests("example_app")
+    fresh = _watcher_state(
+        tmp_path,
+        {"last_tick": "2026-11-07T06:30:00Z", "prs": {"x#5": {"facts": _OPEN}}},
+    )
+    assert [
+        pr.number
+        for pr in WatcherStatePullRequestSource(
+            fresh, max_age=timedelta(seconds=3600), clock=lambda: RUN_AT
+        ).open_pull_requests("example_app")
+    ] == [5]
+    no_tick = _watcher_state(tmp_path, {"prs": {"x#5": {"facts": _OPEN}}})
+    with pytest.raises(PullRequestSourceError, match="watcher-state-stale"):
+        WatcherStatePullRequestSource(
+            no_tick, max_age=timedelta(seconds=3600), clock=lambda: RUN_AT
+        ).open_pull_requests("example_app")
+
+
+def test_a_watcher_entry_with_no_facts_is_a_source_error_not_an_empty_inventory(
+    tmp_path: Path,
+) -> None:
+    state = _watcher_state(tmp_path, {"prs": {"example_app#5": {}}})
+    with pytest.raises(PullRequestSourceError, match="watcher-entry-incomplete"):
+        WatcherStatePullRequestSource(state).open_pull_requests("example_app")
+
+
+@pytest.mark.parametrize("number", [0, -3, True])
+def test_a_watcher_pull_request_number_below_one_is_a_source_error(
+    tmp_path: Path, number: object
+) -> None:
+    state = _watcher_state(
+        tmp_path, {"prs": {"x": {"facts": {**_OPEN, "number": number}}}}
+    )
+    with pytest.raises(PullRequestSourceError, match="watcher-entry-incomplete"):
+        WatcherStatePullRequestSource(state).open_pull_requests("example_app")
+
+
+def test_a_contract_with_a_cyclic_yaml_alias_is_read_once_and_ends() -> None:
+    text = "&loop\nmodule: example_app.wired\nagain: *loop\n"
+    # A cycle that is walked again and again yields without end; the bound makes a broken traversal
+    # fail the assertion instead of hanging the run.
+    found = list(itertools.islice(_contract_modules(text, ["module"]), 50))
+    assert found == ["example_app.wired"]

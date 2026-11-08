@@ -413,7 +413,11 @@ class HandlerFloorSimple:
         age = max(0, int((now - shadow.published_at).total_seconds()))
         return ModelFloorShadowLine(
             label=shadow.label,
-            text=", ".join(f"{label} {value}" for label, value in shadow.values),
+            text=(
+                f"not read: {shadow.failed_outcome}"
+                if shadow.failed_outcome is not None
+                else ", ".join(f"{label} {value}" for label, value in shadow.values)
+            ),
             age_s=age,
             max_age_s=shadow.max_age_s,
             stale=age > shadow.max_age_s,

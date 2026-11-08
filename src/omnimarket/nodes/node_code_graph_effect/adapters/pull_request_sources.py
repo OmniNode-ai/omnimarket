@@ -9,7 +9,8 @@ pull request with its repository, number, state, base branch and exact head comm
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from omnimarket.models.model_code_graph import ModelShadowPullRequest
@@ -38,10 +39,25 @@ class InMemoryPullRequestSource:
 
 
 class WatcherStatePullRequestSource:
-    """Open pull requests read from the watcher's state file, newest number first."""
+    """Open pull requests read from the watcher's state file, newest number first.
 
-    def __init__(self, path: Path) -> None:
+    With ``max_age`` the state's own ``last_tick`` must be at most that old at ``clock()``: a stopped
+    watcher leaves valid JSON behind, and a reading built from it would carry today's time over an
+    old inventory.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        max_age: timedelta | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        if max_age is not None and clock is None:
+            raise ValueError("a max_age bound needs the clock it is read against")
         self._path = path
+        self._max_age = max_age
+        self._clock = clock
 
     def _document(self) -> dict[str, object]:
         try:
@@ -52,7 +68,21 @@ class WatcherStatePullRequestSource:
             ) from None
         if not isinstance(document, dict) or not isinstance(document.get("prs"), dict):
             raise PullRequestSourceError("watcher-state-has-no-prs")
+        self._check_fresh(document)
         return document
+
+    def _check_fresh(self, document: dict[str, object]) -> None:
+        if self._max_age is None or self._clock is None:
+            return
+        tick = document.get("last_tick")
+        try:
+            read_at = datetime.fromisoformat(str(tick).replace("Z", "+00:00"))
+        except ValueError:
+            raise PullRequestSourceError("watcher-state-stale:no-last-tick") from None
+        if read_at.tzinfo is None:
+            raise PullRequestSourceError("watcher-state-stale:no-last-tick")
+        if self._clock().astimezone(UTC) - read_at > self._max_age:
+            raise PullRequestSourceError(f"watcher-state-stale:{tick}")
 
     def open_pull_requests(self, repo: str) -> tuple[ModelShadowPullRequest, ...]:
         prs = self._document()["prs"]
@@ -60,7 +90,10 @@ class WatcherStatePullRequestSource:
         found: list[ModelShadowPullRequest] = []
         for entry in prs.values():
             facts = entry.get("facts") if isinstance(entry, dict) else None
-            if not isinstance(facts, dict) or facts.get("repo") != repo:
+            if not isinstance(facts, dict):
+                # An entry that names no facts cannot be told apart from one of this repository.
+                raise PullRequestSourceError("watcher-entry-incomplete:no-facts")
+            if facts.get("repo") != repo:
                 continue
             if facts.get("state") != "OPEN":
                 continue
@@ -75,6 +108,8 @@ class WatcherStatePullRequestSource:
                 and isinstance(head_ref, str)
                 and isinstance(head_sha, str)
                 and isinstance(number, int)
+                and not isinstance(number, bool)
+                and number >= 1
                 and base
                 and head_ref
                 and head_sha

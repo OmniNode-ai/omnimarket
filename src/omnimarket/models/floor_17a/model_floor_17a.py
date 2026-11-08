@@ -594,6 +594,16 @@ class ModelLedgerShadowRule(_Frozen):
     max_age_cell: str = Field(min_length=1)
     fields: tuple[ModelShadowField, ...] = Field(min_length=1)
     lookback_days: int = Field(gt=0)
+    # The cell that says whether the check read its input, and the value that says it did. A row whose cell holds any other value
+    # shows that value instead of its numbers: a failed run is never drawn as a fresh empty inventory. Both unset shows the numbers.
+    outcome_cell: str | None = Field(default=None, min_length=1)
+    outcome_ok: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _outcome_pair(self) -> ModelLedgerShadowRule:
+        if (self.outcome_cell is None) != (self.outcome_ok is None):
+            raise ValueError("outcome_cell and outcome_ok are declared together")
+        return self
 
 
 class ModelRebuildOverlay(_Frozen):
@@ -676,6 +686,8 @@ class ModelShadowReading(_Frozen):
     max_age_s: int
     # ``(label, value)`` of each cell the rule shows, in the rule's order.
     values: tuple[tuple[str, str], ...]
+    # The outcome cell's value when it is not the one that says the input was read; ``None`` when it was (or the rule has none).
+    failed_outcome: str | None = None
 
 
 class ModelFloorSimpleInput(_Frozen):

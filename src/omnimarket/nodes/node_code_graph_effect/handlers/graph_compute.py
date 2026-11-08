@@ -223,8 +223,15 @@ def _contract_modules(text: str, keys: Sequence[str]) -> Iterator[str]:
     except yaml.YAMLError:
         return
     stack: list[object] = [document]
+    # A YAML alias can make a container hold itself, and a shared container is reached once per
+    # alias: each container is walked once.
+    seen: set[int] = set()
     while stack:
         item = stack.pop()
+        if isinstance(item, dict | list):
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
         if isinstance(item, dict):
             for key, value in item.items():
                 if (

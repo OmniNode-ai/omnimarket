@@ -23,7 +23,7 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -196,7 +196,11 @@ def build_shadow_handler(write: bool) -> tuple[CodeGraphShadowCheck, str]:
         overlay=overlay,
         host=host,
         source=_source(overlay),
-        pull_requests=WatcherStatePullRequestSource(Path(state)),
+        pull_requests=WatcherStatePullRequestSource(
+            Path(state),
+            max_age=timedelta(seconds=shadow.shadow_max_age_seconds),
+            clock=lambda: datetime.now(UTC),
+        ),
         appender=build_appender(overlay.ledger_append, overlay.publish.lane)
         if write
         else None,

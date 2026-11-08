@@ -56,6 +56,9 @@ class ModelLedgerFacts(BaseModel):
     # The newest shadow row of each shadow rule that has one, and how many matching rows could not be read as one.
     shadows: tuple[ModelShadowReading, ...] = ()
     shadows_rejected: int = 0
+    # A shadow rule whose query failed, with its reason. The shadow rows are advisory: the go, the events and the readings
+    # stay readable without them, and the failure stays visible here.
+    shadows_unread: tuple[str, ...] = ()
 
 
 class ModelLedgerFloorRead(BaseModel):
@@ -232,6 +235,7 @@ def shadow_readings(
             published = datetime.fromisoformat(row.cells[rule.published_at_cell])
             max_age = int(row.cells[rule.max_age_cell])
             values = tuple((f.label, row.cells[f.cell]) for f in rule.fields)
+            outcome = row.cells[rule.outcome_cell] if rule.outcome_cell else None
         except (KeyError, ValueError):
             rejected += 1
             continue
@@ -245,6 +249,7 @@ def shadow_readings(
                 published_at=published,
                 max_age_s=max_age,
                 values=values,
+                failed_outcome=outcome if outcome != rule.outcome_ok else None,
             )
     return newest, rejected
 
@@ -252,7 +257,10 @@ def shadow_readings(
 def read_ledger_facts(
     source: ProtocolLedgerRowSource, overlay: ModelFloorSimpleOverlay, now: datetime
 ) -> ModelLedgerFloorRead:
-    """Read the go rulings and the piece event rows. Any read that fails fails the whole read, with its reason."""
+    """Read the go rulings and the piece event rows. Any read of those that fails fails the whole read, with its reason.
+
+    A shadow row is advisory telemetry: a failed shadow query is listed in ``shadows_unread`` and costs no other fact.
+    """
     until = now + _FUTURE_SLACK
     go_rule = overlay.rebuild.go
     rulings = source.read(
@@ -306,6 +314,7 @@ def read_ledger_facts(
         readings, rejected = reading_rows(list(read.rows), reading_rule)
     shadows: list[ModelShadowReading] = []
     shadows_rejected = 0
+    shadows_unread: list[str] = []
     for shadow_rule in overlay.ledger_shadows:
         shadow_read = source.read(
             ModelLedgerQuery(
@@ -316,9 +325,10 @@ def read_ledger_facts(
             )
         )
         if shadow_read.error is not None:
-            return ModelLedgerFloorRead(
-                error=f"{shadow_rule.row_type} rows of {shadow_rule.lane} unread: {shadow_read.error}"
+            shadows_unread.append(
+                f"{shadow_rule.row_type} rows of {shadow_rule.lane} unread: {shadow_read.error}"
             )
+            continue
         reading, shadow_rejects = shadow_readings(list(shadow_read.rows), shadow_rule)
         shadows_rejected += shadow_rejects
         if reading is not None:
@@ -339,5 +349,6 @@ def read_ledger_facts(
             readings_rejected=rejected,
             shadows=tuple(shadows),
             shadows_rejected=shadows_rejected,
+            shadows_unread=tuple(shadows_unread),
         )
     )

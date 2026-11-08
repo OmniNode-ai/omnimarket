@@ -187,6 +187,7 @@ class CodeGraphShadowCheck:
                     status="failed",
                     fault=command.fault,
                     repos=shadow.repos,
+                    verdicts=tuple(verdicts),
                     failure=f"pull-requests-unreadable:{reason_token(str(exc))}",
                 ),
                 skipped=skipped,

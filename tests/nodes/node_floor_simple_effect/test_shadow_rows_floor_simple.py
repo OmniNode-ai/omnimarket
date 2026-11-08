@@ -37,6 +37,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
+from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerRead
 from tests.nodes.node_code_graph_effect.code_graph_support import HOST, overlay
 from tests.nodes.node_floor_simple_effect.support import (
     OVERLAYS,
@@ -184,3 +185,49 @@ def test_the_simple_page_draws_each_shadow_line_with_its_age_and_that_it_holds_n
     assert "ago(s.age_s)" in page
     assert "it holds no merge" in page
     assert "(stale)" in page
+
+
+def test_a_failed_run_shows_its_outcome_not_a_fresh_empty_inventory(
+    tmp_path: Path,
+) -> None:
+    ledger = InMemoryLedger()
+    result = CodeGraphShadowCheck(
+        overlay=overlay(),
+        host=HOST,
+        source=memory_source({CLEAN_SHA: WIRED}),
+        pull_requests=InMemoryPullRequestSource(error="state-gone"),
+        appender=ledger,
+        clock=lambda: WROTE,
+    ).handle(ModelShadowCommand(correlation_id="floor-shadow-failed"))
+    assert result.ledger == "written"
+    floor = run_tick(build_home(tmp_path), ledger, at=WROTE + timedelta(minutes=5))
+    (line,) = piece_one(floor)
+    assert "source-unreadable" in line.text
+
+
+def test_a_shadow_query_that_fails_keeps_the_go_and_the_other_facts() -> None:
+    class _FailsOnShadowRead:
+        def __init__(self, inner: InMemoryLedger, fail_call: int) -> None:
+            self._inner = inner
+            self._fail_call = fail_call
+            self.calls = 0
+
+        def read(self, query):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            if self.calls == self._fail_call:
+                return ModelLedgerRead(error="shadow-read-down")
+            return self._inner.read(query)
+
+    inner = InMemoryLedger()
+    write_shadow_row(inner)
+    counting = _FailsOnShadowRead(inner, fail_call=0)
+    read_ledger_facts(counting, floor_overlay(), WROTE + timedelta(minutes=1))
+    last = counting.calls  # the shadow rules are read last
+    failing = _FailsOnShadowRead(inner, fail_call=last)
+    read = read_ledger_facts(failing, floor_overlay(), WROTE + timedelta(minutes=1))
+    assert read.error is None
+    assert read.facts is not None
+    assert read.facts.shadows == ()
+    assert read.facts.shadows_unread == (
+        "STATUS rows of code-graph unread: shadow-read-down",
+    )
