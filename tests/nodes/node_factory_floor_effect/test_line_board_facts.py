@@ -17,7 +17,7 @@ import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -193,9 +193,8 @@ def _run(
 ) -> tuple[ModelFactoryFloorRequest, dict[str, Any]]:
     """Run the effect and return the request the compute received and the record written."""
     seen: list[ModelFactoryFloorRequest] = []
-    real = handler_factory_floor.HandlerFactoryFloor
 
-    class Recording(real):  # type: ignore[valid-type, misc]
+    class Recording(handler_factory_floor.HandlerFactoryFloor):
         def handle(self, request: ModelFactoryFloorRequest) -> Any:
             seen.append(request)
             return super().handle(request)
@@ -284,9 +283,8 @@ def test_a_stop_kept_only_in_an_archive_roll_is_read_through_the_ledger_reader(
     )
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
     seen: list[ModelFactoryFloorRequest] = []
-    real = handler_factory_floor.HandlerFactoryFloor
 
-    class Recording(real):  # type: ignore[valid-type, misc]
+    class Recording(handler_factory_floor.HandlerFactoryFloor):
         def handle(self, request: ModelFactoryFloorRequest) -> Any:
             seen.append(request)
             return super().handle(request)
@@ -321,9 +319,8 @@ def test_a_failing_archive_read_makes_the_ledger_unread_never_empty(
     )
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
     seen: list[ModelFactoryFloorRequest] = []
-    real = handler_factory_floor.HandlerFactoryFloor
 
-    class Recording(real):  # type: ignore[valid-type, misc]
+    class Recording(handler_factory_floor.HandlerFactoryFloor):
         def handle(self, request: ModelFactoryFloorRequest) -> Any:
             seen.append(request)
             return super().handle(request)
@@ -502,7 +499,7 @@ def test_a_reader_with_no_evidence_method_leaves_running_evidence_unread(
             raise OSError("not under test")
 
     files = _prepare(world, monkeypatch)
-    request, _ = _run(world, files, monkeypatch, reader=CountOnly())  # type: ignore[arg-type]
+    request, _ = _run(world, files, monkeypatch, reader=cast(Any, CountOnly()))
     entry = next(h for h in request.source_health if h.source == "running_evidence")
     assert entry.state == "unread"
     assert "no per-merge evidence" in entry.cause
