@@ -23,6 +23,10 @@ description: >
   relation overlay and returns every directed relation between labels with its counts, the
   cycles among the labels, and the join ids of the piece owning each endpoint of each
   tracked relation; an endpoint no piece owns reads as a finding (OMN-22903).
+  A third operation, dependency_gate_compute, takes that report and the frozen cross-dependency
+  baseline (a file with its own sha256, read by the caller) and returns PASS or RED with the
+  current and the frozen count; it reads RED when the count, a frozen relation, the largest
+  component or the residual back edges rose above the frozen value (OMN-23136).
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -37,6 +41,13 @@ handler_routing:
       module: omnimarket.nodes.node_network_graph_compute.handlers.handler_import_relation_compute
     input_model: omnimarket.models.import_relations.model_import_relations.ModelImportRelationRequest
     output_model: omnimarket.models.import_relations.model_import_relations.ModelImportRelationReport
+  - operation: dependency_gate_compute
+    topic: onex.cmd.omnimarket.dependency-gate-compute-requested.v1
+    handler:
+      name: HandlerDependencyGateCompute
+      module: omnimarket.nodes.node_network_graph_compute.handlers.handler_dependency_gate_compute
+    input_model: omnimarket.models.import_relations.model_dependency_gate.ModelDependencyGateRequest
+    output_model: omnimarket.models.import_relations.model_dependency_gate.ModelDependencyGateResult
 handler:
   module: omnimarket.nodes.node_network_graph_compute.handlers.handler_network_graph_compute
   class: HandlerNetworkGraphCompute
@@ -78,9 +89,11 @@ event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.network-graph-compute-requested.v1
   - onex.cmd.omnimarket.import-relation-compute-requested.v1
+  - onex.cmd.omnimarket.dependency-gate-compute-requested.v1
   publish_topics:
   - onex.evt.omnimarket.network-graph-computed.v1
   - onex.evt.omnimarket.import-relation-computed.v1
+  - onex.evt.omnimarket.dependency-gate-computed.v1
 metadata:
   transport_type: kafka
 runtime_dispatch:
@@ -88,6 +101,9 @@ runtime_dispatch:
 externally_produced_topics:
 - topic: onex.cmd.omnimarket.import-relation-compute-requested.v1
   producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
+- topic: onex.cmd.omnimarket.dependency-gate-compute-requested.v1
+  producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
 - onex.evt.omnimarket.network-graph-computed.v1
 - onex.evt.omnimarket.import-relation-computed.v1
+- onex.evt.omnimarket.dependency-gate-computed.v1
