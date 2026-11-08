@@ -62,6 +62,7 @@ descriptor:
   side_effects:
   - creates one ed25519 key pair at the overlay's key_path when none is there
   - appends one forced-command line to ~/.ssh/authorized_keys of every available pool host over ssh
+  - asks the onex credential store whether the overlay's credential reference resolves (the value is never read out)
   - runs each channel's probe attempts, a read and a mutation that the credential must refuse
 metadata:
   transport_type: local
