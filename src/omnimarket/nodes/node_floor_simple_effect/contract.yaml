@@ -106,6 +106,7 @@ runtime:
     - node_floor_emission_compute:compute_floor_receipts
     - node_floor_simple_compute:compute_floor_simple
     - node_lab_state_alarm_effect:publish_canary
+    - node_product_floor_verdict_compute:decide_customer_health
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
