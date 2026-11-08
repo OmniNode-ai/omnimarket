@@ -67,6 +67,7 @@ from ..protocols import ProtocolDrainerWatch
 from .alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
 from .command_drainer_watch import CommandDrainerWatchProbe
 from .drainer_watch import DrainerWatchProbe
+from .lab_fill_lane_reading import LabFillRunRow, parse_lanes, settle_run
 from .quiet_host_repair import QuietHostRepairPlanner
 
 LANE = "silent-failure-alarm"
@@ -976,8 +977,9 @@ class HandlerSilentFailureAlarm:
         newest row named (whatever its age), as of ``now``."""
         floor = _stamp(now - LOOKBACK)
         ceiling = _stamp(now)
-        runs: list[ModelPlacementRun] = []
+        fill_rows: list[LabFillRunRow] = []
         refusals: list[ModelLaneRefusal] = []
+        claimed: dict[str, datetime] = {}
         raised: dict[str, datetime] = {}
         raised_hosts: dict[str, set[str]] = {}
         newest_row: dict[str, tuple[datetime, set[str]]] = {}
@@ -1001,22 +1003,28 @@ class HandlerSilentFailureAlarm:
                     and dispatched.isdecimal()
                     and placed.isdecimal()
                 ):
-                    runs.append(
-                        ModelPlacementRun(
+                    fill_rows.append(
+                        LabFillRunRow(
                             run_key="".join(run.groups()),
                             stamp=stamp,
                             dispatched=int(dispatched),
                             placed=int(placed),
+                            lanes=parse_lanes(row.value("lanes")),
                         )
                     )
-            elif row.row_type == "MSG":
-                lane = _LANE_RUN_KEY.match(row.token("from") or "")
+            elif row.row_type == "CLAIM":
+                lane_name = row.token("lane") or ""
+                if _LANE_RUN_KEY.match(lane_name):
+                    claimed.setdefault(lane_name, stamp)
+            elif row.row_type in ("MSG", "STATUS"):
+                # The runner's lane-end report was a MSG from the lane; since OMN-21822 it is a STATUS
+                # row of the lane. Both name the status the lane ended on and its exit code.
+                name = row.token("from" if row.row_type == "MSG" else "lane") or ""
+                lane = _LANE_RUN_KEY.match(name)
                 status = row.token("status") or ""
                 if lane and _STATUS.match(status) and row.token("exit") != "0":
                     refusals.append(
-                        ModelLaneRefusal(
-                            run_key=lane[1], lane=row.token("from") or "", status=status
-                        )
+                        ModelLaneRefusal(run_key=lane[1], lane=name, status=status)
                     )
             elif row.row_type == "FRICTION" and row.token("lane") == LANE:
                 kind = row.token("class")
@@ -1037,6 +1045,13 @@ class HandlerSilentFailureAlarm:
                         stamp,
                         {h for h in (row.token("hosts") or "").split(",") if h},
                     )
+        # The fill writes its row while its send jobs build: a pending lane is judged by its own CLAIM row.
+        send_cap = timedelta(minutes=self._options.lane_send_cap_minutes)
+        runs: list[ModelPlacementRun] = []
+        for fill_row in fill_rows:
+            settled, unplaced = settle_run(fill_row, claimed, now, send_cap)
+            runs.append(settled)
+            refusals.extend(unplaced)
         return (
             tuple(runs),
             tuple(refusals),
