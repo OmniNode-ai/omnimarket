@@ -40,6 +40,12 @@ def _document() -> dict[str, object]:
     return loaded
 
 
+def _goal(document: dict[str, object], **changes: object) -> dict[str, object]:
+    goal = document["landing_goal"]
+    assert isinstance(goal, dict)
+    return {**goal, **changes}
+
+
 def _root(tmp_path: Path, document: dict[str, object]) -> dict[str, str]:
     node_dir = tmp_path / NODE_NAME
     node_dir.mkdir(parents=True)
@@ -58,7 +64,7 @@ def test_the_loader_reads_the_nodes_overlay_under_the_named_root(
     tmp_path: Path,
 ) -> None:
     document = _document()
-    document["landing_goal"] = {**document["landing_goal"], "merges_per_window": 12}  # type: ignore[dict-item]
+    document["landing_goal"] = _goal(document, merges_per_window=12)
     overlay = load_landing_goal_overlay(_root(tmp_path, document))
     assert overlay.landing_goal.merges_per_window == 12
 
@@ -78,7 +84,7 @@ def test_an_absent_key_refuses_the_load_and_names_it(tmp_path: Path, key: str) -
 
 def test_an_unknown_key_refuses_the_load(tmp_path: Path) -> None:
     document = _document()
-    document["landing_goal"] = {**document["landing_goal"], "extra_goal": 1}  # type: ignore[dict-item]
+    document["landing_goal"] = _goal(document, extra_goal=1)
     with pytest.raises(NodeOverlayError, match="extra_goal"):
         load_landing_goal_overlay(_root(tmp_path, document))
 
@@ -97,11 +103,11 @@ def test_a_goal_field_of_zero_or_absent_refuses_the_load(
     tmp_path: Path, field: str
 ) -> None:
     zero = _document()
-    zero["landing_goal"] = {**zero["landing_goal"], field: 0}  # type: ignore[dict-item]
+    zero["landing_goal"] = _goal(zero, **{field: 0})
     with pytest.raises(NodeOverlayError, match=field):
         load_landing_goal_overlay(_root(tmp_path / "zero", zero))
     absent = _document()
-    goal = dict(absent["landing_goal"])  # type: ignore[call-overload]
+    goal = _goal(absent)
     del goal[field]
     absent["landing_goal"] = goal
     with pytest.raises(NodeOverlayError, match=field):
