@@ -5,7 +5,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
@@ -22,9 +22,10 @@ handler:
   module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain
   class: HandlerHostDrain
   input_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainRequest
+  output_model: omnimarket.nodes.node_host_drain_effect.models.model_host_drain.ModelHostDrainResult
 
 # HandlerHostDrain and HandlerIdleRunnerStop take the overlay settings, the ports, the sink and the clock as
-# constructor parameters, so the node runs through its own command line (python -m), not handler_routing.
+# constructor parameters, so the node runs through its own command line (python -m), not a bus topic.
 handlers:
   - name: HandlerHostDrain
     module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain
@@ -37,6 +38,7 @@ handlers:
 
 handler_routing:
   routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain:HandlerHostDrain
   handlers:
     - operation: idle_runner_stop
       handler:
@@ -48,7 +50,7 @@ handler_routing:
 
 descriptor:
   node_archetype: effect
-  runtime_profiles: [effects]
+  runtime_profiles: []
   purity: impure
   idempotent: true
   side_effects: [drain-state-write, runner-service-stop]
@@ -66,7 +68,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.host-drain-completed.v1
 
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: "python -m omnimarket.nodes.node_host_drain_effect (runtime_host_drain.py), which reads the overlay, runs HandlerHostDrain.handle for the drain verb and prints the result"
 
 # The topics by role; the stores and the chains hold no topic string.
 topics:
@@ -91,4 +93,4 @@ overlay:
 
 metadata:
   ticket: OMN-22905
-  transport_type: inmemory
+  transport_type: local
