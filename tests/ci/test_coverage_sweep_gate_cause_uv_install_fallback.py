@@ -11,7 +11,10 @@ same step failed in Detect Changes (every shard skipped, the gate refused with
 with ``ARTIFACT_MISSING split N ... .coverage.N is absent``).
 
 The gate stays fail-closed. What these tests pin is the one thing the three jobs on
-the census path lacked: a second origin (PyPI) for uv when the release download fails.
+the census path lacked: an origin for uv that is not the github.com release assets.
+Each of the three jobs installs uv from PyPI and no longer uses ``astral-sh/setup-uv``.
+The install step carries no ``continue-on-error``: a failed install fails the job, so
+no advisory-job exemption and no suppression comment is needed.
 """
 
 from __future__ import annotations
@@ -39,42 +42,51 @@ def _steps(job: str) -> list[dict[str, Any]]:
     return list(_jobs()[job]["steps"])
 
 
-def _setup_uv_index(steps: list[dict[str, Any]]) -> int:
+def _pypi_uv_step(steps: list[dict[str, Any]]) -> dict[str, Any]:
     hits = [
-        i
-        for i, s in enumerate(steps)
-        if str(s.get("uses", "")).startswith(SETUP_UV_PREFIX)
+        s
+        for s in steps
+        if "pip install" in str(s.get("run", "")) and " uv" in str(s.get("run", ""))
     ]
-    assert len(hits) == 1, f"expected exactly one setup-uv step, found {len(hits)}"
+    assert len(hits) == 1, (
+        f"expected exactly one PyPI uv install step, found {len(hits)}"
+    )
     return hits[0]
 
 
 @pytest.mark.parametrize("job", CENSUS_PATH_JOBS)
-def test_coverage_sweep_gate_cause_uv_install_has_pypi_fallback(job: str) -> None:
+def test_coverage_sweep_gate_cause_uv_comes_from_pypi_not_release_assets(
+    job: str,
+) -> None:
     steps = _steps(job)
-    i = _setup_uv_index(steps)
-    install = steps[i]
-    assert install.get("continue-on-error") is True, (
-        f"{job}: a 504 on the uv release download ends the job; the step must hand "
-        "the failure to the PyPI fallback"
+    assert not [
+        s for s in steps if str(s.get("uses", "")).startswith(SETUP_UV_PREFIX)
+    ], (
+        f"{job}: setup-uv downloads uv from github.com release assets, which answered "
+        "HTTP 504 and ended the job"
     )
-    step_id = install.get("id")
-    assert step_id, f"{job}: the setup-uv step needs an id for the fallback's condition"
-    fallback = steps[i + 1]
-    assert fallback.get("if") == f"steps.{step_id}.outcome == 'failure'", (
-        f"{job}: the step after setup-uv must run only when setup-uv failed"
+    install = _pypi_uv_step(steps)
+    assert "continue-on-error" not in install, (
+        f"{job}: a failed uv install must fail the job, not be swallowed"
     )
-    script = fallback["run"]
-    assert "pip install" in script
-    assert " uv" in script
+    assert "if" not in install
+    script = install["run"]
     assert "GITHUB_PATH" in script, (
-        f"{job}: the fallback must put uv on PATH for later steps"
+        f"{job}: the install must put uv on PATH for later steps"
     )
-    assert 'uv" --version' in script, f"{job}: the fallback must prove uv runs"
+    assert 'uv" --version' in script, f"{job}: the install must prove uv runs"
+    first_uv_use = next(
+        i
+        for i, s in enumerate(steps)
+        if "uv " in str(s.get("run", "")) and s is not install
+    )
+    assert steps.index(install) < first_uv_use, (
+        f"{job}: uv must be installed before the first step that runs it"
+    )
 
 
 def test_coverage_sweep_gate_cause_gate_still_refuses_without_shards() -> None:
-    """The fallback must not turn the census into a pass: the refusal stays."""
+    """The PyPI install must not turn the census into a pass: the refusal stays."""
     steps = _steps("coverage-sweep-gate")
     refusal = next(
         s
@@ -87,12 +99,12 @@ def test_coverage_sweep_gate_cause_gate_still_refuses_without_shards() -> None:
     assert "aggregate_coverage_artifacts.py" in combine["run"]
 
 
-def test_coverage_sweep_gate_cause_fallback_script_installs_uv_and_exports_path(
+def test_coverage_sweep_gate_cause_install_script_installs_uv_and_exports_path(
     tmp_path: Path,
 ) -> None:
-    """Run the fallback's own shell against a recording python3 shim (no network)."""
+    """Run the install step's own shell against a recording python3 shim (no network)."""
     steps = _steps("coverage-sweep-gate")
-    script = steps[_setup_uv_index(steps) + 1]["run"]
+    script = _pypi_uv_step(steps)["run"]
 
     bin_dir = tmp_path / "bin"
     user_base = tmp_path / "userbase"
