@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Repository State Query Effect (OMN-23033)
+#
+# WHO HOSTS THIS NODE. One serve process per host that keeps canonical clones
+# (`repo-state serve`): the orchestrator Mac and each lab pool host. A shared
+# runtime never attaches it: a runtime container holds no canonical clone and no
+# PR watcher state. The contract therefore declares runtime_dispatch and neither
+# an event_bus block nor handler_routing.
+#
+# ADDRESSING. A query names its host. Every host reads the request topic in a
+# consumer group of its own (node group, role and host name) and answers only the
+# queries that name it. The answer's envelope carries the query's envelope id as
+# parent_envelope_id; a caller reads the terminals with no consumer group.
+#
+# STATE. Every host folds the bus's merge events (bus_state_events) into the latest
+# head per branch and event per pull request, from the earliest retained event on
+# a host's first start, persisted under the overlay's state directory.
+name: "node_repo_state_query_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Answers a repository state query (refs, a branch head, files at a revision, a pull
+  request's state, its checks or one job's record) from this host's mirror: the
+  canonical clone for git state, the PR watcher's state for pull request state. It
+  first compares the mirror with the latest state the bus holds; only a mirror that
+  is behind is pulled, and concurrent queries of the same repository and mirror
+  share one pull. A current mirror costs one comparison and no GitHub call.
+input_model:
+  name: "ModelRepoStateQuery"
+  module: "omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_query"
+  description: "Host, repository, what is wanted, and the branch, revision, paths, pull request or job it names."
+output_model:
+  name: "ModelRepoStateAnswer"
+  module: "omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_query"
+  description: "The mirror's answer, whether the mirror was current, whether this query waited on a pull and what it did, and the comparisons it cost."
+handler:
+  module: "omnimarket.nodes.node_repo_state_query_effect.handlers.handler_repo_state_query"
+  class: "HandlerRepoStateQuery"
+  input_model: "omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_query.ModelRepoStateQuery"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 330000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.repo-state-query-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.repo-state-query-completed.v1"
+    failure: "onex.evt.omnimarket.repo-state-query-failed.v1"
+consumed_events:
+  - event_type: ModelRepoStateQuery
+    topic: onex.cmd.omnimarket.repo-state-query-requested.v1
+    description: "One query, addressed to one host; published by `repo-state query`."
+  - event_type: ModelRepoMerged
+    topic: onex.evt.omnimarket.repo-merged.v1
+    description: "A merge or a pull request state change; the bus's latest state of a branch."
+  - event_type: ModelMirrorPrMerged
+    topic: onex.evt.github.pr-merged.v1
+    description: "A merge seen by the Actions, webhook or mirror producers."
+bus_state_events:
+  - topic: onex.evt.omnimarket.repo-merged.v1
+  - topic: onex.evt.github.pr-merged.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.repo-state-query-requested.v1
+    producer: "repo-state query, run by lanes, the landing controller, the floor and the lab fill, not a node contract"
+published_events:
+  - event_type: ModelRepoStateAnswer
+    topic: onex.evt.omnimarket.repo-state-query-completed.v1
+    description: "An ok answer from the mirror."
+  - event_type: ModelRepoStateAnswer
+    topic: onex.evt.omnimarket.repo-state-query-failed.v1
+    description: "An answer that is not ok (no clone, no record, an unreadable query) and why."
+externally_consumed_topics:
+  - onex.evt.omnimarket.repo-state-query-completed.v1
+  - onex.evt.omnimarket.repo-state-query-failed.v1
+overlay:
+  id: node_repo_state_query_effect
+  file_env: ONEX_REPO_STATE_OVERLAY
+  example: overlay.example.yaml
+reading:
+  name: repo_state_query_current
+  description: "Share of answered queries whose mirror was current or pulled current; a mirror still behind after its pull reads as a failure."
+  injected_fault: "A sync command that never advances the clone (planted in tests as a puller that does not fetch): the answer reads mirror_behind and current false."
+metadata:
+  transport_type: kafka
+  description: "Hosted by one serve process per host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-11-07"
+  tags: ["effect", "repo-state", "mirror", "OMN-23033"]
+  related_tickets: ["OMN-23033"]
