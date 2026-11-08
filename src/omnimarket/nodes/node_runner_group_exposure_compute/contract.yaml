@@ -16,9 +16,9 @@ lifecycle: experimental
 runtime_profiles: [main]
 
 description: >
-  Whether a runner group can be reached from a public origin, as five subjects: files that select
+  Whether a runner group can be reached from a public origin, as six subjects: files that select
   a group label with a public-origin trigger, the group's pinned workflows against those files,
-  the group's public-repository setting, jobs of public origin in the window, and the read's age.
+  the group's public-repository setting, jobs of public origin in the window, jobs of a public repository on the group (the drain readback), and the read's age.
   WORKING only when every subject is WORKING; NOT WORKING when a subject is; UNKNOWN when the group
   was not read (refused, budget exhausted, unreadable) or the read is older than its max age. No clock
   read, no state, no I/O.
@@ -53,7 +53,7 @@ input_model:
 output_model:
   name: ModelRunnerGroupExposureReading
   module: omnimarket.models.runner_group_exposure
-  description: One overall verdict and the five subjects behind it.
+  description: One overall verdict and the six subjects behind it.
 
 terminal_event: onex.evt.omnimarket.runner-group-exposure-read.v1
 

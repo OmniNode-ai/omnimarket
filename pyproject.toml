@@ -1089,6 +1089,8 @@ node_renderer_capability_projection = "omnimarket.nodes.node_renderer_capability
 node_replay_bundle_writer_effect = "omnimarket.nodes.node_replay_bundle_writer_effect"
 node_repo_health_classify_compute = "omnimarket.nodes.node_repo_health_classify_compute"
 node_repo_health_repair_effect = "omnimarket.nodes.node_repo_health_repair_effect"
+node_repo_state_query_effect = "omnimarket.nodes.node_repo_state_query_effect"
+node_repo_state_watcher_refresh_effect = "omnimarket.nodes.node_repo_state_watcher_refresh_effect"
 node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_effect"
 node_report_format_compute = "omnimarket.nodes.node_report_format_compute"
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
@@ -1358,6 +1360,11 @@ code-edit = "omnimarket.cli.cli_code_edit:code_edit_group"
 # pool's capacity advertisements, and place and send one heavy command over the
 # bus. Discovered over installed distributions like the groups above.
 lab-work = "omnimarket.lab_work.cli:lab_work_group"
+# OMN-23033: `onex repo-state` -- serve this host's repository state queries from its mirror,
+# pulling first only when the mirror is behind the bus, and ask one host's mirror.
+repo-state = "omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_repo_state_query_serve:repo_state_group"
+# OMN-23033: `onex repo-state-refresh` -- the declared command that refreshes a host's PR watcher state.
+repo-state-refresh = "omnimarket.nodes.node_repo_state_watcher_refresh_effect.handlers.adapter_watcher_refresh_cli:watcher_refresh_command"
 # OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
 work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
 # OMN-20275: `onex bus-binding` -- the binding a command used (durable or the in-memory fallback) and the
