@@ -315,9 +315,9 @@ async def run_world_chain(
     spec = yaml.safe_load((SCENARIOS / f"{scenario}.yaml").read_text(encoding="utf-8"))
     world = LandingWorld(spec)
     bus = make_bus(overlay)
-    await bus.start()
     records: list[TickRecord] = []
     try:
+        await bus.start()
         for index, tick_spec in enumerate(spec["ticks"], start=1):
             world.tick += 1
             world.now += timedelta(seconds=TICK_SECONDS)

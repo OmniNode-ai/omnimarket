@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic value. The deployment's overlay supplies the real one. No key has a default.
+floor_fill:
+  output_dir: /example/state/lane-process-logs
