@@ -34,7 +34,6 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
 )
 from tests.nodes.node_reading_writer_effect.reading_support import RUN_AT, START, stamp
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
-    canary_row,
     landing_overlay_document,
 )
 
@@ -199,7 +198,7 @@ def test_a_head_waiting_over_an_hour_makes_the_written_reading_not_working(
 ) -> None:
     projection = _Projection([_row(1, read_minutes_ago=75)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     (piece,) = result.pieces
     assert piece.verdict is EnumReadingVerdict.NOT_WORKING
@@ -209,7 +208,7 @@ def test_a_head_waiting_over_an_hour_makes_the_written_reading_not_working(
 def test_the_same_head_waiting_inside_the_hour_reads_working(tmp_path: Path) -> None:
     projection = _Projection([_row(1, read_minutes_ago=30)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     assert result.pieces[0].verdict is EnumReadingVerdict.WORKING
 
@@ -219,7 +218,7 @@ def test_a_projection_nothing_has_written_to_reads_stale_and_not_working(
 ) -> None:
     projection = _Projection([_row(1, observed_minutes_ago=7 * 24 * 60)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     (piece,) = result.pieces
     assert piece.verdict is EnumReadingVerdict.NOT_WORKING
@@ -236,9 +235,7 @@ def test_without_the_overlay_address_the_read_is_an_error_and_the_piece_reads_un
     assert read.snapshot is None
     assert "projection address" in (read.error or "")
     assert projection.requests == []
-    result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, environ)
-    ).handle(_window())
+    result = _writer(InMemoryLedger([]), _source(projection, environ)).handle(_window())
     assert result.pieces[0].verdict is EnumReadingVerdict.UNKNOWN
 
 

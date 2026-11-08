@@ -75,16 +75,6 @@ pieces:
     merge_window_seconds: 3600
     waiting_threshold: 10
     snapshot_max_age_seconds: 900
-    canary:
-      source_id: canary
-      row_type: STATUS
-      lane: landing-canary
-      mode: newest
-      pass_when:
-      - cell: outcome
-        op: eq
-        value: landed
-      max_age_seconds: 93600
   injected_fault: hold one eligible head for over an hour in a test repository
 - piece: 15
   name: delegation
