@@ -19,6 +19,9 @@ OVERLAY_KEYS = (
     "max_age_minutes",
     "max_fill_lanes_per_line",
     "sent_window_minutes",
+    "stopped_max_lanes",
+    "stopped_report_chars",
+    "stopped_continue_rule",
 )
 OVERLAY_PREFIX = "floor_fill."
 
@@ -31,6 +34,10 @@ CandidateVerdict = Literal["STARTABLE", "NEEDS-TICKET"]
 LineVerdict = Literal[
     "STARTABLE", "NEEDS-TICKET", "UNTICKETABLE", "AT-CAPACITY", "NO-STARTABLE"
 ]
+StoppedVerdict = Literal["STARTABLE", "AT-CAPACITY", "NO-STOPPED"]
+# The line id a stopped lane's entry-ticket verdict and state entries are keyed under: ``stopped:<lane>``.
+STOPPED_LINE = "stopped"
+STOPPED_KEY_PREFIX = "stopped:"
 # The causes a task payload verdict that is not ok may carry (T11's compute names them).
 PAYLOAD_CAUSE_PREFIXES = ("needs-spec:", "no-parent", "plan-unread")
 
@@ -83,6 +90,15 @@ class ModelFloorEntryTicketVerdict(BaseModel):
         return self
 
 
+class ModelStoppedLaneReport(BaseModel):
+    """The text of a stopped lane's own report, read by the caller from the path the floor record names."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    text: str
+
+
 class ModelFloorFillStateEntry(BaseModel):
     """One entry of the fill's state row: a key held for a lane about to start (RESERVED) or started (SENT)."""
 
@@ -114,9 +130,15 @@ class ModelFloorFillCandidatesRequest(BaseModel):
     max_age_minutes: int = Field(gt=0)
     max_fill_lanes_per_line: int = Field(ge=1)
     sent_window_minutes: int = Field(gt=0)
+    # Stopped lanes: how many continuation lanes may run at once, how much of a predecessor's report the
+    # brief carries, and the rule the brief ends with.
+    stopped_max_lanes: int = Field(ge=1)
+    stopped_report_chars: int = Field(gt=0)
+    stopped_continue_rule: str = Field(min_length=1)
     payload_verdicts: tuple[ModelFloorTaskPayloadVerdict, ...] = ()
     ticket_verdicts: tuple[ModelFloorEntryTicketVerdict, ...] = ()
     entries: tuple[ModelFloorFillStateEntry, ...] = ()
+    reports: tuple[ModelStoppedLaneReport, ...] = ()
 
     @model_validator(mode="before")
     @classmethod
@@ -188,6 +210,30 @@ class ModelFloorFillLine(BaseModel):
         return tuple((n.task_id, n.cause) for n in self.not_ready)
 
 
+class ModelFloorFillStopped(BaseModel):
+    """A stopped lane a continuation lane may be started for, with the brief that carries the predecessor's work."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # ``stopped:<lane>``: the key the fill's state entries hold it under.
+    key: str
+    lane: str
+    ticket: str
+    branch: str = ""
+    head: str = ""
+    # The brief: the predecessor's last rows and report, where it stopped, and the rule to push and continue.
+    brief: str
+
+
+class ModelFloorFillStoppedNotReady(BaseModel):
+    """A stopped lane that is not a candidate, with its cause."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    cause: str
+
+
 class ModelFloorFillCandidatesResult(BaseModel):
     """The verdicts: one global FLOOR-UNREAD when the record cannot be trusted, otherwise one per line."""
 
@@ -196,6 +242,11 @@ class ModelFloorFillCandidatesResult(BaseModel):
     verdict: FloorVerdict
     unread_cause: UnreadCause = ""
     lines: tuple[ModelFloorFillLine, ...] = ()
+    # The stopped lanes of the floor record that may be continued, in the record's order (newest ending first).
+    stopped_verdict: StoppedVerdict = "NO-STOPPED"
+    stopped_capacity_left: int = 0
+    stopped: tuple[ModelFloorFillStopped, ...] = ()
+    stopped_not_ready: tuple[ModelFloorFillStoppedNotReady, ...] = ()
 
 
 # ------------------------------------------------------------------ the part of the floor record that is read
@@ -248,6 +299,26 @@ class ModelRecordLane(BaseModel):
 
     lane: str
     station: ModelRecordStationRef | None = None
+    ticket: str = ""
+
+
+class ModelRecordStopped(BaseModel):
+    """One entry of ``floor.stopped``: a lane that ended partial, blocked or failed with work left."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    lane: str
+    ticket: str = ""
+    # The lane's tickets that are not umbrellas: what ties a live lane to the same work.
+    tickets: tuple[str, ...] = ()
+    outcome: str
+    ended_at: str = ""
+    names: tuple[str, ...] = ()
+    branch: str = ""
+    head: str = ""
+    prs: tuple[str, ...] = ()
+    rows: tuple[str, ...] = ()
+    report_path: str = ""
 
 
 class ModelRecordFloor(BaseModel):
@@ -256,6 +327,7 @@ class ModelRecordFloor(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     lanes: tuple[ModelRecordLane, ...] = ()
+    stopped: tuple[ModelRecordStopped, ...] = ()
 
 
 class ModelFloorRecordRead(BaseModel):

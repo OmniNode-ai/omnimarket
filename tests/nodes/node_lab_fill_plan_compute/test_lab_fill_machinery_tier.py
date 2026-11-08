@@ -291,17 +291,18 @@ def test_lab_fill_machinery_tier_contract_data() -> None:
     assert {c.priority_class for c in _machinery(policy=renamed).candidates} == {
         "process-fix"
     }
+    ticket_group = next(g for g in base["tier_order"] if "ticket" in g)
     reordered = ModelLabFillMachineryPolicy.model_validate(
         {
             **base,
             "tier_order": [
-                ["ticket"],
+                ticket_group,
                 ["machinery"],
-                *[g for g in base["tier_order"][1:] if g != ["ticket"]],
+                *[g for g in base["tier_order"][1:] if g != ticket_group],
             ],
         }
     )
-    assert reordered.tier_order[0] == ("ticket",)
+    assert reordered.tier_order[0][0] == "ticket"
     candidates = [c.model_dump() for c in _machinery().candidates]
     plan = HandlerLabFillDispatchPlan().handle(
         ModelLabFillDispatchPlanRequest(

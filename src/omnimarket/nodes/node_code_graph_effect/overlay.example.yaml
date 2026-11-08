@@ -10,6 +10,11 @@
 #   sample            the frozen sample (labels and their basis), its bar, the known-used controls,
 #                     and the hash they were frozen under: a changed sample refuses the load
 #   publish           the reading rows' lane and actor, and how long a reading stays fresh
+#   allowlist         not-yet-wired modules excused until their date; an entry past its date excuses nothing
+#                     and the check reads it as a finding (optional: none by default)
+#   shadow            the repositories the pull request check runs over in shadow, the variable naming
+#                     the pull request watcher's state file, and the shadow row's freshness and size bound
+#                     (optional: absent where the check is not run in shadow)
 #   schedule_hosts    hosts that install the nightly systemd user timer
 #   unit_environment  environment the installed unit carries
 graph_backend: in_memory
@@ -52,6 +57,16 @@ publish:
   actor: node:node_code_graph_effect
   publish_max_age_seconds: 93600
   row_path_limit: 6
+allowlist:
+  - repo: example_app
+    path: src/example_app/not_yet_wired
+    reason: the example node lands next week
+    expires: 2026-12-01
+shadow:
+  repos: [example_app]
+  pr_state_env: EXAMPLE_PR_STATE_PATH
+  shadow_max_age_seconds: 3600
+  max_pull_requests: 50
 schedule_hosts:
   - name: example-host
     scheduler: systemd-user
@@ -59,4 +74,5 @@ schedule_hosts:
 unit_environment:
   EXAMPLE_REPOS_ROOT: $OMNI_HOME
   EXAMPLE_HOST_NAME: example-host
+  EXAMPLE_PR_STATE_PATH: $OMNI_HOME/.onex_state/pr-watcher/state.json
 injected_fault: Stop the timer and advance the clock, or drop the contract links in a drill run

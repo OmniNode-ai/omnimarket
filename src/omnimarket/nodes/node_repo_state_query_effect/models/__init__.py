@@ -5,6 +5,8 @@
 from omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_overlay import (
     ModelRepoStateBusProfile,
     ModelRepoStateOverlay,
+    ModelRepoStateUnit,
+    ModelRepoStateUnitHost,
 )
 from omnimarket.nodes.node_repo_state_query_effect.models.model_repo_state_query import (
     MIRROR_FOR_WANT,
@@ -34,4 +36,6 @@ __all__ = [
     "ModelRepoStateOverlay",
     "ModelRepoStateQuery",
     "ModelRepoStateTopics",
+    "ModelRepoStateUnit",
+    "ModelRepoStateUnitHost",
 ]

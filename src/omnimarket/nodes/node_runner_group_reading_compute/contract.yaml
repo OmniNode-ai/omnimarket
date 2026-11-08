@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runner_group_reading_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Read, without I/O, whether a public repository can reach a runner group that holds lab runners,
+  from the organization's runner groups, its repositories and the runs of the canary public workflow
+  that a fetching effect already read. Three kinds of subject: the group setting (a group that allows
+  public repositories and holds lab runners reads NOT WORKING), whether a public repository can see a
+  lab group (visible to all, or named in the group's selected repositories), and the canary public
+  workflow (a run picked up by a group that holds lab runners reads NOT WORKING). WORKING only when
+  every subject is WORKING; UNKNOWN when the groups were not read, no group was returned, the read is
+  older than its max age, or the canary was not read. Settings live in overlay.yaml.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: read_runner_groups
+    handler:
+      name: HandlerRunnerGroupReading
+      module: omnimarket.nodes.node_runner_group_reading_compute.handlers.handler_runner_group_reading
+    input_model: omnimarket.nodes.node_runner_group_reading_compute.models.model_runner_group_reading.ModelRunnerGroupReadingRequest
+    output_model: omnimarket.nodes.node_runner_group_reading_compute.models.model_runner_group_reading.ModelRunnerGroupReadingResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.runner-group-reading-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.runner-group-reading-computed.v1
+terminal_event: onex.evt.omnimarket.runner-group-reading-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-group-reading-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.runner-group-reading-requested.v1
+  producer: "the daily runner-group read, an effect that reads the organization API and the canary workflow's runs and asks for the reading (a later piece wires it)"
+externally_consumed_topics:
+- onex.evt.omnimarket.runner-group-reading-computed.v1
+metadata:
+  ticket: OMN-22947
+  transport_type: kafka
+lifecycle: experimental
