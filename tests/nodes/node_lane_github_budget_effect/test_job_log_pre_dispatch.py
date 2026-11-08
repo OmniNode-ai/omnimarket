@@ -62,6 +62,8 @@ def dispatched_program(*, code=0, receipt='{"command_may_have_run":true}'):
     return (
         "import os, sys\nfrom pathlib import Path\n"
         "args = sys.argv[1:]\n"
+        "if args[1] == 'job-log-cached':\n"
+        "    raise SystemExit(1)  # the gateway cache probe: a miss, no call\n"
         "if '--dispatch-receipt' in args:\n"
         "    marker = Path(args[args.index('--dispatch-receipt') + 1])\n"
         f"    marker.write_text({receipt!r})\n"
@@ -205,7 +207,12 @@ def test_job_log_through_canonical_runtime_bus_reads_the_failure_once(lane):
 def test_log_defaults_use_the_existing_cap_and_honor_explicit_windows(
     lane, extra, option, size
 ):
-    lane[1].write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n")
+    lane[1].write_text(
+        "import json, sys\n"
+        "if sys.argv[2] == 'job-log-cached':\n"
+        "    raise SystemExit(1)\n"
+        "print(json.dumps(sys.argv[1:]))\n"
+    )
     result = invoke(lane, *extra)
     assert result.code == 0
     args = json.loads(result.stdout)
