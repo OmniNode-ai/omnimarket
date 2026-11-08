@@ -93,6 +93,13 @@ class ModelLabFillDispatchItem(BaseModel):
     fallback: ModelLabFillFallback | None = None
     machinery_key: str | None = None
     priority_class: str | None = None
+    # Set only when the candidate carried them: open-count gated work, the landing controller's
+    # cause for a parked or escalated PR, and the evidence a source or fix named (OMN-20780).
+    gated: bool | None = None
+    cause: str | None = None
+    escalated: bool | None = None
+    evidence: str | None = None
+    fix_evidence: str | None = None
 
 
 class ModelLabFillSkipEntry(BaseModel):
@@ -104,6 +111,7 @@ class ModelLabFillSkipEntry(BaseModel):
     kind: object | None = None
     reason: str
     host: str | None = None
+    n: int | None = None
 
 
 class ModelLabFillDispatchPlanRequest(BaseModel):
