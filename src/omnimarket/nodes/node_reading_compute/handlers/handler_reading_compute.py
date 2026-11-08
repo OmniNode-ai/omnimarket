@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # stamp_text and reason_token are owned by omnimarket.handlers.reading_text; the other nodes that still
 # import them from here keep working through this explicit re-export.
