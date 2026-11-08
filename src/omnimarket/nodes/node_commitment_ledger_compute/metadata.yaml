@@ -1,0 +1,23 @@
+name: node_commitment_ledger_compute
+version: "0.1.0"
+description: "Commitment ledger: an operator ask as a ledger row with its owner and runnable check, and the fold of those rows"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_commitment_ledger_compute: "omnimarket.nodes.node_commitment_ledger_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "commitments", "ledger", "pure"]
+pack: "routing"
+display_name: "Commitment Ledger Compute"
+node_role: "compute"

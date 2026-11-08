@@ -55,6 +55,8 @@ class ModelWorkItem(BaseModel):
     # A lane item only: every alias its CLAIM cells name (`ticket:OMN-1`, `cause:stoppage:x`, `pr:repo#1`, a key), so a
     # reader that draws its own rows (the floor) attributes the lane to a row from the CLAIM and not from a typed owner.
     attributes: tuple[str, ...] = ()
+    # Who owes the item, where the source names one (a commitment's owner).
+    owner: str | None = None
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]

@@ -3,7 +3,7 @@
 """Read the sources, run the projection, write it where the floor and the fill dispatcher read it.
 
 The sources are the ledger (through the reading writer's ledger row port), the PR watcher state, every plan file the
-contract's plan globs match under the plans root, the newest Linear snapshot, the lane receipts and the reading rows. The
+contract's plan globs match under the plans root, the newest Linear snapshot, the lane receipts, the reading rows and the operator asks recorded as ledger commitments. The
 floor record and the floor page's data file are never read. Every path is the contract's `runtime:` block, relative to the
 registry home; the rules are the node's overlay and the scope is the goal's own declaration (goal_scope and
 goal_scope_ticket_rule overlays). Each source is read under its own overlay budget and timeout (OMN-23014): a source over its budget serves its last
@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -25,15 +26,22 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.commitment_rows import (
+    fold_commitments,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.commitment import (
+    ModelCommitmentRules,
+)
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
     EnumWorkStateSource,
+    ModelCommitmentSource,
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
@@ -140,10 +148,9 @@ def source_readers(
             raise SourceUnreadableError(type(exc).__name__) from exc
 
     def read_plans() -> SourceRead:
-        plans_root = (
-            _env_path(env, rt["plans"]["root_env"])
-            or (home / rt["plans"]["root_fallback_relpath"]).resolve()
-        )
+        plans_root = _env_path(env, rt["plans"]["root_env"])
+        if plans_root is None:
+            raise SourceUnreadableError(f"{rt['plans']['root_env']} unset")
         if not plans_root.is_dir():
             raise SourceUnreadableError("root absent")
         tasks: list[Any] = []
@@ -218,6 +225,50 @@ def source_readers(
                 readings.append(ModelReadingSource(key=str(key), value=str(value)))
         return SourceRead(items=tuple(readings))
 
+    def read_commitments() -> SourceRead:
+        """Every operator ask recorded as a commitment, read over its own window: an ask outlives the lane rows' window."""
+        cfg = rt["commitments"]
+        if ledger is None:
+            raise SourceUnreadableError(f"{rt['ledger']['path_env']} unset")
+        try:
+            commitment_rules = load_structured_overlay(
+                cfg["overlay_id"],
+                ModelCommitmentRules,
+                env,
+                file_env=cfg["overlay_file_env"],
+            )
+        except NodeOverlayError as exc:
+            raise SourceUnreadableError(f"overlay {type(exc).__name__}") from exc
+        read = ledger.read(
+            ModelLedgerQuery(
+                since=now - timedelta(hours=float(cfg["lookback_hours"])),
+                until=now + timedelta(days=1),
+                row_type=commitment_rules.row_type,
+                term=f"{commitment_rules.kind_cell}={commitment_rules.kind_value}",
+            )
+        )
+        if read.error is not None:
+            raise SourceUnreadableError(read.error)
+        folded, malformed = fold_commitments(read.rows, commitment_rules)
+        return SourceRead(
+            items=tuple(
+                ModelCommitmentSource(
+                    commitment_id=c.commitment_id,
+                    ask=c.ask,
+                    owner=c.owner,
+                    check=c.check,
+                    status=c.status.value,
+                    opened_at=c.opened_at,
+                    ticket=c.ticket,
+                    requires=c.requires,
+                    last_checked_at=c.last_checked_at,
+                    last_exit=c.last_exit,
+                )
+                for c in folded
+            ),
+            notes=tuple(f"commitments:malformed {entry}" for entry in malformed),
+        )
+
     return (
         SourceSpec(EnumWorkStateSource.LEDGER, read_ledger, ModelLedgerEvidenceRow),
         SourceSpec(
@@ -227,6 +278,9 @@ def source_readers(
         SourceSpec(EnumWorkStateSource.LINEAR, read_linear, ModelTicketSource),
         SourceSpec(EnumWorkStateSource.RECEIPTS, read_receipts, ModelLaneReceiptSource),
         SourceSpec(EnumWorkStateSource.READINGS, read_readings, ModelReadingSource),
+        SourceSpec(
+            EnumWorkStateSource.COMMITMENTS, read_commitments, ModelCommitmentSource
+        ),
     )
 
 
@@ -284,6 +338,7 @@ def build_request(
         ledger_rows=rows(EnumWorkStateSource.LEDGER),
         receipts=rows(EnumWorkStateSource.RECEIPTS),
         readings=rows(EnumWorkStateSource.READINGS),
+        commitments=rows(EnumWorkStateSource.COMMITMENTS),
         unread=tuple(unread),
         source_status=tuple(statuses),
     )
@@ -311,9 +366,18 @@ def run(
     )
     target = out or home / rt["output"]["relpath"]
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(result.model_dump_json(indent=1), encoding="utf-8")
-    tmp.replace(target)
+    # Each publication writes its own temp file in the target's directory and replaces the target whole, so two
+    # publishers (the floor tick and the fill pass) never share a file.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=target.parent, prefix=f".{target.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(result.model_dump_json(indent=1))
+        Path(tmp_name).replace(target)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     return result
 
 

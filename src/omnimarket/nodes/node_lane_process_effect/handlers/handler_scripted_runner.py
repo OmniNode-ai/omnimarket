@@ -29,8 +29,13 @@ class HandlerScriptedRunner:
         self._runs = deque(runs)
         self.calls: list[tuple[str, ModelLaneStartSpec, float | None]] = []
 
+    def _record(
+        self, name: str, spec: ModelLaneStartSpec, timeout_seconds: float | None
+    ) -> None:
+        self.calls.append((name, spec, timeout_seconds))
+
     def start_detached(self, spec: ModelLaneStartSpec) -> ModelLaneProcessStartResult:
-        self.calls.append(("start_detached", spec, None))
+        self._record("start_detached", spec, None)
         if not self._starts:
             raise LookupError("no start result scripted")
         return self._starts.popleft()
@@ -38,7 +43,7 @@ class HandlerScriptedRunner:
     def run_bounded(
         self, spec: ModelLaneStartSpec, timeout_seconds: float
     ) -> ModelLaneProcessRunResult:
-        self.calls.append(("run_bounded", spec, timeout_seconds))
+        self._record("run_bounded", spec, timeout_seconds)
         if not self._runs:
             raise LookupError("no run result scripted")
         return self._runs.popleft()
