@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_pilot_manifest_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-22979. The pilot manifest check (rebuild plan 3.5 row 16). Given a pilot's
+  manifest it refuses a pilot that starts without a frozen bar, without the
+  bar's hash, with a hash that does not match the bar, or with a bar frozen
+  after the start. Given results read against the bar it returns accepted when
+  every criterion is met and rejected when one is not, never extended: a request
+  to extend a failed pilot is refused and recorded on the result. Every setting
+  is in the overlay (overlay.default.yaml is the in-memory profile).
+
+input_model: omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_request.ModelPilotManifestCheckRequest
+output_model: omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_result.ModelPilotManifestCheckResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check
+      handler:
+        name: HandlerPilotManifestCheck
+        module: omnimarket.nodes.node_pilot_manifest_check_compute.handlers.handler_pilot_manifest_check
+      event_model:
+        name: ModelPilotManifestCheckRequest
+        module: omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_request
+
+handler:
+  module: omnimarket.nodes.node_pilot_manifest_check_compute.handlers.handler_pilot_manifest_check
+  class: HandlerPilotManifestCheck
+  input_model: omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_request.ModelPilotManifestCheckRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.pilot-manifest-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pilot-manifest-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pilot-manifest-checked.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pilot-manifest-check-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.pilot-manifest-checked.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: a pilot starts only on a frozen bar and hash; a failed bar reads rejected"
+  author: "OmniNode Platform Team"
+  created: "2026-11-07"
+  ticket: OMN-22979
+  tags:
+    - "compute"
+    - "pilot"
+    - "manifest"
+    - "deterministic"
