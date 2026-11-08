@@ -95,7 +95,9 @@ def test_continue_on_error_has_advisory_job_annotation() -> None:
 
 def test_job_is_not_a_ci_summary_expected_context() -> None:
     text = CI_SUMMARY.read_text(encoding="utf-8")
+    rules = CI_SUMMARY.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
     assert "contract-walker" not in text
+    assert "contract-walker" not in rules
 
 
 def test_job_is_ci_summary_exempt_and_not_an_expected_context() -> None:

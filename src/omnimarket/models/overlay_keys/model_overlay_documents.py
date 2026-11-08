@@ -103,6 +103,9 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
+    # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
+    ilo_address: NonEmptyStr | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
@@ -235,9 +238,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
-    # Registry roots tried in order on a probed host. A table file may carry them: the overlay store's
-    # snapshot of the ``lab_hosts`` overlay is a table file with this field.
-    registry_root_candidates: tuple[RegistryRoot, ...] = ()
+    # The overlay store projects the whole lab_hosts overlay into the file ONEX_LAB_RUN_HOSTS names, so a table file may hold
+    # the registry roots too; the placement reads only the hosts from it, the roots key is read from the overlay (OMN-23036).
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":

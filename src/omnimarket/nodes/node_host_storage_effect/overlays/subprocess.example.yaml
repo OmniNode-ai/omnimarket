@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Real profile: argv lists run as subprocesses, behind a host's transport prefix. Synthetic values;
+# the deployment's overlay lives at <root>/node_host_storage_effect/overlay.yaml under a root named
+# in ONEX_SKILL_OVERLAY_ROOTS. A host name matches its row in the lab host table.
+backend: subprocess
+free_bytes_argv: [df, "--output=avail", "-B1", "{path}"]
+free_bytes_timeout_seconds: 30
+commands:
+  - name: prune_example
+    argv: [/example/bin/prune-example, --apply]
+    measured_path: /example/work
+    timeout_seconds: 900
+hosts:
+  - name: example-local-host
+    transport_prefix: []
+    commands: [prune_example]
+  - name: example-remote-host
+    transport_prefix: [ssh, -o, BatchMode=yes, example-remote-host]
+    commands: [prune_example]
