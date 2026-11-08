@@ -87,6 +87,7 @@ join_j1:
   emission:
     home_env: EXAMPLE_FLOOR_HOME
     journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  control_node: node_join_j1_control_absent
   injected_fault: Remove a required node's package from the repository the graph reads
 # The J2 join (piece 2 to piece 3): a canary on each pooled host publishes one command, placement
 # consumes the host's advertisement and one correlated result returns on the bus.
