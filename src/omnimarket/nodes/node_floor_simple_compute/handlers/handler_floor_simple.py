@@ -205,12 +205,13 @@ class HandlerFloorSimple:
         ov = request.overlay
         now = request.now
         lab = request.lab.verdicts if request.lab is not None else ()
+        scope = set(ov.readiness.in_scope_pieces)
         rows = self._piece_rows(request, lab)
         candidates = self._candidates(request, lab, rows)
         causes = self._causes(candidates, request)
         by_id = {c.id: c for c in causes}
         pieces = self._integrate(
-            request, tuple(self._row_draw(r, by_id) for r in rows), by_id
+            request, tuple(self._row_draw(r, by_id, scope) for r in rows), by_id
         )
         readiness = self._readiness(request, pieces)
         lines = tuple(self._lab_line(v, by_id) for v in lab)
@@ -885,9 +886,13 @@ class HandlerFloorSimple:
                 (),
             )
         lab_piece = r.overlay.rebuild.lab_state_piece
+        scope = set(r.overlay.readiness.in_scope_pieces)
         for row in rows:
+            # A piece outside the readiness scope opens no cause of its own (OMN-23119): its stale or failing reading is
+            # a fact about work the goal does not count, never a red row nobody owns.
             if (
-                row.status in ("not_working", "unknown")
+                row.piece in scope
+                and row.status in ("not_working", "unknown")
                 and not row.cause_id
                 and not (row.piece == lab_piece and lab_causes)
             ):
@@ -1026,10 +1031,14 @@ class HandlerFloorSimple:
 
     @staticmethod
     def _row_draw(
-        row: ModelFloorPieceRow, by_id: dict[str, ModelFloorCause]
+        row: ModelFloorPieceRow,
+        by_id: dict[str, ModelFloorCause],
+        scope: set[int],
     ) -> ModelFloorPieceRow:
         if row.status in ("not_started", "started", "working"):
             return row
+        if row.piece not in scope:
+            return row.model_copy(update={"draw": "grey"})
         cid = row.cause_id or f"piece:{row.piece}"
         if cid not in by_id:
             # The lab-state piece: its cause is its first failing lab source.

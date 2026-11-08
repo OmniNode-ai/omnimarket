@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -165,7 +166,9 @@ class HandlerReadingWriter:
         revision: str | None = None,
         landing: ProtocolLandingSource | None = None,
         two_backend_source: ProtocolEffectBackendReportSource | None = None,
+        pause: Callable[[float], None] = time.sleep,
     ) -> None:
+        self._pause = pause
         self._landing = landing
         self._two_backend_source = two_backend_source
         self._overlay = overlay
@@ -201,6 +204,8 @@ class HandlerReadingWriter:
             )
             for piece in wanted
         )
+        if command.write:
+            outcomes = self._retry_failed(outcomes, start, end, cutoff, now)
         return ModelReadingWindowResult(
             correlation_id=command.correlation_id,
             status="completed",
@@ -209,6 +214,37 @@ class HandlerReadingWriter:
             cutoff=cutoff,
             pieces=outcomes,
         )
+
+    def _retry_failed(
+        self,
+        outcomes: tuple[ModelReadingPieceOutcome, ...],
+        start: datetime,
+        end: datetime,
+        cutoff: datetime,
+        now: datetime,
+    ) -> tuple[ModelReadingPieceOutcome, ...]:
+        """Write again each piece whose append failed, for the passes the overlay declares (OMN-23119).
+
+        An hourly tick that drops one piece leaves its reading older than the bound at the next tick, so a failed append is
+        retried in the same run. The window, the clock and so the row key and content are the same, so a row that did land
+        before its reply timed out reads back as already written, and a failing piece keeps its append-failed outcome.
+        """
+        retry = self._overlay.append_retry
+        if retry is None:
+            return outcomes
+        current = list(outcomes)
+        for _ in range(retry.passes):
+            failed = [
+                i for i, o in enumerate(current) if o.ledger.startswith("append-failed")
+            ]
+            if not failed:
+                break
+            self._pause(retry.pause_seconds)
+            for i in failed:
+                current[i] = self._piece(
+                    self._overlay.spec(current[i].piece), start, end, cutoff, now, True
+                )
+        return tuple(current)
 
     @staticmethod
     def _failed(

@@ -100,6 +100,17 @@ class ModelReadingScheduleHost(BaseModel):
     venv: str = Field(min_length=1)
 
 
+class ModelReadingAppendRetry(BaseModel):
+    """Passes that write again a piece whose append failed, inside the same run and window (OMN-23119)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Passes after the first; 0 writes each piece once.
+    passes: int = Field(ge=0)
+    #: Seconds before each pass, so a bus that timed out has time to answer.
+    pause_seconds: int = Field(ge=0)
+
+
 class ModelTwoBackendReading(BaseModel):
     """The piece whose row carries the count of effects not yet on both backends (OMN-22911)."""
 
@@ -126,6 +137,8 @@ class ModelReadingOverlay(BaseModel):
     #: Required when a piece carries landing requirements.
     landing_route: ModelLandingRoute | None = None
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
+    #: A piece whose append failed is written again by up to ``passes`` passes; absent, each piece is written once.
+    append_retry: ModelReadingAppendRetry | None = None
     #: Environment the installed unit carries (the routes' commands and their roots).
     unit_environment: dict[str, str] = Field(default_factory=dict)
     #: The piece whose row also carries the two-backend count; absent, no row does.
