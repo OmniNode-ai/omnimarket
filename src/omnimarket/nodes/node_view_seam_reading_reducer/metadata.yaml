@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_view_seam_reading_reducer
+version: 1.0.0
+description: Fold the seam family's events and project the readings into the view_seam_readings exposure.
+pack: operator_tooling
+node_role: reducer
+display_name: View Seam Reading Reducer
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_view_seam_reading_reducer: omnimarket.nodes.node_view_seam_reading_reducer
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- reducer
+- seam-read
+- view-seams

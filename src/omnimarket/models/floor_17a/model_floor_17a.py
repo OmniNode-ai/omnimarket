@@ -77,6 +77,35 @@ class ModelPieceDef(_Frozen):
     name: str = Field(min_length=1)
     reading_max_age_s: int = Field(gt=0)
     first_reading: str = ""
+    # One plain sentence of what the piece is, for the main page's side panel; empty when the overlay declares none.
+    what: str = ""
+
+
+class ModelPieceChains(_Frozen):
+    """The chains of one piece that a join judges, as the node that runs the piece declares them.
+
+    A node can emit chains that belong to its piece but are not the pipeline a join reads: the floor cycle node also
+    emits one chain per lab source row it reads. A row that reads a bad value ends in an error chain, which gives its
+    piece an error receipt, and no downstream piece can answer it with a typed upstream refusal. A join therefore reads
+    only the chains of ``nodes``; every other chain of the piece still counts toward the piece's own receipt.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelJoinEnd(_Frozen):
+    """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
+
+    A join normally ends at its ``to_piece``: when the from piece fails, the to piece must answer with a typed refusal under
+    the same correlation id. Where no node of the to piece can give that refusal, the join is respecified to end at the last
+    node that does emit a typed outcome: ``node``, a node of the from piece. The join is then judged on that node's chain
+    alone: it must end in a success or a typed failure within the chain deadline. A typed failure is the end of the join, not
+    a break, and no answer from the to piece is demanded.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    node: str = Field(min_length=1)
 
 
 class ModelFloorReceiptInput(_Frozen):
@@ -90,6 +119,10 @@ class ModelFloorReceiptInput(_Frozen):
     # The pieces a join may end at and still be judged: admitted pieces and pieces that have emitted. A join into a piece
     # that does not exist yet cannot be broken, so it is not judged. ``None`` judges every join.
     judged_to_pieces: tuple[int, ...] | None = None
+    # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
+    declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -407,6 +440,15 @@ class ModelFloorPieceRow(_Frozen):
     freshness: Literal["fresh", "stale", "none"]
     cause_id: str | None = None
     joins: tuple[ModelFloorJoinRow, ...] = ()
+    # The side panel's cells. ``what`` is the overlay's sentence, ``reason`` the reading's own one line without the event
+    # ages, ``next_text`` the step the piece's state calls for. The counts are the golden and error chains that ended
+    # inside ``window_s``; ``None`` when the events could not be read (unread is never drawn as zero).
+    what: str = ""
+    reason: str = ""
+    next_text: str = ""
+    window_s: int = Field(default=86400, gt=0)
+    golden_in_window: int | None = None
+    error_in_window: int | None = None
 
 
 class ModelFloorLabLine(_Frozen):
@@ -556,6 +598,8 @@ class ModelRebuildOverlay(_Frozen):
     lab_state_piece: int = Field(ge=1, le=18)
     # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
     piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)
+    # How far back the golden and error events of each piece are counted for the main page's side panel (OMN-22478).
+    event_window_s: int = Field(default=86400, gt=0)
 
 
 class ModelNumbersOverlay(_Frozen):

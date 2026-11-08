@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Table Copies Drift Compute (OMN-22809, OMN-22478)
+#
+# Reads every declared copy of the lab host table (the paths are the overlay's, with no default)
+# and names each field that differs for a host with its value in each copy, then appends one
+# reading row. It writes reading rows and nothing else: a reading is never a gate, a stop or an
+# admission.
+name: node_host_table_copies_drift_compute
+contract_name: node_host_table_copies_drift_compute
+node_name: node_host_table_copies_drift_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The drift read of the copies of the lab host table. Copies that agree on every field of every
+  host read WORKING; a field that differs for a host reads NOT WORKING and is named with the host
+  and its value in each copy; a host missing from some copies is a difference of its own; a copy
+  that cannot be read reads UNKNOWN. Without its overlay the run is refused.
+
+handler:
+  module: omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift
+  class: HandlerHostTableCopiesDrift
+  input_model: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift.ModelHostTableDriftCommand
+
+# HandlerHostTableCopiesDrift takes the overlay, host, copy source, appender and clock as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelHostTableDriftCommand
+  module: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelHostTableDriftResult
+  module: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift
+  description: The verdict, each differing field per host with its value per copy, and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.host-table-copies-drift-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  host_table_copies_drift_requested: onex.cmd.omnimarket.host-table-copies-drift-requested.v1
+  host_table_copies_drift_written: onex.evt.omnimarket.host-table-copies-drift-written.v1
+  host_table_copies_drift_failed: onex.evt.omnimarket.host-table-copies-drift-failed.v1
+  host_table_copies_drift_run_completed: onex.evt.omnimarket.host-table-copies-drift-run-completed.v1
+  host_table_copies_drift_run_failed: onex.evt.omnimarket.host-table-copies-drift-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-table-copies-drift-written.v1
+  - onex.evt.omnimarket.host-table-copies-drift-failed.v1
+  - onex.evt.omnimarket.host-table-copies-drift-run-completed.v1
+  - onex.evt.omnimarket.host-table-copies-drift-run-failed.v1

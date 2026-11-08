@@ -33,8 +33,8 @@ from omnimarket.nodes.node_host_bringup_orchestrator.models import ModelPlanTarg
 
 _CONTRACT = Path(__file__).resolve().parent / "contract.yaml"
 
-_EXPECTED_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 9, "G": 7}
-_EXPECTED_TOTAL = 57
+_EXPECTED_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 9, "G": 8}
+_EXPECTED_TOTAL = 58
 _TOP_TARGETS = ("up", "storage-up")
 
 _GRAPH_HEADING = re.compile(r"^## 5\.\s")
@@ -100,6 +100,7 @@ _CLASSIFICATION: dict[str, tuple[EnumBringupCheckKind, EnumBringupAction]] = {
     "nvme-fitted": (C.HOST_STATE, A.PERSON_STEP),
     "data-volume": (C.HOST_STATE, A.PREPARE_VOLUME),
     "data-moved": (C.HOST_STATE, A.MOVE_DATA_ROOTS),
+    "run-volume-on-drive": (C.UNIT_STATUS, A.HOST_UNIT_INSTALL),
     "storage-verified": (C.MEASUREMENT_CURRENT, A.RERUN_TARGETS),
     "cap-raised": (C.MEASUREMENT_CURRENT, A.DATA_PR),
     "ci-capacity": (C.FLEET_HEALTHY, A.DEPLOY_RUNNERS),
@@ -203,8 +204,8 @@ _HEADER = """\
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Host Bring-up Orchestrator target graph (OMN-21883)
 #
-# The 57 declared bring-up targets of the host bring-up dependency graph plan,
-# stages A to G (4, 7, 15, 8, 7, 9 and 7). Each row holds its stage, its needs, a
+# The 58 declared bring-up targets of the host bring-up dependency graph plan,
+# stages A to G (4, 7, 15, 8, 7, 9 and 8). Each row holds its stage, its needs, a
 # read-only already-satisfied check, a falsifier and an enum action, and loads
 # through load_bringup_graph in node_host_bringup_plan_compute; a row missing any
 # of them fails the load. The rows hold shape and no value: a check subject is
@@ -223,7 +224,7 @@ contract_version:
   patch: 0
 node_version: "0.1.0"
 lifecycle: experimental
-description: "The declared host bring-up target graph: 57 targets, each with a check, a falsifier and an enum action."
+description: "The declared host bring-up target graph: 58 targets, each with a check, a falsifier and an enum action."
 input_model:
   name: "ModelHostBringupPlanRequest"
   module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
@@ -239,7 +240,7 @@ descriptor:
   timeout_ms: 5000
 dod_evidence:
   PYTEST:
-    description: "the 57 rows load, count 4, 7, 15, 8, 7, 9 and 7 per stage, and a planted row without a falsifier is refused"
+    description: "the 58 rows load, count 4, 7, 15, 8, 7, 9 and 8 per stage, and a planted row without a falsifier is refused"
     command: "uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q"
     pass_criteria: "every test passes"
 targets:
