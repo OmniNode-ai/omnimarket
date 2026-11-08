@@ -339,7 +339,9 @@ def _make_owned_directories_writable(path: Path, uid: int) -> None:
         try:
             # Open the directory itself (never a symlink) and change the inode that was checked.
             # O_PATH exists on Linux only (this path also uses /proc); mypy on macOS lacks it.
-            flags = os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC  # type: ignore[attr-defined,unused-ignore]
+            flags = (
+                getattr(os, "O_PATH", 0) | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            )
             descriptor = os.open(directory, flags)
             try:
                 info = os.fstat(descriptor)
