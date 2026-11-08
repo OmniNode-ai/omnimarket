@@ -45,6 +45,9 @@ from omnimarket.nodes.node_overlay_drift_effect.handlers.schedule import (
     DriftScheduler,
     load_schedule,
 )
+from omnimarket.nodes.node_overlay_drift_effect.handlers.upstream_chain import (
+    newest_unanswered_upstream_cid,
+)
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
     ModelOverlayDriftCommand,
 )
@@ -59,6 +62,7 @@ from omnimarket.nodes.node_overlay_drift_effect.protocols import (
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
+    build_row_source,
 )
 
 
@@ -118,13 +122,27 @@ def build_handler(
     return handler, host
 
 
+def _upstream_cid(overlay: ModelOverlayDriftOverlay) -> str | None:
+    """The upstream chain this run answers (join J3), or ``None`` when the overlay names no upstream or the ledger cannot say."""
+    if overlay.upstream is None:
+        return None
+    return newest_unanswered_upstream_cid(
+        build_row_source(overlay.upstream.ledger_read, os.environ),
+        overlay.upstream,
+        overlay.publish.lane,
+        datetime.now(UTC),
+    )
+
+
 def _run(write: bool) -> int:
     overlay = load_overlay()
     handler, host = build_handler(overlay, os.environ, write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
         ModelOverlayDriftCommand(
-            correlation_id=f"overlay-drift-{host}-{now}", write=write
+            correlation_id=f"overlay-drift-{host}-{now}",
+            write=write,
+            upstream_cid=_upstream_cid(overlay),
         )
     )
     if result.status == "failed":

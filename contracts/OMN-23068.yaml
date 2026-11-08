@@ -39,8 +39,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_refusal_step.py -q --no-cov
   - check_type: command
-    check_value: "grep -q 'module: omnimarket.nodes.node_join_refusal_effect' src/omnimarket/nodes/node_factory_floor_publish_effect/contract.yaml"
+    check_value: "grep -q 'module: omnimarket.nodes.node_join_refusal_effect' src/omnimarket/nodes/node_factory_floor_publish_effect/contract.yaml && uv run pytest tests/nodes/node_factory_floor_publish_effect/test_join_refusal_step.py -q --no-cov"
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_refusal_step.py -q --no-cov
 - id: dod-omn23068-integration-proof
   description: The focused tests run on a lab host at the pushed head, and the lab run is recorded in the pull request.
   source: manual
