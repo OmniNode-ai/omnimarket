@@ -99,6 +99,14 @@ class HandlerPlacementShareAlarm:
         placed = sum(r.placed for r in window)
         lost = max(dispatched - placed, sum(reasons.values()))
         runs = ",".join(keys)
+        named = sorted(
+            {(r.lane, r.status) for r in request.refusals if r.run_key in keys}
+        )
+        lane_reasons = ",".join(
+            f"{lane}:{status}" for lane, status in named[: request.lanes_named]
+        )
+        if len(named) > request.lanes_named:
+            lane_reasons += f",+{len(named) - request.lanes_named}-more"
         detail = (
             f"lab-fill placed {placed} of {dispatched} dispatched lanes over runs {runs}; "
             f"refusal reason {reason}"
@@ -107,6 +115,7 @@ class HandlerPlacementShareAlarm:
             f"FRICTION | lane={LANE} | ticket={TICKET} | actor=launchd:{LANE} | "
             f"class={'-'.join(kinds)} | reason={_cell(reason)} | runs={runs} | "
             f"dispatched={dispatched} | placed={placed} | "
+            f"{f'lane-reasons={lane_reasons} | ' if named else ''}"
             f"cost=est ~{lost * FILL_INTERVAL_MINUTES} lane-minutes "
             f"(unplaced lanes x the {FILL_INTERVAL_MINUTES}m fill interval) | {detail}"
         )

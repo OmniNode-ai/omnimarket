@@ -5,7 +5,7 @@ fixed clock and snapshots of the pull request watcher. Every number is synthetic
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from omnimarket.models.model_reading import (
@@ -87,9 +87,11 @@ def snapshot(
     waiting: tuple[ModelLandingHead, ...] = (),
     merges: int = 0,
     age_seconds: int = 60,
+    newest_at: datetime | None = None,
 ) -> ModelLandingSnapshot:
+    extra: dict[str, Any] = {} if newest_at is None else {"newest_at": newest_at}
     return ModelLandingSnapshot(
-        age_seconds=age_seconds, heads=waiting, merges_in_window=merges
+        age_seconds=age_seconds, heads=waiting, merges_in_window=merges, **extra
     )
 
 
