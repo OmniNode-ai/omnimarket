@@ -42,6 +42,10 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.models.model_local_install_delegation_summary import (
+    DELEGATION_SUMMARY_VIEW_STEPS,
+    create_delegation_summary_view,
+)
 from omnimarket.models.model_local_install_schema import (
     _LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL,
     _LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED,
@@ -559,20 +563,9 @@ _USAGE_BY_MODEL_DAY_TIER_KEY_SQL = (
 # OMN-20709: the SQLite counterpart of node_projection_delegation migration
 # 0050's projection_delegation_summary view. It lives with the node that owns
 # delegation_events and the Postgres view; the file explains the differences.
-_DELEGATION_SUMMARY_VIEW_STEP = "omn20709_delegation_summary_view"
 _DELEGATION_SUMMARY_VIEW_SQL = (
     "omnimarket.nodes.node_projection_delegation",
     "sqlite/delegation_summary_view.sql",
-)
-# OMN-23169: the counterpart of migration 0068, which leaves experiment rows out of
-# the summary. Its own step after the OMN-20709 one: a store that has recorded that
-# step would never run it again.
-_DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP = (
-    "omn23169_delegation_summary_excludes_experiment"
-)
-_DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_SQL = (
-    "omnimarket.nodes.node_projection_delegation",
-    "sqlite/delegation_summary_view_v2.sql",
 )
 # OMN-20754: the counterparts of migration 0055's model-routing view and 0045's
 # quality-gate view, the relations the Overview's Run locally, Tier mix and
@@ -901,24 +894,15 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "keyed usage-by-model-day on the tier with each row's share",
                 )
             )
-        if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
-            pending.append(
-                (
-                    _DELEGATION_SUMMARY_VIEW_STEP,
-                    cls._create_delegation_summary_view,
-                    "created the delegation summary view",
+        for step, resource in DELEGATION_SUMMARY_VIEW_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                pending.append(
+                    (
+                        step,
+                        partial(create_delegation_summary_view, resource=resource),
+                        "created the delegation summary view",
+                    )
                 )
-            )
-        if not cls._store_step_recorded(
-            conn, _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP
-        ):
-            pending.append(
-                (
-                    _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_STEP,
-                    cls._replace_delegation_summary_view,
-                    "left experiment runs out of the delegation summary view",
-                )
-            )
         if not cls._store_step_recorded(conn, _DELEGATION_ROUTING_QUALITY_VIEWS_STEP):
             pending.append(
                 (
@@ -1122,30 +1106,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                 conn.execute(
                     f"ALTER TABLE metering_summary ADD COLUMN {column} {declaration}"
                 )
-
-    @staticmethod
-    def _create_delegation_summary_view(conn: sqlite3.Connection) -> None:
-        """OMN-20709: give the store the summary relation the exposure reads.
-
-        Dropped first so a store that somehow holds an older definition takes
-        this one; a later revision is a new step, never an edit to this one.
-        """
-        package, resource = _DELEGATION_SUMMARY_VIEW_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
-        conn.execute(ddl)
-
-    @staticmethod
-    def _replace_delegation_summary_view(conn: sqlite3.Connection) -> None:
-        """OMN-23169: the summary view that leaves experiment runs out.
-
-        Runs after the OMN-20709 step, which created the first definition; this
-        one drops it and creates the revision. A later revision is a new step.
-        """
-        package, resource = _DELEGATION_SUMMARY_EXCLUDES_EXPERIMENT_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
-        conn.execute(ddl)
 
     @staticmethod
     def _create_delegation_routing_quality_views(conn: sqlite3.Connection) -> None:

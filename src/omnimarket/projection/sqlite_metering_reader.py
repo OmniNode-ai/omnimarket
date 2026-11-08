@@ -165,12 +165,7 @@ def read_metering_records(
     resolved = db_path if db_path is not None else default_metering_db_path()
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
-        # sqlite3.Row: `in row` tests values, so the column names are keys().
-        source = (
-            row[_DATA_SOURCE_COLUMN]
-            if _DATA_SOURCE_COLUMN in row.keys()  # noqa: SIM118
-            else None
-        )
+        source = dict(row).get(_DATA_SOURCE_COLUMN)
         if source == _EXPERIMENT or (source == _FIXTURE and not include_fixtures):
             continue
         record = _to_record(row)
