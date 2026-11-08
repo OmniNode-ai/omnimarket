@@ -31,6 +31,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
+    ModelFactoryFloorPublishResult,
     ModelOperatorAccessRequest,
     ModelPublishTarget,
     ModelReportsPublishRequest,
@@ -105,7 +106,9 @@ def _home(tmp_path: Path) -> Path:
     return home
 
 
-def _publish(tmp_path: Path, ssh: TwoHosts, *, local: bool = True):  # type: ignore[no-untyped-def]
+def _publish(
+    tmp_path: Path, ssh: TwoHosts, *, local: bool = True
+) -> ModelFactoryFloorPublishResult:
     request = ModelFactoryFloorPublishRequest(
         home=str(_home(tmp_path)),
         overlay=_overlay(tmp_path, local=local),
@@ -237,7 +240,9 @@ def test_operator_access_one_host_down_gates_the_other(tmp_path: Path) -> None:
     )
 
     class Gate(TwoHosts):
-        def __call__(self, argv, stdin, timeout):  # type: ignore[no-untyped-def]
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
             if argv[0] == "tailscale":
                 return subprocess.CompletedProcess(
                     list(argv), 0, json.dumps(STATUS).encode(), b""
