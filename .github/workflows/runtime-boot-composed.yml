@@ -132,7 +132,21 @@ jobs:
       - name: Build the infra runtime image at the pinned ref
         run: |
           set -euo pipefail
-          make -C infra up-local LOCAL_ENV_FILE="$LOCAL_ENV_FILE" LOCAL_OVERLAY_FILE="$LOCAL_OVERLAY_FILE"
+          # uv downloads its managed interpreter from github.com on first use; a timed-out or
+          # reset download failed this step on unrelated pull requests. Retry only that
+          # failure; any other failure fails the step at once.
+          log="$RUNNER_TEMP/up-local.log"
+          for attempt in 1 2 3; do
+            if make -C infra up-local LOCAL_ENV_FILE="$LOCAL_ENV_FILE" LOCAL_OVERLAY_FILE="$LOCAL_OVERLAY_FILE" 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            if ! grep -q "error: Failed to download" "$log"; then
+              exit 1
+            fi
+            echo "::warning::uv interpreter download failed (attempt $attempt of 3)"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Build the composed omnimarket runtime image
         run: |
