@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -28,6 +29,7 @@ from omnimarket.nodes.node_validator_estate_reading_effect.handlers.handler_vali
 )
 from omnimarket.nodes.node_validator_estate_reading_effect.models.model_validator_estate import (
     ModelValidatorEstateCommand,
+    ModelValidatorEstateResult,
 )
 from omnimarket.nodes.node_validator_estate_reading_effect.overlay import (
     ModelEstateOverlay,
@@ -205,13 +207,15 @@ def handler(
 
 
 def run(
-    source: InMemorySource, ledger: InMemoryLedger | None = None, fault: str = "none"
-):
+    source: InMemorySource,
+    ledger: InMemoryLedger | None = None,
+    fault: Literal["none", "core-unreadable"] = "none",
+) -> ModelValidatorEstateResult:
     return handler(source, ledger).handle(
         ModelValidatorEstateCommand(
             correlation_id="c-1",
             write=ledger is not None,
-            fault=fault,  # type: ignore[arg-type]
+            fault=fault,
         )
     )
 
@@ -296,7 +300,9 @@ def test_error_core_unreadable_is_not_an_empty_estate() -> None:
     result = run(estate(), ledger, fault="core-unreadable")
     assert result.outcome == "source-unreadable"
     assert result.classes == ()
-    cells = evidence_row_from_text(ledger.lines[0]).cells  # type: ignore[union-attr]
+    row = evidence_row_from_text(ledger.lines[0])
+    assert row is not None
+    cells = row.cells
     assert cells["outcome"] == "source-unreadable"
     assert cells["drill"] == "yes"
     assert "canonical_of" not in cells
