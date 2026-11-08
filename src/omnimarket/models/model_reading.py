@@ -183,6 +183,11 @@ class ModelLandingSnapshot(BaseModel):
 
     #: How old the watcher's last tick is at the read.
     age_seconds: int = Field(ge=0)
+    #: When the newest observation behind the snapshot was made (the watcher's last tick, the
+    #: projection's newest row), when the source knows it. A stale reason names this stamp and
+    #: never the age, so the same snapshot probed again for one window is the same reading
+    #: (OMN-23077).
+    newest_at: datetime | None = None
     heads: tuple[ModelLandingHead, ...] = ()
     merges_in_window: int = Field(ge=0)
 

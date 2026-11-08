@@ -11,13 +11,16 @@ answers a fixed snapshot or error and is the default of the tests.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+
+import httpx
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
+    resolve_setting,
 )
 from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_reading import (
@@ -25,8 +28,24 @@ from omnimarket.models.model_reading import (
     ModelLandingRequirements,
     ModelLandingSnapshot,
 )
+from omnimarket.models.pr_state.model_pr_state_page_fetch import (
+    ModelPrStatePageRequest,
+)
+from omnimarket.models.pr_state.model_pr_state_projection_page import (
+    ModelPrStateProjectionRefusal,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import read_watcher
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLandingRoute
+from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source import (
+    HandlerPrStatePageSource,
+    open_projection_client,
+)
+from omnimarket.nodes.node_pr_state_read_effect.policy import (
+    load_pr_state_read_policy,
+)
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelLandingProjectionRoute,
+    ModelLandingRoute,
+)
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLandingRead
 
 
@@ -98,10 +117,133 @@ class WatcherFileLandingSource:
         return ModelLandingRead(
             snapshot=ModelLandingSnapshot(
                 age_seconds=max(int((now - watcher.last_tick).total_seconds()), 0),
+                newest_at=watcher.last_tick,
                 heads=heads,
                 merges_in_window=watcher.merges_in_window,
             )
         )
 
 
-__all__ = ["InMemoryLandingSource", "WatcherFileLandingSource"]
+PR_STATE_NODE = "node_pr_state_read_effect"
+PROJECTION_API_URL_SETTING = "projection_api_url"
+
+
+class ProjectionLandingSource:
+    """The lab backend: pull request state read from the pr_state projection through the pr_state read node.
+
+    The projection address is the ``projection_api_url`` of the ``node_pr_state_read_effect`` overlay and nothing
+    else: no environment variable shadows it and no address is written here. The page comes from the read node's
+    own page source (``GET /projection/{topic}``); no GitHub request is made.
+
+    What a projection row can and cannot say, against the watcher's state file:
+
+    * ``age_seconds`` is the age of the newest ``observed_at`` in the page: the projection's freshness. A projection
+      nothing has written to for longer than the requirement's bound reads stale, as a stopped watcher does.
+    * ``waiting_seconds`` is the age of the row's ``ci_read_at``. The row carries no time at which CI turned green, so
+      this is the age of the last CI read of a green head: a lower bound on how long it has waited.
+    * ``conflicted`` is never set: the row carries no merge state.
+    * A page the projection reports ``truncated`` is read as it is: rows come newest first, so the merges of the
+      window are in it, and a head older than the page is not.
+
+    Every read that cannot be completed is an error, never an empty queue.
+    """
+
+    def __init__(
+        self,
+        route: ModelLandingProjectionRoute,
+        environ: Mapping[str, str],
+        *,
+        client_factory: Callable[[str], httpx.Client] = open_projection_client,
+    ) -> None:
+        self._route = route
+        self._environ = environ
+        self._client_factory = client_factory
+
+    def read(
+        self, requirements: ModelLandingRequirements, now: datetime
+    ) -> ModelLandingRead:
+        try:
+            url = resolve_setting(
+                PR_STATE_NODE,
+                PROJECTION_API_URL_SETTING,
+                fields=frozenset({PROJECTION_API_URL_SETTING}),
+                environ=self._environ,
+            )
+            scope = load_structured_overlay(
+                self._route.goal_scope_overlay_id,
+                ModelGoalScope,
+                self._environ,
+                file_env=self._route.goal_scope_file_env,
+            )
+        except NodeOverlayError as exc:
+            return ModelLandingRead(
+                error=f"the projection address or goal scope is not read ({type(exc).__name__})"
+            )
+        client = self._client_factory(url)
+        try:
+            fetched = (
+                HandlerPrStatePageSource(client)
+                .handle(
+                    ModelPrStatePageRequest(
+                        topic=load_pr_state_read_policy().projection_topic
+                    )
+                )
+                .result
+            )
+        finally:
+            client.close()
+        if isinstance(fetched, ModelPrStateProjectionRefusal):
+            return ModelLandingRead(
+                error=f"the pr_state projection is not read ({fetched.error})"
+            )
+        if not fetched.rows:
+            return ModelLandingRead(error="the pr_state projection holds no rows")
+        now = now.astimezone(UTC)
+        newest = max(row.observed_at for row in fetched.rows)
+        cutoff = now.timestamp() - requirements.merge_window_seconds
+        heads: list[ModelLandingHead] = []
+        merges = 0
+        for row in fetched.rows:
+            ref = f"{row.repo}#{row.pr_number}"
+            where = scope.classify(ref, row.title, row.head_ref)
+            if where != "in_scope":
+                continue
+            if row.state == "merged":
+                merged_at = _parse_stamp(row.merged_at)
+                if merged_at is not None and merged_at.timestamp() >= cutoff:
+                    merges += 1
+            elif (
+                row.state == "open"
+                and not row.draft
+                and row.watcher_class in self._route.queue_classes
+            ):
+                read_at = _parse_stamp(row.ci_read_at)
+                if read_at is None:
+                    continue
+                heads.append(
+                    ModelLandingHead(
+                        ref=ref,
+                        waiting_seconds=max(int((now - read_at).total_seconds()), 0),
+                    )
+                )
+        return ModelLandingRead(
+            snapshot=ModelLandingSnapshot(
+                age_seconds=max(int((now - newest).total_seconds()), 0),
+                heads=tuple(sorted(heads, key=lambda h: -h.waiting_seconds)),
+                merges_in_window=merges,
+            )
+        )
+
+
+def _parse_stamp(text: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        return None
+
+
+__all__ = [
+    "InMemoryLandingSource",
+    "ProjectionLandingSource",
+    "WatcherFileLandingSource",
+]
