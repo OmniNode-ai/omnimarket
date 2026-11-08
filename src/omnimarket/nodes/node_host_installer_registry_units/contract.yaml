@@ -130,6 +130,8 @@ units:
       ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The landing controller's state directory: the floor's running comparison reads its decisions file (OMN-23018).
+      LANDING_STATE_DIR: "{home}/.local/state/omni/landing"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
