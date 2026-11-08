@@ -15,6 +15,7 @@ dispatch) starts nothing, and a key a live lane of its own class already covers 
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -22,6 +23,7 @@ from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.nodes.node_stall_responder_compute.models import (
     ModelCauseDispatch,
     ModelCauseSkip,
+    ModelRowRefusal,
     ModelStallResponderRequest,
     ModelStallResponderResult,
 )
@@ -47,10 +49,25 @@ TICK_OWNED_CLASSES = frozenset(
 CLASS_LANE_PREFIX = {"floor": "floor-diagnose-"}
 LANE_PREFIX = "stall"
 SLUG_LIMIT = 40
+DIGEST_LENGTH = 8
+# The stamp a cause lane's name ends with (`lane_name`), in slug form (lower case).
+LANE_STAMP = re.compile(r"\d{8}t\d{4}z")
 
 
 def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:SLUG_LIMIT].strip("-")
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def _subject_part(subject: str) -> str:
+    """The subject's share of a lane stem, at most SLUG_LIMIT characters.
+
+    A subject that fits is its slug. A longer one is cut and given a digest of the whole
+    subject, so two subjects sharing their first SLUG_LIMIT characters keep distinct stems."""
+    slug = _slug(subject)
+    if len(slug) <= SLUG_LIMIT:
+        return slug
+    digest = hashlib.sha256(subject.encode()).hexdigest()[:DIGEST_LENGTH]
+    return f"{slug[: SLUG_LIMIT - DIGEST_LENGTH - 1].strip('-')}-{digest}"
 
 
 def _moment(stamp: str) -> datetime:
@@ -65,7 +82,9 @@ def split_cause(key: str) -> tuple[str, str]:
 
 def lane_stem(key: str) -> str:
     cause_class, subject = split_cause(key)
-    return "-".join(part for part in (LANE_PREFIX, cause_class, _slug(subject)) if part)
+    return "-".join(
+        part for part in (LANE_PREFIX, cause_class, _subject_part(subject)) if part
+    )
 
 
 def lane_name(key: str, stamp: str) -> str:
@@ -73,18 +92,19 @@ def lane_name(key: str, stamp: str) -> str:
 
 
 def _covering_lane(key: str, lanes: tuple[str, ...]) -> str | None:
+    """The live lane named `<stem>-<stamp>` for this key, matched whole: a lane of a longer
+    or a similarly prefixed subject does not cover it."""
     cause_class, subject = split_cause(key)
     prefix = CLASS_LANE_PREFIX.get(cause_class)
+    stems = [lane_stem(key)]
+    if prefix and subject:
+        stems.append(_slug(f"{prefix}{subject}"))
     for lane in lanes:
-        if lane.startswith(f"{lane_stem(key)}-"):
-            return lane
-        if (
-            prefix
-            and subject
-            and lane.startswith(prefix)
-            and _slug(subject) in _slug(lane)
-        ):
-            return lane
+        slug = _slug(lane)
+        for stem in stems:
+            head, _, stamp = slug.rpartition("-")
+            if head == stem and LANE_STAMP.fullmatch(stamp):
+                return lane
     return None
 
 
@@ -94,6 +114,7 @@ class HandlerStallCauseResponder:
     def handle(self, request: ModelStallResponderRequest) -> ModelStallResponderResult:
         stalls: list[tuple[str, str, str]] = []  # (stamp, ticket, key), one per finding
         stall_rows = unreadable = truncated = 0
+        refusals: list[ModelRowRefusal] = []
         for line in dict.fromkeys(
             line.strip() for line in request.rows if line.strip()
         ):
@@ -106,6 +127,13 @@ class HandlerStallCauseResponder:
             match = STALL.search(text)
             if match is None:
                 unreadable += 1
+                continue
+            try:
+                _moment(row.stamp)
+            except ValueError:
+                refusals.append(
+                    ModelRowRefusal(stamp=row.stamp, reason="invalid-calendar-date")
+                )
                 continue
             stall_rows += 1
             keys = [key.strip() for key in match.group("found").split(", ")]
@@ -146,7 +174,17 @@ class HandlerStallCauseResponder:
             if prior is None:
                 trigger = seen[0]
             else:
-                due = _moment(prior) + window
+                try:
+                    due = _moment(prior) + window
+                except ValueError:
+                    skipped.append(
+                        ModelCauseSkip(
+                            cause_key=key,
+                            reason="invalid-dispatched-stamp",
+                            occurrences=len(seen),
+                        )
+                    )
+                    continue
                 later = [item for item in seen if _moment(item[0]) >= due]
                 if not later:
                     skipped.append(
@@ -157,7 +195,9 @@ class HandlerStallCauseResponder:
                         )
                     )
                     continue
-                trigger = later[0]
+                # The newest row past the window: a replay of old rows catches up in one
+                # call instead of dispatching for one historical window per call.
+                trigger = later[-1]
             covering = _covering_lane(key, request.covered_lanes)
             if covering is not None:
                 skipped.append(
@@ -188,4 +228,5 @@ class HandlerStallCauseResponder:
             stall_rows=stall_rows,
             unreadable_rows=unreadable,
             truncated_findings=truncated,
+            refusals=tuple(refusals),
         )

@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_temp_retention_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Age out the entries directly under a pool host's declared temp directories, and hold its package stores under a
+  declared ceiling. The run directories of a host's RAM filesystem skip every dot-prefixed name, so the lanes'
+  TMPDIR and the stores a package tool puts beside the runs had no rule, and a host's `/tmp` had rules only for
+  named caches; this node applies the run directories' own rule to those entries. An entry is removed when its
+  owner is the user running the pass, no live process holds it (a working directory inside it, or its path in a
+  command line, environment or open file), nothing under it changed inside the retention window (the long window,
+  or the short one once the filesystem is past the pressure mark), and it holds no socket, pipe or other
+  filesystem. A directory is removed whole, a symlink is removed itself and never its target. A package store is
+  emptied, oldest version directory first, only past the pressure mark, over its ceiling and with no live process
+  of its tool running. Every host, path, window and ceiling is a row of the node overlay, never of this node.
+input_model:
+  name: ModelTempRetentionRequest
+  module: omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention_request
+output_model:
+  name: ModelRetentionPass
+  module: omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention
+handler:
+  name: HandlerTempRetention
+  module: omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
+entrypoint:
+  name: NodeTempRetentionEffect
+  module: omnimarket.nodes.node_temp_retention_effect.node
+execution:
+  deterministic: false
+  side_effects: true
+# The overlay this node reads (schema ModelTempRetentionOverlay): one row per host with its scheduler, interpreter,
+# age windows, temp directories (with the entry names never removed) and package store ceilings. `overlay.yaml`
+# beside this contract declares the pool hosts; `overlay.example.yaml` is a synthetic copy.
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_TEMP_RETENTION_OVERLAY
+# What an overlay may not exceed. A declared directory whose last component is not named here is refused, so an
+# overlay cannot make this node remove from anywhere else.
+retention_bounds:
+  temp_root_leaf_names: [tmp, .tmp]
+  store_leaf_names:
+    pnpm: .pnpm-store
+schedule:
+  # The node's own timer, rendered as a systemd user unit the way the consumer-group guard node renders its own:
+  # `python -m omnimarket.nodes.node_temp_retention_effect schedule <verb>`. A first pass at install, then every
+  # `interval_seconds` after the previous run began. The scan of a directory of tens of thousands of entries reads
+  # every one of them, so the start timeout is long.
+  unit_name: onex-temp-retention
+  cadence:
+    first_pass: 1s
+    interval_seconds: 300
+    accuracy: 30s
+    timeout_start_seconds: 900
+    description: a first pass at install, then every 300 s

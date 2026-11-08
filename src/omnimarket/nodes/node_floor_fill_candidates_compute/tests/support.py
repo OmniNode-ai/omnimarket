@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorFillStateEntry,
