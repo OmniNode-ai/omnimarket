@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
+ReadingVerdict = Literal["fresh", "stale", "failing", "unread"]
 SourceKind = Literal[
     "hosts",
     "runner_groups",
@@ -94,6 +95,20 @@ class ModelPieceChains(_Frozen):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelJoinEnd(_Frozen):
+    """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
+
+    A join normally ends at its ``to_piece``: when the from piece fails, the to piece must answer with a typed refusal under
+    the same correlation id. Where no node of the to piece can give that refusal, the join is respecified to end at the last
+    node that does emit a typed outcome: ``node``, a node of the from piece. The join is then judged on that node's chain
+    alone: it must end in a success or a typed failure within the chain deadline. A typed failure is the end of the join, not
+    a break, and no answer from the to piece is demanded.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    node: str = Field(min_length=1)
+
+
 class ModelFloorReceiptInput(_Frozen):
     now: datetime
     emissions: tuple[ModelNodeEmission, ...]
@@ -107,6 +122,8 @@ class ModelFloorReceiptInput(_Frozen):
     judged_to_pieces: tuple[int, ...] | None = None
     # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
     declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -357,6 +374,40 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # Where the lane runs and since when, for the details panels (OMN-23018); empty when the record names none.
+    host: str = ""
+    started_at: datetime | None = None
+
+
+class ModelFloorBay(_Frozen):
+    """One host's lane slots as the floor record's bay row gives them (the source of the slots number)."""
+
+    host: str
+    slots: int = Field(ge=0)
+    running: int = Field(ge=0)
+    stale: bool = False
+
+
+class ModelFloorPrItem(_Frozen):
+    """One pull request behind the merges number or the open pull requests number, with the facts a panel shows."""
+
+    key: str
+    repo: str
+    number: int
+    title: str = ""
+    # The watcher's class of an open pull request ("red", "pending", ...); empty for a merge.
+    cls: str = ""
+    # Why an open pull request waits, as the watcher's own reading says it; empty for a merge.
+    reason: str = ""
+    # Names of the required checks that are red now (a few), for an open pull request.
+    red_checks: tuple[str, ...] = ()
+    # When it merged (a merge) or was opened (an open pull request).
+    at: datetime | None = None
+    tickets: tuple[str, ...] = ()
+    draft: bool = False
+    armed: bool = False
+    # A merge that counts in scope only because the landing controller admitted it.
+    admitted_by_controller: bool = False
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -410,6 +461,17 @@ class ModelFloorJoinRow(_Frozen):
     error_age_s: int | None
 
 
+class ModelFloorShadowLine(_Frozen):
+    """What a piece's check would have refused, as its newest shadow row says, with the row's age."""
+
+    label: str
+    text: str
+    age_s: int
+    max_age_s: int
+    # The row is older than the age it declared: its numbers are old, and the page says so.
+    stale: bool
+
+
 class ModelFloorPieceRow(_Frozen):
     piece: int
     name: str
@@ -433,6 +495,7 @@ class ModelFloorPieceRow(_Frozen):
     window_s: int = Field(default=86400, gt=0)
     golden_in_window: int | None = None
     error_in_window: int | None = None
+    shadows: tuple[ModelFloorShadowLine, ...] = ()
 
 
 class ModelFloorLabLine(_Frozen):
@@ -447,6 +510,16 @@ class ModelFloorLabLine(_Frozen):
     cause_id: str | None = None
 
 
+class ModelFloorAlarmSend(_Frozen):
+    """One send of an open alarm: the history a details panel shows."""
+
+    channel: str
+    role: Literal["primary", "second"]
+    sent_at: datetime
+    delivery: Literal["pending", "delivered", "failed"]
+    detail: str = ""
+
+
 class ModelFloorAlarmLine(_Frozen):
     alarm_id: str
     source_id: str
@@ -454,6 +527,8 @@ class ModelFloorAlarmLine(_Frozen):
     raised_at: datetime
     delivery: Literal["pending", "delivered", "undelivered"]
     channel: str
+    sends: tuple[ModelFloorAlarmSend, ...] = ()
+    escalated: bool = False
 
 
 class ModelRebuild(_Frozen):
@@ -471,6 +546,101 @@ class ModelRedRule(_Frozen):
     red_rows: int
     red_with_work_under_way: int
     violations: tuple[str, ...] = ()
+    # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
+    # is on these by construction, so the ids are shown rather than counted.
+    unowned_red: tuple[str, ...] = ()
+
+
+class ModelHealthReadingUsed(_Frozen):
+    """One piece reading the customer health line used, with the age it was judged at (OMN-22923, piece 17b)."""
+
+    piece: int = Field(ge=1, le=18)
+    name: str
+    state: ReadingState | None
+    age_s: int | None
+    max_age_s: int | None
+    verdict: ReadingVerdict
+
+
+class ModelFloorHealthLine(_Frozen):
+    """The one customer health line: its state, its words, when it was computed and the readings behind it.
+
+    Computed by ``node_product_floor_verdict_compute`` from the piece readings of the same floor record, so a stale
+    reading turns the line NOT WORKING and is named in ``named``.
+    """
+
+    schema_id: Literal["omni.floor-health/1"] = "omni.floor-health/1"
+    state: ReadingState
+    line: str = Field(min_length=1)
+    generated_at: datetime
+    # How old this line may be before the page stops drawing it as current; from the overlay.
+    max_age_s: int = Field(gt=0)
+    readings: tuple[ModelHealthReadingUsed, ...]
+    # One entry per reading that keeps the line from WORKING, each naming the piece and why.
+    named: tuple[str, ...] = ()
+    oldest_age_s: int | None = None
+
+
+# --- the details panels (OMN-23018) ------------------------------------------------------------------------------------
+
+
+class ModelFloorDetailItem(_Frozen):
+    """One line of a details panel: a pull request, a lane, a ticket, a check, a finding.
+
+    ``count`` is how many units of the number this line stands for (a lane is 1 slot); a panel of a number holds lines
+    whose counts add up to the number. ``href`` is a link to the thing itself (a ticket, a pull request). ``at`` is the
+    time the line is about; the page draws its age.
+    """
+
+    title: str
+    sub: str = ""
+    group: str = ""
+    href: str = ""
+    at: datetime | None = None
+    count: int = 1
+    tag: str = ""
+    tone: Draw | None = None
+    # The key of another panel this line opens in place (a red row opens its own details); empty for a plain line.
+    opens: str = ""
+
+
+class ModelFloorDetailFact(_Frozen):
+    """A label and a value at the top of a panel; ``at`` is a time the page draws as an age beside the value."""
+
+    label: str
+    value: str
+    at: datetime | None = None
+
+
+class ModelFloorDetailSection(_Frozen):
+    heading: str
+    note: str = ""
+    items: tuple[ModelFloorDetailItem, ...] = ()
+    # What the page says when the section has no line, so an empty section is explained and never silent.
+    empty: str = "None."
+
+
+class ModelFloorDetail(_Frozen):
+    """What opens when a number, a row or a piece card is tapped: the reading, its sources and the lines behind it."""
+
+    key: str
+    title: str
+    # One plain line: the reading itself.
+    summary: str = ""
+    tone: Draw | None = None
+    # Label and value pairs shown at the top (state, age, size, limit).
+    facts: tuple[ModelFloorDetailFact, ...] = ()
+    # Where the reading comes from, named.
+    sources: tuple[str, ...] = ()
+    # For the panel of a number: the number itself and the sum of its lines' counts. ``None`` when the number is unread.
+    total: int | None = None
+    counted: int | None = None
+    sections: tuple[ModelFloorDetailSection, ...] = ()
+
+    @property
+    def reconciles(self) -> bool:
+        """True when the lines add up to the number (a panel that explains no number reconciles trivially)."""
+        return self.total is None or self.total == self.counted
 
 
 class ModelFloorSimple(_Frozen):
@@ -495,6 +665,11 @@ class ModelFloorSimple(_Frozen):
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
+    # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
+    health: ModelFloorHealthLine | None = None
+    # What each number, row and piece opens (OMN-23018): ``number:merges``, ``number:open_prs``, ``number:slots``,
+    # ``number:red_rows``, ``cause:<id>``, ``lab:<id>``, ``piece:<n>``. Built from the same readings as the page's rows.
+    details: dict[str, ModelFloorDetail] = Field(default_factory=dict)
 
 
 class ModelGoRule(_Frozen):
@@ -574,6 +749,41 @@ class ModelLedgerReadingRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelShadowField(_Frozen):
+    """One cell of a shadow row the floor shows, under the label it shows it by."""
+
+    cell: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+class ModelLedgerShadowRule(_Frozen):
+    """Which ledger rows are a piece's shadow results, and which cells the floor shows of the newest one.
+
+    A shadow row is a check that logs what it would refuse and holds nothing. The floor shows the newest matching row of the
+    rule under its piece, with its age against the max age the row itself declares; it never draws the piece red from one.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    label: str = Field(min_length=1)
+    row_type: str = Field(min_length=1)
+    lane: str = Field(min_length=1)
+    cells: dict[str, str] = Field(default_factory=dict)
+    published_at_cell: str = Field(min_length=1)
+    max_age_cell: str = Field(min_length=1)
+    fields: tuple[ModelShadowField, ...] = Field(min_length=1)
+    lookback_days: int = Field(gt=0)
+    # The cell that says whether the check read its input, and the value that says it did. A row whose cell holds any other value
+    # shows that value instead of its numbers: a failed run is never drawn as a fresh empty inventory. Both unset shows the numbers.
+    outcome_cell: str | None = Field(default=None, min_length=1)
+    outcome_ok: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _outcome_pair(self) -> ModelLedgerShadowRule:
+        if (self.outcome_cell is None) != (self.outcome_ok is None):
+            raise ValueError("outcome_cell and outcome_ok are declared together")
+        return self
+
+
 class ModelRebuildOverlay(_Frozen):
     go: ModelGoRule
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
@@ -607,6 +817,13 @@ class ModelCauseOverlay(_Frozen):
     still_occurring_within_s: int | None = Field(default=None, gt=0)
 
 
+class ModelFloorLinks(_Frozen):
+    """Where a ticket or a pull request named in a details panel links to; ``{ticket}``, ``{repo}`` and ``{number}`` fill in."""
+
+    ticket_url: str = "https://linear.app/omninode/issue/{ticket}"
+    pr_url: str = "https://github.com/OmniNode-ai/{repo}/pull/{number}"
+
+
 class ModelFloorSimpleOverlay(_Frozen):
     """The overlay of node_floor_simple_compute: the pieces, the joins, the numbers' goal and the cause wording."""
 
@@ -618,11 +835,14 @@ class ModelFloorSimpleOverlay(_Frozen):
     piece_events: tuple[ModelPieceEventRule, ...] = ()
     # Where the reading writer's rows are on the ledger; ``None`` reads none (the file route of the runtime alone).
     ledger_readings: ModelLedgerReadingRule | None = None
+    # Where each piece's shadow rows are on the ledger; none reads none.
+    ledger_shadows: tuple[ModelLedgerShadowRule, ...] = ()
     freshness_max_age_s: int = Field(gt=0)
     error_receipt_max_age_s: int = Field(gt=0)
     error_drill_after_s: int = Field(gt=0)
     chain_deadline_s: int = Field(gt=0)
     details_href: str = Field(min_length=1)
+    links: ModelFloorLinks = Field(default_factory=ModelFloorLinks)
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -641,6 +861,19 @@ class ModelReadingRow(_Frozen):
     max_age_s: int
     # Why the writer gave this verdict, when the row says (the rule's reason cell); empty otherwise.
     reason: str = ""
+
+
+class ModelShadowReading(_Frozen):
+    """The newest shadow row of one rule: when it was published, how long it stays fresh, and the cells the floor shows."""
+
+    piece: int
+    label: str
+    published_at: datetime
+    max_age_s: int
+    # ``(label, value)`` of each cell the rule shows, in the rule's order.
+    values: tuple[tuple[str, str], ...]
+    # The outcome cell's value when it is not the one that says the input was read; ``None`` when it was (or the rule has none).
+    failed_outcome: str | None = None
 
 
 class ModelFloorSimpleInput(_Frozen):
@@ -664,6 +897,12 @@ class ModelFloorSimpleInput(_Frozen):
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
     readings: dict[int, ModelReadingRow] | None = None
+    shadows: tuple[ModelShadowReading, ...] = ()
+    # The pull requests behind the merges number and the open pull requests number, and the bays behind the slots number
+    # (OMN-23018): each list is built in the same pass as its number, so the panel's lines add up to it.
+    merge_items: tuple[ModelFloorPrItem, ...] = ()
+    open_pr_items: tuple[ModelFloorPrItem, ...] = ()
+    bays: tuple[ModelFloorBay, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
     alarms: tuple[ModelFloorAlarmLine, ...] = ()

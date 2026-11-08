@@ -49,6 +49,11 @@ handler_routing:
       name: HandlerFleetObservationSource
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
   - operation: prepare_process_health
     handler:
       name: HandlerProcessHealthPayload
@@ -59,9 +64,24 @@ handler_routing:
     handler:
       name: HandlerOperatorAccess
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_operator_access
+  - operation: emit_seam_count
+    handler:
+      name: HandlerSeamEmitter
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_seam_emitter
+    input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+    output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The publish effect emits the sender side of the publish seams once the steps that build them land.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
 descriptor:
@@ -127,6 +147,9 @@ runtime:
   # published under its own name at the site's root, ahead of the pages, and every page head links them with a path that
   # resolves from where the page is served.
   icons_relpath: page/icons
+  # The details panel and the searchable, paged list that the first page and the Better or worse page both open (OMN-23018): one
+  # script and one style file, published beside the pages ahead of them, so a reader that gets a page finds the component it links.
+  shared_relpath: page/shared
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
@@ -201,6 +224,23 @@ runtime:
     required: false
     timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
+  - name: friction_classed
+    concurrent: true
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 90
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      ledger_path_env: ONEX_LEDGER_PATH
+      archive_subdir: archive
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
   - name: factory_floor
     kind: module
     required: true
@@ -245,6 +285,7 @@ runtime:
     status: publish-status.json
     theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
     icons: [favicon.svg, favicon-32.png, apple-touch-icon.png]
+    shared: [floor-panel.js, floor-panel.css]
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60

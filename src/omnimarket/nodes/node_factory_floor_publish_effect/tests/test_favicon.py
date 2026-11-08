@@ -143,7 +143,10 @@ HARNESS = textwrap.dedent(
     const els = {};
     const mk = id => ({id, innerHTML: "", textContent: "", href: "", className: "", hidden: false, attrs: {}, style: {}, dataset: {},
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {},
+      createElement: () => mk("created"), body: {append() {}}, querySelectorAll: () => [], activeElement: null};
+    // The shared panel (floor-panel.js) has its own tests; the page's script only configures and refreshes it.
+    globalThis.FloorPanel = {configure() {}, sync() {}, update() {}, isOpen: () => false, restoring: false};
     globalThis.window = {addEventListener() {}};
     globalThis.location = {hash: ""};
     globalThis.setInterval = () => 0;

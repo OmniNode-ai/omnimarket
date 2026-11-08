@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -167,6 +168,46 @@ class ModelCodeGraphPublish(BaseModel):
     row_path_limit: int = Field(ge=0)
 
 
+class ModelWiringAllowance(BaseModel):
+    """A module or node directory not yet wired to a root, excused until its date.
+
+    The entry excuses the added unreachable paths it names (the path itself, or everything under
+    it when it is a directory). From its ``expires`` date the entry excuses nothing and reads as a
+    finding of the check, so an allowance is a promise with a date and never a standing exemption.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    #: A repository-relative file path, or a directory path naming everything under it.
+    path: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    #: The first day the entry no longer holds.
+    expires: date
+
+    def covers(self, path: str) -> bool:
+        base = self.path.rstrip("/")
+        return path == base or path.startswith(base + "/")
+
+    def expired_on(self, today: date) -> bool:
+        return today >= self.expires
+
+
+class ModelCodeGraphShadow(BaseModel):
+    """Where the check runs in shadow: the declared public repositories, and where their pull requests are read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Repositories checked in shadow; each is one of the overlay's ``repos``.
+    repos: tuple[str, ...] = Field(min_length=1)
+    #: The variable naming the pull request watcher's state file the open pull requests come from.
+    pr_state_env: str = Field(min_length=1)
+    #: How long a shadow reading stays fresh on the floor.
+    shadow_max_age_seconds: int = Field(ge=1)
+    #: How many pull requests one run checks at most, newest first; a run past it says how many it skipped.
+    max_pull_requests: int = Field(ge=1)
+
+
 class ModelCodeGraphScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -189,6 +230,10 @@ class ModelCodeGraphOverlay(BaseModel):
     sample: ModelGraphSample
     ledger_append: ModelLedgerAppendRoute
     publish: ModelCodeGraphPublish
+    #: Not-yet-wired modules excused until their dates; none by default, and an entry past its date is a finding.
+    allowlist: tuple[ModelWiringAllowance, ...] = ()
+    #: The shadow run's repositories and sources; absent where the check is not run in shadow.
+    shadow: ModelCodeGraphShadow | None = None
     schedule_hosts: tuple[ModelCodeGraphScheduleHost, ...] = ()
     #: Environment the installed unit carries (the append command and the repository root).
     unit_environment: dict[str, str] = Field(default_factory=dict)
@@ -206,6 +251,19 @@ class ModelCodeGraphOverlay(BaseModel):
         }
         for repo in sorted(named - known):
             raise ValueError(f"the sample names an undeclared repository {repo}")
+        for allowance in self.allowlist:
+            if allowance.repo not in known:
+                raise ValueError(
+                    f"the allowlist names an undeclared repository {allowance.repo}"
+                )
+        if self.shadow is not None:
+            for repo in self.shadow.repos:
+                if repo not in known:
+                    raise ValueError(
+                        f"the shadow names an undeclared repository {repo}"
+                    )
+            if len(self.shadow.repos) != len(set(self.shadow.repos)):
+                raise ValueError("a shadow repository is declared twice")
         hosts = [host.name for host in self.schedule_hosts]
         if len(hosts) != len(set(hosts)):
             raise ValueError("a schedule host is declared twice")
@@ -214,6 +272,9 @@ class ModelCodeGraphOverlay(BaseModel):
     def host(self, name: str) -> ModelCodeGraphScheduleHost | None:
         return next((host for host in self.schedule_hosts if host.name == name), None)
 
+    def allowances(self, repo: str) -> tuple[ModelWiringAllowance, ...]:
+        return tuple(entry for entry in self.allowlist if entry.repo == repo)
+
     def overlay_hash(self) -> str:
         """Hash of what the graph's verdict depends on, so a change of rule shows in the row."""
         text = json.dumps(
@@ -221,6 +282,21 @@ class ModelCodeGraphOverlay(BaseModel):
                 "repos": [repo.model_dump(mode="json") for repo in self.repos],
                 "graph_roots": self.graph_roots.model_dump(mode="json"),
                 "sample": self.sample.content_hash(),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+
+    def check_hash(self) -> str:
+        """Hash of what the pull request check's verdict depends on: the graph rules, the allowlist and the shadow's repositories."""
+        text = json.dumps(
+            {
+                "graph": self.overlay_hash(),
+                "allowlist": [
+                    entry.model_dump(mode="json") for entry in self.allowlist
+                ],
+                "shadow": self.shadow.model_dump(mode="json") if self.shadow else None,
             },
             sort_keys=True,
             separators=(",", ":"),

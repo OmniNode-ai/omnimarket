@@ -19,6 +19,7 @@ import math
 import os
 import shlex
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -46,6 +47,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegat
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
     HandlerFleetObservationSource,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source import (
+    HandlerFrictionRollupSource,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
     HandlerProcessHealthPayload,
@@ -162,6 +166,31 @@ def write_atomic(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def _within_seconds[T](seconds: float, work: Callable[[], T], message: str) -> T:
+    """The result of ``work``, or ``TimeoutError(message)`` once ``seconds`` have passed.
+
+    The work runs in a daemon thread so a stuck read or a backtracking pattern cannot hold the publication: the caller
+    reports the step failed and goes on. The thread is left to finish on its own; it holds no lock the cycle needs.
+    """
+    outcome: list[T] = []
+    failure: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            outcome.append(work())
+        except BaseException as exc:
+            failure.append(exc)
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError(message)
+    if failure:
+        raise failure[0]
+    return outcome[0]
+
+
 def _tail(raw: bytes) -> str:
     return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
 
@@ -260,9 +289,11 @@ class HandlerFactoryFloorPublish:
         self,
         runner: Runner = run_process,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._run = runner
         self._clock = clock
+        self._wall_clock = wall_clock
         self._served: (
             tuple[
                 ModelFactoryFloorPublishRuntime,
@@ -333,6 +364,10 @@ class HandlerFactoryFloorPublish:
             (name, (NODE_DIR / rt.icons_relpath / name).read_bytes())
             for name in rt.names.icons
         ]
+        shared = [
+            (name, (NODE_DIR / rt.shared_relpath / name).read_bytes())
+            for name in rt.names.shared
+        ]
         health_payload = HandlerProcessHealthPayload().handle(
             ModelProcessHealthPayloadRequest(
                 source_path=str(home / rt.process_health_relpath)
@@ -371,6 +406,7 @@ class HandlerFactoryFloorPublish:
         files: list[tuple[str, bytes]] = [
             *theme_css,
             *icons,
+            *shared,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.simple_page, simple_page),
@@ -619,6 +655,24 @@ class HandlerFactoryFloorPublish:
                 write_atomic(home / step.output_relpath, json.dumps(reading).encode())
                 if reading["status"] != "read":
                     return failed("producer unread", str(reading["reason"]))
+                return ModelPublishStepResult(name=step.name, status="ok")
+            if step.kind == "friction_rollup":
+                if step.rollup is None or step.output_relpath is None:
+                    raise ValueError(
+                        "a friction rollup step names its settings and an output"
+                    )
+                settings = step.rollup
+                report = _within_seconds(
+                    step.timeout_seconds,
+                    lambda: HandlerFrictionRollupSource().handle(
+                        settings, now=self._wall_clock(), environ=env
+                    ),
+                    f"the friction rollup ran past its {step.timeout_seconds} s budget",
+                )
+                write_atomic(
+                    home / step.output_relpath,
+                    json.dumps(report, sort_keys=True).encode("utf-8"),
+                )
                 return ModelPublishStepResult(name=step.name, status="ok")
             if step.kind == "copy":
                 if step.source_relpath is None or step.output_relpath is None:

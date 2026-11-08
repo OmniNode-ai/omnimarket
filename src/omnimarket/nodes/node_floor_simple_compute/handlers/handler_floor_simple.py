@@ -27,12 +27,17 @@ from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorNumber,
     ModelFloorPieceRow,
+    ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
     ModelJoinReceipt,
     ModelLabSourceVerdict,
     ModelRebuild,
     ModelRedRule,
+    ModelShadowReading,
+)
+from omnimarket.nodes.node_floor_simple_compute.handlers.floor_details import (
+    build_details,
 )
 
 
@@ -81,6 +86,20 @@ def live_lanes(
                 or (cause_id and cause_id in lane.owns)
             )
         )
+    )
+
+
+def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
+    """The id of every red cause (listed or not) that declares no owner, in the document's order.
+
+    An owner is declared by the overlay's ``causes.owners`` map or by a lab source's tickets; a cause that stands for
+    its members is judged through them. A red cause with no declared owner reads ``owners: []`` on the board, so nobody
+    is shown on it however many lanes work, and no check fails: this reading names it.
+    """
+    return tuple(
+        c.id
+        for c in document.causes
+        if c.state == "red" and not c.members and not c.owners
     )
 
 
@@ -147,6 +166,7 @@ def check_red_rule(
             "red_rows": red_rows,
             "red_with_work_under_way": with_work,
             "violations": tuple(violations),
+            "unowned_red": unowned_red_causes(document),
         }
     )
 
@@ -194,9 +214,10 @@ class HandlerFloorSimple:
                 "outside_goal": request.outside_goal,
             }
         )
-        return document.model_copy(
+        document = document.model_copy(
             update={"red_rule": check_red_rule(document, request.lanes)}
         )
+        return document.model_copy(update={"details": build_details(request, document)})
 
     @staticmethod
     def _level(causes: tuple[ModelFloorCause, ...]) -> str:
@@ -365,6 +386,11 @@ class HandlerFloorSimple:
                             for j in ov.joins
                             if j.from_piece == n
                         ),
+                        "shadows": tuple(
+                            self._shadow_line(s, r.now)
+                            for s in r.shadows
+                            if s.piece == n
+                        ),
                     }
                 )
             )
@@ -399,6 +425,22 @@ class HandlerFloorSimple:
         if status == "not_working":
             return "Clear what the reading names, then it reads working again."
         return "Measured against the old way for 7 days, then kept or rolled back."
+
+    @staticmethod
+    def _shadow_line(shadow: ModelShadowReading, now: datetime) -> ModelFloorShadowLine:
+        """A shadow row as the piece's line: its cells as the rule labels them, and its age against the age it declared."""
+        age = max(0, int((now - shadow.published_at).total_seconds()))
+        return ModelFloorShadowLine(
+            label=shadow.label,
+            text=(
+                f"not read: {shadow.failed_outcome}"
+                if shadow.failed_outcome is not None
+                else ", ".join(f"{label} {value}" for label, value in shadow.values)
+            ),
+            age_s=age,
+            max_age_s=shadow.max_age_s,
+            stale=age > shadow.max_age_s,
+        )
 
     @staticmethod
     def _reading(
