@@ -26,7 +26,7 @@ from omnibase_spi.contracts.services import (
 from omnibase_spi.protocols.lane import ProtocolFactSource, ProtocolLaneProcessRunner
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorTaskPayloadVerdict,
 )

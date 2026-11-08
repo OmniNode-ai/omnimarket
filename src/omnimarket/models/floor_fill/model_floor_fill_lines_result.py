@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_floor_fill_lines_compute.models.enum_floor_fill_lines_level import (
+from omnimarket.models.floor_fill.enum_floor_fill_lines_level import (
     EnumFloorFillLinesLevel,
 )
 
