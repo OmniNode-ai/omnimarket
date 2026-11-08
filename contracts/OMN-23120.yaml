@@ -70,6 +70,9 @@ dod_evidence:
       assert set(ac1["screenshots"]) == {"ac1-1-gate.png", "ac1-2-consent.png"} and all(len(v) == 64 for v in ac1["screenshots"].values())
       READBACK
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_tailnet_https_serve_effect/test_live_readback_omn23120.py -q --no-cov
+    cwd: .
 - id: dod-omn23120-ac2-falsifier-path
   description: >-
     Reason recorded: the falsifier path tests/test_estimator_https_install.py, named for the parent's AC2 by two earlier lanes,
@@ -132,4 +135,7 @@ dod_evidence:
       assert ac3["node_verbs"]["uninstall"]["exit"] == 0 and ac3["node_verbs"]["install"]["exit"] == 0
       assert ac3["node_verbs"]["uninstall"]["output"].startswith("uninstalled ") and ac3["node_verbs"]["install"]["output"].startswith("installed ")
       READBACK
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_tailnet_https_serve_effect/test_live_readback_omn23120.py -q --no-cov
     cwd: .
