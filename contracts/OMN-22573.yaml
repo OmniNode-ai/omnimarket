@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22573
+title: The quality-gate aggregate's failure_categories is bounded so the delegation projection writer's snapshot fits the bus limit
+summary: Migration 0045 groups failure_categories on the whole free-text detail; one dev tenant reached 1,166,913 bytes, the writer quarantines every event it reads, and the consumer group sits near 19,300 behind. Migration 0065 bounds the list to 51 entries.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22573-bounded-failure-categories
+  statement: The failure_categories of projection_delegation_quality_gate holds at most 51 entries of at most 120 characters of text, and its counts still add up to the failed rows that carry a detail.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a real-Postgres test with 300 distinct failure details reads the view and gets at most 51 failure categories whose counts sum to the failed rows with a detail, and the same test fails on the view of migration 0045 -- falsifier: uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: the failure_categories of the view is under 20000 bytes for 300 distinct failure details, and after the dev roll the largest dev tenant reads under 20000 bytes too -- falsifier: the same test asserts the size and fails on the view of migration 0045; the dev read is psql length(failure_categories::text) of projection_delegation_quality_gate for tenant 820272f9-4aaf-5add-a2df-0af942852ab2'
+evidence_requirements:
+- kind: tests
+  description: The bounded failure list on a real Postgres
+  command: uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22573-bounded-list
+  description: Applies the node's migrations to a throwaway schema, inserts 300 failure families and reads the view. The test needs a Postgres (INTEGRATION_POSTGRES_PASSWORD) and fails on the view of migration 0045.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov
+    cwd: .
+- id: dod-omn22573-dev-read-after-roll
+  description: AC2 dev probe, unbound (AC2 binds dod-omn22573-bounded-list for the hosted check). After the dev roll, read the largest tenant's failure_categories length on the dev database. The check prints 1 when it is under 20000 bytes, errors with a non-zero exit when no row is, and runs only at the local Done gate, since hosted CI cannot reach the lab.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: ssh omni-201 "docker exec omnibase-infra-postgres psql -U postgres -d omnidash_analytics -At -c \"select 1/count(*) from projection_delegation_quality_gate where octet_length(failure_categories::text) < 20000 and tenant_id = '820272f9-4aaf-5add-a2df-0af942852ab2'\""
+    cwd: .
+- id: dod-omn22573-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22573 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22478_quality_gate_failure_categories_bounded_real_postgres.py -q --no-cov
+    cwd: .

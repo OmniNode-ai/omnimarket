@@ -14,10 +14,10 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr
 
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
     ModelIloHost,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
     ModelIloJournalRecord,
 )
