@@ -28,6 +28,10 @@ from unittest.mock import Mock
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.remote_lane_placement import (
+    ModelRemoteLaneHostReading,
+    ModelRemoteLanePlacementRequest,
+)
 from omnimarket.models.stop_gate import EnumStopMode, ModelStopGateFacts
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
@@ -51,10 +55,6 @@ from omnimarket.nodes.node_landing_worker_engine_compute.models import (
 )
 from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
     HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
-    ModelRemoteLaneHostReading,
-    ModelRemoteLanePlacementRequest,
 )
 from tests.nodes.node_andon_stop_reducer.stop_gate_facts import (
     CLASS,
