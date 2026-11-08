@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingTickOrchestrator
+#
+# Rebuild piece 9 (OMN-22921): the landing tick as an orchestrator beside the 300 s script.
+#
+#   handle(ModelTickRequest) -> ModelTickResult
+#
+# One tick's facts go through the node path (the decision node with the fair share), the
+# reducer node (node_pr_landing_tick_reducer) folds the decision per pull request and names each
+# one that differs from the decision the script recorded. Replay and observe modes write no
+# merge, arm or rerun; act mode is refused unless the overlay enables it. The script keeps
+# landing until the node reads true too.
+#
+# Profiles: main carries the in-memory default; the Redpanda backend is selected by the
+# overlay (backend: redpanda) and reads the script's tick records from the overlay's topic.
+name: "node_pr_landing_tick_orchestrator"
+contract_name: "node_pr_landing_tick_orchestrator"
+node_name: "node_pr_landing_tick_orchestrator"
+lifecycle: experimental
+node_type: "ORCHESTRATOR_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Landing tick orchestrator. Runs one tick's facts through the decision node and the tick
+  reducer, compares the decision per pull request with the script's recorded decision, and
+  emits one compared event (or a typed failure). Observe and replay never write.
+input_model:
+  name: "ModelTickRequest"
+  module: "omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator"
+  description: "One tick's facts and the script's recorded decision."
+output_model:
+  name: "ModelTickResult"
+  module: "omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator"
+  description: "The per-pull-request comparison, or the typed failure."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator"
+  class: "HandlerPrLandingTickOrchestrator"
+  input_model: "omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator.ModelTickRequest"
+  output_model: "omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator.ModelTickResult"
+dependencies:
+  - name: ProtocolTickDecider
+    dependency_type: protocol
+    description: "the decision node path, injected by keyword; the default is the decision node with the fair share."
+    required: false
+  - name: ProtocolTickWriter
+    dependency_type: protocol
+    description: "the only door to a merge, an arm or a rerun; never called in observe or replay mode."
+    required: false
+  - name: ProtocolTickPublisher
+    dependency_type: protocol
+    description: "publishes the compared or failed event on the contract topics."
+    required: false
+  - name: ProtocolTickSnapshotSource
+    dependency_type: protocol
+    description: "the recorded tick snapshots, in memory or from the overlay's Redpanda topic."
+    required: false
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator:HandlerPrLandingTickOrchestrator"
+  handlers:
+    - operation: "compare_landing_tick"
+      handler:
+        name: "HandlerPrLandingTickOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-landing-tick-compared.v1"
+    - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
+terminal_event: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.pr-landing-tick-compared.v1"
+  - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
+    failure: "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
+  external_trigger: "A compare command from the floor reading or a replay run; decider, writer and publisher are injected."
+descriptor:
+  node_archetype: orchestrator
+  purity: side_effecting
+  runtime_profiles:
+    - main
+  idempotent: true
+  timeout_ms: 30000
+overlay:
+  id: node_pr_landing_tick_orchestrator
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+replay:
+  deterministic: true
+metadata:
+  description: "The landing tick as an orchestrator beside the script, compared per pull request."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags:
+    - orchestrator
+    - pr-landing
+    - landing-tick
+    - observe
+  related_tickets:
+    - OMN-22921
