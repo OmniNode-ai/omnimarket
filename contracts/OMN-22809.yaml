@@ -20,7 +20,7 @@ requirements:
       - id: AC3
         statement: 'AC3: a run on h053 over the three real copies reports the measured differences, and a planted cap change in a scratch copy is named -- falsifier: the READING and DIFF lines of the node run on h053, recorded in the pull request Lab line'
       - id: AC4
-        statement: 'AC4: HandlerLandingJoinJ8 is bound in handler_routing and boot-resolvable -- falsifier: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/validation/test_runtime_profile_contract_ownership.py -q --no-cov'
+        statement: 'AC4: handler_routing stays boot-resolvable with HandlerLandingJoinJ8 constructed in process, not routed -- falsifier: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/validation/test_runtime_profile_contract_ownership.py -q --no-cov'
       - id: AC5
         statement: 'AC5: HandlerLandingJoinJ8 constructs with no arguments and refuses to emit without a sink -- falsifier: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov'
 evidence_requirements:
@@ -77,7 +77,7 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -k "without_injected_dependencies or without_sink"
         cwd: .
   - id: dod-omn22809-j8-bound-grep
-    description: The node contract binds HandlerLandingJoinJ8 in handler_routing.
+    description: The node contract keeps handler_routing boot-resolvable; HandlerLandingJoinJ8 is constructed in process and is not a routing entry.
     source: manual
     execution_scope: hosted_and_local
     checks:
