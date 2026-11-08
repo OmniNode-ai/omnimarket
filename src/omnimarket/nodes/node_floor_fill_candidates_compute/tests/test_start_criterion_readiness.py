@@ -11,17 +11,17 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.floor_fill import (
+    ModelFloorFillCandidatesRequest,
+    ModelFloorFillCandidatesResult,
+    ModelFloorFillLine,
+    ModelFloorStartCriterion,
+)
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.start_criterion import (
     parse_start_when,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
-    ModelFloorFillCandidatesRequest,
-    ModelFloorFillCandidatesResult,
-    ModelFloorFillLine,
-    ModelFloorStartCriterion,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
     LINE,

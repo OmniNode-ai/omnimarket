@@ -20,11 +20,7 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.start_criterion import (
-    PrerequisiteReader,
-    parse_start_when,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidate,
     ModelFloorFillCandidatesRequest,
@@ -39,7 +35,7 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
     ModelFloorTaskPayloadVerdict,
     parse_stamp,
 )
-from omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates import (
+from omnimarket.models.floor_fill.model_floor_fill_candidates import (
     STOPPED_KEY_PREFIX,
     STOPPED_LINE,
     ModelRecordItem,
@@ -47,6 +43,10 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill
     ModelRecordStopped,
     StoppedVerdict,
     UnreadCause,
+)
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.start_criterion import (
+    PrerequisiteReader,
+    parse_start_when,
 )
 
 KEY_PREFIX = "floor:"

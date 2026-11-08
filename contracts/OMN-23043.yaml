@@ -1,0 +1,56 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23043
+title: The lab alarm runs as a node whose consumer group names come from the contracts, and the savings projection's backlog drains
+summary: >-
+  node_lab_alarm derives the consumer groups it watches from the runtime's served manifest (the nodes' contract data) instead of a literal list, so a node version bump moves the names in the same step; its rule is the alarm script's growth rule, unchanged. The projection_savings consumer on onex.evt.omniclaude.hook-event.v1 fell behind because the runtime writer built a runner and opened and attested the workload bindings for every hook event, though the savings projection acts on PostCompact only; the savings writer now passes an ignored hook event over before any of that setup.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23043-alarm-node-and-savings-drain
+    statement: >-
+      The broker lag alarm reads its group names from contract data and still fires on planted lag, and the savings projection consumer keeps up with the hook-event topic.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a node_lab_alarm node reads its consumer groups from the nodes' contract data and still fires on planted lag, with its threshold unchanged -- falsifier: uv run pytest of the node's handler tests with a planted lag control"
+      - id: AC2
+        statement: "AC2: the projection_savings backlog falls to under 100 and stays there for an hour -- falsifier: the consumer group lag read on dev"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The node_lab_alarm chain-event tests (golden and error chains, the planted-lag break, a version-bump control) and the savings writer's hook-event skip tests.
+    command: uv run --frozen pytest tests/nodes/node_lab_alarm tests/test_omn23043_savings_hook_event_skip.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23043-ac1-alarm-node
+    description: >-
+      The node derives the group names from the served manifest's contracts, a contract version bump changes the names read in the same step, and the planted-lag break reads ALARM. Without the node module the tests cannot import it.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_alarm -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23043-ac2-savings-skip
+    description: >-
+      A hook event other than PostCompact opens no workload bindings and a PostCompact event, malformed or not, still reaches the runner. On the previous writer the six ignored-event cases fail. The dev read of the group's lag is recorded in the pull request.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn23043_savings_hook_event_skip.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23043-integration-proof
+    description: >-
+      The pushed head ran the node_lab_alarm tests and the savings writer's hook-event skip tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23043 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm tests/test_omn23043_savings_hook_event_skip.py -q --no-cov
+        cwd: .

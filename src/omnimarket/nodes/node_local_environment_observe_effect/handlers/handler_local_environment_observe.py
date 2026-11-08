@@ -19,7 +19,7 @@ import re
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -49,6 +49,10 @@ from omnimarket.local_deployment.tenant_identity import (
 )
 from omnimarket.models.model_local_environment_status import ModelLocalEnvironmentStatus
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_local_environment_observe_effect.overlay import (
+    ModelLocalEnvironmentRoster,
+    ModelProbeTarget,
+)
 from omnimarket.projection.tenant_registry_resolution import is_tenant_slug
 
 logger = logging.getLogger(__name__)
@@ -72,24 +76,6 @@ class ModelLocalEnvironmentObserveConfig(BaseModel):
     bundle: str = Field(default="local", min_length=1)
     probe_timeout_seconds: float = Field(default=3, gt=0)
     schedule: ModelObserveSchedule = Field(default_factory=ModelObserveSchedule)
-
-
-class ModelProbeTarget(BaseModel):
-    """Service-network destination derived from a catalog manifest."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    service: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
-    scheme: Literal["http", "https"] | None = None
-    path: str = "/"
-    query: str = ""
-
-
-class ModelLocalEnvironmentRoster(BaseModel):
-    """The services a lane runs, as its overlay names them; probed in place of the catalog."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    services: tuple[ModelProbeTarget, ...] = Field(min_length=1)
 
 
 class ModelProbeResult(BaseModel):

@@ -32,6 +32,7 @@ from omnimarket.models.wip_admission import (
     ModelWipAdmissionConfig,
     ModelWipAdmissionRequest,
     ModelWipClaim,
+    ModelWipCounts,
     ModelWipFix,
     ModelWipLimit,
     ModelWipPolicy,
@@ -137,13 +138,26 @@ def ask(
     )
 
 
+def sent_to_lanes(
+    repo: str, n: int, *records: dict[str, Any], first: int = 1
+) -> ModelWipRead:
+    """``n`` started tickets of ``repo``, each held by a live CLAIM: the work sent to lanes."""
+    claims = tuple(
+        ModelWipClaim(lane=f"lane-{i}", ticket=f"OMN-{i}", repo=repo)
+        for i in range(first, first + n)
+    )
+    return read_of(
+        *records, claims=claims, states={c.ticket: "In Progress" for c in claims}
+    )
+
+
 def at_repo_limit() -> ModelWipRead:
-    n = policy().limits[REPO_A].limit
-    return read_of(*(pr(REPO_A, i) for i in range(1, n + 1)))
+    # Pull request 1 is open and is what a fix-forward request names; it adds nothing to the count.
+    return sent_to_lanes(REPO_A, policy().limits[REPO_A].limit, pr(REPO_A, 1))
 
 
 def test_under_the_limit_new_work_is_admitted() -> None:
-    d = ask(EnumWipWorkKind.NEW_WORK, read_of(pr(REPO_A, 1)))
+    d = ask(EnumWipWorkKind.NEW_WORK, sent_to_lanes(REPO_A, 1))
     assert (d.outcome, d.reason) == (EnumWipOutcome.ADMIT, EnumWipReason.UNDER_LIMIT)
     assert d.repo_count == 1
 
@@ -163,15 +177,16 @@ def test_another_repository_under_its_limit_is_still_admitted_until_the_fleet_fi
 
 def test_at_the_fleet_limit_new_work_is_refused_in_any_repository() -> None:
     fleet = policy().fleet.limit
-    spread = [pr(REPO_A if i % 2 else REPO_B, i) for i in range(1, fleet + 1)]
+    claims = tuple(
+        ModelWipClaim(lane=f"l{i}", ticket=f"OMN-{i}", repo=REPO_A if i % 2 else REPO_B)
+        for i in range(1, fleet + 1)
+    )
+    spread = read_of(claims=claims, states={c.ticket: "In Progress" for c in claims})
     for repo in (REPO_A, REPO_B):
-        d = ask(EnumWipWorkKind.NEW_WORK, read_of(*spread), repo=repo)
+        d = ask(EnumWipWorkKind.NEW_WORK, spread, repo=repo)
         assert d.outcome is EnumWipOutcome.REFUSE
         assert d.reason in (EnumWipReason.AT_REPO_LIMIT, EnumWipReason.AT_FLEET_LIMIT)
-    assert (
-        ask(EnumWipWorkKind.NEW_WORK, read_of(*spread), repo=REPO_A).fleet_count
-        == fleet
-    )
+    assert ask(EnumWipWorkKind.NEW_WORK, spread, repo=REPO_A).fleet_count == fleet
 
 
 def test_a_fix_for_a_red_pull_request_is_admitted_at_the_limit() -> None:
@@ -226,7 +241,7 @@ def test_a_fix_class_the_overlay_does_not_list_is_new_work() -> None:
 
 def test_a_ticket_is_always_created_whatever_the_count() -> None:
     fleet = policy().fleet.limit
-    full = read_of(*(pr(REPO_A, i) for i in range(1, fleet + 5)))
+    full = sent_to_lanes(REPO_A, fleet + 4)
     for read in (full, ModelWipRead(readable=False, unreadable_reason="x")):
         d = ask(EnumWipWorkKind.TICKET_CREATE, read, repo="")
         assert (d.outcome, d.reason) == (
@@ -272,19 +287,65 @@ def test_a_repository_with_no_limit_refuses_naming_the_reason() -> None:
     )
 
 
-def test_a_draft_pull_request_is_not_counted() -> None:
-    counts = rules.count_started_unlanded(
-        read_of(pr(REPO_A, 1, draft=True), pr(REPO_A, 2))
-    )
-    assert counts.pull_requests == 1
-    assert counts.by_repo == {REPO_A: 1}
+# AC1 (OMN-23028), RULING 2026-11-07T20:02:38Z: there is no pull request limit.
+OPEN_PULL_REQUESTS = 94
 
 
-def test_a_held_pull_request_is_not_counted() -> None:
-    assert (
-        rules.count_started_unlanded(read_of(pr(REPO_A, 1, cls="held-excluded"))).fleet
-        == 0
+def test_94_open_pull_requests_admit_a_new_one() -> None:
+    """The control: with 94 open pull requests in the repository, new work is admitted.
+
+    Before OMN-23028 the same read was refused at_repo_limit; the pull requests below are the
+    count that refused every dispatch.
+    """
+    read = read_of(*(pr(REPO_A, i) for i in range(1, OPEN_PULL_REQUESTS + 1)))
+    d = ask(EnumWipWorkKind.NEW_WORK, read)
+    assert (d.outcome, d.reason) == (EnumWipOutcome.ADMIT, EnumWipReason.UNDER_LIMIT)
+    assert (d.repo_count, d.fleet_count) == (0, 0)
+    counts = rules.count_started_unlanded(read)
+    assert (counts.fleet, counts.by_repo) == (0, {})
+
+
+def test_open_pull_requests_of_every_kind_add_nothing_to_the_count() -> None:
+    read = read_of(
+        pr(REPO_A, 1),
+        pr(REPO_A, 2, draft=True),
+        pr(REPO_A, 3, cls="red"),
+        pr(REPO_B, 4, title="feat(OMN-1): x"),
     )
+    assert rules.count_started_unlanded(read).fleet == 0
+
+
+def test_the_limit_on_work_sent_to_lanes_still_refuses_beside_94_open_pull_requests() -> (
+    None
+):
+    """AC2: the lane-dispatch bound refuses over its bound, whatever the pull requests."""
+    bound = policy().limits[REPO_A].limit
+    prs = [pr(REPO_A, 1000 + i) for i in range(OPEN_PULL_REQUESTS)]
+    claims = tuple(
+        ModelWipClaim(lane=f"l{i}", ticket=f"OMN-{i}", repo=REPO_A)
+        for i in range(1, bound + 1)
+    )
+    states = {c.ticket: "In Progress" for c in claims}
+    over = ask(EnumWipWorkKind.NEW_WORK, read_of(*prs, claims=claims, states=states))
+    assert (over.outcome, over.reason) == (
+        EnumWipOutcome.REFUSE,
+        EnumWipReason.AT_REPO_LIMIT,
+    )
+    assert (over.repo_count, over.repo_limit) == (bound, bound)
+    under = read_of(*prs, claims=claims[:-1], states=states)
+    assert ask(EnumWipWorkKind.NEW_WORK, under).outcome is EnumWipOutcome.ADMIT
+
+
+def test_the_overlay_and_the_node_carry_no_pull_request_cap() -> None:
+    names = " ".join(
+        [
+            *ModelWipAdmissionOverlay.model_fields,
+            *ModelWipCounts.model_fields,
+            *ModelWipPolicy.model_fields,
+        ]
+    )
+    assert "pull_request" not in names
+    assert "open_pr" not in names
 
 
 CLAIM = ModelWipClaim(lane="fixture-lane", ticket="OMN-1", repo=REPO_A)
@@ -294,10 +355,10 @@ def test_a_started_ticket_with_a_live_claim_counts_once_beside_a_pull_request() 
     states = {"OMN-1": "In Progress"}
     alone = rules.count_started_unlanded(read_of(claims=(CLAIM,), states=states))
     assert (alone.ticket_claims, alone.fleet) == (1, 1)
-    carried = rules.count_started_unlanded(
+    beside = rules.count_started_unlanded(
         read_of(pr(REPO_A, 7, title="feat(OMN-1): x"), claims=(CLAIM,), states=states)
     )
-    assert (carried.pull_requests, carried.ticket_claims, carried.fleet) == (1, 0, 1)
+    assert (beside.ticket_claims, beside.fleet) == (1, 1)
 
 
 def test_a_ticket_whose_only_pull_request_is_a_draft_still_counts() -> None:
@@ -417,11 +478,28 @@ def test_the_command_line_admits_refuses_and_reports_unreadable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     n = policy().limits[REPO_A].limit
-    full = watcher(*(pr(REPO_A, i) for i in range(1, n + 1)))
+    full = watcher(*(pr(REPO_A, i) for i in range(1, OPEN_PULL_REQUESTS + 1)))
     code, out = run_cli(
         monkeypatch,
         tmp_path,
         {"kind": "new_work", "repo": REPO_A, "now": NOW.isoformat(), "pr_state": full},
+    )
+    assert code == cli.EXIT_ADMIT
+    assert json.loads(out)["reason"] == "under_limit"
+    code, out = run_cli(
+        monkeypatch,
+        tmp_path,
+        {
+            "kind": "new_work",
+            "repo": REPO_A,
+            "now": NOW.isoformat(),
+            "pr_state": full,
+            "claims": [
+                {"lane": f"l{i}", "ticket": f"OMN-{i}", "repo": REPO_A}
+                for i in range(1, n + 1)
+            ],
+            "ticket_states": {f"OMN-{i}": "In Progress" for i in range(1, n + 1)},
+        },
     )
     assert code == cli.EXIT_REFUSE
     assert json.loads(out)["reason"] == "at_repo_limit"
