@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-22912
+title: 'Piece 5 first task: the J4 join test, a node resolves a key by overlay from the store and a secret scan finds no key in its code, log or ledger row, golden and error'
+summary: node_secret_reading_effect gains the J4 join (overlays to secrets, plan section 4.1). HandlerSecretJoinJ4 runs a consuming node that resolves one key through the piece 5 overlay handle from the store, then scans the consumer's code, its log lines and the ledger row it writes for the value. It emits the piece 4 consumer chain and the piece 5 scan chain under one correlation id through the floor's emission contract, so the floor's own receipt fold reads J4 golden or error. A row that carries the value is never appended. The join has its own overlay, a CLI verb pair, and named injected breaks (a consumer that logs the value, one that puts it in its row) that are refused outside a drill overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22912-join-j4
+  statement: A node resolves a key by overlay from the store and a scan finds no key value in its code, its log or its ledger row; a planted value is found and the join reads NOT WORKING.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden join test: a node resolves one key through an overlay and a scan of its code, log and the ledger rows it wrote finds no key value -- falsifier: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q -k golden'
+  - id: AC2
+    statement: 'AC2: error join test: a planted key value in a log line is found by the scan and the join reads NOT WORKING -- falsifier: uv run pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q -k error'
+  - id: AC3
+    statement: 'AC3: both run against the real store with a planted dev-only key, and the floor shows J4 with ages -- falsifier: curl -s the served floor-simple.json and read pieces[3].joins[0].state'
+evidence_requirements:
+- kind: tests
+  description: The J4 join tests, golden and error, with their failing controls.
+  command: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22912-ac1
+  description: The golden join tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov -k golden
+- id: dod-omn22912-ac2
+  description: The error join tests pass, each with its control that reads WORKING without the injected break.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov -k error
+- id: dod-omn22912-ac3-fold
+  description: The floor's own receipt fold reads the join's golden and error chains as J4 golden with an age and error with no finding.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov -k floor_fold
+- id: dod-omn22912-ac3
+  description: The served floor record named by FLOOR_SIMPLE_JSON_URL shows J4 with a state other than broken and a golden age, after the branch's join has run against the real dev store.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -s "$FLOOR_SIMPLE_JSON_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)['pieces'][3]['joins'][0]; assert j['id']=='J4' and j['state'] in ('golden_only','passed') and j['golden_age_s'] is not None, j['state']"
+    cwd: .
+- id: dod-omn22912-integration-proof
+  description: The lab run at the pushed head against the real dev store, golden and error, with the failing control on the join's scan, is recorded in the pull request body; the local Done gate re-runs the join tests on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22912 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4.py -q --no-cov
+    cwd: .
