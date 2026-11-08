@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_landing_tick_reducer
+version: "0.1.0"
+description: "A landing tick's decision folded per pull request and compared with the recorded decision"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_tick_reducer: "omnimarket.nodes.node_pr_landing_tick_reducer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "pr-landing", "landing-tick", "pure"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Tick Reducer"
+node_role: "reducer"
