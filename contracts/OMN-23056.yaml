@@ -11,8 +11,6 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a pull request handed to the landing controller for its current head counts its wait from the handoff time, and a pull request with no handoff or a handoff for an older head still alarms from its last check -- falsifier: uv run pytest tests/nodes/node_floor_simple_effect/test_queue_age_handoff_floor_simple.py -q'
-  - id: AC2
-    statement: 'AC2: a failing control: the same test file fails at least 2 of its 5 tests against origin/dev sources.py before the change -- falsifier: uv run pytest tests/nodes/node_floor_simple_effect/test_queue_age_handoff_floor_simple.py -q with origin/dev sources.py'
 evidence_requirements:
 - kind: tests
   description: The five handoff queue-age tests pass with the change
@@ -34,8 +32,6 @@ dod_evidence:
 - id: dod-omn23056-failing-control
   description: Failing control. The merge base sources.py, without the handoff start, fails the golden handoff test and the old-handoff test, so the test file fails at least 2 of its 5 tests before the change. The check exits 0 only when pytest exits nonzero against the merge-base copy.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: 'bash -c ''f=src/omnimarket/nodes/node_floor_simple_effect/handlers/sources.py; cp "$f" /tmp/omn23056_fixed.py; git show origin/dev:"$f" > "$f"; if uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_queue_age_handoff_floor_simple.py -q --no-cov; then r=1; else r=0; fi; cp /tmp/omn23056_fixed.py "$f"; exit $r'''
