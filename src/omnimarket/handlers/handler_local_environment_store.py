@@ -120,12 +120,7 @@ def plan_local_environment_write(
     cursor moves. Otherwise the report's own row comes first, followed by each
     sibling whose verdict or alert the report's time changes, in full with only
     its verdict columns and updated_at replaced. Times are ISO strings.
-
-    A retired report writes nothing here: it removes a row, which
-    ``plan_local_environment_retirement`` decides.
     """
-    if report.observed_state is EnumLocalServiceState.RETIRED:
-        return []
     # Only the report's own tenant and mode are judged: a caller's wider read
     # never leaks another tenant's rows into this write.
     stored_rows = [
@@ -203,30 +198,6 @@ def plan_local_environment_write(
     return writes
 
 
-def plan_local_environment_retirement(
-    report: ModelLocalEnvironmentStatus,
-    stored_rows: Sequence[Mapping[str, object]],
-) -> Mapping[str, object] | None:
-    """The stored row a retired report removes, or ``None`` when it holds none.
-
-    Only a retired report removes anything, and only the row of its own tenant, mode
-    and service. A service with no stored row is already forgotten, so a repeated
-    report changes nothing. Every other row of the mode is left as it is.
-    """
-    if report.observed_state is not EnumLocalServiceState.RETIRED:
-        return None
-    return next(
-        (
-            row
-            for row in stored_rows
-            if str(row["tenant_id"]) == report.tenant_id
-            and str(row["mode"]) == report.mode.value
-            and str(row["service"]) == report.service
-        ),
-        None,
-    )
-
-
 def apply_local_environment_status(
     report: ModelLocalEnvironmentStatus,
     db: DatabaseAdapter,
@@ -264,6 +235,5 @@ __all__ = [
     "LOCAL_ENVIRONMENT_TABLE",
     "VERDICT_COLUMNS",
     "apply_local_environment_status",
-    "plan_local_environment_retirement",
     "plan_local_environment_write",
 ]

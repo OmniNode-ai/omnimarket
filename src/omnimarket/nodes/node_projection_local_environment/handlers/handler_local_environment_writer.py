@@ -43,9 +43,6 @@ from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
-from omnimarket.handlers.handler_local_environment_store import (
-    plan_local_environment_retirement,
-)
 from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
 )
@@ -60,6 +57,7 @@ from omnimarket.models.model_local_environment_status import (
 )
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
     HandlerProjectionLocalEnvironment,
+    plan_local_environment_retirement,
 )
 from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
     ModelLocalEnvironmentPlanRequest,

@@ -19,7 +19,14 @@ from __future__ import annotations
 import asyncpg
 import pytest
 
+from omnimarket.models.model_local_environment_status import (
+    ModelLocalEnvironmentStatus,
+)
+from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
+    plan_local_environment_retirement,
+)
 from tests.test_omn19988_local_environment_migrations_real_postgres import (
+    _AT,
     _MIGRATIONS_DIR,
     _TENANT_A,
     _TENANT_B,
@@ -31,6 +38,7 @@ from tests.test_omn19988_local_environment_migrations_real_postgres import (
     _scoped,
     _writer_role,
 )
+from tests.test_omn19988_local_environment_writer import _report
 
 _SCHEMA = "omn22030_local_environment_delete_test"
 _ROLE = "omn22030_local_environment_delete_probe"
@@ -66,6 +74,17 @@ async def test_real_postgres_the_writer_deletes_only_its_tenants_retired_row() -
 
         await conn.execute(f"SET ROLE {_ROLE}")
         await conn.fetchval("SELECT set_config('app.tenant_id', $1, false)", _TENANT_A)
+        # The retirement planner names the row the real table holds for the report's own tenant.
+        stored = [
+            dict(r)
+            for r in await conn.fetch(f"SELECT * FROM {_SCHEMA}.local_environment")
+        ]
+        retired = ModelLocalEnvironmentStatus.model_validate(
+            _report("runtime-effects", "retired", _AT, tenant=_TENANT_A)
+        )
+        named = plan_local_environment_retirement(retired, stored)
+        assert named is not None
+        assert str(named["tenant_id"]) == _TENANT_A
         assert await conn.execute(delete, _TENANT_A, "runtime-effects") == "DELETE 1"
         # The other tenant's row of the same service is outside the policy.
         assert await conn.execute(delete, _TENANT_B, "runtime-effects") == "DELETE 0"

@@ -37,7 +37,6 @@ from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
 from omnimarket.handlers.handler_local_environment_store import (
-    plan_local_environment_retirement,
     plan_local_environment_write,
 )
 from omnimarket.models.model_local_environment_status import ModelLocalEnvironmentStatus
@@ -49,6 +48,13 @@ from omnimarket.nodes.node_local_environment_observe_effect.overlay import (
 )
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer import (
     HandlerLocalEnvironmentProjectionRunner,
+)
+from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
+    HandlerProjectionLocalEnvironment,
+    plan_local_environment_retirement,
+)
+from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
+    ModelLocalEnvironmentPlanRequest,
 )
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn19988_local_environment_writer import (
@@ -166,9 +172,12 @@ def _retired_report(service: str, at: datetime) -> ModelLocalEnvironmentStatus:
 def test_a_retired_report_is_never_a_row_to_store() -> None:
     stored = [_stored("runtime-effects", "down", T0)]
     report = _retired_report("runtime-effects", T0 + timedelta(seconds=15))
-    assert (
-        plan_local_environment_write(report, stored, load_local_alert_rules(), T0) == []
+    plan = HandlerProjectionLocalEnvironment().handle(
+        ModelLocalEnvironmentPlanRequest(
+            report=report, stored_rows=tuple(stored), rules=load_local_alert_rules()
+        )
     )
+    assert plan.rows == ()
 
 
 def test_the_retirement_names_only_the_services_own_row() -> None:
