@@ -75,6 +75,9 @@ async def _run_chain(
     terminal_topic = contract["terminal_event"]
     failed_topic = next(t for t in published if t.endswith("failed.v1"))
     assert contract["event_bus"]["subscribe_topics"] == [request_topic]
+    assert request_topic == "onex.cmd.omnimarket.public-consumer-check-requested.v1"
+    assert terminal_topic == "onex.evt.omnimarket.public-consumer-checked.v1"
+    assert failed_topic == "onex.evt.omnimarket.public-consumer-check-failed.v1"
 
     bus = EventBusInmemory()
     seen: list[tuple[str, bytes]] = []

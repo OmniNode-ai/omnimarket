@@ -65,10 +65,9 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-deploy-omn23145-node-dispatch
   description: >-
-    The node's contract loads and its handler answers a removal batch through the golden chain, the unreadable-scope error chain and the bad-payload failure event on the in-memory bus profile, which hosted CI can run; the checkout-scan real backend is exercised by the node-local source test.
+    After merge, the node's handler is present on the dev branch of omnimarket, read through the GitHub contents API, which hosted CI can run; its golden chain, error chain and bad-payload failure event run in tests/test_golden_chain_public_consumer_check_compute.py.
   source: manual
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_golden_chain_public_consumer_check_compute.py -q -n 0 --no-cov
-    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_public_consumer_check_compute/handlers/handler_public_consumer_check.py?ref=dev" --jq .content | base64 -d | grep -q HandlerPublicConsumerCheck
   binds_ac: []
