@@ -66,3 +66,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k "alarm_config_dry_run_renders_the_declared_document or alarm_config_control_declaration_without_a_document_renders_none"
     cwd: .
+- id: dod-omn22778-skip-unavailable-hosts
+  description: "The silent-failure alarm's quiet-host reading leaves out hosts the lab host table declares unavailable, with a default-off control and a control that reads the host quiet when no table declares it unavailable."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_unavailable_hosts_omn22778.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: grep -q "skip_unavailable_hosts" src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py
+    cwd: .
