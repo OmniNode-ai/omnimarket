@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22922
+title: Piece 9's generated golden and error chain event tests and the landing whole-flow run exist, and a named mutation turns each red
+summary: Golden and error chain event tests for rebuild piece 9 (landing), generated from the orchestrator contract and driven through the landing decision node over an overlay-chosen bus, and one whole-flow run that records a receipt.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-landing-chains
+  statement: The landing piece carries golden and error chain event tests and one whole-flow run, each able to fail for real.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a golden chain event test generated from the landing contract passes on the in-memory bus and on the real broker -- falsifier: uv run pytest tests/chain/test_landing_golden.py -q'
+  - id: AC2
+    statement: 'AC2: an error chain event test passes on both, and a named mutation in the decision node turns each test red -- falsifier: uv run pytest tests/chain/test_landing_error.py -q'
+  - id: AC3
+    statement: 'AC3: one whole-flow run takes a test head from open to merged on the running landing piece and records its receipt -- falsifier: uv run pytest tests/chain/test_landing_whole_flow.py -q'
+evidence_requirements:
+- kind: tests
+  description: Landing chain tests.
+  command: uv run pytest tests/chain -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22922-ac1
+  description: AC1 bound to its test file.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain/test_landing_golden.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn22922-ac2
+  description: AC2 bound to its test file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain/test_landing_error.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn22922-ac3
+  description: AC3 bound to its test file.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain/test_landing_whole_flow.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

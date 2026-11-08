@@ -30,6 +30,24 @@ old_names:
     - name: docs/old/archive
       ledger_relative: archive
   injected_fault: Replace an old name with a regular file in a sandbox copy
+# The ledger-durability probe (OMN-22662): a host that lists it appends one probe row through `append`
+# and reads it back through `read` (the lab read node over the database projection) by the deadline.
+# The probe row has its own append route so a drill can break it alone; a drill overlay sets drill: true.
+durability:
+  append:
+    command_env: ONEX_LEDGER_PROBE_APPEND_COMMAND
+    host_env: ONEX_LEDGER_HOST_NAME
+    timeout_seconds: 90
+  read:
+    route: command
+    command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    timeout_seconds: 60
+    row_limit: 10
+  probe_lane: ledger-durability-probe
+  deadline_seconds: 180
+  poll_interval_seconds: 15
+  drill: false
+  injected_fault: An append route that answers accepted and publishes nothing
 # Piece 2's hourly canary: one lane per host the lab host table pools, through the route lanes
 # take. run_command_env names the variable holding the route's words; {host} is the host's name.
 canary:
@@ -64,6 +82,27 @@ join_j1:
     home_env: EXAMPLE_FLOOR_HOME
     journal_relpath: .onex_state/floor-simple/emissions.jsonl
   injected_fault: Remove a required node's package from the repository the graph reads
+# The J2 join (piece 2 to piece 3): a canary on each pooled host publishes one command, placement
+# consumes the host's advertisement and one correlated result returns on the bus.
+join_j2:
+  settings:
+    canary_piece: 2
+    seam_piece: 3
+    canary_node: node_host_reading_effect
+    seam_node: node_lab_placement_compute
+    repo: OmniNode-ai/example
+    commit_sha: "0000000000000000000000000000000000000000"
+    argv: [python3, -c, "print('J2-CANARY {nonce}')"]
+    result_marker: J2-CANARY
+    kind: other
+    lane: host-canary
+    command_timeout_seconds: 120
+    result_wait_slack_seconds: 60
+    advert_max_age_seconds: 60
+    need_tools: [git]
+  collect_window_seconds: 14
+  emission_home_env: EXAMPLE_FLOOR_STATE
+  emission_journal_relpath: emissions.jsonl
 hosts:
   - name: example-ledger-host
     scheduler: launchd

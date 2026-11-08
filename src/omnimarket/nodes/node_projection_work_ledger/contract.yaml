@@ -83,11 +83,28 @@ event_bus:
     - onex.evt.omnimarket.work-ledger-correction.v2
   publish_topics:
     - onex.evt.omnimarket.projection-work-ledger-applied.v1
+    # OMN-22915, L12: every row the judge accepted, once, with its sequence; retention -1 below.
+    - onex.evt.omnimarket.work-ledger-row-accepted.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-work-ledger-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-work-ledger-applied.v1
+  # The rebuild (node_work_ledger_reducer_compute) reads it; the projection, render and mirror subscriptions move to it at L12's cutover.
+  - onex.evt.omnimarket.work-ledger-row-accepted.v1
+
+# The broker declaration of the accepted-row topic (OMN-22915, L12). It is the ledger's second copy
+# on the bus: it never expires and has no size cap, and one partition makes the offset the order.
+published_events:
+  - event_type: ModelAcceptedRowEvent
+    topic: onex.evt.omnimarket.work-ledger-row-accepted.v1
+    description: One row the judge accepted, with its ledger_seq, or legacy_ordinal for bootstrap history.
+    topic_config:
+      partitions: 1
+      kafka_config:
+        "cleanup.policy": "delete"
+        "retention.ms": "-1"
+        "retention.bytes": "-1"
 
 work_ledger:
   ledger_id: rolling-work-ledger
