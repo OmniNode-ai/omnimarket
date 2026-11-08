@@ -711,3 +711,84 @@ def test_the_bays_match_the_runner_units_count_and_a_refused_host_is_no_room() -
     }
     # The sum the headline draws is the sum of the runner's free lane slots (2 + 0 + 1), not the caps less the ledger lanes.
     assert sum(b.free for b in result.bays) == 3
+
+
+# OMN-23081: the floor marked gitmut-0815, zeroflip-port-0830 and piece-readings-0815 alive but stalled while each
+# lane's runner output file was written 09:16 to 09:17Z with tool calls in progress. Remote lanes write no ledger
+# row between CLAIM and TERMINAL, so the stall reading saw only the CLAIM. Minutes below are the lanes' recorded
+# ages read at 09:17:30Z: CLAIM 08:15 (62 min), 08:30 (47 min), 08:15 (62 min); output last written 09:17, 09:16, 09:16.
+THREE_LANES = (
+    ("gitmut-0815", 62, 0.5),
+    ("zeroflip-port-0830", 47, 1.5),
+    ("piece-readings-0815", 62, 1.5),
+)
+
+
+def three_lane_floor(*, with_output: bool, runner_alive: bool | None = True) -> Any:
+    ledger: tuple[Any, ...] = ()
+    receipts: tuple[Any, ...] = ()
+    for lane, claim_ago, output_ago in THREE_LANES:
+        ledger += lane_rows(lane, claim_ago=claim_ago, host="h051")
+        receipts += (
+            receipt(
+                lane,
+                started_at=ago(claim_ago),
+                runner_alive=runner_alive,
+                output_at=ago(output_ago) if with_output else None,
+            ),
+        )
+    return floor(ledger=ledger, receipts=receipts)
+
+
+def test_lanes_whose_runner_output_is_fresh_are_not_stalled() -> None:
+    result = three_lane_floor(with_output=True)
+    assert {lane.lane: lane.stalled for lane in result.lanes} == {
+        "gitmut-0815": False,
+        "zeroflip-port-0830": False,
+        "piece-readings-0815": False,
+    }
+    assert {lane.lane: lane.silent_minutes for lane in result.lanes} == {
+        "gitmut-0815": 0,
+        "zeroflip-port-0830": 1,
+        "piece-readings-0815": 1,
+    }
+
+
+def test_the_same_lanes_without_runner_output_are_still_stalled() -> None:
+    # The failing control: the ledger alone, as the floor read it at 09:10:51Z, stalls all three.
+    result = three_lane_floor(with_output=False)
+    assert all(lane.stalled for lane in result.lanes)
+    assert len(result.lanes) == 3
+
+
+def test_runner_output_older_than_the_stall_bound_does_not_save_a_lane() -> None:
+    result = floor(
+        ledger=lane_rows("quiet-out", claim_ago=120, host="h051"),
+        receipts=(receipt("quiet-out", started_at=ago(120), output_at=ago(45)),),
+    )
+    assert result.lanes[0].stalled is True
+    assert result.lanes[0].silent_minutes == 45
+
+
+def test_runner_output_of_a_finished_run_is_not_progress() -> None:
+    result = floor(
+        ledger=lane_rows("ended-out", claim_ago=120, host="h051"),
+        receipts=(
+            receipt(
+                "ended-out",
+                started_at=ago(120),
+                output_at=ago(1),
+                final=True,
+                status="done",
+            ),
+        ),
+    )
+    assert result.lanes == ()
+
+
+def test_runner_output_from_a_previous_run_is_not_progress_of_this_claim() -> None:
+    result = floor(
+        ledger=lane_rows("rerun", claim_ago=60, host="h051"),
+        receipts=(receipt("rerun", started_at=ago(200), output_at=ago(1)),),
+    )
+    assert result.lanes[0].stalled is True

@@ -40,32 +40,32 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, Literal
 
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_drop_reason import (
+from omnimarket.models.floor_fill.enum_floor_fill_drop_reason import (
     EnumFloorFillDropReason,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_entry_state import (
+from omnimarket.models.floor_fill.enum_floor_fill_entry_state import (
     EnumFloorFillEntryState,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_trigger import (
+from omnimarket.models.floor_fill.enum_floor_fill_trigger import (
     EnumFloorFillTrigger,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_intent import (
+from omnimarket.models.floor_fill.model_floor_fill_intent import (
     ModelFloorFillIntent,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_observation import (
+from omnimarket.models.floor_fill.model_floor_fill_observation import (
     ModelFloorFillReservedChecked,
     ModelFloorFillReserveRequested,
     ModelFloorFillSentChecked,
     ModelFloorFillStartFailed,
     ModelFloorFillTicketStored,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_reduce_input import (
+from omnimarket.models.floor_fill.model_floor_fill_reduce_input import (
     ModelFloorFillReduceInput,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_reduce_output import (
+from omnimarket.models.floor_fill.model_floor_fill_reduce_output import (
     ModelFloorFillReduceOutput,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+from omnimarket.models.floor_fill.model_floor_fill_state import (
     ModelFloorFillEntry,
     ModelFloorFillState,
     line_and_task,
