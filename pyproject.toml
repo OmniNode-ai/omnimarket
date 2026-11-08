@@ -996,6 +996,7 @@ node_prod_health_fact_resolver_effect = "omnimarket.nodes.node_prod_health_fact_
 node_prod_promotion_gate_compute = "omnimarket.nodes.node_prod_promotion_gate_compute"
 node_prod_promotion_grant_resolver_effect = "omnimarket.nodes.node_prod_promotion_grant_resolver_effect"
 node_product_floor_verdict_compute = "omnimarket.nodes.node_product_floor_verdict_compute"
+node_projection_agent_actions = "omnimarket.nodes.node_projection_agent_actions"
 node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
 node_projection_automation_liveness = "omnimarket.nodes.node_projection_automation_liveness"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"

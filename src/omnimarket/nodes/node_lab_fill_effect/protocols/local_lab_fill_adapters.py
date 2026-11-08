@@ -37,6 +37,10 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.models.work_state_projection import (
+    EnumWorkItemKind,
+    ModelWorkStateResult,
+)
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
 )
@@ -346,6 +350,13 @@ class NodeTicketFactsReader:
                 f"Linear unreadable: {type(outcome).__name__}"
             ) from outcome
         return outcome
+
+
+def _work_state_path() -> Path:
+    declared = os.environ.get("ONEX_WORK_STATE_PATH")
+    if declared:
+        return Path(declared)
+    return Path(os.environ["OMNI_HOME"]) / ".onex_state/work-state/work-state.json"
 
 
 def _watcher_path() -> Path:
@@ -754,3 +765,30 @@ class LocalOwnerReader:
                     f"{repo}#{facts.get('number', '')}"
                 )
         return {t: sorted(names) for t, names in merged.items()}
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        path = Path(state_path) if state_path else _work_state_path()
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise LabFillPortError(f"work-state {type(exc).__name__}") from exc
+        try:
+            projection = ModelWorkStateResult.model_validate_json(raw)
+        except ValueError as exc:
+            raise LabFillPortError("work-state projection is not readable") from exc
+        age_s = (datetime.now(UTC) - projection.as_of).total_seconds()
+        if not 0 <= age_s <= max_age_s:
+            raise LabFillPortError("work-state projection is stale")
+        owners: dict[str, list[str]] = {}
+        for item in projection.items:
+            if (
+                item.ticket
+                and item.live_lane
+                and item.kind is not EnumWorkItemKind.LANE
+            ):
+                owners.setdefault(item.ticket, []).append(item.live_lane)
+        return {t: sorted(set(lanes)) for t, lanes in owners.items()}
