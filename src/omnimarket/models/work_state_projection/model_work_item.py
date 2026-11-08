@@ -52,6 +52,9 @@ class ModelWorkItem(BaseModel):
     live_lane: str | None = None
     # What a stopped lane left (its pushed branch and head, its outcome).
     left: str | None = None
+    # A lane item only: every alias its CLAIM cells name (`ticket:OMN-1`, `cause:stoppage:x`, `pr:repo#1`, a key), so a
+    # reader that draws its own rows (the floor) attributes the lane to a row from the CLAIM and not from a typed owner.
+    attributes: tuple[str, ...] = ()
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]
