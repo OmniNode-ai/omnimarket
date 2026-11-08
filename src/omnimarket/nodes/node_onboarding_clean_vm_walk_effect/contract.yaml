@@ -35,6 +35,14 @@ handler_routing:
       module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_onboarding_clean_vm_walk
     input_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkRequest
     output_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkReceipt
+  # The weekly reading of the walk: pure compute over a receipt and a clock, its
+  # max age an overlay setting (<root>/node_onboarding_clean_vm_walk_effect/overlay.yaml).
+  - operation: read_walk_reading
+    handler:
+      name: HandlerWalkReading
+      module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_walk_reading
+    input_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_walk_reading.ModelWalkReadingRequest
+    output_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_walk_reading.ModelWalkReading
 descriptor:
   node_archetype: effect
   purity: effectful

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_sink import JsonlEmissionSink, ProtocolEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
     LocalOverlayHome,
@@ -91,6 +92,11 @@ def build_handler(
         if source
         else interpreter
     )
+    emissions: ProtocolEmissionSink | None = (
+        JsonlEmissionSink(Path(_required(overlay.emission.journal_env, environ)))
+        if overlay.emission
+        else None
+    )
     handler = HandlerOverlayDrift(
         overlay=overlay,
         host=host,
@@ -107,6 +113,7 @@ def build_handler(
         )
         if overlay.pin_history
         else None,
+        emissions=emissions,
     )
     return handler, host
 
