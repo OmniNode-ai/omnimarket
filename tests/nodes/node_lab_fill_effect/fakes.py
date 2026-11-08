@@ -155,6 +155,7 @@ class FakeOwners:
     claims_facts: LabFillClaimFacts | None = None
     registry: Mapping[str, str] | None = None
     merged: Mapping[str, Sequence[str]] | None = None
+    work_state: Mapping[str, Sequence[str]] | None = None
     fail: Mapping[str, str] = field(default_factory=dict)
     called: list[str] = field(default_factory=list)
 
@@ -176,6 +177,14 @@ class FakeOwners:
         if "watcher" in self.fail:
             raise LabFillPortError(self.fail["watcher"])
         return self.merged or {}
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        self.called.append("work_state")
+        if "work_state" in self.fail:
+            raise LabFillPortError(self.fail["work_state"])
+        return self.work_state
 
 
 @dataclass

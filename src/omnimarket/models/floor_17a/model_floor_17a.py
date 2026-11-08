@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
+
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
@@ -559,6 +561,8 @@ class ModelFloorSimple(_Frozen):
     )
     # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
     health: ModelFloorHealthLine | None = None
+    # The MVP launch block (OMN-23205): 17 readings of the launch bar; ``None`` is a record written before the block existed.
+    mvp_launch: ModelMvpLaunchBlock | None = None
 
 
 class ModelGoRule(_Frozen):
