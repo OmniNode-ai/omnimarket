@@ -328,7 +328,7 @@ targets:
     stage: F
     needs: [host-units, tailnet]
     check: {kind: unit_status, subject: omnidash_host}
-    falsifier: "a stopped updater timer, or a served commit that is not the newest tip of the dashboard repository after the declared interval, reads unsatisfied"
+    falsifier: "a stopped updater timer, or a served commit that is not the newest tip of the dashboard repository after the declared interval and whose tip the host effect has not recorded as refused_sha, reads unsatisfied (a refused tip keeps the last-good build and reads refused-already, which an install does not clear)"
     action: host_unit_install
   - name: verify
     stage: F

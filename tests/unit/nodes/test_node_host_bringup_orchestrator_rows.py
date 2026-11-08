@@ -246,7 +246,8 @@ def _host_with_omnidash_unit_down(contract: dict[str, Any]) -> Any:
     tailnet is up, and the dashboard copy is not installed or its updater has stopped."""
     names = [t["name"] for t in contract["targets"]]
     observed = dict.fromkeys(names, EnumObservedState.OK)
-    observed["omnidash-host"] = EnumObservedState.NOT_OK
+    if "omnidash-host" in observed:
+        observed["omnidash-host"] = EnumObservedState.NOT_OK
     return HandlerHostBringupPlan().handle(
         ModelHostBringupPlanRequest(
             graph=load_bringup_graph(contract),
@@ -288,8 +289,20 @@ def test_error_chain_without_the_omnidash_row_the_same_host_plans_no_act() -> No
     for row in contract["targets"]:
         row["needs"] = [n for n in row["needs"] if n != "omnidash-host"]
     plan = _host_with_omnidash_unit_down(contract)
+    # PLANNED, not REFUSED: a refused plan has no steps, so "nothing acts" would hold for the
+    # wrong reason (an observation of a target the graph does not declare).
+    assert plan.status is EnumPlanStatus.PLANNED
     acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
     assert acting == []
+
+
+def test_omnidash_host_falsifier_does_not_promise_an_install_for_a_refused_tip() -> (
+    None
+):
+    """The host effect keeps the last-good build and records refused_sha for a rejected candidate
+    (refused-already); a host_unit_install cannot clear that, so the row must say so."""
+    falsifier = _row(_contract(), "omnidash-host")["falsifier"]
+    assert "refused_sha" in falsifier
 
 
 # --- a row missing a part fails the load --------------------------------------
