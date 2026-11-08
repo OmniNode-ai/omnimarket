@@ -1109,6 +1109,7 @@
   "tests/nodes/node_install_canary_effect/test_first_reading.py": 0.01,
   "tests/nodes/node_install_canary_effect/test_install_canary.py": 0.05,
   "tests/nodes/node_install_canary_effect/test_lane_ship_drift.py": 0.01,
+  "tests/nodes/node_install_canary_effect/test_no_private_node_imports.py": 0.02,
   "tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py": 14.23,
   "tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py": 0.02,
   "tests/nodes/node_intelligence_orchestrator/test_contract_runtime_readiness.py": 0.44,
