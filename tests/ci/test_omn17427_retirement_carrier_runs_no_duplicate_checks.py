@@ -94,3 +94,17 @@ def test_omn17427_carriers_repeat_no_retired_item_check() -> None:
         f"{len(repeated)} carrier checks repeat a retired item's check, so "
         f"dod-verify runs each twice: {repeated[:3]}"
     )
+
+
+def test_omn17427_retirement_carrier_exists_and_retires_bindings() -> None:
+    """Fails at a tree without the carrier: the carrier binds AC1742795 and retires."""
+    document = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    carriers = [
+        item
+        for item in document["dod_evidence"]
+        if item.get("id") == "dod-omn-17427-contract-only-retirement"
+    ]
+    assert len(carriers) == 1, "the retirement carrier item is missing"
+    carrier = carriers[0]
+    assert "AC1742795" in (carrier.get("binds_ac") or [])
+    assert carrier.get("supersedes_ac_binding"), "the carrier retires no binding"
