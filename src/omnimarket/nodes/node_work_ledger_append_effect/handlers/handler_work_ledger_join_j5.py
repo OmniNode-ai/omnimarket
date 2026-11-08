@@ -179,6 +179,20 @@ class HandlerWorkLedgerJoinJ5:
                 ledger_seq=ledger_seq,
             )
         durable = durable_lines[ledger_seq - 1]
+        # The receipt's position counts the ledger host's file. A copy that is short, stale or another file holds some other
+        # row there, and a projection that holds that row would read as a landing: the durable row must be this request's.
+        if f"req={request.append.request_id}" not in durable:
+            code = policy.append_not_accepted_failure_code
+            detail = f"the ledger line at position {ledger_seq} is not the row of request {request.append.request_id}"
+            chain.failure(code, detail)
+            return ModelJoinJ5Result(
+                outcome=EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED,
+                correlation_id=request.correlation_id,
+                failure_code=code,
+                detail=detail,
+                receipt=receipt,
+                ledger_seq=ledger_seq,
+            )
         projected = projection.read_row(
             ledger_id=request.append.ledger_id,
             ledger_seq=ledger_seq,

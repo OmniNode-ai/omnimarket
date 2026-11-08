@@ -651,3 +651,44 @@ def test_control_a_receipt_naming_a_line_the_ledger_does_not_have_is_not_a_landi
         "start",
         "failure",
     ]
+
+
+def test_control_a_ledger_that_holds_another_row_at_the_receipt_position_is_not_a_landing() -> (
+    None
+):
+    """The break found on the first lab run: a stale copy read a different row at the position, the projection held that row,
+    and the join read a landing for an append whose own row it never saw."""
+    rig = _Rig([_reading_row(GOLDEN_AT, "WORKING")])
+    stale = InMemoryJoinLedger(projection=InMemoryProjectedRows())
+    stale.append(
+        "2026-11-08T11:00:00Z | STATUS | lane=other | req=11111111-1111-4111-8111-111111111111 | x"
+    )
+    stale.append(
+        "2026-11-08T11:00:01Z | STATUS | lane=other | req=22222222-2222-4222-8222-222222222222 | y"
+    )
+    stale.append(
+        "2026-11-08T11:00:02Z | STATUS | lane=other | req=33333333-3333-4333-8333-333333333333 | z"
+    )
+    heard = InMemoryProjectedRows()
+    for seq, line in enumerate(stale.read_text().splitlines(), start=1):
+        heard.project(raw_row=line, ledger_id=LEDGER_ID, ledger_seq=seq)
+    join = HandlerWorkLedgerJoinJ5(
+        append=BusCliAppend(
+            ["cmd"], host="test-host", timeout_seconds=30, run=_Cli(BINDING.principal)
+        ),
+        ledger=stale,
+        identities=StoreProbeIdentities(rig.store, (BINDING,)),
+        projection=heard,
+        sink=rig.sink,
+        policy=POLICY,
+        clock=rig.clock,
+        backend="in_memory",
+    )
+    runner = rig.runner()
+    runner._join = join
+
+    result = runner.handle(ModelJoinJ5RunCommand())
+
+    assert [i.outcome for i in result.items] == [EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED]
+    state, _ = _floor_read(rig, NOW + timedelta(minutes=5))
+    assert state == "not_run"
