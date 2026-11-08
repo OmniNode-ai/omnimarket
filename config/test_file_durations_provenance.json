@@ -143,5 +143,11 @@
     "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. 17 tests in 3 files failed or errored on this host for lack of ONEX_ALARM_DISPATCH_COMMAND and docker, so those files' times are partial.",
     "runner": "lab host h101, lane landing-L31319, the next CI refresh replaces these entries",
     "base_sha": "268cea8c487cec9fee4de504fb54f8e9bdafbf27"
+  },
+  "supplement_omn22573": {
+    "recorded_on": "2026-11-08",
+    "files_added": 51,
+    "basis": "summed per-test seconds per file from one serial run of the CI shard pytest flags without coverage",
+    "runner": "lab host h053, not a GitHub-hosted runner; the next refresh from source runs replaces these entries"
   }
 }
