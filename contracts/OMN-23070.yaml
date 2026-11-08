@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-23070
+title: The delegation replay test stamps its request at test start, so a slow test split never expires it
+summary: test_delegation_workflow_replay_omn19560 stamped its request when the module loaded. A split that collects the module and runs it about 19 minutes later (Tests Split 2/2 took 73 minutes) passed the 900 second completion bound, the workflow expired the request without routing, and the test hit StopIteration. The stamp is now taken at test start. No check, bound or baseline is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23070-replay-stamp-at-test-start
+  statement: The replay tests stamp the delegation request at test start so the completion bound never expires it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the four replay tests pass however long after collection they run -- falsifier: uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py'
+evidence_requirements:
+- kind: tests
+  description: The four replay tests pass.
+  command: uv run --frozen pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23070-ac1-tests
+  description: Runs the four replay tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: "! grep -n '^_EMITTED_AT = datetime.now' tests/unit/delegation/test_delegation_workflow_replay_omn19560.py"
+    cwd: .
