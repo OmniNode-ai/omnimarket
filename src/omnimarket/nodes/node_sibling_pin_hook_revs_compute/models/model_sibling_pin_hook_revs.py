@@ -64,3 +64,38 @@ class ModelSiblingPinHookRevsPlan(BaseModel):
         description="The tag the source pin moves to; None leaves the pin where it was"
     )
     reason: EnumHookRevsReason
+
+
+class ModelSiblingPinHookRevsApplyRequest(BaseModel):
+    """A consumer's pre-commit config text and the same facts the plan reads."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    precommit_text: str = Field(
+        description="The consumer's .pre-commit-config.yaml text"
+    )
+    repository_url: str = Field(
+        description="The pin's repository url; a hook block of this repository, with or without .git, is read"
+    )
+    pin_tag: str = Field(description="The dev merge tag of the consumer's source pin")
+    candidates: tuple[ModelHookRevsCandidate, ...] = Field(
+        description="Dev tags of the pin's repository, newest first; tags not newer than the pin end the read"
+    )
+    tag_pattern: str = Field(
+        default=ModelSiblingPinHookRevsRequest.model_fields["tag_pattern"].default,
+        description="The dev merge tag grammar; the group named stamp orders tags",
+    )
+
+
+class ModelSiblingPinHookRevsApplyResult(BaseModel):
+    """The plan, the hook revs it was read from and the config text with the planned blocks moved."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    plan: ModelSiblingPinHookRevsPlan
+    hook_revs: tuple[str, ...] = Field(
+        description="The rev of every hook block of the repository found in the text, in file order"
+    )
+    candidate_text: str = Field(
+        description="The config text with the planned blocks moved to the plan's hook tag; the input text when none moves"
+    )

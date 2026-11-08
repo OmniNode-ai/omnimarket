@@ -20,6 +20,8 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 class EnumHostProbe(StrEnum):
     LEDGER_OUTBOX = "ledger-outbox"
     LEDGER_OLD_NAMES = "ledger-old-names"
+    #: Append one probe row through the bus and read it back from the durable store by a deadline.
+    LEDGER_DURABILITY = "ledger-durability"
     HOST_CANARY = "host-canary"
     #: Join J1: the code graph's verdict for the nodes host discovery and placement depend on.
     JOIN_J1 = "join-j1"
@@ -28,8 +30,11 @@ class EnumHostProbe(StrEnum):
 class EnumCanaryEnding(StrEnum):
     """How one host's canary lane ended (piece 2 of the base-first plan).
 
-    ``typed`` and ``busy`` are typed endings: the lane started and ended with its result, or the
-    placement refused it with its own typed refusal. Every other ending is a failure of the host:
+    ``typed``, ``busy`` and ``parked`` are typed endings: the lane started and ended with its result,
+    or the placement refused it with its own typed refusal. ``parked`` is a refusal the host table
+    or the load bar gives (the host is out of rotation, takes no unit of the canary's kind, or is
+    over the bar): the host is listed as parked and never fails the reading. Every other ending is
+    a failure of the host:
     a wrapper that was killed or a result that cannot be read is ``untyped``, a canary cut at its
     deadline is ``timed-out`` (never free capacity), a host the pool read could not reach is
     ``unreachable``.
@@ -37,6 +42,7 @@ class EnumCanaryEnding(StrEnum):
 
     TYPED = "typed"
     BUSY = "busy"
+    PARKED = "parked"
     UNTYPED = "untyped"
     TIMED_OUT = "timed-out"
     UNREACHABLE = "unreachable"
@@ -73,6 +79,8 @@ class ModelCanaryHostReading(BaseModel):
     ending: EnumCanaryEnding
     free_disk_gb: float | None = None
     slots: int | None = None
+    #: The placement's refusal as one token, for a host that ended busy or parked; else empty.
+    refusal: str = ""
     #: Token-safe reasons this host fails the reading; empty when it passes.
     failures: tuple[str, ...] = ()
 

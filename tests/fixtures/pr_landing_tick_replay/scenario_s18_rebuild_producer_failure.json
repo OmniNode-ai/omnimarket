@@ -1,0 +1,257 @@
+{
+ "decision": {
+  "actions": [
+   {
+    "attempts": [],
+    "brief": null,
+    "cause_brief": null,
+    "dedupe_key": null,
+    "head_sha": null,
+    "kind": "companion_rebuild",
+    "lease_id": null,
+    "members": [
+     {
+      "head_sha": "f62b40fcd48810476121f6710b988a050cb9f250",
+      "pr": "acme/app#1"
+     },
+     {
+      "head_sha": "71f689b54f18d5fe52b3028f42493e4246ad76bc",
+      "pr": "acme/lib#2"
+     }
+    ],
+    "owner": null,
+    "rebuild_key": "7464ba680ac18c61eb981913d28c804fcf726cc9ba8ce92f4fd5960197e0130f",
+    "replacement": null,
+    "subject": "acme/occ#1",
+    "target_repo": "acme/occ"
+   }
+  ],
+  "companion_verdicts": [
+   {
+    "companion": "acme/occ#1",
+    "verdict": "rebuild"
+   }
+  ],
+  "degraded": [],
+  "gates": [],
+  "land_skips": [],
+  "next_state": {
+   "causes": [],
+   "close_requested": [],
+   "draining_repos": [],
+   "eligibility_reruns": [],
+   "last_tick": 1,
+   "leases": [],
+   "next_lease_id": 1,
+   "observe_only_repos": [],
+   "rebuilds": [
+    {
+     "attempts": 1,
+     "delivered_tick": null,
+     "key": "7464ba680ac18c61eb981913d28c804fcf726cc9ba8ce92f4fd5960197e0130f",
+     "members": [
+      {
+       "head_sha": "f62b40fcd48810476121f6710b988a050cb9f250",
+       "pr": "acme/app#1"
+      },
+      {
+       "head_sha": "71f689b54f18d5fe52b3028f42493e4246ad76bc",
+       "pr": "acme/lib#2"
+      }
+     ],
+     "next_retry_tick": null,
+     "old_companion": "acme/occ#1",
+     "producer_release": "producer-1",
+     "replacement": null,
+     "run_id": null,
+     "status": "pending",
+     "target_repo": "acme/occ"
+    }
+   ],
+   "records": [],
+   "revoked_lease_ids": [],
+   "token_holder": null,
+   "uncovered": []
+  },
+  "observe_only_refused": [],
+  "observed_actions": [],
+  "recorded_outcomes": [],
+  "tick": 1,
+  "violations": []
+ },
+ "facts": {
+  "available_engines": [
+   "codex_high",
+   "claude_sonnet",
+   "claude_sonnet"
+  ],
+  "base_green_checks": [],
+  "base_heads": [],
+  "base_red_checks": [],
+  "cause_escalations": [],
+  "cause_owners": [],
+  "cause_releases": [],
+  "companions": [
+   {
+    "ci": "pending",
+    "head_sha": "cd52c97a3c1a3bc30ae73dbcba4f2ce512743551",
+    "members": [
+     {
+      "head_sha": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+      "pr": "acme/app#1"
+     },
+     {
+      "head_sha": "71f689b54f18d5fe52b3028f42493e4246ad76bc",
+      "pr": "acme/lib#2"
+     }
+    ],
+    "pr": "acme/occ#1",
+    "rebuild_key": null,
+    "ref_updates": [],
+    "rerun_runs": [],
+    "state": "open"
+   }
+  ],
+  "drain_requested": [],
+  "fixer_hold": [],
+  "fixer_hold_released_prs": [],
+  "floor_breached_repos": [],
+  "load1": 0.0,
+  "observed_at": "2026-09-28T00:05:00Z",
+  "policy": {
+   "cause_attempt_budget": 2,
+   "cause_diagnosis_engine": "claude_sonnet",
+   "cause_engine_ladder": [
+    "codex_high",
+    "claude_sonnet"
+   ],
+   "cause_lease_seconds": 5400,
+   "cause_park_hours": 12,
+   "cause_spawn_failure_budget": 3,
+   "cause_spawn_failure_seconds": 600,
+   "cluster_absorb_ratio": 0.8,
+   "cluster_excluded_checks": [
+    "CI Summary",
+    "Hostile Reviewer (adversarial gate)",
+    "Hostile Review Gate"
+   ],
+   "cluster_min_members": 3,
+   "cluster_min_members_floor": 2,
+   "engine_ladder": [
+    "codex_high",
+    "claude_sonnet",
+    "claude_sonnet"
+   ],
+   "exhaustion_owner": {
+    "kind": "lane",
+    "name": "landing-controller",
+    "source": "policy"
+   },
+   "exit_grace_seconds": 120,
+   "lease_seconds": 3600,
+   "load_pause_threshold": 20.0,
+   "max_cause_workers": 4,
+   "max_cause_workers_per_repo": 2,
+   "max_rebuild_attempts": 3,
+   "max_stale_refreshes": 2,
+   "max_workers": 6,
+   "max_workers_per_repo": 6,
+   "rebuild_backoff_ticks": [
+    1,
+    2
+   ],
+   "rebuild_visibility_ticks": 3,
+   "stale_gate_seconds": 600,
+   "update_retry_seconds": 600,
+   "wait_stall_minutes": 60
+  },
+  "probes": [],
+  "producer_failures": [],
+  "producer_release": "producer-1",
+  "prs": [
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [],
+    "cancelled_checks": [],
+    "ci": "pending",
+    "collaborator": false,
+    "created_at": "2026-08-29T00:00:00Z",
+    "gate_reasons": [],
+    "gate_since": null,
+    "head_sha": "f62b40fcd48810476121f6710b988a050cb9f250",
+    "lacks_base_head": false,
+    "merge_queue": false,
+    "merge_state": "clean",
+    "open_parents": [],
+    "parents": [],
+    "pr": "acme/app#1",
+    "priority_class": null,
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [],
+    "red_class": null,
+    "ref_updates": [
+     {
+      "after_sha": "f62b40fcd48810476121f6710b988a050cb9f250",
+      "at": "2026-09-28T00:05:00Z",
+      "before_sha": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+      "kind": "fast_forward"
+     }
+    ],
+    "rerun_runs": [],
+    "runtime": false,
+    "state": "open",
+    "suspensions": []
+   },
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [],
+    "cancelled_checks": [],
+    "ci": "pending",
+    "collaborator": false,
+    "created_at": "2026-08-29T01:00:00Z",
+    "gate_reasons": [],
+    "gate_since": null,
+    "head_sha": "71f689b54f18d5fe52b3028f42493e4246ad76bc",
+    "lacks_base_head": false,
+    "merge_queue": false,
+    "merge_state": "clean",
+    "open_parents": [],
+    "parents": [],
+    "pr": "acme/lib#2",
+    "priority_class": null,
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [],
+    "red_class": null,
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": false,
+    "state": "open",
+    "suspensions": []
+   }
+  ],
+  "rebuild_acks": [],
+  "results": [],
+  "shared_check_verdicts": [],
+  "state": {
+   "causes": [],
+   "close_requested": [],
+   "draining_repos": [],
+   "eligibility_reruns": [],
+   "last_tick": 0,
+   "leases": [],
+   "next_lease_id": 1,
+   "observe_only_repos": [],
+   "rebuilds": [],
+   "records": [],
+   "revoked_lease_ids": [],
+   "token_holder": null,
+   "uncovered": []
+  },
+  "tick": 1,
+  "update_no_new_commits": []
+ },
+ "fair_share": true,
+ "provenance": "facts: reviewed scenario S18_rebuild_producer_failure, its busiest tick; decision: the pinned decision path with fair share at the recording commit"
+}

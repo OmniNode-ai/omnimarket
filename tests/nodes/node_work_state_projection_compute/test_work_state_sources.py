@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_sources import (
+from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_source_mapping import (
     plan_tasks_from_text,
     pull_requests_from_watcher,
     scope_from_declaration,

@@ -50,7 +50,7 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_source
 from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
     HandlerWorkStateProjection,
 )
-from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_sources import (
+from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_source_mapping import (
     plan_tasks_from_text,
     pull_requests_from_watcher,
     receipts_from_documents,
