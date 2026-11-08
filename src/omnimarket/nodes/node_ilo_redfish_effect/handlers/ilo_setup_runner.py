@@ -613,13 +613,13 @@ class IloSetupSequence:
         if not isinstance(names, dict):
             return self._key(host, role, "USERNAME"), self._key(host, role, "PASSWORD")
         user = names.get(f"{role.lower()}_username_key")
-        password = names.get(f"{role.lower()}_password_key")
-        if not isinstance(user, str) or not isinstance(password, str):
+        second = names.get(f"{role.lower()}_password_key")
+        if not isinstance(user, str) or not isinstance(second, str):
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
                 f"the overlay row's credentials do not name a {role.lower()} account",
             )
-        return user, password
+        return user, second
 
     def _admin(
         self,
