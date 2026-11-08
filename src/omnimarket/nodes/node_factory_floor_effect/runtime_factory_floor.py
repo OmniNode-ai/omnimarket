@@ -17,8 +17,14 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect import (
     HandlerFactoryFloorEffect,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.handler_floor_lines import (
+    HandlerFloorLines,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
+)
+from omnimarket.nodes.node_factory_floor_effect.models.model_floor_lines import (
+    ModelFloorLinesRequest,
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
@@ -73,11 +79,62 @@ def request_from_args(a: argparse.Namespace) -> ModelFactoryFloorRunRequest:
     )
 
 
+LINES_OPERATION = "lines"
+
+
+def parse_lines_args(argv: list[str]) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(
+        prog="factory_floor lines",
+        description="Print the line board from the newest record the effect wrote (no recompute, no other read).",
+    )
+    ap.add_argument("--record", help="read this record file instead of the newest one")
+    ap.add_argument(
+        "--at", help="read the history snapshot at or before this UTC ISO time"
+    )
+    ap.add_argument("--now", help="override the clock, UTC ISO (tests only)")
+    ap.add_argument(
+        "--home", help="the registry home; default: the contract's home_env"
+    )
+    ap.add_argument(
+        "--history-dir",
+        help="the directory holding the history subdirectory; default: the contract's history_dir_env",
+    )
+    return ap.parse_args(argv)
+
+
+def _utc(text: str | None) -> datetime | None:
+    if not text:
+        return None
+    return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def main_lines(argv: list[str]) -> int:
+    a = parse_lines_args(argv)
+    try:
+        result = HandlerFloorLines().handle(
+            ModelFloorLinesRequest(
+                record_path=a.record,
+                history_at=_utc(a.at),
+                now=_utc(a.now),
+                home=a.home,
+                history_dir=a.history_dir,
+            )
+        )
+    except (SourceRefusedError, NodeOverlayError) as exc:
+        sys.stderr.write(f"REFUSED factory-floor lines: {exc}\n")
+        return 2
+    sys.stdout.write(result.board)
+    return result.exit_status
+
+
 def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if args and args[0] == LINES_OPERATION:
+        return main_lines(args[1:])
     try:
         result = HandlerFactoryFloorEffect(
             merged_running=bind_merged_running_reader()
-        ).handle(request_from_args(parse_args(argv)))
+        ).handle(request_from_args(parse_args(args)))
     except (SourceRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor: {exc}\n")
         return 2

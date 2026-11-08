@@ -46,6 +46,12 @@ handler_routing:
       module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_seam_emitter
     input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
     output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
+  - operation: lines
+    handler:
+      name: HandlerFloorLines
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_floor_lines
+    input_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_lines.ModelFloorLinesRequest
+    output_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_lines.ModelFloorLinesResult
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -59,7 +65,7 @@ published_events:
     topic: onex.evt.omnimarket.view-seam-window-closed.v1
     description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_factory_floor_effect (runtime_factory_floor.py), from a schedule or by hand.
+  external_trigger: python -m omnimarket.nodes.node_factory_floor_effect (runtime_factory_floor.py), from a schedule or by hand; the lines operation is the same command with the word lines first.
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -74,6 +80,7 @@ descriptor:
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
   - reads the API credit meter, engine usage and lab rung status, and token pool status mirrors (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
+  - the lines operation reads only the published record (the newest one under the registry home, a named file, or a history snapshot) and writes the board text to stdout
 
 # Where the entry reads and writes. Paths are relative to the registry home (the environment variable named by
 # home_env) except the plans, which are relative to the plans repository clone (plans_kb_env). Which plans are
@@ -173,6 +180,29 @@ runtime:
     timeout_seconds: 90
   output:
     relpath: .claude_scratch/factory-floor/factory-floor.json
+# The lines operation: render the line board from one published record. It reads that record and nothing else, recomputes
+# nothing, and takes every limit and word from this block. A record older than record_max_age_min draws UNREAD first and
+# the command exits with unread_exit_status; an absent or unparsable record draws UNREAD alone with the same status.
+lines:
+  record_max_age_min: 15
+  # The eight sources the board depends on, in print order; the names are sources.health[].source in the record.
+  health_sources: [plans, watcher, ledger, plans_today, linear, running_evidence, required_contexts, goal]
+  stage_order: [planned, building, pr-open, merged, running, unread]
+  # History snapshots sit under <directory the variable names>/<subdirectory>/ and end in the publish effect's timestamp format.
+  history_dir_env: ONEX_FACTORY_FLOOR_HISTORY_DIR
+  history_subdirectory: history
+  history_timestamp_format: "%Y%m%dT%H%M%S%fZ"
+  sentence_chars: 240
+  unread_exit_status: 3
+  words:
+    unread_record: "UNREAD: record {age_min} min old (limit {limit_min} min)"
+    unread_absent: "UNREAD: record absent ({path})"
+    unread_unparsable: "UNREAD: record not readable ({path})"
+    unread_not_in_record: "the record does not list this source"
+    stops_not_in_record: "not in record (the record carries no stops field)"
+    no_stops: "none recorded"
+    cause_not_recorded: "cause not recorded: run lean_five_whys"
+    cut_mark: " [cut]"
 metadata:
   transport_type: local
   description: >-

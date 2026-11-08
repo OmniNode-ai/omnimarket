@@ -1,0 +1,13 @@
+BOARD record 2026-11-03T12:00:00Z, 4 min old
+SOURCES
+  plans: unread - the record does not list this source
+  watcher: unread - the record does not list this source
+  ledger: unread - the record does not list this source
+  plans_today: unread - the record does not list this source
+  linear: unread - the record does not list this source
+  running_evidence: unread - the record does not list this source
+  required_contexts: unread - the record does not list this source
+  goal: unread - the record does not list this source
+LINES 1
+  no-plan-is-declared-by-this-case [stopped] no-plan-is-declared-by-this-case
+    stops: not in record (the record carries no stops field)
