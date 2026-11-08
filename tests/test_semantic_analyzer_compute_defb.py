@@ -25,6 +25,10 @@ from uuid import UUID
 
 import yaml
 from omnibase_core.container import ModelONEXContainer
+from omnimemory.models.config import (
+    ModelHandlerSemanticComputeConfig,
+    ModelSemanticComputePolicyConfig,
+)
 from omnimemory.nodes.node_semantic_analyzer_compute.node_semantic_analyzer_compute import (
     NodeSemanticAnalyzerCompute,
 )
@@ -90,11 +94,24 @@ class FakeEmbeddingProvider:
         return True
 
 
+def _config() -> ModelHandlerSemanticComputeConfig:
+    return ModelHandlerSemanticComputeConfig(
+        policy_config=ModelSemanticComputePolicyConfig(
+            allowed_embedding_models=["stub-embedding"],
+            default_embedding_model="stub-embedding",
+            allowed_llm_models=["stub-llm"],
+            default_llm_model="stub-llm",
+        )
+    )
+
+
 def _make_handler() -> HandlerSemanticCompute:
     handler = HandlerSemanticCompute(container=ModelONEXContainer())
 
     async def _init() -> HandlerSemanticCompute:
-        await handler.initialize(embedding_provider=FakeEmbeddingProvider())
+        await handler.initialize(
+            config=_config(), embedding_provider=FakeEmbeddingProvider()
+        )
         return handler
 
     return asyncio.run(_init())
@@ -106,7 +123,9 @@ def _handle(
     handler = HandlerSemanticCompute(container=ModelONEXContainer())
 
     async def _run() -> ModelSemanticAnalyzerComputeResponse:
-        await handler.initialize(embedding_provider=FakeEmbeddingProvider())
+        await handler.initialize(
+            config=_config(), embedding_provider=FakeEmbeddingProvider()
+        )
         return await handler.handle(request)
 
     return asyncio.run(_run())
@@ -119,7 +138,9 @@ def _handle_after_init_mutation(
     handler = HandlerSemanticCompute(container=ModelONEXContainer())
 
     async def _run() -> ModelSemanticAnalyzerComputeResponse:
-        await handler.initialize(embedding_provider=FakeEmbeddingProvider())
+        await handler.initialize(
+            config=_config(), embedding_provider=FakeEmbeddingProvider()
+        )
         mutate(handler)
         return await handler.handle(request)
 
@@ -148,6 +169,7 @@ def _execute_legacy(
     node = NodeSemanticAnalyzerCompute(
         container=ModelONEXContainer(),
         embedding_provider=FakeEmbeddingProvider(),
+        config=_config(),
     )
     return asyncio.run(node.execute(request))
 

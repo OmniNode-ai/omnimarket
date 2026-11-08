@@ -4579,6 +4579,8 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_delegation_completion_rate_compute",
+        "node_delegation_completion_rate_effect",
         "node_delegation_dod_verify_request_compute",
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
@@ -7810,6 +7812,7 @@
         "node_pr_lifecycle_orchestrator",
         "node_pr_state_emit_effect",
         "node_pr_state_read_effect",
+        "node_reading_writer_effect",
         "node_wip_admission_compute"
       ],
       "target_schema": "omninode_internal",

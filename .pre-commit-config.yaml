@@ -650,7 +650,7 @@ repos:
         name: Queue full-suite admission policy (OMN-19998)
         language: system
         entry: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
-        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_rules\.json|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1060,7 +1060,7 @@ repos:
         language: system
         entry: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q -p no:randomly
         pass_filenames: false
-        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_gate\.py)$
+        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_(gate\.py|rules\.json))$
         stages: [pre-commit]
 
       # OMN-20844: bring-your-own-key customers choose their OpenRouter model;
@@ -1685,7 +1685,18 @@ repos:
         name: CI Summary external producer trigger parity (OMN-18963)
         language: system
         entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_rules\.json|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+      # OMN-23079: CI Summary's rules are overlay data; a change to the gate or
+      # its overlay must replay the recorded heads to the same verdicts. The
+      # same test file runs in ci.yml's unit test suite.
+      - id: ci-summary-rules-replay
+        name: CI Summary rules overlay replay (OMN-23079)
+        language: system
+        entry: uv run pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q -n 0 -p no:randomly --no-cov
+        files: ^(scripts/ci/ci_summary_[a-z_]+\.(py|json)|tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079\.py|tests/fixtures/ci_summary/replay_heads_omn23079\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]
@@ -1936,7 +1947,7 @@ repos:
         name: Event registry drift reads the pinned omniclaude (OMN-20001)
         language: system
         entry: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
-        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_gate\.py)$
+        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_(gate\.py|rules\.json))$
         pass_filenames: false
         stages: [pre-commit]
 
