@@ -291,6 +291,9 @@ units:
             "SELECT host || chr(124) || max(emitted_at) FROM omninode_internal.claude_hook_events
             WHERE emitted_at > now() - make_interval(days => 1) GROUP BY host"
         host_table: "{host_table_path}"
+        # Leave out of the quiet-host reading each host the lab host table declares unavailable (OMN-22778); the
+        # alarm reads that table through the unit's ONEX_WORKSPACE_CONFIG_ROOT, the way every other consumer does.
+        skip_unavailable_hosts: true
         # The drainer this host watches and reinstalls (the launching Mac is h200).
         drainer:
           host: h200
