@@ -10066,7 +10066,7 @@
         "node_projection_delegation"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",

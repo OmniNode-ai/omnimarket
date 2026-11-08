@@ -24,7 +24,7 @@ MANIFEST = (
     Path(__file__).resolve().parents[1] / "scripts/application-relation-ownership.yaml"
 )
 RUNNER = "service:omnimarket_projection_migration_runner"
-DAILY_VIEW_MIGRATION = "src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql"
+DAILY_VIEW_MIGRATION = "src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql"
 
 
 def _section(key: str) -> list[dict[str, Any]]:

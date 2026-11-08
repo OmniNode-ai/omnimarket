@@ -324,7 +324,7 @@ db_io:
     - name: projection_delegation_daily
       database_ref: application
       schema: public
-      migration: "0066_delegation_daily_view.sql"
+      migration: "0067_delegation_daily_view.sql"
       access: read
       role: aggregate_daily
 

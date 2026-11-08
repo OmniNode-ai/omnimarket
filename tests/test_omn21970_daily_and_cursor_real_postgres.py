@@ -63,7 +63,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _MIGRATIONS_DIR = (
     _ROOT / "src" / "omnimarket" / "nodes" / "node_projection_delegation" / "migrations"
 )
-_CURSOR_MIGRATION = "0065_delegation_events_projection_cursor.sql"
+_CURSOR_MIGRATION = "0066_delegation_events_projection_cursor.sql"
 _DOCKER = shutil.which("docker")
 _DAILY = "onex.snapshot.projection.delegation.daily.v1"
 _DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
