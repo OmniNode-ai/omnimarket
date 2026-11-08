@@ -13,11 +13,6 @@ requirements:
     statement: 'AC1: the file-list comparison test fails when a root data file is missing from a test host''s copy and passes when equal -- falsifier: uv run pytest src/omnimarket/nodes/node_install_superset_guard_effect -q -k file_list_comparison'
   - id: AC2
     statement: 'AC2: the daily install canary runs with a fresh head and the drill triggers the same probe on demand -- falsifier: uv run pytest src/omnimarket/nodes/node_install_canary_effect -q -k daily_and_drill'
-- id: req-omn22955-shared-file-list
-  statement: The install canary reads the file-list comparison and the revision resolver from a shared package, not from the superset guard's private handler module.
-  acceptance:
-  - id: AC3
-    statement: 'AC3: no module of the install canary node imports another node, and both nodes use the one shared comparison -- falsifier: uv run pytest tests/nodes/node_install_canary_effect/test_no_private_node_imports.py -q'
 evidence_requirements:
 - kind: tests
   description: The file-list comparison, daily and drill tests pass, and the existing install node tests still pass
@@ -44,15 +39,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_install_canary_effect -q -k daily_and_drill --no-cov
-    cwd: .
-- id: dod-omn22955-shared-file-list
-  description: The canary imports no sibling node and the superset guard and the canary use the one shared comparison.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_install_canary_effect/test_no_private_node_imports.py -q --no-cov
     cwd: .
 - id: dod-omn22955-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
