@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -32,10 +33,12 @@ pytestmark = pytest.mark.unit
 RECALIBRATED = date(2026, 11, 7)
 
 
-def _freeze(**fields: object) -> ModelAndonThresholdFreeze:
-    thresholds = {"ci.timeout": 2, "hook.refusal": 17}
-    window = int(fields.pop("window_hours", WINDOW_HOURS))  # type: ignore[call-overload]
-    values = dict(fields.pop("thresholds", thresholds))  # type: ignore[call-overload]
+def _freeze(
+    window_hours: int = WINDOW_HOURS,
+    thresholds: dict[str, int] | None = None,
+) -> ModelAndonThresholdFreeze:
+    window = window_hours
+    values = dict(thresholds or {"ci.timeout": 2, "hook.refusal": 17})
     return ModelAndonThresholdFreeze(
         window_hours=window,
         thresholds=values,
@@ -47,14 +50,14 @@ def _freeze(**fields: object) -> ModelAndonThresholdFreeze:
 def test_a_threshold_value_cannot_be_changed_after_the_freeze_is_built() -> None:
     freeze = _freeze()
     with pytest.raises(TypeError):
-        freeze.thresholds["hook.refusal"] = 10_000  # type: ignore[index]
+        cast("Any", freeze.thresholds)["hook.refusal"] = 10_000
     assert freeze.thresholds["hook.refusal"] == 17
 
 
 def test_the_freeze_hash_still_matches_after_a_refused_change() -> None:
     freeze = _freeze()
     with pytest.raises(TypeError):
-        freeze.thresholds["new.class"] = 1  # type: ignore[index]
+        cast("Any", freeze.thresholds)["new.class"] = 1
     assert freeze.threshold_hash == freeze_hash(
         freeze.window_hours, dict(freeze.thresholds)
     )
