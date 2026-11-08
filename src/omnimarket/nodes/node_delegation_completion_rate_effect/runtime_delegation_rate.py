@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationRateOverlay,
 )
 from omnimarket.nodes.node_delegation_completion_rate_effect.adapters.events_source import (

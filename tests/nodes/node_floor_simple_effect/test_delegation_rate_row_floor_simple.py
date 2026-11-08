@@ -78,7 +78,8 @@ def run_tick(home: Path, ledger: InMemoryLedger, *, at: datetime) -> ModelFloorS
 
 def write_reading(ledger: InMemoryLedger, **over: object) -> str:
     row = HandlerDelegationCompletionRate().handle(request(**over)).ledger_row
-    assert ledger.append(row + "\n", f"rate-{len(ledger.lines)}").ok
+    appended = ledger.append(row + "\n", f"rate-{len(ledger.lines)}")
+    assert appended.ok
     return row
 
 

@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationEventFact,
 )
 from omnimarket.nodes.node_delegation_completion_rate_effect.adapters.events_source import (

@@ -13,13 +13,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationCompletionRate,
     ModelDelegationCompletionRateRequest,
     ModelDelegationEventFact,
     ModelDelegationRateOverlay,
 )
+from omnimarket.models.model_reading import EnumReadingVerdict
 
 _NO_NUMBER = "-"
 

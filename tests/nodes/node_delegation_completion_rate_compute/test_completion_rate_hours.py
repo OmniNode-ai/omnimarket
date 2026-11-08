@@ -12,10 +12,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.models.model_reading import EnumReadingVerdict as V
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationCompletionRate,
 )
+from omnimarket.models.model_reading import EnumReadingVerdict as V
 from tests.nodes.node_delegation_completion_rate_compute.completion_rate_support import (
     DEPLOYED,
     HARNESS,

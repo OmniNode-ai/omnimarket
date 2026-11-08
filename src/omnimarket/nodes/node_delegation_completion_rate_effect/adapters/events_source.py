@@ -16,7 +16,7 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationEventFact,
 )
 from omnimarket.nodes.node_delegation_completion_rate_effect.overlay import (
@@ -103,7 +103,7 @@ class SshPostgresEventSource:
             [
                 "BEGIN READ ONLY;",
                 "SELECT json_build_object('now', to_char(now() AT TIME ZONE 'UTC', "
-                '\'YYYY-MM-DD"T"HH24:MI:SS.US"+00:00"\'))::text;',
+                + '\'YYYY-MM-DD"T"HH24:MI:SS.US"+00:00"\'))::text;',
                 "SELECT json_build_object("
                 "'t', to_char(\"timestamp\" AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"+00:00\"'), "
                 "'src', data_source, 'shadow', is_shadow, 'ok', terminal_ok, "

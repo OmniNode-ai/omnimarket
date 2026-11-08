@@ -9,7 +9,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
+from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationEventFact,
 )
 
@@ -27,7 +27,7 @@ class ModelEventsRead(BaseModel):
 class ProtocolDelegationEventSource(Protocol):
     def read(self, window_seconds: int) -> ModelEventsRead:
         """The rows of the last ``window_seconds``; never raises, a failure is ``error``."""
-        ...
+        raise NotImplementedError
 
 
 __all__ = ["ModelEventsRead", "ProtocolDelegationEventSource"]

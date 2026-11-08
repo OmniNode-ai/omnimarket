@@ -33,7 +33,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_completion_rate_compute.handlers.handler_delegation_completion_rate
   class: HandlerDelegationCompletionRate
-  input_model: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate.ModelDelegationCompletionRateRequest
+  input_model: omnimarket.models.model_delegation_completion_rate.ModelDelegationCompletionRateRequest
 
 descriptor:
   node_archetype: compute
@@ -44,11 +44,11 @@ descriptor:
 
 input_model:
   name: ModelDelegationCompletionRateRequest
-  module: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate
+  module: omnimarket.models.model_delegation_completion_rate
   description: The delegation_events rows read, the overlay and the time to read at.
 output_model:
   name: ModelDelegationCompletionRate
-  module: omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate
+  module: omnimarket.models.model_delegation_completion_rate
   description: The verdict, R_all, R_dep, failed_rate, the broken bounds and the ledger row that carries them to the floor.
 
 input_subscriptions:

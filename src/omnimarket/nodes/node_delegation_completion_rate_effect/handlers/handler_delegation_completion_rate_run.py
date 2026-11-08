@@ -17,14 +17,14 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.model_delegation_completion_rate import (
+    ModelDelegationCompletionRateRequest,
+    ModelDelegationRateOverlay,
+)
 from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_delegation_completion_rate_compute.handlers.handler_delegation_completion_rate import (
     HandlerDelegationCompletionRate,
     reason_token,
-)
-from omnimarket.nodes.node_delegation_completion_rate_compute.models.model_delegation_completion_rate import (
-    ModelDelegationCompletionRateRequest,
-    ModelDelegationRateOverlay,
 )
 from omnimarket.nodes.node_delegation_completion_rate_effect.models.model_delegation_rate_run import (
     ModelDelegationRateCommand,
