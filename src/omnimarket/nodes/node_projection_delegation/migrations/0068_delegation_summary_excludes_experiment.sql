@@ -12,13 +12,19 @@
 -- The column list is unchanged. `fixture` rows keep their 0050 treatment (counted,
 -- their savings reported apart). security_invoker is set again below because
 -- CREATE OR REPLACE VIEW drops it; `measured` is a CTE over delegation_events, so
--- the view still inherits that table's row-level security.
+-- the view still inherits that table's row-level security. `measured` names its
+-- columns instead of reading `*`, so the view depends only on the columns it
+-- reads and a later migration can still drop or alter any other delegation_events
+-- column (a SELECT * would pin every column, as migration 0059's repeat test shows).
 
 BEGIN;
 
 CREATE OR REPLACE VIEW projection_delegation_summary AS
 WITH measured AS (
-    SELECT * FROM delegation_events WHERE data_source <> 'experiment'
+    SELECT tenant_id, quality_gate_passed, operational_outcome, content_verdict,
+        latency_ms, delegation_latency_ms, created_at, cost_savings_usd,
+        data_source, task_type, delegated_to
+    FROM delegation_events WHERE data_source <> 'experiment'
 ),
 summary AS (
     SELECT

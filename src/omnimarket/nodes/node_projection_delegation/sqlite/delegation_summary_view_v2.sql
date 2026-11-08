@@ -11,7 +11,10 @@
 -- drops it and creates the revision. A later revision is a new step.
 CREATE VIEW projection_delegation_summary AS
 WITH measured AS (
-    SELECT * FROM delegation_events WHERE data_source <> 'experiment'
+    SELECT tenant_id, quality_gate_passed,
+        latency_ms, delegation_latency_ms, created_at, cost_savings_usd,
+        data_source, task_type, delegated_to
+    FROM delegation_events WHERE data_source <> 'experiment'
 ),
 summary AS (
     SELECT
