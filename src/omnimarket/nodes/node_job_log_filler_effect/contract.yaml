@@ -40,10 +40,12 @@ handler:
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
-    - routing_key: ModelJobLogFillRequest
-      handler:
+    - handler:
         name: HandlerJobLogFiller
         module: omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler
+      event_model:
+        name: ModelJobLogFillRequest
+        module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
 descriptor:
   node_archetype: effect
   purity: impure

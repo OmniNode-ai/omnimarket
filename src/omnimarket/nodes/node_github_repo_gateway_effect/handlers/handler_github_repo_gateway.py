@@ -47,9 +47,9 @@ from omnimarket.models.model_github_gateway_io import (
     ModelGithubGatewayResponse,
     ModelJobLogTailResult,
 )
+from omnimarket.models.model_job_log_cache_miss import JOB_LOG_CACHE_MISS
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_job_log_cache import (
-    JOB_LOG_CACHE_MISS,
     ModelCachedJobLog,
     ModelJobLogCachePolicy,
 )

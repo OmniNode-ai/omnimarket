@@ -6,9 +6,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-#: What a cache-only read's refusal starts with; the filler reads it to tell a miss from a fault.
-JOB_LOG_CACHE_MISS = "JOB-LOG-CACHE-MISS"
-
 
 class ModelJobLogCachePolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

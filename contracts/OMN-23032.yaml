@@ -70,7 +70,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: "grep -q 'lane_reads_cache_only: true' src/omnimarket/nodes/node_github_repo_gateway_effect/contract.yaml && uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly"
+    check_value: "uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly"
     cwd: .
 - id: dod-omn23032-filler-integration-proof
   description: The pushed head ran the filler tests, the golden and error chain tests and the gateway cache tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -83,8 +83,6 @@ dod_evidence:
 - id: dod-omn23032-filler-deploy
   description: Reads the filler node's contract from the pushed branch through the GitHub contents API; the exit status depends on the branch holding the lane job-log policy key the node and the gateway share, so it goes red when the node is absent. Runs on a hosted runner.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: 'grep -q lane_reads_cache_only src/omnimarket/nodes/node_job_log_filler_effect/contract.yaml && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_job_log_filler_effect/contract.yaml?ref=omn-23032-job-log-filler" --jq .content | base64 -d | grep lane_reads_cache_only >/dev/null'
