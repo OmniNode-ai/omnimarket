@@ -135,6 +135,8 @@ not_routing_resolution_sites:
     reason: finds the overlay file of the host readings to pin its root in the installed unit; the overlay holds probe thresholds and host environments and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/adapters/landing_adapters.py:resolve_setting(PR_STATE_NODE)"
     reason: reads the projection_api_url of the pr_state read node overlay to find the projection address; it is an address and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_host_power_effect/handlers/ilo_port_runtime.py:find_node_overlay(ILO_NODE)"
+    reason: finds the overlay file of the iLO Redfish node to resolve the pinned-certificate directory beside it; the overlay holds host endpoints and credentials and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
     reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
@@ -179,6 +181,8 @@ not_routing_resolution_sites:
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_floor_fill_orchestrator/runtime_floor_fill_schedule.py:find_node_overlay(NODE_NAME)"
+    reason: finds the overlay file of the floor fill to read the tick host and interval for its systemd user timer; the overlay holds the fill's schedule and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
     reason: locates the code graph overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the graph schedule and repository set and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_token_pool.py:find_node_overlay(NODE_NAME)"
