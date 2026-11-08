@@ -32,13 +32,13 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-deploy-omn23198-hermetic-env-tests
+  - id: dod-deploy-omn23198-venv-cleanup-tests
     description: >-
-      The existing hermetic environment tests still pass beside the cleanup, which hosted CI can run.
+      The cleanup tests, which hosted CI can run: on dev without the change the success, failure, timeout and raising-collector cases each leave an environment directory and fail.
     source: manual
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_16846_hermetic_behaviour_check_env.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py tests/unit/nodes/node_dod_verify/test_omn_16846_hermetic_behaviour_check_env.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: []
   - id: dod-omn23198-venv-cleanup-integration-proof

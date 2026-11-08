@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -70,7 +71,7 @@ class _OneUvCheckCollector(EvidenceCollector):
     project: Path
     boom = False
 
-    def collect(  # type: ignore[override]
+    def collect(
         self,
         ticket_id: str,
         contract_path: str | None = None,
@@ -259,7 +260,7 @@ def test_a_stub_collector_without_close_still_runs(
 
     class _Handler(HandlerDodVerify):
         def _make_collector(self) -> EvidenceCollector:
-            return _Stub()  # type: ignore[return-value]
+            return cast(EvidenceCollector, _Stub())
 
     state = _Handler()._handle_typed(
         ModelDodVerifyStartCommand(
