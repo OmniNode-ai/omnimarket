@@ -151,16 +151,16 @@ class_rules:
   - name: prrp-snapshot-stale-on-lab-host
     owner: "the host installer for the private-repo-runner-placement snapshot (onex-prrp-snapshot-publish must refresh it on every lab host inside the hook's 24 hour limit)"
     pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run)'
+# The 1 row of 2026-11-08T18:51Z that the 48 rules above did not name (OMN-23234), named from its own text.
+  - name: bulk-copy-on-host-array-starves-host-install
+    owner: "the owner of the host bring-up graph and the host-ram-filesystem installer (OMN-22993): a copy of a spill directory (millions of small files) must be bandwidth-limited from the start, and the installer must not run while a bulk copy reads the same array"
+    pattern: 'unthrottled rsync of the .{0,40}ram-spill'
   - name: ilo-redfish-logs-verb-reads-links-as-fields
     owner: "the owner of node_ilo_redfish_effect read_logs (an iLO 4 IML Entries collection holds links in Members, the handler reads inline fields); the overlay journal_dir home-path rejection and the pr-create duplicate-guard match named in the same row need their own owners"
     pattern: 'node_ilo_redfish_effect logs verb returns'
   - name: harness-delegate-fixed-call-budget-kills-long-run
     owner: "the owner of the harness-delegate task class budgets (a class's fixed call budget cannot be raised, and a harness that writes its answer only at the end loses a run that reaches it)"
     pattern: "fixed \\d+ s call budget"
-# The 1 row of 2026-11-08T18:51Z that the 48 rules above did not name (OMN-22879), named from its own text.
-  - name: bulk-copy-on-host-array-starves-host-install
-    owner: "the owner of the host bring-up graph and the host-ram-filesystem installer (OMN-22993): a copy of a spill directory (millions of small files) must be bandwidth-limited from the start, and the installer must not run while a bulk copy reads the same array"
-    pattern: 'unthrottled rsync of the .{0,40}ram-spill'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness

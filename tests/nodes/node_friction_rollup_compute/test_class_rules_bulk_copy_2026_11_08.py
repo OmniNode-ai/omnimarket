@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The class rule for the FRICTION row of 2026-11-08T18:51Z that the 48 shipped rules left unclassified (OMN-22879).
+"""The class rule for the FRICTION row of 2026-11-08T18:51Z that the 48 shipped rules left unclassified (OMN-23234).
 
 The row is the text of a real ledger row (the cost cell and the prose the rule reads): a host install failed and ssh hung for
 about 12 minutes because an unthrottled copy of a spill directory starved the host's init system. The control runs the same row
