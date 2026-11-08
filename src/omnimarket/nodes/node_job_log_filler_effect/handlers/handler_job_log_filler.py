@@ -197,9 +197,7 @@ class HandlerJobLogFiller:
                 if self._reader_factory
                 else build_reader(overlay, request.profile)
             )
-        except (
-            Exception
-        ) as exc:  # fallback-ok: a pass that cannot start is the failed terminal
+        except Exception as exc:
             return ModelJobLogFillResult(
                 correlation_id=request.correlation_id,
                 status=EnumJobLogFillStatus.FAILED,
@@ -231,7 +229,7 @@ class HandlerJobLogFiller:
                     continue
                 live_reads += 1
                 todo.append(run)
-            except Exception as exc:  # fallback-ok: recorded against the run
+            except Exception as exc:
                 items.append(self._failed(run, exc))
             else:
                 items.append(
@@ -245,7 +243,7 @@ class HandlerJobLogFiller:
         def one(run: ModelMergeRelevantRun) -> ModelJobLogFillItem:
             try:
                 result = reader.read(run.repo, run.job_id, cache_only=False)
-            except Exception as exc:  # fallback-ok: recorded against the run
+            except Exception as exc:
                 return self._failed(run, exc)
             return ModelJobLogFillItem(
                 run=run,

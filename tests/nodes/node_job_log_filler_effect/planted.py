@@ -47,7 +47,7 @@ def overlay(**changes: object) -> ModelJobLogFillerOverlay:
             "redpanda": ModelJobLogFillerBusProfile(kind="kafka", lane="example-lane"),
         },
     }
-    return ModelJobLogFillerOverlay(**{**base, **changes})  # type: ignore[arg-type]
+    return ModelJobLogFillerOverlay.model_validate({**base, **changes})
 
 
 def _record(

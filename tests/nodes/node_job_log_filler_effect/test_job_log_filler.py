@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -143,13 +144,13 @@ def test_the_cap_bounds_live_reads_and_defers_the_rest(tmp_path: Path) -> None:
 
 
 def test_a_pass_that_cannot_start_answers_failed_naming_why(tmp_path: Path) -> None:
-    def broken() -> dict:
+    def broken() -> dict[str, Any]:
         raise ValueError("watcher state unreadable")
 
     handler = HandlerJobLogFiller(
         overlay=overlay(),
         reader_factory=lambda _p: None,
-        state_reader=broken,  # type: ignore[arg-type,return-value]
+        state_reader=broken,
     )
     result = handler.fill(ModelJobLogFillRequest())
     assert result.status is EnumJobLogFillStatus.FAILED
