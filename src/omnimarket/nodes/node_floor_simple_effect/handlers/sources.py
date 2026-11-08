@@ -705,17 +705,33 @@ def read_deploy_lag(
     )
 
 
-def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _last_run(path: Path) -> tuple[datetime, dict[str, Any]]:
+    """The finished time and the reports by condition of the last line of a run record."""
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
+        handle.seek(max(size - TAIL_BYTES, 0))
+        lines = handle.read().splitlines()
+    record = json.loads(lines[-1])
+    return parse_time(record["finished_at"]), {
+        r["condition"]: r for r in record["reports"]
+    }
+
+
+def read_broker_lag(
+    path: Path, overlay: ModelLabStateOverlay, lag_path: Path, lag_condition: str
+) -> ModelLabSourceRead:
+    """The broker conditions from the lab alarm's last run, the lag condition from the lag node's last run.
+
+    The alarm script's own lag condition watches a fixed list of consumer groups, one of which nobody has
+    consumed since its writer was folded into the runtime; its lag grows with every delegation event and
+    reads ALARM at every tick. The lag node derives the live groups from the running image, so its run
+    replaces that one condition. Either record missing or unparseable is unread, never a smaller list, and
+    the reading is as old as the older of the two runs.
+    """
     source = _by_kind(overlay, "broker_lag")
     try:
-        with path.open("rb") as handle:
-            handle.seek(0, 2)
-            size = handle.tell()
-            handle.seek(max(size - TAIL_BYTES, 0))
-            lines = handle.read().splitlines()
-        record = json.loads(lines[-1])
-        finished = parse_time(record["finished_at"])
-        reports = {r["condition"]: r for r in record["reports"]}
+        finished, reports = _last_run(path)
     except OSError as exc:
         return _unread(
             source.id,
@@ -723,6 +739,19 @@ def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSource
         )
     except (ValueError, KeyError, IndexError, TypeError):
         return _unread(source.id, "the lab alarm's last run record cannot be parsed")
+    try:
+        lag_finished, lag_reports = _last_run(lag_path)
+        if lag_condition not in lag_reports:
+            raise KeyError(lag_condition)
+    except OSError as exc:
+        return _unread(
+            source.id,
+            f"the lag node's run record cannot be opened ({type(exc).__name__})",
+        )
+    except (ValueError, KeyError, IndexError, TypeError):
+        return _unread(source.id, "the lag node's last run record cannot be parsed")
+    reports[lag_condition] = lag_reports[lag_condition]
+    finished = min(finished, lag_finished)
     subjects: list[ModelLabSubject] = []
     for condition in overlay.broker_conditions:
         report = reports.get(condition)

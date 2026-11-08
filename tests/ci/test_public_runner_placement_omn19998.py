@@ -15,6 +15,7 @@ omnimarket is public, so:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -132,8 +133,16 @@ def test_ci_job_and_hook_run_the_same_core_release() -> None:
     assert _hook_rev() == CORE_RELEASE_SHA
 
 
+def _rule_names(table: str) -> tuple[str, ...]:
+    """Read one CI Summary rules table from its overlay (OMN-23079)."""
+    doc = json.loads(
+        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
+    )
+    return tuple(entry["name"] for entry in doc["rules"][table]["entries"])
+
+
 def test_ci_summary_registers_the_job() -> None:
-    assert f'"{JOB_NAME}",' in CI_SUMMARY_GATE.read_text(encoding="utf-8")
+    assert JOB_NAME in _rule_names("STRICT_GATE_JOBS")
 
 
 def test_precommit_hook_names_this_public_repository() -> None:
