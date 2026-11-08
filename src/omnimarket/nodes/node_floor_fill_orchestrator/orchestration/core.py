@@ -31,27 +31,38 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
-    ModelFloorEntryTicketVerdict,
-    ModelFloorFillCandidatesRequest,
-    ModelFloorFillCandidatesResult,
-    ModelFloorFillLine,
-    ModelFloorFillStateEntry,
-    ModelFloorRecordRead,
-    ModelFloorTaskPayloadVerdict,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
-    HandlerFloorFillCandidates,
-)
-from omnimarket.nodes.node_floor_fill_lines_compute.handlers import (
+from omnimarket.models.floor_fill import (
+    EnumFloorFillDropReason,
+    EnumFloorFillEntryState,
     EnumFloorFillLinesEntryState,
     EnumFloorFillLinesStartKind,
     EnumFloorFillLinesVerdict,
+    ModelFloorEntryTicketVerdict,
+    ModelFloorFillCandidatesRequest,
+    ModelFloorFillCandidatesResult,
+    ModelFloorFillEntry,
+    ModelFloorFillLine,
     ModelFloorFillLinesEntry,
     ModelFloorFillLinesLine,
     ModelFloorFillLinesRequest,
     ModelFloorFillLinesStartResult,
     ModelFloorFillLinesUntickable,
+    ModelFloorFillObservation,
+    ModelFloorFillReduceInput,
+    ModelFloorFillReduceOutput,
+    ModelFloorFillReservedChecked,
+    ModelFloorFillReserveRequested,
+    ModelFloorFillSentChecked,
+    ModelFloorFillStartFailed,
+    ModelFloorFillState,
+    ModelFloorFillStateEntry,
+    ModelFloorFillTicketStored,
+    ModelFloorRecordRead,
+    ModelFloorTaskPayloadVerdict,
+    line_and_task,
+)
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
+    HandlerFloorFillCandidates,
 )
 from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines import (
     HandlerFloorFillLines,
@@ -78,21 +89,6 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ProtocolFloorStateStore,
     ProtocolFloorTickets,
     ProtocolLaneProcessRunner,
-)
-from omnimarket.nodes.node_floor_fill_reducer.handlers import (
-    EnumFloorFillDropReason,
-    EnumFloorFillEntryState,
-    ModelFloorFillEntry,
-    ModelFloorFillObservation,
-    ModelFloorFillReduceInput,
-    ModelFloorFillReduceOutput,
-    ModelFloorFillReservedChecked,
-    ModelFloorFillReserveRequested,
-    ModelFloorFillSentChecked,
-    ModelFloorFillStartFailed,
-    ModelFloorFillState,
-    ModelFloorFillTicketStored,
-    line_and_task,
 )
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     HandlerFloorFillReducer,

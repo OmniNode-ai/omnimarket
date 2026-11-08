@@ -245,7 +245,7 @@ def test_floor_unread_is_unknown(
     assert h.starter.starts == []
     assert answer.status is EnumFloorFillStatus.DEGRADED
     assert answer.exit_code != 0
-    from omnimarket.nodes.node_floor_fill_reducer.handlers import ModelFloorFillState
+    from omnimarket.models.floor_fill import ModelFloorFillState
 
     stored = h.store.load(OVERLAY["scope"]).payload
     assert stored is not None
