@@ -46,17 +46,17 @@ description: >
   Never reads a clock, never performs I/O.
 input_model:
   name: "ModelFloorFillReduceInput"
-  module: "omnimarket.nodes.node_floor_fill_reducer.models"
+  module: "omnimarket.models.floor_fill"
   description: "The stored row (seq and the entries by key) and one observation."
 output_model:
   name: "ModelFloorFillReduceOutput"
-  module: "omnimarket.nodes.node_floor_fill_reducer.models"
+  module: "omnimarket.models.floor_fill"
   description: "The next row, the trigger taken or the drop reason, and the intents."
 handler:
   module: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer"
   class: "HandlerFloorFillReducer"
-  input_model: "omnimarket.nodes.node_floor_fill_reducer.models.ModelFloorFillReduceInput"
-  output_model: "omnimarket.nodes.node_floor_fill_reducer.models.ModelFloorFillReduceOutput"
+  input_model: "omnimarket.models.floor_fill.ModelFloorFillReduceInput"
+  output_model: "omnimarket.models.floor_fill.ModelFloorFillReduceOutput"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer:HandlerFloorFillReducer"

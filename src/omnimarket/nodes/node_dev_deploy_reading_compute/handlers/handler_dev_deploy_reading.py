@@ -16,6 +16,7 @@ when nothing readable already fails.
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from omnimarket.models.model_reading import EnumReadingVerdict
@@ -54,28 +55,28 @@ def judge_receipts(
         if age < timedelta(0):
             failures.append(f"merge-after-read:{tag}")
             continue
-        # A receipt that finishes after the read time is not evidence yet.
-        own = [r for r in by_sha.get(merge.sha, []) if r.finished_at <= request.now]
-        passes = sorted(r.finished_at for r in own if r.result == "PASS")
-        if any(
-            merge.merged_at <= finished <= merge.merged_at + deadline
-            for finished in passes
-        ):
+        own = by_sha.get(merge.sha, [])
+        passes = sorted(
+            r.finished_at
+            for r in own
+            if r.result == "PASS" and r.finished_at <= request.now
+        )
+        in_time = [p for p in passes if timedelta(0) <= p - merge.merged_at <= deadline]
+        if in_time:
             receipted += 1
             continue
-        if age <= deadline:
-            # An unusable receipt does not fail a merge that still has time to get a usable one.
-            pending.append(f"receipt-pending:{tag}")
-            continue
-        if passes:
-            finished = passes[0]
-            if finished < merge.merged_at:
-                failures.append(f"receipt-before-merge:{tag}")
-            else:
-                late = int((finished - merge.merged_at).total_seconds())
+        if age > deadline and passes:
+            after_merge = [p for p in passes if p >= merge.merged_at]
+            if after_merge:
+                late = int((after_merge[0] - merge.merged_at).total_seconds())
                 failures.append(
                     f"receipt-late:{tag}:{late}s-over-{request.receipt_deadline_seconds}s"
                 )
+            else:
+                failures.append(f"receipt-before-merge:{tag}")
+            continue
+        if age <= deadline:
+            pending.append(f"receipt-pending:{tag}")
             continue
         failures.append(
             f"no-pass-receipt:{tag}:age-{int(age.total_seconds())}s-over-{request.receipt_deadline_seconds}s"
@@ -94,15 +95,14 @@ def judge_probe(
     newest: ModelRuntimeProbeFact = max(
         request.probes, key=lambda p: (p.probed_at, p.probe_id)
     )
-    elapsed = request.now - newest.probed_at
-    if elapsed < timedelta(0):
+    exact_age = request.now - newest.probed_at
+    if exact_age < timedelta(0):
         return [f"probe-future-dated:{newest.probe_id}"], None
-    # Eligibility keeps the timestamp's precision; the reported age is whole seconds.
-    age = int(elapsed.total_seconds())
     failures: list[str] = []
-    if elapsed > timedelta(seconds=request.probe_max_age_seconds):
+    if exact_age > timedelta(seconds=request.probe_max_age_seconds):
         failures.append(
-            f"probe-stale:{newest.probe_id}:age-{age}s-over-{request.probe_max_age_seconds}s"
+            f"probe-stale:{newest.probe_id}:age-{math.ceil(exact_age.total_seconds())}s"
+            f"-over-{request.probe_max_age_seconds}s"
         )
     if not newest.ok:
         failures.append(f"probe-failed:{newest.probe_id}")
@@ -113,7 +113,7 @@ def judge_probe(
             f"probe-sha-mismatch:{newest.probe_id}:{_short(newest.expected_sha)}"
             f"-observed-{_short(newest.observed_sha)}"
         )
-    return failures, age
+    return failures, int(exact_age.total_seconds())
 
 
 class HandlerDevDeployReading:

@@ -14,7 +14,11 @@ from omnimarket.nodes.node_landing_canary_effect.models.model_landing_canary imp
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
-from tests.unit.nodes.node_landing_canary_effect.canary_support import World, overlay
+from tests.unit.nodes.node_landing_canary_effect.canary_support import (
+    World,
+    operational_overlay,
+    overlay,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -23,7 +27,7 @@ COMMAND = ModelLandingCanaryCommand(correlation_id="canary-1", write=True)
 
 def test_the_canary_lands_inside_the_bar_and_the_elapsed_time_is_recorded() -> None:
     world, ledger = World(), InMemoryLedger()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.verdict is EnumReadingVerdict.WORKING
     assert result.outcome is EnumReadingOutcome.READ
     assert result.ending is EnumCanaryEnding.MERGED
@@ -37,7 +41,7 @@ def test_the_canary_lands_inside_the_bar_and_the_elapsed_time_is_recorded() -> N
     assert "bound_s=3600" in row
     assert "piece=9" in row
     assert "tag=operational" in row
-    assert "backend=inmemory" in row
+    assert "backend=scm" in row
 
 
 def test_exactly_one_test_pull_request_is_opened_in_the_test_repository() -> None:

@@ -32,14 +32,19 @@ from omnimarket.nodes.node_workflow_baseline_compare_compute.models import (
 _KIND_ORDER = (EnumBaselineMetricKind.COUNT, EnumBaselineMetricKind.TIME)
 
 
+def _dispatch_key(route: str, baseline_id: str, command_id: str) -> str:
+    """One key per triple: a colon inside a part is escaped, so no two triples share a key."""
+    return ":".join(quote(part, safe="") for part in (route, baseline_id, command_id))
+
+
 def _outcome(
     metric: ModelFrozenBaselineMetric, observed: float | None
 ) -> EnumBaselineOutcome:
     if observed is None:
         return EnumBaselineOutcome.MISSING
-    # Decimal of the shortest repr keeps the inclusive boundary exact for decimal measurements.
-    value, tolerance = Decimal(str(metric.value)), Decimal(str(metric.tolerance))
-    reading = Decimal(str(observed))
+    # Decimal of the float's shortest repr, so 0.6 + 0.3 is 0.9 and the inclusive edge holds.
+    value, tolerance = Decimal(repr(metric.value)), Decimal(repr(metric.tolerance))
+    reading = Decimal(repr(observed))
     if metric.worse_when is EnumBaselineWorseWhen.LOWER:
         worse = reading < value - tolerance
     else:
@@ -63,10 +68,10 @@ class HandlerWorkflowBaselineCompare:
             "result_command_id": result.command_id if result else None,
             "result_observed_at": result.observed_at if result else None,
         }
-        deadline = command.issued_at + timedelta(
-            seconds=request.result_deadline_seconds
-        )
         if result is None:
+            deadline = command.issued_at + timedelta(
+                seconds=request.result_deadline_seconds
+            )
             if request.now <= deadline:
                 return self._receipt(
                     request,
@@ -103,16 +108,6 @@ class HandlerWorkflowBaselineCompare:
                 ("correlation",),
             )
 
-        if result.observed_at > deadline:
-            return self._not_working(
-                request,
-                common,
-                True,
-                (),
-                "the result was observed after its deadline",
-                ("runtime-result",),
-            )
-
         observed = {r.name: r for r in result.readings}
         comparisons: list[ModelBaselineComparison] = []
         for kind in _KIND_ORDER:
@@ -133,6 +128,22 @@ class HandlerWorkflowBaselineCompare:
                     )
                 )
         bad = tuple(c for c in comparisons if c.outcome is not EnumBaselineOutcome.OK)
+        deadline = command.issued_at + timedelta(
+            seconds=request.result_deadline_seconds
+        )
+        if result.observed_at > deadline:
+            late = (
+                f"the result was observed {(result.observed_at - command.issued_at).total_seconds():g}s "
+                f"after its command, past the {request.result_deadline_seconds}s deadline"
+            )
+            return self._not_working(
+                request,
+                common,
+                True,
+                tuple(comparisons),
+                late,
+                ("runtime-result", *(c.name for c in bad)),
+            )
         if bad:
             names = ", ".join(f"{c.name} {c.outcome.value}" for c in bad)
             return self._not_working(
@@ -184,13 +195,10 @@ class HandlerWorkflowBaselineCompare:
         cause_lane = None
         if verdict is EnumBaselineVerdict.NOT_WORKING:
             cause_lane = ModelBaselineCauseLaneRequest(
-                dispatch_key=":".join(
-                    quote(part, safe="")
-                    for part in (
-                        request.command.route,
-                        request.baseline.baseline_id,
-                        request.command.command_id,
-                    )
+                dispatch_key=_dispatch_key(
+                    request.command.route,
+                    request.baseline.baseline_id,
+                    request.command.command_id,
                 ),
                 route=request.command.route,
                 command_id=request.command.command_id,

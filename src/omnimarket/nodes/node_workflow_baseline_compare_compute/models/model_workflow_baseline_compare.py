@@ -64,7 +64,7 @@ class ModelBaselineReading(BaseModel):
 
     name: NonEmptyStr
     kind: EnumBaselineMetricKind
-    #: A count, or a time in seconds. Finite: an infinity compares as nothing and loses its value in JSON.
+    #: A count, or a time in seconds.
     value: float = Field(ge=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
@@ -88,7 +88,7 @@ class ModelBaselineRuntimeResult(BaseModel):
         names = [r.name for r in self.readings]
         duplicated = sorted({n for n in names if names.count(n) > 1})
         if duplicated:
-            raise ValueError(f"result readings named twice: {duplicated}")
+            raise ValueError(f"runtime readings named twice: {duplicated}")
         return self
 
 
@@ -136,9 +136,9 @@ class ModelBaselineComparison(BaseModel):
     name: NonEmptyStr
     kind: EnumBaselineMetricKind
     worse_when: EnumBaselineWorseWhen
-    tolerance: float
-    baseline_value: float
-    observed_value: float | None
+    tolerance: float = Field(allow_inf_nan=False)
+    baseline_value: float = Field(allow_inf_nan=False)
+    observed_value: float | None = Field(allow_inf_nan=False)
     outcome: EnumBaselineOutcome
 
 

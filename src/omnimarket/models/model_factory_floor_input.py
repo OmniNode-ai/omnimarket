@@ -152,6 +152,8 @@ class ModelFloorLedgerRow(BaseModel):
     kind: str = Field(min_length=1)
     lane: str = ""
     tickets: tuple[str, ...] = ()
+    # The parent_ticket= cell a child CLAIM carries: the ticket of the work this row's ticket was minted under.
+    parent_tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
     row_id: str = ""
     re: str = ""
@@ -324,8 +326,16 @@ class ModelFloorReceipt(BaseModel):
     session_needs: str = ""
     # The receipt's pid belongs to its launching host, where the floor reader runs.
     runner_alive: bool | None = None
+    # When the runner's streamed output file (``.out`` beside the receipt) was last written; None when unread or absent.
+    # A remote lane writes no ledger row between CLAIM and TERMINAL, so this is its progress evidence (OMN-23081).
+    output_at: datetime | None = None
 
     _utc = field_validator("started_at")(_aware)
+
+    @field_validator("output_at")
+    @classmethod
+    def _output_utc(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _aware(value)
 
 
 class ModelFloorLaneProcess(BaseModel):

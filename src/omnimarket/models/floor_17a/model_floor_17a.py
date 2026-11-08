@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
+
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
 Draw = Literal["green", "amber", "red", "grey"]
@@ -374,6 +376,9 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
+    # on the work of a cause whose declared owner is that parent.
+    parent_ticket: str = ""
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -559,6 +564,8 @@ class ModelFloorSimple(_Frozen):
     )
     # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
     health: ModelFloorHealthLine | None = None
+    # The MVP launch block (OMN-23205): 17 readings of the launch bar; ``None`` is a record written before the block existed.
+    mvp_launch: ModelMvpLaunchBlock | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -642,6 +649,27 @@ class ModelLedgerReadingRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelStartCriterion(_Frozen):
+    """When a rebuild piece starts without the operator's say (RULING 2026-11-07T12:20:46Z): its prerequisites read true.
+
+    The piece is admitted when every piece in ``after_working`` reads WORKING on the floor's own readings. The criterion
+    is data of the overlay; no piece number is named in code.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    after_working: tuple[int, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _prerequisites(self) -> ModelStartCriterion:
+        if self.piece in self.after_working or any(
+            not 1 <= p <= 18 for p in self.after_working
+        ):
+            raise ValueError(
+                "a start criterion names other pieces between 1 and 18 as its prerequisites"
+            )
+        return self
+
+
 class ModelShadowField(_Frozen):
     """One cell of a shadow row the floor shows, under the label it shows it by."""
 
@@ -682,6 +710,8 @@ class ModelRebuildOverlay(_Frozen):
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
+    # A piece with a start criterion is admitted as soon as its prerequisites read WORKING, with or without a go.
+    start_criteria: tuple[ModelStartCriterion, ...] = ()
     lab_state_piece: int = Field(ge=1, le=18)
     # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
     piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)
@@ -781,6 +811,8 @@ class ModelFloorSimpleInput(_Frozen):
     lanes: tuple[ModelFloorLane, ...] = ()
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
+    # How far back the loaded receipt chains reach; a count over a longer window is incomplete, so it is unread.
+    receipts_covered_s: int | None = Field(default=None, gt=0)
     readings: dict[int, ModelReadingRow] | None = None
     shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.

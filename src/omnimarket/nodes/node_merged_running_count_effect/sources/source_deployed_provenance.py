@@ -5,13 +5,17 @@
 The runtime host's build writes a provenance file naming the commit of each repository it was built from. A merge
 whose commit is in the history of that ref is in the running build, so it runs. This reader asks the runtime host
 for the file over ssh, and for each declared repository reads the history of its deployed ref in the registry's
-clone. It never decides on its own: a file or a clone it cannot read is an unread cause, and that repository's
-merges stay without this evidence.
+clone. When that clone does not hold the running commit (a build from a branch install or a declared rollback), the
+history is read from the clone the runtime host holds, if the overlay names that host's registry home. An ancestor of
+the running commit is running whichever clone answers. It never decides on its own: a file or a clone it cannot read
+is an unread cause, and that repository's merges stay without this evidence.
 """
 
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import subprocess
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -24,7 +28,10 @@ from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
     ModelMrcEvidenceRead,
 )
-from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
+from omnimarket.models.model_runtime_host_reads import (
+    ModelRuntimeHostReadOverlay,
+    ModelRuntimeRepoRef,
+)
 
 Runner = Callable[
     [Sequence[str], bytes | None, int], "subprocess.CompletedProcess[bytes]"
@@ -64,6 +71,9 @@ def commits_reachable(clone: Path, ref: str, timeout: int) -> frozenset[str]:
     return frozenset(done.stdout.decode().split())
 
 
+_COMMIT_ID = re.compile(r"[0-9a-fA-F]{7,64}")
+
+
 def _ref_at(document: Mapping[str, Any], path: Sequence[str]) -> str:
     node: Any = document
     for key in path:
@@ -97,22 +107,12 @@ class SourceDeployedProvenance:
         self._run = run
         self._ancestry = ancestry
 
-    def _document(self) -> dict[str, Any]:
+    def _ssh(self, script: str) -> bytes:
+        """Run ``script`` on the runtime host and return its output; any failure is a ``ValueError``."""
         overlay = self._overlay
         host = self._environ.get(overlay.ssh_host_env, "").strip()
         if not host:
             raise ValueError(f"{overlay.ssh_host_env} is not set")
-        script = "\n".join(
-            [
-                "set -eu",
-                "RT=$(docker ps --filter "
-                f"label=com.docker.compose.project={overlay.compose_project} --filter "
-                f"label=com.docker.compose.service={overlay.provenance_service} "
-                "--filter status=running --format '{{.Names}}' | head -1)",
-                '[ -n "$RT" ]',
-                f'docker exec -i "$RT" cat {overlay.provenance_path}',
-            ]
-        )
         done = self._run(
             [
                 "ssh",
@@ -128,8 +128,48 @@ class SourceDeployedProvenance:
             overlay.timeout_seconds,
         )
         if done.returncode:
-            raise ValueError(f"the provenance read exited {done.returncode}")
-        document = json.loads(done.stdout)
+            raise ValueError(f"the runtime host read exited {done.returncode}")
+        return done.stdout
+
+    def _remote_history(self, entry: ModelRuntimeRepoRef, ref: str) -> frozenset[str]:
+        """Every commit in the history of ``ref`` in the clone the runtime host holds for ``entry``."""
+        home = self._overlay.runtime_clone_home
+        if home is None:
+            raise ValueError("the overlay names no runtime clone home")
+        if _COMMIT_ID.fullmatch(ref) is None:
+            raise ValueError("the deployed ref is not a commit id")
+        clone = shlex.quote(f"{home.rstrip('/')}/{entry.clone_relpath}")
+        out = self._ssh(f"set -eu\ngit -C {clone} rev-list {shlex.quote(ref)}")
+        return frozenset(out.decode().split())
+
+    def _history(self, entry: ModelRuntimeRepoRef, ref: str) -> frozenset[str]:
+        """The reader's clone first; the runtime host's clone when the first one does not hold the running commit."""
+        try:
+            return self._ancestry(
+                self._home / entry.clone_relpath, ref, self._labels.git_timeout_seconds
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as local:
+            if self._overlay.runtime_clone_home is None:
+                raise
+            try:
+                return self._remote_history(entry, ref)
+            except (OSError, ValueError, subprocess.SubprocessError) as remote:
+                raise ValueError(f"{local}; on the runtime host: {remote}") from remote
+
+    def _document(self) -> dict[str, Any]:
+        overlay = self._overlay
+        script = "\n".join(
+            [
+                "set -eu",
+                "RT=$(docker ps --filter "
+                f"label=com.docker.compose.project={overlay.compose_project} --filter "
+                f"label=com.docker.compose.service={overlay.provenance_service} "
+                "--filter status=running --format '{{.Names}}' | head -1)",
+                '[ -n "$RT" ]',
+                f'docker exec -i "$RT" cat {overlay.provenance_path}',
+            ]
+        )
+        document = json.loads(self._ssh(script))
         if not isinstance(document, dict):
             raise ValueError("the provenance file is not an object")
         return document
@@ -161,11 +201,7 @@ class SourceDeployedProvenance:
         for entry in self._overlay.repo_refs:
             try:
                 ref = _ref_at(document, entry.ref_path)
-                reachable = self._ancestry(
-                    self._home / entry.clone_relpath,
-                    ref,
-                    self._labels.git_timeout_seconds,
-                )
+                reachable = self._history(entry, ref)
             except KeyError as exc:
                 causes.append(f"{entry.repo}: no deployed ref at {exc.args[0]}")
                 continue

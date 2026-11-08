@@ -83,7 +83,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run)$"
+    r"^(?:lane|from|ticket|tickets|parent_ticket|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -214,6 +214,7 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             kind=cells[1],
             lane=fields.get("lane") or fields.get("from", ""),
             tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
+            parent_tickets=_csv(fields.get("parent_ticket", "")),
             prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
             row_id=fields.get("id", ""),
             re=fields.get("re", ""),
@@ -1092,6 +1093,15 @@ def load_placed(
     return _optional(read)
 
 
+def _output_written_at(receipt_path: Path) -> datetime | None:
+    """When the runner last wrote the lane's streamed output (the ``.out`` beside the receipt); None when absent or unread."""
+    try:
+        stamp = receipt_path.with_suffix(".out").stat().st_mtime
+        return datetime.fromtimestamp(stamp, tz=UTC)
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -1108,6 +1118,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             started_at=_utc(data["started_at"]),
             ended_at=_utc(ended) if isinstance(ended, str) else None,
             runner_alive=_runner_alive(pid) if type(pid) is int and pid > 0 else None,
+            output_at=_output_written_at(path),
             model=str(data.get("model") or ""),
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
