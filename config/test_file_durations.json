@@ -134,7 +134,6 @@
   "tests/ci/test_omn15797_rls_read_tenant_seam_gate.py": 13.71,
   "tests/ci/test_omn16804_no_source_compiled_tenant_map_on_write_path.py": 4.39,
   "tests/ci/test_omn17427_hook_push_rehearsal_caller.py": 0.08,
-  "tests/ci/test_omn17427_retirement_carrier_runs_no_duplicate_checks.py": 0.41,
   "tests/ci/test_omn17446_registry_projection_reconcile_gate.py": 63.66,
   "tests/ci/test_omn17454_standalone_writer_binding_gate.py": 0.04,
   "tests/ci/test_omn17455_shadow_projection_compose_retired.py": 0.08,
