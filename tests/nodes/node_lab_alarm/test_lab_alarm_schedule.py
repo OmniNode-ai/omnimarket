@@ -8,6 +8,7 @@ import plistlib
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -29,7 +30,7 @@ _MAC = "example-mac"
 _LINUX = "example-linux"
 
 
-def _raw() -> dict[str, object]:
+def _raw() -> dict[str, Any]:
     loaded = yaml.safe_load(
         (_NODE / "overlay.example.yaml").read_text(encoding="utf-8")
     )
@@ -179,7 +180,7 @@ def test_error_an_overlay_without_a_schedule_is_refused() -> None:
 
 
 def test_control_an_interval_under_a_minute_is_refused() -> None:
-    schedule = dict(_raw()["schedule"])  # type: ignore[call-overload]
+    schedule = dict(_raw()["schedule"])
     schedule["interval_seconds"] = 30
     with pytest.raises(ValidationError, match="interval_seconds"):
         ModelLabAlarmSchedule.model_validate(schedule)
@@ -187,7 +188,7 @@ def test_control_an_interval_under_a_minute_is_refused() -> None:
 
 def test_control_the_rendered_interval_follows_the_overlay(tmp_path: Path) -> None:
     raw = _raw()
-    raw["schedule"]["interval_seconds"] = 600  # type: ignore[index]
+    raw["schedule"]["interval_seconds"] = 600
     overlay = ModelLabAlarmOverlay.model_validate(raw)
     agent = plistlib.loads(
         render_launchd(
