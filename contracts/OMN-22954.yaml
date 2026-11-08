@@ -66,5 +66,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_install_canary_effect/contract.yaml?ref=omn-22954-install-refusal-trace' --jq .content | base64 -d | grep -q 'first_reading'"
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_install_canary_effect/contract.yaml?ref=omn-22954-install-refusal-trace')\" && case \"$body\" in *first_reading*) exit 0;; *) exit 1;; esac"
         cwd: "."
