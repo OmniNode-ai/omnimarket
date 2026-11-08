@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23061
 title: ModelLabHostsTable accepts the registry_root_candidates key the host-list projection carries
-summary: ModelLabHostsTable refused the projection key registry_root_candidates, which node_host_capability_compute reads to try registry roots in order on a probed host. The model gains the optional field (a non-empty tuple of registry roots, default None), carried by the table shape and not an overlay key. No check and no bound changes.
+summary: ModelLabHostsTable refused the projection key registry_root_candidates, which node_host_capability_compute reads to try registry roots in order on a probed host. The field itself reached dev through OMN-23036 (#5431) while this branch was open, so the merged branch changes no source except the field comment; it adds the regression tests that hold the field (a non-empty tuple of registry roots, default None). No check and no bound changes.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,7 +10,7 @@ requirements:
   statement: A host table that declares registry_root_candidates loads with them, and one that declares none loads with None.
   acceptance:
   - id: AC1
-    statement: 'AC1: the 7 new tests pass on the branch and 2 fail on the base source -- falsifier: uv run pytest of tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py on origin/dev source'
+    statement: 'AC1: the 7 new tests pass on the branch and 2 fail when the registry_root_candidates field is removed from ModelLabHostsTable -- falsifier: uv run pytest of tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py with that field deleted'
 evidence_requirements:
 - kind: tests
   description: The registry root candidates table tests
@@ -21,7 +21,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23061-table-tests
-  description: Runs the table tests; a table declaring registry_root_candidates loads with them and one declaring none loads with None. Two of the seven fail without the field.
+  description: Runs the table tests; a table declaring registry_root_candidates loads with them and one declaring none loads with None. Two of the seven fail when the field is removed from the model (named injected break, read on the lab).
   source: manual
   binds_ac:
   - AC1
@@ -30,11 +30,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py -q --no-cov
     cwd: .
 - id: dod-omn23061-deploy-probe
-  description: Deploy probe. The ModelLabHostsTable field registry_root_candidates is read from the checked-out source; the probe exits nonzero on a tree without it, so it fails at the merge base.
+  description: Deploy probe. The regression test that holds the registry_root_candidates field is read from the checked-out tree; the probe exits nonzero on a tree without that test, so it fails at the merge base.
   source: manual
   checks:
   - check_type: command
-    check_value: "grep -q '    registry_root_candidates: ($' src/omnimarket/models/overlay_keys/model_overlay_documents.py"
+    check_value: "grep -q 'def test_a_table_that_declares_none_loads_with_none' tests/unit/lab_work/test_lab_host_table_registry_root_candidates.py"
     cwd: .
 - id: dod-omn23061-integration-proof
   description: The pushed head ran the registry root candidates table tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
