@@ -3830,6 +3830,8 @@
   "tests/unit/nodes/node_landing_canary_effect/test_canary_stall.py": 0.03,
   "tests/unit/nodes/node_landing_canary_effect/test_schedule_root.py": 0.05,
   "tests/unit/nodes/node_landing_canary_effect/test_scm_canary_repo.py": 0.03,
+  "tests/unit/nodes/node_landing_private_reads_effect/test_private_reads_chain_events.py": 0.05,
+  "tests/unit/nodes/node_landing_private_reads_effect/test_private_reads_listing.py": 1.6,
   "tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py": 0.06,
   "tests/unit/nodes/node_ledger_stats_compute/test_node_ledger_stats_compute.py": 0.14,
   "tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py": 0.25,
