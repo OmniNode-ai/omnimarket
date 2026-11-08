@@ -457,3 +457,67 @@ def test_golden_the_strip_names_the_first_piece_not_ready() -> None:
     assert (
         doc.rebuild.headline == "Piece 2, hosts and capacity: working, not integrated."
     )
+
+
+# --- a join row opens its details (OMN-23081, on the shared panel of OMN-23018) -------------------------------------------
+
+
+def test_golden_a_join_opens_its_definition_last_run_failed_side_and_owner_lane() -> (
+    None
+):
+    lane = ModelFloorLane(lane="join-j2-0530", ticket="OMN-23083", host="h053")
+    finding = ModelChainFinding(
+        code="downstream_started_after_upstream_failed",
+        subject="J2 piece 2 to 3",
+        correlation_id="abcdef123456",
+        detail="B started although A failed",
+    )
+    doc = board({"J2": "broken"}, lanes=(lane,), findings=(finding,))
+    panel = doc.details["join:J2"]
+    facts = {f.label: f for f in panel.facts}
+    assert panel.title == "Join J2, hosts to bus"
+    assert facts["Definition"].value.startswith("hosts to bus: piece 2, hosts and")
+    assert facts["State"].value == "J2 is broken: a chain breaks the contract"
+    assert facts["Counts toward ready"].value.startswith("yes")
+    assert facts["Last run"].at == NOW - timedelta(minutes=10)
+    assert facts["Failed side"].value.startswith("the to side, piece 3")
+    assert "downstream_started_after_upstream_failed" in facts["Why"].value
+    sections = {s.heading: s for s in panel.sections}
+    assert [i.title for i in sections["Chain findings"].items] == [
+        "downstream_started_after_upstream_failed"
+    ]
+    assert [i.title for i in sections["Owner tickets"].items] == ["OMN-23083"]
+    assert [i.title for i in sections["Owner lane"].items] == ["join-j2-0530"]
+    # The two pieces it joins each open their own panel.
+    assert [i.opens for i in sections["The two pieces"].items] == ["piece:2", "piece:3"]
+
+
+def test_golden_the_red_row_of_a_join_opens_the_same_panel_and_a_piece_opens_its_joins() -> (
+    None
+):
+    doc = board({"J3": "not_run"})
+    row = doc.details["cause:join:J3"]
+    assert row.key == "cause:join:J3"
+    assert row.title == doc.details["join:J3"].title
+    assert row.tone == "red"
+    sections = {s.heading: s for s in row.sections}
+    assert sections["Owner lane"].empty == "No live lane is on it."
+    piece_joins = {
+        i.title.split()[0]: i.opens
+        for s in doc.details["piece:3"].sections
+        if s.heading == "Join checks"
+        for i in s.items
+    }
+    assert piece_joins["J3"] == "join:J3"
+    assert piece_joins["J2"] == "join:J2"
+
+
+def test_error_a_join_outside_the_scope_opens_a_panel_that_says_it_does_not_count() -> (
+    None
+):
+    doc = board()
+    panel = doc.details["join:J14"]
+    counts = next(f for f in panel.facts if f.label == "Counts toward ready")
+    assert counts.value.startswith("no")
+    assert "Owner lane" not in {s.heading for s in panel.sections}
+    assert "cause:join:J14" not in doc.details

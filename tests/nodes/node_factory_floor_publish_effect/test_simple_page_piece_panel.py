@@ -113,3 +113,21 @@ def test_golden_every_number_row_and_piece_opens_a_panel_by_its_key() -> None:
         assert marker in PAGE, marker
     assert '<link rel="stylesheet" href="floor-panel.css">' in PAGE
     assert '<script src="floor-panel.js"></script>' in PAGE
+
+
+def test_golden_the_page_says_working_not_integrated_and_opens_a_join_from_its_row() -> (
+    None
+):
+    """OMN-23081: a piece that works and has a join that does not pass is drawn and worded as not integrated."""
+    assert (
+        'working_not_integrated: "Working, not integrated"' in PAGE
+    )  # the word on the tooltip and the panel pill
+    assert "const pieceWord = p => INTEGRATION_WORD[p.integration]" in PAGE
+    assert PAGE.count("pieceWord(p)") >= 3
+    # Each join on a piece row is a button that opens the join's own panel, drawn in the colour of its red row.
+    assert 'data-open="join:${esc(j.id)}"' in PAGE
+    assert "const joinTone = j => j.passes" in PAGE
+    assert 'join: "Join"' in PAGE
+    # The count under the strip is the ready count, not the working one.
+    assert "Ready, not just working:" in PAGE
+    assert "doc.readiness.text" in PAGE
