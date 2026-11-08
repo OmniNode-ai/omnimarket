@@ -193,6 +193,7 @@ class HandlerHostReading:
                     self._sink if write else None,
                     correlation_id=f"graph-run-{self._nonce_for(self._host)}",
                     clock=self._clock,
+                    control_correlation_id=f"graph-run-control-{self._nonce_for(self._host)}",
                 )[1]
             assert self._overlay.old_names is not None
             return read_old_names(self._overlay.old_names, self._files, self._environ)

@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23195
+title: The landing whole-flow test says it replays the simulated world, and the chain runner stops the bus when its start fails
+summary: The chain runner starts the decision bus inside the try whose finally stops it, with a test that injects a start failure, and the whole-flow test is named and documented as a replay of the simulation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-landing-chain-review-findings
+  statement: The landing chain runner leaks no bus on a failed start, and the whole-flow test does not claim a boundary the simulation sets itself.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test shows the chain runner stops the bus when bus.start() raises; it fails on the code at omnimarket dev 566d7ead09 -- falsifier: uv run pytest tests/chain -q -k bus_start_failure, red on the base with the test copied in and green on the fix branch'
+  - id: AC2
+    statement: 'AC2: the whole-flow test drives a boundary the simulation does not set itself, or its name and docstring state that it replays the simulation -- falsifier: uv run pytest tests/chain/test_landing_whole_flow.py -q'
+evidence_requirements:
+- kind: tests
+  description: Landing chain tests.
+  command: uv run pytest tests/chain -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23195-ac1
+  description: AC1 bound to its test file.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain -q --no-cov --tb=line -k bus_start_failure
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23195-ac2
+  description: AC2 bound to its test file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain/test_landing_whole_flow.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

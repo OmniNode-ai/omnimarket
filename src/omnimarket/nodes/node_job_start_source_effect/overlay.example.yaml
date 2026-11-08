@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the in-memory overlay (the default way to run the source). The deployment's
+# overlay lives at <root>/node_job_start_source_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+settings:
+  repositories: [example-org/example-repo, example-org/example-other]
+  window_seconds: 3600
+  run_lookback_seconds: 86400
+  max_age_seconds: 1800
+  watched_runner_groups: [example-private-group]
+  baseline_public_repositories: []
+source:
+  backend: inmemory
+  fixture:
+    read_age_seconds: 60
+    starts:
+      - repository: example-org/example-repo
+        run_id: 1001
+        job_id: 5001
+        job_name: build
+        workflow_name: ci
+        run_event: push
+        head_is_fork: false
+        repository_private: true
+        runner_group_name: example-private-group
+        runner_name: example-runner-1
+        labels: [example-label]
+        started_at: "2026-11-07T11:30:00Z"
+store:
+  backend: inmemory

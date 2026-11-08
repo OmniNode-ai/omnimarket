@@ -34,7 +34,7 @@ import pytest
 # the omnimarket node re-exports / wraps. Skip the whole module if omnimemory is
 # not installed in this environment (it is a runtime dependency of the node).
 omm_handler = pytest.importorskip(
-    "omnimemory.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval"
+    "omnimemory.nodes.node_agent_learning_retrieval_effect.adapters.adapter_learning_scoring"
 )
 
 compute_freshness_score = omm_handler.compute_freshness_score
