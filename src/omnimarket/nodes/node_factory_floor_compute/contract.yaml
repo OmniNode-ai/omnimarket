@@ -141,6 +141,26 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # A lane that ended short is a stopped line (OMN-22934): its newest TERMINAL has one of these outcomes, no later CLAIM by
+  # it or by a lane on the same work, its ticket is in the goal's scope, and the ending row names a branch, an ask or a
+  # next step. The record lists it under floor.stopped with the lane's last rows and the path of its report. A lane that
+  # ended done, or ended short and names nothing, is never listed. An unread goal scope lists none.
+  stopped:
+    outcomes: [partial, blocked, failed]
+    max_age_minutes: 1440
+    # Tickets many lanes share; two lanes on one of these are not on the same work.
+    umbrella_tickets: [OMN-22478, OMN-19998, OMN-17427]
+    branch_patterns:
+    - '\b(omn-\d+-[a-z0-9][a-z0-9._-]*)'
+    - '\b((?:docs|fix|feat|chore|automation)/[a-z0-9][a-z0-9._/-]*)'
+    head_pattern: '\bheads?\s+([0-9a-f]{7,40})\b'
+    ask_markers: ["needs a decision", "needs a ruling", "an ask", "ask for", "one plain ask", "blocker"]
+    next_step_markers: ["next step", "next:", "what is left", "left to do", "still to do", "not yet", "not installed", "not proven", "follow-up", "follow up", "needs "]
+    # A lane name ends in its start time (floor-reds-1300, asks-1220, runners-r2-0930); the name without it is the stem.
+    lane_stem_suffix: '-\d{4}(?:-[a-z0-9]+)?$'
+    rows_kept: 4
+    row_chars: 400
+    report_path_template: .claude_scratch/reports/{lane}/result.md
   # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
   # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
   evidence_cells: [task, ticket, pr]

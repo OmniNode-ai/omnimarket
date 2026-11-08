@@ -21,8 +21,9 @@ import bisect
 import json
 import os
 import re
+import shlex
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,6 +40,13 @@ from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare impor
 from omnimarket.nodes.node_friction_rollup_compute.handlers import (
     friction_rollup_core as core,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerRowSource,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLedgerQuery,
+    ProtocolLedgerRowSource,
+)
 
 SRC_LEDGER = "ledger"
 SRC_GIT = "git"
@@ -49,7 +57,6 @@ SRC_FLOOR_ALARM = "floor-alarm"
 SRC_FRICTION = "friction-ledger"
 BACKFILL_PREFIX = "backfill:"
 FRICTION_PREFIXES = ("cause:stoppage:", "stoppage_cost:stoppage:")
-_ARCHIVE_NAME = re.compile(r"_(\d{4}-\d{2}-\d{2})-split\.md$")
 _WATCHER_TICK = re.compile(r"watcher tick (\S+?)\)")
 _MERGES_NOTE = re.compile(r"^NOTE merges last 60 min: (\d+) \(")
 _GOAL_LINE = re.compile(r"^GOAL changed=\S+ \| merges_60m=(\d+) open=(\d+)")
@@ -130,61 +137,72 @@ def _tail_lines(path: Path, done: Callable[[list[str]], bool]) -> list[str]:
     return []
 
 
-def _ledger_files(main: Path, archive_dirname: str, since: datetime) -> list[Path]:
-    """The live ledger and every split copy that can hold a row at or after ``since`` (a split named D ends on D)."""
-    files: list[Path] = []
-    archive = main.parent / archive_dirname
-    if archive.is_dir():
-        for path in sorted(archive.iterdir()):
-            match = _ARCHIVE_NAME.search(path.name)
-            if match and match.group(1) >= since.strftime("%Y-%m-%d"):
-                files.append(path)
-    files.append(main)
-    return files
+def _windows(
+    since: datetime, until: datetime, hours: int
+) -> Iterator[tuple[datetime, datetime]]:
+    """Consecutive half-open windows of ``hours`` from ``since`` to ``until``, so no bus answer outgrows its row limit."""
+    step = timedelta(hours=hours)
+    low = since
+    while low < until:
+        high = min(low + step, until)
+        yield low, high
+        low = high
 
 
 def load_ledger(
-    book: Book, hs: ModelHistorySources, env: Mapping[str, str], since: datetime
+    book: Book,
+    hs: ModelHistorySources,
+    env: Mapping[str, str],
+    since: datetime,
+    until: datetime,
+    source: ProtocolLedgerRowSource | None = None,
 ) -> None:
-    raw = env.get(hs.ledger_env, "").strip()
-    if not raw:
-        book.notes.append(f"{hs.ledger_env} is not set: the ledger counts are unread")
-        return
-    try:
-        main = Path(raw).resolve(strict=True)
-    except OSError as exc:
-        book.notes.append(
-            f"the ledger {raw} cannot be read ({exc.__class__.__name__}): its counts are unread"
+    """Count the ledger's rows from ``since`` to ``until``, read through the bus a window at a time.
+
+    ``source`` is the injected read port; without one the command the contract's variable holds is the route. One read that
+    fails or is truncated leaves a note and every ledger key unread: a short read is never counted as a quiet day.
+    """
+    if source is None:
+        argv = shlex.split(env.get(hs.ledger_read_command_env, ""))
+        if not argv:
+            book.notes.append(
+                f"{hs.ledger_read_command_env} is not set: the ledger counts are unread"
+            )
+            return
+        source = CommandLedgerRowSource(
+            argv, hs.ledger_read_timeout_seconds, hs.ledger_row_limit
         )
-        return
+    raws: set[str] = set()
+    # The window is half-open; one second more keeps a row stamped exactly at ``until``.
+    for low, high in _windows(
+        since, until + timedelta(seconds=1), hs.ledger_chunk_hours
+    ):
+        for kind in hs.ledger_row_kinds:
+            page = source.read(ModelLedgerQuery(since=low, until=high, row_type=kind))
+            if page.error is not None:
+                book.notes.append(
+                    f"the ledger bus read of {kind} rows failed ({page.error}): its counts are unread"
+                )
+                return
+            raws.update(row.raw for row in page.rows)
     for key in (
         "lanes_started",
         *(f"lanes_ended:{o}" for o in hs.ledger_lane_outcomes),
     ):
         book.declare(SRC_LEDGER, key)
-    seen: set[str] = set()
-    since_ts = since.timestamp()
     wanted = set(hs.ledger_lane_outcomes)
-    for path in _ledger_files(main, hs.ledger_archive_dirname, since):
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            book.notes.append(f"{path.name} cannot be read ({exc.__class__.__name__})")
-            continue
-        for row in core.parse_markdown_rows(text, path.name):
-            at = row.ts.timestamp()
-            if at < since_ts or row.text in seen:
-                continue
-            seen.add(row.text)
-            book.alive.setdefault(SRC_LEDGER, []).append(at)
-            if row.row_type == "CLAIM":
-                book.add_event(SRC_LEDGER, "lanes_started", at)
-            elif row.row_type == "TERMINAL":
-                outcome = row.first("outcome").strip().lower().rstrip(":")
-                if outcome in wanted:
-                    book.add_event(SRC_LEDGER, f"lanes_ended:{outcome}", at)
-            elif row.row_type == "FRICTION":
-                book.friction_rows.append(row)
+    ordered = sorted(raws)
+    for row in core.parse_markdown_rows("\n".join(ordered), SRC_LEDGER):
+        at = row.ts.timestamp()
+        book.alive.setdefault(SRC_LEDGER, []).append(at)
+        if row.row_type == "CLAIM":
+            book.add_event(SRC_LEDGER, "lanes_started", at)
+        elif row.row_type == "TERMINAL":
+            outcome = row.first("outcome").strip().lower().rstrip(":")
+            if outcome in wanted:
+                book.add_event(SRC_LEDGER, f"lanes_ended:{outcome}", at)
+        elif row.row_type == "FRICTION":
+            book.friction_rows.append(row)
 
 
 def load_throughput(
@@ -452,11 +470,15 @@ def load_book(
     home: Path,
     since: datetime,
     loaders: tuple[str, ...] | None = None,
+    *,
+    until: datetime | None = None,
+    ledger_source: ProtocolLedgerRowSource | None = None,
 ) -> Book:
     """Read every source from ``since`` on; one that fails leaves a note and its keys out."""
     book = Book()
+    end = datetime.now(UTC) if until is None else until
     steps: dict[str, Callable[[], None]] = {
-        SRC_LEDGER: lambda: load_ledger(book, hs, env, since),
+        SRC_LEDGER: lambda: load_ledger(book, hs, env, since, end, ledger_source),
         SRC_TICK_LOG: lambda: load_throughput(book, hs, home, since),
         SRC_FLOOR_ALARM: lambda: load_floor_alarm(book, hs, home, since),
         SRC_LANDING: lambda: load_landing(book, hs, env, since),
@@ -679,7 +701,7 @@ def live_extension(
     """Today's values of the same keys: the counted ones over the 24 hours that end now, the latest logged levels, and every
     stoppage class of the friction rollup's latest 24 hour window. Also the notes of what could not be read."""
     since = now - timedelta(hours=hs.window_hours + 1)
-    book = load_book(hs, env, home, since)
+    book = load_book(hs, env, home, since, until=now)
     values: dict[str, float] = {}
     labels: dict[str, str] = {}
     for source in (SRC_LEDGER, SRC_GIT, SRC_LANDING, SRC_LAB_ALARM):
