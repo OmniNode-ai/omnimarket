@@ -224,6 +224,10 @@ def test_control_the_first_duration_of_any_kind_reads_the_age_as_cost(
     monkeypatch.setattr(
         friction_rollup_core,
         "_inline_cost",
-        lambda text: friction_rollup_core.COST_DURATION_PATTERN.search(text),
+        lambda text: (
+            first.group(0)
+            if (first := friction_rollup_core.COST_DURATION_PATTERN.search(text))
+            else None
+        ),
     )
     assert minutes_of(roll(shipped_rules(), (AGE_ROW,))) == 390 * 60.0

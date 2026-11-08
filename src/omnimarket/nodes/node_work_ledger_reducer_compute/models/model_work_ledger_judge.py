@@ -87,6 +87,11 @@ class ModelGuardReplayRequest(BaseModel):
 
     ledger_name: str = Field(min_length=1)
     entries: tuple[ModelRecordedRow, ...]
+    preceding_ledger: str = Field(
+        default="",
+        description="The ledger text the live judge had accepted before the first entry: the history "
+        "before a recorded window, so open HOLDs, declared ids and CLAIM facts still count.",
+    )
 
 
 class ModelReplayDifference(BaseModel):

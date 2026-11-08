@@ -31,6 +31,7 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
@@ -490,6 +491,11 @@ class BaseProjectionRunner(ABC):
         self._standalone_db_tables: tuple[dict[str, Any], ...] = ()
         self._standalone_bindings: Any | None = None
         self._db_by_binding: dict[str, AsyncpgAdapter] = {}
+        self._kept_pools = KeptPools(
+            lambda: self._connect_standalone_databases(),
+            lambda: self._close_standalone_databases(),
+            lambda: self._stop_producer(),
+        )
         self._stats = ProjectionStats()
         self._running = False
         self._schema_faults: dict[
@@ -515,22 +521,17 @@ class BaseProjectionRunner(ABC):
     async def project_runtime_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Apply one runtime delivery with topology-bound, loop-scoped resources.
+        """Apply one runtime delivery with topology-bound resources kept open.
 
-        No Kafka consumer is started. The existing per-binding resolver gives
-        each declared table its workload identity, including writers spanning
-        tenant and internal schemas. A fresh runner belongs to each delivery;
-        neither a pool nor a producer may survive the loop that used it.
+        No Kafka consumer is started. The per-binding resolver gives each
+        declared table its workload identity. The pools open on the first
+        delivery and stay on the caller's loop (OMN-23196, see KeptPools).
         """
         self._standalone_db_tables = tuple(self._contract["db_io"]["db_tables"])
-        try:
-            await self._connect_standalone_databases()
-            return await self.project_event(topic, data, meta)
-        finally:
-            try:
-                await self._stop_producer()
-            finally:
-                await self._close_standalone_databases()
+        return await self._kept_pools.project(self.project_event, topic, data, meta)
+
+    async def close_runtime_resources(self) -> None:
+        await self._kept_pools.close()
 
     def _start_health_server_if_configured(self) -> None:
         """Start the readiness/liveness HTTP server iff configured.
