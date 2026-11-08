@@ -28,6 +28,10 @@ from typing import Any, cast
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.handlers.runtime_paths import runtime_path
+from omnimarket.nodes.node_install_superset_guard_effect.handlers.handler_install_superset import (
+    file_list_comparison,
+    resolve,
+)
 
 CANARY_RECORD = "$ONEX_REGISTRY_ROOT/.claude_scratch/adoption/canary.json"
 CANARY_RECORD_REL = ".claude_scratch/adoption/canary.json"
@@ -68,6 +72,24 @@ LANE_SHIP_FIX = "read lane_ship_drift in omnimarket/nodes/node_install_canary_ef
 LANE_SHIP_REPORT_MAX = 5  # findings per tick; the rest is a count on the last one
 LINK_MODE = "120000"  # git's mode for a symlink; its blob is the link's target text
 LINK_BITS = -1  # keep_held's mode for a kept symlink (no permission bits)
+
+
+@dataclass(frozen=True)
+class ModelInstallProbe:
+    """One run of the install probe: the head it read and the files an install of that head lacks."""
+
+    trigger: str
+    head: str
+    expected: int
+    missing: tuple[str, ...]
+    fault: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.expected > 0 and not self.missing
+
+
+INSTALL_PROBE_TRIGGERS = ("daily", "drill")
 
 
 class InstallSetError(OSError):
@@ -111,6 +133,10 @@ class HandlerInstallCanary:
                 "install_stale",
                 "keep_held",
                 "restore_held",
+                "fresh_head",
+                "install_probe",
+                "daily_install_probe",
+                "drill_install_probe",
             )
         )
         if request.operation not in operations:
@@ -1200,6 +1226,69 @@ class HandlerInstallCanary:
             except OSError as exc:
                 failed.append(f"{p.name}: {exc}")
         return failed
+
+    def fresh_head(self, clone: Path, ref: str) -> str:
+        """The commit ``ref`` names in ``clone`` now: the caller's ``refresh_clone`` runs first, so a probe never reads
+        a head it carried over from an earlier run."""
+        refresh = self.runtime.get("refresh_clone")
+        if refresh is None:
+            raise ValueError(
+                "fresh_head needs runtime['refresh_clone']: without it the probe would read a local ref that may be stale"
+            )
+        refresh(clone, ref)
+        return resolve(clone, ref)
+
+    def install_probe(
+        self,
+        trigger: str,
+        clone: Path,
+        ref: str,
+        install_dir: Path,
+        prefix: str,
+    ) -> ModelInstallProbe:
+        """The one probe behind the daily canary and the drill: read a fresh head, then compare the file list that head
+        installs with ``install_dir``'s copy. A root data file the copy lost is named in ``missing``."""
+        if trigger not in INSTALL_PROBE_TRIGGERS:
+            raise ValueError(f"unknown install probe trigger: {trigger}")
+        head = self.fresh_head(clone, ref)
+        expected, missing = file_list_comparison(clone, head, prefix, install_dir)
+        return ModelInstallProbe(trigger, head, expected, tuple(missing))
+
+    def daily_install_probe(
+        self, clone: Path, ref: str, install_dir: Path, prefix: str
+    ) -> ModelInstallProbe:
+        """The daily canary's run: the probe, against the install as it stands."""
+        return self.install_probe("daily", clone, ref, install_dir, prefix)
+
+    def drill_install_probe(
+        self,
+        clone: Path,
+        ref: str,
+        install_dir: Path,
+        prefix: str,
+        delete: str,
+    ) -> ModelInstallProbe:
+        """The drill: the same probe on demand, against a scratch copy of ``install_dir`` with ``delete`` (a path below
+        it, such as a root data file) removed. The install itself is never touched. The probe's own verdict is the
+        drill's reading: it flips to not-ok when the probe sees the loss."""
+        # The fault is a path below the install and nothing else: an absolute path or
+        # one that climbs out (or runs through a link out) would address a file of the
+        # live host, and ``copy / delete`` would then unlink that file, not the copy's.
+        fault = Path(delete)
+        target = install_dir / fault
+        if (
+            fault.is_absolute()
+            or ".." in fault.parts
+            or not target.parent.resolve().is_relative_to(install_dir.resolve())
+            or not target.is_file()
+        ):
+            raise ValueError(f"drill fault {delete} is no file of {install_dir}")
+        with tempfile.TemporaryDirectory(prefix="install-drill-") as scratch:
+            copy = Path(scratch) / "install"
+            shutil.copytree(install_dir, copy, symlinks=True)
+            (copy / delete).unlink()
+            probe = self.install_probe("drill", clone, ref, copy, prefix)
+        return replace(probe, fault=delete)
 
     def read_bytes(self, p: Path) -> bytes | None:
         try:

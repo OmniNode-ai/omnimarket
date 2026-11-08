@@ -57,6 +57,10 @@ handler_routing:
       handler:
         name: "HandlerWorkLedgerAppendEffect"
         module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
+    - operation: "join_j5_work_ledger_append"
+      handler:
+        name: "HandlerWorkLedgerJoinJ5"
+        module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -106,6 +110,18 @@ append_if_absent:
   row_id_cell: "id"
   lock_suffix: ".work-ledger-append.lock"
   lock_wait_seconds: 60
+# OMN-22914, rebuild plan 4.1 join J5 (piece 5 to piece 6): an append under an identity the secret store resolves lands
+# as a durable row and a projected row. The handler answers piece 5's chain on the floor's emission contract under the
+# same correlation id: a typed failure with no start when the store gives no identity (the code keeps the floor's
+# `upstream_` prefix), and a start then a success or a typed failure otherwise. Nothing of this is spelled in code.
+join_j5:
+  join_id: "J5"
+  from_piece: 5
+  to_piece: 6
+  emission_node: "node_work_ledger_append_effect"
+  identity_unresolved_failure_code: "upstream_identity_unresolved"
+  append_not_accepted_failure_code: "ledger_append_not_accepted"
+  projected_row_missing_failure_code: "projected_row_missing"
 relay_requires:
   resource: omnimarket.nodes.node_onex_ledger_admission_compute/relay_requires.yaml
   evaluator: omnimarket.protocols.protocol_relay_admission.ProtocolRelayAdmission

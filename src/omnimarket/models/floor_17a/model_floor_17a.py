@@ -94,6 +94,20 @@ class ModelPieceChains(_Frozen):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelJoinEnd(_Frozen):
+    """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
+
+    A join normally ends at its ``to_piece``: when the from piece fails, the to piece must answer with a typed refusal under
+    the same correlation id. Where no node of the to piece can give that refusal, the join is respecified to end at the last
+    node that does emit a typed outcome: ``node``, a node of the from piece. The join is then judged on that node's chain
+    alone: it must end in a success or a typed failure within the chain deadline. A typed failure is the end of the join, not
+    a break, and no answer from the to piece is demanded.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    node: str = Field(min_length=1)
+
+
 class ModelFloorReceiptInput(_Frozen):
     now: datetime
     emissions: tuple[ModelNodeEmission, ...]
@@ -107,6 +121,8 @@ class ModelFloorReceiptInput(_Frozen):
     judged_to_pieces: tuple[int, ...] | None = None
     # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
     declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
+    join_ends: tuple[ModelJoinEnd, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -471,6 +487,9 @@ class ModelRedRule(_Frozen):
     red_rows: int
     red_with_work_under_way: int
     violations: tuple[str, ...] = ()
+    # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
+    # is on these by construction, so the ids are shown rather than counted.
+    unowned_red: tuple[str, ...] = ()
 
 
 class ModelFloorSimple(_Frozen):
