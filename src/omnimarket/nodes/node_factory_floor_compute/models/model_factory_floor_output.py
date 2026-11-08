@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
+    ModelFloorSourceHealth,
 )
 from omnimarket.models.model_floor_line_select import HealthState, LineClass
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
@@ -583,6 +584,8 @@ class ModelFloorSources(BaseModel):
     runner_fleet_cause: str = ""
     # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
     merged_running_cause: str = ""
+    # How each source the line board depends on was read (copied from the request unchanged).
+    health: tuple[ModelFloorSourceHealth, ...] = ()
 
 
 LimitKind = Literal[

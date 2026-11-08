@@ -32,6 +32,9 @@ class ModelFloorGoalRow(BaseModel):
     name: str = ""
     is_open: bool = True
     tickets: tuple[str, ...] = ()
+    verdict: str = ""
+    next_action: str = ""
+    probe: str = ""
 
 
 class ModelFloorProcessDecl(BaseModel):
@@ -41,6 +44,15 @@ class ModelFloorProcessDecl(BaseModel):
 
     name: str = Field(min_length=1)
     title: str = ""
+    actor: str = ""
+    # The ledger row kind and cell match that is one run of the process, and the match that says that run did nothing.
+    run_kind: str = ""
+    run_match: str = ""
+    did_nothing_match: str = ""
+    interval_min: int = Field(default=0, ge=0)
+    # The outcomes (``success``, ``did-nothing``, ``error``) the process's own contract says its run record covers. A
+    # process that does not cover all three is a process whose silence is not detectable.
+    outcomes_covered: tuple[str, ...] = ()
 
 
 class ModelFloorSourceHealth(BaseModel):

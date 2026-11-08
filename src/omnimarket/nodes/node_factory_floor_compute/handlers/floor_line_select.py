@@ -275,7 +275,7 @@ def select_extra_lines(
     goal_rule = _rule(request, "goal")
     goal_ids: dict[str, str] = {}  # ticket -> goal line id
     if "goal" in enabled:
-        for goal in sorted(request.goal_rows, key=lambda g: g.row_id):
+        for goal in sorted(request.goal_rows or (), key=lambda g: g.row_id):
             if not goal.is_open:
                 continue
             line_id = f"{goal_rule.id_prefix}{goal.row_id}"

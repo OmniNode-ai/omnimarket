@@ -108,6 +108,16 @@ class ModelFloorPlanInput(BaseModel):
     table_tasks: tuple[ModelFloorTableTask, ...] = ()
 
 
+class ModelFloorContext(BaseModel):
+    """One check context of a pull request's head, with the result the watcher recorded for it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    # The run's conclusion when it completed (``success``, ``failure``), else its status (``in_progress``, ``queued``).
+    result: str = Field(min_length=1)
+
+
 class ModelFloorPr(BaseModel):
     """One pull request as the PR watcher records it."""
 
@@ -122,6 +132,9 @@ class ModelFloorPr(BaseModel):
     tickets: tuple[str, ...] = ()
     ci: CiState = "unread"
     ci_note: str = ""
+    # The head the CI read below belongs to; empty when the watcher recorded none (the head is then unread, not guessed).
+    head_sha: str = ""
+    contexts: tuple[ModelFloorContext, ...] = ()
 
 
 class ModelFloorMerge(BaseModel):
@@ -178,6 +191,11 @@ class ModelFloorLedgerRow(BaseModel):
     run_id: str = ""
     # The owns= cell as written: a comma list of what the row's lane says it owns (``floor:<holdup id>`` for the floor).
     owns: tuple[str, ...] = ()
+    # The head= cell (a RELEASE or a hand-off names the head it covers), the ruling id a row cites, and the mechanism
+    # ticket a RULING names.
+    head: str = ""
+    ruling: str = ""
+    mechanism: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -660,6 +678,20 @@ class ModelFloorSourceReads(BaseModel):
     )
 
 
+class ModelFloorRequiredContexts(BaseModel):
+    """The contexts a repository's landing branch requires, from the queue-status tick's saved map."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    contexts: tuple[str, ...] = ()
+    read_at: datetime | None = None
+
+    _utc = field_validator("read_at")(
+        lambda value: None if value is None else _aware(value)
+    )
+
+
 class ModelFactoryFloorRequest(BaseModel):
     """Everything one run reads. The node has no clock: ``generated_at`` is a fact the caller supplies."""
 
@@ -705,9 +737,19 @@ class ModelFactoryFloorRequest(BaseModel):
     # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
     # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
     scope_ticket_roots: tuple[str, ...] = ()
-    # Line selection facts (classes goal and process) and the health of every source the selection read.
-    goal_rows: tuple[ModelFloorGoalRow, ...] = ()
+    # Blocked, partial and handed-off TERMINAL rows and handed-off STATUS rows of the live ledger and every archive roll,
+    # with no age limit, that are older than the ledger window (the window's own rows are in ``ledger``). None when the
+    # ledger reader could not read them.
+    ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = None
+    # The required contexts per repository and the open goal rows; None when the source could not be read.
+    required_contexts: tuple[ModelFloorRequiredContexts, ...] | None = None
+    goal_rows: tuple[ModelFloorGoalRow, ...] | None = None
+    # The deployment overlay's line board declarations.
     processes: tuple[ModelFloorProcessDecl, ...] = ()
+    roles: tuple[str, ...] = ()
+    release_required_repos: tuple[str, ...] = ()
+    held_gates: tuple[str, ...] = ()
+    # How each source the board depends on was read.
     source_health: tuple[ModelFloorSourceHealth, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)
