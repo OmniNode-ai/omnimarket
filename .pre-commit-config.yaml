@@ -29,6 +29,8 @@ repos:
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov
         language: system
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: envelope-example-route-nodes
         name: Example-envelope route nodes (runtime HTTP mount)
         entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
