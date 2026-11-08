@@ -38,24 +38,24 @@ dod_evidence:
   binds_ac:
   - AC1
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov -k emit_only_after_judge_accepts
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect/tests/test_emit_only_after_judge_accepts.py -q --no-cov
 - id: dod-omn23152-ac2-unique-index
   description: The writer records a second holder of a sequence as a conflict, the migration dedupes before it indexes, and the backfill plan keeps file order; with the writer's collision check removed the selection fails on the fake index.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -k ledger_seq_unique_index
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger/tests/test_ledger_seq_unique_index.py -q --no-cov
 - id: dod-omn23152-ac3-unjudged-reading
   description: The reading reads WORKING at zero rows with no sequence in the window and RED with one planted row, naming its source and lane.
   source: manual
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -k unjudged_publish_reads_red
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger/tests/test_unjudged_publish_reads_red.py -q --no-cov
 - id: dod-omn23152-integration-proof
   description: >-
     The pushed head ran the focused node tests of the emit gate, the unique-index writer and the unjudged-row reading on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

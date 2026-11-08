@@ -127,7 +127,7 @@ db_io:
       schema: omninode_internal
       migration: "0007_work_ledger_seq_unique.sql"
       access: write
-      role: work_ledger_rows
+      role: work_ledger_seq_conflicts
     - name: work_ledger_state
       database_ref: application
       schema: omninode_internal
