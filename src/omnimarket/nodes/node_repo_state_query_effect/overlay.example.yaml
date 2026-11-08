@@ -20,3 +20,22 @@ profiles:
   redpanda:
     kind: kafka
     lane: example-lane
+    workspace_root_env: EXAMPLE_WORKSPACE_ROOT
+# The unit declaration `repo-state unit` renders. $OMNI_HOME and $HOME are filled by the installing host.
+unit:
+  unit_name: example-repo-state-serve
+  description: Example repository state serve process
+  bus_profile: redpanda
+  python: $OMNI_HOME/example/.venv/bin/python
+  pythonpath: []
+  restart_seconds: 15
+  stop_timeout_seconds: 120
+  log_file: $OMNI_HOME/.onex_state/example-repo-state/serve.log
+  environment:
+    EXAMPLE_CLONES_ROOT: $OMNI_HOME
+    EXAMPLE_PR_WATCHER_STATE: $OMNI_HOME/.example/state.json
+    EXAMPLE_STATE_DIR: $OMNI_HOME/.onex_state/example-repo-state
+    EXAMPLE_REPO_STATE_SYNC_COMMAND: example-sync --repo {repo}
+    EXAMPLE_WORKSPACE_ROOT: $OMNI_HOME/example-workspace
+  hosts:
+    - {name: host-a, scheduler: systemd-user}
