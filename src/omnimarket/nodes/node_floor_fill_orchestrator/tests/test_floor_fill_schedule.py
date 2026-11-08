@@ -14,6 +14,7 @@ import pytest
 
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
     NODE_MODULE,
+    Runner,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
@@ -61,7 +62,7 @@ def _install(
     *extra: str,
     hosts: list[tuple[str, bool]] | None = None,
     this_host: str = "fill-host",
-    run: object = None,
+    run: Runner | None = None,
     omni_root: Path = OMNI_ROOT,
 ) -> tuple[int, str, str]:
     result = run_schedule(
@@ -76,7 +77,7 @@ def _install(
         {"floor_fill": section},
         hosts=HOSTS if hosts is None else hosts,
         home=home,
-        run=run or _ok,  # type: ignore[arg-type]
+        run=run or _ok,
     )
     return result.exit_code, result.stdout, result.stderr
 

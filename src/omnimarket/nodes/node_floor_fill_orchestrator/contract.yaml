@@ -43,14 +43,8 @@ handler:
   class: "HandlerFloorFillCommand"
   input_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.ModelFloorFillCommandRequest"
   output_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.ModelFloorFillEntryResult"
-handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command:HandlerFloorFillCommand"
-  handlers:
-    - operation: "run_floor_fill_command"
-      handler:
-        name: "HandlerFloorFillCommand"
-        module: "omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command"
+# No handler_routing: HandlerFloorFillCommand takes its seams (config, orchestrator, runner) in its constructor, so it
+# is not boot-resolvable or dispatched by the runtime. It is built and run by the runtime module (the census node's form).
 event_bus:
   subscribe_topics: []
   publish_topics: []
