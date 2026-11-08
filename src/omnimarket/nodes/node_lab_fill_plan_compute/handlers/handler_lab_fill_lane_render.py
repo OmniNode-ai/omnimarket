@@ -17,9 +17,15 @@ TASKS = {
     "pr-stalled": "Take over {pr} ({ticket}), stalled since {stalled} with no live owner. Bring it current with its base, answer its open review threads, and make its required checks green on the PR's own branch in a worktree at {where}. Push a rebase with --force-with-lease.",
     "defect": "Fix the {pillar} defect {ticket}: {title}. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
     "ticket": "Work {ticket}: {title}. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
+    # OMN-20780: the tier-1 source kinds are tickets chosen by their source, so they carry the ticket brief.
+    "plan-stalled": "Work {ticket}: {title}. It is the next action of a stalled plan. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
+    "ruling-pending": "Work {ticket}: {title}. It is the pending mechanism ticket of a ruling that has no mechanism yet. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
+    "lane-resend": "Resend the work of a lane that stopped short: {ticket}: {title}. Read the ticket's acceptance criteria and the stopped lane's TERMINAL live, finish what it left with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
     # OMN-20864, operator RULING 2026-10-10T04:08:23Z: an idle lab slot lands a PR the landing controller
     # parked, escalated or left red with no owner, as a per-PR landing lane.
     "pr-land": "Land {pr} ({ticket}) with /omni:pr-land. Lab-fill chose it for an idle lab slot ({title}): under operator RULING 2026-10-10T04:08:23Z a per-PR landing lane is the default work for an open PR the landing controller parked, escalated or left red with no owner. Run pr-land end to end on its exact head: claim, live read, hold check, CI triage, a fix on the PR's own branch in a worktree at {where}, then land it. If what is left is a cause this lane cannot fix on the PR, write your TERMINAL with outcome=blocked and cause=<required-approval|base-red|held|external-owner> and stop: lab-fill does not send it again until its head or that cause changes.",
+    # OMN-22413, operator RULING 2026-11-02: fixing factory machinery comes before features.
+    "machinery": "Fix a factory machinery break ({title}). Priority class {priority_class}; ticket {ticket}. Read the evidence first: the FRICTION rows of this class in the rolling ledger (lane_brief.py grep) and the ticket live. Find the root cause on the real call path, build the smallest change that removes it with a red test first, in a worktree at {where}, and open one PR whose title contains {ticket}. If a ticket you have read already covers this class, cite that one and do not mint another. If a live lane owns the class, write your TERMINAL with outcome=skipped-owned and stop.",
     # OMN-17427: a ticket skipped because its implementation merged is verified and closed, not skipped.
     "dod-verify": "Verify and close {ticket}. Lab-fill chose it for an idle lab slot because its {title}. Read the ticket and its acceptance criteria live, then run /onex:dod_verify against its contract on the merged code. If every criterion has evidence, record the dod_evidence the receipt names on the ticket and move it to Done. If a criterion has none, name it, build the smallest change that meets it with tests in a worktree at {where}, and open one PR whose title contains {ticket}. If the ticket is already Done or the merged work belongs to another ticket, write your TERMINAL with outcome=no-op naming why and stop.",
 }
@@ -81,7 +87,7 @@ class HandlerLabFillLaneRender:
             "where": where,
             "marker": f"APPROVED-ROW {item.id} (unresolved)",
             "stalled": item.updated_at or f"over {cfg.stalled_hours}h ago",
-            "subject": item.pr or item.ticket,
+            "subject": item.pr or getattr(item, "machinery_key", None) or item.ticket,
             "repo_or_placeholder": item.repo or "<repo>",
             "placement": f"onto {host}, the host this work must run on."
             if item.pinned is True
@@ -148,5 +154,10 @@ class HandlerLabFillLaneRender:
             ref=item.ref if item.repo and item.ref else None,
             pr=item.pr.split("/")[-1] if item.pr else None,
             approved_row=approved,
+            **(
+                {"priority_class": klass}
+                if (klass := getattr(item, "priority_class", None))
+                else {}
+            ),
         )
         return ModelLabFillLaneRenderResult(brief=brief, launch=launch)

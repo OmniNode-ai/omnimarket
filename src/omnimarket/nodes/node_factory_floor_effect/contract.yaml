@@ -14,6 +14,11 @@ description: >-
   through the ledger reader, the Linear snapshot plans-today writes, the lab placement reading, the friction
   report), call node_factory_floor_compute with them and write its JSON to the path this contract declares.
   The only reads and the only write of the factory floor live here; the compute node is pure.
+dependencies:
+  - name: omnimarket.nodes.node_cloud_session_placement_effect
+    dependency_type: internal
+    description: Read-only typed cloud account snapshot through the canonical runtime.
+    required: true
 input_model:
   name: ModelFactoryFloorRunRequest
   module: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run
@@ -35,9 +40,24 @@ handler_routing:
     handler:
       name: HandlerFactoryFloorEffect
       module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
+  - operation: emit_seam_count
+    handler:
+      name: HandlerSeamEmitter
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_seam_emitter
+    input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+    output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The floor effect emits VS-01, VS-02 and VS-04 once the floor effect step builds them.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_factory_floor_effect (runtime_factory_floor.py), from a schedule or by hand.
 descriptor:
@@ -52,6 +72,7 @@ descriptor:
   - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
+  - reads the API credit meter, engine usage and lab rung status, and token pool status mirrors (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
 
 # Where the entry reads and writes. Paths are relative to the registry home (the environment variable named by
@@ -62,6 +83,12 @@ runtime:
   home_env: OMNI_HOME
   plans_kb_env: ONEX_PLANS_KB_PATH
   overlay_file_env: ONEX_FACTORY_FLOOR_OVERLAY
+  # The goal's scope overlay: which tickets are in scope. A stopped lane is listed only inside it; unread, none is listed.
+  goal_scope_overlay_id: goal_scope
+  goal_scope_file_env: ONEX_GOAL_SCOPE_OVERLAY
+  # The goal's ticket rule overlay: its ticket_roots are the tickets whose work is in scope.
+  goal_ticket_rule_overlay_id: goal_scope_ticket_rule
+  goal_ticket_rule_file_env: ONEX_GOAL_SCOPE_TICKET_RULE_OVERLAY
   plugin_root_env: CLAUDE_PLUGIN_ROOT
   # The Phoenix base URL the floor reads its trace count and newest span age from; unset draws the reading unread.
   phoenix_url_env: ONEX_FACTORY_FLOOR_PHOENIX_URL
@@ -97,6 +124,13 @@ runtime:
     # scripts/runner_fleet_event.py); node_projection_runner_fleet saves the newest observation to this path (its
     # state_file), and a bay draws its CI runners as unread until it has.
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+    # The host-drift fleet projection (node_host_drift_fleet's persisted fold): each host's newest heartbeat and open items.
+    host_drift_relpath: .onex_state/host-drift/fleet.json
+  # Limits status mirrors under the registry home; absent or invalid files remain unread.
+  limit_sources:
+    api_meter_relpath: .claude_scratch/limits/api-credit-meter.json
+    engines_relpath: .claude_scratch/limits/engines.json
+    token_pool_glob: .claude_scratch/limits/claude-token-pool.*.json
   # The machine bays and the live lanes (OMN-21733). The remote-lane receipts are the runner's per-run JSON files;
   # the pool receipt is the one `onex_lab_run.py --hosts` writes: the landing placement's pool read (load, memory,
   # swap, cap per host, or UNREADABLE). The placement directory holds the live placement markers
@@ -108,12 +142,26 @@ runtime:
     pool_receipt: hosts-probe/latest.json
     receipt_glob: "rlane-*.json"
     receipt_window_hours: 24
+    # Measured 2026-11-06 on the launching Mac at load 29 under the Background clamp: 19,273 directories took 94 s one at
+    # a time, 20.7 s with 8 workers and 2.6 s with 32.
+    receipt_scan_workers: 32
     result_chars: 600
     placement_dir_env: LANDING_PLACEMENT_DIR
     placement_dir_fallback: .local/state/omni/landing/placement
     lane_marker_min_id: 1000000000
-    cloud_accounts_file: cloud-accounts.json
     host_table_env: ONEX_LAB_RUN_HOSTS
+    # Run on the launching/controller host: receipt pids, worker leases and placement pids are local there.
+    # Reuse landing_workers' group/tag probe so a surviving descendant stays live after its parent exits.
+    controller_dir_env: LANDING_STATE_DIR
+    controller_dir_fallback: .local/state/omni/landing
+    process_start_grace_seconds: 120
+  # The node reads v2 accounts on its own host. The deployment overlay may supply
+  # cloud_accounts_node_command: [ssh, reachable-state-owner, onex, node].
+  # No raw state, credentials or publisher-local filename cross this boundary.
+  cloud_source:
+    node_name: node_cloud_session_placement_effect
+    action: floor_snapshot
+    timeout_seconds: 60
   # The lane containers (application container budget): the hosts and budgets are the overlay's; each host is read over ssh with
   # this listing command and judged by node_lane_container_budget_compute. A host that cannot be read draws UNKNOWN with the
   # cause, never an empty count. The command names its fields: the default JSON form makes the engine compute every size.

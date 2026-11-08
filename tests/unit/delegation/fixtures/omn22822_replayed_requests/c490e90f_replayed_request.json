@@ -1,0 +1,28 @@
+{
+ "headers": {
+  "x-replay-count": "1",
+  "x-replayed-at": "2026-11-07T02:40:20.107709+00:00",
+  "x-replayed-by": "node_dlq_replay_effect"
+ },
+ "payload": {
+  "acceptance_criteria": [],
+  "compliance_budget": null,
+  "context_pack": "",
+  "context_pack_hash": "",
+  "correlation_id": "c490e90f-bdbc-4bfd-9fb9-3eeadf485146",
+  "emitted_at": "2026-11-04T20:14:05.679268Z",
+  "max_tokens": 2048,
+  "output_schema_key": null,
+  "prompt": "scrubbed: recorded text removed",
+  "quality_contract_mode": "extend_task_class",
+  "requested_timeout_seconds": 100,
+  "source_file_path": null,
+  "source_session_id": "075f1648-98c1-4b13-ac61-aae019f63792",
+  "task_type": "summarization",
+  "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+  "trace_id": "762ea5a4-5d47-4e22-a424-77b89c63c721"
+ },
+ "provenance_note": "Constructed from the recorded dev-lane request of run c490e90f (the request field of the omn22478 recorded workflow row, prompt scrubbed) wrapped in the envelope and headers the dead-letter replay node put on the recorded inference-response replay of the same run (see omn22822_replayed_responses). The bus offset is not recorded for this message.",
+ "timestamp_ms": 1794019220107,
+ "topic": "onex.cmd.omnibase-infra.delegation-request.v1"
+}

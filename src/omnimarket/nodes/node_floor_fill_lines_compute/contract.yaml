@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Fill Lines Compute
+#
+# The tick's lines for the stopped-line fill: each startable floor line that no lane
+# touched is named, as MISSING and NOTE lines in the tick's finding shape. Pure: the
+# fill orchestrator builds the request at pass step S6 and prints what comes back. No
+# clock read, no I/O, no overlay key, no injected protocol, no bus surface.
+name: "node_floor_fill_lines_compute"
+contract_name: "node_floor_fill_lines_compute"
+node_name: "node_floor_fill_lines_compute"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+node_type: "COMPUTE_GENERIC"
+# Experimental until the fill orchestrator calls this handler in the runtime.
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Words one fill pass for the tick. A STARTABLE or NEEDS-TICKET line with no lane started
+  this tick is a MISSING line-stopped line (with the start-failed or mint-refused cause
+  when this tick tried it), a NOTE line-held line while the open-count brake, a stop signal
+  or an empty slot budget holds, and a NOTE line-filled line when a lane started. A line
+  whose ready tasks are all untickable is a MISSING line-ticket line with the cause; a
+  RESERVED entry past its timeout whose resolution could not be read is a MISSING
+  line-reserved line; an AT-CAPACITY or NO-STARTABLE line is a NOTE. Each source the pass
+  could not read is one UNKNOWN line and nothing else is printed.
+input_model:
+  name: "ModelFloorFillLinesRequest"
+  module: "omnimarket.nodes.node_floor_fill_lines_compute.models"
+  description: "What the pass read (unread sources, T1's line verdicts, the state entries), did (start results, free slots) and the hold."
+output_model:
+  name: "ModelFloorFillLinesResult"
+  module: "omnimarket.nodes.node_floor_fill_lines_compute.models"
+  description: "The findings of the pass in print order, each as (level, loop, why, fix)."
+handler:
+  module: "omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines"
+  class: "HandlerFloorFillLines"
+  input_model: "omnimarket.nodes.node_floor_fill_lines_compute.models.ModelFloorFillLinesRequest"
+  output_model: "omnimarket.nodes.node_floor_fill_lines_compute.models.ModelFloorFillLinesResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines:HandlerFloorFillLines"
+  handlers:
+    - operation: "name_floor_fill_lines"
+      handler:
+        name: "HandlerFloorFillLines"
+        module: "omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation by the fill orchestrator at pass step S6 with the request of the pass."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Pure wording of the stopped-line fill's per-line findings."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  tags: ['compute', 'floor-fill', 'pure']

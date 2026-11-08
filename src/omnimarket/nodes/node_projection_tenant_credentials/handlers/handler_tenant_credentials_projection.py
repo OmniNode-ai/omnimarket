@@ -66,13 +66,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import ValidationError
 
 from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     resolve_byok_provider_backend,
@@ -223,8 +223,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(_path) as f:
-            self._contract: dict[str, Any] = yaml.safe_load(f)
+        self._contract: dict[str, Any] = load_contract(_path)
         # OMN-13548: a malformed inbound event goes to the contract-declared DLQ.
         self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
 

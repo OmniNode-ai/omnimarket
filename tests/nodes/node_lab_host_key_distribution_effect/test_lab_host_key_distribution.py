@@ -15,6 +15,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_lab_host_key_distribution_effect.handlers import (
     adapter_ssh_host_key_transport as adapter,
@@ -23,8 +24,6 @@ from omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab
     HandlerLabHostKeyDistribution,
 )
 from omnimarket.nodes.node_lab_host_key_distribution_effect.models import (
-    EnumKeyFile,
-    EnumLineState,
     EnumPairStatus,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
@@ -565,7 +564,11 @@ def test_contract_and_models() -> None:
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["runtime_profiles"] == []
     assert contract["descriptor"]["idempotent"] is True
-    assert contract["metadata"]["related_tickets"] == ["OMN-22115", "OMN-20348"]
+    assert contract["metadata"]["related_tickets"] == [
+        "OMN-22115",
+        "OMN-20348",
+        "OMN-22174",
+    ]
     metadata = yaml.safe_load(
         NodeLabHostKeyDistributionEffect.contract_path.with_name(
             "metadata.yaml"

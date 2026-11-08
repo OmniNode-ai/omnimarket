@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_dispatch_orchestrator
+node_type: orchestrator
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Review one pull request head through a chain of responders: the overlay orders the
+  roster's rungs, the first rung is called alone and each next rung only when the rungs
+  before it left the quorum short, an unavailable voter is skipped and recorded and never
+  a red. Aggregate the CI gate's quorum verdict over the votes the chain gathered, sign
+  and atomically store a receipt, and publish the stored receipt as a pull request review. Replay recorded commands as historical
+  terminals. The required deployment overlay supplies every voter, endpoint, threshold
+  and deadline; the contract supplies no deployment defaults.
+input_model:
+  name: ModelAgentReviewRequest
+  module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review
+output_model:
+  name: ModelAgentReviewTerminal
+  module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review
+handler:
+  module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch
+  class: HandlerAgentReviewDispatch
+  input_model: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review.ModelAgentReviewRequest
+  output_model: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review.ModelAgentReviewTerminal
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch:HandlerAgentReviewDispatch
+  handlers:
+    - operation: review_head
+      topic: onex.cmd.omnimarket.agent-review-requested.v1
+      handler:
+        name: HandlerAgentReviewDispatch
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch
+    - operation: aggregate_quorum
+      topic: onex.cmd.omnimarket.agent-review-quorum-requested.v1
+      input_model: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review.ModelAgentQuorumRequest
+      handler:
+        name: HandlerAgentReviewQuorum
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_quorum
+    - operation: request_pr_review
+      topic: onex.evt.github.pr-status.v1
+      message_category: event
+      event_model:
+        name: ModelPrReviewObservation
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_pr_review_trigger
+      handler:
+        name: HandlerPrReviewTrigger
+        module: omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_pr_review_trigger
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 1500000
+terminal_event: onex.evt.omnimarket.agent-review-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-review-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.agent-review-completed.v1
+    refused: onex.evt.omnimarket.agent-review-refused.v1
+    failed: onex.evt.omnimarket.agent-review-failed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.agent-review-requested.v1
+    - onex.evt.github.pr-status.v1
+    - onex.cmd.omnimarket.agent-review-quorum-requested.v1
+  publish_topics:
+    - onex.cmd.omnimarket.agent-review-requested.v1
+    - onex.evt.omnimarket.agent-review-completed.v1
+    - onex.evt.omnimarket.agent-review-refused.v1
+    - onex.evt.omnimarket.agent-review-failed.v1
+    - onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+    - onex.evt.omnimarket.agent-review-quorum-decided.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.agent-review-quorum-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-completed.v1
+  - onex.evt.omnimarket.agent-review-refused.v1
+  - onex.evt.omnimarket.agent-review-failed.v1
+  - onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+  - onex.evt.omnimarket.agent-review-quorum-decided.v1
+published_events:
+  - event_type: AgentReviewCompleted
+    topic: onex.evt.omnimarket.agent-review-completed.v1
+    description: The stored signed receipt was published for the requested head.
+  - event_type: AgentReviewRefused
+    topic: onex.evt.omnimarket.agent-review-refused.v1
+    description: The roster, current head or lab quorum refused the command.
+  - event_type: AgentReviewFailed
+    topic: onex.evt.omnimarket.agent-review-failed.v1
+    description: A deadline, port error or exhausted post attempts ended the command.
+  - event_type: PrReviewTriggerResult
+    topic: onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
+    description: A proactive command acknowledgement, never a review verdict.
+  - event_type: AgentQuorumResult
+    topic: onex.evt.omnimarket.agent-review-quorum-decided.v1
+    description: A quorum computation result, never a completed review command.
+
+# Deployment scope for proactive PR review; absent configuration refuses, never defaults.
+pr_review_trigger_overlay: agent_review_pr_trigger
+env_dependencies:
+  - name: ONEX_STATE_DIR
+    required: true
+    description: Durable per-head review command acknowledgements.
+  - name: OMNI_HOME
+    required: true
+    description: Registry root for canonical source-control and review bus resolution.
+  - name: ONEX_SKILL_OVERLAY_ROOTS
+    required: true
+    description: Deployment overlay roots for review scope and dispatch policy.

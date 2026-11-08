@@ -21,7 +21,8 @@ runtime_profiles: []
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: "0.1.0"
 description: >
-  Saves and converges a canonical clone that has been refused for tracked changes past a declared age.
+  Converges a canonical clone that has been refused for tracked changes or local commits past a declared
+  age, and returns a canonical clone left on a detached HEAD or a lane branch to its tracking branch.
 input_model:
   name: "ModelDirtyConvergeTickRequest"
   module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
@@ -54,15 +55,22 @@ metadata:
   description: "Hosted by one timer tick per host, never a shared runtime"
   author: "OmniNode Team"
   created: "2026-10-31"
-  tags: ["effect", "canonical-clone", "OMN-21821"]
-  related_tickets: ["OMN-21821"]
+  tags: ["effect", "canonical-clone", "OMN-21821", "OMN-20344", "OMN-23032"]
+  related_tickets: ["OMN-21821", "OMN-20344", "OMN-23032"]
 
 timeouts:
-  # A canonical clone refused for tracked changes this long is saved and converged. The same value is
-  # handed to the sync engine as its refusal bound, so the engine reports the clone (REFUSED_TOO_LONG)
-  # at exactly this age. A host overlay replaces it with ONEX_CLONE_DIRTY_CONVERGE_AFTER_S in the
-  # tick's environment.
-  dirty_converge_after_seconds: 14400
+  # A canonical clone refused for tracked changes or local commits this long is converged. The same value
+  # is handed to the sync engine as its refusal bound, so the engine reports the clone (REFUSED_TOO_LONG)
+  # at exactly this age. OMN-23032: canonical clones are read-only mirrors, so a clone found dirty, ahead
+  # or diverged by one tick is converged by the next one; the bound sits below the host timer's 180 s
+  # period so the second tick is always past it. A host overlay replaces it with
+  # ONEX_CLONE_DIRTY_CONVERGE_AFTER_S in the tick's environment.
+  dirty_converge_after_seconds: 150
+  # A canonical clone refused on a detached HEAD, or checked out on a lane branch, this long is returned to
+  # its tracking branch (OMN-20344, OMN-23032). A detached omnibase_infra clone on a lab host stayed detached
+  # until a lane converged it by hand, so the bound is one tick as above. The engine is handed the smaller of
+  # the two values; ONEX_CLONE_DETACHED_REATTACH_AFTER_S in the tick's environment replaces it.
+  detached_reattach_after_seconds: 150
   dirty_converge_engine_seconds: 900  # Bounds one engine pass over every clone.
   dirty_converge_rescue_push_seconds: 120  # Bounds the push of one rescue branch.
   dirty_converge_script_seconds: 300  # Bounds one converge-canonical-clone.sh run.

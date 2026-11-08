@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-20546
+title: Interim second copy of the work ledger off the database host (step before the L14 snapshot)
+summary: The effect node node_work_ledger_copy_effect dumps the work-ledger projection tables and copies the ledger file with its rolls to a host other than the database host, reads every file's digest back on that host, restores the copy on a throwaway postgres container there, and compares row count and last row of the projection and the size, line count and last line of the file. A run that does not match ends in a typed outcome and is reported as one STATUS row. This is not the L14 object-storage snapshot, which stays open.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn20546-interim-copy
+    statement: A second copy of the projection and the file exists off the database host, is read back every run, and is proved restorable on a scratch database.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a run whose placed digests, restored row count, restored last row and restored file facts all equal the source ends copied-verified, prunes to the declared keep and reports once -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov -k verified_run'
+      - id: AC2
+        statement: 'AC2: low target space refuses before any dump, a dump failure places nothing, a changed byte is a transfer mismatch, a drill crash is drill-failed, and each named break (lose the last row, drop the file tail) is a drill mismatch; none prunes -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_error_chain_work_ledger_copy_effect.py -q --no-cov'
+      - id: AC3
+        statement: 'AC3: the password reaches the child environment and never an argument vector, a table name that is not a plain identifier is refused, a partial last line is not copied, and only run-shaped directories are pruned -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_adapters_work_ledger_copy_effect.py -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The node's unit suite at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn20546-ac1
+    description: The golden chain through the handler with in-memory seams ends copied-verified, with the source and restored facts equal.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_golden_chain_work_ledger_copy_effect.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn20546-ac2
+    description: The error chain ends each injected break in its typed outcome and prunes nothing.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_error_chain_work_ledger_copy_effect.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn20546-ac3
+    description: The real seams run against a recording runner, so argument vectors, secrets, pruning and the report row are read without a database or a host.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_copy_effect/test_adapters_work_ledger_copy_effect.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn20546-deploy-probe
+    description: 'Deploy probe: the copy handler exists at the checked-out commit, which the merge base does not carry.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_copy_effect/handlers/handler_work_ledger_copy.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerWorkLedgerCopy" > /dev/null'
+        cwd: .
+  - id: dod-omn20546-integration-proof
+    description: The pushed head ran the node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20546 -- uv run --frozen pytest tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov
+        cwd: .
+  - id: dod-omn20546-integration-proof-live-copy
+    description: 'A live run of the node left a copied-verified STATUS row (src=ledger-copy) on the ledger; the row is read from the ledger file named by ONEX_LEDGER_PATH, so a missing or failed run fails the check.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: grep -a -q "src=ledger-copy .*outcome=copied-verified" "$ONEX_LEDGER_PATH"
+        cwd: .

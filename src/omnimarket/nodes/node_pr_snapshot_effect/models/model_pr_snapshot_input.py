@@ -16,7 +16,6 @@ DEFAULT_REPOS: tuple[str, ...] = (
     "OmniNode-ai/omnimemory",
     "OmniNode-ai/omninode_infra",
     "OmniNode-ai/omniweb",
-    "OmniNode-ai/omnibase_compat",
     "OmniNode-ai/omnimarket",
 )
 

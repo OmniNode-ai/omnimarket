@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_reading_writer_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default.
+#
+#   ledger_read      how rows are read: `file` (the live ledger file named by the variable path_env,
+#                    and the rolls in archive_subdir beside it) or `command` (the command held in
+#                    command_env reads one typed query JSON on stdin and prints one JSON answer)
+#   ledger_append    the command in command_env appends rows; host_env holds the host name
+#   window           an hourly window closes at its end plus close_delay_seconds
+#   publish          the reading rows' lane and actor, how long a published reading stays fresh
+#   order            the build order of the pieces; part of every row key
+#   pieces           per piece: readable_today with sources, or UNKNOWN with its reason; every piece
+#                    names the fault injected on purpose
+#   landing_route    where piece 9 reads the pull request watcher: the variable holding its state file, the goal
+#                    scope overlay, the watcher classes that are green and waiting and the conflict merge states
+#   schedule_hosts   hosts that install the hourly systemd user timer
+#   unit_environment environment the installed unit carries (the routes' variables)
+#   two_backend      optional: the piece whose row also carries the count of effects not yet on both
+#                    backends, and the variable that holds the path of the core validator's report
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_FILE
+  archive_subdir: archive
+  timeout_seconds: 30
+  row_limit: 1000
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+window:
+  length_seconds: 3600
+  close_delay_seconds: 600
+publish:
+  lane: reading-writer
+  actor: node:node_reading_writer_effect
+  publish_max_age_seconds: 7200
+  reading_term: src=reading
+order:
+- 1
+- 6
+- 9
+- 15
+pieces:
+- piece: 1
+  name: code graph
+  readable_today: false
+  unknown_reason: the nightly graph run does not exist yet
+  injected_fault: stop the timer and advance the clock
+- piece: 6
+  name: ledger
+  readable_today: true
+  basis: daily-parity-receipt
+  sources:
+  - source_id: parity
+    row_type: STATUS
+    lane: work-ledger-parity
+    mode: newest
+    pass_when:
+    - cell: missing
+      op: eq
+      value: '0'
+    - cell: unexplained
+      op: eq
+      value: '0'
+    max_age_seconds: 129600
+  injected_fault: an append returns with no durable row
+- piece: 9
+  name: landing
+  readable_today: true
+  basis: landing-goal-hourly-requirements
+  landing:
+    head_max_age_seconds: 3600
+    goal_merges_per_window: 10
+    merge_window_seconds: 3600
+    waiting_threshold: 10
+    snapshot_max_age_seconds: 900
+    canary:
+      source_id: canary
+      row_type: STATUS
+      lane: landing-canary
+      mode: newest
+      pass_when:
+      - cell: outcome
+        op: eq
+        value: landed
+      max_age_seconds: 93600
+  injected_fault: hold one eligible head for over an hour in a test repository
+- piece: 15
+  name: delegation
+  readable_today: true
+  basis: delegation-terminal-rows
+  sources:
+  - source_id: terminals
+    row_type: STATUS
+    cells:
+      src: delegation
+      outcome: completed
+    mode: count
+    min_rows: 1
+    pass_when:
+    - cell: quality_gate_passed
+      op: eq
+      value: 'true'
+    max_age_seconds: 3600
+  injected_fault: drop the result of the synthetic task in a test route
+landing_route:
+  watcher_state_env: EXAMPLE_WATCHER_STATE
+  goal_scope_overlay_id: goal_scope
+  goal_scope_file_env: EXAMPLE_GOAL_SCOPE
+  queue_classes: [green-unarmed, queue-stuck]
+  conflict_merge_states: [DIRTY]
+schedule_hosts:
+- name: host-a
+  scheduler: systemd-user
+  venv: example-venv
+unit_environment:
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
+  EXAMPLE_HOST_NAME: host-a
+  EXAMPLE_LEDGER_FILE: /var/lib/example/ledger.md
+  EXAMPLE_WATCHER_STATE: /var/lib/example/pr-watcher/state.json
+  EXAMPLE_GOAL_SCOPE: /var/lib/example/goal_scope/overlay.yaml
+two_backend:
+  piece: 6
+  report_path_env: EXAMPLE_EFFECT_BACKEND_REPORT

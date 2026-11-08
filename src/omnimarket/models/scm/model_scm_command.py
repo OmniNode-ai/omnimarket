@@ -175,6 +175,14 @@ class ModelScmBusReceipt(BaseModel):
     terminal_offset: str | None = None
 
 
+class ModelScmDispatchReceipt(BaseModel):
+    """Local reservation receipt, made durable before a gateway command can run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command_may_have_run: bool = Field(strict=True)
+
+
 class ModelScmTopics(BaseModel):
     """One node's command topic and its terminal topics, from its contract."""
 
@@ -230,6 +238,7 @@ __all__: list[str] = [
     "EnumScmNode",
     "ModelScmAnswer",
     "ModelScmBusReceipt",
+    "ModelScmDispatchReceipt",
     "ModelScmLocalAnswer",
     "ModelScmLocalReadRequest",
     "ModelScmLocalReadResult",

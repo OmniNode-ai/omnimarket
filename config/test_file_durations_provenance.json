@@ -55,5 +55,77 @@
     "basis": "files the record did not hold, each the mean over CI runs 41330250154, 41332241621 and 41333545891 (pull_request, ci.yml test job, test-durations-shard-* artifacts) of its summed per-test seconds, as merge_test_durations.py record computes it; existing entries left as they were because a full refresh from those runs records tests/nodes/test_work_contract_checks.py at about 604 s, more than one shard share, and fails the 1.1x planned-spread guard",
     "runner": "GitHub-hosted ubuntu-latest, 20-way full-suite ci.yml test job; the next full refresh replaces these entries",
     "base_sha": "f801939ad5e668fd0017f60989bbb4e929f37df7"
+  },
+  "supplement_omn22157": {
+    "recorded_on": "2026-11-03",
+    "files_added": 66,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "8fecf3caec1062e4d7fd4557f5d0bcf809deb344"
+  },
+  "supplement_omn22200": {
+    "recorded_on": "2026-11-04",
+    "files_added": 48,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300; existing entries left as they were",
+    "runner": "lab host h101, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "e7e987f35b627d0a2e7bd0009c570933476f93a7"
+  },
+  "supplement_5031": {
+    "recorded_on": "2026-11-04",
+    "files_added": 5,
+    "basis": "Five measurements retained from the original PR head after merging dev; mean of each file duration over source runs 41776705000, 41768675898 and 41768370501. Every existing dev entry is unchanged.",
+    "runner": "GitHub-hosted full-suite PR runs, as recorded by the source commit",
+    "source_commit": "dfc0edef748302ce709e501a9abab3946ca5aede",
+    "base_sha": "e06f3c94c6d9667c905c4dea24c2adefe12ecaa3"
+  },
+  "supplement_5031_regression": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Summed per-test seconds from pytest --store-durations --no-cov for tests/unit/test_ci_duration_record_supplement.py",
+    "runner": "lab host h053, lane ev-5031-0635"
+  },
+  "supplement_omn22452": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Sum of measured pytest setup, call and teardown seconds for all 14 pre-push preflight handler tests; --store-durations --clean-durations --no-cov, Python 3.12.14. Existing entries are unchanged.",
+    "runner": "lab host h051, lane pr-5025-1208; the next CI refresh replaces this entry",
+    "base_sha": "48c7f214c3ba4a1f1eed3a937c269ce7df3c42c0"
+  },
+  "supplement_omn22191": {
+    "recorded_on": "2026-11-04",
+    "files_added": 3,
+    "basis": "Sum of each lane-end test file's measured pytest setup, call and teardown durations from one serial focused run with --store-durations --clean-durations -m 'not kafka' --no-cov; 22 passed, 3 Kafka-marked cases deselected; existing entries unchanged",
+    "runner": "lab host h051, Python 3.12, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "52ede9e6ef77b508c4ae98b99f6f701337da3dfb"
+  },
+  "supplement_omn19486": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Summed measured pytest setup, call and teardown seconds for tests/cli/test_pr_state.py from a serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h053, lane pr-4928-1157; the next CI refresh replaces this entry",
+    "base_sha": "10e4469489ac04ec863a0f00dc7cbc92bf7095c8"
+  },
+  "supplement_omn21993": {
+    "recorded_on": "2026-11-04",
+    "files_added": 55,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h106, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "3e6a5158ad972279a62813eb1fbee8875f000bb2"
+  },
+  "supplement_omn19998_publish_recovery": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Sum of measured pytest setup, call and teardown seconds for tests/nodes/node_remote_lane_effect/test_publish_recovery.py from one serial focused run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; 19 passed; existing entries unchanged",
+    "runner": "lab host h051, lane pr-5051-1745, Python 3.12; the next CI refresh replaces this entry",
+    "base_sha": "b23cbdc382f56ba50903c4c7f309731d624b8dee"
+  },
+  "supplement_omn22867_split5_freshness": {
+    "ticket": "OMN-22867",
+    "recorded_on": "2026-11-08",
+    "files_added": 56,
+    "files_without_measurement": 1,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. tests/nodes/node_factory_floor_publish_effect/test_compare_page.py is not recorded: its render tests need Node.js, which the runner lacked, so five of its tests failed early and its time is not a measurement.",
+    "runner": "lab host h051, lane splits-5-19-fl0527, Python 3.13.15; the next CI refresh replaces these entries",
+    "base_sha": "a10bd9b2317af97d9fa9b75b97826ed630b6d7f9"
   }
 }

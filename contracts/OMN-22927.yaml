@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22927
+title: The floor's merge number counts the merges the landing controller admitted as in scope, from its admission record
+summary: node_floor_simple_effect reads the landing controller's admissions.jsonl (newest row per pull request, tail only, location from the node contract sources) and counts a merge on no goal list as in scope when the controller admitted it; an unreadable record draws the merge number unread. No check and no bound changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22927-floor-merge-admission
+  statement: The floor's merge number reads the same admission record the landing controller wrote, so a merge the controller admitted by its ticket rule counts, with a failing control that reads red on the base source.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with no admission record the five merges count 0 and with the record they count 5 in the floor scope read, and the new tests fail on origin/dev source -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_controller_admissions_floor_simple.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: an unreadable record, a kept-out row, a missing row and the paused list count nothing, and the whole floor node suite incl. test_ledger_readings_floor_simple.py collects and passes -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The floor node tests pass
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22927-floor-tests
+  description: Runs the golden chain, error chain and failing control tests of the floor admission read, and the rest of the floor node suite.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect -q --no-cov
+    cwd: .
+- id: dod-omn22927-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22927 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect -q --no-cov
+    cwd: .

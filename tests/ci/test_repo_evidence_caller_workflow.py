@@ -13,6 +13,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
+    scoped_item_binding_violation,
+)
 from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
@@ -103,6 +106,36 @@ def _pytest_argv(check_value: str) -> list[str]:
     return ["uv", "run", *rest] if rest[:1] == ["pytest"] else []
 
 
+def _command_pytest_argv(check_value: str) -> list[str]:
+    """The argv of a `uv run pytest` run inside a wrapper command, or an empty list.
+
+    OMN-22496 bound two criteria to a `check_type: command` that makes a
+    temporary HOME, writes a .gitconfig into it and then runs `uv run pytest`
+    over one repo test file. That is a real pytest run naming a real file, and
+    no `test_passes` value can express it, because the evidence is about what
+    the HOME contains and `env VAR=value` cannot create a directory. Only
+    `test_passes` checks were parsed, so both items read as unbound and this
+    assertion reddened every open pull request of the repository at once.
+
+    The loosening is narrow on purpose: a command with no `uv run pytest` in it
+    still binds nothing, and a wrapped run still has to name a path that exists
+    in the tree, so the planted deploy probe and a wrapped nonexistent file are
+    both still refused (the three tests beside this rule).
+    """
+    index = check_value.find("uv run pytest")
+    if index < 0:
+        return []
+    # The run sits inside the wrapper's quoted -c argument, so the slice ends
+    # on that argument's closing quote; shlex would refuse the unbalanced tail.
+    try:
+        return _pytest_argv(check_value[index:].rstrip("'\""))
+    except ValueError:
+        # A tail shlex cannot split (a quote opened before the marker, a stray
+        # escape) names no argv we can read, so it binds nothing rather than
+        # raising out of the assertion and hiding every other contract.
+        return []
+
+
 # OMN-21980: pytest options that take their value as the next token. Without
 # this, an option's value reads as a path target, and a value that happens to
 # name a directory (`-k tests`) would be accepted as the binding's selector.
@@ -171,11 +204,20 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
             violations.append(f"{label}: use binds_ac, not ac_bindings")
         if "binds_ac" not in item:
             continue
+        # OMN-22403: the rule lives in the verifier's service module.
+        refusal = scoped_item_binding_violation(item)
+        if refusal:
+            violations.append(f"{label}: {refusal}")
+            continue
         bound.update(item["binds_ac"])
         argvs = [
-            _pytest_argv(check.get("check_value", ""))
+            (
+                _pytest_argv(check.get("check_value", ""))
+                if check.get("check_type") == "test_passes"
+                else _command_pytest_argv(check.get("check_value", ""))
+            )
             for check in item.get("checks", [])
-            if check.get("check_type") == "test_passes"
+            if check.get("check_type") in {"test_passes", "command"}
         ]
         selectors = [
             next(
@@ -220,6 +262,49 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
     return violations
 
 
+def _violation_item_id(violation: str) -> str:
+    """The evidence item id a `<contract>:<item>: ...` violation names, or ''."""
+    head = violation.split(": ", 1)[0]
+    return head.split(":", 1)[1] if ":" in head else ""
+
+
+def binds_diagnosis(contract: dict[str, Any], violation: str) -> str:
+    """What the binding checker read in the item a violation names.
+
+    OMN-22399: a red `test_every_repo_contract_binds_every_criterion` named the
+    item and nothing else, so each reader re-derived whether the test file, the
+    selector or the check type was the fault. This prints, per check, its type,
+    its command, the path targets read from it and whether each exists in the
+    tree, so the reader sees the cause from the failure alone.
+    """
+    item_id = _violation_item_id(violation)
+    item = next(
+        (i for i in contract.get("dod_evidence", []) if i.get("id") == item_id), None
+    )
+    if item is None:
+        return f"  (no dod_evidence item {item_id!r} in this contract)"
+    lines: list[str] = []
+    for check in item.get("checks", []):
+        kind = check.get("check_type")
+        value = check.get("check_value", "")
+        if kind != "test_passes":
+            lines.append(
+                f"  - check_type={kind!r} is not test_passes, so it binds no test file: {value[:120]}"
+            )
+            continue
+        argv = _pytest_argv(value)
+        if not argv:
+            lines.append(f"  - not a `uv run pytest` command: {value[:120]}")
+            continue
+        targets = [t.split("::", 1)[0] for t in _pytest_targets(argv)]
+        shown = ", ".join(
+            f"{t} ({'exists' if (REPO_ROOT / t).exists() else 'MISSING'})"
+            for t in targets
+        )
+        lines.append(f"  - test_passes targets read: [{shown or 'none'}]")
+    return "\n".join(lines) or "  (item has no checks)"
+
+
 def test_every_repo_contract_binds_every_criterion() -> None:
     assert CALLER_PATH.is_file(), "repo-owned evidence requires the caller workflow"
     contracts = sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml"))
@@ -227,7 +312,12 @@ def test_every_repo_contract_binds_every_criterion() -> None:
     violations: list[str] = []
     for path in contracts:
         contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-        violations.extend(contract_binds_violations(path.name, contract))
+        for violation in contract_binds_violations(path.name, contract):
+            violations.append(
+                f"{violation}\n{binds_diagnosis(contract, violation)}"
+                if _violation_item_id(violation)
+                else violation
+            )
     assert not violations, "\n".join(violations)
 
 
@@ -476,6 +566,57 @@ def test_contract_binds_refuses_a_selector_naming_a_path_not_in_the_tree() -> No
     ]
 
 
+def _wrapper_command_contract(command: str) -> dict[str, Any]:
+    return {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-wrapped-pytest",
+                "binds_ac": ["AC1"],
+                "checks": [{"check_type": "command", "check_value": command}],
+            }
+        ],
+    }
+
+
+def test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest() -> None:
+    """A `command` check that prepares a HOME and then runs pytest binds its file.
+
+    OMN-22496 bound two criteria to exactly this shape: the evidence is about
+    what the HOME's .gitconfig contains, so no `test_passes` value can express
+    it. Only `test_passes` checks were parsed, so both items read as unbound
+    and this assertion reddened every open pull request of the repository.
+    """
+    contract = _wrapper_command_contract(
+        'bash -o pipefail -c \'h=$(mktemp -d) && printf "[tag]\\n\\tgpgsign = true\\n" '
+        '> "$h/.gitconfig" && HOME="$h" uv run pytest '
+        "tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_contract_binds_still_refuses_a_command_with_no_pytest_run() -> None:
+    """The loosening is narrow: a wrapper command that runs no pytest binds nothing."""
+    contract = _wrapper_command_contract(
+        "bash -o pipefail -c 'curl -fsSL https://example.invalid/x | grep -F y'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-wrapped-pytest: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]
+
+
+def test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path() -> None:
+    """A wrapper is not a way past the existing-file rule."""
+    contract = _wrapper_command_contract(
+        "bash -c 'HOME=/tmp/x uv run pytest tests/ci/test_no_such_file_exists.py -q'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-wrapped-pytest: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]
+
+
 def test_contract_binds_does_not_read_an_option_value_as_the_target() -> None:
     """`-k tests` names an expression, not the `tests` directory."""
     contract = _dir_selector_contract("uv run pytest -k tests -q")
@@ -506,3 +647,167 @@ def test_contract_binds_refuses_a_nonexistent_test_path() -> None:
     assert violations == [
         "OMN-0.yaml:dod-missing-path: binds_ac requires uv run pytest evidence naming an existing repo test file"
     ]
+
+
+def _omn21733_floor_contract_item() -> dict[str, Any]:
+    return {
+        "requirements": [{"acceptance": [{"id": "AC66"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-omn21733-ac66",
+                "binds_ac": ["AC66"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": (
+                            "uv run pytest tests/nodes/node_factory_floor_publish_effect/"
+                            "test_floor_p0_page.py -q --no-cov --tb=line "
+                            "-k memory_gauge_matches_label"
+                        ),
+                        "cwd": "${OMNI_HOME}/omnimarket",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_omn22399_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file() -> None:
+    """The recorded OMN-21733 AC66 form binds: the file and the `-k` selector exist.
+
+    Evidence (2026-11-03): 21 PRs failed Tests (Split 2/20) with "OMN-21733.yaml:
+    dod-omn21733-ac66: binds_ac requires uv run pytest evidence naming an existing
+    repo test file" (#4980 #4977 #4974 #4973 #4972 #4971 #4953 #4951 #4949 #4947
+    #4942 #4941 #4931 #4923 #4916 #4900 #4896 #4881 #4874 #4858 #4849). The cause
+    was the item's earlier `command` grep check, not the multi-token `-k` form or
+    the `${OMNI_HOME}/omnimarket` cwd, so this form must read as bound.
+    """
+    contract = _omn21733_floor_contract_item()
+    item = contract["dod_evidence"][0]
+    target = "tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py"
+    assert (REPO_ROOT / target).is_file()
+    assert "def test_memory_gauge_matches_label" in (REPO_ROOT / target).read_text(
+        encoding="utf-8"
+    )
+    assert contract_binds_violations("OMN-21733.yaml", contract) == []
+    assert _pytest_targets(_pytest_argv(item["checks"][0]["check_value"])) == [target]
+
+
+def test_omn22399_a_grep_command_binding_fails_and_the_message_names_the_cause() -> (
+    None
+):
+    """The form that reddened dev (a bound `command` grep) still fails, with its cause named."""
+    contract = _omn21733_floor_contract_item()
+    contract["dod_evidence"][0]["checks"] = [
+        {
+            "check_type": "command",
+            "check_value": "grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html",
+            "cwd": ".",
+        }
+    ]
+    violations = contract_binds_violations("OMN-21733.yaml", contract)
+    assert len(violations) == 1
+    assert violations[0].startswith("OMN-21733.yaml:dod-omn21733-ac66: ")
+    diagnosis = binds_diagnosis(contract, violations[0])
+    assert "check_type='command' is not test_passes" in diagnosis
+    assert "grep -q 'Memory used'" in diagnosis
+
+
+def test_omn22399_the_diagnosis_marks_a_missing_target() -> None:
+    contract = _omn21733_floor_contract_item()
+    contract["dod_evidence"][0]["checks"][0]["check_value"] = (
+        "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_gone.py -k x"
+    )
+    violations = contract_binds_violations("OMN-21733.yaml", contract)
+    assert len(violations) == 1
+    assert "test_gone.py (MISSING)" in binds_diagnosis(contract, violations[0])
+
+
+# OMN-22403: the hosted receipt gate's own annotation, read from omnimarket#4918
+# (run 41703707219, job 126153377625) and, with other ids, from nine more PRs.
+_LOCAL_DONE_GATE_REFUSAL = (
+    "scoped local_done_gate, which this hosted check runs neither at the head "
+    "nor at the merge base; this job gives every bound test a Postgres "
+    "(INTEGRATION_POSTGRES_*, PG16 initdb on PATH), so bind a database test "
+    "with the default execution_scope"
+)
+
+
+def _contract_with_scoped_item(*, binds: list[str]) -> dict[str, Any]:
+    """The shape of omnimarket#4918's contracts/OMN-22159.yaml public-cutover-pending."""
+    scoped: dict[str, Any] = {
+        "id": "public-cutover-pending",
+        "execution_scope": "local_done_gate",
+        "checks": [
+            {
+                "check_type": "test_passes",
+                "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+            }
+        ],
+    }
+    if binds:
+        scoped["binds_ac"] = binds
+    return {
+        "requirements": [{"acceptance": [{"id": "AC1"}, {"id": "AC3"}]}],
+        "dod_evidence": [
+            {
+                "id": "hosted-proof",
+                "binds_ac": ["AC1", "AC3"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+                    }
+                ],
+            },
+            scoped,
+        ],
+    }
+
+
+def test_contract_binds_refuses_a_bound_local_done_gate_item() -> None:
+    """The hosted gate cannot control a scoped item, so binding one is refused here first."""
+    violations = contract_binds_violations(
+        "OMN-22159.yaml", _contract_with_scoped_item(binds=["AC3"])
+    )
+    assert violations == [
+        "OMN-22159.yaml:public-cutover-pending: a local_done_gate item may not carry "
+        "binds_ac; " + _LOCAL_DONE_GATE_REFUSAL.split(";")[0]
+    ]
+
+
+def test_contract_binds_accepts_an_unbound_local_done_gate_item() -> None:
+    """An unbound or empty-bound scoped item is the dev convention and stays valid."""
+    contract = _contract_with_scoped_item(binds=[])
+    assert contract_binds_violations("OMN-22159.yaml", contract) == []
+    contract["dod_evidence"][1]["binds_ac"] = []
+    assert contract_binds_violations("OMN-22159.yaml", contract) == []
+
+
+def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
+    """OMN-22403: no contract on the tree binds an acceptance criterion to a scoped item."""
+    violations: list[str] = []
+    for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
+        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        violations.extend(
+            violation
+            for violation in contract_binds_violations(path.name, contract)
+            if "a local_done_gate item may not carry binds_ac" in violation
+        )
+    assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    "item_id", ["dod-omn22496-signing-on", "dod-omn22496-signing-off"]
+)
+def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
+    item_id: str,
+) -> None:
+    """OMN-22702: each OMN-22496 item binds its criterion to pytest evidence."""
+    path = REPO_ROOT / "contracts" / "OMN-22496.yaml"
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    item = next(i for i in contract["dod_evidence"] if i["id"] == item_id)
+    assert item["binds_ac"], f"{item_id} binds no criterion"
+    kinds = [c.get("check_type") for c in item["checks"]]
+    assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
+    assert contract_binds_violations(path.name, contract) == []

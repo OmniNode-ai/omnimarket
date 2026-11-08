@@ -57,6 +57,10 @@ from .adapter_holder import (
     read_holder,
     terminate_holder,
 )
+from .retired_repositories import (
+    load_retirement_policy,
+    retired_repository_findings,
+)
 
 
 def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
@@ -525,6 +529,134 @@ class _ReconcilePass:
             )
         )
 
+    def retire_repositories(self) -> set[str]:
+        """Back up and remove retired clones before any sync delegate can run."""
+        policy = load_retirement_policy()
+        retired = set(policy.retired_repositories)
+        roots = [
+            self.root,
+            *sorted(
+                path
+                for path in self.root.iterdir()
+                if path.name not in retired
+                and not path.is_symlink()
+                and (path / ".git").exists()
+            ),
+        ]
+        for name in sorted(retired):
+            clone = self.root / name
+            if not clone.exists() and not clone.is_symlink():
+                continue
+            surface = f"retired-clone:{name}"
+            if self.request.mode == "check":
+                self.movement(surface, "present", "present", "absent")
+                continue
+            try:
+                self._retire_clone(clone, policy.backup_directory)
+            except (OSError, ValueError) as exc:
+                self.facts.append(
+                    ModelSurfaceUnhealthyFact(surface=surface, reason=str(exc))
+                )
+                continue
+            self.movement(surface, "present", "absent", "absent")
+        refused = False
+        for root in roots:
+            for finding in retired_repository_findings(root, policy):
+                refused = True
+                self.facts.append(
+                    ModelSurfaceUnhealthyFact(
+                        surface="retired-repository-targets",
+                        reason=(
+                            f"{root / finding.path}: {finding.repository} "
+                            f"({finding.kind}); remove the retired target before syncing"
+                        ),
+                    )
+                )
+        if refused:
+            raise ReconcileStopError(2, "REFUSED: retired repository in sync inputs")
+        return retired
+
+    def _retire_clone(self, clone: Path, backup_directory: str) -> None:
+        # A bundle cannot preserve uncommitted files or another worktree's
+        # state. Refuse these cases rather than erase work a bundle cannot hold.
+        if clone.is_symlink() or not (clone / ".git").is_dir():
+            raise ValueError(f"{clone}: retired path is not a standalone clone")
+        if (clone / ".git").is_symlink():
+            raise ValueError(f"{clone}: symbolic git directory is refused")
+
+        def git(*args: str) -> str:
+            result = self.command(["git", "-C", str(clone), *args], owner=True)
+            if result.returncode:
+                raise ValueError(
+                    f"{clone}: git {args[0]} failed: {result.stderr.strip()}"
+                )
+            return result.stdout.strip()
+
+        if Path(git("rev-parse", "--show-toplevel")).resolve() != clone.resolve():
+            raise ValueError(f"{clone}: repository root differs from retired path")
+        if len(git("worktree", "list", "--porcelain").split("worktree ")) != 2:
+            raise ValueError(f"{clone}: linked worktrees must be archived separately")
+        if git("rev-parse", "--is-shallow-repository") != "false":
+            raise ValueError(
+                f"{clone}: shallow history cannot be preserved in a full bundle"
+            )
+        status = git("status", "--porcelain", "--untracked-files=all", "--ignored")
+        if status:
+            raise ValueError(
+                f"{clone}: dirty or ignored files are outside bundle coverage"
+            )
+        head = git("rev-parse", "HEAD")
+        refs = git("show-ref", "--head")
+        archive = self.root / backup_directory
+        if not archive.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError("retirement backup escapes the workspace")
+        if any(
+            archive.resolve().is_relative_to((self.root / name).resolve())
+            for name in load_retirement_policy().retired_repositories
+        ):
+            raise ValueError("retirement backup is inside a retired clone")
+        made = self.command(["mkdir", "-p", "--", str(archive)], owner=True)
+        if made.returncode:
+            raise ValueError(
+                f"cannot create retirement backup directory: {made.stderr}"
+            )
+        bundle = archive / f"{clone.name}-{self.request.correlation_id}.bundle"
+        staging = bundle.with_suffix(".bundle.partial")
+        if bundle.exists() or staging.exists():
+            raise ValueError(
+                f"{clone}: retirement backup already exists; refusing overwrite"
+            )
+        git("bundle", "create", str(staging), "--all", "HEAD")
+        git("bundle", "verify", str(staging))
+        if f"{head} HEAD" not in git("bundle", "list-heads", str(staging)).splitlines():
+            raise ValueError(f"{clone}: bundle does not contain the checkout HEAD")
+        if not staging.is_file() or staging.stat().st_size == 0:
+            raise ValueError(f"{clone}: retirement backup is missing or empty")
+        # Persist the verified bundle and its directory entry before deleting
+        # the only checkout. A failed verification leaves the clone intact.
+        with staging.open("rb") as stream:
+            os.fsync(stream.fileno())
+        os.replace(staging, bundle)
+        directory_fd = os.open(archive, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        if (
+            git("rev-parse", "HEAD") != head
+            or git("show-ref", "--head") != refs
+            or len(git("worktree", "list", "--porcelain").split("worktree ")) != 2
+            or git("status", "--porcelain", "--untracked-files=all", "--ignored")
+        ):
+            raise ValueError(f"{clone}: clone changed during backup; retained {bundle}")
+        self.say(
+            f"retirement backup verified: {clone.name} head={head} bundle={bundle}"
+        )
+        shutil.rmtree(clone)
+        if clone.exists():
+            raise ValueError(f"{clone}: retired clone is still present after removal")
+        self.say(f"retired clone removed: {clone.name}")
+
     def clones(self, repos: list[str]) -> None:
         self.plan_owner(repos)
 
@@ -754,6 +886,36 @@ class _ReconcilePass:
             )
         return sp
 
+    @staticmethod
+    def replace_dangling_shadow(shadow: Path, wrapper: Path) -> tuple[str, str]:
+        """Move a dangling ``onex`` symlink aside and link the wrapper in its place (OMN-22146).
+
+        bash skips a symlink whose target is gone, so a dangling ``~/.local/bin/onex`` makes the
+        bare name fall through to the next PATH entry, which may be a stale console script
+        that cannot import ``omnibase_core``. Returns ``(moved path, error)``;
+        the error names a rename or link that failed, or a wrapper that is not a file (nothing
+        is moved then, so the shadow stays visible instead of leaving an empty slot).
+        """
+        if not wrapper.is_file():
+            return "", f"{wrapper} is not a file, so there is nothing to link"
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        moved = shadow.with_name(f"{shadow.name}.shadowed-{stamp}")
+        serial = 1
+        while moved.exists() or moved.is_symlink():
+            serial += 1
+            moved = shadow.with_name(f"{shadow.name}.shadowed-{stamp}-{serial}")
+        try:
+            shadow.rename(moved)
+        except OSError as exc:
+            return "", str(exc)
+        try:
+            shadow.symlink_to(wrapper)
+        except OSError as exc:
+            return str(moved), str(exc)
+        if shadow.resolve() != wrapper.resolve():
+            return str(moved), f"{shadow} does not resolve to {wrapper} after linking"
+        return str(moved), ""
+
     def guards(self) -> None:
         home = self.env.get("HOME")
         if home:
@@ -764,6 +926,32 @@ class _ReconcilePass:
                 # shadow must still be reported even if the wrapper cannot resolve.
                 resolved = shadow.resolve() if is_symlink else shadow
                 wrapper_resolved = wrapper.resolve() if is_symlink else wrapper
+                is_dangling = is_symlink and not shadow.exists()
+                # A live link to the dispatch venv's own console script: the wrapper
+                # execs that exact script, so replacing the link loses nothing.
+                dispatch_console = (
+                    Path(
+                        self.request.dispatch_venv or self.root / ".onex-dispatch-venv"
+                    )
+                    / "bin/onex"
+                )
+                is_dispatch_link = (
+                    is_symlink
+                    and not is_dangling
+                    and dispatch_console.is_file()
+                    and resolved == dispatch_console.resolve()
+                    and resolved != wrapper_resolved
+                )
+                moved_to = link_error = ""
+                if self.request.mode == "repair" and (is_dangling or is_dispatch_link):
+                    moved_to, link_error = self.replace_dangling_shadow(shadow, wrapper)
+                    if moved_to and not link_error:
+                        wrapper_resolved = wrapper.resolve()
+                        points_to_wrapper = shadow.resolve() == wrapper_resolved
+                    else:
+                        points_to_wrapper = False
+                else:
+                    points_to_wrapper = is_symlink and resolved == wrapper_resolved
                 self.facts.append(
                     ModelPathShadowFact(
                         shadow=str(shadow),
@@ -771,7 +959,11 @@ class _ReconcilePass:
                         wrapper_resolved=str(wrapper_resolved),
                         is_symlink=is_symlink,
                         resolved=str(resolved),
-                        points_to_wrapper=is_symlink and resolved == wrapper_resolved,
+                        points_to_wrapper=points_to_wrapper,
+                        is_dangling=is_dangling,
+                        is_dispatch_link=is_dispatch_link,
+                        moved_to=moved_to,
+                        link_error=link_error,
                     )
                 )
         if not self.request.guard_delegate:
@@ -806,6 +998,45 @@ class _ReconcilePass:
                 else drifted or ("readback reports action pending",),
             )
         )
+
+    def restore_proven_floor(self, sp: Path | None) -> None:
+        """Put the dispatch venv back on the floor's commit when a repair could not stamp.
+
+        The venv delegate installs the clone head, so a repair moves the venv off the
+        commit the floor names before the dispatch premise is judged. When the premise
+        then fails, the floor is retained and the venv stays on a commit nothing proved,
+        which the wrapper reads as below the floor and refuses to mint evidence on until
+        a later run happens to stamp (OMN-19998). A repair therefore ends on the floor
+        or on a new stamp, never between them.
+        """
+        floor = self.root / ".onex-workspace-floor.json"
+        try:
+            proven = str(json.loads(floor.read_text()).get("omnimarket_commit") or "")
+        except (OSError, ValueError, AttributeError):
+            return
+        installed = self.commit(sp)
+        if not proven or not installed or installed == proven:
+            return
+        delegate = Path(
+            self.request.venv_delegate or self.scripts / "reconcile-workspace-venvs.sh"
+        )
+        if not delegate.is_file():
+            return
+        self.say(
+            f"dispatch premise unproven; restoring omnimarket {installed[:12]} -> "
+            f"the floor's {proven[:12]}"
+        )
+        self.step(
+            "venv restore",
+            ["bash", str(delegate), "--omni-home", str(self.root), "--proven"],
+        )
+        venv = Path(self.request.dispatch_venv or self.root / ".onex-dispatch-venv")
+        restored = self.commit(self.site_packages(venv))
+        if restored != proven:
+            self.say(
+                f"WARNING: the restore left omnimarket at {restored[:12] or 'none'}, "
+                f"not the floor's {proven[:12]}."
+            )
 
     def finish(self, governed: list[str], sp: Path | None) -> Literal[0, 2]:
         decisions = self.evaluate(tuple(self.facts))
@@ -857,6 +1088,8 @@ class _ReconcilePass:
                 self.floor_stamped = self.verify(*args, owner=True).returncode == 0
             else:
                 self.say("WARNING: nothing observable to stamp; floor left untouched.")
+        elif self.request.mode == "repair":
+            self.restore_proven_floor(sp)
         for surface in self.surfaces:
             self.say(f"  {surface.surface}: {surface.verdict} ({surface.detail})")
         for line in decisions.verdict_lines:
@@ -904,6 +1137,25 @@ class _ReconcilePass:
         try:
             repos, governed = self.setup()
             self.acquire()
+            self.plan_owner(
+                sorted(
+                    {
+                        *[
+                            repo
+                            for repo in repos
+                            if (self.root / repo / ".git").exists()
+                        ],
+                        *[
+                            repo
+                            for repo in load_retirement_policy().retired_repositories
+                            if (self.root / repo / ".git").is_dir()
+                            and not (self.root / repo).is_symlink()
+                        ],
+                    }
+                )
+            )
+            retired = self.retire_repositories()
+            repos = [repo for repo in repos if repo not in retired]
             present = [repo for repo in repos if (self.root / repo / ".git").exists()]
             self.say(
                 f"surfaces under {self.root} (branch {self.request.branch}): clones={len(present)}"
@@ -912,13 +1164,12 @@ class _ReconcilePass:
             sp = self.venvs(governed)
             self.guards()
             code: Literal[0, 2, 3, 4, 5, 6] = self.finish(governed, sp)
+        except (OSError, ValueError, SyntaxError, yaml.YAMLError) as exc:
+            self.record_partial_decisions()
+            self.say(f"INDETERMINATE: {exc}")
+            code = 3
         except ReconcileStopError as exc:
-            if self.facts and not self.surfaces:
-                self.surfaces = list(self.evaluate(tuple(self.facts)).surfaces)
-                for surface in self.surfaces:
-                    self.say(
-                        f"  {surface.surface}: {surface.verdict} ({surface.detail})"
-                    )
+            self.record_partial_decisions()
             self.say(exc.detail)
             code = exc.code
         finally:
@@ -933,3 +1184,9 @@ class _ReconcilePass:
             diagnostics=tuple(self.diagnostics),
             floor_stamped=self.floor_stamped,
         )
+
+    def record_partial_decisions(self) -> None:
+        if self.facts and not self.surfaces:
+            self.surfaces = list(self.evaluate(tuple(self.facts)).surfaces)
+            for surface in self.surfaces:
+                self.say(f"  {surface.surface}: {surface.verdict} ({surface.detail})")

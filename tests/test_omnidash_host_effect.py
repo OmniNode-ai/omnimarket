@@ -45,6 +45,7 @@ from omnimarket.nodes.node_omnidash_host_effect.handlers.adapter_omnidash_host_i
 )
 from omnimarket.nodes.node_omnidash_host_effect.handlers.adapter_omnidash_host_system import (
     SystemOmnidashHostPorts,
+    node_archive,
 )
 from omnimarket.nodes.node_omnidash_host_effect.handlers.handler_omnidash_host_effect import (
     HandlerOmnidashHostEffect,
@@ -404,8 +405,9 @@ def node_tarball(version: str) -> tuple[bytes, str]:
     import hashlib
     import platform
 
-    arch = {"x86_64": "x64", "aarch64": "arm64"}[platform.machine()]
-    name = f"node-v{version}-linux-{arch}"
+    os_name = {"Linux": "linux", "Darwin": "darwin"}[platform.system()]
+    arch = {"x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
+    name = f"node-v{version}-{os_name}-{arch}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:xz") as tar:
         payload = b"#!/bin/sh\n"
@@ -635,10 +637,68 @@ def test_omnidash_host_contract_owns_the_interval_default() -> None:
     assert list(contract["schedule"]["schedulers"]) == ["systemd-user"]
 
 
-def test_omnidash_host_floor_page_has_no_links_area() -> None:
+@pytest.mark.parametrize("page_name", ["simple.html", "detail.html"])
+def test_omnidash_host_floor_page_has_no_links_area(page_name: str) -> None:
     page = (
         Path(__file__).resolve().parents[1]
-        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html"
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page"
+        / page_name
     )
     text = page.read_text(encoding="utf-8")
     assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
+
+
+def test_omnidash_host_floor_main_page_tab_bar_is_a_div_with_both_tabs() -> None:
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+    )
+    text = page.read_text(encoding="utf-8")
+    assert re.search(r"<div class=\"tabs\" role=\"tablist\"", text)
+    assert 'href="#process"' in text
+    assert 'href="#machines"' in text
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "suffix"),
+    [
+        ("Linux", "x86_64", "linux-x64"),
+        ("Linux", "aarch64", "linux-arm64"),
+        ("Darwin", "arm64", "darwin-arm64"),
+        ("Darwin", "x86_64", "darwin-x64"),
+    ],
+)
+def test_omnidash_host_node_archive_names_the_distribution_for_each_system_and_machine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    system: str,
+    machine: str,
+    suffix: str,
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    assert node_archive(row(tmp_path)) == f"node-v22.13.0-{suffix}"
+
+
+def test_omnidash_host_node_archive_refuses_an_unknown_machine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "riscv64")
+    with pytest.raises(ValueError, match="no node distribution"):
+        node_archive(row(tmp_path))
+
+
+def test_omnidash_host_node_archive_refuses_an_unknown_system(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    with pytest.raises(ValueError, match="no node distribution for system"):
+        node_archive(row(tmp_path))

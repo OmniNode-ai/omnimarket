@@ -13,6 +13,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
+    EnumDodEvidenceExecutionScope,
+)
+from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
@@ -129,3 +134,112 @@ def test_fallback_targets_refuses_a_repeated_name() -> None:
 def test_fallback_targets_refuses_an_empty_name() -> None:
     with pytest.raises(ValidationError):
         ModelLabHostRow(name="h1", target="host-1", fallback_targets=("a", " "))
+
+
+# A row may declare the login, the jump host and the key file its destination needs (OMN-17427). The launcher's table gains the
+# three columns; the row model forbids extras, so a table that carries them would be refused whole by this reader until it knows them.
+ROUTED_TABLE = """\
+bus_lane: dev
+hosts:
+  - name: h106
+    target: host-106.example.invalid
+    fallback_targets: [192.0.2.106]
+    ssh_user: lab-user
+    proxy_jump: jump-host
+    ssh_identity: ~/.ssh/id_lab
+    cap: 1
+"""
+
+
+def test_lab_host_table_accepts_the_declared_login_jump_host_and_key(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab_run_hosts.yaml"
+    path.write_text(ROUTED_TABLE, encoding="utf-8")
+    [row] = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)}).hosts
+    assert (row.ssh_user, row.proxy_jump, row.ssh_identity) == (
+        "lab-user",
+        "jump-host",
+        "~/.ssh/id_lab",
+    )
+
+
+def test_the_login_jump_host_and_key_default_to_none() -> None:
+    row = ModelLabHostRow(name="h1", target="host-1")
+    assert (row.ssh_user, row.proxy_jump, row.ssh_identity) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("ssh_user", "-oProxyCommand=x"),
+        ("ssh_user", "a b"),
+        ("proxy_jump", "-oProxyCommand=x"),
+        ("proxy_jump", "a;b"),
+        ("ssh_identity", "-oX=y"),
+        ("ssh_identity", "~/../etc/passwd"),
+    ],
+)
+def test_a_login_jump_host_or_key_ssh_would_read_as_an_option_is_refused(
+    column: str, value: str
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelLabHostRow(name="h1", target="host-1", **{column: value})
+
+
+def test_lab_host_table_accepts_the_declared_fallback_route_columns(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab_run_hosts.yaml"
+    path.write_text(
+        "hosts:\n"
+        "- name: h1\n  target: host-1\n  fallback_targets: [host-1-alias]\n"
+        "  fallback_ssh_user: lab-user\n  fallback_proxy_jump: jump-host\n"
+        "  fallback_ssh_identity: ~/.ssh/id_lab\n",
+        encoding="utf-8",
+    )
+    [row] = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)}).hosts
+    assert (
+        row.fallback_ssh_user,
+        row.fallback_proxy_jump,
+        row.fallback_ssh_identity,
+    ) == ("lab-user", "jump-host", "~/.ssh/id_lab")
+    bare = ModelLabHostRow(name="h2", target="host-2")
+    assert (
+        bare.fallback_ssh_user,
+        bare.fallback_proxy_jump,
+        bare.fallback_ssh_identity,
+    ) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("fallback_ssh_user", "-oProxyCommand=x"),
+        ("fallback_ssh_user", "a b"),
+        ("fallback_proxy_jump", "-oProxyCommand=x"),
+        ("fallback_proxy_jump", "a;b"),
+        ("fallback_ssh_identity", "-oX=y"),
+        ("fallback_ssh_identity", "~/../etc/passwd"),
+    ],
+)
+def test_a_fallback_route_cell_ssh_would_read_as_an_option_is_refused(
+    column: str, value: str
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelLabHostRow(name="h1", target="host-1", **{column: value})
+
+
+def test_fallback_route_evidence_is_bound_for_the_hosted_control() -> None:
+    """The recorded control failed despite a red test because no check was bound."""
+    root = Path(__file__).resolve().parents[3]
+    contract = ModelTicketContract.model_validate(
+        yaml.safe_load((root / "contracts" / "OMN-21984.yaml").read_text())
+    )
+    [evidence] = [
+        item
+        for item in contract.dod_evidence
+        if item.id == "dod-omn21984-fallback-route-columns"
+    ]
+    assert evidence.execution_scope is EnumDodEvidenceExecutionScope.HOSTED_AND_LOCAL
+    assert evidence.binds_ac == ("AC1",)

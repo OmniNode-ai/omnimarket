@@ -1020,7 +1020,13 @@ class TestOmn15800ExposureParity:
         # 79 after OMN-21217: onex.evt.omnimarket.tenant-credential-state.v1
         # and onex.evt.omnimarket.tenant-routing-overlay-state.v1, the
         # credential and routing overlay registries' compacted sources.
-        assert len(topic_map) == 79
+        # 80 after OMN-19486: onex.snapshot.projection.pr-state.v1, the
+        # pr_state rows the `onex pr-state` read surface judges.
+        # 81 after OMN-19991: onex.snapshot.projection.local-alerts.v1, one
+        # row per local alert per tenant, code and subject.
+        # 82 after OMN-22020: onex.snapshot.projection.view-seam-readings.v1,
+        # the seam reducer's compacted readings.
+        assert len(topic_map) == 82
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",

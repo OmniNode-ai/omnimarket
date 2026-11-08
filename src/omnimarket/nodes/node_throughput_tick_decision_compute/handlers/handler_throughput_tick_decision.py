@@ -69,6 +69,12 @@ from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
+from omnimarket.models.seam_reading import (
+    EnumSeamCrossingState,
+    ModelSeamReading,
+    ModelSeamReadingsFacts,
+    ModelSeamReadingsVerdict,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -906,26 +912,86 @@ def _claude_blocked_host(
         rep.note(f"{label} | {note}; no dispatch (codex: {claimed.refusal})")
 
 
+LIVE_RECEIPT_READ = (
+    "read {host}'s line in the readings of the hosts-probe receipt "
+    "(`$ONEX_REMOTE_LANE_DIR/hosts-probe/latest.json`, default ~/.local/state/omni/remote-lanes; `onex_lab_run.py --hosts` "
+    "writes it from the same landing_placement.read_pool reading this tick used), not the listing `--hosts` prints, which "
+    "comes from a separate probe that can fail for unrelated reasons"
+)
 LIVE_UNREAD_FIX = (
-    "rerun the tick; if the probe stays unreadable, read {host}'s live capacity with "
-    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts --lane <lane>` (/omni:lab-run; it runs nothing); a host that "
-    "cannot be read is a lab fault to name to the operator, never free and never full"
+    "rerun the tick; if the probe stays unreadable, run "
+    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts --lane <lane>` (/omni:lab-run; it runs nothing) and "
+    + LIVE_RECEIPT_READ
+    + "; a host that cannot be read is a lab fault to name to the operator, never free and never full"
 )
 LIVE_AUTH_REFUSED_FIX = (
-    "the host owner must add the launching host's public key to {hop}'s authorized_keys; rerunning the tick "
-    "or `onex_lab_run.py --hosts` reads the same refused hop and clears nothing; a host that cannot be read is "
-    "a lab fault to name to the operator, never free and never full"
+    "{act}; rerunning the tick or `onex_lab_run.py --hosts` reads the same refused hop and clears nothing; to see it "
+    "clear, "
+    + LIVE_RECEIPT_READ
+    + "; a host that cannot be read is a lab fault to name to the operator, never free and never full"
 )
-_SSH_KEY_REFUSAL = re.compile(r"Permission denied \(publickey")
+LIVE_NAME_UNRESOLVED_FIX = (
+    "{act}; rerunning the tick or `onex_lab_run.py --hosts` resolves the same name and clears nothing; to see it clear, "
+    + LIVE_RECEIPT_READ
+    + "; a host that cannot be read is a lab fault to name to the operator, never free and never full"
+)
+LIVE_LAUNCHER_GAP_FIX = (
+    "{act}; the launcher found this host unreachable before it reached it, so rerunning the tick or "
+    "`onex_lab_run.py --hosts` reads the same gap and clears nothing; to see it clear, "
+    + LIVE_RECEIPT_READ
+    + "; a host that cannot be read is a lab fault to name to the operator, never free and never full"
+)
+AUTH_REFUSED_ACT = (
+    "the host owner must add the launching host's public key to {hop}'s authorized_keys"
+)
+NAME_UNRESOLVED_ACT = (
+    "the host owner must make {host}'s name resolvable from the launching host (power the machine on, join it to a "
+    "network this host sees, or correct its address in the host table)"
+)
+# The fragments ssh prints when the host answered and refused this host's credentials, and when its name is on no network
+# this host sees; the same spellings the host-pool alarm classifies as AUTH-REFUSED and NAME-UNRESOLVED.
+_SSH_KEY_REFUSAL = re.compile(
+    r"Permission denied|Too many authentication failures|No supported authentication methods",
+    re.IGNORECASE,
+)
+_SSH_NAME_UNRESOLVED = re.compile(
+    r"Could not resolve hostname|Name or service not known|nodename nor servname|"
+    r"No address associated with hostname|Temporary failure in name resolution",
+    re.IGNORECASE,
+)
 _SSH_HOP = re.compile(r"\bvia=(\S+)")
+_RECEIPT_OWNER = re.compile(r"\bowner:\s*(.+)$", re.DOTALL)
 
 
-def _live_unread_fix(host: str, why: str) -> str:
-    """An SSH public-key refusal is cleared only by the hop owner adding the launching host's key; any other
-    unreadable probe (timeout, dropped connection) is transient and keeps the rerun advice."""
+def _receipt_owner(tag: str | None) -> str | None:
+    """The owner action the probe receipt's `LAUNCHER-GAP:<CAUSE> ...; owner: <action> (refused at <hop>)` tag names,
+    from the whole tag or the bare action; None when the receipt named none. The receipt names a role, never a person."""
+    text = " ".join((tag or "").split())
+    found = _RECEIPT_OWNER.search(text)
+    return (found.group(1) if found else text) or None
+
+
+def _live_unread_fix(host: str, why: str, owner_tag: str | None = None) -> str:
+    """An SSH credential refusal is cleared only by the hop owner adding the launching host's key, and an unresolvable
+    name only by whoever makes it resolve; neither moves on a rerun. The action the probe receipt's launcher-gap tag
+    names (`owner_tag`) is what the FIX leads with, because it is read where the verdict was made and the regexes
+    below only guess the owner from the ssh text; the guess stays when the receipt names none. A gap the regexes do
+    not know but the receipt names an owner for (sshd refused, no route) is also a rerun that clears nothing. Any other
+    unreadable probe (timeout, dropped connection) is transient and keeps the rerun advice (OMN-17427)."""
+    owner = _receipt_owner(owner_tag)
+    receipt_act = (
+        f"the probe receipt names the owner action: {owner}" if owner else None
+    )
     if _SSH_KEY_REFUSAL.search(why):
         hop = _SSH_HOP.search(why)
-        return LIVE_AUTH_REFUSED_FIX.format(hop=hop.group(1) if hop else host)
+        act = receipt_act or AUTH_REFUSED_ACT.format(hop=hop.group(1) if hop else host)
+        return LIVE_AUTH_REFUSED_FIX.format(act=act, host=host)
+    if _SSH_NAME_UNRESOLVED.search(why):
+        return LIVE_NAME_UNRESOLVED_FIX.format(
+            act=receipt_act or NAME_UNRESOLVED_ACT.format(host=host), host=host
+        )
+    if receipt_act:
+        return LIVE_LAUNCHER_GAP_FIX.format(act=receipt_act, host=host)
     return LIVE_UNREAD_FIX.format(host=host)
 
 
@@ -1091,7 +1157,9 @@ def _check_live_admission(
             rep.unk(
                 label,
                 f"live admission probe unreadable ({why}): its capacity is unread",
-                _live_unread_fix(host.name, why),
+                _live_unread_fix(
+                    host.name, why, None if adm is None else adm.probe_owner
+                ),
             )
             continue
         try:
@@ -1627,6 +1695,84 @@ def check_repo_status(
     return verdicts
 
 
+# VS-17: judge the publish tick by the seam readings of its finalized window, not by its heartbeat.
+# A reading of another window is not this window's reading; a second reading of one seam takes the
+# later `read_at`.
+CHECKED = "seam-readings"
+
+
+def _stamp(value: object) -> str:
+    return str(value).replace("+00:00", "Z")
+
+
+def _window_readings(facts: ModelSeamReadingsFacts) -> dict[str, ModelSeamReading]:
+    latest: dict[str, ModelSeamReading] = {}
+    for reading in facts.readings:
+        if reading.window != facts.window:
+            continue
+        held = latest.get(reading.seam_id)
+        if held is None or reading.read_at >= held.read_at:
+            latest[reading.seam_id] = reading
+    return latest
+
+
+def check_seam_readings(
+    rep: Report, facts: ModelSeamReadingsFacts
+) -> ModelSeamReadingsVerdict:
+    window = f"{_stamp(facts.window.start)}..{_stamp(facts.window.end)}"
+    if not facts.finalized:
+        rep.note(f"seam:window | {window} is not finalized; no seam reading judged yet")
+        return ModelSeamReadingsVerdict(
+            window=facts.window, expected_ids=facts.expected_seam_ids, consumed_ids=()
+        )
+    rep.checked.append(CHECKED)
+    readings = _window_readings(facts)
+    steps = "publish steps ok" if facts.publish_steps_ok else "publish steps not all ok"
+    missing: list[str] = []
+    unknown: list[str] = []
+    consumed: list[str] = []
+    for seam_id in facts.expected_seam_ids:
+        reading = readings.get(seam_id)
+        if reading is None:
+            unknown.append(seam_id)
+            rep.unk(
+                f"seam:{seam_id}",
+                f"no {seam_id} reading recorded for window {window}",
+                "check that the seam's emitters sent their window closes and that node_view_seam_reading_reducer folded the reading",
+            )
+            continue
+        consumed.append(seam_id)
+        if reading.state is EnumSeamCrossingState.MISMATCHED:
+            missing.append(seam_id)
+            examples = (
+                f"; e.g. {', '.join(reading.examples)}" if reading.examples else ""
+            )
+            rep.miss(
+                f"seam:{seam_id}",
+                f"{seam_id} reading mismatched in window {window} ({reading.mismatched} of {reading.crossings + reading.unreadable} crossings{examples}); {steps}",
+                f"read the {seam_id} reading's residual and fix the side it names; the publish steps' ok is a process exit code, not a count",
+            )
+        elif reading.state is EnumSeamCrossingState.UNREADABLE:
+            unknown.append(seam_id)
+            rep.unk(
+                f"seam:{seam_id}",
+                f"{seam_id} reading unreadable in window {window}; {steps}",
+                "find the side whose window close is absent and restore its emitter",
+            )
+    if facts.declared_seam_ids:
+        rep.note(
+            f"seam:declared {', '.join(facts.declared_seam_ids)} | still declared, not yet measured"
+        )
+    return ModelSeamReadingsVerdict(
+        window=facts.window,
+        expected_ids=facts.expected_seam_ids,
+        consumed_ids=tuple(consumed),
+        missing_ids=tuple(missing),
+        unknown_ids=tuple(unknown),
+        declared_ids=facts.declared_seam_ids,
+    )
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -1672,6 +1818,11 @@ class HandlerThroughputTickDecision:
             if request.repo_status is not None
             else []
         )
+        seam_readings = (
+            check_seam_readings(rep, request.seam_readings)
+            if request.seam_readings is not None
+            else None
+        )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
@@ -1686,4 +1837,5 @@ class HandlerThroughputTickDecision:
             open_count=opened,
             pr_land=pr_land,
             repo_status=repo_status,
+            seam_readings=seam_readings,
         )

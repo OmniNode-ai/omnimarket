@@ -29,7 +29,7 @@ input_model:
 output_model:
   name: "ModelProcessHealthResult"
   module: "omnimarket.models.process_health"
-  description: "The daily series, the reset marker and the before and after summary."
+  description: "Daily series, exact selected-range comparison and an anonymised observation overlay for browser range queries."
 handler:
   module: "omnimarket.nodes.node_process_health_compute.handlers.handler_process_health"
   class: "HandlerProcessHealth"
@@ -63,6 +63,8 @@ config:
     reset_at: "2026-10-29T01:30:00Z"
     reset_label: "Factory reset (andon HOLD, 2026-10-29T01:30Z)"
     series_days: 14
+    range_history_days: 62
+    graph_bucket_hours: 6
     summary_max_hours: 168
     flat_threshold_ratio: 0.05
     fix_forward_window_hours: 72

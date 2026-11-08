@@ -358,8 +358,6 @@ jobs:
           fetch-depth: 0
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -369,12 +367,24 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked
+        # OMN-22020: the delegation-ladder benchmark replays a merged historical tree whose
+        # evidence_pipeline wire types import omnibase_compat, which this repository
+        # retired (OMN-22385) and which the pinned omnibase-infra no longer declares.
+        # Installed into this job's venv alone, after the locked sync, as the wire
+        # gate job does; the `uv run` steps below keep what is installed.
+        run: |
+          uv sync --locked
+          uv pip install 'omnibase-compat==0.5.7'
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
+      # OMN-22020: keep both falsifiers aligned with their pre-commit hooks.
+      - name: Declared view seam graph
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_graph_declared.py -q --no-cov
+      - name: View seam three-part proof
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
       - name: Retired model references (including dated history)
         run: uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
       - name: Retired model and archive safety negative controls
@@ -385,6 +395,8 @@ jobs:
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+      - name: Lane census alias parity (OMN-19998)
+        run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate
@@ -396,8 +408,12 @@ jobs:
       # This strict lint job already gates CI Summary, including docs-only PRs.
       - name: CI Summary external producer trigger parity
         run: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
+      # OMN-22020: omnibase-core moved this check from scripts/validation into its
+      # validation package (the pinned core tag no longer ships the script); same
+      # detector, same scope (src/), run through core's validator runtime as the
+      # check-stub-implementations pre-commit hook does.
       - name: Stub implementation check
-        run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
+        run: git ls-files 'src/*.py' | xargs env -u PYTHONPATH uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_stub_implementations:ValidatorStubImplementations
       - name: TODO format check
         run: |
           # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
@@ -435,6 +451,14 @@ jobs:
       # with pre-commit hook 'projection-contract-access'.
       - name: Projection contract-access gate
         run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
+      # OMN-18883 (trap one): a routed entry of a contract that writes a db_io
+      # table reaches BaseProjectionRunner but overrides handle with a typed
+      # request whose result reports no rows_upserted. The runtime wires a typed
+      # handle on the typed arm, so the write path is never called and the
+      # projection stores zero rows at zero lag. SYNC with pre-commit hook
+      # 'projection-typed-entry'.
+      - name: Projection typed-entry gate
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
       # OMN-18043: every projection_api exposure declares a cursor_column, against
       # the shrink-only baseline scripts/validation/projection_cursor_baseline.txt.
       # SYNC with pre-commit hook 'projection-cursor-declared'.
@@ -599,6 +623,10 @@ jobs:
       # measurement below the bar for it. SYNC with pre-commit hook 'lab-first-routing'.
       - name: Lab-first routing gate (OMN-17427)
         run: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -n 0 -p no:randomly --no-cov
+      # OMN-22976 (rebuild piece 15): every task class holds a bar in the routing overlay
+      # frozen under a sha256 hash. SYNC with pre-commit hook 'delegation-routing-overlay-bars'.
+      - name: Routing overlay bars gate (OMN-22976)
+        run: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
       # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
       - name: Delegation public models match loader and inference contract
         run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
@@ -624,6 +652,9 @@ jobs:
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+      # OMN-19998: regression proof for the hosted receipt reader and PR-state producer.
+      - name: Public review receipt and runtime dispatch
+        run: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
       # OMN-20910: paired with the contract-prerequisite-verifier-host-tools hook.
       - name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
         run: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
@@ -653,6 +684,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head "$PR_HEAD" --title "$PR_TITLE"
 
       # Paired with pr-handoff-dod-receipt-regression (pre-commit).
@@ -753,6 +785,8 @@ jobs:
       # its design configs, each property fails on a one-knob mutation, the results
       # match the committed model, configs and outputs, and the verdict approves the
       # model's digest. SYNC with pre-commit hook 'compaction-lifecycle-model'.
+      - name: Compaction continuation replay (OMN-21993)
+        run: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -q --no-cov
       - name: Compaction lifecycle model and verdict (OMN-21104)
         run: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-21442: the andon stop and lane lease model (formal/andon_stop) passes its
@@ -853,6 +887,10 @@ jobs:
         run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
       - name: Patch apply dispatch node (OMN-17427)
         run: uv run --frozen pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q -p no:randomly --no-cov
+
+      # OMN-21284: SYNC with pre-commit hook retired-repository-reconcile.
+      - name: Retired repository bundles and registry targets (OMN-21284)
+        run: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov -m 'not kafka'
 
       # OMN-20865: SYNC with pre-commit hook class3-installed-copy-drift.
       - name: Class 3 installed-copy drift node regression (OMN-20865)
@@ -1116,8 +1154,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -1219,7 +1255,7 @@ jobs:
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [repo-evidence-preflight, detect-changes]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
     # (last 30 successful ci.yml runs, 2026-09-15) is 7.8m, which looked like
@@ -1269,8 +1305,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -1707,7 +1741,7 @@ jobs:
     name: Integration Silent-Skip Guard (OMN-14172)
     needs: [repo-evidence-preflight, zone-filter]
     if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
     services:
@@ -1727,8 +1761,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -1829,6 +1861,13 @@ jobs:
       - name: Run integration-marked tests (Postgres provisioned)
         env:
           OMN20025_POSTGRES_BACKEND: ci
+          # OMN-22478: the omnidash release proofs (OMN-21469) read the publish
+          # workflow's runs from the GitHub REST API. With no token that read is
+          # unauthenticated and shares the 60-per-hour quota of the runner's
+          # address, which a night of reruns spends: HTTP 403 rate limit. The
+          # run's own token lifts it to the repository quota; the test already
+          # reads GH_TOKEN and sends it through rest_json.
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv run pytest -m "integration and not kafka" \
             -rs -v --tb=short \
@@ -1871,8 +1910,6 @@ jobs:
           git clone --depth=1 --branch "$ref" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -2172,7 +2209,16 @@ jobs:
         # those import omnibase_core and sibling omnimarket modules. A missing
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
-        run: uv sync --locked
+        #
+        # The released v0.4.133 tree's evidence_pipeline wire types import
+        # omnibase_compat, which this repository retired (OMN-22385: pyproject
+        # names no omnibase-compat requirement) and which the pinned
+        # omnibase-infra no longer declares. It is installed into this job's
+        # venv alone, after the locked sync, so the lock and the pyproject stay
+        # free of it; the `uv run` steps below keep what is installed.
+        run: |
+          uv sync --locked
+          uv pip install 'omnibase-compat==0.5.7'
       - name: Every changed wire payload must decode on every pinned consumer's dev-merge tag (OMN-18868, OMN-21901)
         # OMN-21901 (operator ruling 2026-11-01T17:05:10Z): releases are
         # optional and internal consumers run from dev-merge tags. The baseline
@@ -2245,8 +2291,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Clone omniclaude
@@ -2284,8 +2328,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2323,8 +2365,6 @@ jobs:
           fetch-depth: 0
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2816,11 +2856,6 @@ jobs:
           git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
           OMNIBASE_CORE_SHA=$(git -C ../omnibase_core rev-parse HEAD)
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
-      - name: Clone omnibase_compat
-        run: |
-          git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
-          OMNIBASE_COMPAT_SHA=$(git -C ../omnibase_compat rev-parse HEAD)
-          echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
       - name: Clone omnimemory
         run: |
           git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
@@ -2907,8 +2942,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -2943,8 +2976,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -2975,8 +3006,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -3021,8 +3050,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
@@ -3372,8 +3399,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv (dependency cache — OMN-14680)
@@ -3655,6 +3680,15 @@ jobs:
           echo "RESIDUAL: this harness is SCRAM; staging/prod are AWS_MSK_IAM."
           echo "================================================================"
           uv run --no-sync pytest tests/integration/customer_path/ -v --tb=short -p no:randomly
+      - name: Verify webhook HTTP boundary and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify webhook HTTP Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_WEBHOOK_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
 
   # ============================================================================
   # JS TOOLCHAIN HERMETIC (OMN-18012 gate 5)
@@ -4045,6 +4079,40 @@ jobs:
           fi
           uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
             python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
+      # OMN-19998: the same refusal as the check-public-lab-selection hook, at that
+      # hook's rev. The job is registered in the CI Summary sweep, so this is required.
+      - name: Read the core pin of the lab selection hook
+        run: |
+          set -eu
+          spec="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          blocks = [r for r in config["repos"] if any(h["id"] == "check-public-lab-selection" for h in r["hooks"])]
+          assert len(blocks) == 1, blocks
+          print("omnibase-core @ git+" + blocks[0]["repo"] + "@" + blocks[0]["rev"])
+          ')"
+          echo "LAB_SELECTION_CORE=${spec}" >> "$GITHUB_ENV"
+      - name: Failing control (planted lab job refused)
+        run: |
+          set -u
+          planted="$RUNNER_TEMP/planted"
+          mkdir -p "$planted/.github/workflows"
+          printf 'on: push\njobs:\n  planted:\n    runs-on: [self-hosted, omnibase-ci]\n    steps:\n      - run: "true"\n' \
+            > "$planted/.github/workflows/zz-planted.yml"
+          if uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --root "$planted" --repo omnimarket --visibility public; then
+            echo "FAILING CONTROL FAILED: a planted lab job was accepted"
+            exit 1
+          fi
+          echo "failing control: a planted lab job refused"
+      - name: Refuse a public workflow selecting a lab runner
+        env:
+          LIVE_VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          uv run --no-project --with "$LAB_SELECTION_CORE" \
+            python -m omnibase_core.validation.validator_public_lab_selection \
+            --repo omnimarket --visibility public --variables-json "$LIVE_VARIABLES"
 
   # OMN-19998: the guard has both refusal and passing-pin controls, including
   # the actual lane-launch and controller-brief callers. Required by CI Summary.
@@ -4313,11 +4381,12 @@ jobs:
             scripts/ci/ci_summary_gate.py
             scripts/ci/ci_summary_external_producers.json
             scripts/ci/ci_summary_sweep_non_pr_events.json
+            scripts/ci/ci_summary_sweep_exclusions.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json scripts/ci/
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json .ci-summary-head/scripts/ci/ci_summary_sweep_exclusions.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:

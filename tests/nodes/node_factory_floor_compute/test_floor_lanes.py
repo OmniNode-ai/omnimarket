@@ -12,6 +12,7 @@ import pytest
 from omnimarket.models.model_factory_floor_input import (
     ModelFloorCloudAccount,
     ModelFloorHostRow,
+    ModelFloorLaneProcess,
     ModelFloorLinearIssue,
     ModelFloorMachineDecl,
     ModelFloorPlacedHost,
@@ -303,6 +304,102 @@ def test_a_lane_that_claimed_again_after_its_terminal_is_live() -> None:
     assert [lane.lane for lane in floor(ledger=ledger).lanes] == ["again"]
 
 
+@pytest.mark.parametrize(
+    "cells",
+    [
+        {"final": True, "status": "landing-failed", "ended_at": ago(5)},
+        {"status": "landing-failed"},
+        {"ended_at": ago(5)},
+    ],
+)
+def test_finished_receipt_closes_cx_worker_without_a_terminal(
+    cells: dict[str, Any],
+) -> None:
+    result = floor(
+        ledger=lane_rows("cx-5614-0410", host="h051"),
+        receipts=(receipt("cx-5614-0410", **cells),),
+        pool=(reading("h051"),),
+    )
+    assert result.lanes == ()
+    assert result.machines[0].lanes_placed == 0
+    assert result.bays[0].running == 0
+    assert result.inactive_lanes[0].liveness == "finished"
+
+
+def test_a_finished_receipt_from_an_older_run_does_not_close_a_reclaimed_lane() -> None:
+    result = floor(
+        ledger=lane_rows("cx-5614-0410", claim_ago=10, host="h051"),
+        receipts=(receipt("cx-5614-0410", final=True, ended_at=ago(20)),),
+    )
+    assert [lane.lane for lane in result.lanes] == ["cx-5614-0410"]
+
+
+@pytest.mark.parametrize(
+    "lane", ["landing-L25183", "landing-L25192", "landing-L25196", "pfix-2062-r-1744"]
+)
+def test_a_dead_runner_with_a_running_receipt_occupies_no_slot(lane: str) -> None:
+    result = floor(
+        ledger=lane_rows(lane, host="h051"),
+        receipts=(receipt(lane, runner_alive=False),),
+        pool=(reading("h051"),),
+    )
+    assert result.lanes == ()
+    assert result.machines[0].lanes_placed == result.bays[0].running == 0
+    assert [(item.lane, item.liveness) for item in result.inactive_lanes] == [
+        (lane, "dead")
+    ]
+
+
+@pytest.mark.parametrize("alive", [True, None])
+def test_a_live_or_unread_runner_stays_quiet(alive: bool | None) -> None:
+    result = floor(
+        ledger=lane_rows("quiet-live", host="h051"),
+        receipts=(receipt("quiet-live", runner_alive=alive),),
+    )
+    assert result.lanes[0].stalled is True
+    assert result.lanes[0].liveness == ("alive" if alive else "unread")
+    assert result.inactive_lanes == ()
+    assert result.machines[0].lanes_placed == 1
+
+
+@pytest.mark.parametrize("lane", ["landing-cause-L25919", "landing-cause-L26040"])
+def test_a_hostless_cause_claim_with_no_process_is_dead(lane: str) -> None:
+    result = floor(
+        ledger=lane_rows(lane, claim_ago=148),
+        lane_processes=(
+            ModelFloorLaneProcess(
+                lane=lane,
+                started_at=ago(148),
+                observed_at=NOW,
+                alive=False,
+                detail="controller worker group and tag are absent",
+            ),
+        ),
+    )
+    assert result.lanes == ()
+    assert result.inactive_lanes[0].liveness == "dead"
+
+
+def test_stale_process_evidence_and_a_receipt_for_another_run_cannot_close_a_claim() -> (
+    None
+):
+    result = floor(
+        ledger=lane_rows("again", run_id="current"),
+        receipts=(receipt("again", run_id="old", runner_alive=False, final=True),),
+        lane_processes=(
+            ModelFloorLaneProcess(
+                lane="again",
+                started_at=ago(60),
+                observed_at=ago(90),
+                alive=False,
+                detail="old process read",
+            ),
+        ),
+    )
+    assert [item.lane for item in result.lanes] == ["again"]
+    assert result.lanes[0].liveness == "unread"
+
+
 def test_kind_comes_from_the_declared_rules_in_order() -> None:
     def kind_of(text: str, actor: str = "x") -> str:
         rows = (row("CLAIM", 10, "k", tickets=("OMN-5",), actor=actor, text=text),)
@@ -564,3 +661,53 @@ def test_a_signed_in_account_the_overlay_does_not_declare_is_counted_in_the_note
     assert "1 signed-in account" in result.note
     assert "not on the declared machine list" in result.note
     assert "1 listed machines hold no cloud login" in result.note
+
+
+def test_the_bays_match_the_runner_units_count_and_a_refused_host_is_no_room() -> None:
+    """OMN-22686: the 2026-11-06T14:27Z record drew 9 of 64 slots in use while the runner had no free slot.
+
+    h053 had 14 placed units of which 9 were ledger lanes, at cap 16 and 2 free lane slots by the pool reading; h101 was
+    refused by the reading and had a cap of 12; h201 had 1 free lane slot. The bays must add up to what the runner can place.
+    """
+    machines = (
+        ModelFloorMachineDecl(host="h053", label="h053"),
+        ModelFloorMachineDecl(host="h101", label="h101"),
+        ModelFloorMachineDecl(host="h201", label="h201"),
+    )
+    ledger = tuple(
+        r for n in range(9) for r in lane_rows(f"lane-{n}", host="h053")
+    ) + lane_rows("lane-x", host="h201")
+    result = compute_factory_floor(
+        request(
+            machines=machines,
+            ledger=ledger,
+            pool=(
+                reading("h053", cap=16, lane_slots=2),
+                reading(
+                    "h101",
+                    cap=12,
+                    lane_slots=3,
+                    refusal="PARITY-FAILED: bus-host: BUS-HOST-UNRESOLVED",
+                ),
+                reading("h201", cap=3, lane_slots=1),
+            ),
+            host_table=(
+                ModelFloorHostRow(host="h053", cap=16),
+                ModelFloorHostRow(host="h101", cap=12),
+                ModelFloorHostRow(host="h201", cap=3),
+            ),
+            placed=(
+                ModelFloorPlacedHost(host="h053", units=14, lanes=9),
+                ModelFloorPlacedHost(host="h101", units=0, lanes=0),
+                ModelFloorPlacedHost(host="h201", units=2, lanes=1),
+            ),
+        )
+    ).floor
+    bays = {b.host: (b.slots, b.running, b.free, b.stale) for b in result.bays}
+    assert bays == {
+        "h053": (16, 14, 2, False),
+        "h101": (0, 0, 0, False),
+        "h201": (3, 2, 1, False),
+    }
+    # The sum the headline draws is the sum of the runner's free lane slots (2 + 0 + 1), not the caps less the ledger lanes.
+    assert sum(b.free for b in result.bays) == 3

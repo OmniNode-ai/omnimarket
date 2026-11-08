@@ -233,6 +233,19 @@ class SpoolOutbox:
     def pending_count(self) -> int:
         return len(self._pending_paths())
 
+    @staticmethod
+    def _size_of(path: Path) -> int:
+        """A pending file's size, or 0 when a concurrent emitter already took it.
+
+        Several emitters share one spool directory, and each drains the backlog, so a
+        file listed a moment ago can be acked, evicted or quarantined by a peer before
+        it is measured. A file that is gone owes the byte cap nothing.
+        """
+        try:
+            return path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
     def read(self, path: Path) -> SpoolRecord:
         return SpoolRecord.from_json(path.read_text(encoding="utf-8"))
 
@@ -294,7 +307,7 @@ class SpoolOutbox:
                 f"{self._max_duty_critical_messages} pending; refusing to "
                 f"drop event {record.event_id}"
             )
-        existing_bytes = sum(p.stat().st_size for p in existing)
+        existing_bytes = sum(self._size_of(p) for p in existing)
         if existing_bytes + body_bytes > self._max_duty_critical_bytes:
             raise SpoolFullError(
                 f"Duty-critical spool byte cap reached: "
@@ -309,7 +322,7 @@ class SpoolOutbox:
 
     def _append_telemetry(self, record: SpoolRecord) -> AppendOutcome:
         existing = self._tier_paths(EnumDurabilityTier.TELEMETRY)
-        existing_bytes = sum(p.stat().st_size for p in existing)
+        existing_bytes = sum(self._size_of(p) for p in existing)
         body_bytes = len(record.to_json().encode("utf-8"))
 
         # A single record whose own serialized size exceeds the byte cap can
@@ -381,7 +394,18 @@ class SpoolOutbox:
         tmp_reason.write_text(reason.model_dump_json(indent=2), encoding="utf-8")
         os.replace(tmp_reason, reason_path)
         destination = self.quarantine_dir / path.name
-        os.replace(path, destination)
+        try:
+            os.replace(path, destination)
+        except FileNotFoundError:
+            # A peer emitter drained the same record first (it published and acked it,
+            # or quarantined it with its own reason). The record has left the pending
+            # queue either way, which is all this call owes; the orphan reason beside
+            # an acked record is inert, as the order above documents.
+            logger.info(
+                "Spool record %s left the pending queue before this quarantine",
+                path.name,
+            )
+            return destination
         logger.warning(
             "Quarantined spool record %s: %s (topic %s, event %s). It is moved, "
             "not deleted -- provision the grant and replay it.",

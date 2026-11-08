@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from .model_lab_fill_machinery import ModelLabFillMachineryPolicy
 from .model_lab_fill_plan_config import (
     ModelLabFillHeadroomPolicy,
     ModelLabFillPlanConfig,
@@ -90,6 +91,15 @@ class ModelLabFillDispatchItem(BaseModel):
     engine: str
     route: str
     fallback: ModelLabFillFallback | None = None
+    machinery_key: str | None = None
+    priority_class: str | None = None
+    # Set only when the candidate carried them: open-count gated work, the landing controller's
+    # cause for a parked or escalated PR, and the evidence a source or fix named (OMN-20780).
+    gated: bool | None = None
+    cause: str | None = None
+    escalated: bool | None = None
+    evidence: str | None = None
+    fix_evidence: str | None = None
 
 
 class ModelLabFillSkipEntry(BaseModel):
@@ -101,6 +111,7 @@ class ModelLabFillSkipEntry(BaseModel):
     kind: object | None = None
     reason: str
     host: str | None = None
+    n: int | None = None
 
 
 class ModelLabFillDispatchPlanRequest(BaseModel):
@@ -112,6 +123,8 @@ class ModelLabFillDispatchPlanRequest(BaseModel):
     capacity: ModelLabFillCapacityResult
     config: ModelLabFillPlanConfig
     fenced: tuple[str, ...] = ()
+    # The machinery tier's ranking policy; left out, the node contract's.
+    machinery: ModelLabFillMachineryPolicy | None = None
 
 
 class ModelLabFillDispatchPlanResult(BaseModel):

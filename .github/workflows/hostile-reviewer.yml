@@ -49,9 +49,13 @@
 name: Hostile Reviewer
 
 on:
-  pull_request:
-    branches: [main, dev]
-    types: [opened, synchronize, reopened]
+  # OMN-22478, operator RULING 2026-11-05T20:27:56Z: the automated review holds no
+  # merge and runs on no pull request until the review route is fixed. To restore,
+  # replace this trigger with:
+  #   pull_request:
+  #     branches: [main, dev]
+  #     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 # OMN-19643: cancel only superseded pull request runs.
 concurrency:
@@ -112,7 +116,7 @@ jobs:
           fetch-depth: 0
 
       - name: Clean stale dependency clones
-        run: rm -rf ../omniintelligence ../omnibase_core ../omnibase_compat ../ci-overlay
+        run: rm -rf ../omniintelligence ../omnibase_core ../ci-overlay
 
       # OMN-20923: the roster is read from the CI overlay at its default
       # branch, deliberately unpinned: it is DATA, validated by
@@ -157,6 +161,7 @@ jobs:
           sparse-checkout: |
             config/onex/overlays/node_review_voters_overlay_compute
             config/onex/overlays/agent_review_gate_accept
+            config/onex/overlays/review_agent_receipt_verify
           sparse-checkout-cone-mode: false
 
       - name: Place the CI overlay outside the workspace
@@ -267,40 +272,6 @@ jobs:
 
           clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)"
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
-
-      - name: Clone omnibase_compat
-        run: |
-          set -euo pipefail
-          clone_with_retry() {
-            local repo_name="$1"
-            local target_dir="$2"
-            local sha_var_name="$3"
-            local pin_tag="$4"
-            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
-            local resolved_sha
-
-            for attempt in 1 2 3 4; do
-              rm -rf "${target_dir}"
-              # shellcheck disable=SC2016
-              # The child bash, not this parent shell, expands its positional parameters.
-              if timeout 240s bash -c 'git init "$1" \
-                && git -C "$1" remote add origin "$2" \
-                && git -C "$1" fetch --depth=1 origin "$3" \
-                && git -C "$1" checkout --detach FETCH_HEAD' \
-                _ "${target_dir}" "${remote_url}" "${pin_tag}" \
-                && resolved_sha="$(git -C "${target_dir}" rev-parse HEAD)"; then
-                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
-                return 0
-              fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
-              sleep $((attempt * 5))
-            done
-            echo "::error::clone ${repo_name} failed after 4 attempts"
-            return 1
-          }
-
-          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)"
-          echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
@@ -727,12 +698,27 @@ jobs:
         # same rule as the parse veto above), so a pull request cannot supply the
         # code that accepts itself; a base that does not carry the node yet, or a
         # node that does not run, leaves the voters' verdict as it stands.
+        #
+        # It runs in ../omniintelligence, as the parse veto and the omnibase_infra
+        # accept step do, never in the checkout under review: in that checkout
+        # `uv run` built an empty environment from the pull request's own
+        # pyproject.toml (measured on job 126160569597: no module named pydantic),
+        # and a root-level module of the pull request (json.py, yaml.py) could
+        # shadow an import while the step holds the receipt key. `python -P` keeps
+        # the working directory off sys.path as well. The omniintelligence
+        # environment, synced above, carries pydantic, PyYAML and omnibase_infra;
+        # PYTHONPATH puts the base commit's omnimarket first.
         id: accept
         if: always()
+        working-directory: ../omniintelligence
         env:
           ACCEPT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ONEX_SKILL_OVERLAY_ROOTS: ${{ github.workspace }}/../ci-overlay/config/onex/overlays
+          # OMN-22177: the receipt key the review step already carries, for the verifier
+          # node the accept node runs in a subprocess of ../omniintelligence when the
+          # agent_review_gate_accept overlay names verifier_endpoint subprocess:<path>.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
         run: |
           ACCEPT_BASE="${RUNNER_TEMP:-/tmp}/agent-review-accept-base"
           rm -rf "$ACCEPT_BASE"
@@ -744,7 +730,7 @@ jobs:
             echo "decision=unchanged" >> "$GITHUB_OUTPUT"
           else
             ACCEPT_EXIT=0
-            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
+            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -P -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
               --repository "${{ github.repository }}" \
               --pull-request "${{ github.event.pull_request.number }}" \
               --head-sha "${{ github.event.pull_request.head.sha }}" \
@@ -924,13 +910,9 @@ jobs:
 
   hostile-review-gate:
     name: Hostile Review Gate
-    runs-on: >-
-      ${{
-        github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name != github.repository
-        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_REVIEW_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
-      }}
+    # GitHub-hosted (OMN-19998): this job reads the result of hostile-review and
+    # nothing else, so it has no reason to take a lab runner.
+    runs-on: ubuntu-latest
     needs: [hostile-review]
     if: always()
     steps:

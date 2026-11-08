@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Canary Effect (OMN-22920, piece 9 of the base-first rebuild, OMN-22478)
+#
+# While fewer than 10 eligible pull requests wait, the landing goal cannot be read from throughput. A daily
+# synthetic canary stands in for it: it opens one test pull request in a test repository, waits for the
+# landing tick to merge it, records the elapsed time and appends one piece-9 reading row. It lands inside the
+# bar (an hour) or the reading is NOT WORKING. The bar and every other setting are overlay values.
+name: node_landing_canary_effect
+contract_name: node_landing_canary_effect
+node_name: node_landing_canary_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The daily synthetic landing canary. WORKING when the test pull request merged inside the overlay's bar,
+  NOT_WORKING when it merged late, was closed unmerged, or was still open when the bar ran out (a stalled
+  landing tick), UNKNOWN with a typed reason when the pull request could not be opened or its state could
+  not be read at the end.
+
+handler:
+  module: omnimarket.nodes.node_landing_canary_effect.handlers.handler_landing_canary
+  class: HandlerLandingCanary
+  input_model: omnimarket.nodes.node_landing_canary_effect.models.model_landing_canary.ModelLandingCanaryCommand
+
+# HandlerLandingCanary takes the overlay, host, test repository, appender, clock and sleep as constructor
+# parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [test-pull-request-open, ledger-append]
+  timeout_ms: 5400000
+
+input_model:
+  name: ModelLandingCanaryCommand
+  module: omnimarket.nodes.node_landing_canary_effect.models.model_landing_canary
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelLandingCanaryResult
+  module: omnimarket.nodes.node_landing_canary_effect.models.model_landing_canary
+  description: The verdict, the ending, the elapsed time against the bar and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.landing-canary-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  landing_canary_requested: onex.cmd.omnimarket.landing-canary-requested.v1
+  landing_canary_written: onex.evt.omnimarket.landing-canary-written.v1
+  landing_canary_failed: onex.evt.omnimarket.landing-canary-failed.v1
+  landing_canary_run_completed: onex.evt.omnimarket.landing-canary-run-completed.v1
+  landing_canary_run_failed: onex.evt.omnimarket.landing-canary-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.landing-canary-written.v1
+  - onex.evt.omnimarket.landing-canary-failed.v1
+  - onex.evt.omnimarket.landing-canary-run-completed.v1
+  - onex.evt.omnimarket.landing-canary-run-failed.v1
+
+# The node's own daily schedule, installed by `schedule install --host <name>` from the registry root as the
+# scheduler the overlay names for that host, removed by `schedule uninstall`. A unit that names a worktree is
+# refused. The timeout is the bar plus the room to open the pull request and write the row.
+schedule:
+  unit_name: onex-landing-canary-daily
+  launchd_label: ai.omninode.landing-canary-daily
+  state_directory: .onex_state/landing-canary
+  timeout_seconds: 5400
+  cadence:
+    on_calendar: "*-*-* 04:10:00"
+    launchd_minute: 10
+    launchd_hour: 4
+    randomized_delay: 5m
+    persistent: true
+    description: daily, ten past four UTC
+
+overlay:
+  node: node_landing_canary_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_landing_canary_effect.overlay.ModelLandingCanaryOverlay
+
+metadata:
+  ticket: OMN-22920
+  transport_type: inmemory

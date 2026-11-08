@@ -5,13 +5,14 @@
 They reach what the lab-fill workflow reached, the same way: the remote-lane
 runner's pool read and launcher (loaded from the installed omni plugin's skills
 directory, ``ONEX_OMNI_SKILLS_DIR`` or the newest installed copy), the rolling
-ledger file, the approved-work list, Linear (``LINEAR_API_KEY``), the PR watcher's
+ledger file, the approved-work list, Linear (through node_ticket_query, the key from the secret store), the PR watcher's
 state file and ``onex-triage-fences``. Each failure is a ``LabFillPortError`` that
 names what failed; a reading that cannot be made is never an empty answer.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -19,17 +20,33 @@ import re
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
-from collections.abc import Mapping, Sequence
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
-from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
+    TicketQueryCredentialRefusedError,
+)
+from omnimarket.models.ticket_query.model_ticket_facts import (
+    ModelTicketFactsInput,
+    ModelTicketFactsOutput,
+)
 from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
+)
+from omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts import (
+    HandlerTicketFacts,
+)
+from omnimarket.nodes.node_ticket_query.handlers.store_resolved_tracker import (
+    ProtocolGraphQLPoster,
+    ProtocolSecretResolve,
+    resolve_linear_tracker,
 )
 
 from .protocol_lab_fill_effect import (
@@ -37,6 +54,7 @@ from .protocol_lab_fill_effect import (
     LabFillCommandOutcome,
     LabFillPortError,
     ProtocolLabFillStatusAppender,
+    ProtocolLabFillTicketFacts,
 )
 
 SKILLS_ENV = "ONEX_OMNI_SKILLS_DIR"
@@ -276,28 +294,58 @@ class LocalApprovedWork:
         return matches[0]
 
 
-def _graphql(query: str, timeout_s: float = 20.0) -> dict[str, object]:
-    key = os.environ.get("LINEAR_API_KEY", "")
-    if not key:
-        raise LabFillPortError("LINEAR_API_KEY is missing")
-    req = urllib.request.Request(
-        LINEAR_GRAPHQL_URL,
-        data=json.dumps({"query": query}).encode(),
-        headers={"Authorization": key, "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(  # no-contract-check: Linear port boundary
-            req, timeout=timeout_s
-        ) as response:
-            result = json.load(response)
-    except (OSError, ValueError, urllib.error.URLError) as exc:
-        raise LabFillPortError(f"Linear unreadable: {type(exc).__name__}") from exc
-    if result.get("errors"):
-        raise LabFillPortError("Linear GraphQL errors")
-    data = result.get("data")
-    if not isinstance(data, dict):
-        raise LabFillPortError("Linear returned no data")
-    return data
+class NodeTicketFactsReader:
+    """Reads a ticket's state type and assignee id through node_ticket_query.
+
+    The tracker key is resolved in process from the secret store by
+    node_secret_store_effect (OMN-22418); the process environment is never read
+    for it. A refusal of the store, or a read that cannot be made, is a
+    ``LabFillPortError`` that names what failed.
+    """
+
+    def __init__(
+        self,
+        secret_node: ProtocolSecretResolve | None = None,
+        tracker_factory: Callable[[str], ProtocolGraphQLPoster] | None = None,
+    ) -> None:
+        self._secret_node = secret_node
+        self._tracker_factory = tracker_factory
+
+    def _handler(self) -> HandlerTicketFacts:
+        secret_node = self._secret_node or HandlerSecretStore()
+        factory = self._tracker_factory
+
+        async def provider() -> ProtocolGraphQLPoster:
+            if factory is None:
+                return await resolve_linear_tracker(secret_node)
+            return await resolve_linear_tracker(secret_node, factory)
+
+        return HandlerTicketFacts(tracker_provider=provider)
+
+    def read(self, ticket: str) -> ModelTicketFactsOutput:
+        handler = self._handler()
+        request = ModelTicketFactsInput(identifier=ticket)
+        box: list[ModelTicketFactsOutput | BaseException] = []
+
+        def run() -> None:
+            try:
+                box.append(asyncio.run(handler.handle(request)))
+            except BaseException as exc:
+                box.append(exc)
+
+        worker = threading.Thread(target=run, name="lab-fill-ticket-facts")
+        worker.start()
+        worker.join()
+        outcome = box[0]
+        if isinstance(outcome, TicketQueryCredentialRefusedError):
+            raise LabFillPortError(str(outcome)) from outcome
+        if isinstance(outcome, LookupError):
+            raise LabFillPortError(f"{ticket} not found in Linear") from outcome
+        if isinstance(outcome, BaseException):
+            raise LabFillPortError(
+                f"Linear unreadable: {type(outcome).__name__}"
+            ) from outcome
+        return outcome
 
 
 def _watcher_path() -> Path:
@@ -310,28 +358,17 @@ def _watcher_path() -> Path:
 class LocalLiveChecks:
     """Assignment, fences, PR hold labels and completion for one lane, read right before launch."""
 
+    def __init__(self, facts: ProtocolLabFillTicketFacts | None = None) -> None:
+        self._facts = facts if facts is not None else NodeTicketFactsReader()
+
     def skip_reason(
         self, *, ticket: str, kind: str, pr: str, operator_id: str, ledger_path: str
     ) -> tuple[str, str]:
-        number = int(ticket.split("-", 1)[1])
-        data = _graphql(
-            '{issues(filter:{team:{key:{eq:"OMN"}},number:{eq:'
-            + str(number)
-            + "}}){nodes{identifier state{type} assignee{id}}}}"
-        )
-        issues = data.get("issues")
-        nodes = issues.get("nodes", []) if isinstance(issues, dict) else []
-        if not nodes:
-            raise LabFillPortError(f"{ticket} not found in Linear")
-        node = nodes[0]
-        assignee = (node.get("assignee") or {}).get("id", "")
-        if assignee and assignee != operator_id:
-            return "assigned-other", f"assignee {assignee}"
-        if kind in APPROVED_KINDS and node["state"]["type"] in (
-            "completed",
-            "canceled",
-        ):
-            return "done", f"state {node['state']['type']}"
+        facts = self._facts.read(ticket)
+        if facts.assignee_id and facts.assignee_id != operator_id:
+            return "assigned-other", f"assignee {facts.assignee_id}"
+        if kind in APPROVED_KINDS and facts.state_type in ("completed", "canceled"):
+            return "done", f"state {facts.state_type}"
         try:
             fenced = self._fences(ledger_path)
         except LabFillPortError as exc:

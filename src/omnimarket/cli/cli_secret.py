@@ -290,7 +290,7 @@ class _CentralTenantKeyStore:
     async def health_check(self) -> bool:
         return True
 
-    async def close(self, timeout_seconds: float = 30.0) -> None:
+    async def close(self, timeout_seconds: float | None = None) -> None:
         return None
 
 

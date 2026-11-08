@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -28,6 +29,8 @@ TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unr
 PrState = Literal["OPEN", "MERGED", "CLOSED"]
 CiState = Literal["green", "red", "pending", "none", "unread"]
 StationGrouping = Literal["task", "wave"]
+EvidenceCell = Literal["task", "ticket", "pr"]
+ScopeStatus = Literal["valid", "needs_review"]
 
 
 def _aware(value: datetime) -> datetime:
@@ -65,6 +68,10 @@ class ModelFloorManifest(BaseModel):
     title: str = ""
     epic: str = ""
     tasks: tuple[ModelFloorManifestTask, ...]
+    # A plan whose task catalogue is under review says so here: the line then reads its progress as unknown and its
+    # condition as needs_review until the catalogue is reconciled. No task is dropped.
+    scope_status: ScopeStatus = "valid"
+    scope_note: str = ""
 
 
 class ModelFloorTableTask(BaseModel):
@@ -161,6 +168,9 @@ class ModelFloorLedgerRow(BaseModel):
     model: str = ""
     actor: str = ""
     to: str = ""
+    run_id: str = ""
+    # The owns= cell as written: a comma list of what the row's lane says it owns (``floor:<holdup id>`` for the floor).
+    owns: tuple[str, ...] = ()
 
     _utc = field_validator("ts")(_aware)
 
@@ -209,6 +219,16 @@ class ModelFloorMachineDecl(BaseModel):
     runner_labels: tuple[str, ...] = ()
 
 
+class ModelFloorPoolDisk(BaseModel):
+    """One disk cell of a pool reading: the volume's name and its free and total size in GB."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    free_gb: float = Field(ge=0.0)
+    total_gb: float = Field(gt=0.0)
+
+
 class ModelFloorPoolReading(BaseModel):
     """One host as the landing placement's pool read reported it (the fields the bay draws)."""
 
@@ -227,6 +247,11 @@ class ModelFloorPoolReading(BaseModel):
     slots: int | None = None
     lane_slots: int | None = None
     refusal: str = ""
+    # Every ``disk_<name>=free/total/inode-pct`` cell, and the memory pressure cell (the Linux ``mempsi`` figure, or the
+    # macOS ``pressure`` level) with the kind of that figure. Empty or None when the reading carried no such cell.
+    disks: tuple[ModelFloorPoolDisk, ...] = ()
+    mem_pressure: float | None = None
+    mem_pressure_kind: Literal["", "psi", "level"] = ""
 
     _utc = field_validator("read_at")(_aware)
 
@@ -240,6 +265,31 @@ class ModelFloorHostRow(BaseModel):
     cap: int | None = None
     available: bool = True
     unavailable_reason: str = ""
+
+
+class ModelFloorDriftHost(BaseModel):
+    """One host of the host-drift fleet projection: its newest heartbeat and how many drift items are open on it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    last_heartbeat_at: datetime | None = None
+    open_items: int = Field(ge=0)
+
+    _utc = field_validator("last_heartbeat_at")(
+        lambda value: None if value is None else _aware(value)
+    )
+
+
+class ModelFloorHostDrift(BaseModel):
+    """The host-drift fleet projection as the floor read it: when it was folded and what it holds per host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    folded_at: datetime
+    hosts: tuple[ModelFloorDriftHost, ...]
+
+    _utc = field_validator("folded_at")(_aware)
 
 
 class ModelFloorPlacedHost(BaseModel):
@@ -272,8 +322,24 @@ class ModelFloorReceipt(BaseModel):
     result: str = ""
     session_detail: str = ""
     session_needs: str = ""
+    # The receipt's pid belongs to its launching host, where the floor reader runs.
+    runner_alive: bool | None = None
 
     _utc = field_validator("started_at")(_aware)
+
+
+class ModelFloorLaneProcess(BaseModel):
+    """A controller worker's existing group/tag probe, read on the controller host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    started_at: datetime
+    observed_at: datetime
+    alive: bool | None
+    detail: str
+
+    _utc = field_validator("started_at", "observed_at")(_aware)
 
 
 class ModelFloorCloudAccount(BaseModel):
@@ -282,6 +348,7 @@ class ModelFloorCloudAccount(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(min_length=1)
+    identity: Literal["machine", "account"] = "machine"
     login: str = ""
     cap: int | None = None
     active: tuple[str, ...] = ()
@@ -289,6 +356,13 @@ class ModelFloorCloudAccount(BaseModel):
     credit_read_at: str = ""
     rate_status: str = ""
     rate_resets_at: str = ""
+    # The rate headers the runner writes (OMN-22010): the two subscription windows, and when the record was read.
+    rate_read_at: str = ""
+    five_hour_utilization: float | None = None
+    five_hour_resets_at: str = ""
+    seven_day_utilization: float | None = None
+    seven_day_resets_at: str = ""
+    credit_source: str = ""
 
 
 class ModelFloorRunner(BaseModel):
@@ -298,6 +372,10 @@ class ModelFloorRunner(BaseModel):
 
     host_label: str = Field(min_length=1)
     status: Literal["online", "offline", "busy"]
+    # Saved by a producer that reports them; an older saved file has none, and such a row cannot be told apart.
+    runner_name: str | None = Field(default=None, min_length=1)
+    label_class: str | None = Field(default=None, min_length=1)
+    labels: tuple[str, ...] = ()
 
 
 class ModelFloorRunnerFleet(BaseModel):
@@ -322,6 +400,148 @@ class ModelFloorLaneKindRule(BaseModel):
     text_contains: tuple[str, ...] = ()
 
 
+class ModelFloorLimitsConfig(BaseModel):
+    """What the Limits panel judges against, from the contract: never a literal in the handler (OMN-22010)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # A reading older than this many minutes (one publish cycle) is UNKNOWN, never a number.
+    publish_cycle_minutes: int = Field(gt=0)
+    # The month's budget for an API key whose overlay row names none.
+    api_budget_usd: float = Field(gt=0)
+    # The day the cloud-session credit expires (YYYY-MM-DD).
+    cloud_credit_expiry: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class ModelLimitApiKey(BaseModel):
+    """One Anthropic API key as the meter read it: spend so far this calendar month (UTC)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    month_spend_usd: float | None = None
+    read_at: str = ""
+    source: str = Field(min_length=1)
+    # A budget the deployment overlay sets for this key; else the contract's api_budget_usd.
+    budget_usd: float | None = None
+
+
+class ModelLimitEngine(BaseModel):
+    """A usage window of a subscription engine (Codex on ChatGPT, the GLM coding plan)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    used_pct: float | None = None
+    window: str = ""
+    resets_at: str = ""
+    read_at: str = ""
+    source: str = Field(min_length=1)
+
+
+class ModelLimitLabRung(BaseModel):
+    """One local lab model rung: whether it answers and when it last passed a smoke."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    available: bool | None = None
+    last_smoke_at: str = ""
+    last_smoke_ok: bool | None = None
+    read_at: str = ""
+    source: str = Field(min_length=1)
+
+
+class ModelLimitToken(BaseModel):
+    """One token of a host's Claude token pool: a label and its state, never a value."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str = Field(min_length=1)
+    limited_until: str = ""
+    revoked: bool = False
+
+
+class ModelLimitTokenPool(BaseModel):
+    """One lab host's Claude token pool (the pool's status mirror)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    read_at: str = ""
+    source: str = Field(min_length=1)
+    tokens: tuple[ModelLimitToken, ...] = ()
+
+
+class ModelFloorLimitsFacts(BaseModel):
+    """Every limit the caller read. A source that could not be read is None, never empty: the row then says UNKNOWN."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    api_keys: tuple[ModelLimitApiKey, ...] | None = None
+    codex: ModelLimitEngine | None = None
+    glm: ModelLimitEngine | None = None
+    lab_rungs: tuple[ModelLimitLabRung, ...] | None = None
+    token_pools: tuple[ModelLimitTokenPool, ...] | None = None
+    # The day's idle slot-hours, summed by whoever samples the slots; None when nothing sampled them.
+    idle_slot_hours: float | None = None
+    idle_slot_hours_read_at: str = ""
+
+
+class ModelFloorHostStatusConfig(BaseModel):
+    """The bounds and names the per-host Machines record reads; the handler holds none of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # A host-drift heartbeat older than this, or a fleet projection folded longer ago, is stale.
+    heartbeat_stale_seconds: int = Field(gt=0)
+    # The pool reading's disk cell that decides lane admission (``runs`` is the run directories' volume).
+    disk_cell: str = Field(min_length=1)
+    # A capacity advertisement older than this is stale (the file is a snapshot taken once per publish cycle).
+    advert_stale_minutes: int = Field(gt=0)
+    # The advertised tool name that says the host runs containers.
+    docker_tool: str = Field(min_length=1)
+    # The lane kind (floor.lanes[].kind) of a landing worker.
+    landing_worker_kind: str = Field(min_length=1)
+
+
+class ModelGoalTicketRoots(BaseModel):
+    """The ``goal_scope_ticket_rule`` overlay as the floor reads it: the tickets whose work the goal keeps.
+
+    The landing tick owns the overlay, so the keys the floor does not read are ignored here and checked there.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    ticket_roots: tuple[str, ...] = ()
+
+
+class ModelFloorStoppedConfig(BaseModel):
+    """What makes a lane that ended short a stopped line on the floor (OMN-22934); every value is the contract's."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # The TERMINAL outcomes that leave work behind; a lane whose newest TERMINAL has another outcome is never listed.
+    outcomes: tuple[str, ...] = Field(min_length=1)
+    # A stop older than this many minutes is no longer listed.
+    max_age_minutes: int = Field(gt=0)
+    # Tickets that many lanes share: they never tie two lanes to the same work.
+    umbrella_tickets: tuple[str, ...] = ()
+    # Regular expressions (first group, or the whole match) that read a branch name out of a row's text.
+    branch_patterns: tuple[str, ...] = Field(min_length=1)
+    # A regular expression that reads a commit head out of a row's text, after the word head.
+    head_pattern: str = Field(min_length=1)
+    # Words in the ending row that say the lane asked for something or left a next step (matched case-insensitively).
+    ask_markers: tuple[str, ...] = Field(min_length=1)
+    next_step_markers: tuple[str, ...] = Field(min_length=1)
+    # A lane name with this regular expression removed is its stem: a later lane of the same stem is its successor.
+    lane_stem_suffix: str = Field(min_length=1)
+    # How many of the lane's last rows the record carries, and each row cut at this many characters.
+    rows_kept: int = Field(ge=1)
+    row_chars: int = Field(ge=40)
+    # Where the lane's own report is, relative to the registry home; {lane} is the lane name.
+    report_path_template: str = Field(min_length=1)
+
+
 class ModelFactoryFloorConfig(BaseModel):
     """The vocabularies and limits the contract's ``config`` block declares; the handler holds none."""
 
@@ -331,6 +551,8 @@ class ModelFactoryFloorConfig(BaseModel):
     andon_markers: tuple[str, ...] = Field(min_length=1)
     gate_kind: str = Field(min_length=1)
     gate_state: str = Field(min_length=1)
+    # Alternate wave subjects emitted by ledger gate runners; empty preserves older configuration.
+    gate_wave_subject_template: str = ""
     gate_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     gate_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     done_outcomes: tuple[str, ...] = Field(min_length=1)
@@ -343,6 +565,17 @@ class ModelFactoryFloorConfig(BaseModel):
     integration_state: str = Field(min_length=1)
     integration_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     integration_fail_verdicts: tuple[str, ...] = Field(min_length=1)
+    # Decimal places of the progress percent (rounded half-up).
+    percent_decimals: int = Field(ge=0, le=3)
+    # The progress sentences. {completed} {total} fill the known one; {note} the plan's own scope note.
+    progress_note_known: str = Field(min_length=1)
+    progress_note_no_tasks: str = Field(min_length=1)
+    progress_note_unscoped: str = Field(min_length=1)
+    progress_note_duplicate_ids: str = Field(min_length=1)
+    progress_note_under_review: str = Field(min_length=1)
+    progress_note_running_unread: str = Field(min_length=1)
+    # The blocker of a line whose work tasks are all done while a gate has not passed; {gates} are the waiting ids.
+    pending_gate_blocker: str = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
     station_grouping: StationGrouping
@@ -377,6 +610,32 @@ class ModelFactoryFloorConfig(BaseModel):
     stop_outcomes: tuple[str, ...] = Field(min_length=1)
     ask_recipients: tuple[str, ...] = Field(min_length=1)
     ask_answer_kinds: tuple[str, ...] = Field(min_length=1)
+    # The typed cells of a ledger row that bind it to a task as evidence; a task id in a row's free text binds nothing.
+    evidence_cells: tuple[EvidenceCell, ...] = Field(min_length=1)
+    # The state= value of the STATUS row that maps a task (task=) of a plan (subject=) to its ticket= and pr=.
+    task_map_state: str = Field(min_length=1)
+    # The note a built task carries while a gate it depends on reads a fail verdict; such a task is not counted built.
+    built_ahead_of_gate_label: str = Field(min_length=1)
+    limits: ModelFloorLimitsConfig
+    host_status: ModelFloorHostStatusConfig
+    stopped: ModelFloorStoppedConfig
+
+
+class ModelFloorSourceReads(BaseModel):
+    """When the caller read each source, so the record can say how old the oldest source a line depends on is.
+
+    A source with no read time is None: its age is then not guessed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger: datetime | None = None
+    linear: datetime | None = None
+    running_evidence: datetime | None = None
+
+    _utc = field_validator("ledger", "linear", "running_evidence")(
+        lambda value: None if value is None else _aware(value)
+    )
 
 
 class ModelFactoryFloorRequest(BaseModel):
@@ -394,6 +653,7 @@ class ModelFactoryFloorRequest(BaseModel):
     # Records that a merge runs on dev (a deploy receipt, an adoption row), each naming the merged pull request. None
     # when no reader could read them: an unread source never shows a merge as running.
     running_evidence: tuple[ModelMrcEvidence, ...] | None = None
+    source_reads: ModelFloorSourceReads = Field(default_factory=ModelFloorSourceReads)
     placement: tuple[ModelHostCapacityAdvertisement, ...] = ()
     stoppages: tuple[ModelFloorStoppage, ...] = ()
     machines: tuple[ModelFloorMachineDecl, ...] = ()
@@ -402,7 +662,9 @@ class ModelFactoryFloorRequest(BaseModel):
     host_table: tuple[ModelFloorHostRow, ...] | None = None
     placed: tuple[ModelFloorPlacedHost, ...] | None = None
     receipts: tuple[ModelFloorReceipt, ...] | None = None
+    lane_processes: tuple[ModelFloorLaneProcess, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
+    cloud_accounts_cause: str = ""
     runner_fleet: ModelFloorRunnerFleet | None = None
     # Why runner_fleet is None, in the reader's own words; empty when it was read.
     runner_fleet_cause: str = ""
@@ -410,5 +672,16 @@ class ModelFactoryFloorRequest(BaseModel):
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
     # One Phoenix trace reading; None when the Phoenix URL is not configured (the floor draws it unread).
     phoenix_traces: ModelFloorPhoenixTraces | None = None
+    # Every limit read for the Limits panel; a field left None is an unread source (OMN-22010).
+    limits: ModelFloorLimitsFacts = Field(default_factory=ModelFloorLimitsFacts)
+    # The host-drift fleet projection; None when it could not be read, with the reader's words in host_drift_cause.
+    host_drift: ModelFloorHostDrift | None = None
+    host_drift_cause: str = ""
+    # The landing goal's scope; None when it could not be read, and then no stopped lane is listed (an unread scope is
+    # never everything in scope).
+    goal_scope: ModelGoalScope | None = None
+    # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
+    # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
+    scope_ticket_roots: tuple[str, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)

@@ -35,6 +35,7 @@ class EnumGateAcceptReason(StrEnum):
     RECEIPT_REFUSED = "receipt_refused"
     VERIFIER_UNREACHABLE = "verifier_unreachable"
     POLICY_UNAVAILABLE = "policy_unavailable"
+    RECEIPT_TIMEOUT = "receipt_timeout"
 
 
 class EnumVoterCause(StrEnum):
@@ -107,6 +108,20 @@ class ModelGateAcceptRequest(BaseModel):
     voter_result_path: str = Field(min_length=1)
     step_output_path: str = Field(min_length=1)
     step_summary_path: str = Field(min_length=1)
+
+
+class ModelReceiptGateRequest(BaseModel):
+    """Hosted verdict reader: no voter execution or fabricated voter result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: str = Field(min_length=1)
+    pull_request: int = Field(gt=0)
+    head_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    step_output_path: str = Field(min_length=1)
+    step_summary_path: str = Field(min_length=1)
+    wait_seconds: float = Field(default=0, ge=0, le=3000)
+    poll_seconds: float = Field(default=10, gt=0, le=60)
 
 
 class ModelGateAcceptResult(BaseModel):

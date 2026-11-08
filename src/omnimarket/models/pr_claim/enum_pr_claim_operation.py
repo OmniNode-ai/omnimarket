@@ -10,6 +10,7 @@ class EnumPrClaimOperation(StrEnum):
     RELEASE = "release"
     HEARTBEAT = "heartbeat"
     CLEANUP_STALE_OWN_CLAIMS = "cleanup_stale_own_claims"
+    RELEASE_ENDED_OWN_CLAIMS = "release_ended_own_claims"
     LIST_ACTIVE = "list_active"
     HAS_ACTIVE = "has_active"
     GET_CLAIM = "get_claim"

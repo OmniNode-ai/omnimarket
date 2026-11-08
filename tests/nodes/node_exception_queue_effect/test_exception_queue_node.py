@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -135,6 +136,90 @@ def test_the_second_occurrence_of_a_class_dispatches_one_mechanize_lane_through_
     assert len(seen.read_text().splitlines()) == 1
 
 
+def _mechanize_argv(tmp_path, ticket_text: str | None) -> list[str]:
+    runner, seen = fake_runner(tmp_path)
+    request = models.ModelExceptionEmitRequest(
+        tmp_path / "q",
+        row(key="host-a"),
+        "2026-10-19T00:30:00Z",
+        runner,
+        "orchestrator-bb1a",
+        **({} if ticket_text is None else {"ticket_text": ticket_text}),
+    )
+    emit_handler = create_handler_exception_emit()
+    emit_handler.handle(request)
+    second = emit_handler.handle(
+        models.ModelExceptionEmitRequest(
+            tmp_path / "q",
+            row(key="host-b"),
+            "2026-10-19T00:40:00Z",
+            runner,
+            "orchestrator-bb1a",
+            **({} if ticket_text is None else {"ticket_text": ticket_text}),
+        )
+    )
+    assert second.mechanize == "sent:mechanize-lab-fill-backlog-empty"
+    return json.loads(seen.read_text().splitlines()[0])
+
+
+def test_the_mechanize_lane_passes_the_class_its_ticket_names(tmp_path):
+    argv = _mechanize_argv(tmp_path, "Title: x\n\nClass: factory-fix\n")
+    assert argv[argv.index("--priority-class") + 1] == "factory-fix"
+
+
+def test_a_mechanize_ticket_without_a_class_line_passes_no_class_and_none_is_fixed(
+    tmp_path,
+):
+    # negative controls: no ticket text, no Class line and a class the contract does not list pass nothing
+    for index, text in enumerate((None, "Title: x\n", "Class: process-fix\n")):
+        (tmp_path / f"case{index}").mkdir()
+        argv = _mechanize_argv(tmp_path / f"case{index}", text)
+        assert "--priority-class" not in argv
+    assert "process-fix" not in Path(handler.__file__).read_text()
+
+
+def test_the_cli_reads_the_class_from_the_ticket_text_file(tmp_path):
+    runner, seen = fake_runner(tmp_path)
+    text = tmp_path / "ticket.txt"
+    text.write_text("Title: x\nClass: factory-unblock\n")
+    cli = create_handler_exception_cli()
+    env_before = os.environ.get("ONEX_EXCEPTION_RUNNER")
+    os.environ["ONEX_EXCEPTION_RUNNER"] = str(runner)
+    try:
+        for key in ("host-a", "host-b"):
+            result = cli.handle(
+                models.ModelExceptionCliRequest(
+                    [
+                        "emit",
+                        "--state-dir",
+                        str(tmp_path / "q"),
+                        "--class",
+                        "lab-fill-backlog-empty",
+                        "--key",
+                        key,
+                        "--source",
+                        "throughput_tick",
+                        "--evidence",
+                        "e",
+                        "--tried",
+                        "t",
+                        "--proposed-fix",
+                        "f",
+                        "--ticket-text-file",
+                        str(text),
+                    ]
+                )
+            )
+            assert result.code == 0
+    finally:
+        if env_before is None:
+            os.environ.pop("ONEX_EXCEPTION_RUNNER")
+        else:
+            os.environ["ONEX_EXCEPTION_RUNNER"] = env_before
+    argv = json.loads(seen.read_text().splitlines()[0])
+    assert argv[argv.index("--priority-class") + 1] == "factory-unblock"
+
+
 def test_a_refused_dispatch_is_retried_by_the_next_occurrence_and_shows_as_missing(
     tmp_path,
 ):
@@ -217,12 +302,15 @@ def test_the_contract_names_the_handlers_and_their_topics():
         "read": "HandlerExceptionQueueRead",
         "stop_event": "HandlerStopEvent",
         "open_stops": "HandlerOpenStops",
+        "sync_ledger_holds": "HandlerAndonLedgerHolds",
     }
     assert contract["event_bus"]["subscribe_topics"] == [
-        contract["runtime_dispatch"]["command_topic"]
+        contract["runtime_dispatch"]["command_topic"],
+        "onex.cmd.omnimarket.andon-ledger-holds-requested.v1",
     ]
     for h in contract["handler_routing"]["handlers"]:
-        assert hasattr(handler, h["handler"]["name"])
+        module = importlib.import_module(h["handler"]["module"])
+        assert hasattr(module, h["handler"]["name"])
 
 
 def test_the_cli_handler_emits_lists_and_resolves_through_the_node(

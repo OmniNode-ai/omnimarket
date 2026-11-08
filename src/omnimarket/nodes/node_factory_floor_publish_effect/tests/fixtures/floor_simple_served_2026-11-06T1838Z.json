@@ -1,0 +1,1365 @@
+{
+ "schema_id": "omni.floor-simple/1",
+ "generated_at": "2026-11-06T18:38:12.061188Z",
+ "freshness_max_age_s": 900,
+ "level": "red",
+ "sentence": "18 things have nobody on them or need you: hook refusal: unauthorised shared tree git mutation.",
+ "subline": "163 times, last seen 112 min ago, still occurring, 144 lane-minutes logged. From the friction rollup built 91 min ago; later rows are not in it. Nobody is on it.",
+ "numbers": [
+  {
+   "key": "merges",
+   "value": "2",
+   "label": "in-scope merges in the last 60 min, goal 10 an hour",
+   "basis": "merges of the goal's scope in the pull request watcher state with merged_at inside the window",
+   "read_at": "2026-11-06T18:36:24Z",
+   "read": true
+  },
+  {
+   "key": "open_prs",
+   "value": "8",
+   "label": "open in-scope pull requests, down 2 over the last hour",
+   "basis": "open pull requests of the goal's scope in the watcher state, held-excluded ones left out",
+   "read_at": "2026-11-06T18:36:24Z",
+   "read": true
+  },
+  {
+   "key": "slots",
+   "value": "8 of 21",
+   "label": "lab slots working, 4 hosts unread",
+   "basis": "running and total slots of the read hosts in the floor record's bays",
+   "read_at": "2026-11-06T18:35:52Z",
+   "read": true
+  }
+ ],
+ "causes": [
+  {
+   "id": "stoppage:hook-refusal:unauthorised-shared-tree-git-mutation",
+   "title": "hook refusal: unauthorised shared tree git mutation",
+   "detail": "163 times, last seen 112 min ago, still occurring, 144 lane-minutes logged. From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 163,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-18946"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T16:45:43Z",
+   "last_seen_age_s": 6749,
+   "still_occurring": true
+  },
+  {
+   "id": "stoppage:hook-refusal:heavy-work-over-load-bar",
+   "title": "hook refusal: heavy work over load bar",
+   "detail": "100 times, last seen 101 min ago, still occurring, 88 lane-minutes logged. From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 100,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-18946"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T16:56:26Z",
+   "last_seen_age_s": 6106,
+   "still_occurring": true
+  },
+  {
+   "id": "stoppage:unclassified",
+   "title": "Stoppages that have no class yet",
+   "detail": "98 times, last seen 93 min ago, still occurring, 3196 lane-minutes logged. From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 98,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-17195",
+    "OMN-18030",
+    "OMN-18954",
+    "OMN-19998",
+    "OMN-20304",
+    "OMN-20769",
+    "OMN-20864",
+    "OMN-20911",
+    "OMN-22478",
+    "OMN-22554",
+    "OMN-22560",
+    "OMN-22561",
+    "OMN-22653",
+    "OMN-22673",
+    "OMN-22674",
+    "OMN-22687"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T17:04:30Z",
+   "last_seen_age_s": 5622,
+   "still_occurring": true
+  },
+  {
+   "id": "chains:broken",
+   "title": "Some emission chains break the contract",
+   "detail": "piece 17 node_floor_simple_effect:run_floor_simple_cycle: start_without_terminal; J0 piece 17 to 1: downstream_missing_typed_failure; J0 piece 17 to 1: downstream_missing_typed_failure",
+   "size": 46,
+   "size_unit": "broken chains",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "stoppage:lab-idle",
+   "title": "Lab slots sit idle while work waits",
+   "detail": "43 times, last seen 3 h ago, no row since in the rollup, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 43,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T15:00:52Z",
+   "last_seen_age_s": 13040,
+   "still_occurring": false
+  },
+  {
+   "id": "lab:state",
+   "title": "3 of 8 lab sources fail: 3 not working",
+   "detail": "Lab hosts is not working; CI runner groups is not working; Dev deploy agent is not working.",
+   "size": 18,
+   "size_unit": "lab readings",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [
+    "lab:hosts",
+    "lab:runner_groups",
+    "lab:deploy_agent"
+   ],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "lab:runner_groups",
+   "title": "Lab: CI runner groups is not working",
+   "detail": "a runner host: 10 online, 21 offline, version not reported; 9 of the offline are parked on purpose, 12 are not; host-a: 1 online, 2 offline, version not reported; runner-1: offline, and no host table or plan row names it; runner-2: offline, and no host table or plan row names it; and 12 more",
+   "size": 16,
+   "size_unit": "lab readings",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": false,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "stoppage:job-exit",
+   "title": "job exit",
+   "detail": "14 times, last seen 4 h ago, no row since in the rollup, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 14,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-19998"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T14:37:11Z",
+   "last_seen_age_s": 14461,
+   "still_occurring": false
+  },
+  {
+   "id": "stoppage:lab-source-unreadable",
+   "title": "A lab source could not be read",
+   "detail": "9 times, last seen 2 h ago, still occurring, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 9,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T16:01:03Z",
+   "last_seen_age_s": 9429,
+   "still_occurring": true
+  },
+  {
+   "id": "stoppage:lab-enumerate-unreadable",
+   "title": "The lab host list could not be read",
+   "detail": "6 times, last seen 118 min ago, still occurring, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 6,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T16:39:46Z",
+   "last_seen_age_s": 7106,
+   "still_occurring": true
+  },
+  {
+   "id": "prs:red",
+   "title": "Pull requests have red checks",
+   "detail": "Holding 4 pull requests.",
+   "size": 4,
+   "size_unit": "pull requests",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-22533",
+    "OMN-22020",
+    "OMN-21342",
+    "OMN-17427"
+   ],
+   "owners": [],
+   "prs": [
+    "omnibase_infra#5694",
+    "omnimarket#4904",
+    "omnimarket#4997",
+    "omnimarket#5043"
+   ],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "stoppage:throughput-results",
+   "title": "Landing results fall short of the goal",
+   "detail": "4 times, last seen 99 min ago, still occurring, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 4,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-19998"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T16:58:58Z",
+   "last_seen_age_s": 5954,
+   "still_occurring": true
+  },
+  {
+   "id": "lab:deploy_agent",
+   "title": "Lab: Dev deploy agent is not working",
+   "detail": "dev deploy agent: 3 finished jobs in a row failed (red at 2); last success 2026-11-06T16:27:46.985130+00:00; last failure 2026-11-06T18:17:53.611001+00:00: commit=252a049e79ac6af1e6042fe1b4f82bdf7a722986: RuntimeError: Runtime roll stopped at omninode-runtime: RuntimeError: Container 4597dd3f58bb_omninode-runtime R",
+   "size": 1,
+   "size_unit": "lab readings",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": false,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "lab:hosts",
+   "title": "Lab: Lab hosts is not working",
+   "detail": "h053: cpu 92.5C > 85C",
+   "size": 1,
+   "size_unit": "lab readings",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": false,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "piece:2",
+   "title": "Piece 2, Hosts and capacity, is not working",
+   "detail": "admitted; no golden and error event yet \u00b7 no events yet",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "piece:3",
+   "title": "Piece 3, Bus, runtime and seams, is not working",
+   "detail": "admitted; no golden and error event yet \u00b7 no events yet",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "piece:4",
+   "title": "Piece 4, Contracts, overlays and injected dependencies, is not working",
+   "detail": "admitted; no golden and error event yet \u00b7 no events yet",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "piece:5",
+   "title": "Piece 5, Secrets, is not working",
+   "detail": "admitted; no golden and error event yet \u00b7 no events yet",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "piece:6",
+   "title": "Piece 6, Ledger and state, is not working",
+   "detail": "admitted; no golden and error event yet \u00b7 no events yet",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "prs:green-unarmed",
+   "title": "Green pull requests are waiting to be armed",
+   "detail": "Holding 1 pull requests.",
+   "size": 1,
+   "size_unit": "pull requests",
+   "state": "amber",
+   "work_under_way": true,
+   "needs_operator": false,
+   "lanes": [
+    "landing-L28822"
+   ],
+   "tickets": [
+    "OMN-22561"
+   ],
+   "owners": [],
+   "prs": [
+    "omnibase_infra#5721"
+   ],
+   "listed": true,
+   "members": [],
+   "last_seen": null,
+   "last_seen_age_s": null,
+   "still_occurring": null
+  },
+  {
+   "id": "stoppage:lab-enumerate-partial",
+   "title": "The lab host list was only partly read",
+   "detail": "1 time, last seen 23 h ago, no row since in the rollup, no measured cost (the logged figure is an estimate). From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 1,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-05T18:39:54Z",
+   "last_seen_age_s": 86298,
+   "still_occurring": false
+  },
+  {
+   "id": "stoppage:mac-commit-hooks-slow-under-load",
+   "title": "mac commit hooks slow under load",
+   "detail": "1 time, last seen 13 h ago, no row since in the rollup, 150 lane-minutes logged. From the friction rollup built 91 min ago; later rows are not in it.",
+   "size": 1,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-22563"
+   ],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "last_seen": "2026-11-06T04:59:02Z",
+   "last_seen_age_s": 49150,
+   "still_occurring": false
+  }
+ ],
+ "causes_shown": 5,
+ "rebuild": {
+  "current_piece": 1,
+  "headline": "Piece 1, code graph: started.",
+  "next_text": "Next is hosts and capacity.",
+  "go_given_through": 6
+ },
+ "pieces": [
+  {
+   "piece": 1,
+   "name": "Code graph",
+   "status": "started",
+   "draw": "green",
+   "text": "started; no reading row yet \u00b7 golden 83 min ago, error 84 min ago",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": 4981,
+   "error_age_s": 5073,
+   "freshness": "fresh",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J1",
+     "label": "code graph to hosts",
+     "to_piece": 2,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 2,
+   "name": "Hosts and capacity",
+   "status": "unknown",
+   "draw": "red",
+   "text": "admitted; no golden and error event yet \u00b7 no events yet",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "piece:2",
+   "joins": [
+    {
+     "id": "J2",
+     "label": "hosts to bus",
+     "to_piece": 3,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 3,
+   "name": "Bus, runtime and seams",
+   "status": "unknown",
+   "draw": "red",
+   "text": "admitted; no golden and error event yet \u00b7 no events yet",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "piece:3",
+   "joins": [
+    {
+     "id": "J3",
+     "label": "bus to overlays",
+     "to_piece": 4,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 4,
+   "name": "Contracts, overlays and injected dependencies",
+   "status": "unknown",
+   "draw": "red",
+   "text": "admitted; no golden and error event yet \u00b7 no events yet",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "piece:4",
+   "joins": [
+    {
+     "id": "J4",
+     "label": "overlays to secrets",
+     "to_piece": 5,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 5,
+   "name": "Secrets",
+   "status": "unknown",
+   "draw": "red",
+   "text": "admitted; no golden and error event yet \u00b7 no events yet",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "piece:5",
+   "joins": [
+    {
+     "id": "J5",
+     "label": "secrets to ledger",
+     "to_piece": 6,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 6,
+   "name": "Ledger and state",
+   "status": "unknown",
+   "draw": "red",
+   "text": "admitted; no golden and error event yet \u00b7 no events yet",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "piece:6",
+   "joins": [
+    {
+     "id": "J6",
+     "label": "ledger to process spine",
+     "to_piece": 7,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 7,
+   "name": "Process spine",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J7",
+     "label": "process spine to CI",
+     "to_piece": 8,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 8,
+   "name": "CI, runners and the central test location",
+   "status": "not_working",
+   "draw": "red",
+   "text": "reading NOT WORKING: CI runner groups not working",
+   "reading_state": "NOT WORKING",
+   "reading_age_s": 1421,
+   "reading_max_age_s": 7200,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": "lab:runner_groups",
+   "joins": [
+    {
+     "id": "J8",
+     "label": "CI to landing",
+     "to_piece": 9,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 9,
+   "name": "Landing and merge queue",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J9",
+     "label": "landing to install",
+     "to_piece": 10,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 10,
+   "name": "Install and release",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J10",
+     "label": "install to dev deploy",
+     "to_piece": 11,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 11,
+   "name": "Dev deploy and runtime",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J11",
+     "label": "dev deploy to dispatch",
+     "to_piece": 12,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 12,
+   "name": "Dispatch and placement",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J12",
+     "label": "dispatch to results",
+     "to_piece": 13,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 13,
+   "name": "Results and tracking",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J13",
+     "label": "results to review",
+     "to_piece": 14,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 14,
+   "name": "Review",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J14",
+     "label": "review to delegation",
+     "to_piece": 15,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    },
+    {
+     "id": "J-cycle",
+     "label": "review back to landing",
+     "to_piece": 9,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 15,
+   "name": "Delegation and the chain of responders",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J15",
+     "label": "delegation to context and evals",
+     "to_piece": 16,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 16,
+   "name": "Context, memory and evals",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 86400,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": [
+    {
+     "id": "J16",
+     "label": "evals to the floor",
+     "to_piece": 17,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 17,
+   "name": "Observability and the floor",
+   "status": "not_working",
+   "draw": "red",
+   "text": "reading NOT WORKING: 3 of 8 lab sources not working \u00b7 golden 0 s ago, error 0 s ago",
+   "reading_state": "NOT WORKING",
+   "reading_age_s": 645,
+   "reading_max_age_s": 900,
+   "golden_age_s": 0,
+   "error_age_s": 0,
+   "freshness": "fresh",
+   "cause_id": "lab:state",
+   "joins": [
+    {
+     "id": "J0",
+     "label": "step 0 to the code graph",
+     "to_piece": 1,
+     "state": "broken",
+     "golden_age_s": null,
+     "error_age_s": null
+    },
+    {
+     "id": "J17",
+     "label": "the floor to onboarding",
+     "to_piece": 18,
+     "state": "not_run",
+     "golden_age_s": null,
+     "error_age_s": null
+    }
+   ]
+  },
+  {
+   "piece": 18,
+   "name": "Onboarding and the customer path",
+   "status": "not_started",
+   "draw": "grey",
+   "text": "not started",
+   "reading_state": null,
+   "reading_age_s": null,
+   "reading_max_age_s": 691200,
+   "golden_age_s": null,
+   "error_age_s": null,
+   "freshness": "none",
+   "cause_id": null,
+   "joins": []
+  }
+ ],
+ "lab_state": [
+  {
+   "id": "hosts",
+   "title": "Lab hosts",
+   "state": "NOT WORKING",
+   "draw": "red",
+   "text": "NOT WORKING: h053: cpu 92.5C > 85C",
+   "reading_age_s": 180,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": "lab:hosts"
+  },
+  {
+   "id": "runner_groups",
+   "title": "CI runner groups",
+   "state": "NOT WORKING",
+   "draw": "red",
+   "text": "NOT WORKING: a runner host: 10 online, 21 offline, version not reported; 9 of the offline are parked on purpose, 12 are not; host-a: 1 online, 2 offline, version not reported; runner-1: offline, and no host table or plan row names it; runner-2: offline, and no host table or plan row names it; and 12 more",
+   "reading_age_s": 310,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": "lab:runner_groups"
+  },
+  {
+   "id": "disk",
+   "title": "Host disk",
+   "state": "WORKING",
+   "draw": "green",
+   "text": "4 of 4 hosts above 10 GB free",
+   "reading_age_s": 180,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": null
+  },
+  {
+   "id": "queue_age",
+   "title": "Merge queue age",
+   "state": "WORKING",
+   "draw": "green",
+   "text": "oldest in-scope green pull request waits 23 min",
+   "reading_age_s": 108,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": null
+  },
+  {
+   "id": "deploy_lag",
+   "title": "Deploy lag",
+   "state": "WORKING",
+   "draw": "green",
+   "text": "oldest merge not yet running is 159 min old",
+   "reading_age_s": 139,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": null
+  },
+  {
+   "id": "broker_lag",
+   "title": "Broker lag",
+   "state": "WORKING",
+   "draw": "green",
+   "text": "2 of 2 broker conditions OK",
+   "reading_age_s": 195,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": null
+  },
+  {
+   "id": "overlay_store",
+   "title": "Overlay store",
+   "state": "WORKING",
+   "draw": "green",
+   "text": "2 of 2 overlay reads fresh",
+   "reading_age_s": 645,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": null
+  },
+  {
+   "id": "deploy_agent",
+   "title": "Dev deploy agent",
+   "state": "NOT WORKING",
+   "draw": "red",
+   "text": "NOT WORKING: dev deploy agent: 3 finished jobs in a row failed (red at 2); last success 2026-11-06T16:27:46.985130+00:00; last failure 2026-11-06T18:17:53.611001+00:00: commit=252a049e79ac6af1e6042fe1b4f82bdf7a722986: RuntimeError: Runtime roll stopped at omninode-runtime: RuntimeError: Container 4597dd3f58bb_omninode-runtime R",
+   "reading_age_s": 0,
+   "max_age_s": 900,
+   "work_under_way": false,
+   "cause_id": "lab:deploy_agent"
+  }
+ ],
+ "alarms": [
+  {
+   "alarm_id": "deploy_agent@20261106T175542Z",
+   "source_id": "deploy_agent",
+   "title": "Dev deploy agent: NOT WORKING",
+   "raised_at": "2026-11-06T17:55:42.647486Z",
+   "delivery": "delivered",
+   "channel": "slack_alerts"
+  },
+  {
+   "alarm_id": "hosts@20261106T182923Z",
+   "source_id": "hosts",
+   "title": "Lab hosts: NOT WORKING",
+   "raised_at": "2026-11-06T18:29:23.043713Z",
+   "delivery": "delivered",
+   "channel": "slack_alerts"
+  },
+  {
+   "alarm_id": "runner_groups@20261105T160750Z",
+   "source_id": "runner_groups",
+   "title": "CI runner groups: UNKNOWN",
+   "raised_at": "2026-11-05T16:07:50.405539Z",
+   "delivery": "delivered",
+   "channel": "slack_alerts"
+  }
+ ],
+ "red_rule": {
+  "state": "WORKING",
+  "red_rows": 28,
+  "red_with_work_under_way": 0,
+  "violations": []
+ },
+ "chain_findings": [
+  {
+   "code": "start_without_terminal",
+   "subject": "piece 17 node_floor_simple_effect:run_floor_simple_cycle",
+   "correlation_id": "812794f4f9e646d4a3f9ec3f81aadfdf",
+   "detail": "no success or typed failure 900 s after the start"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "0a1f6ecf476a4b158b1688b9e81e38b3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "0d7ed89ac64b4240a86fdf7affdfd9d3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "0edc039a244542e78ddefcfa6a4680b3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "174694e0fc194ae7a1c981aad39bbd12",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "18c66749b5ff48b298aee8718bf9ea94",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "1b7038580b46463f96da16302963f456",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "1df10313bc944ad4a631f1598771ae7e",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "1f3530ed9bf74a87918fa8289384e509",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "2099930e88de4953864ef24eb32eb7d8",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "213a2a00962e428ea8ac304ce7e2d092",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "23c9773a4fb74853a79f329892e2fd5b",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "2b31e1d278b64e8aa8fcf43ed48fa9e7",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "2d5204ed5a2a4f01af1857d66f022f88",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "3bdda384117244d29e8543e24c85e314",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "40f011bf7c3e4d3bbbc04b253f9107d9",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "49894d8188aa40fcb60c1974f5433a8e",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "6843763dc24f4654bee406c59d44fc3c",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "69f827268dc747f596656165fe862b90",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "6c205836ef8843c686104efc6a7cd3d5",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "6f5e849624044141b00d597d50d9481a",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "709515c310c64142b10be3027dd37660",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "8c076d5dabe44a458be95b120015abf3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "900f720b3bd74953833a6ccde00da7e2",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "94bad076882a4634aa412f5f66eb72e3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "955ed55eaead4d91b4c9185967a2cba8",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "9ab62935c6b045aca1dd4cba79ef2a01",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "9c947f0680744b36a9c87675aceae8a8",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "9f3c8916efe04a5988fa32eac12e66f8",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "aa49de931eac4ae4b2bd0e32e1caf1e0",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "adb5609eb9f847ebb773f4155ea30b65",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "af812932cff44d768b6fc3261e21d299",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "b21c536aef4c4268a39dfe8d7ccbd7a6",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "b592efef20124ac090378870eeab1f55",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "bb3a6fded13e41dcbfb6d47e6b06736c",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "c4046851e88c42a3828fb801f4d579f3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "c883634f565c4381a74b4471b6862467",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "cb77b00c2c5f44049a9cb66901d84954",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "d0d3ef635e2345e385e77076ff0123b3",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "d23039157f214275b0295c420ba438e5",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "e326df8698ce473c8272f07cc2c0a8a9",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "ea59cb4ae6724f02a0c23a20d231e966",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "ee6d34175f9444d89a8f46521479b6da",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "f49cdea5d9464dc8adf80196dce6828e",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "f7b13fe218ba4aa29d311fe0903c2645",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  },
+  {
+   "code": "downstream_missing_typed_failure",
+   "subject": "J0 piece 17 to 1",
+   "correlation_id": "fd7323ca23f947cfb0483bf2d6cadda0",
+   "detail": "A failed and B gave no typed failure in 900 s"
+  }
+ ],
+ "details_href": "detail.html",
+ "sources_read": {
+  "floor_record": true,
+  "pull_request_watcher": true,
+  "goal_scope": true,
+  "ledger": true
+ },
+ "alarm_heartbeat_at": "2026-11-06T18:38:12.061188Z",
+ "outside_goal": {
+  "read": true,
+  "open_prs": 680,
+  "merges_in_window": 7,
+  "paused_open": 195,
+  "ruling": "operator goal 2026-11-05 about 12:40Z: landing works for the work we are keeping; in scope means pull requests tied to delegation, the MVP, pilots, the cost estimator or the factory floor, plus the named landing prerequisites; RULING 2026-11-05T12:36:07Z puts the product (the web product) in scope",
+  "text": "Outside the goal and not counted above: 680 open pull requests (195 of them on the paused list) and 7 merges in the window."
+ }
+}

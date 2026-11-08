@@ -1,0 +1,21 @@
+# A fixture of the goal_scope overlay (the shape the landing tick owns): which pull requests the landing goal counts.
+overlay_version: "1.0.0"
+ticket: OMN-19998
+ruling: "fixture goal: landing works for the work we are keeping"
+in_scope_repos:
+- product
+repo_work_kinds:
+- dev-red
+prerequisite_kinds:
+- lab-repair
+in_scope_tickets:
+- OMN-22477
+in_scope_prs:
+- r#1
+- r#3
+- r#9
+prerequisite_prs:
+- r#7
+paused_prs:
+- r#2
+- r#6

@@ -735,16 +735,216 @@ def test_regular_shadow_does_not_resolve_broken_wrapper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = setup_workspace(tmp_path, monkeypatch)
-    wrapper = root / "omnibase_infra/scripts/onex"
-    wrapper.symlink_to(wrapper)
+    # The retirement scan refuses symbolic inputs in a checkout's script
+    # directories before any delegate runs, so the wrapper breaks while the venv
+    # delegate runs: after that scan, before the path-shadow guard.
+    write_venv_delegate(root, 'ln -s onex "$(dirname "$0")/onex"\n')
     shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
     shadow.parent.mkdir(parents=True)
     shadow.write_text("shadow\n")
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert (root / "omnibase_infra/scripts/onex").is_symlink()
     assert result.exit_code == 2
     assert result.surfaces[-1].verdict == "SHADOWED"
     assert "a regular file" in result.surfaces[-1].detail
     assert result.floor_stamped
+
+
+# The failure recorded on a macOS lab host (OMN-22146). The bare name resolved to
+#   /opt/homebrew/bin/onex  (shebang /opt/homebrew/opt/python@3.12/bin/python3.12)
+#   Traceback (most recent call last):
+#     File "/opt/homebrew/bin/onex", line 3, in <module>
+#       from omnibase_core.cli.cli_commands import cli
+#   ModuleNotFoundError: No module named 'omnibase_core'
+# because ~/.local/bin/onex, first on PATH, was a symlink into a volume that is no
+# longer mounted. bash skips a dangling symlink, so the name fell through to that
+# console script.
+DANGLING_TARGET = "/mnt/detached/tools/.venv/bin/onex"
+
+
+def dangling_shadow(root: Path) -> tuple[Path, Path]:
+    wrapper = root / "omnibase_infra/scripts/onex"
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text("#!/usr/bin/env bash\nexit 0\n")
+    wrapper.chmod(0o755)
+    shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
+    shadow.parent.mkdir(parents=True)
+    shadow.symlink_to(DANGLING_TARGET)
+    assert shadow.is_symlink()
+    assert not shadow.exists()
+    return shadow, wrapper
+
+
+def test_dangling_shadow_is_reported_in_check_mode_and_left_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, _wrapper = dangling_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "check")
+    )
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert f"a dangling symlink to {DANGLING_TARGET} (target missing)" in surface.detail
+    assert "moves the dangling link aside and links the wrapper" in surface.detail
+    assert shadow.is_symlink()
+    assert os.readlink(shadow) == DANGLING_TARGET
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
+def test_dangling_shadow_repair_links_the_wrapper_and_keeps_the_old_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, wrapper = dangling_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "MOVED"
+    assert shadow.resolve() == wrapper.resolve()
+    assert os.access(shadow, os.X_OK)
+    moved = list(shadow.parent.glob("onex.shadowed-*"))
+    assert len(moved) == 1
+    assert os.readlink(moved[0]) == DANGLING_TARGET
+    assert str(moved[0]) in surface.detail
+
+
+def test_dangling_shadow_repair_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, wrapper = dangling_shadow(root)
+    first = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    second = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert (
+        next(s for s in first.surfaces if s.surface == "onex-path-shadow").verdict
+        == "MOVED"
+    )
+    again = next(s for s in second.surfaces if s.surface == "onex-path-shadow")
+    assert again.verdict == "ALREADY_AT_TARGET"
+    assert shadow.resolve() == wrapper.resolve()
+    assert len(list(shadow.parent.glob("onex.shadowed-*"))) == 1
+
+
+def test_dangling_shadow_repair_without_a_wrapper_file_moves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, wrapper = dangling_shadow(root)
+    wrapper.unlink()
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "is not a file, so there is nothing to link" in surface.detail
+    assert shadow.is_symlink()
+    assert os.readlink(shadow) == DANGLING_TARGET
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
+def dispatch_link_shadow(root: Path) -> tuple[Path, Path, Path]:
+    """``~/.local/bin/onex`` links the dispatch venv's own console script.
+
+    A live link, so bash does not skip it, but it outranks the canonical wrapper
+    for every non-interactive ``onex`` and is not a ``uv tool`` shim, so the old
+    ``uv tool uninstall`` fix line never applied (observed on a lab host).
+    """
+    wrapper = root / "omnibase_infra/scripts/onex"
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text("#!/usr/bin/env bash\nexit 0\n")
+    wrapper.chmod(0o755)
+    console = root / ".onex-dispatch-venv/bin/onex"
+    console.parent.mkdir(parents=True, exist_ok=True)
+    console.write_text("#!/bin/sh\nexit 0\n")
+    console.chmod(0o755)
+    shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
+    shadow.parent.mkdir(parents=True)
+    shadow.symlink_to(console)
+    assert shadow.exists()
+    return shadow, wrapper, console
+
+
+def test_dispatch_venv_link_is_reported_in_check_mode_with_the_repair_fix_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, _wrapper, console = dispatch_link_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "check")
+    )
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "uv tool uninstall" not in surface.detail
+    assert "moves the dispatch-venv link aside and links the wrapper" in surface.detail
+    assert shadow.resolve() == console.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
+def test_dispatch_venv_link_repair_links_the_wrapper_and_keeps_the_old_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, wrapper, console = dispatch_link_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "MOVED"
+    assert shadow.resolve() == wrapper.resolve()
+    moved = list(shadow.parent.glob("onex.shadowed-*"))
+    assert len(moved) == 1
+    assert moved[0].resolve() == console.resolve()
+    again = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert (
+        next(s for s in again.surfaces if s.surface == "onex-path-shadow").verdict
+        == "ALREADY_AT_TARGET"
+    )
+    assert len(list(shadow.parent.glob("onex.shadowed-*"))) == 1
+
+
+def test_a_symlink_to_some_other_onex_is_still_not_repaired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    _shadow, _wrapper, console = dispatch_link_shadow(root)
+    other = tmp_path / "other-venv/bin/onex"
+    other.parent.mkdir(parents=True)
+    other.write_text("#!/bin/sh\nexit 0\n")
+    other.chmod(0o755)
+    shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
+    shadow.unlink()
+    shadow.symlink_to(other)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert shadow.resolve() == other.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+    shadow.unlink()
+    shadow.symlink_to(console)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "check")
+    )
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "uv tool uninstall" not in surface.detail
+    assert "moves the dispatch-venv link aside and links the wrapper" in surface.detail
+    assert shadow.resolve() == console.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
+def test_dangling_shadow_repair_that_cannot_link_still_fails_naming_the_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    dangling_shadow(root)
+
+    def refuse(self: Path, target: object, target_is_directory: bool = False) -> None:
+        raise PermissionError("read-only directory")
+
+    monkeypatch.setattr(Path, "symlink_to", refuse)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "could not link" in surface.detail
+    assert "read-only directory" in surface.detail
+    assert result.exit_code == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -880,3 +1080,108 @@ def test_an_install_off_the_clone_history_still_fails(
     assert surface_verdict(result, "venv:omnimarket") == "DID_NOT_MOVE"
     assert result.exit_code == 2
     assert result.floor_stamped is False
+
+
+def restoring_delegate(root: Path, proven: str, argv_log: Path) -> None:
+    """A venv delegate that installs the clone head, or the proven commit under --proven."""
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    write_venv_delegate(
+        root,
+        f'printf "%s\\n" "$*" >> "{argv_log}"\n'
+        'if [ "$3" = "--proven" ]; then\n'
+        f'  printf "{proven}\\n" > "{sp}/installed-commit"\n'
+        "else\n"
+        f'  git -C "{root / "omnimarket"}" rev-parse HEAD > "{sp}/installed-commit"\n'
+        "fi\n",
+    )
+
+
+def installed_commit(root: Path) -> str:
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    return (sp / "installed-commit").read_text().strip()
+
+
+def test_a_repair_that_cannot_stamp_puts_the_venv_back_on_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded OMN-19998 case: the venv left on a dev head under an older floor.
+
+    The floor names commit P. The repair installs the clone head, the dispatch premise
+    then fails on a refused clone, so the floor is retained at P. Nothing may leave the
+    venv on the unproven head, because the wrapper reads that as below the floor and
+    refuses every evidence command until some later run stamps.
+    """
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    floor = root / ".onex-workspace-floor.json"
+    floor.write_text(json.dumps({"omnimarket_commit": proven}) + "\n")
+    (root / "omnimarket/.unhealthy").touch()
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 2
+    assert result.floor_stamped is False
+    assert json.loads(floor.read_text()) == {"omnimarket_commit": proven}
+    runs = argv_log.read_text().splitlines()
+    assert len(runs) == 2
+    assert "--proven" not in runs[0]
+    assert runs[1].endswith("--proven")
+    assert installed_commit(root) == proven
+    assert any("restoring omnimarket" in line for line in result.diagnostics)
+
+
+def test_a_repair_that_stamps_is_not_restored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    (root / ".onex-workspace-floor.json").write_text(
+        json.dumps({"omnimarket_commit": proven}) + "\n"
+    )
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 0
+    assert result.floor_stamped is True
+    assert len(argv_log.read_text().splitlines()) == 1
+    assert installed_commit(root) == run_git(root / "omnimarket", "rev-parse", "HEAD")
+
+
+def test_a_failed_repair_with_no_floor_restores_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    (root / "omnimarket/.unhealthy").touch()
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, installed_commit(root), argv_log)
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert result.exit_code == 2
+    assert len(argv_log.read_text().splitlines()) == 1
+
+
+def test_check_mode_never_restores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    proven = installed_commit(root)
+    (root / ".onex-workspace-floor.json").write_text(
+        json.dumps({"omnimarket_commit": "2" * 40}) + "\n"
+    )
+    argv_log = tmp_path / "delegate.argv"
+    restoring_delegate(root, proven, argv_log)
+
+    handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root, "check"))
+
+    assert not argv_log.exists()

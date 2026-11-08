@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -143,6 +144,7 @@ from omnimarket.pricing import (
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -706,6 +708,20 @@ def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
     }
 
 
+def _attempt_key(raw: dict[str, object]) -> dict[str, Any]:
+    """OMN-22474: the minted tenant key this rung ran on, or none.
+
+    A house-key name or any other ref without the minted tenant-key shape is
+    never carried, so only a customer key's last_used_at can move.
+    """
+    ref = raw.get("secret_ref")
+    return {
+        "secret_ref": ref
+        if isinstance(ref, str) and is_tenant_credential_ref(ref)
+        else None
+    }
+
+
 def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
     """The OMN-20168 lineage and placement fields, typed or dropped."""
     fields: dict[str, Any] = {}
@@ -850,6 +866,7 @@ def _attempt_records(
                     finish_reason=_as_finish_reason(raw.get("finish_reason")),
                     **truncated_fields,
                     **_provider_facts(raw),
+                    **_attempt_key(raw),
                     **_lineage_fields(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -882,6 +899,7 @@ def _attempt_records(
                 ),
                 error_message=str(raw.get("error_message", "")),
                 **_provider_facts(raw),
+                **_attempt_key(raw),
                 **_lineage_fields(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
@@ -999,6 +1017,25 @@ def _queue_wait_ms(
         return None
     delta_ms = (picked_up_at - request.published_at).total_seconds() * 1000.0
     return max(0, int(delta_ms))
+
+
+QUEUE_BUDGET_EXHAUSTED = "queue_budget_exhausted"
+"""Leading token of the terminal for a run whose queue wait spent its budget."""
+
+
+def _remaining_execution_ms(
+    execution_timeout_seconds: int, queue_wait_ms: int | None
+) -> int:
+    """Return the execution window left once queue wait is deducted (OMN-22223).
+
+    The caller times ``execution + margin`` from PUBLISH
+    (omnibase_infra ``_terminal_wait_seconds``), so the runtime must time the
+    same sum from publish: milliseconds spent in the queue are milliseconds
+    the run no longer has. ``None`` (an unstamped request) deducts nothing --
+    an unmeasured wait is not a zero wait. Zero or less means the queue spent
+    the whole execution window.
+    """
+    return execution_timeout_seconds * 1000 - (queue_wait_ms or 0)
 
 
 def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
@@ -1649,6 +1686,43 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
+        # OMN-22223 AC2: the caller waits execution + the declared margin. A
+        # grace larger than that margin would let this handler wait past the
+        # caller and record a terminal nobody reads, so it is clamped to it.
+        wait_allowance_seconds = min(
+            wait_allowance_seconds, execution_budget.terminal_delivery_margin_seconds
+        )
+        # OMN-22223 AC1: the budget is measured from publish, like the caller's.
+        remaining_execution_ms = _remaining_execution_ms(
+            execution_timeout_seconds, queue_wait_ms
+        )
+        if remaining_execution_ms <= 0:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    f"{QUEUE_BUDGET_EXHAUSTED}: "
+                    f"queue_wait_ms={queue_wait_ms}; "
+                    f"execution_timeout_seconds={execution_timeout_seconds}; "
+                    f"task_type={request.task_type}; the request spent its "
+                    "execution window waiting to be picked up, so no rung was "
+                    "run; send it again (OMN-22223)"
+                ),
+                # Nothing was dispatched, which is what this cause (and a zero
+                # attempt count) already say; the leading token names why.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                attempts_count=0,
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=0,
+                budget_evidence=budget_evidence,
+                budget_source=budget_source,
+            )
+        dispatch_execution_timeout_seconds = math.ceil(remaining_execution_ms / 1000)
         # OMN-20557 / OMN-21752: the session model rides a context variable,
         # not a dispatch() keyword -- see session_model.py.
         session_token = bind_session_model(request, self._dispatch_port)
@@ -1675,7 +1749,7 @@ class HandlerDelegateSkill:
                     source_session_id=request.session_id
                     or request.metadata.get("session_id"),
                     wait=request.wait,
-                    execution_timeout_seconds=execution_timeout_seconds,
+                    execution_timeout_seconds=dispatch_execution_timeout_seconds,
                     terminal_delivery_margin_seconds=(
                         execution_budget.terminal_delivery_margin_seconds
                     ),
@@ -1721,7 +1795,7 @@ class HandlerDelegateSkill:
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
-                timeout=float(execution_timeout_seconds + wait_allowance_seconds),
+                timeout=remaining_execution_ms / 1000.0 + wait_allowance_seconds,
             )
         except asyncio.CancelledError:
             progress.finalize_run_steps(
@@ -1776,7 +1850,7 @@ class HandlerDelegateSkill:
                 if queue_wait_ms is None
                 else (
                     f"; measured queue wait before pickup: {queue_wait_ms} ms "
-                    "(the budget is measured from pickup, not from publish)"
+                    "(deducted from the budget, which is measured from publish)"
                 )
             )
             # OMN-17427: the terminal is built from what the dispatch already

@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from collections.abc import Callable
 from typing import Any
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.adapters.adapter_gate_accept_ports import (
+    EndpointReceiptVerifier,
     GithubReviewReader,
-    HttpReceiptVerifier,
     LocalStepFiles,
 )
 from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept import (
@@ -37,6 +39,7 @@ from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_acc
     ModelGateAcceptPolicy,
     ModelGateAcceptRequest,
     ModelGateAcceptResult,
+    ModelReceiptGateRequest,
     ModelReceiptVerifyRequest,
     ModelVoterStatus,
 )
@@ -64,6 +67,8 @@ class HandlerGateAccept:
         reviews: ProtocolReviewReader | None = None,
         verifier: ProtocolReceiptVerifier | None = None,
         files: ProtocolStepFiles | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         """Every port and the policy are injected; none is read at construction.
 
@@ -73,9 +78,11 @@ class HandlerGateAccept:
         fails closed when its environment is absent. A missing overlay refuses
         the request, named, rather than guessing an identity.
         """
+        self._monotonic = monotonic
+        self._sleep = sleep
         self._given_policy = policy
         self._reviews = reviews if reviews is not None else GithubReviewReader()
-        self._verifier = verifier if verifier is not None else HttpReceiptVerifier()
+        self._verifier = verifier if verifier is not None else EndpointReceiptVerifier()
         self._files = files if files is not None else LocalStepFiles()
         self._bound: (
             tuple[
@@ -124,6 +131,41 @@ class HandlerGateAccept:
 
     def handle(self, request: ModelGateAcceptRequest) -> ModelGateAcceptResult:
         result = self._decide(request)
+        self._files.append_text(
+            request.step_output_path,
+            f"decision={result.decision.value}\n"
+            f"reason={result.reason.value}\n"
+            f"receipt_id={result.receipt_id}\n",
+        )
+        self._files.append_text(request.step_summary_path, result.summary_line + "\n")
+        return result
+
+    def handle_receipt(self, request: ModelReceiptGateRequest) -> ModelGateAcceptResult:
+        """Read only the lab's receipt; the existing verifier owns the quorum and signature.
+
+        Poll only while the exact head has no receipt. A refused receipt or unreadable
+        source is red immediately. The bounded wait never fabricates a lost-voter cause.
+        """
+        try:
+            self._bind()
+        except Exception:
+            result = self._result(
+                EnumGateAcceptDecision.REFUSE, EnumGateAcceptReason.POLICY_UNAVAILABLE
+            )
+        else:
+            deadline = self._monotonic() + request.wait_seconds
+            while True:
+                result = self._receipts(request, [], exact_head_only=True)
+                if result.reason is not EnumGateAcceptReason.NO_RECEIPT_REVIEW:
+                    break
+                remaining = deadline - self._monotonic()
+                if remaining <= 0:
+                    result = self._result(
+                        EnumGateAcceptDecision.REFUSE,
+                        EnumGateAcceptReason.RECEIPT_TIMEOUT,
+                    )
+                    break
+                self._sleep(min(request.poll_seconds, remaining))
         self._files.append_text(
             request.step_output_path,
             f"decision={result.decision.value}\n"
@@ -232,7 +274,11 @@ class HandlerGateAccept:
     # -- the receipts --------------------------------------------------------
 
     def _receipts(
-        self, request: ModelGateAcceptRequest, voters: list[ModelVoterStatus]
+        self,
+        request: ModelGateAcceptRequest | ModelReceiptGateRequest,
+        voters: list[ModelVoterStatus],
+        *,
+        exact_head_only: bool = False,
     ) -> ModelGateAcceptResult:
         try:
             reviews = self._reviews.reviews(request.repository, request.pull_request)
@@ -248,6 +294,11 @@ class HandlerGateAccept:
         malformed = 0
         for review in reviews:
             if review.author_login.casefold() != publisher:
+                continue
+            if exact_head_only and (
+                review.commit_id != request.head_sha
+                or review.state.upper() == "DISMISSED"
+            ):
                 continue
             for block in fence.finditer(review.body):
                 try:

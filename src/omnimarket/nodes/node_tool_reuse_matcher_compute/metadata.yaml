@@ -11,7 +11,6 @@ capabilities:
   requires_network: false
 dependencies:
   - "omnibase_core>=0.40.0"
-  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "tool-reuse", "matcher", "deterministic", "node-generation"]

@@ -68,6 +68,75 @@ _GENERIC_CLASSES = frozenset({"refusal", "process", "tooling", "ci", "other"})
 # Rows with no class= are counted and costed, but they are not one class, so
 # they are never flagged as a recurring class.
 UNCLASSIFIED = "unclassified"
+
+_GROUP_REFERENCE = re.compile(r"\{(\d+)\}")
+
+
+@dataclass(frozen=True)
+class ClassRule:
+    """A caller-supplied rule that names the class of a FRICTION row written with no ``class=`` cell (OMN-22563).
+
+    ``name`` may carry ``{1}``-style references to the groups of ``pattern``, so one rule names a family
+    (``lab-alarm:{1}`` gives ``lab-alarm:consumer_group_lag``). ``owner`` is who ends the class. The pattern is
+    searched in the row's lane and its whole text; the first rule that matches names the class.
+    """
+
+    name: str
+    owner: str
+    pattern: re.Pattern[str]
+
+    def classify(self, row: LedgerRow) -> tuple[str, str] | None:
+        found = self.pattern.search(f"{row.first('lane')} {row.text}")
+        if found is None:
+            return None
+        name = _normalise_class(
+            _GROUP_REFERENCE.sub(
+                lambda ref: found.group(int(ref.group(1))) or "", self.name
+            )
+        )
+        return (name, self.owner) if name else None
+
+
+def parse_class_rules(values: Iterable[tuple[str, str, str]]) -> tuple[ClassRule, ...]:
+    """Compile ``(name, owner, pattern)`` triples; a rule with an empty field or a pattern that does not compile is refused."""
+    rules: list[ClassRule] = []
+    for name, owner, pattern in values:
+        if not name.strip() or not owner.strip() or not pattern.strip():
+            raise ValueError(
+                f"class rule needs a name, an owner and a pattern: {name!r}"
+            )
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            raise ValueError(
+                f"class rule {name!r}: pattern does not compile: {exc}"
+            ) from exc
+        for ref in _GROUP_REFERENCE.finditer(name):
+            if not 1 <= int(ref.group(1)) <= compiled.groups:
+                raise ValueError(
+                    f"class rule {name!r}: {ref.group(0)} names a group its pattern does not have"
+                )
+        rules.append(ClassRule(name.strip(), owner.strip(), compiled))
+    return tuple(rules)
+
+
+def parse_class_owners(values: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Compile ``(class, owner)`` pairs into a map from normalised class name to who ends the class (OMN-22563).
+
+    This is for a class a writer already names (a row with a class cell) and that no ticket or lane owns, such as
+    ``tick-liveness``; a class two pairs name twice, or a pair with an empty field, is refused.
+    """
+    owners: dict[str, str] = {}
+    for name, owner in values:
+        key = _normalise_class(name)
+        if not key or not owner.strip():
+            raise ValueError(f"class owner needs a class and an owner: {name!r}")
+        if key in owners:
+            raise ValueError(f"class owner names {key!r} twice")
+        owners[key] = owner.strip()
+    return owners
+
+
 _SIGNAL_NAMES = (
     "correction-row",
     "lane-refused-or-halted",
@@ -141,6 +210,10 @@ class FrictionObservation:
     umbrella_tickets: frozenset[str]
     related: frozenset[str]
     guards: frozenset[str]
+    ruled_by: str = (
+        ""  # the rule that named this row's class when it carried no class= cell
+    )
+    owner: str = ""  # who ends the class, from that rule
 
 
 @dataclass
@@ -161,6 +234,8 @@ class ClassAccumulator:
     umbrella_tickets: set[str] = field(default_factory=set)
     related: set[str] = field(default_factory=set)
     guards: set[str] = field(default_factory=set)
+    owners: set[str] = field(default_factory=set)
+    rows_ruled: int = 0
     row_refs: list[dict[str, object]] = field(default_factory=list)
 
 
@@ -358,9 +433,19 @@ def _parse_aliases(values: Sequence[str]) -> dict[str, str]:
 
 
 def _observation(
-    row: LedgerRow, aliases: dict[str, str], umbrella_tickets: frozenset[str]
+    row: LedgerRow,
+    aliases: dict[str, str],
+    umbrella_tickets: frozenset[str],
+    rules: Sequence[ClassRule] = (),
 ) -> FrictionObservation:
     raw_value = row.first("class").strip()
+    ruled_by, owner = "", ""
+    if not raw_value:
+        for rule in rules:
+            named = rule.classify(row)
+            if named is not None:
+                raw_value, owner, ruled_by = named[0], named[1], rule.name
+                break
     raw_class = raw_value or "unclassified"
     parenthetical = _TRAILING_PARENTHETICAL.search(raw_class)
     restatement = bool(
@@ -404,6 +489,8 @@ def _observation(
         umbrella_tickets=frozenset(umbrellas),
         related=frozenset(related),
         guards=frozenset({guard} if guard and guard.lower() != "none" else set()),
+        ruled_by=ruled_by,
+        owner=owner,
     )
 
 
@@ -459,7 +546,16 @@ def _row_ref(observation: FrictionObservation) -> dict[str, object]:
 def _class_json(accumulator: ClassAccumulator) -> dict[str, object]:
     assert accumulator.first_seen is not None
     assert accumulator.last_seen is not None
+    ruled: dict[str, object] = (
+        {
+            "owner": "; ".join(sorted(accumulator.owners)),
+            "rows_ruled": accumulator.rows_ruled,
+        }
+        if accumulator.owners
+        else {}
+    )
     return {
+        **ruled,
         "class": accumulator.name,
         "occurrences": accumulator.occurrences,
         "rows": accumulator.rows,
@@ -702,10 +798,12 @@ def build_report(
     duplicates_dropped: int,
     jsonl_provided: bool,
     jsonl_malformed_lines: int,
+    class_rules: Sequence[ClassRule] = (),
+    class_owners: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the stable JSON-ready report from deduplicated in-window rows."""
     observations = [
-        _observation(row, aliases, umbrella_tickets)
+        _observation(row, aliases, umbrella_tickets, class_rules)
         for row in rows
         if _is_friction(row)
     ]
@@ -727,6 +825,11 @@ def build_report(
         accumulator.umbrella_tickets.update(observation.umbrella_tickets)
         accumulator.related.update(observation.related)
         accumulator.guards.update(observation.guards)
+        if observation.ruled_by:
+            accumulator.owners.add(observation.owner)
+            accumulator.rows_ruled += 1
+        if class_owners and name in class_owners:
+            accumulator.owners.add(class_owners[name])
         accumulator.row_refs.append(_row_ref(observation))
         rows_with_class += int(bool(observation.row.first("class")))
         if observation.restatement:
@@ -816,6 +919,11 @@ def build_report(
             "unparseable_cost_rows": len(unparseable),
             "rows_with_class": rows_with_class,
             "rows_without_class": len(observations) - rows_with_class,
+            **(
+                {"rows_classified_by_rule": sum(1 for o in observations if o.ruled_by)}
+                if class_rules
+                else {}
+            ),
         },
         "classes": classes,
         "flags": {

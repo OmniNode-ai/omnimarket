@@ -14,6 +14,11 @@ node_version: "0.1.0"
 description: >
   Decides cloud eligibility and account placement per claude.ai login, maintains local account state,
   and renders or parses cloud session text. Callers perform network probes.
+# floor_snapshot reads only the committed v2 state on the executing host. It returns
+# typed floor_accounts, never login probes, credentials or the raw state. No writes.
+floor_source:
+  placement_dir_env: LANDING_PLACEMENT_DIR
+  placement_dir_fallback: .local/state/omni/landing/placement
 # DATA (OMN-21373, operator 2026-10-29T17:47:11Z "use cloud to supplement local capacity"): the order the
 # runner tries places for --placement auto, read by the route action. A lab host that admits the lane comes
 # first; a cloud session is the overflow when none does. The runner holds no order of its own.
@@ -48,6 +53,12 @@ overlay:
 # needs_probe (stale hosts to observe again). start_outcome: input account, run_id, transport, began (the start call
 # began), text (its raw answer), untried (the transports left); output verdict started | try-next | refused |
 # start-unknown | failed, next_transport, sentence. Usage state lives in cloud-accounts-v2.json keyed by account label.
+# REVIEW-ONLY (OMN-22345): a brief with `Lane kind: review-only` and `Review head: <sha>` runs as a cloud session that pushes
+# nothing. render_prompt asks for no push and no pull request; render_session_script (input brief) also reads an ended
+# session's final message and review file from the sessions API events (state keys review_text, review_file_text or
+# review_unread, model, review_only); render_result (input brief) returns the close: status and outcome, done/done with
+# the typed unsigned review on parsed, or cloud-review-unparsed/failed with parsed {refused, detail}; any other lane
+# closes done/done with a PR and cloud-no-pr/blocked without one.
 dependencies:
   - name: omnimarket.nodes.node_llm_delegation_call_effect
     dependency_type: internal
@@ -103,6 +114,8 @@ metadata:
     - "cloud-session"
     - "OMN-21373"
     - "OMN-22243"
+    - "OMN-22345"
   related_tickets:
     - "OMN-21373"
     - "OMN-22243"
+    - "OMN-22345"

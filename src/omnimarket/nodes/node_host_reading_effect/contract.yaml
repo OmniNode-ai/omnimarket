@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Reading Effect (OMN-22478, B0 hourly read-only probes)
+#
+# Reads state that exists only on a host (its ledger outbox, its old ledger names), computes
+# WORKING, NOT_WORKING or UNKNOWN per probe and appends one row per probe through the configured
+# append command. A row is keyed per run because host state has no closed window. It writes host
+# reading rows and nothing else: a reading is never a gate, a stop or an admission.
+name: node_host_reading_effect
+contract_name: node_host_reading_effect
+node_name: node_host_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the probes the overlay declares for this host: ledger-outbox reads queued and refused rows
+  beside the host's ledger, ledger-old-names reads that the old ledger names are links to the
+  configured ledger, host-canary (piece 2, hosts and capacity) sends one canary lane to every host
+  the lab host table pools through the route lanes take and reads its typed ending and free disk,
+  join-j1 (join J1, the code graph to hosts and capacity) reads one graph run's used-or-unused
+  verdict for the nodes host discovery and placement depend on and publishes a typed result under
+  the graph run's correlation id: both pieces' chains on success, the graph run's failure and the
+  host stage's typed upstream_ failure with no start when a verdict is missing (OMN-22904).
+  ledger-durability appends one probe row through the bus and reads it back from the durable
+  store (the read node over the database projection) by a deadline.
+  A source that cannot be read gives UNKNOWN; an append that does not land and a bad command are
+  typed failures.
+  The join-j2 verb (OMN-22907) runs the J2 join of the rebuild plan for each pooled host on the bus: a
+  canary reads the host's advertisement, placement consumes it, one correlated result returns, and
+  both chains are emitted under one correlation id in the floor's emission contract.
+
+handler:
+  module: omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading
+  class: HandlerHostReading
+  input_model: omnimarket.models.model_host_reading.ModelHostReadingCommand
+
+# HandlerHostReading takes the overlay, host, files, appender, clock and environ as constructor
+# parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelHostReadingCommand
+  module: omnimarket.models.model_host_reading
+  description: Which probes, and whether to write.
+output_model:
+  name: ModelHostReadingResult
+  module: omnimarket.models.model_host_reading
+  description: Per probe verdict, outcome, row key and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.host-reading-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  host_reading_requested: onex.cmd.omnimarket.host-reading-requested.v1
+  host_reading_written: onex.evt.omnimarket.host-reading-written.v1
+  host_reading_failed: onex.evt.omnimarket.host-reading-failed.v1
+  host_reading_run_completed: onex.evt.omnimarket.host-reading-run-completed.v1
+  host_reading_run_failed: onex.evt.omnimarket.host-reading-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-reading-written.v1
+  - onex.evt.omnimarket.host-reading-failed.v1
+  - onex.evt.omnimarket.host-reading-run-completed.v1
+  - onex.evt.omnimarket.host-reading-run-failed.v1
+
+# The node's own hourly schedule, installed by `schedule install --host <name>` as the scheduler
+# the overlay names for that host, removed by `schedule uninstall`.
+schedule:
+  unit_name: onex-host-reading-hourly
+  launchd_label: ai.omninode.host-reading-hourly
+  state_directory: .onex_state/host-reading
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:25:00"
+    launchd_minute: 25
+    randomized_delay: 30s
+    persistent: true
+    description: hourly, twenty-five minutes past
+
+overlay:
+  node: node_host_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

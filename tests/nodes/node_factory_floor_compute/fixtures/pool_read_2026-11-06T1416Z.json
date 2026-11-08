@@ -1,0 +1,9 @@
+{
+ "recorded_at": "2026-11-06T14:26:42Z",
+ "source": "hosts-probe/latest.json of the pool read, cells the Machines record reads",
+ "readings": [
+  "h101:cores=12,load1=3.9,busy=3.2,free_gb=25.9,pressure=1,memfree=95%,memtotal=32.0G,disk_workdir=123.1G/926.4G/-,disk_runs=123.1G/926.4G/-,hookparse=unknown,placed=0,cap=12,slots=0,ADMISSION-REFUSED(HOOK-PARSE-UNKNOWN: the hook parse check on h101 could not run (marketplace-unreadable:no-directory-source-for-onex@omninode-tools-dev); not placed until it reads ok)",
+  "h201:cores=32,load1=29.8,busy=9.8,free_gb=55.4,swap=29%,mempsi=0.76,disk_workdir=680.0G/1831.7G/51%,disk_runs=680.0G/1831.7G/51%,hookparse=ok,placed=0,cap=3,slots=3",
+  "h053:cores=56,load1=15.1,busy=15.4,free_gb=86.3,swap=6%,mempsi=0.00,disk_workdir=173.9G/545.9G/50%,disk_runs=39.1G/64.0G/65%,hookparse=ok,placed=0,cap=16,slots=16"
+ ]
+}

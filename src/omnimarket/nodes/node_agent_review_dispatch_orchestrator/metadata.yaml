@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_dispatch_orchestrator
+version: "1.0.0"
+description: Requests exact-head reviews from PR observations over the bus and publishes signed lab review receipts
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_agent_review_dispatch_orchestrator: omnimarket.nodes.node_agent_review_dispatch_orchestrator
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: effectful
+dependencies:
+  - omnibase_core
+  - omnibase_infra
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [orchestrator, review, receipt, lab]
+node_role: orchestrator
+pack: "review"
+display_name: "Agent Review Dispatch Orchestrator"

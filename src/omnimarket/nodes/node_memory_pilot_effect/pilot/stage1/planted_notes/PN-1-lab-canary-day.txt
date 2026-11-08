@@ -1,0 +1,3 @@
+# Planted note PN-1 (synthetic test fixture)
+
+Session note dated 2026-11-02. The nightly lab canary was moved from the Thursday slot to the Tuesday slot. The platform role found that Thursday overlapped the weekly firmware window on the pool hosts, so every other canary run was cut short. The move is recorded as decision PL-4471. The canary itself, its probes and its timeout were not changed.

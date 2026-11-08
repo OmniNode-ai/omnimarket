@@ -26,6 +26,9 @@ evidence_requirements:
     description: "AC1: recorded controller cause keys and members agree with bus triage."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_key_parity.py -q -p no:randomly"
   - kind: "tests"
+    description: "AC1: one check with two different first annotations gets two equal cause keys on the bus path and the controller."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_key_parity.py::test_ac1_one_check_two_annotations_gets_two_equal_keys_where_check_level_collides -q -p no:randomly"
+  - kind: "tests"
     description: "AC2: annotation selection, head binding, fallback and clustering behavior."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_signature.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -q -p no:randomly"
 emergency_bypass:
@@ -49,3 +52,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_signature.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20746-ac1-one-check-two-annotation-replay"
+    description: "AC1: replay one tick's red set (one failing check, two different first annotations) through the controller and the bus path; both give the same two cause keys."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_key_parity.py::test_ac1_one_check_two_annotations_gets_two_equal_keys_where_check_level_collides -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

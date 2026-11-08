@@ -115,7 +115,7 @@ def test_cursor_baseline_entry_that_now_passes_is_a_warning_not_a_failure() -> N
     ]
 
 
-@pytest.mark.parametrize("rule", ["access", "dlq", "cursor"])
+@pytest.mark.parametrize("rule", ["access", "dlq", "cursor", "typed-entry"])
 def test_a_full_tree_run_that_scanned_nothing_is_an_error_never_a_pass(
     rule: str, tmp_path: Path
 ) -> None:

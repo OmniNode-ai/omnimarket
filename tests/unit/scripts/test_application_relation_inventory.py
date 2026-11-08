@@ -634,7 +634,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for the delegation_budget_readings projection relation = 109.
     # +1 for OMN-19991's local_alerts, declared and created in the same PR = 110.
     # +1 for OMN-19986's local_identity, declared and created in the same PR = 111.
-    assert census["source_created_tables"] == 111
+    # +1 for OMN-22020's view_seam_readings projection relation = 112.
+    assert census["source_created_tables"] == 112
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -812,7 +813,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for the delegation_budget_readings projection relation = 119.
     # +1 for OMN-19991's local_alerts (same PR as its CREATE) = 120.
     # +1 for OMN-19986's local_identity (same PR as its CREATE) = 121.
-    assert census["source_declared_tables"] == 121
+    # +1 for OMN-22020's view_seam_readings (same PR as its CREATE) = 122.
+    assert census["source_declared_tables"] == 122
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -953,3 +955,19 @@ def test_internal_tenant_column_removal_has_dependency_evidence(name: str) -> No
     assert evidence["runtime_collision_scan"] == (
         "blocked_live_database_access_not_authorized"
     )
+
+
+def test_context_audit_events_sequence_is_declared_exactly_once() -> None:
+    manifest = yaml.safe_load(
+        (REPO_ROOT / "scripts" / "application-relation-ownership.yaml").read_text()
+    )
+    name = "context_audit_events_id_seq"
+    matches = [row for row in manifest["database_objects"] if row["name"] == name]
+    assert len(matches) == 1, f"expected exactly one {name} object, got {matches}"
+    row = matches[0]
+    assert row["kind"] == "sequence"
+    assert row["database_ref"] == "application"
+    assert row["schema"] == "public"
+    assert row["domain"] == "TENANT"
+    assert row["owner_declaration"] == "service:omnimarket_projection_migration_runner"
+    assert row["writers"] == []

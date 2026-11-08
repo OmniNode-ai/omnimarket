@@ -31,6 +31,10 @@ handler_routing:
     handler:
       name: HandlerHostCapability
       module: omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability
+  - operation: check_lane_toolchain
+    handler:
+      name: HandlerLaneToolchain
+      module: omnimarket.nodes.node_host_capability_compute.handlers.handler_lane_toolchain
   - operation: place_pr_create
     handler:
       name: HandlerPrCreatePlacement
@@ -43,7 +47,7 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create), or with declared lane hosts to judge which lack the catalog path or lab env file the catalog find and ledger parity readers need (check_lane_reader_inputs).
+  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create), or with declared lane hosts to judge which lack the catalog path or lab env file the catalog find and ledger parity readers need (check_lane_reader_inputs), or with a host's measured probes of its declared lane toolchain (onex entry point, pyright, node, pnpm, make, jq, python) to name each missing or broken tool (check_lane_toolchain).
 descriptor:
   node_archetype: compute
   purity: pure

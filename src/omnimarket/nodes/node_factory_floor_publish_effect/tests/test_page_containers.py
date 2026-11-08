@@ -31,7 +31,7 @@ HARNESS = textwrap.dedent(
       appendChild(c) { this.children.push(c); }, focus() {}});
     globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {},
       querySelectorAll: () => [], createElement: () => mk("created")};
-    globalThis.window = {addEventListener() {}};
+    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false}), scrollTo() {}, scrollY: 0};
     globalThis.location = {hash: "", search: ""};
     globalThis.history = {replaceState() {}};
     globalThis.localStorage = {getItem: () => null, setItem() {}};
@@ -143,8 +143,14 @@ def _record(
         "name": "First plan",
         "plan_path": "beta/plans/one-plan.md",
         "source": "manifest",
-        "status_pill": "building",
-        "percent_built": 8,
+        "condition": "building",
+        "progress": {
+            "state": "known",
+            "completed": 8,
+            "total": 100,
+            "percent": 8.0,
+            "note": "",
+        },
         "andon": {"flag": False, "reason": "", "causes": []},
         "stations": [
             {
@@ -201,9 +207,35 @@ def test_containers_floor_page_draws_running_of_declared_per_lane_class() -> Non
 
 
 def test_containers_dashboard_card_draws_the_same_figures() -> None:
-    dash = _draw("index.html", _record(CONTAINERS))["dash"]
+    dash = _draw("detail.html", _record(CONTAINERS))["dash"]
     for drawn in ("dev 19 of 19", "stability 11 of 11", "collaborator 6 of 6"):
         assert drawn in dash
+
+
+TARGETED = {
+    "state": "read",
+    "lanes": [
+        _container("dev", observed=19, budget=19, target=1),
+        _container("stability", observed=11, budget=11, target=1),
+        _container("collaborator", observed=1, budget=6, target=1),
+    ],
+}
+
+
+def test_containers_a_lane_at_its_budget_is_drawn_against_its_target() -> None:
+    """The dev lane's 19 of 19 is the defect the operator's ruling names: the page draws the distance to the target."""
+    for page, key in (("floor/index.html", "lines"), ("detail.html", "dash")):
+        drawn = _draw(page, _record(TARGETED))[key]
+        assert "dev 19 of 19 allowed, target 1, 18 still to remove" in drawn
+        assert "stability 11 of 11 allowed, target 1, 10 still to remove" in drawn
+        assert "collaborator 1 of 6 allowed, target 1" in drawn
+        assert "collaborator 1 of 6 allowed, target 1, " not in drawn
+
+
+def test_containers_a_lane_with_no_declared_target_is_drawn_as_before() -> None:
+    drawn = _draw("detail.html", _record(CONTAINERS))["dash"]
+    assert "dev 19 of 19" in drawn
+    assert "target" not in drawn.split("Application containers")[1].split("</p>")[0]
 
 
 def test_containers_a_record_with_none_draws_no_row() -> None:
@@ -212,14 +244,14 @@ def test_containers_a_record_with_none_draws_no_row() -> None:
         assert (
             "Application containers" not in _draw("floor/index.html", record)["lines"]
         )
-        assert "Application containers" not in _draw("index.html", record)["dash"]
+        assert "Application containers" not in _draw("detail.html", record)["dash"]
     explicit_null = _record()
     explicit_null["lines"][0]["application_containers"] = None
     assert (
         "Application containers"
         not in _draw("floor/index.html", explicit_null)["lines"]
     )
-    assert "Application containers" not in _draw("index.html", explicit_null)["dash"]
+    assert "Application containers" not in _draw("detail.html", explicit_null)["dash"]
 
 
 def test_containers_an_unread_host_is_drawn_unread_and_an_off_budget_lane_is_marked() -> (
@@ -248,7 +280,7 @@ def test_containers_every_character_of_the_record_is_escaped() -> None:
         "state": "read",
         "lanes": [_container("<img src=x>", detail="<script>1</script>")],
     }
-    for page, key in (("floor/index.html", "lines"), ("index.html", "dash")):
+    for page, key in (("floor/index.html", "lines"), ("detail.html", "dash")):
         drawn = _draw(page, _record(hostile))[key]
         assert "<img src=x>" not in drawn
         assert "<script>1</script>" not in drawn
@@ -276,9 +308,9 @@ def test_containers_unplaced_lanes_are_counted_by_cause_with_their_names() -> No
 
 
 def test_containers_dashboard_unplaced_summary_states_the_lanes_it_counts() -> None:
-    dash = _draw("index.html", _record(lanes=_unplaced()))["dash"]
+    dash = _draw("detail.html", _record(lanes=_unplaced()))["dash"]
     assert (
-        "3 live lanes name no machine the floor draws: 2 carry no host cell; "
+        "3 live workers name no machine the floor draws: 2 carry no host cell; "
         "1 name a host the floor does not draw (h201-dev)"
     ) in dash
     assert "landing-cause-L1, dispatcher-1" in dash
@@ -287,6 +319,6 @@ def test_containers_dashboard_unplaced_summary_states_the_lanes_it_counts() -> N
 def test_containers_a_record_without_causes_says_so_and_does_not_invent_one() -> None:
     old = _lane("old-record-lane", host="", placement="unplaced")
     del old["placement_cause"], old["named_host"]
-    dash = _draw("index.html", _record(lanes=(old,)))["dash"]
+    dash = _draw("detail.html", _record(lanes=(old,)))["dash"]
     assert "written before causes were recorded" in dash
     assert copy.deepcopy(old)["lane"] == "old-record-lane"
