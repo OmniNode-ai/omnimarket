@@ -44,3 +44,11 @@ dod_evidence:
   - check_type: command
     check_value: curl -s "$FLOOR_SIMPLE_JSON_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)['pieces'][3]['joins'][0]; assert j['id']=='J4' and j['state']=='passed' and j['golden_age_s'] is not None, j['state']"
     cwd: .
+- id: dod-omn23085-integration-proof
+  description: The lab run at the pushed head, the J4 unit installed on h053 from the branch and run once against the real dev store, with the leaking-consumer failing control, is recorded in the pull request body; the local Done gate re-runs the J4 floor-row and schedule tests on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23085 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4_floor_rows.py tests/nodes/node_secret_reading_effect/test_secret_reading_schedule.py -q --no-cov
+    cwd: .
