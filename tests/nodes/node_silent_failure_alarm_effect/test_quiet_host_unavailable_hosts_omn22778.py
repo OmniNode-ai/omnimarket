@@ -12,6 +12,7 @@ table and not from the fixture. Host names here are synthetic; the real table is
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,11 @@ from tests.nodes.node_silent_failure_alarm_compute.test_golden_chain_silent_fail
 from tests.nodes.node_silent_failure_alarm_effect.test_host_table_aliases_omn22755 import (
     NAMES,
     _table,
+)
+from tests.nodes.node_silent_failure_alarm_effect.test_quiet_host_dedupe_omn22777 import (
+    _events,
+    _ledger,
+    _stamp,
 )
 
 pytestmark = pytest.mark.unit
@@ -163,3 +169,74 @@ def test_options_that_do_not_ask_skip_no_host_and_read_no_table_control(
     ).handle(ModelSilentFailureAlarmRequest(now=HOST_NOW))
     assert not [w for w in result.warnings if "lab host table" in w]
     assert any("class=quiet-host" in row and "h105" in row for row in result.rows)
+
+
+# The recorded h051 shape of 2026-11-08: three lanes placed before a planned shutdown, their closing rows
+# (ssh timed out) landing after the host's last hook event. The 15:36Z and 17:47Z quiet-host rows read these
+# as lanes that ran on the host and sent nothing.
+CLAIM = (
+    "{stamp} | CLAIM | lane={lane} | ticket=OMN-17427 | actor=script:onex-remote-lane | "
+    "host=h051 | remote lane on h051"
+)
+FAILED_TERMINAL = (
+    "{stamp} | TERMINAL | lane={lane} | ticket=OMN-17427 | actor=claude:sonnet:remote-lane | "
+    "outcome=failed | host=h051 | remote lane on h051 ended status=no-result engine_rc=255; "
+    "ssh: connect to host port 22: Operation timed out"
+)
+
+
+def _shut_down_host_tick(
+    tmp_path: Path, unavailable: tuple[str, ...]
+) -> tuple[str, ...]:
+    """One tick over the recorded h051 shape, with ``unavailable`` the hosts the table declares out."""
+    base = world(tmp_path)
+    last_event = HOST_NOW - timedelta(minutes=190)
+    _events(base, [f"h051|{_stamp(last_event)}"])
+    with _ledger(base).open("a") as handle:
+        for number, lane in enumerate(("fill-a", "fill-b", "fill-c")):
+            handle.write(
+                CLAIM.format(
+                    stamp=_stamp(last_event - timedelta(minutes=10)), lane=lane
+                )
+                + "\n"
+            )
+            handle.write(
+                FAILED_TERMINAL.format(
+                    stamp=_stamp(last_event + timedelta(minutes=14 + number)),
+                    lane=lane,
+                )
+                + "\n"
+            )
+    options = ModelSilentFailureAlarmOptions.model_validate(
+        {
+            **base.model_dump(exclude={"host_aliases"}),
+            "host_table": _table(tmp_path / "hosts.yaml", NAMES),
+            "skip_unavailable_hosts": True,
+        }
+    )
+    result = HandlerSilentFailureAlarm(
+        options,
+        host_watches={
+            host: Watch(
+                ModelDrainerObservation(job_state="not-running", status_readable=False)
+            )
+            for host in RECORDED
+        },
+        unavailable_hosts=lambda: (frozenset(unavailable), ""),
+    ).handle(ModelSilentFailureAlarmRequest(now=HOST_NOW))
+    rows = [row for row in result.rows if "class=quiet-host" in row]
+    named = re.search(r"hosts=([a-z0-9,]+)", rows[0]) if rows else None
+    return tuple(named.group(1).split(",")) if named else ()
+
+
+def test_closing_rows_of_lanes_that_could_not_reach_a_shut_down_host_are_not_quiet(
+    tmp_path: Path,
+) -> None:
+    assert "h051" not in _shut_down_host_tick(tmp_path, ("h051",))
+
+
+def test_closing_rows_of_lanes_on_a_host_the_table_does_not_declare_out_control(
+    tmp_path: Path,
+) -> None:
+    """The failing control: the same rows, the table declaring nothing out, read h051 quiet (the false reading)."""
+    assert "h051" in _shut_down_host_tick(tmp_path, ())
