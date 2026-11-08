@@ -395,12 +395,21 @@ class HandlerLabTestHarnessEffect:
             self._sink = sink_from_overlay(overlay)
         if self._sink is None:
             return None
+        node = emission.chain_node + (PLANTED_SUFFIX if planted else "")
+        correlation_id = f"{run_id}{PLANTED_SUFFIX}" if planted else run_id
+        # A replayed run id (`run --run-id`, a redelivered request) must not start the chain a second time: two starts
+        # under one correlation id read as `duplicate_start` and take the first run's golden and error receipts with them.
+        if any(
+            e.node == node and e.correlation_id == correlation_id
+            for e in self._sink.read(datetime.min.replace(tzinfo=UTC))
+        ):
+            return None
         chain = ChainEmitter(
             self._sink,
-            node=emission.chain_node + (PLANTED_SUFFIX if planted else ""),
+            node=node,
             piece=emission.piece_number,
             clock=self._now,
-            correlation_id=f"{run_id}{PLANTED_SUFFIX}" if planted else run_id,
+            correlation_id=correlation_id,
             drill=planted,
         )
         chain.start()
@@ -418,12 +427,11 @@ class HandlerLabTestHarnessEffect:
         The planted failure's typed error is emitted only when the broken input went red as the harness needs it to: a
         broken input that passed is no error the harness caught, and the run chain carries that as its own failure.
         """
-        if chain is None:
-            return
-        if reading.state is EnumLabTestHarnessReadingState.WORKING:
-            chain.success({"cases": len(reading.outcomes)})
-        else:
-            chain.failure(failure_code_for(reading.outcomes), reading.reason)
+        if chain is not None:
+            if reading.state is EnumLabTestHarnessReadingState.WORKING:
+                chain.success({"cases": len(reading.outcomes)})
+            else:
+                chain.failure(failure_code_for(reading.outcomes), reading.reason)
         planted = self._planted(reading)
         if planted:
             drill = self._open_chain(overlay, run_id, planted=True)

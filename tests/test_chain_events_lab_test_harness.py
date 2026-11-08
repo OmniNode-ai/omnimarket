@@ -485,3 +485,21 @@ async def test_error_a_ledger_host_that_refuses_the_rows_fails_the_run_instead_o
             tmp_path, InMemoryEmissionSink(), "run-rows-refused", appender=appender
         )
     assert len(appender.rows) == 2
+
+
+async def test_replay_a_repeated_run_id_keeps_the_first_runs_chains_valid(
+    tmp_path: Path,
+) -> None:
+    """The same run_id delivered twice (the supported `run --run-id` replay) must not write a second start.
+
+    A second start under one correlation id reads as `duplicate_start`, which drops the golden and the error receipt.
+    """
+    sink = InMemoryEmissionSink()
+    await run_harness(tmp_path / "first", sink, "run-replay")
+    await run_harness(tmp_path / "second", sink, "run-replay")
+    assert [e.phase for e in of(sink, CHAIN_NODE)] == ["start", "success"]
+    assert [e.phase for e in of(sink, PLANTED_NODE)] == ["start", "failure"]
+    piece, receipts = fold(sink)
+    assert receipts.findings == ()
+    assert piece.golden_at is not None
+    assert piece.error_at is not None
