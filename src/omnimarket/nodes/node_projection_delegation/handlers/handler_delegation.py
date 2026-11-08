@@ -112,9 +112,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
     rung_verdict_fill,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
-from omnimarket.projection.discovery import (
-    load_projection_exposures_from_contract,
-)
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,
     dlq_topics_from_contract,

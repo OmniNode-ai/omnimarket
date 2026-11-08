@@ -45,6 +45,9 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+    KNOWN_PROJECTION_TABLES,
+)
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
 )
@@ -365,3 +368,9 @@ async def test_the_decisions_walk_reaches_every_run(postgres: _Postgres) -> None
             seen |= {row["correlation_id"] for row in page["rows"]}
             cursor = page["next_cursor"]
     assert len(seen) == 600
+
+
+@pytest.mark.integration
+def test_the_runner_role_check_accepts_the_per_day_view() -> None:
+    """The view is named in the contract's db_io, so the runner's own role check must name it too."""
+    assert "projection_delegation_daily" in KNOWN_PROJECTION_TABLES
