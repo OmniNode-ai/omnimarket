@@ -90,6 +90,8 @@ class _Index:
     proof_by_pr: dict[str, tuple[int, ...]]
     proof_by_ticket: dict[str, tuple[int, ...]]
     proof_by_task: dict[str, tuple[int, ...]]
+    # Gate-state STATUS rows by subject: a gate reads its subject's rows, never a scan of the whole ledger (OMN-23081).
+    gate_rows: dict[str, tuple[ModelFloorLedgerRow, ...]]
     # The merged pull requests shown running on dev (``repo#number``); None when no reader read the records.
     running: frozenset[str] | None
     # When each pull request merged, where the watcher's merge record says.
@@ -184,7 +186,14 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
     proof_by_pr: dict[str, list[int]] = {}
     proof_by_ticket: dict[str, list[int]] = {}
     proof_by_task: dict[str, list[int]] = {}
+    gate_rows: dict[str, list[ModelFloorLedgerRow]] = {}
     for position, row in enumerate(request.ledger):
+        if (
+            row.kind == "STATUS"
+            and row.state == request.config.gate_state
+            and row.subject
+        ):
+            gate_rows.setdefault(row.subject, []).append(row)
         if row.kind == "STATUS" and row.state == request.config.integration_state:
             for pr in row.prs:
                 proof_by_pr.setdefault(pr_key(pr), []).append(position)
@@ -222,6 +231,7 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         proof_by_pr={key: tuple(value) for key, value in proof_by_pr.items()},
         proof_by_ticket={key: tuple(value) for key, value in proof_by_ticket.items()},
         proof_by_task={key: tuple(value) for key, value in proof_by_task.items()},
+        gate_rows={key: tuple(value) for key, value in gate_rows.items()},
         running=None
         if request.running_evidence is None
         else frozenset(
@@ -483,21 +493,14 @@ def _evidence(
 
 
 def _gate(
-    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
+    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest, index: _Index
 ) -> tuple[ItemState, str] | None:
     subjects = {task.wave, task.id} - {""}
     template = request.config.gate_wave_subject_template
     if template and task.wave:
         subjects.add(template.format(wave=task.wave))
     row = max(
-        (
-            row
-            for row in request.ledger
-            if row.kind == "STATUS"
-            and row.state == request.config.gate_state
-            and row.subject
-            and row.subject in subjects
-        ),
+        (row for subject in subjects for row in index.gate_rows.get(subject, ())),
         key=_row_key,
         default=None,
     )
@@ -539,7 +542,7 @@ def _manifest_items(
         gate = task.kind == request.config.gate_kind
         evidence: tuple[ItemState, str, EvidenceKind] | None
         if gate:
-            verdict = _gate(task, request)
+            verdict = _gate(task, request, index)
             evidence = None if verdict is None else (verdict[0], verdict[1], "")
         else:
             evidence = _evidence(
@@ -573,7 +576,7 @@ def _manifest_items(
             for dep in task.depends_on
             if dep in by_id
             and by_id[dep].kind == request.config.gate_kind
-            and (verdict := _gate(by_id[dep], request)) is not None
+            and (verdict := _gate(by_id[dep], request, index)) is not None
             and verdict[0] == "stop"
         )
         if state == "done" and not gate and failed:
