@@ -17,6 +17,7 @@ permissions:
   contents: read
 
 jobs:
+  # advisory-ok: OMN-22917 new census job is not yet a required status check on dev or main; enforce once branch protection lists it.
   ledger-file-census:
     name: Ledger File Census
     runs-on: ubuntu-latest
