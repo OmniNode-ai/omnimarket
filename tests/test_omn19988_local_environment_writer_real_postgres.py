@@ -343,6 +343,7 @@ def test_real_postgres_runtime_delivery_reads_the_mirror_on_its_own_pool(
 
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
+    writer: Any = None
     asyncio.run(setup())
     try:
         # The control: on the tenant pool's path the mirror does not exist, so
@@ -397,14 +398,17 @@ def test_real_postgres_runtime_delivery_reads_the_mirror_on_its_own_pool(
                 "_offset": offset,
             }
 
-        _Writer().handle(delivery("omn19988-runtime", 1))
+        writer = _Writer()
+        writer.handle(delivery("omn19988-runtime", 1))
         assert asyncio.run(stored()) == [
             {"tenant_id": _TENANT, "service": "postgres", "verdict": "running"}
         ]
         assert [p["row"]["tenant_id"] for p in published] == [_TENANT]
 
         with pytest.raises(TenantRegistryResolutionError):
-            _Writer().handle(delivery("omn19988-unknown", 2))
+            writer.handle(delivery("omn19988-unknown", 2))
         assert len(asyncio.run(stored())) == 1
     finally:
+        if writer is not None:
+            writer.close()
         asyncio.run(teardown())
