@@ -68,6 +68,7 @@ from omnimarket.models.floor_17a.model_floor_17a import (
     ModelRunnerPlanRule,
     ModelShadowField,
     ModelShadowReading,
+    ModelStartCriterion,
     ReadingState,
 )
 
@@ -135,5 +136,6 @@ __all__ = [
     "ModelRunnerPlanRule",
     "ModelShadowField",
     "ModelShadowReading",
+    "ModelStartCriterion",
     "ReadingState",
 ]
