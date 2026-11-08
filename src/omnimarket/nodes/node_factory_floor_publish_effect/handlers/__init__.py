@@ -6,5 +6,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     PublishRefusedError,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_seam_emitter import (
+    HandlerSeamEmitter,
+)
 
-__all__ = ["HandlerFactoryFloorPublish", "PublishRefusedError"]
+__all__ = ["HandlerFactoryFloorPublish", "HandlerSeamEmitter", "PublishRefusedError"]
