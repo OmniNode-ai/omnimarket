@@ -250,7 +250,11 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert target.parent.name == "factory-floor"
     document = json.loads(target.read_text(encoding="utf-8"))
     assert document["schema_id"] == "omni.factory-floor/1"
-    lines = {line["line_id"]: line for line in document["lines"]}
+    lines = {
+        line["line_id"]: line
+        for line in document["lines"]
+        if line["line_class"] in ("declared", "plan")
+    }
     assert set(lines) == {"2026-10-31-wave-plan", "2026-10-01-old-plan"}
     wave = lines["2026-10-31-wave-plan"]
     assert wave["source"] == "manifest"
@@ -289,7 +293,11 @@ def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_caus
 ) -> None:
     assert main(_argv(world, "--plan", "wave-plan", "--plan", "absent-plan")) == 0
     document = json.loads(_output(world).read_text(encoding="utf-8"))
-    lines = {line["line_id"]: line for line in document["lines"]}
+    lines = {
+        line["line_id"]: line
+        for line in document["lines"]
+        if line["line_class"] in ("declared", "plan")
+    }
     # The old plan is not declared; plans-today selected it, so it is a line of class plan after the declared ones.
     assert list(lines) == ["2026-10-31-wave-plan", "absent-plan", "2026-10-01-old-plan"]
     absent = lines["absent-plan"]
@@ -336,7 +344,11 @@ def test_determinism_or_cli_overlay_selects_the_plans_when_no_flag_is_given(
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
     assert main(_argv(world)) == 0
-    lines = json.loads(_output(world).read_text(encoding="utf-8"))["lines"]
+    lines = [
+        line
+        for line in json.loads(_output(world).read_text(encoding="utf-8"))["lines"]
+        if line["line_class"] in ("declared", "plan")
+    ]
     assert [line["line_id"] for line in lines] == ["2026-10-01-old-plan"]
 
 
@@ -352,7 +364,7 @@ def test_determinism_or_cli_refuses_without_a_plan_selection(
     assert not _output(world).exists()
 
 
-def test_determinism_or_cli_refuses_a_stale_or_missing_watcher_and_an_unset_home(
+def test_determinism_or_cli_refuses_a_stale_watcher_and_reads_a_missing_one_as_unread_and_an_unset_home(
     world: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -362,8 +374,14 @@ def test_determinism_or_cli_refuses_a_stale_or_missing_watcher_and_an_unset_home
     stale = argv[: argv.index("--now")] + late + argv[argv.index("--now") + 2 :]
     assert main(stale) == 2
     assert "minutes old" in capsys.readouterr().err
+    # A watcher with no state file is not refused: no pull request is known, which the record says as unread.
     (world["home"] / ".claude_scratch" / "pr-watcher" / "state.json").unlink()
-    assert main(argv) == 2
+    assert main(argv) == 0
+    document = json.loads(_output(world).read_text(encoding="utf-8"))
+    watcher = next(
+        h for h in document["sources"]["health"] if h["source"] == "pr_watcher"
+    )
+    assert watcher["state"] == "unread"
     monkeypatch.delenv("OMNI_HOME", raising=False)
     assert main(["--kb", str(world["kb"]), "--plan", "x"]) == 2
     assert "OMNI_HOME is not set" in capsys.readouterr().err

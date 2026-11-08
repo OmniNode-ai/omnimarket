@@ -22,6 +22,7 @@ from omnimarket.models.model_floor_line_select import (
     ModelFloorProcessDecl,
     ModelFloorSourceHealth,
 )
+from omnimarket.models.model_floor_line_stops import ModelFloorLineStopsConfig
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -196,6 +197,8 @@ class ModelFloorLedgerRow(BaseModel):
     head: str = ""
     ruling: str = ""
     mechanism: str = ""
+    # Every key=value cell of the row as written, for the rules that match on a cell the fields above do not name.
+    cells: tuple[tuple[str, str], ...] = ()
 
     _utc = field_validator("ts")(_aware)
 
@@ -659,6 +662,7 @@ class ModelFactoryFloorConfig(BaseModel):
     host_status: ModelFloorHostStatusConfig
     stopped: ModelFloorStoppedConfig
     line_select: ModelFloorLineSelectConfig
+    line_stops: ModelFloorLineStopsConfig
 
 
 class ModelFloorSourceReads(BaseModel):

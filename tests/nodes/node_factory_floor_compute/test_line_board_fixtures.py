@@ -21,8 +21,6 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_factory_floor_effect.source_loader import SourceRefusedError
-
 from .line_board_support import (
     CASES,
     VARIANTS,
@@ -130,10 +128,6 @@ def test_absent_sources_are_marked_and_present_ones_exist(
 def test_the_effect_reads_the_fixture_it_is_given(
     case: str, variant: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    if (case, variant) == ("s7_all_sources_unread", "observed"):
-        with pytest.raises(SourceRefusedError, match=r"state\.json"):
-            run_board(case, variant, tmp_path, monkeypatch)
-        return
     record = run_board(case, variant, tmp_path, monkeypatch)
     assert record["lines"]
     assert record["generated_at"].startswith(header(case, variant)["observed_at"][:16])

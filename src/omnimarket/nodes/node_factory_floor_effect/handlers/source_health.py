@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from omnimarket.models.model_factory_floor_input import ModelFloorSourceHealth
+from omnimarket.models.model_floor_line_select import ModelFloorSourceHealth
 
 
 def source_health(

@@ -6,15 +6,10 @@ Lean line board plan T2 (OMN-22366 to OMN-22374 are its tasks). Each case is a f
 sources the board reads (``fixtures/line_board_2026_11_03/<case>/``). The test runs the factory floor effect on it and
 asserts the stop kinds and evidence ids the plan's section 2 requires; the repaired variant must carry none of them.
 
-The compute has no ``stops`` field until T5 (OMN-22370) builds it, so each test uses a strict expected-failure wrapper
-naming that ticket. The wrapper accepts the expected failure and fails the run if the case starts passing earlier.
-T5 removes the wrapper and asserts the case directly. This keeps the tests executing and passing today because the
-skip count ratchet counts xfail as skipped.
-The effect also refuses an unread source today (T3, OMN-22368, turns the refusal into a health entry), which is why
-``SourceRefusedError`` is an accepted failure.
+The compute builds the stops (OMN-22370, T5), so each test asserts its case directly. The effect turns an unread source
+into a health entry (T3, OMN-22368), so a case with every source absent runs and reads ``unread``.
 
-Evidence ids are written as the ledger CITE-AS form (``KIND ts lane=<lane>``) and ``pr-context <pr> <context>``; T5 may
-change the representation together with these fixtures.
+Evidence ids are written as the ledger CITE-AS form (``KIND ts lane=<lane>``) and ``pr-context <pr> <context>``.
 """
 
 from __future__ import annotations
@@ -23,8 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from omnimarket.nodes.node_factory_floor_effect.source_loader import SourceRefusedError
 
 from .line_board_support import (
     CASES,
@@ -35,7 +28,6 @@ from .line_board_support import (
     stops_by_line,
 )
 
-T5_TICKET = "OMN-22370"
 EXPECTED_TESTS = 14
 
 CASE_PARAMS = [
@@ -66,6 +58,10 @@ def _check_absent(expected: dict[str, Any], record: dict[str, Any]) -> None:
     for gone in expected.get("absent", []):
         for (line, kind), stop in stops_by_line(record).items():
             if kind != gone["kind"] or gone.get("line", line) != line:
+                continue
+            if "pr" in gone and not any(
+                gone["pr"] in ref for ref in evidence_refs(stop)
+            ):
                 continue
             named = set(gone.get("evidence", []))
             # A stop of this kind with none of the named evidence is another stop; with no evidence named, any is.
@@ -107,10 +103,4 @@ def _assert_case(
 def test_line_board_case(
     case: str, variant: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    try:
-        _assert_case(case, variant, tmp_path, monkeypatch)
-    except (AssertionError, SourceRefusedError):
-        return
-    pytest.fail(
-        f"{T5_TICKET}: the compute now builds the stops; drop the wrapper and assert the case directly"
-    )
+    _assert_case(case, variant, tmp_path, monkeypatch)

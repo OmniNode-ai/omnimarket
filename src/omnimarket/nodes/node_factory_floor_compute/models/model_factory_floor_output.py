@@ -8,11 +8,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.models.model_factory_floor_input import (
-    ItemState,
+from omnimarket.models.model_factory_floor_input import ItemState
+from omnimarket.models.model_floor_line_select import (
+    HealthState,
+    LineClass,
     ModelFloorSourceHealth,
 )
-from omnimarket.models.model_floor_line_select import HealthState, LineClass
+from omnimarket.models.model_floor_line_stops import ModelLineStop, ModelStageCount
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
@@ -75,6 +77,10 @@ class ModelFloorAndon(BaseModel):
     # True when a hold, a failed gate or a plan with no tasks stops the line whatever runs on it. False when every cause
     # is a red pull request or a stop the ledger recorded, which a running lane on the line is already working through.
     hard: bool = False
+    # Per cause, in the same order: what kind of fact raised it (``hold``, ``gate``, ``red-pr``, ``lane-end``, ``ask``,
+    # ``no-tasks``) and the refs (pull requests, ledger row ids, task ids) that show it.
+    cause_kinds: tuple[str, ...] = ()
+    cause_refs: tuple[tuple[str, ...], ...] = ()
 
 
 class ModelFloorLaneContainers(BaseModel):
@@ -195,6 +201,12 @@ class ModelFloorLine(BaseModel):
     line_class: LineClass = "declared"
     # The ids (``ruling:<id>`` is a line; this lists the ruling rows) of the rulings that map to this line.
     ruled_by: tuple[str, ...] = ()
+    # The lane holding a live CLAIM on a ticket of the line, or empty.
+    owner: str = ""
+    # Work tasks per stage, from each task's own evidence; the stops are every reason the line is not moving, in the
+    # contract's order. A line with a stop is stopped, and none of its stopped work counts as progress.
+    stage_counts: tuple[ModelStageCount, ...] = ()
+    stops: tuple[ModelLineStop, ...] = ()
 
 
 class ModelFloorCoverage(BaseModel):

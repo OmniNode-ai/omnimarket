@@ -110,14 +110,14 @@ runtime:
     - {kind: STATUS, grep: "handed-off="}
   # Minutes after which a source reads stale. The ledger is read live, so its bar measures the reader's own read time.
   source_max_age_min:
-    plans: 1440
-    watcher: 90
-    ledger: 30
+    plans_clone: 1440
+    pr_watcher: 90
+    ledger_window: 30
     plans_today: 1440
-    linear: 1440
+    linear_snapshot: 1440
     running_evidence: 60
     required_contexts: 120
-    goal: 1440
+    goal_file: 1440
   # The goal file in the plans repository: rows are ``id | what | verdict | next action | probe``; these verdicts close a row.
   goal_relpath: beta/GOAL.md
   goal_closed_verdicts: [LANDED, DONE]

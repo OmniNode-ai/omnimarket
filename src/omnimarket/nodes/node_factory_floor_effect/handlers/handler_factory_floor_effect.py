@@ -26,6 +26,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLimitsFacts,
     ModelFloorSelection,
     ModelFloorSourceReads,
+    ModelFloorWatcher,
     ModelGoalTicketRoots,
 )
 from omnimarket.models.model_merged_running_count import (
@@ -314,21 +315,33 @@ class HandlerFactoryFloorEffect:
         drift_path = home / src.host_drift_relpath
         host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
-        watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        watcher_path = home / src.watcher_relpath
+        watcher_cause = ""
+        if watcher_path.exists():
+            watcher = load_watcher(watcher_path, now, rt.watcher_max_age_min)
+        else:
+            # No state file: no pull request is known, which the record says as unread, never as an empty watcher.
+            watcher = ModelFloorWatcher(last_tick=now)
+            watcher_cause = f"no PR watcher state at {watcher_path}"
         kinds = frozenset(rt.ledger_kinds)
         # A rows file stands in for the archive reads too when no separate file names them (tests and replays).
         stand_in = request.unresolved_rows_file or request.ledger_rows_file
-        ledger = read_ledger_rows(
-            window_days=rt.ledger_window_days,
-            cut_chars=rt.ledger_cut_chars,
-            timeout_seconds=rt.ledger_timeout_seconds,
-            plugin_root=Path(plugin_root) if plugin_root else None,
-            plugin_root_env=rt.plugin_root_env,
-            ledger_rows_file=Path(request.ledger_rows_file)
-            if request.ledger_rows_file
-            else None,
-            kinds=kinds,
-        )
+        ledger_cause = ""
+        try:
+            ledger = read_ledger_rows(
+                window_days=rt.ledger_window_days,
+                cut_chars=rt.ledger_cut_chars,
+                timeout_seconds=rt.ledger_timeout_seconds,
+                plugin_root=Path(plugin_root) if plugin_root else None,
+                plugin_root_env=rt.plugin_root_env,
+                ledger_rows_file=Path(request.ledger_rows_file)
+                if request.ledger_rows_file
+                else None,
+                kinds=kinds,
+            )
+        except SourceRefusedError as exc:
+            # A ledger that cannot be read is unread, never an empty window.
+            ledger, ledger_cause = (), str(exc)
         try:
             ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = (
                 read_unresolved_rows(
@@ -364,23 +377,30 @@ class HandlerFactoryFloorEffect:
             rt.cloud_source,
             overlay.cloud_accounts_node_command if overlay is not None else (),
         )
-        plans = load_plans(
-            kb=Path(kb_value),
-            plans_relpath=rt.plans_relpath,
-            manifest_suffix=rt.manifest_suffix,
-            header_keys=rt.plan_header_keys,
-            heading_task_patterns=rt.heading_task_patterns,
-            contains=contains,
-            plans_today=plans_today,
-            # A plan not on the default branch is read from its open pull request's head when no declared ref names it.
-            plan_refs=draft_plan_refs(
+        plans_dir = Path(kb_value) / rt.plans_relpath
+        # A plans clone with no plans directory is unread, which the record says; it is not an empty clone.
+        plans_cause = "" if plans_dir.is_dir() else f"no plans directory at {plans_dir}"
+        plans = (
+            ()
+            if plans_cause
+            else load_plans(
                 kb=Path(kb_value),
                 plans_relpath=rt.plans_relpath,
+                manifest_suffix=rt.manifest_suffix,
+                header_keys=rt.plan_header_keys,
+                heading_task_patterns=rt.heading_task_patterns,
                 contains=contains,
-                watcher=watcher,
-                declared=overlay.plan_refs if overlay is not None else (),
-            ),
-            task_links=overlay.plan_task_links if overlay is not None else (),
+                plans_today=plans_today,
+                # A plan not on the default branch is read from its open pull request's head when no declared ref names it.
+                plan_refs=draft_plan_refs(
+                    kb=Path(kb_value),
+                    plans_relpath=rt.plans_relpath,
+                    contains=contains,
+                    watcher=watcher,
+                    declared=overlay.plan_refs if overlay is not None else (),
+                ),
+                task_links=overlay.plan_task_links if overlay is not None else (),
+            )
         )
         merged_running, merged_running_cause = self._read_merged_running(
             now, host_table_path
@@ -396,30 +416,37 @@ class HandlerFactoryFloorEffect:
         bars = rt.source_max_age_min
         health = (
             source_health(
-                source="plans",
+                source="plans_clone",
                 now=now,
-                max_age_min=bars.plans,
-                read_at=now,
-                count=len(plans),
+                max_age_min=bars.plans_clone,
+                read_at=None if plans_cause else now,
+                count=None if plans_cause else len(plans),
+                cause=plans_cause,
             ),
             source_health(
-                source="watcher",
+                source="pr_watcher",
                 now=now,
-                max_age_min=bars.watcher,
-                read_at=watcher.last_tick,
-                count=len(watcher.prs),
+                max_age_min=bars.pr_watcher,
+                read_at=None if watcher_cause else watcher.last_tick,
+                count=None if watcher_cause else len(watcher.prs),
+                cause=watcher_cause,
             ),
             source_health(
-                source="ledger",
+                source="ledger_window",
                 now=now,
-                max_age_min=bars.ledger,
+                max_age_min=bars.ledger_window,
                 read_at=ledger_read_at,
                 # Unresolved evidence the archive rolls hold is part of the ledger: a ledger whose rolls could not be
                 # read is unread, so a stop kept only in a roll is never reported absent.
-                count=len(ledger) if ledger_unresolved is not None else None,
-                cause=f"archive rolls unread: {unresolved_cause}"
-                if unresolved_cause
-                else "",
+                count=len(ledger)
+                if ledger_unresolved is not None and not ledger_cause
+                else None,
+                cause=ledger_cause
+                or (
+                    f"archive rolls unread: {unresolved_cause}"
+                    if unresolved_cause
+                    else ""
+                ),
             ),
             source_health(
                 source="plans_today",
@@ -430,9 +457,9 @@ class HandlerFactoryFloorEffect:
                 cause=plans_today_cause,
             ),
             source_health(
-                source="linear",
+                source="linear_snapshot",
                 now=now,
-                max_age_min=bars.linear,
+                max_age_min=bars.linear_snapshot,
                 read_at=_file_time(linear_snapshot) if linear_snapshot else None,
                 count=len(linear_issues) if linear_issues is not None else None,
                 cause=linear_cause or "no Linear snapshot found",
@@ -454,9 +481,9 @@ class HandlerFactoryFloorEffect:
                 cause=required_cause,
             ),
             source_health(
-                source="goal",
+                source="goal_file",
                 now=now,
-                max_age_min=bars.goal,
+                max_age_min=bars.goal_file,
                 read_at=_file_time(goal_path),
                 count=len(goal_rows) if goal_rows is not None else None,
                 cause=goal_cause,
@@ -469,6 +496,9 @@ class HandlerFactoryFloorEffect:
                 plan_path_contains=contains,
                 container_read_line=container_read_line,
                 plans_today_paths=plans_today_paths,
+                line_classes=tuple(
+                    rule.line_class for rule in config.line_select.classes
+                ),
             ),
             plans=plans,
             watcher=watcher,

@@ -131,7 +131,7 @@ EVIDENCE = ModelMrcEvidenceRead(
         ModelMrcEvidence(
             repo="OmniNode-ai/omnimarket",
             kind="adoption",
-            source="ledger",
+            source="ledger_window",
             number=7,
             observed_at=NOW,
         ),
@@ -335,7 +335,7 @@ def test_a_failing_archive_read_makes_the_ledger_unread_never_empty(
         )
     )
     assert seen[0].ledger_unresolved is None
-    ledger = next(h for h in seen[0].source_health if h.source == "ledger")
+    ledger = next(h for h in seen[0].source_health if h.source == "ledger_window")
     assert ledger.state == "unread"
     assert "archive rolls unread" in ledger.cause
 
@@ -456,15 +456,21 @@ def test_unread_read_empty_and_stale_are_three_different_states(
     states = _health(world, files, monkeypatch)
     assert states["required_contexts"][0] == "unread"
     assert "required-contexts.json" in states["required_contexts"][1]
-    assert states["goal"][0] == "read-empty"
-    assert states["linear"][0] == "stale"
-    assert "bar 1440 min" in states["linear"][1]
+    assert states["goal_file"][0] == "read-empty"
+    assert states["linear_snapshot"][0] == "stale"
+    assert "bar 1440 min" in states["linear_snapshot"][1]
     assert (
-        len({states["required_contexts"][0], states["goal"][0], states["linear"][0]})
+        len(
+            {
+                states["required_contexts"][0],
+                states["goal_file"][0],
+                states["linear_snapshot"][0],
+            }
+        )
         == 3
     )
     # The sources that were not touched still read.
-    assert states["watcher"][0] == states["plans"][0] == "read"
+    assert states["pr_watcher"][0] == states["plans_clone"][0] == "read"
 
 
 def test_source_health_keeps_four_states_apart() -> None:

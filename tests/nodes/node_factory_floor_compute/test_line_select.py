@@ -60,7 +60,7 @@ def _health(
             "plans_clone",
             "plans_today",
             "goal_file",
-            "ledger",
+            "ledger_window",
             "pr_watcher",
             "linear_snapshot",
             "running_evidence",

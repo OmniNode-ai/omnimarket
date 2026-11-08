@@ -6,10 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_factory_floor_input import (
-    ModelFloorMachineDecl,
-    ModelFloorProcessDecl,
-)
+from omnimarket.models.model_factory_floor_input import ModelFloorMachineDecl
+from omnimarket.models.model_floor_line_select import ModelFloorProcessDecl
 from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
 )
@@ -39,14 +37,14 @@ class ModelFactoryFloorSourceBars(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    plans: int = Field(gt=0)
-    watcher: int = Field(gt=0)
-    ledger: int = Field(gt=0)
+    plans_clone: int = Field(gt=0)
+    pr_watcher: int = Field(gt=0)
+    ledger_window: int = Field(gt=0)
     plans_today: int = Field(gt=0)
-    linear: int = Field(gt=0)
+    linear_snapshot: int = Field(gt=0)
     running_evidence: int = Field(gt=0)
     required_contexts: int = Field(gt=0)
-    goal: int = Field(gt=0)
+    goal_file: int = Field(gt=0)
 
 
 class ModelFactoryFloorUnresolvedRead(BaseModel):

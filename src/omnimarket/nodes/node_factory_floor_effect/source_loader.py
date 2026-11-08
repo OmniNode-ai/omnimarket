@@ -28,7 +28,6 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorCloudAccount,
     ModelFloorContext,
     ModelFloorDriftHost,
-    ModelFloorGoalRow,
     ModelFloorHostDrift,
     ModelFloorHostRow,
     ModelFloorLaneProcess,
@@ -55,6 +54,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelLimitToken,
     ModelLimitTokenPool,
 )
+from omnimarket.models.model_floor_line_select import ModelFloorGoalRow
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -252,6 +252,11 @@ def parse_ledger_text(
             head=fields.get("head", ""),
             ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
             mechanism=fields.get("mechanism-ticket", ""),
+            cells=tuple(
+                (key, value.strip()[:300])
+                for key, sep, value in (cell.partition("=") for cell in cells[2:])
+                if sep and key
+            ),
         )
         core = row.kind in kinds
         if core:

@@ -45,6 +45,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_line_select impo
     pick_plans,
     select_extra_lines,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_line_stops import (
+    apply_line_board,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping import (
     PrRecord,
     is_built,
@@ -110,6 +113,7 @@ class _Cause:
 
     text: str
     refs: tuple[str, ...] = ()
+    kind: str = "hold"
 
 
 def _tip(
@@ -823,7 +827,11 @@ def _red_prs(
         if pr in red
     )
     return tuple(
-        _Cause(f"PR {pr} CI red" + (f" ({red[pr]})" if red[pr] else ""), (pr, task))
+        _Cause(
+            f"PR {pr} CI red" + (f" ({red[pr]})" if red[pr] else ""),
+            (pr, task),
+            "red-pr",
+        )
         for pr, task in found
     )
 
@@ -919,6 +927,7 @@ def _ledger_stops(
                 _Cause(
                     f"lane {row.lane} ended {row.outcome} {age} min ago: {said}",
                     _ledger_refs(row),
+                    "lane-end",
                 ),
             )
         elif (
@@ -930,6 +939,7 @@ def _ledger_stops(
                 _Cause(
                     f"MSG {row.row_id} to {row.to} unanswered for {age} min: {said}",
                     _ledger_refs(row),
+                    "ask",
                 ),
             )
     return stops
@@ -1284,7 +1294,9 @@ def _line(
     hard = (
         (
             _Cause(
-                f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table"
+                f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table",
+                (),
+                "no-tasks",
             ),
         )
         if not tasks
@@ -1293,6 +1305,7 @@ def _line(
         _Cause(
             f"HOLD {hold.row_id}: {hold.reason or hold.text}",
             (hold.row_id,) if hold.row_id else (),
+            "hold",
         )
         for hold in holds
         if _andon(hold, request.config)
@@ -1305,7 +1318,11 @@ def _line(
         )
     )
     hard += tuple(
-        _Cause(f"GATE {item.id} failed (last recorded): {item.note}", (item.id,))
+        _Cause(
+            f"GATE {item.id} failed (last recorded): {item.note}",
+            (item.id,),
+            "gate",
+        )
         for item in items
         if has_manifest and _is_gate(item, request) and item.state == "stop"
     )
@@ -1345,6 +1362,8 @@ def _line(
             reason=reason[: request.config.note_chars],
             causes=tuple(cause.text for cause in causes),
             hard=bool(hard),
+            cause_kinds=tuple(cause.kind for cause in causes),
+            cause_refs=tuple(cause.refs for cause in causes),
         ),
     )
 
@@ -1517,6 +1536,13 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             drawn + extra,
             key=lambda line: class_rank(request, line.line_class),
         )
+    )
+    ordered = apply_line_board(
+        request,
+        ordered,
+        scopes,
+        lambda rows: _live_claim(rows, request, index),
+        index.running,
     )
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
