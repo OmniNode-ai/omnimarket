@@ -63,6 +63,12 @@ _ALLOWED_TRANSITIONS: dict[
     _S.TERMINAL: frozenset(),
 }
 
+# The states entered by the admission commit, the only write that records the
+# admission fields.
+_ADMISSION_STATES: frozenset[EnumClientCallClaimState] = frozenset(
+    {_S.ADMITTED, _S.NOT_ADMITTED, _S.OBSERVED}
+)
+
 _RESUME_STEPS: dict[EnumClientCallClaimState, EnumClientCallResumeStep] = {
     _S.CLAIMED: EnumClientCallResumeStep.ADMIT,
     _S.ADMITTED: EnumClientCallResumeStep.PUBLISH_ADMISSION,
@@ -120,6 +126,32 @@ class InMemoryCallClaimStore:
     def _writable(self, row: ModelClientCallClaimRow, generation: int) -> bool:
         """A write lands only when the writer still holds the row's generation."""
         return row.generation == generation
+
+    @staticmethod
+    def _write_is_valid(
+        to_state: EnumClientCallClaimState,
+        effective_mode: str | None,
+        admitted: bool | None,
+        terminal_json: str,
+    ) -> bool:
+        """A write carries what its target state records, and nothing it must not change.
+
+        The admission commit is the one write that records ``admitted`` and
+        ``effective_mode``: ADMITTED needs both and ``admitted=True``; the two
+        non-admission states need ``admitted=False``. A later write never
+        carries them, so the committed admission is never overwritten. A
+        TERMINAL write needs a non-empty stored result, or nothing could be
+        republished from it.
+        """
+        if to_state in _ADMISSION_STATES:
+            if to_state is _S.ADMITTED:
+                return admitted is True and effective_mode is not None
+            return admitted is False
+        if effective_mode is not None or admitted is not None:
+            return False
+        if to_state is _S.TERMINAL:
+            return bool(terminal_json)
+        return True
 
     def _resume_step(self, state: EnumClientCallClaimState) -> EnumClientCallResumeStep:
         """Where a takeover resumes; a recorded dispatch intent resumes at the wait."""
@@ -198,14 +230,18 @@ class InMemoryCallClaimStore:
                 return False
             if to_state not in _ALLOWED_TRANSITIONS[row.state]:
                 return False
+            if not self._write_is_valid(
+                to_state, effective_mode, admitted, terminal_json
+            ):
+                return False
             update: dict[str, object] = {
                 "state": to_state,
                 "lease_expires_at": now + self._lease,
             }
-            if effective_mode is not None:
-                update["effective_mode"] = effective_mode
-            if admitted is not None:
+            if to_state in _ADMISSION_STATES:
                 update["admitted"] = admitted
+                if effective_mode is not None:
+                    update["effective_mode"] = effective_mode
             if to_state is _S.TERMINAL:
                 update["terminal_json"] = terminal_json
             self._rows[client_call_key] = row.model_copy(update=update)
