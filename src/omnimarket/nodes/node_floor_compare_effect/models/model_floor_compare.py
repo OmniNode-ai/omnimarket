@@ -135,6 +135,10 @@ class ModelFloorCompareRuntime(_Frozen):
         description="A host's own repository names overlay under the registry home; read when it exists and no env var names one (OMN-23134).",
     )
     history: ModelHistorySources
+    cycle_deadline_seconds: int = Field(
+        gt=0,
+        description="The cycle ends itself with a typed failure after this many seconds; below the publish step's own limit.",
+    )
     emission_journal_relpath: str
     emission_node: str
     emission_piece: int = Field(ge=1, le=18)

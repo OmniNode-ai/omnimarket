@@ -299,11 +299,18 @@ class HandlerFloorSimple:
         )
         joins = {j.join: j for j in r.receipts.joins} if r.receipts is not None else {}
         rows: list[ModelFloorPieceRow] = []
+        criteria = {c.piece: c for c in ov.rebuild.start_criteria}
+        working = self._working_pieces(r, lab) if criteria else frozenset[int]()
         for definition in sorted(ov.pieces, key=lambda p: p.piece):
             n = definition.piece
             rc = receipts.get(n)
             go = r.go_given_through
-            admitted = (go is not None and n <= go) or n in ov.rebuild.step0_pieces
+            # A piece starts on a go, as step 0, or when its own start criterion reads true (RULING 2026-11-07T12:20:46Z).
+            admitted = (
+                (go is not None and n <= go)
+                or n in ov.rebuild.step0_pieces
+                or (n in criteria and set(criteria[n].after_working) <= working)
+            )
             state, age, max_age, why = self._reading(
                 r, n, definition.reading_max_age_s, lab
             )
@@ -399,8 +406,18 @@ class HandlerFloorSimple:
         kind: Literal["golden", "error"],
         window_s: int,
     ) -> int | None:
-        """How many chains of ``piece`` ended as ``kind`` inside the window; ``None`` when the receipts were not read."""
+        """How many chains of ``piece`` ended as ``kind`` inside the window.
+
+        ``None`` (unread, never zero) when the receipts were not read, when they reach back less far than the window, or
+        when the ledger holding the piece's events could not be read and no local chain of the piece stands in for it.
+        """
         if r.receipts is None:
+            return None
+        if r.receipts_covered_s is not None and window_s > r.receipts_covered_s:
+            return None
+        if r.sources_read.get("ledger") is False and not any(
+            c.piece == piece for c in r.receipts.chains
+        ):
             return None
         return sum(
             1
@@ -421,6 +438,22 @@ class HandlerFloorSimple:
         if status == "not_working":
             return "Clear what the reading names, then it reads working again."
         return "Measured against the old way for 7 days, then kept or rolled back."
+
+    @classmethod
+    def _working_pieces(
+        cls, r: ModelFloorSimpleInput, lab: tuple[ModelLabSourceVerdict, ...]
+    ) -> frozenset[int]:
+        """The pieces whose reading reads WORKING now, as the strip would draw them (lab sources folded in)."""
+        out: set[int] = set()
+        for definition in r.overlay.pieces:
+            n = definition.piece
+            state, _age, _max, why = cls._reading(
+                r, n, definition.reading_max_age_s, lab
+            )
+            state, _why, _cause = cls._with_lab_sources(r, n, lab, state, why)
+            if state == "WORKING":
+                out.add(n)
+        return frozenset(out)
 
     @staticmethod
     def _shadow_line(shadow: ModelShadowReading, now: datetime) -> ModelFloorShadowLine:

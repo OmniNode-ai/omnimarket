@@ -35,6 +35,7 @@ from tests.unit.nodes.node_landing_canary_effect.canary_support import (
     NODE,
     RUN_AT,
     World,
+    operational_overlay,
     overlay,
 )
 
@@ -118,7 +119,7 @@ def test_the_bar_is_the_overlays_and_the_wait_never_exceeds_it_by_more_than_one_
 
 def test_without_the_stall_piece_9_reads_working() -> None:
     world, ledger = World(), InMemoryLedger()
-    world.handler(ledger).handle(COMMAND)
+    world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert piece9_reading(ledger, now=RUN_AT + timedelta(hours=2)) is (
         EnumReadingVerdict.WORKING
     )

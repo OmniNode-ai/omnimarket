@@ -134,6 +134,11 @@ class HandlerRotationReadback:
             command.rotated_folder, command.rotated_key
         ):
             return "drill-key-not-dev-only"
+        if any(
+            (c.folder, c.key) != (command.rotated_folder, command.rotated_key)
+            for c in self._overlay.consumers
+        ):
+            return "consumer-not-of-rotated-key"
         if command.write and self._appender is None:
             return "no-appender-for-a-writing-run"
         return None
@@ -173,7 +178,6 @@ class HandlerRotationReadback:
         for readback in result.consumers:
             row, request_id = self._row(command, readback, now)
             appended = self._appender.append(row + "\n", request_id)
-            rows.append(row)
             if not appended.ok:
                 return result.model_copy(
                     update={
@@ -183,6 +187,7 @@ class HandlerRotationReadback:
                         "failure": f"append-failed:{appended.status}",
                     }
                 )
+            rows.append(row)
             statuses.append(appended.status)
         ledger = (
             "written"
@@ -235,7 +240,7 @@ class HandlerRotationReadback:
             f"drill={'yes' if command.drill else 'no'}",
             f"rotation={_clean(command.rotation_id)}",
             f"approver={_clean(command.approver.strip())}",
-            f"rotated={command.rotated_folder}:{command.rotated_key}",
+            f"rotated={_clean(command.rotated_folder)}:{_clean(command.rotated_key)}",
             f"consumer={readback.consumer}",
             f"resolve={readback.resolve.value}",
             f"call={readback.call.value if readback.call else 'not-made'}",
@@ -252,7 +257,9 @@ class HandlerRotationReadback:
         if command.drill:
             cells.append(_clean(f"injected fault: {self._overlay.injected_fault}"))
         row = f"{stamp_text(now)} | {_ROW_TYPE} | " + " | ".join(cells)
-        return row, str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}|{content}"))
+        # The id names the whole row, so one id always carries the same bytes and a row that
+        # differs in any cell (time, drill flag, approver, rotated handle) is another record.
+        return row, str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}|{content}|{row}"))
 
 
 def events_of(

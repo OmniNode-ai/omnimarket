@@ -9,10 +9,10 @@ cause up in the class's lists, so the transition a cause yields is a property of
 the contract and the node holds no rule of its own about which cause moves.
 
 The four lists partition the vocabulary: every cause is declared exactly once,
-and a class with any list missing refuses to load. Four causes have a fixed
+and a class with any list missing refuses to load. Five causes have a fixed
 home because the decision node raises them itself: ``retry_budget_spent`` is a
-move, and ``pinned_backend_failed``, ``escalation_limit`` and
-``ladder_exhausted`` terminate.
+move, ``size_band_below_paid`` is a skip, and ``pinned_backend_failed``,
+``escalation_limit`` and ``ladder_exhausted`` terminate.
 """
 
 from __future__ import annotations
@@ -48,6 +48,7 @@ class EnumEscalationCause(StrEnum):
     BUDGET_EXHAUSTED = "budget_exhausted"
     COST_CLASS_NOT_ALLOWED = "cost_class_not_allowed"
     BEYOND_CLASS_LIMIT = "beyond_class_limit"
+    SIZE_BAND_BELOW_PAID = "size_band_below_paid"
     RUNG_NOT_REACHABLE_FROM_RUNTIME = "rung_not_reachable_from_runtime"
     # terminate: no later provider call.
     PINNED_BACKEND_FAILED = "pinned_backend_failed"
@@ -81,6 +82,7 @@ _FIXED_HOMES: dict[EnumEscalationCause, EnumTransitionKind] = {
     EnumEscalationCause.PINNED_BACKEND_FAILED: EnumTransitionKind.TERMINATE,
     EnumEscalationCause.ESCALATION_LIMIT: EnumTransitionKind.TERMINATE,
     EnumEscalationCause.LADDER_EXHAUSTED: EnumTransitionKind.TERMINATE,
+    EnumEscalationCause.SIZE_BAND_BELOW_PAID: EnumTransitionKind.SKIP,
 }
 
 
@@ -115,8 +117,9 @@ class ModelTaskClassTransitions(BaseModel):
         )
         if misplaced:
             raise ValueError(
-                "retry_budget_spent must be in move_on and pinned_backend_failed, "
-                f"escalation_limit and ladder_exhausted in terminate_on: {misplaced}"
+                "retry_budget_spent must be in move_on, pinned_backend_failed, "
+                "escalation_limit and ladder_exhausted in terminate_on and "
+                f"size_band_below_paid in skip_on: {misplaced}"
             )
         return self
 

@@ -8,6 +8,7 @@ empty value for a source it could not read. Paths are the contract's; limits and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from collections.abc import Mapping
@@ -27,6 +28,11 @@ from omnimarket.models.floor_17a import (
     ModelLabSubject,
     ModelNodeEmission,
     ModelRunnerPlanRule,
+)
+from omnimarket.models.work_state_projection import (
+    EnumWorkItemKind,
+    EnumWorkItemState,
+    ModelWorkStateResult,
 )
 
 TICKET = re.compile(r"\bOMN-\d+\b")
@@ -104,6 +110,108 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
     )
+
+
+# A lane item's attributes are the aliases its CLAIM cells name; these are the prefixes a floor row can be named by.
+_CAUSE_PREFIX = "cause:"
+_OWNS_PREFIX = "pr:floor:"
+_TICKET_PREFIX = "ticket:"
+_PR_PREFIX = "pr:"
+_LIVENESS_OF_STATE = {
+    EnumWorkItemState.IN_PROGRESS: "unread",
+    EnumWorkItemState.STOPPED: "dead",
+    EnumWorkItemState.DONE: "finished",
+}
+
+
+def read_work_state(path: Path) -> ModelWorkStateResult | None:
+    """The work-state projection as the projection node wrote it, or None when it is absent or not a projection."""
+    try:
+        return ModelWorkStateResult.model_validate_json(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+
+
+def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, ...]:
+    """Each projected lane as the floor draws it, attributed to rows by the cells of its CLAIM alone.
+
+    A ``cause=<row id>`` cell and an ``owns=floor:<row id>`` cell name a floor row; the ``ticket`` and ``owns`` pull
+    request cells give the lane's ticket and pull request. No owner is read from any overlay.
+    """
+    lanes: list[ModelFloorLane] = []
+    for item in projection.items:
+        if item.kind is not EnumWorkItemKind.LANE:
+            continue
+        name = item.key.removeprefix("lane:")
+        attrs = item.attributes
+        owns = tuple(
+            dict.fromkeys(
+                [
+                    a.removeprefix(_CAUSE_PREFIX)
+                    for a in attrs
+                    if a.startswith(_CAUSE_PREFIX)
+                ]
+                + [
+                    a.removeprefix(_OWNS_PREFIX)
+                    for a in attrs
+                    if a.startswith(_OWNS_PREFIX)
+                ]
+            )
+        )
+        ticket = next(
+            (
+                a.removeprefix(_TICKET_PREFIX)
+                for a in attrs
+                if a.startswith(_TICKET_PREFIX)
+            ),
+            "",
+        )
+        pr = next(
+            (
+                a.removeprefix(_PR_PREFIX)
+                for a in attrs
+                if a.startswith(_PR_PREFIX)
+                and not a.startswith(_OWNS_PREFIX)
+                and "#" in a
+            ),
+            "",
+        )
+        lanes.append(
+            ModelFloorLane(
+                lane=name,
+                ticket=ticket,
+                stalled=False,
+                pr=pr,
+                liveness=_LIVENESS_OF_STATE[item.state],
+                owns=owns,
+            )
+        )
+    return tuple(lanes)
+
+
+def merge_lanes(
+    record: tuple[ModelFloorLane, ...], projected: tuple[ModelFloorLane, ...]
+) -> tuple[ModelFloorLane, ...]:
+    """The record's lanes keep their process reading; the projection adds what its CLAIM cells say, and any lane the
+    record does not list."""
+    by_name = {lane.lane: lane for lane in projected}
+    merged: list[ModelFloorLane] = []
+    for lane in record:
+        extra = by_name.pop(lane.lane, None)
+        if extra is None:
+            merged.append(lane)
+            continue
+        merged.append(
+            lane.model_copy(
+                update={
+                    "ticket": lane.ticket or extra.ticket,
+                    "pr": lane.pr or extra.pr,
+                    "owns": tuple(dict.fromkeys((*lane.owns, *extra.owns))),
+                }
+            )
+        )
+    merged.extend(by_name.values())
+    return tuple(merged)
 
 
 def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]:
@@ -273,7 +381,18 @@ def read_watcher(
                 if isinstance(d, list) and len(d) > 2 and d[2]
             ]
             if done:
-                ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
+                # OMN-23056: the wait starts when the pull request could be landed. Checks that finished while it was a
+                # draft are older than that, so a handoff to landing for this very head moves the start forward to it.
+                started = max(done)
+                handoff = value.get("handoff")
+                if (
+                    isinstance(handoff, dict)
+                    and handoff.get("at")
+                    and handoff.get("head") == facts.get("head_sha")
+                ):
+                    with contextlib.suppress(ValueError):
+                        started = max(started, parse_time(handoff["at"]))
+                ages.append((key, max(int((now - started).total_seconds() // 60), 0)))
                 merge_state = str((value.get("review") or {}).get("merge_state") or "")
                 if merge_state in conflict_states:
                     conflicted.add(str(key))
@@ -683,12 +802,16 @@ def read_deploy_lag(
                 )
     lags.sort(key=lambda x: -x[1])
     limit = source.limit if source.limit is not None else 0.0
+    # A merge reads "not running" only for want of evidence; when the count could not read the running build, say so on
+    # the row, so a red that means "not placed" is not read as "not deployed".
+    unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
+    unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
     subjects = [
         ModelLabSubject(
             name=key,
             ok=lag <= limit,
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}",
+            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
         )
         for key, lag in lags[:3]
     ]
@@ -705,17 +828,33 @@ def read_deploy_lag(
     )
 
 
-def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _last_run(path: Path) -> tuple[datetime, dict[str, Any]]:
+    """The finished time and the reports by condition of the last line of a run record."""
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
+        handle.seek(max(size - TAIL_BYTES, 0))
+        lines = handle.read().splitlines()
+    record = json.loads(lines[-1])
+    return parse_time(record["finished_at"]), {
+        r["condition"]: r for r in record["reports"]
+    }
+
+
+def read_broker_lag(
+    path: Path, overlay: ModelLabStateOverlay, lag_path: Path, lag_condition: str
+) -> ModelLabSourceRead:
+    """The broker conditions from the lab alarm's last run, the lag condition from the lag node's last run.
+
+    The alarm script's own lag condition watches a fixed list of consumer groups, one of which nobody has
+    consumed since its writer was folded into the runtime; its lag grows with every delegation event and
+    reads ALARM at every tick. The lag node derives the live groups from the running image, so its run
+    replaces that one condition. Either record missing or unparseable is unread, never a smaller list, and
+    the reading is as old as the older of the two runs.
+    """
     source = _by_kind(overlay, "broker_lag")
     try:
-        with path.open("rb") as handle:
-            handle.seek(0, 2)
-            size = handle.tell()
-            handle.seek(max(size - TAIL_BYTES, 0))
-            lines = handle.read().splitlines()
-        record = json.loads(lines[-1])
-        finished = parse_time(record["finished_at"])
-        reports = {r["condition"]: r for r in record["reports"]}
+        finished, reports = _last_run(path)
     except OSError as exc:
         return _unread(
             source.id,
@@ -723,6 +862,19 @@ def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSource
         )
     except (ValueError, KeyError, IndexError, TypeError):
         return _unread(source.id, "the lab alarm's last run record cannot be parsed")
+    try:
+        lag_finished, lag_reports = _last_run(lag_path)
+        if lag_condition not in lag_reports:
+            raise KeyError(lag_condition)
+    except OSError as exc:
+        return _unread(
+            source.id,
+            f"the lag node's run record cannot be opened ({type(exc).__name__})",
+        )
+    except (ValueError, KeyError, IndexError, TypeError):
+        return _unread(source.id, "the lag node's last run record cannot be parsed")
+    reports[lag_condition] = lag_reports[lag_condition]
+    finished = min(finished, lag_finished)
     subjects: list[ModelLabSubject] = []
     for condition in overlay.broker_conditions:
         report = reports.get(condition)
