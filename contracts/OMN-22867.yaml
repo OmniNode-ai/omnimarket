@@ -12,7 +12,7 @@ requirements:
       On omnimarket dev the two tests that red Tests (Split 5/20) and Tests (Split 19/20) pass, with the limit of 50 and the binding rule unchanged.
     acceptance:
       - id: AC3
-        statement: "AC3: tests/ci/test_repo_evidence_caller_workflow.py passes with the empty binds_ac removed from the OMN-22795 probe item and fails on dev without the change -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py in omnimarket"
+        statement: "AC3: tests/ci/test_repo_evidence_caller_workflow.py passes with the empty binds_ac removed from the OMN-22795 probe item and fails on dev without the change -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/unit/test_omn22867_shared_red_causes.py in omnimarket"
       - id: AC4
         statement: "AC4: tests/unit/test_ci_shard_plan_record_freshness_omn17427.py passes with fewer than 50 test files unrecorded and fails on dev without the change -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py in omnimarket"
 evidence_requirements:
@@ -33,7 +33,7 @@ dod_evidence:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py tests/unit/test_omn22867_shared_red_causes.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn22867-ac4-durations-freshness
     description: >-
