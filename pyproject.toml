@@ -1309,6 +1309,8 @@ node_work_ledger_seam_counter_compute = "omnimarket.nodes.node_work_ledger_seam_
 node_work_ledger_seq_gap_effect = "omnimarket.nodes.node_work_ledger_seq_gap_effect"
 node_work_progress_alert_effect = "omnimarket.nodes.node_work_progress_alert_effect"
 node_work_progress_compute = "omnimarket.nodes.node_work_progress_compute"
+node_work_state_projection_compute = "omnimarket.nodes.node_work_state_projection_compute"
+node_work_state_projection_effect = "omnimarket.nodes.node_work_state_projection_effect"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_workflow_baseline_compare_compute = "omnimarket.nodes.node_workflow_baseline_compare_compute"
@@ -1990,4 +1992,5 @@ markers = [
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
     "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]
