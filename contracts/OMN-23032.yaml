@@ -64,10 +64,8 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_golden_chain_node_job_log_filler_effect.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23032-gateway-cache-regression
-  description: The gateway's existing job-log cache tests pass with the refusal now naming the cache path.
+  description: The gateway's existing job-log cache tests pass with the refusal now naming the cache path. A regression check, not proof of a criterion, so it binds none (it passes at the merge base by design).
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: test_passes
     check_value: "uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py -q --no-cov -p no:randomly"
