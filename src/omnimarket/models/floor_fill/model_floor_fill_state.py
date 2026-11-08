@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_entry_state import (
+from omnimarket.models.floor_fill.enum_floor_fill_entry_state import (
     EnumFloorFillEntryState,
 )
 
