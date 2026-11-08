@@ -335,6 +335,7 @@ class Scripted(LocalSsh):
 
 FACTORY = "omnimarket.nodes.node_factory_floor_effect"
 FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
+JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
@@ -374,7 +375,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     # OMN-23018: the comparison reads the simple floor just written, so it is the last refresh step.
     assert calls[-1] == FLOOR_COMPARE
     calls = calls[:-1]
-    assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE])
+    assert sorted(calls[:-2]) == sorted(["hosts", "pool", HEALTH_MODULE, JOIN_REFUSAL])
     assert calls[-2] == FACTORY
     # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
     assert calls[-1] == FLOOR_SIMPLE
@@ -407,6 +408,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "process_health",
         "runner_fleet",
         "friction_classed",
+        "join_refusal",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -415,8 +417,8 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
     tmp_path: Path,
 ) -> None:
     barrier = threading.Barrier(
-        3, timeout=10
-    )  # hosts, pool and process_health in flight at once
+        4, timeout=10
+    )  # hosts, pool, process_health and join_refusal in flight at once
 
     class Overlapping(Scripted):
         def __call__(

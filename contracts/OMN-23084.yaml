@@ -1,0 +1,38 @@
+schema_version: 1.0.0
+ticket_id: OMN-23084
+title: The floor's publish cycle runs the join refusal node, so a real failure of piece 3 is answered by piece 4's typed refusal and join J3 stops reading broken
+summary: Join J3 (piece 3, bus, to piece 4, overlays) read broken on the served floor with one downstream_missing_typed_failure, the seam-deadline failure of piece 3 that piece 4 never answered. The refusal node (node_join_refusal_effect, OMN-23022) already declares J3 in the overlay home and reads the same ledger rows the floor reads, but nothing ran it. The floor's publish cycle now declares a join_refusal step in its concurrent input group, so every 300 s tick writes the typed upstream_ refusal of the downstream piece into the emission journal the floor_simple step folds in the same cycle. No verdict, bound or check of the fold changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23084-j3-refusal-step
+  statement: The floor's publish cycle runs the join refusal node before it folds the journal, and with that answer dropped join J3 reads broken again.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a real seam-deadline failure of piece 3 is answered once by a typed upstream_ failure of piece 4 and J3 reads error_only with no finding, a drill, a success and an old reading are not answered, the answer dropped turns J3 broken, and the publish contract declares the step before floor_simple -- falsifier: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The join refusal J3 tests with the failing control and the publish cycle wiring tests.
+  command: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23084-j3-ac1
+  description: The J3 refusal tests and the publish cycle wiring tests pass, including the failing control that drops piece 4's terminal emission.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
+- id: dod-omn23084-integration-proof
+  description: The J3 refusal tests run on a lab host at the pushed head and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23084 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
+    cwd: .
