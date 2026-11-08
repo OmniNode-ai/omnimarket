@@ -38,6 +38,7 @@ from typing import Any, get_args
 from urllib.parse import urlparse
 
 import yaml
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.handlers.delegation_first_choice import (
     clear_first_choice,
@@ -83,7 +84,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelStatus,
     ModelModelTestResult,
 )
-from omnimarket.pricing import manifest_price_per_1k
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
@@ -342,6 +342,24 @@ def _text(value: object) -> str | None:
 _LOCAL_PROVIDERS: tuple[ModelProvider, ...] = ("local", "ollama")
 
 
+def _manifest_price_per_1k(model: str) -> tuple[Decimal, Decimal] | None:
+    """The pricing manifest's ``(input, output)`` USD per 1k tokens, or ``None``.
+
+    ``None`` means the manifest does not name the model, or cannot be read; it
+    never means free.
+    """
+    try:
+        entry = ModelPricingTable.from_yaml().get_entry(model)
+    except Exception:  # an unreadable manifest names no price
+        return None
+    if entry is None:
+        return None
+    return (
+        Decimal(str(entry.input_cost_per_1k)),
+        Decimal(str(entry.output_cost_per_1k)),
+    )
+
+
 def model_cost_class(provider: ModelProvider, model: str) -> ModelCostClass:
     """Whether ``model`` on ``provider`` is free, paid, or of unknown cost (OMN-23167).
 
@@ -364,7 +382,7 @@ def model_cost_class(provider: ModelProvider, model: str) -> ModelCostClass:
     price = byok_declared_price_per_1m(row.endpoint_url, model)
     if price is None:
         # The pricing manifest names a model by its own id, per 1k tokens.
-        price = manifest_price_per_1k(model)
+        price = _manifest_price_per_1k(model)
     if price is None:
         return "unknown"
     return "free" if price == (Decimal(0), Decimal(0)) else "paid"

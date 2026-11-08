@@ -49,6 +49,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
@@ -908,9 +909,6 @@ def _read_model_key(provider: str) -> str:
 
 
 _model_choice = click.Choice(PROVIDERS, case_sensitive=False)
-_model_json = click.option(
-    "--json", "as_json", is_flag=True, help="One JSON object per line."
-)
 
 
 models_group = click.Group(
@@ -947,7 +945,7 @@ models_group = click.Group(
         "OpenAI-compatible API, such as http://<host>:<port>; local needs no key."
     ),
 )
-@_model_json
+@model_json
 def add_model(
     provider: str, model_options: tuple[str, ...], url: str | None, as_json: bool
 ) -> None:
@@ -1021,7 +1019,7 @@ def add_model(
 
 @models_group.command("test")
 @click.argument("provider", required=False, type=_model_choice)
-@_model_json
+@model_json
 def test_models(provider: str | None, as_json: bool) -> None:
     """Test PROVIDER, or every set-up provider, with one pinned delegation each."""
     request = ModelModelSetupRequest(
@@ -1039,44 +1037,11 @@ def test_models(provider: str | None, as_json: bool) -> None:
         sys.exit(1)
 
 
-def _show_ladder(as_json: bool) -> None:
-    """OMN-23167: every routable model in the order it is tried, with its cost class."""
-    result = _model_handler().handle(ModelModelSetupRequest(operation="ladder"))
-    if not result.ladder:
-        if as_json:
-            return
-        click.echo("no model is set up. Add one with: onex models add <provider>")
-        return
-    for rung in result.ladder:
-        if as_json:
-            click.echo(rung.model_dump_json())
-            continue
-        note = (
-            "  (price not in the catalogue, not treated as free)"
-            if rung.cost_class == "unknown"
-            else ""
-        )
-        click.echo(
-            f"{rung.position}. {_MODEL_LABELS[rung.provider]:<11} {rung.model}  "
-            f"{rung.cost_class}{note}"
-        )
-
-
 @models_group.command("list")
-@click.option(
-    "--ladder",
-    is_flag=True,
-    help=(
-        "List each model in the order delegation tries it, with its provider "
-        "and cost class: free, paid or unknown."
-    ),
-)
-@_model_json
-def list_models(as_json: bool, ladder: bool = False) -> None:
+@ladder_option
+@model_json
+def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
-    if ladder:
-        _show_ladder(as_json)
-        return
     for row in listed(as_json):  # OMN-21267: the rule in force first
         if as_json:
             click.echo(row.model_dump_json())
