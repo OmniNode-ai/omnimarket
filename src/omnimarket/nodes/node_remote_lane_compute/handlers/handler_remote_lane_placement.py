@@ -49,6 +49,12 @@ patch or a plan branch, ``required_inputs``) takes only a host whose reading hol
 (``present_inputs``); a reading that did not check them keeps the host off. When a host would take
 the lane but for its inputs and none holding them does, the result is INPUT_ABSENT naming each
 absent input, so the dispatch refuses the send instead of starting a lane that cannot find its input.
+
+Reach (OMN-22887): a brief that reads another host or a port names the route as a ``route:<target>``
+input (``route:h201``, ``route:broker-admin:dev``). A host whose reading lacks that route, or was not
+checked for it, takes no lane, and its verdict reads ``no-route: <target>`` instead of ``input-absent``.
+On 2026-11-07 lanes placed on h106 could not work: it had no ssh key to h201 and no route to the broker
+admin port, and placement ranked it by free capacity alone.
 """
 
 from __future__ import annotations
@@ -158,6 +164,11 @@ def contributor_lane_refusal(
     return None
 
 
+# An input named ``route:<target>`` is a route the brief reads over (``route:h201``, ``route:broker-admin:dev``);
+# the host's reading holds it only when the reader proved the host reaches that target (OMN-22887).
+ROUTE_PREFIX = "route:"
+
+
 def input_refusal(
     request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
 ) -> str | None:
@@ -170,9 +181,16 @@ def input_refusal(
         )
     present = set(reading.present_inputs)
     absent = [item for item in request.required_inputs if item not in present]
-    if absent:
-        return "input-absent: " + ", ".join(absent)
-    return None
+    unreachable = [
+        item[len(ROUTE_PREFIX) :] for item in absent if item.startswith(ROUTE_PREFIX)
+    ]
+    missing = [item for item in absent if not item.startswith(ROUTE_PREFIX)]
+    reasons: list[str] = []
+    if unreachable:
+        reasons.append("no-route: " + ", ".join(unreachable))
+    if missing:
+        reasons.append("input-absent: " + ", ".join(missing))
+    return "; ".join(reasons) or None
 
 
 def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
