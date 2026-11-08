@@ -3,10 +3,8 @@
 """The in-memory conditional store of the fill's rows (the default profile).
 
 It implements ``ProtocolFloorStateStore``: a write lands only when the stored version is the one the writer
-read (version 0 is "no row", so the first write is an insert-if-absent). The runtime's own ``state_io`` table
-(``floor_fill_state``, key ``scope``) needs a forward migration in omnibase_infra; its adapter is the named
-follow-up of this task. The real conditional store the crash, race and process tests run against is the SQLite
-store in ``tests/support_sqlite_store.py``.
+read (version 0 is "no row", so the first write is an insert-if-absent). The table-backed store over
+``floor_fill_state`` (omnibase_infra migration 113) is in ``store_postgres.py``; the crash, race and process tests also run against the SQLite store in ``tests/support_sqlite_store.py``.
 """
 
 from __future__ import annotations
