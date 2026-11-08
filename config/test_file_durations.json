@@ -918,6 +918,8 @@
   "tests/nodes/node_factory_floor_publish_effect/test_floor_station_layout_floor_ui_fix_0245.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py": 0.02,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py": 4.45,
+  "tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_review_findings.py": 1.22,
+  "tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py": 0.59,
   "tests/nodes/node_factory_floor_publish_effect/test_merged_running_page.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py": 1.21,
   "tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py": 0.17,

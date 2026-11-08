@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22981"
+title: "J16: an eval result appears on the floor with its age, golden and error"
+summary: "Join J16 (piece 16 to piece 17) as a golden and an error join test over the existing floor reader: a fresh eval result is drawn on piece 16's floor row with its age and freshness, and a stale eval result is drawn stale (NOT WORKING with its age) and never as an empty row. The chain pair reads golden_only, error_only and passed on the floor's own receipt fold. Two named injected breaks show the assertions fail for real."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-join-j16"
+    statement: "An eval result appears on the floor record with its freshness, and a stale eval result is drawn stale and not as empty."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: golden join test: an eval result appears on the floor record with its freshness -- falsifier: uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k golden"
+      - id: "AC2"
+        statement: "AC2: error join test: a stale eval result is drawn stale and not as empty -- falsifier: uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k error"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: golden join test: an eval result appears on the floor record with its freshness."
+    command: "uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k golden"
+  - kind: "tests"
+    description: "AC2: error join test: a stale eval result is drawn stale and not as empty."
+    command: "uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k error"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22981-ac1-golden"
+    description: "AC1: golden join test: an eval result appears on the floor record with its freshness."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k golden"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22981-ac2-error"
+    description: "AC2: error join test: a stale eval result is drawn stale and not as empty."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/test_join_j16.py -q -p no:randomly -k error"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: dod-omn22981-j16-integration-proof
+    description: The pushed head ran the J16 join tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22981 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/integration/test_join_j16.py -q --no-cov'
+        cwd: .
