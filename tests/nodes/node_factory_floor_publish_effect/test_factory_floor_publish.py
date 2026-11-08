@@ -195,6 +195,8 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "favicon-32.png",
         "favicon.svg",
         "floor",
+        "floor-panel.css",
+        "floor-panel.js",
         "index.html",
         "onex.theme.dark.css",
         "onex.theme.light.css",
@@ -226,6 +228,8 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "favicon.svg",
         "favicon-32.png",
         "apple-touch-icon.png",
+        "floor-panel.js",
+        "floor-panel.css",
         "floor/index.html",
         "detail.html",
         "index.html",
@@ -238,6 +242,8 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert [
         c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
     ] == [
+        False,
+        False,
         False,
         False,
         False,
@@ -581,6 +587,8 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "favicon.svg",
         "favicon-32.png",
         "apple-touch-icon.png",
+        "floor-panel.js",
+        "floor-panel.css",
         "floor/index.html",
         "detail.html",
         "index.html",
