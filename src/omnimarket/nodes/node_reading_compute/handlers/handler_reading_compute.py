@@ -133,9 +133,14 @@ def _judge_landing(
 ) -> list[str]:
     """The landing goal's hourly requirements against one watcher snapshot; the reasons it fails, none when it holds."""
     if snapshot.age_seconds > requirements.snapshot_max_age_seconds:
-        return [
-            f"snapshot-stale:age-{snapshot.age_seconds}s-over-{requirements.snapshot_max_age_seconds}s"
-        ]
+        # The age moves with the probe time, so it never goes in the reason: a later probe of the
+        # same window over the same snapshot must give the same content (OMN-23077).
+        newest = (
+            ""
+            if snapshot.newest_at is None
+            else f"newest-{snapshot.newest_at.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-"
+        )
+        return [f"snapshot-stale:{newest}over-{requirements.snapshot_max_age_seconds}s"]
     failures = [
         f"head-unmerged-over-limit:{reason_token(head.ref)}"
         for head in sorted(snapshot.heads, key=lambda h: h.ref)
