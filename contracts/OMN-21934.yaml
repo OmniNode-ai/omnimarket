@@ -163,7 +163,6 @@ dod_evidence:
       that database, requiring one row per event key after the second replay.
       This probe needs Docker on the runner, without a lab route or lane service.
     source: "manual"
-    binds_ac: ["AC2", "AC3"]
     checks:
       - check_type: "command"
         check_value: |
