@@ -75,13 +75,7 @@ from omnimarket.models.model_engine_experiment import (
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
-from omnimarket.models.stop_gate import EnumStopGateOutcome
-from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
-from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
-    lane_model_refusal,
-)
-
-from ..models import (
+from omnimarket.models.remote_lane_placement import (
     CODEX_ENGINE,
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
@@ -93,6 +87,11 @@ from ..models import (
     ModelRemoteLaneReconcileIntent,
     ModelRemoteLaneRungVerdict,
     ModelRemoteLaneVenvDrift,
+)
+from omnimarket.models.stop_gate import EnumStopGateOutcome
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
 )
 
 _VENV_DRIFT = "venv-drift"

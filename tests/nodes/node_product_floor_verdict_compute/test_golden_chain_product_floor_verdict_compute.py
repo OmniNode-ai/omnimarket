@@ -37,6 +37,7 @@ NODE_DIR = Path(node_package.__file__).parent
 COMMAND_TOPIC = "onex.cmd.omnimarket.product-floor-verdict-requested.v1"
 TERMINAL_TOPIC = "onex.evt.omnimarket.product-floor-verdict-completed.v1"
 HEALTH_COMMAND_TOPIC = "onex.cmd.omnimarket.customer-health-requested.v1"
+MVP_LAUNCH_COMMAND_TOPIC = "onex.cmd.omnimarket.mvp-launch-requested.v1"
 HEALTH_TERMINAL_TOPIC = "onex.evt.omnimarket.customer-health-computed.v1"
 PARITY = json.loads(
     (ROOT / "tests/fixtures/product_floor_verdict_parity.json").read_text()
@@ -130,6 +131,7 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
     assert contract["event_bus"]["subscribe_topics"] == [
         COMMAND_TOPIC,
         HEALTH_COMMAND_TOPIC,
+        MVP_LAUNCH_COMMAND_TOPIC,
     ]
     # decide_customer_health runs in process and returns its line; this node's Python never
     # publishes a health event, so the contract does not declare one (publish parity gate).
@@ -140,8 +142,13 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
     assert [h["operation"] for h in contract["handler_routing"]["handlers"]] == [
         "decide_product_floor_verdict",
         "decide_customer_health",
+        "decide_mvp_launch",
     ]
-    assert contract["metadata"]["related_tickets"] == ["OMN-18008", "OMN-22923"]
+    assert contract["metadata"]["related_tickets"] == [
+        "OMN-18008",
+        "OMN-22923",
+        "OMN-23205",
+    ]
     assert contract["metadata"]["transport_type"] == "inmemory"
     binding = contract["handler"]
     handler_type = getattr(importlib.import_module(binding["module"]), binding["class"])

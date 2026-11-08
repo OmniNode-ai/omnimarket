@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory profile: simulated hosts and commands, nothing leaves the process. Synthetic names only.
+backend: in_memory
+free_bytes_argv: [df, "--output=avail", "-B1", "{path}"]
+free_bytes_timeout_seconds: 30
+commands:
+  - name: prune_temp
+    argv: [sim-prune, "--temp"]
+    measured_path: /sim/work
+    timeout_seconds: 60
+    simulated_effect_bytes: 5000
+  - name: grow_scratch
+    argv: [sim-grow]
+    measured_path: /sim/work
+    timeout_seconds: 60
+    simulated_effect_bytes: -1000
+hosts:
+  - name: sim-host-a
+    transport_prefix: []
+    commands: [prune_temp, grow_scratch]
+    simulated_free_bytes: 20000
+  - name: sim-host-b
+    transport_prefix: []
+    commands: [grow_scratch]
+    simulated_free_bytes: 8000

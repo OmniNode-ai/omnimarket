@@ -18,6 +18,7 @@ proof of that acceptance criterion.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -216,15 +217,14 @@ def test_ac4_ratchet_job_carries_no_continue_on_error() -> None:
 
 def test_ac4_ratchet_job_is_registered_under_the_ci_summary_umbrella() -> None:
     """Falsifier: the context appears in neither enforcement surface."""
-    gate = CI_SUMMARY_GATE.read_text(encoding="utf-8")
-    assert f'"{JOB_DISPLAY_NAME}"' in gate, (
+    rules = json.loads(
+        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
+    )
+    strict = [e["name"] for e in rules["rules"]["STRICT_GATE_JOBS"]["entries"]]
+    assert JOB_DISPLAY_NAME in strict, (
         "omnimarket's merge gate is the `CI Summary` umbrella; an unregistered "
         "job that is skipped or absent yields SUCCESS"
     )
-    strict_block = gate.split("STRICT_GATE_JOBS: tuple[str, ...] = (", 1)[1].split(
-        "\n)", 1
-    )[0]
-    assert f'"{JOB_DISPLAY_NAME}"' in strict_block
 
 
 def test_ac4_ratchet_job_is_unconditional() -> None:

@@ -20,6 +20,21 @@ from cryptography.x509.oid import NameOID
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloJournalStatus,
+    EnumIloVerb,
+)
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+    ModelIloOverlay,
+    credential_key,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
+    ModelIloRedfishRequest,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
+    ModelIloJournalRecord,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.credential_store import (
     StoreCredentialSource,
 )
@@ -48,21 +63,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.redfish_client import (
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
     PinnedHttpsTransport,
     build_pinned_transport,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloJournalStatus,
-    EnumIloVerb,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
-    ModelIloOverlay,
-    credential_key,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
-    ModelIloRedfishRequest,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
-    ModelIloJournalRecord,
 )
 from tests.nodes.node_ilo_redfish_effect.ilo_fakes import dig
 
@@ -184,10 +184,13 @@ def test_no_verb_can_reach_storage_accounts_licenses_firmware_or_log_clearing() 
     }
 
 
-def test_contract_declares_no_bus_and_no_secret_values() -> None:
+def test_contract_declares_no_bus_binds_handlers_and_no_secret_values() -> None:
     raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    assert "event_bus" not in raw
-    assert "handler_routing" not in raw
+    assert raw["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    modules = {h["handler"]["module"] for h in raw["handler_routing"]["handlers"]}
+    assert modules == {
+        "omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope",
+    }
     assert raw["node_type"] == "effect"
     assert (
         "secrets" not in raw

@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Job Start Source Effect (OMN-22897)
+#
+# Reads which GitHub Actions jobs start and when, for the repositories the overlay declares, judges the read
+# and keeps one record per read in the store the overlay names. The reader (in-memory fixture or the GitHub REST
+# API) and the store (in-memory or the ledger) are injected, and every setting comes from the overlay; this
+# contract holds no setting. The source only reads: it never changes a run, a job, a group or a file. A read that
+# cannot be completed ends in the typed failure topic and is kept as an unread record, never as zero starts.
+name: node_job_start_source_effect
+contract_name: node_job_start_source_effect
+node_name: node_job_start_source_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the jobs that started in a window (repository, run id, job id, runner group, labels, run event, fork
+  head, start time) and judges the read on three subjects: every declared repository was read, the read is fresh,
+  and no job of public origin started on a watched runner group off the dated baseline. A read that cannot be
+  completed (denied, rate limited, over its call budget, truncated, unreadable, or a reader that raised) reads
+  UNKNOWN on every subject and ends in the typed failure event.
+
+handler:
+  module: omnimarket.nodes.node_job_start_source_effect.handlers.handler_job_start_source
+  class: HandlerJobStartSource
+  input_model: omnimarket.nodes.node_job_start_source_effect.models.model_job_start.ModelJobStartRequest
+  output_model: omnimarket.nodes.node_job_start_source_effect.models.model_job_start.ModelJobStartResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: job_start_read
+      handler:
+        name: HandlerJobStartSource
+        module: omnimarket.nodes.node_job_start_source_effect.handlers.handler_job_start_source
+
+# HandlerJobStartSource takes the overlay, the reader, the store and an http getter as constructor parameters, so
+# the node runs through its own CLI: `python -m omnimarket.nodes.node_job_start_source_effect read` (or `probe`,
+# which keeps nothing). It keeps one record per read and writes nothing else.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: []
+  purity: impure
+  idempotent: true
+  side_effects: [network-read, retained-store-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelJobStartRequest
+  module: omnimarket.nodes.node_job_start_source_effect.models.model_job_start
+  description: The correlation id and the time the window ends at.
+output_model:
+  name: ModelJobStartResult
+  module: omnimarket.nodes.node_job_start_source_effect.models.model_job_start
+  description: The starts read, the failure if any, the reading and what the store did.
+
+terminal_event: onex.evt.omnimarket.job-start-read-completed.v1
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_job_start_source_effect read | probe, which builds the handler in process and prints its typed result"
+
+topics:
+  read_requested: onex.cmd.omnimarket.job-start-read-requested.v1
+  read_completed: onex.evt.omnimarket.job-start-read-completed.v1
+  read_failed: onex.evt.omnimarket.job-start-read-failed.v1
+  store_failed: onex.evt.omnimarket.job-start-store-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.job-start-read-completed.v1
+  - onex.evt.omnimarket.job-start-read-failed.v1
+  - onex.evt.omnimarket.job-start-store-failed.v1
+
+overlay:
+  node: node_job_start_source_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22897
+  transport_type: local
