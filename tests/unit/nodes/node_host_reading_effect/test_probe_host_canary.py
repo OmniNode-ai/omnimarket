@@ -92,6 +92,7 @@ class CanaryWorld:
         self.advert_error: str | None = None
         self.advertisements_configured = True
         self.drill = False
+        self.parked_markers: tuple[str, ...] | None = None
 
     # -- the named breaks ------------------------------------------------------------------
 
@@ -107,6 +108,17 @@ class CanaryWorld:
 
     def break_busy(self, host: str) -> None:
         self.breaks[host] = "busy"
+
+    def break_over_the_bar(self, host: str) -> None:
+        """The placement refuses the host: over the load/core bar (a host over the bar is parked)."""
+        self.breaks[host] = "over_bar"
+
+    def break_job_kinds(self, host: str) -> None:
+        """The placement refuses the canary's kind by the host table's job kinds."""
+        self.breaks[host] = "job_kinds"
+
+    def break_lane_guard_missing(self, host: str) -> None:
+        self.breaks[host] = "guard_missing"
 
     def break_unadvertised(self, host: str) -> None:
         """The pool read never names the host (no advertisement reached the placer) and the
@@ -175,6 +187,10 @@ class CanaryWorld:
                 "drill": self.drill,
             }
         )
+        if self.parked_markers is not None:
+            canary = canary.model_copy(
+                update={"pool_parked_markers": self.parked_markers}
+            )
         if not self.advertisements_configured:
             canary = canary.model_copy(update={"advertisements_command_env": None})
         return base.model_copy(update={"canary": canary})
@@ -184,7 +200,16 @@ class CanaryWorld:
             "kill": "kill -9 $$",
             "sleep": "sleep 5",
             "unreachable": 'echo "lab-run: $0: unreadable (ssh)" >&2; exit 255',
-            "busy": 'echo "lab-run: $0: over the load bar" >&2; exit 75',
+            "busy": 'echo "  $0: all 4 unit slots busy load/core=0.10" >&2; exit 75',
+            "over_bar": (
+                'echo "  $0: over the 0.75 load/core bar load/core=1.45 free=12.0GB" >&2; '
+                "exit 75"
+            ),
+            "job_kinds": (
+                'echo "  $0: host table: takes only [lint, test] units, not other '
+                '(host table job_kinds) load/core=0.07" >&2; exit 75'
+            ),
+            "guard_missing": 'echo "lab-run: $0: lane guard 7a54cfc0 not installed" >&2; exit 75',
             "unadvertised": (
                 'echo "lab-run: h-other: not the requested host" >&2; '
                 'echo "lab-run: no pool host passes the shared admission rule" >&2; exit 75'
@@ -222,10 +247,15 @@ class CanaryWorld:
             return ModelCanaryRun(
                 exit_code=255, stderr=f"lab-run: {host}: unreadable (ssh)\n"
             )
-        if kind == "busy":
-            return ModelCanaryRun(
-                exit_code=75, stderr=f"lab-run: {host}: over the load bar\n"
-            )
+        refusals = {
+            "busy": f"  {host}: all 4 unit slots busy load/core=0.10\n",
+            "over_bar": f"  {host}: over the 0.75 load/core bar load/core=1.45 free=12.0GB\n",
+            "job_kinds": f"  {host}: host table: takes only [lint, test] units, not other "
+            "(host table job_kinds) load/core=0.07\n",
+            "guard_missing": f"lab-run: {host}: lane guard 7a54cfc0 not installed\n",
+        }
+        if kind in refusals:
+            return ModelCanaryRun(exit_code=75, stderr=refusals[kind])
         if kind == "unadvertised":
             return ModelCanaryRun(
                 exit_code=75,
@@ -366,6 +396,69 @@ def test_a_typed_busy_refusal_still_reads_working(backend: str) -> None:
     assert verdict == "WORKING"
     assert cells["busy"] == "h-b"
     assert cells["typed"] == "h-a"
+    assert cells["refused"] == "h-b:all-4-unit-slots-busy"
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize(
+    ("apply", "refusal"),
+    [
+        (lambda w: w.break_over_the_bar("h-b"), "over-the-0-75-load-core-bar"),
+        (
+            lambda w: w.break_job_kinds("h-b"),
+            "host-table-takes-only-lint-test-units-not-other-host-table-job-kinds",
+        ),
+    ],
+    ids=["over-the-bar", "job-kinds"],
+)
+def test_a_host_the_table_or_the_bar_keeps_out_reads_parked_never_failed(
+    backend: str, apply: Callable[[CanaryWorld], None], refusal: str
+) -> None:
+    """OMN-22869: a canary on a host out of rotation or over the bar is reading the host, not
+    the pipeline: the host is typed parked with the refusal, and the reading stays WORKING."""
+    world = CanaryWorld(backend)
+    apply(world)
+    verdict, _, cells = _read(world)
+    assert verdict == "WORKING"
+    assert cells["parked"] == f"{PARKED},h-b"
+    assert cells["busy"] == "none"
+    assert cells["typed"] == "h-a"
+    assert cells["failed_hosts"] == "none"
+    assert cells["refused"] == f"h-b:{refusal}"
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_parked_host_does_not_hide_a_failed_one(backend: str) -> None:
+    world = CanaryWorld(backend)
+    world.break_job_kinds("h-b")
+    world.break_kill_wrapper("h-a")
+    verdict, reasons, cells = _read(world)
+    assert verdict == "NOT_WORKING"
+    assert reasons == ["canary-untyped-h-a"], reasons
+    assert cells["failed_hosts"] == "h-a"
+    assert "h-b" in cells["parked"].split(",")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_missing_lane_guard_refusal_stays_busy_and_is_named(backend: str) -> None:
+    """The guard refusal is not a table or bar reason: it is not parked, and the row names it."""
+    world = CanaryWorld(backend)
+    world.break_lane_guard_missing("h-b")
+    _, _, cells = _read(world)
+    assert cells["busy"] == "h-b"
+    assert cells["parked"] == PARKED
+    assert cells["refused"] == "h-b:lane-guard-7a54cfc0-not-installed"
+
+
+def test_failing_control_without_the_parked_markers_the_refusal_reads_busy() -> None:
+    """The break: empty the overlay's parked markers (the behaviour before OMN-22869) and the
+    table's refusal is typed busy, so the parked assertion of the test above turns red."""
+    world = CanaryWorld("memory")
+    world.break_job_kinds("h-b")
+    world.parked_markers = ()
+    _, _, cells = _read(world)
+    assert cells["busy"] == "h-b"
+    assert cells["parked"] == PARKED
 
 
 # -- error -------------------------------------------------------------------------------------
