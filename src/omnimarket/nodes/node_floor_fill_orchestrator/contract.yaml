@@ -45,12 +45,7 @@ handler:
   output_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.ModelFloorFillEntryResult"
 handler_routing:
   routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command:HandlerFloorFillCommand"
-  handlers:
-    - operation: "run_floor_fill_command"
-      handler:
-        name: "HandlerFloorFillCommand"
-        module: "omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command"
+  handlers: []
 event_bus:
   subscribe_topics: []
   publish_topics: []
