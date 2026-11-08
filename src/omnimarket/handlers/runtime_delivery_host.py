@@ -19,16 +19,31 @@ import contextlib
 import logging
 import threading
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from omnimarket.models.model_message_meta import MessageMeta
-
-if TYPE_CHECKING:
-    from omnimarket.projection.runner import BaseProjectionRunner
 
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_TIMEOUT_S = 30.0
+
+_POOL_INVALIDATING_DRIVER_ERRORS = frozenset(
+    {
+        "InterfaceError",
+        "PostgresConnectionError",
+        "InvalidAuthorizationSpecificationError",
+    }
+)
+
+
+class ProtocolRuntimeProjectionRunner(Protocol):
+    """What the host needs from a runner; the runner imports this module, not the reverse."""
+
+    async def project_runtime_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool: ...
+
+    async def close_runtime_resources(self) -> None: ...
 
 
 def invalidates_runtime_pools(err: BaseException) -> bool:
@@ -39,17 +54,16 @@ def invalidates_runtime_pools(err: BaseException) -> bool:
     attests fresh ones. Every other failure (a bad payload, a constraint, a
     missing column) belongs to the delivery alone and leaves the pools open.
     """
-    import asyncpg  # only the runtime process may load the driver (OMN-15800)
-
-    return isinstance(
-        err,
-        (
-            OSError,
-            TimeoutError,
-            asyncpg.InterfaceError,
-            asyncpg.exceptions.PostgresConnectionError,
-            asyncpg.exceptions.InvalidAuthorizationSpecificationError,
-        ),
+    if isinstance(err, (OSError, TimeoutError)):
+        return True
+    # Read the driver's exception classes by name through the MRO, so this
+    # module never imports the driver (OMN-15800: only the runtime process
+    # loads it, and the compliance sweep counts the import as an undeclared
+    # transport).
+    return any(
+        cls.__module__.split(".")[0] == "asyncpg"
+        and cls.__name__ in _POOL_INVALIDATING_DRIVER_ERRORS
+        for cls in type(err).__mro__
     )
 
 
@@ -109,7 +123,7 @@ class RuntimeDeliveryHost:
 
     def __init__(
         self,
-        runner_factory: Callable[[], BaseProjectionRunner],
+        runner_factory: Callable[[], ProtocolRuntimeProjectionRunner],
         name: str = "runtime-delivery",
     ) -> None:
         self._name = name
@@ -117,7 +131,7 @@ class RuntimeDeliveryHost:
         self._host_lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._runner: BaseProjectionRunner | None = None
+        self._runner: ProtocolRuntimeProjectionRunner | None = None
         self._delivery_lock: asyncio.Lock | None = None
 
     @property

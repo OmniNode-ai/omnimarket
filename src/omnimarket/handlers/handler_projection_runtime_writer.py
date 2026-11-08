@@ -32,7 +32,7 @@ class RuntimeProjectionWriter:
     runner_type: ClassVar[type[BaseProjectionRunner]]
 
     def __init__(self) -> None:
-        self._host = RuntimeDeliveryHost(lambda: self.runner_type())
+        self._host = RuntimeDeliveryHost(self.runner_type)
 
     def close(self) -> None:
         self._host.close()

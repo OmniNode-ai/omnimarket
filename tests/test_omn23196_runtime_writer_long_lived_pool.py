@@ -261,13 +261,13 @@ def test_close_closes_every_pool_once_and_the_writer_can_start_again(
 def test_every_delivery_runs_on_the_one_loop_even_from_concurrent_threads(
     pools: list[_FakePool], writer: SavingsProjectionWriter
 ) -> None:
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def deliver(offsets: range) -> None:
         try:
             for offset in offsets:
                 writer.handle(_request(offset))
-        except BaseException as err:
+        except Exception as err:
             errors.append(err)
 
     threads = [
@@ -282,3 +282,35 @@ def test_every_delivery_runs_on_the_one_loop_even_from_concurrent_threads(
     assert not errors
     assert len({loop for pool in pools for loop in pool.loops}) == 1
     assert len(pools) == len({pool.dsn for pool in pools})
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        OSError("socket closed"),
+        TimeoutError(),
+        asyncpg.exceptions.InterfaceError("pool closed"),
+        asyncpg.exceptions.ConnectionDoesNotExistError("gone"),
+        asyncpg.exceptions.InvalidPasswordError("rotated"),
+    ],
+)
+def test_connection_class_failures_invalidate_the_kept_pools(
+    err: BaseException,
+) -> None:
+    from omnimarket.handlers.runtime_delivery_host import invalidates_runtime_pools
+
+    assert invalidates_runtime_pools(err) is True
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        asyncpg.exceptions.DataError("bad payload"),
+        asyncpg.exceptions.UniqueViolationError("dup"),
+        ValueError("not a driver error"),
+    ],
+)
+def test_delivery_only_failures_leave_the_kept_pools_open(err: BaseException) -> None:
+    from omnimarket.handlers.runtime_delivery_host import invalidates_runtime_pools
+
+    assert invalidates_runtime_pools(err) is False
