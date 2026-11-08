@@ -19,11 +19,10 @@ from omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance i
     InMemoryOrderReadiness,
 )
 from tests.nodes.node_gate_store_effect.contract_suite import POLICY
-from tests.nodes.node_gate_store_effect.test_postgres_store import (  # noqa: F401
-    _connect,
-    _database,
-    _policy,
+from tests.nodes.node_gate_store_effect.support_postgres import (
+    connect,
     postgres_factory,
+    with_postgres,
 )
 from tests.nodes.node_order_advance_effect.test_order_advance import ORDER, WRITER
 
@@ -48,7 +47,7 @@ def test_writer_advances_the_test_order_on_postgres_and_restarts() -> None:
     ]
     # restart: a new writer object over a new connection factory reads the committed position
     restarted = HandlerOrderAdvance(
-        PostgresGateStore(_policy(POLICY), _connect, None),
+        PostgresGateStore(with_postgres(POLICY), connect, None),
         InMemoryOrderReadiness(WRITER.ready_pieces),
         WRITER,
         ORDER,

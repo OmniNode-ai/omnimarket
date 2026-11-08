@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``python -m omnimarket.nodes.node_order_advance_effect tick``: one tick of the order writer.
+"""``python -m omnimarket.nodes.node_order_advance_effect.runtime_order_advance tick``: one tick of the order writer.
 
 The timer unit runs this command. It loads the ``gate_store`` and ``order_writer`` overlays,
 builds the store and the readiness read they name, runs one tick and prints the typed result as

@@ -17,6 +17,7 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_gate_store import (
+    EnumGateStoreOutcome,
     ModelGateStoreRequest,
     ModelGateStoreResult,
 )
@@ -245,7 +246,7 @@ class DownStore:
 
 
 def test_a_store_with_no_answer_admits_and_logs_it_even_on_an_enforced_path() -> None:
-    h, log = make(DownStore())  # type: ignore[arg-type]
+    h, log = make(DownStore())
     events = asyncio.run(publish([call("n1", "admit", "s1")], h))
     assert_chain(events, [(DECIDED, "chain-n1", "admitted_no_answer")])
     assert log.entries[0].store_outcome is None
@@ -311,30 +312,16 @@ class AdmitsEverything(HandlerStartAdmission):
         return result.model_copy(update={"decision": DEC.ADMITTED})
 
 
-class SkipsTheStore(HandlerStartAdmission):
-    """Break ``skip_the_store``: a start is admitted without asking the store (no reservation needed)."""
+class AlwaysYesStore:
+    """Break ``store_says_yes``: the store accepts every request, so nothing is ever compared."""
 
-    def _store_request(self, request: Any) -> Any:
-        return (
-            super()
-            ._store_request(request)
-            .model_copy(update={"reservation_id": "always-there"})
+    def transact(self, request: ModelGateStoreRequest) -> ModelGateStoreResult:
+        return ModelGateStoreResult(
+            correlation_id=request.correlation_id,
+            operation=request.operation,
+            outcome=EnumGateStoreOutcome.OK,
+            epoch=0,
         )
-
-    def handle(self, request: Any) -> Any:
-        class Yes:
-            def transact(self_, r: Any) -> Any:  # noqa: N805
-                from omnimarket.models.model_gate_store import EnumGateStoreOutcome
-
-                return ModelGateStoreResult(
-                    correlation_id=r.correlation_id,
-                    operation=r.operation,
-                    outcome=EnumGateStoreOutcome.OK,
-                    epoch=0,
-                )
-
-        self._store = Yes()  # type: ignore[assignment]
-        return super().handle(request)
 
 
 def test_break_admit_everything_lets_the_bypass_through() -> None:
@@ -344,8 +331,8 @@ def test_break_admit_everything_lets_the_bypass_through() -> None:
         assert enforced[0][1]["decision"] == "refused"
 
 
-def test_break_skip_the_store_lets_the_bypass_through() -> None:
-    h, _ = make(cls=SkipsTheStore)
+def test_break_store_says_yes_lets_the_bypass_through() -> None:
+    h, _ = make(AlwaysYesStore(), cls=HandlerStartAdmission)
     enforced = asyncio.run(publish([call("b1", "start", "never-reserved")], h))
     with pytest.raises(AssertionError):
         assert enforced[0][1]["decision"] == "refused"

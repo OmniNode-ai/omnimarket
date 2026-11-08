@@ -33,7 +33,6 @@ from omnimarket.models.model_order_advance import (
 from omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store import (
     build_store,
 )
-from omnimarket.nodes.node_order_advance_effect.__main__ import main as tick_main
 from omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance import (
     HandlerOrderAdvance,
     InMemoryOrderReadiness,
@@ -44,6 +43,9 @@ from omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance i
 )
 from omnimarket.nodes.node_order_advance_effect.overlay import (
     load_order_writer_policy,
+)
+from omnimarket.nodes.node_order_advance_effect.runtime_order_advance import (
+    main as tick_main,
 )
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 from tests.node_overlay_support import install_node_overlay

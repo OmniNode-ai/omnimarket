@@ -6,7 +6,9 @@
 # reservations and consumed reservations, the holder record, step keys, safety and stop state, and
 # the order. Every compare is evaluated inside one transaction of the store. This node is the store's
 # effect with its in-memory twin and its Postgres backend (OMN-23055: schema only by the migrations
-# beside this contract, one row lock per request). It holds no start by itself: nothing calls it from a start path until the admission effect
+# beside this contract and declared in scripts/application-relation-ownership.yaml, one row lock per request;
+# the store opens its own connection from the overlay's DSN variable, so the contract declares no db_io
+# projection binding). It holds no start by itself: nothing calls it from a start path until the admission effect
 # (step 0 row 4) is built and its drill passes.
 name: node_gate_store_effect
 contract_name: node_gate_store_effect
@@ -68,35 +70,6 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.gate-store-answered.v1
   - onex.evt.omnimarket.gate-store-failed.v1
-
-db_io:
-  db_tables:
-    - name: gate_store_state
-      database_ref: application
-      schema: omninode_internal
-      migration: "0000_create_gate_store.sql"
-      access: read_write
-      role: gate_store_state
-    - name: gate_store_reservations
-      database_ref: application
-      schema: omninode_internal
-      migration: "0000_create_gate_store.sql"
-      access: read_write
-      role: gate_store_reservations
-    - name: gate_store_safety
-      database_ref: application
-      schema: omninode_internal
-      migration: "0000_create_gate_store.sql"
-      access: read_write
-      role: gate_store_safety
-    - name: gate_store_steps
-      database_ref: application
-      schema: omninode_internal
-      migration: "0000_create_gate_store.sql"
-      access: read_write
-      role: gate_store_steps
-  dedupe_key:
-    - step_key
 
 overlay:
   node: gate_store

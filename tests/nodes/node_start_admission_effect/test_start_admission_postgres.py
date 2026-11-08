@@ -22,8 +22,7 @@ from omnimarket.nodes.node_start_admission_effect.handlers.handler_start_admissi
     InMemoryAdmissionLog,
 )
 from tests.nodes.node_gate_store_effect.contract_suite import POLICY
-from tests.nodes.node_gate_store_effect.test_postgres_store import (  # noqa: F401
-    _database,
+from tests.nodes.node_gate_store_effect.support_postgres import (
     postgres_factory,
 )
 from tests.nodes.node_start_admission_effect.test_start_admission import POLICY_ADMIT

@@ -30,7 +30,7 @@ handler:
 
 # Not a runtime-dispatched handler: HandlerOrderAdvance takes the gate store, the readiness read
 # and the policy as constructor parameters (the overlays select them), so the bus edge is
-# answer_command and the timer is a unit that runs `python -m omnimarket.nodes.node_order_advance_effect tick`.
+# answer_command and the timer is a unit that runs `python -m omnimarket.nodes.node_order_advance_effect.runtime_order_advance tick`.
 
 descriptor:
   node_archetype: effect
