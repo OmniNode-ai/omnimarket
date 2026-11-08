@@ -107,7 +107,7 @@ def _insert_failed(cur: Any, label: str, detail: str | None, *, passed: bool) ->
 def _row(cur: Any) -> tuple[list[dict[str, Any]], int, int]:
     cur.execute(
         f"SELECT failure_categories::text, total_failed, "
-        f"length(failure_categories::text) FROM {_VIEW} WHERE tenant_id = %s",
+        f"octet_length(failure_categories::text) FROM {_VIEW} WHERE tenant_id = %s",
         (_TENANT,),
     )
     categories, total_failed, size = cur.fetchone()
