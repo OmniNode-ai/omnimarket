@@ -207,8 +207,13 @@ def retry_command(
 
 
 def _refuse(
-    request: ModelOnexSetupRequest, problem: str, fix: str
+    request: ModelOnexSetupRequest,
+    problem: str,
+    fix: str,
+    *,
+    retry_request: ModelOnexSetupRequest | None = None,
 ) -> ModelOnexSetupResult:
+    retry_with = retry_request or request
     return ModelOnexSetupResult(
         workspace=request.workspace,
         install_path=request.install_path,
@@ -217,7 +222,7 @@ def _refuse(
             step=ARGUMENTS_STEP,
             problem=problem,
             fix=fix,
-            retry=retry_command(request.workspace, request.install_path, request),
+            retry=retry_command(request.workspace, request.install_path, retry_with),
         ),
     )
 
@@ -238,6 +243,7 @@ def refused_before_any_step(
             "ollama is not a setup provider",
             "reach Ollama by its OpenAI-compatible URL: "
             "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
+            retry_request=request.model_copy(update={"provider": None}),
         )
     if provider is not None and provider not in SETUP_PROVIDERS:
         return _refuse(

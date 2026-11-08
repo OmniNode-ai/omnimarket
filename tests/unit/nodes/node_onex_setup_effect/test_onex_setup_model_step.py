@@ -316,6 +316,7 @@ def test_wrong_key_resumes(
     retry = re.search(r"^Retry: (onex setup.*)$", failed.output, re.MULTILINE)
     assert retry, failed.output
     assert "stdin" in failed.output, "the retry must say the key goes on stdin"
+    assert "Steps before this one are complete and are kept" in failed.output
     assert WRONG_KEY not in failed.output
     # The earlier steps are kept.
     assert workspace.is_dir()
@@ -368,6 +369,8 @@ def test_unattended_ollama_refused_names_local(
     )
     assert result.exit_code != 0, result.output
     assert "--provider local --url" in result.output
+    assert "No step ran and nothing was written" in result.output
+    assert "--provider ollama" not in result.output.split("Retry:", 1)[1]
     assert "[done]" not in result.output
     assert not (home / ".onex").exists()
     assert recorder.argv == []

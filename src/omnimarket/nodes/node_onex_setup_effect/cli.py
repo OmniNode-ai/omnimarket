@@ -203,10 +203,13 @@ def setup_command(
             click.echo(
                 "The key was not kept in the command: give it again on stdin.", err=True
             )
-        click.echo(
-            "Steps before this one are complete and are kept; the retry resumes here.",
-            err=True,
-        )
+        if result.steps:
+            click.echo(
+                "Steps before this one are complete and are kept; the retry resumes here.",
+                err=True,
+            )
+        else:
+            click.echo("No step ran and nothing was written.", err=True)
         ctx.exit(1)
     if result.workspace is None or result.install_path is None:
         raise click.ClickException("setup completed without a workspace or path")
