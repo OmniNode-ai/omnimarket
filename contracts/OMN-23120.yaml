@@ -1,0 +1,135 @@
+schema_version: 1.0.0
+ticket_id: OMN-23120
+title: The estimator's https tailnet page is proven by a live browser run and a live uninstall with its rollback read
+summary: >-
+  The https tailnet front of the dev cost estimator (node_tailnet_https_serve_effect, OMN-22692) was merged but never read
+  live. This contract binds the live readbacks taken on the dev lane host: a Playwright run against the https URL that
+  passes the password gate and reaches the consent step, the node's own uninstall and install with curl and
+  tailscale serve status read before, after the uninstall and after the reinstall, and the parent's AC2 falsifier path.
+  The reads are committed as contracts/evidence/OMN-23120/live-readback.json, pinned by hash in the checks below. Three
+  facts the reads showed are recorded in the checks' descriptions and in the pull request body: a request from the dev host
+  to its own tailnet name is answered by the local k3s ingress (so every curl read is taken from a tailnet peer), the https
+  front shows the password gate to a tailnet peer while the direct tailnet http port does not, and the serve status after
+  the uninstall is not empty because a foreign listener on :8443 is left alone by design.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23120-live-proof
+  statement: The https front of the dev estimator is read working from a browser, taken away by the node's uninstall and put back by its install, each with the reads that prove it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a Playwright run against the estimator''s https tailnet URL loads the page and reaches the consent step, with the screenshot and the URL in the run record -- falsifier: the run record''s exit code and the page title read by the Playwright script on a lab host'
+  - id: AC2
+    statement: 'AC2: the parent''s AC2 falsifier is corrected to the existing tests path with a recorded reason, re-accepted against its binding -- falsifier: uv run pytest tests/unit/nodes/node_tailnet_https_serve_effect in omnimarket'
+  - id: AC3
+    statement: 'AC3: a live uninstall of the serve on the dev host leaves curl failing on the https URL and tailscale serve status empty, and the reinstall restores both -- falsifier: curl exit codes and the tailscale serve status text before, after uninstall and after reinstall, read by a script on the dev host'
+evidence_requirements:
+- kind: tests
+  description: The listener node's golden chain, error chain and adapter tests, with the failing control of the parent contract.
+  command: uv run --frozen pytest tests/unit/nodes/node_tailnet_https_serve_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23120-ac1-browser-run
+  description: >-
+    The run record of the Playwright run against the https URL: the page loaded with status 200 and the title Private
+    preview | OmniNode (the password gate, shown to a tailnet peer through the https front), the gate password typed from the
+    running container's environment, the estimator page title after it, a synthetic three-prompt CSV priced in the browser,
+    and the consent checkbox visible with the send button disabled until it is ticked. Run exit code 0. The browser ran on
+    the dev host and reached the listener through an ssh tunnel that ends on tailnet peer h053 with the hostname mapped in
+    Chromium, so the URL, the SNI and the certificate checked are the real ones; certificate errors were not ignored. The
+    screenshots are kept in the lane report and pinned in the record by sha256.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      import json
+      from pathlib import Path
+
+      raw = Path('contracts/evidence/OMN-23120/live-readback.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == '28ded4d713e5e5283f161e1d67540f363c3c5458baa1180a0a71b26d6bfe6c81'
+      record = json.loads(raw)
+      assert record["schema"] == "estimator_https_live_readback.v1" and record["ticket_id"] == "OMN-23120"
+      ac1 = record["ac1"]
+      assert record["url"] == "https://<dev-host-tailnet-name>/cost-estimator"
+      assert ac1["exit_code"] == 0
+      load, gate, consent = ac1["steps"]
+      assert load["step"] == "load" and load["http_status"] == 200 and load["final_url"] == record["url"]
+      assert load["title"] == "Private preview | OmniNode" and load["gate_form_visible"] is True
+      assert consent["step"] == "consent" and consent["estimate_result_visible"] is True
+      assert consent["consent_checkbox_count"] == 1 and consent["send_button_disabled_until_consent"] is True
+      assert consent["title"] == "What your prompts would have cost through delegation | OmniNode"
+      assert "estimator_gate:secure" in consent["cookies"]
+      assert set(ac1["screenshots"]) == {"ac1-1-gate.png", "ac1-2-consent.png"} and all(len(v) == 64 for v in ac1["screenshots"].values())
+      READBACK
+    cwd: .
+- id: dod-omn23120-ac2-falsifier-path
+  description: >-
+    Reason recorded: the falsifier path tests/test_estimator_https_install.py, named for the parent's AC2 by two earlier lanes,
+    exists in no repository file read (four lab-host repository clones) and in no file
+    of this tree; the tests of the node live under tests/unit/nodes/node_tailnet_https_serve_effect, and contracts/OMN-22692.yaml
+    on origin/dev already names that directory in its AC2 falsifier. The text on the parent's Linear ticket is outside this
+    lane's authority and is named as a follow-up for its owner. The first check reads the contract's falsifier and the
+    existing test files; the second runs the node's tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'FALSIFIER'
+      from pathlib import Path
+
+      parent = Path('contracts/OMN-22692.yaml').read_text()
+      assert 'tests/unit/nodes/node_tailnet_https_serve_effect/test_error_chain_tailnet_https_serve_effect.py' in parent
+      assert 'test_estimator_https_install' not in parent
+      for name in ('test_golden_chain_tailnet_https_serve_effect.py', 'test_adapters_tailnet_https_serve_effect.py', 'test_error_chain_tailnet_https_serve_effect.py'):
+          assert Path('tests/unit/nodes/node_tailnet_https_serve_effect', name).is_file(), name
+      FALSIFIER
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_tailnet_https_serve_effect -q --no-cov
+    cwd: .
+- id: dod-omn23120-ac3-uninstall-readback
+  description: >-
+    The live uninstall and reinstall on the dev host through the node's own verbs, with every read taken from tailnet peer
+    h053 (a curl from the dev host to its own tailnet name is answered by the local k3s ingress with its default certificate
+    in every phase, so it cannot read the listener; those self reads are in the record for that reason). Before: curl 200, exit 0,
+    :443 served. After the uninstall: curl http 000, exit 60 (the ingress's self-signed certificate answers in the listener's
+    place), :443 absent from tailscale serve status. After the reinstall: curl 200, exit 0, serve status text identical to the
+    before text. Not met as the criterion words it: tailscale serve status is not empty after the uninstall, because the foreign
+    listener on :8443 (the principal issuer) stays; the node refuses to touch a listener that does not serve its own upstream,
+    and removing that one is a security setting that is the operator's.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      import json
+      from pathlib import Path
+
+      raw = Path('contracts/evidence/OMN-23120/live-readback.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == '28ded4d713e5e5283f161e1d67540f363c3c5458baa1180a0a71b26d6bfe6c81'
+      ac3 = json.loads(raw)["ac3"]
+      before, down, up = ac3["before"], ac3["after_uninstall"], ac3["after_reinstall"]
+      foreign = "https://<dev-host-tailnet-name>:8443 (tailnet only)"
+      front = "https://<dev-host-tailnet-name> (tailnet only)"
+      assert before["peer_curl_http"] == 200 and before["peer_curl_exit"] == 0 and front in before["serve_status"]
+      assert down["peer_curl_exit"] != 0 and down["peer_curl_http"] == 0
+      assert front not in down["serve_status"] and foreign in down["serve_status"]
+      assert up["peer_curl_http"] == 200 and up["peer_curl_exit"] == 0
+      assert up["serve_status"] == before["serve_status"]
+      assert ac3["node_verbs"]["uninstall"]["exit"] == 0 and ac3["node_verbs"]["install"]["exit"] == 0
+      assert ac3["node_verbs"]["uninstall"]["output"].startswith("uninstalled ") and ac3["node_verbs"]["install"]["output"].startswith("installed ")
+      READBACK
+    cwd: .
