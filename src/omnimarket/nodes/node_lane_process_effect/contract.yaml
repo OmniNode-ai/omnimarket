@@ -53,6 +53,9 @@ deployment_overlay:
   - floor_fill.output_dir
   description: Directory the started process's log <lane>.log is written to. A key no overlay supplies refuses
     naming the key.
+# The in-process caller (the floor-fill orchestrator) builds the runner from its overlay and the container.
+dependency_ownership:
+- runner
 protocol_dependencies:
 - name: runner
   protocol: omnibase_spi.protocols.lane:ProtocolLaneProcessRunner
