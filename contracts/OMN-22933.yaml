@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22933
+title: The commit-hooks floor row - the seam three-part-proof tests read the same on every runner, including one whose pytest temp root sits inside a git directory
+summary: The two planted-fault tests of node_seam_conservation_compute (three-part proof, AC2 of OMN-22020) copy the seam contracts under pytest's temp root. The event chain walker's own contract excludes every path under a .git directory, so on a runner that keeps the temp root inside a git directory (the lane hook-preflight does) every copied contract read as absent, the planted faults went unrefused and the hook blocked every omnimarket commit. The test now moves the corpus out of any .git path and asserts it. The walker's exclusion and the checks are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22933-seam-proof-runner
+  statement: The seam three-part-proof tests read the same result whether pytest's temp root is an ordinary directory or sits inside a git directory.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the seam three-part-proof tests pass with pytest''s temp root inside a .git directory, where the unchanged test file fails two of them -- falsifier: PYTEST_DEBUG_TEMPROOT=<dir>/.git/tmproot uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The three-part-proof tests pass, including with the temp root inside a git directory.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22933-ac1
+  description: Runs the seam three-part-proof tests; the temp-root-inside-a-git-directory control was run by hand on a lab host (unchanged test file 2 failed 32 passed, fixed file 34 passed).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
+    cwd: .
