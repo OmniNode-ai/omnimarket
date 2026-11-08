@@ -63,10 +63,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegation-completion-rate-read.v1
 
-# The delegation_events reader sends the request and appends the row; neither is a node contract yet (follow-up on OMN-23108).
+# node_delegation_completion_rate_effect reads the rows, builds the request and appends the row through its own CLI (it takes its
+# source, appender and clock as constructor parameters), so neither topic below is a bus hop yet.
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.delegation-completion-rate-requested.v1
-    producer: "the delegation_events reader, which reads the hour's rows; not a node contract"
+    producer: "node_delegation_completion_rate_effect, which reads the hour's rows; it calls the handler directly"
 externally_consumed_topics:
   - onex.evt.omnimarket.delegation-completion-rate-read.v1
 
