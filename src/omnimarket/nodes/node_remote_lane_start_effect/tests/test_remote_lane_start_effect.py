@@ -200,6 +200,42 @@ def test_ssh_transport_start_that_does_not_settle_is_unresolved(tmp_path: Path) 
     assert _start(transport, tmp_path, ("true",)).state == "unresolved"
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "stdout", "state"),
+    [
+        (
+            255,
+            "",
+            "unresolved",
+        ),  # the ssh connection dropped, the engine may be running
+        (1, "", "unresolved"),
+        (0, "", "unresolved"),  # the script ran to its end, the pid never came back
+        (0, "not-a-pid\n", "unresolved"),
+        (3, "", "failed"),  # the script's own refusal before it launches anything
+        (127, "", "failed"),  # the host command could not be run at all
+    ],
+)
+def test_ssh_transport_start_failure_is_unresolved_unless_nothing_was_launched(
+    tmp_path: Path, exit_code: int, stdout: str, state: str
+) -> None:
+    class Answer:
+        def run(
+            self, argv: Sequence[str], timeout_seconds: float
+        ) -> ModelHostCommandResult:
+            return ModelHostCommandResult(
+                exit_code=exit_code, stdout=stdout, stderr="lost"
+            )
+
+    transport = SshLaneHostTransport(
+        ssh_argv=("ssh",),
+        host_run_root=str(tmp_path),
+        call_timeout_seconds=1,
+        detach_argv=("setsid",),
+        runner=Answer(),
+    )
+    assert _start(transport, tmp_path, ("true",)).state == state
+
+
 def test_ssh_transport_remote_host_goes_through_the_ssh_argv(tmp_path: Path) -> None:
     seen: list[list[str]] = []
 

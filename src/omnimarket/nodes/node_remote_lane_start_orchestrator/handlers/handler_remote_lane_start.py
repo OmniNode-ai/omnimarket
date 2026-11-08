@@ -31,8 +31,8 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.orchestration.core imp
     FileReceiptSink,
     RemoteLaneStartOrchestrator,
 )
-from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
-    HandlerWorkLedgerAppendEffect,
+from omnimarket.nodes.node_work_ledger_append_effect.local_serve import (
+    local_serve_handler,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
     LocalLedgerAppendCommand,
@@ -80,13 +80,17 @@ def build_real(
 
     def build(request: ModelRemoteLaneStartRequest) -> RemoteLaneStartOrchestrator:
         ledger_file = LocalLedgerFile(Path(request.ledger_path))
-        ledger = HandlerWorkLedgerAppendEffect(
-            runner=LocalLedgerAppendCommand(
+        # The check-then-append step runs under a flock beside the ledger, so two leaders
+        # (processes) for one lane and attempt cannot both be told ACCEPTED for the CLAIM.
+        ledger = local_serve_handler(
+            LocalLedgerAppendCommand(
                 [*settings.ledger_append_argv, request.ledger_path],
                 write_via=settings.ledger_write_via,
             ),
-            reader=ledger_file,
-            writer_principals=[settings.ledger_writer_principal],
+            Path(request.ledger_path),
+            socket.gethostname().split(".", 1)[0],
+            [settings.ledger_writer_principal],
+            None,
         )
         transport = SshLaneHostTransport(
             ssh_argv=settings.ssh_argv,
