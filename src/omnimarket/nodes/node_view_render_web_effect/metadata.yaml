@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_view_render_web_effect
+version: 1.0.0
+description: INSUFFICIENT scaffold of the web renderer; declared as a seam emitter before its step builds it.
+pack: operator_tooling
+node_role: effect
+display_name: View Render Web Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_view_render_web_effect: omnimarket.nodes.node_view_render_web_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- seam-read
+- view-seams
+- scaffold
