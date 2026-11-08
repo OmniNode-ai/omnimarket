@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: with 10 or more waiting and merges under 10 an hour the row reads NOT WORKING -- falsifier: uv run pytest tests/unit/nodes/node_reading_writer_effect/test_landing_rate.py -q'
   - id: AC3
     statement: 'AC3: the served floor shows piece 9 with a reading age instead of not started -- falsifier: curl -s the served floor-simple.json and read pieces\[5\].status'
+  - id: AC4
+    statement: 'AC4: the landing canary ledger STATUS row carries a drill cell, drill=yes for a drill run and drill=no for an operational run, so the floor reads a canary error row as a drill or an operational failure -- falsifier: uv run pytest tests/unit/nodes/node_landing_canary_effect/test_canary_drill_cell.py -q'
 evidence_requirements:
 - kind: tests
   description: The landing row tests, the watcher source tests and the golden and error chain event tests
@@ -67,4 +69,16 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator/test_landing_goal_overlay.py -q --no-cov
+    cwd: .
+- id: dod-omn22918-canary-drill-cell
+  description: The landing canary writes drill=yes on a drill row and drill=no on an operational row, exactly once per row, and the floor's piece_events reads a drill error row as a drill failure.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_canary_drill_cell.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: grep -q "drill={'yes' if publish.drill else 'no'}" src/omnimarket/nodes/node_landing_canary_effect/handlers/handler_landing_canary.py
     cwd: .
