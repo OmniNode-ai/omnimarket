@@ -1,0 +1,17 @@
+# Synthetic values. The deployment's overlay lives under ONEX_SKILL_OVERLAY_ROOTS (or at the file
+# ONEX_ASK_DONE_CHECK_OVERLAY names); the floor URL is read from the variable floor.url_env names.
+check_lane: ask-check
+actor: node:node_ask_done_check_effect
+floor:
+  url_env: ONEX_FLOOR_JSON_URL
+  timeout_seconds: 20
+  max_age_seconds: 1800
+read:
+  route: command
+  command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  timeout_seconds: 90
+  row_limit: 50
+append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90

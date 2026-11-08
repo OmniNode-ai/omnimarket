@@ -15,6 +15,13 @@ requirements:
     statement: 'AC2: the floor publisher unit renders with launchd ProcessType Standard, a unit that declares none renders Background, and an unknown process type is refused -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_process_type.py -q --no-cov'
   - id: AC3
     statement: 'AC3: a workers directory of 2000 lease directories is read for lane liveness with no stat of any entry -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -k without_a_stat -q --no-cov'
+- id: req-omn22699-cycle-bound
+  statement: The served status names the whole cycle's seconds, and the timeouts the contract declares cannot add up past the cycle bound it names.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: with an injected clock the status served last names every phase, the after-publish steps, the slowest step and the cycle total, and the tick''s own seconds are served beside them -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov with the timing removed from the final status fails'
+  - id: AC5
+    statement: 'AC5: the longest path the declared timeouts allow holds under the contract''s cycle bound of 240 seconds, and any one step timeout raised past the bound fails -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The seconds of each step, phase and cycle in the result, the served status and the heartbeat
@@ -50,6 +57,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_process_type.py -q --no-cov
+    cwd: .
+- id: dod-omn22699-final-status
+  description: The status served last names every phase, the after-publish steps, the slowest step, the cycle total and the tick's seconds.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py -q --no-cov
+    cwd: .
+- id: dod-omn22699-cycle-bound
+  description: The longest declared path holds under the 240 s cycle bound and a step timeout raised past it fails the test.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov
     cwd: .
 - id: dod-omn22699-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

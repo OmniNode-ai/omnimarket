@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory profile, synthetic values: no secret store (secret_store null) and no consumer
+# command (probe_command null). The deployment's overlay lives at
+# <root>/node_secret_rotation_readback_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default. An overlay never holds a secret value.
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+publish:
+  lane: secret-rotation-readback
+  actor: node:node_secret_rotation_readback_effect
+  piece: 5
+  publish_max_age_seconds: 7200
+store:
+  secret_store: null
+consumers:
+  - consumer: example-gate
+    folder: /dev-only/drill
+    key: EXAMPLE_DRILL_KEY
+    probe_command: null
+  - consumer: example-decider
+    folder: /dev-only/drill
+    key: EXAMPLE_DRILL_KEY
+    probe_command: null
+call_timeout_seconds: 60
+rotation:
+  approvers:
+    - example-approver
+  dev_only_keys:
+    - folder: /dev-only/drill
+      key: EXAMPLE_DRILL_KEY
+injected_fault: Hold one consumer on the old key after the store rotated
