@@ -98,9 +98,12 @@ class CommandMvpRunSource:
         )
         if isinstance(answer, str):
             return ModelMvpSourceHistory(error=answer)
+        raw_runs = answer.get("runs", [])
+        if not isinstance(raw_runs, list):
+            return ModelMvpSourceHistory(error="read-command-runs-malformed")
         try:
-            runs = tuple(ModelMvpRun.model_validate(r) for r in answer.get("runs", ()))  # type: ignore[attr-defined]
-        except (ValidationError, TypeError, AttributeError):
+            runs = tuple(ModelMvpRun.model_validate(r) for r in raw_runs)
+        except ValidationError:
             return ModelMvpSourceHistory(error="read-command-runs-malformed")
         return ModelMvpSourceHistory(runs=runs)
 

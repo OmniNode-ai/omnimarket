@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,6 +29,11 @@ from omnimarket.models.floor_17a import (
 from omnimarket.models.floor_17a.model_mvp_launch import (
     MVP_READING_IDS,
     ModelMvpCandidate,
+    ModelMvpLaunchBlock,
+    ModelMvpLaunchRequest,
+    ModelMvpReading,
+    ModelMvpReadingSpec,
+    ModelMvpSourceHistory,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
@@ -55,10 +60,10 @@ STEP = "node_product_floor_verdict_compute:decide_mvp_launch"
 FLOOR = ".claude_scratch/factory-floor/floor-simple.json"
 
 
-def mvp_clock() -> Callable[[], object]:
+def mvp_clock() -> Callable[[], datetime]:
     state = {"n": 0}
 
-    def clock() -> object:
+    def clock() -> datetime:
         state["n"] += 1
         return MVP_NOW + timedelta(seconds=state["n"])
 
@@ -78,11 +83,11 @@ def cycle(
     env: dict[str, str] | None = None,
     source: InMemoryMvpRunSource | None = None,
     candidate: ModelMvpCandidate | None = None,
-    world: dict | None = None,  # type: ignore[type-arg]
+    world: dict[str, ModelMvpSourceHistory] | None = None,
 ) -> ModelFloorSimpleTickResult:
     handler = HandlerFloorSimpleTick(
         sink=sink or InMemoryEmissionSink(),
-        clock=mvp_clock(),  # type: ignore[arg-type]
+        clock=mvp_clock(),
         served_alarm_ids=lambda: None,
         mvp_source=source
         or InMemoryMvpRunSource(
@@ -101,7 +106,7 @@ def written(home: Path) -> ModelFloorSimple:
     )
 
 
-def block_of(doc: ModelFloorSimple):  # type: ignore[no-untyped-def]
+def block_of(doc: ModelFloorSimple) -> ModelMvpLaunchBlock:
     assert doc.mvp_launch is not None
     return doc.mvp_launch
 
@@ -182,7 +187,7 @@ def test_error_a_source_that_cannot_be_read_draws_every_scheduled_reading_unread
     home = build_home(tmp_path)
     handler = HandlerFloorSimpleTick(
         sink=InMemoryEmissionSink(),
-        clock=mvp_clock(),  # type: ignore[arg-type]
+        clock=mvp_clock(),
         served_alarm_ids=lambda: None,
     )
     # no command is configured: every history and the candidate are unreadable.
@@ -229,7 +234,7 @@ def test_a_command_route_reads_histories_and_candidate_through_a_subprocess(
     }
     handler = HandlerFloorSimpleTick(
         sink=InMemoryEmissionSink(),
-        clock=mvp_clock(),  # type: ignore[arg-type]
+        clock=mvp_clock(),
         served_alarm_ids=lambda: None,
     )
     assert handler.run(ModelFloorSimpleTickRequest(home=str(home)), environ=env).ok
@@ -269,7 +274,12 @@ def test_injected_break_newest_run_rule_off_turns_the_failed_latest_reading_gree
 
     original = HandlerMvpLaunch._scheduled
 
-    def conclusion_ignored(self, spec, request, walk_id):  # type: ignore[no-untyped-def]
+    def conclusion_ignored(
+        self: HandlerMvpLaunch,
+        spec: ModelMvpReadingSpec,
+        request: ModelMvpLaunchRequest,
+        walk_id: str,
+    ) -> ModelMvpReading:
         patched = (
             spec.model_copy(update={"green_conclusion": "failure"})
             if spec.id == "C16"
