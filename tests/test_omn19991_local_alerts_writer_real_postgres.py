@@ -188,3 +188,27 @@ async def test_a_raise_and_its_clear_leave_one_row_in_a_real_postgres(
             (r["tenant_id"], r["code"], r["subject"], r["state"]) for r in rows
         ] == [(TENANT, "SERVICE_DOWN", "compose/postgres", "cleared")]
         assert rows[0]["cleared_at"] == T0 + timedelta(seconds=30)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_failed_delta_publish_rolls_the_row_back_in_a_real_postgres(
+    port: int,
+) -> None:
+    """The delta leaves inside the key lock (OMN-23064): a failed publish stores nothing."""
+    async with _provisioned(port) as (admin, writer):
+        capture = writer.publish_snapshot_delta
+
+        async def _fail(exposure: Any, **kwargs: Any) -> bool:
+            raise RuntimeError("publish unavailable")
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(writer, "publish_snapshot_delta", _fail)
+            with pytest.raises(RuntimeError, match="publish unavailable"):
+                await _fold(writer, _transition_payload())
+        assert await admin.fetchval("SELECT count(*) FROM public.local_alerts") == 0
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(writer, "publish_snapshot_delta", capture)
+            await _fold(writer, _transition_payload())
+        assert await admin.fetchval("SELECT count(*) FROM public.local_alerts") == 1
