@@ -39,6 +39,12 @@ EVENT_TOPICS = (TOPICS["gate_store_answered"], TOPICS["gate_store_failed"])
 Answer = Callable[[bytes, HandlerGateStore, dict[str, str]], list[tuple[str, bytes]]]
 
 
+def test_contract_topics_name_the_answered_and_failed_events() -> None:
+    """The contract's roles resolve to the two events the chain tests below read."""
+    assert TOPICS["gate_store_answered"] == "onex.evt.omnimarket.gate-store-answered.v1"
+    assert TOPICS["gate_store_failed"] == "onex.evt.omnimarket.gate-store-failed.v1"
+
+
 def command(op: str, key: str, **fields: object) -> bytes:
     body = {
         "correlation_id": f"chain-{key}",

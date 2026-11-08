@@ -20,6 +20,7 @@ from omnimarket.models.model_gate_store import (
 from omnimarket.nodes.node_gate_store_effect.handlers.store_in_memory import (
     STAGES,
     InMemoryGateStore,
+    _State,
 )
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 from tests.nodes.node_gate_store_effect import contract_suite as suite
@@ -49,7 +50,9 @@ class NonAtomicStore(InMemoryGateStore):
 class UnfencedStore(InMemoryGateStore):
     """Break ``handover_without_fence``: the handover ignores the epoch."""
 
-    def _handover(self, state, request):  # type: ignore[no-untyped-def]
+    def _handover(
+        self, state: _State, request: ModelGateStoreRequest
+    ) -> ModelGateStoreResult:
         state.holder = request.holder
         return self._write(state, request)
 
@@ -71,7 +74,9 @@ class PartialCommitStore(InMemoryGateStore):
 class FreeOnReleaseStore(InMemoryGateStore):
     """Break ``free_consumed_on_terminal``: a release frees a consumed reservation."""
 
-    def _release(self, state, request):  # type: ignore[no-untyped-def]
+    def _release(
+        self, state: _State, request: ModelGateStoreRequest
+    ) -> ModelGateStoreResult:
         return super()._release(
             state, request.model_copy(update={"process_gone": True})
         )
@@ -88,7 +93,9 @@ class NoStepKeyMemoStore(InMemoryGateStore):
 class UnstoppedStore(InMemoryGateStore):
     """Break ``safety_after_count``: a recorded stop is not consulted by a reservation."""
 
-    def _reserve(self, state, request):  # type: ignore[no-untyped-def]
+    def _reserve(
+        self, state: _State, request: ModelGateStoreRequest
+    ) -> ModelGateStoreResult:
         state.safety.clear()
         return super()._reserve(state, request)
 
