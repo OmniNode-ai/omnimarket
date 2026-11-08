@@ -9,12 +9,12 @@ interfaces_touched: []
 requirements:
   - id: req-omn23036-table-file-is-whole-overlay
     statement: >-
-      A file holding the whole lab_hosts overlay resolves lab_hosts.hosts, and a key the table does not declare is still refused.
+      A file holding the whole lab_hosts overlay resolves lab_hosts.hosts, and the registry roots it carries are checked entry by entry.
     acceptance:
       - id: AC1
         statement: "AC1: a file holding the whole lab_hosts overlay resolves its hosts, and fails on dev without the change with fields ['registry_root_candidates'] -- falsifier: uv run pytest tests/unit/handlers/test_overlay_keys.py -k whole_lab_hosts_overlay in omnimarket"
       - id: AC2
-        statement: "AC2: a table file with a key no model declares is still refused naming that key -- falsifier: uv run pytest tests/unit/handlers/test_overlay_keys.py -k does_not_declare in omnimarket"
+        statement: "AC2: a table file whose registry_root_candidates holds a malformed entry is refused naming that entry's position, which a table that did not declare the key could not name -- falsifier: uv run pytest tests/unit/handlers/test_overlay_keys.py -k malformed_registry_root_candidates_entry in omnimarket"
 evidence_requirements:
   - kind: tests
     description: The overlay key reader tests.
@@ -34,15 +34,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -k whole_lab_hosts_overlay -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23036-ac2-stray-key-refused
+  - id: dod-omn23036-ac2-malformed-root-refused
     description: >-
-      A table file with an undeclared key is still refused, so the shape stays closed.
+      A malformed registry root in a table file is refused naming its position (registry_root_candidates.1); on dev the file is refused for the key as a whole, so the test fails there.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -k does_not_declare -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/unit/handlers/test_overlay_keys.py -k malformed_registry_root_candidates_entry -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23036-overlay-keys
     description: >-

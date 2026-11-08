@@ -233,6 +233,27 @@ def test_overlay_keys_hosts_file_may_be_the_whole_lab_hosts_overlay(
     ]
 
 
+def test_overlay_keys_hosts_file_refuses_a_malformed_registry_root_candidates_entry(
+    tmp_path: Path,
+) -> None:
+    """The registry roots a table file carries are checked as the overlay checks them (OMN-23036).
+
+    An entry the root pattern refuses is named by its position under registry_root_candidates; before the key was declared
+    the file was refused for the key as a whole, so the position is what shows the entries are read.
+    """
+    bad = tmp_path / "bad_roots.yaml"
+    bad.write_text(
+        yaml.safe_dump(
+            {"hosts": [_HOST_ROW], "registry_root_candidates": ["/srv/ok", "has space"]}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(NodeOverlayError, match=r"registry_root_candidates\.1"):
+        resolve_overlay_key(
+            "lab_hosts.hosts", environ=_env(None, **{LAB_HOSTS_FILE_ENV: str(bad)})
+        )
+
+
 def test_overlay_keys_hosts_file_still_refuses_a_key_the_table_does_not_declare(
     tmp_path: Path,
 ) -> None:
