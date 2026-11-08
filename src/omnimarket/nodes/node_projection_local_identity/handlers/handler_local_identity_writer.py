@@ -40,23 +40,23 @@ from omnimarket.projection.tenant_registry_resolution import (
     async_registry_tenant_uuid,
 )
 
-_COLUMNS = ("tenant_id", "minted_at", "updated_at")
+_COLUMNS = ("tenant_id", "minted_at", "event_id", "updated_at")
 
 _SELECT_ROW = """
-    SELECT tenant_id, minted_at, updated_at, projection_cursor
+    SELECT tenant_id, minted_at, event_id, updated_at, projection_cursor
     FROM public.local_identity
     WHERE tenant_id = $1
     FOR UPDATE
 """
 
 _UPSERT_ROW = (
-    "INSERT INTO public.local_identity (tenant_id, minted_at, updated_at) "
-    "VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO UPDATE SET "
-    "minted_at = EXCLUDED.minted_at, updated_at = EXCLUDED.updated_at, "
+    "INSERT INTO public.local_identity (tenant_id, minted_at, event_id, updated_at) "
+    "VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id) DO UPDATE SET "
+    "minted_at = EXCLUDED.minted_at, event_id = EXCLUDED.event_id, updated_at = EXCLUDED.updated_at, "
     # The BIGSERIAL default fires on INSERT only; an updated row takes the next
     # cursor too, or a reader paging by cursor never sees the change.
     "projection_cursor = nextval('public.local_identity_projection_cursor_seq') "
-    "RETURNING tenant_id, minted_at, updated_at, projection_cursor"
+    "RETURNING tenant_id, minted_at, event_id, updated_at, projection_cursor"
 )
 
 
@@ -74,6 +74,8 @@ async def confirm_registry_tenant(conn: Any, tenant_id: str) -> str:
 def _parameter(name: str, value: object) -> object:
     if name in {"minted_at", "updated_at"} and isinstance(value, str):
         return datetime.fromisoformat(value)
+    if name == "event_id" and isinstance(value, str):
+        return uuid.UUID(value)
     return value
 
 

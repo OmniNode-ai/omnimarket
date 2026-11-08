@@ -29,6 +29,7 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
+from omnimarket.models.model_local_identity_minted import local_identity_event_id
 from omnimarket.nodes.node_projection_local_identity.handlers import (
     handler_local_identity_writer as writer_module,
 )
@@ -136,6 +137,7 @@ async def test_real_postgres_writer_keeps_one_row_with_the_earliest_mint(
         assert first[0]["minted_at"] == _AT
         assert first[0]["minted_at"].tzinfo is not None
         assert isinstance(first[0]["projection_cursor"], int)
+        assert first[0]["event_id"] == local_identity_event_id(UUID(_TENANT), _AT)
         types = {
             r["column_name"]: r["data_type"]
             for r in await conn.fetch(
@@ -146,6 +148,7 @@ async def test_real_postgres_writer_keeps_one_row_with_the_earliest_mint(
         }
         assert types["minted_at"] == "timestamp with time zone"
         assert types["projection_cursor"] == "bigint"
+        assert types["event_id"] == "uuid"
         assert len(published) == 1
         original = published[0]
 
@@ -163,6 +166,9 @@ async def test_real_postgres_writer_keeps_one_row_with_the_earliest_mint(
         earlier = await rows()
         assert len(earlier) == 1
         assert earlier[0]["minted_at"] == _AT - timedelta(minutes=3)
+        assert earlier[0]["event_id"] == local_identity_event_id(
+            UUID(_TENANT), _AT - timedelta(minutes=3)
+        )
         assert earlier[0]["projection_cursor"] > first[0]["projection_cursor"]
 
         with pytest.raises(TenantRegistryResolutionError):
