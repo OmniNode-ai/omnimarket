@@ -88,6 +88,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # contract-declared HTTP mount, so it subscribes to no topic and has no
     # onex.nodes entry point.
     "node_hook_events_by_correlation_read_effect",
+    # OMN-22339: the tenant savings and delegations reads are reached only
+    # through their contract-declared HTTP mounts, so they subscribe to no topic
+    # and have no onex.nodes entry point.
+    "node_tenant_savings_read_effect",
+    "node_tenant_delegations_read_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
