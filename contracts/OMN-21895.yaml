@@ -89,3 +89,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/test_model_work_contract.py -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21895-pin-floor
+  description: The sibling pins sit at or past the train's rolled tags and uv.lock resolves them; the test fails at the merge base.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_sibling_pin_train_floor.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
