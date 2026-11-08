@@ -24,6 +24,9 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.floor_fill import (
+    ModelFloorFillCandidatesRequest,
+)
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
 )
@@ -36,9 +39,6 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
-    ModelFloorFillCandidatesRequest,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
     NOW,

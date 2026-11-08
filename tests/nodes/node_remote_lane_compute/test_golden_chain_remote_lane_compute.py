@@ -10,10 +10,10 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_remote_lane_close_compute.models import (
+from omnimarket.models.remote_lane_close import (
     ModelRemoteLaneResultRequest,
 )
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     ModelRemoteLanePlacementRequest,
 )
 
