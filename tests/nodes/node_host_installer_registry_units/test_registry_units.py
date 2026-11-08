@@ -8,7 +8,9 @@ import importlib
 import json
 import os
 import plistlib
+import signal
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -493,3 +495,82 @@ def test_a_dry_run_and_a_status_read_never_take_the_lock(
     assert first.status == "success", first.stderr
     assert reads[0].exit_code == 0
     assert all("INSTALL-IN-PROGRESS" not in r.stderr for r in reads)
+
+
+def test_installs_of_two_different_units_never_take_the_same_lock(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    harness = tmp_path / "harness"
+    harness_revision = make_checkout(harness, entry=HARNESS_ENTRY)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    install = request(
+        tmp_path, mode="install", project_path=str(branch), expected_revision=revision
+    )
+    other_unit = request(
+        tmp_path,
+        unit=HARNESS_UNIT,
+        mode="install",
+        project_path=str(harness),
+        expected_revision=harness_revision,
+    )
+    overlap = Overlap(lambda: HandlerRegistryUnits(Recorder()).handle(other_unit))
+    first = HandlerRegistryUnits(overlap).handle(install)
+    assert first.status == "success", first.stderr
+    assert overlap.nested.status == "success", overlap.nested.stderr
+    assert overlap.nested.exit_code == 0
+    assert "INSTALL-IN-PROGRESS" not in overlap.nested.stderr
+
+
+def test_the_lock_dies_with_its_holder_process_so_the_next_install_runs(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    state = tmp_path / "omni" / str(load_units()[UNIT]["state_directory"])
+    state.mkdir(parents=True, exist_ok=True)
+    lock = state / f"{UNIT}.install.lock"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, sys, time\n"
+            "handle = open(sys.argv[1], 'a+')\n"
+            "fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+            "print('held', flush=True)\n"
+            "time.sleep(600)\n",
+            str(lock),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        install = request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+        recorder = Recorder()
+        refused = HandlerRegistryUnits(recorder).handle(install)
+        assert refused.exit_code == 75
+        assert "INSTALL-IN-PROGRESS" in refused.stderr
+        assert recorder.calls == []
+        holder.send_signal(signal.SIGKILL)
+        holder.wait(timeout=30)
+        retry = HandlerRegistryUnits(Recorder()).handle(install)
+        assert retry.status == "success", retry.stderr
+    finally:
+        if holder.poll() is None:
+            holder.send_signal(signal.SIGKILL)
+            holder.wait(timeout=30)
+        if holder.stdout is not None:
+            holder.stdout.close()

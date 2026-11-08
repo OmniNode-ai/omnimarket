@@ -20,6 +20,8 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 class EnumHostProbe(StrEnum):
     LEDGER_OUTBOX = "ledger-outbox"
     LEDGER_OLD_NAMES = "ledger-old-names"
+    #: Append one probe row through the bus and read it back from the durable store by a deadline.
+    LEDGER_DURABILITY = "ledger-durability"
     HOST_CANARY = "host-canary"
     #: Join J1: the code graph's verdict for the nodes host discovery and placement depend on.
     JOIN_J1 = "join-j1"
