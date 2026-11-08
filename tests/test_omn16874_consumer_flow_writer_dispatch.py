@@ -418,6 +418,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # ContextAuditProjectionWriter is node_projection_context_audit's only DB
     # writer, dispatched once per consumed audit event by runtime auto-wiring;
     # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
+    # writer, dispatched once per consumed overlay event by runtime
+    # auto-wiring; its pure fold does NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -458,6 +461,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
         "DelegationProjectionWriter",
+        "OverlayStoreProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
