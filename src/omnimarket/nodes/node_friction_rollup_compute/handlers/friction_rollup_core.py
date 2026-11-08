@@ -25,6 +25,8 @@ COST_DURATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_AGE_SUFFIX = re.compile(r"\s+(?:old|ago)\b", re.IGNORECASE)
+
 _ROW_PATTERN = re.compile(
     r"^\s*(?:[-*]\s+)?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
     r"\s*\|\s*([A-Z][A-Z-]*)\s*\|"
@@ -411,11 +413,28 @@ def _cost(row: LedgerRow) -> tuple[str, str, float | None]:
         # refused command and the guard's message, whose durations ("the
         # 10-minute ceiling") are not what the refusal cost anyone.
         return "", "hook-no-cost", None
-    inline = COST_DURATION_PATTERN.search(row.text)
+    inline = _inline_cost(row.text)
     if inline is not None:
-        text = inline.group(0)
-        return text, "inline", parse_cost_minutes(text)
+        return inline, "inline", parse_cost_minutes(inline)
     return "", "missing", None
+
+
+def _inline_cost(text: str) -> str | None:
+    """The duration a cell-less row states as its cost, not the first duration its prose mentions (OMN-22879).
+
+    A duration in the prose can be an age ("a snapshot 390 hours old against a 24 hour limit"), which is not what the
+    row cost anyone. Durations followed by "old" or "ago" are skipped; of the rest the first one written in lane units
+    ("~0.5 lane-hours") is the row's own cost estimate and wins over earlier plain ones; with none, the first remains.
+    """
+    candidates = [
+        match.group(0)
+        for match in COST_DURATION_PATTERN.finditer(text)
+        if _AGE_SUFFIX.match(text, match.end()) is None
+    ]
+    for candidate in candidates:
+        if "lane-" in candidate.lower():
+            return candidate
+    return candidates[0] if candidates else None
 
 
 def _parse_aliases(values: Sequence[str]) -> dict[str, str]:
