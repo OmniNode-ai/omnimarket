@@ -16,6 +16,8 @@
 #                    scope overlay, the watcher classes that are green and waiting and the conflict merge states
 #   schedule_hosts   hosts that install the hourly systemd user timer
 #   unit_environment environment the installed unit carries (the routes' variables)
+#   two_backend      optional: the piece whose row also carries the count of effects not yet on both
+#                    backends, and the variable that holds the path of the core validator's report
 ledger_read:
   route: file
   path_env: EXAMPLE_LEDGER_FILE
@@ -118,3 +120,6 @@ unit_environment:
   EXAMPLE_LEDGER_FILE: /var/lib/example/ledger.md
   EXAMPLE_WATCHER_STATE: /var/lib/example/pr-watcher/state.json
   EXAMPLE_GOAL_SCOPE: /var/lib/example/goal_scope/overlay.yaml
+two_backend:
+  piece: 6
+  report_path_env: EXAMPLE_EFFECT_BACKEND_REPORT
