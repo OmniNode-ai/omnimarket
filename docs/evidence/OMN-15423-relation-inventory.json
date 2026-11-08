@@ -7904,6 +7904,7 @@
       "partitioning": [],
       "producer": "node_projection_pr_state",
       "readers": [
+        "node_dod_closeout_sweep_compute",
         "node_dod_verify",
         "node_factory_floor_compute",
         "node_factory_floor_publish_effect",
