@@ -44,6 +44,7 @@ descriptor:
     - appends snapshots to the history file and rewrites it without the snapshots past the retention window
     - appends emission events to the floor's journal under the state directory
     - writes the comparison file the publish copies to the serving host
+    - appends each live rebuild piece's day-7 verdict once to the verdict record the piece measures overlay names
 
 input_model:
   name: ModelFloorCompareRequest
@@ -121,6 +122,12 @@ runtime:
     - {prefix: "lab_alarms:", polarity: lower_is_better, unit: lab alarms in 24 h, noun: "Lab alarm", source: "lab alarm history, raised_at, by condition"}
     - {prefix: lab_fill_sent_per_tick, polarity: higher_is_better, unit: lanes sent per tick, noun: "Lanes the lab fill sent per tick (mean over 24 h)", source: "throughput tick log: NOTE lab-fill sent=N, mean over the ticks logged"}
     - {prefix: parked_causes, polarity: lower_is_better, unit: causes parked, noun: "Causes parked by the landing controller", source: "throughput tick log: lines naming a parked cause, per tick"}
+    # The live rebuild pieces' outcome measures (OMN-23081); node overlay.example.yaml names which piece reads which.
+    - {prefix: slots_free, polarity: higher_is_better, unit: slots free, noun: "Lab slots available", source: "factory floor record bays[].free summed over the hosts read fresh (a stale host has none available); dated record copies backfill it"}
+    - {prefix: ledger_read_lag_s, polarity: lower_is_better, unit: seconds behind, noun: "Ledger read lag", source: "factory floor record generated_at minus sources.ledger_newest_row; dated record copies backfill it"}
+    - {prefix: capacity_refusals, polarity: lower_is_better, unit: rows in 24 h, noun: "Lanes refused for capacity", source: "work ledger FRICTION, STATUS and TERMINAL rows naming a capacity refusal"}
+    - {prefix: parity_failures, polarity: lower_is_better, unit: rows in 24 h, noun: "Ledger parity failures", source: "work ledger FRICTION, STATUS and TERMINAL rows naming a parity failure"}
+    - {prefix: "piece_golden_age_h:", polarity: lower_is_better, unit: hours, noun: "Hours since the last good run of piece", source: "published floor piece row golden_age_s; only the dated floor copies backfill it"}
     - {prefix: floor_breaches, polarity: lower_is_better, unit: repositories under their merge floor, noun: "Repositories under their hourly merge floor", source: "floor alarm history, breaches of the latest run"}
   piece_rank: {green: 0, grey: 1, amber: 2, red: 3}
   # The stoppage cost the simple floor prints in a cause's detail ("144 lane-minutes logged").
@@ -134,6 +141,8 @@ runtime:
     - {kind: floor_simple, glob: ".claude_scratch/factory-floor/history/floor-simple-*.json"}
     - {kind: floor_simple, glob: ".claude_scratch/floor-simple-snapshots/*.json"}
     - {kind: factory_record, glob: ".claude_scratch/factory-floor/history/factory-floor-*.json"}
+    # The piece measures of the same dated records (OMN-23081): lab slots free and the ledger read lag.
+    - {kind: factory_measures, glob: ".claude_scratch/factory-floor/history/factory-floor-*.json"}
   # The dated sources the history is backfilled from (verb --backfill-history) and read again for today's value. Every counted
   # key is the number of records in the trailing window_hours that end at its time. A source that recorded less than min_alive
   # records of any kind in that window, or began after the window did, leaves its keys out: that point stays unread.
@@ -164,6 +173,14 @@ runtime:
     git_timeout_seconds: 60
     # Every canonical clone directly under the registry home (a directory holding .git); the clones are found, not named.
     git_clone_glob: "*/.git"
+    # Ledger rows counted as piece measures (OMN-23081). Each key counts the rows of the listed types whose text matches.
+    ledger_patterns:
+      - key: capacity_refusals
+        row_types: [FRICTION, STATUS, TERMINAL]
+        pattern: '(?i)exit(?:ed)? 75\b|over the (?:load )?bar|no free (?:slot|lane)|refused[^|]{0,40}capacity|capacity[^|]{0,30}refus'
+      - key: parity_failures
+        row_types: [FRICTION, STATUS, TERMINAL]
+        pattern: '(?i)parity[^|]{0,40}(?:fail|mismatch|not working|under 100)'
   emission_journal_relpath: .onex_state/floor-simple/emissions.jsonl
   emission_node: "node_floor_compare_effect:run_floor_compare_cycle"
   emission_piece: 17

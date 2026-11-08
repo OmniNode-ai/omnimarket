@@ -89,6 +89,14 @@ def snapshot_from_floor_simple(
             key = f"piece:{piece.get('piece')}"
             values[key] = float(rt.piece_rank[str(piece["draw"])])
             labels[key] = f"{piece.get('piece')}, {piece.get('name', '')}".rstrip(", ")
+        # The age of the piece's last golden event, in hours (OMN-23081): read only when the floor read it.
+        if (
+            isinstance(piece, Mapping)
+            and (age := _number(piece.get("golden_age_s"))) is not None
+        ):
+            gkey = f"piece_golden_age_h:{piece.get('piece')}"
+            values[gkey] = round(age / 3600.0, 3)
+            labels[gkey] = f"{piece.get('piece')}, {piece.get('name', '')}".rstrip(", ")
     for lab in doc.get("lab_state") or ():
         if (
             isinstance(lab, Mapping)
@@ -156,3 +164,34 @@ def snapshot_from_factory_record(
     if sum(int(b.get("slots") or 0) for b in read) > 0:
         values["slots_busy"] = float(sum(int(b.get("running") or 0) for b in read))
     return ModelSnapshot(at=at, source=source, values=values, labels=labels)
+
+
+def measures_from_factory_record(
+    doc: Mapping[str, Any], rt: ModelFloorCompareRuntime, *, source: str
+) -> ModelSnapshot | None:
+    """The piece measures one factory floor record holds (OMN-23081): lab slots free over the hosts read fresh, and how far
+    the newest ledger row read lags the record's own read. A value the record did not read is left out."""
+    del rt
+    at = parse_stamp(doc.get("generated_at"))
+    floor = doc.get("floor")
+    if at is None or not isinstance(floor, Mapping):
+        return None
+    values: dict[str, float] = {}
+    # A host read stale has no slot available to a lane, so only fresh hosts count; with no fresh host it is unread.
+    fresh = [
+        b
+        for b in floor.get("bays") or ()
+        if isinstance(b, Mapping) and not b.get("stale")
+    ]
+    frees = [_number(b.get("free")) for b in fresh]
+    if fresh and all(f is not None for f in frees):
+        values["slots_free"] = float(sum(f for f in frees if f is not None))
+    sources = doc.get("sources")
+    newest = (
+        parse_stamp(sources.get("ledger_newest_row"))
+        if isinstance(sources, Mapping)
+        else None
+    )
+    if newest is not None:
+        values["ledger_read_lag_s"] = max(0.0, (at - newest).total_seconds())
+    return ModelSnapshot(at=at, source=source, values=values)
