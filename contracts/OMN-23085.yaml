@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-23085
+title: 'Join J4 passes: the J4 join test runs on a schedule and the floor reads its row as the piece 4 and piece 5 chains'
+summary: J4 (piece 4 overlays to piece 5 secrets) read broken on the served floor. The floor named 8 piece 4 failure chains of the overlay drift reading that no piece 5 node answered, and held no golden event for J4 because the J4 join test (OMN-22912) had no caller. This change gives the J4 join test its own hourly systemd user unit (join_j4 in the node contract, installed only where the overlay root holds the join overlay), and the floor overlay's piece_events read the row that run writes as the piece 4 consumer chain and the piece 5 scan chain under one correlation id. A leaking consumer is the failing control; it never reads golden and reads broken past the chain deadline.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23085-join-j4
+  statement: The J4 join test runs on a schedule on a lab host against the real dev store and the floor reads its row as a J4 golden event; a consumer that leaks reads the join red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: join J4 reads PASS on the served floor from a real run, with a failing control that breaks the join -- falsifier: the floor''s piece 4 joins entry'
+evidence_requirements:
+- kind: tests
+  description: The J4 floor-row tests with their failing control, and the schedule tests for the J4 unit.
+  command: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4_floor_rows.py tests/nodes/node_secret_reading_effect/test_secret_reading_schedule.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23085-ac1-floor-rows
+  description: A real J4 run row, read through the floor's piece_events and receipt fold, reads the join golden; a leaking consumer never reads golden and reads broken past the deadline, and the same run without the break reads golden.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_reading_effect/test_join_j4_floor_rows.py -q --no-cov
+- id: dod-omn23085-ac1-schedule
+  description: The J4 unit is rendered from the node contract, installed only with the join overlay, run on demand and removed by uninstall.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_secret_reading_effect/test_secret_reading_schedule.py -q --no-cov
+- id: dod-omn23085-ac1-served
+  description: The served floor record named by FLOOR_SIMPLE_JSON_URL reads J4 as passed with a golden age, after the branch is installed where the floor runs.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -s "$FLOOR_SIMPLE_JSON_URL" | python3 -c "import json,sys; j=json.load(sys.stdin)['pieces'][3]['joins'][0]; assert j['id']=='J4' and j['state']=='passed' and j['golden_age_s'] is not None, j['state']"
+    cwd: .
