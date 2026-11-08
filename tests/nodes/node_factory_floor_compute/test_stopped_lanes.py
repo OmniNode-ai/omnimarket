@@ -29,6 +29,10 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_stopped import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     compute_factory_floor,
 )
+from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
+    ModelFloorStoppedLane,
+    ModelFloorStoppedSkip,
+)
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     parse_ledger_text,
 )
@@ -39,6 +43,11 @@ pytestmark = pytest.mark.unit
 FIXTURE = Path(__file__).parent / "fixtures" / "stopped-lane-ledger-2026-11-07.txt"
 READ_AT = datetime(2026, 11, 7, 13, 30, tzinfo=UTC)
 SCOPE = ModelGoalScope(ruling="test", in_scope_tickets=("OMN-22478", "OMN-22862"))
+
+
+StoppedResult = tuple[
+    tuple[ModelFloorStoppedLane, ...], tuple[ModelFloorStoppedSkip, ...], str
+]
 
 
 def ledger() -> tuple[ModelFloorLedgerRow, ...]:
@@ -59,12 +68,12 @@ def floor_request(
     return made.model_copy(update={"generated_at": READ_AT, "config": cfg})
 
 
-def lanes(result: object) -> list[str]:
-    return [s.lane for s in result[0]]  # type: ignore[index]
+def lanes(result: StoppedResult) -> list[str]:
+    return [s.lane for s in result[0]]
 
 
-def causes(result: object) -> dict[str, str]:
-    return {s.lane: s.cause for s in result[1]}  # type: ignore[index]
+def causes(result: StoppedResult) -> dict[str, str]:
+    return {s.lane: s.cause for s in result[1]}
 
 
 def test_fixture_is_tonights_ledger() -> None:
