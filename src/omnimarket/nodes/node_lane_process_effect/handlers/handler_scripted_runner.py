@@ -14,7 +14,7 @@ from omnibase_spi.contracts.services import (
 )
 
 
-class AdapterScriptedRunner:
+class HandlerScriptedRunner:
     """Answers the scripted results in order; a call with nothing scripted fails loud."""
 
     synchronous_execution: ClassVar[bool] = True
