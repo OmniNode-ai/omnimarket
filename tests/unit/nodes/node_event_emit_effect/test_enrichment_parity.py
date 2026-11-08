@@ -57,6 +57,7 @@ from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     resolve_event_type,
     resolve_partition_key_field,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -149,7 +150,7 @@ def _work_ledger_producer_payloads() -> dict[str, dict[str, Any]]:
             payloads[request.event_type] = dict(request.payload)
             raise ValueError("captured")
 
-    producer = HandlerWorkLedgerEmit(emitter=_Capture())
+    producer = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=_Capture())
     records = records_for_all_ledger_row_types()
     index = {record.event.event_id: record.event for record in records}
     for record in records:

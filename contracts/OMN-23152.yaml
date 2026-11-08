@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23152
+title: Ledger rows reach the bus only after the judge accepts them, the emitter of the rows without a sequence is found, and ledger_seq 190463 is deduplicated under a unique index
+summary: >-
+  Rebuild plan 4.3 step 1, code half. The work-ledger emit node refuses a row the judge (the append effect) did not
+  accept, with a typed refusal and nothing spooled; the contract declares the gate. The append effect records each row
+  it accepts with the sequence it gave. The projection gains migration 0007 (duplicates of one sequence are copied whole
+  into work_ledger_seq_conflicts and a unique index on ledger_id and ledger_seq is added), a writer that records a
+  second holder as a conflict instead of failing on the index, the pure plan of the order-preserving history backfill,
+  and the unjudged-row reading over the contract's 24-hour window, which names each emitter by source and lane. Not
+  covered here and named in the pull request: the live run of migration 0007 on the lab database, the 24-hour live reading
+  of zero, and the live naming of the emitter from the bus and the host.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23152-judged-emit
+  statement: A row reaches the bus only after the judge accepts it, the unique index holds each sequence once, and the unjudged-row reading goes red on a planted unjudged publish.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the emitter of rows with no sequence is named from the bus and the host, and a row published without a judge acceptance is refused at the emit -- falsifier: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q -k emit_only_after_judge_accepts'
+  - id: AC2
+    statement: 'AC2: ledger_seq 190463 exists once, a unique index refuses a second row with the same sequence, and the history backfill keeps file order -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_work_ledger -q -k ledger_seq_unique_index'
+  - id: AC3
+    statement: 'AC3: over 24 hours the count of projected rows with no sequence reads 0 on the lab and a planted unjudged publish turns the reading red -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_work_ledger -q -k unjudged_publish_reads_red'
+evidence_requirements:
+- kind: tests
+  description: The three falsifier selections of the acceptance criteria, with the failing controls named in the tests.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect src/omnimarket/nodes/node_projection_work_ledger -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23152-ac1-emit-gate
+  description: The emit refuses a row with no judge acceptance and spools the row the judge accepted, carrying its sequence; with the contract's gate switched off the same selection fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov -k emit_only_after_judge_accepts
+- id: dod-omn23152-ac2-unique-index
+  description: The writer records a second holder of a sequence as a conflict, the migration dedupes before it indexes, and the backfill plan keeps file order; with the writer's collision check removed the selection fails on the fake index.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -k ledger_seq_unique_index
+- id: dod-omn23152-ac3-unjudged-reading
+  description: The reading reads WORKING at zero rows with no sequence in the window and RED with one planted row, naming its source and lane.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -k unjudged_publish_reads_red
+- id: dod-omn23152-integration-proof
+  description: >-
+    The pushed head ran the focused node tests of the emit gate, the unique-index writer and the unjudged-row reading on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane sup-23152-1235 -- uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect src/omnimarket/nodes/node_projection_work_ledger tests/unit/nodes/node_work_ledger_emit_effect -q -n 0 --no-cov
+    cwd: .

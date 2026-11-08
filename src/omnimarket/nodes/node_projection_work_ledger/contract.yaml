@@ -109,12 +109,23 @@ published_events:
 work_ledger:
   ledger_id: rolling-work-ledger
 
+# OMN-23152, rebuild plan 4.3 step 1: the unjudged-row reading counts projected rows with no ledger_seq
+# over this window; it reads RED above zero and names each emitter by source and lane.
+unjudged_reading:
+  window_seconds: 86400
+
 db_io:
   db_tables:
     - name: work_ledger_rows
       database_ref: application
       schema: omninode_internal
       migration: "0000_create_work_ledger.sql"
+      access: write
+      role: work_ledger_rows
+    - name: work_ledger_seq_conflicts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0007_work_ledger_seq_unique.sql"
       access: write
       role: work_ledger_rows
     - name: work_ledger_state

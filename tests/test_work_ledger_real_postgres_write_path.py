@@ -134,7 +134,13 @@ async def _migrated(
 ) -> AsyncIterator[tuple[WorkLedgerProjectionWriter, asyncpg.Connection, str]]:
     connection = await _connect_or_skip()
     schema = f"omn19513_{uuid4().hex[:12]}"
-    names = ("_INSERT_ROW", "_OPEN_ENTITY", "_CLOSE_ENTITY")
+    names = (
+        "_INSERT_ROW",
+        "_OPEN_ENTITY",
+        "_CLOSE_ENTITY",
+        "_SEQ_HOLDER",
+        "_INSERT_SEQ_CONFLICT",
+    )
     originals = {n: getattr(writer_module, n) for n in names}
     try:
         await connection.execute(f"CREATE SCHEMA {schema}")
@@ -143,6 +149,12 @@ async def _migrated(
         )
         await connection.execute(
             (MIGRATION.parent / "0003_work_ledger_seq.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
+        # 0008 grants the runtime role, which the throwaway schema lacks, so only 0007 is applied.
+        await connection.execute(
+            (MIGRATION.parent / "0007_work_ledger_seq_unique.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )

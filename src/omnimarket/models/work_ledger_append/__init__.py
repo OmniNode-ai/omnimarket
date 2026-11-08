@@ -15,6 +15,10 @@ from omnimarket.models.work_ledger_append.model_work_ledger_join_j5 import (
     ModelJoinJ5Request,
     ModelJoinJ5Result,
 )
+from omnimarket.models.work_ledger_append.model_work_ledger_judge_acceptance import (
+    ModelWorkLedgerJudgeAcceptance,
+    ModelWorkLedgerJudgeGate,
+)
 
 __all__ = [
     "EnumJoinJ5Outcome",
@@ -25,5 +29,7 @@ __all__ = [
     "ModelJoinJ5Result",
     "ModelWorkLedgerAppendReceipt",
     "ModelWorkLedgerAppendRequest",
+    "ModelWorkLedgerJudgeAcceptance",
+    "ModelWorkLedgerJudgeGate",
     "ModelWorkLedgerTerminalRefused",
 ]
