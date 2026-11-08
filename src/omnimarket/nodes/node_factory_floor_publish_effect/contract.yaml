@@ -161,7 +161,7 @@ runtime:
     concurrent: true
     kind: capture
     required: false
-    timeout_seconds: 300
+    timeout_seconds: 60
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
   # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
@@ -174,13 +174,13 @@ runtime:
     concurrent: true
     kind: command
     required: false
-    timeout_seconds: 300
+    timeout_seconds: 60
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
     concurrent: true
     kind: copy
     required: false
-    timeout_seconds: 30
+    timeout_seconds: 10
     source_relpath: .onex_state/friction-rollup/latest.json
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
@@ -188,7 +188,7 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 600
+    timeout_seconds: 90
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
     fresh_relpath: .onex_state/process-health/process-health.json
     fresh_seconds: 900
@@ -196,12 +196,12 @@ runtime:
     concurrent: true
     kind: runner_fleet
     required: false
-    timeout_seconds: 30
+    timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 600
+    timeout_seconds: 40
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
@@ -209,7 +209,7 @@ runtime:
   - name: floor_simple
     kind: module
     required: false
-    timeout_seconds: 120
+    timeout_seconds: 20
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--defer-canary"]
   # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
@@ -217,7 +217,7 @@ runtime:
   - name: floor_canary
     kind: module
     required: true
-    timeout_seconds: 120
+    timeout_seconds: 20
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--publish-canary"]
   names:
@@ -235,6 +235,21 @@ runtime:
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
+  # OMN-22699: the cycle bound and the time each phase after the input steps may take. The longest path the contract
+  # allows is the sum of: each group of concurrent input steps at its slowest member's timeout_seconds, the delegation
+  # read, the copies, the history prune, the after-publish steps and the final status write. A test holds that sum under
+  # bound_seconds, so a timeout raised past the bound fails the build instead of showing as a slow page. The handler
+  # clamps every delegation read, copy, prune and status write to what its phase has left, so these numbers are real
+  # limits. Measured 2026-11-07 on the launching Mac (served publish-status.json): hosts 24 s, pool 18 to 22 s, the
+  # factory floor record 24 s, the simple floor 11 to 12 s, delegation 7 to 8 s, the whole input phase 59 to 60 s; the
+  # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
+  # timeout is recorded failed with the seconds it took.
+  cycle:
+    bound_seconds: 240
+    delegation_timeout_seconds: 15
+    copy_budget_seconds: 40
+    history_prune_budget_seconds: 8
+    final_status_seconds: 5
   # The record's history: every publish also stores the record as a timestamped snapshot under <history_root>/<subdirectory>/
   # (history_root is the overlay's, normally the serving directory), written to a temporary name and renamed in without
   # replacing an existing name. A snapshot is never rewritten. Pruning removes only snapshots older than days, oldest

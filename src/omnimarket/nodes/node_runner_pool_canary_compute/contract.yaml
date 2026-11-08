@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runner_pool_canary_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The per-pool reading of rebuild step R0 as a pure compute. Takes the canary job results a
+  caller read (pool aimed at, job conclusion, runner that ran it, exit status of the timezone
+  import) and the organization runner listing counted per pool, and returns WORKING or
+  NOT_WORKING for every pool declared below, with the reason. A pool reads WORKING only when a
+  canary ran on one of its own runners with exit 0 and every registered runner reads online;
+  a missing canary, a non-zero exit, a job that ran on a neighbouring pool, no listing row and
+  an offline runner each read NOT_WORKING. No I/O other than loading this contract.
+input_model:
+  name: ModelRunnerPoolCanaryRequest
+  module: omnimarket.nodes.node_runner_pool_canary_compute.models.model_runner_pool_canary
+output_model:
+  name: ModelRunnerPoolCanaryVerdict
+  module: omnimarket.nodes.node_runner_pool_canary_compute.models.model_runner_pool_canary
+handler:
+  module: omnimarket.nodes.node_runner_pool_canary_compute.handlers.handler_runner_pool_canary
+  class: HandlerRunnerPoolCanary
+  input_model: omnimarket.nodes.node_runner_pool_canary_compute.models.model_runner_pool_canary.ModelRunnerPoolCanaryRequest
+  output_model: omnimarket.nodes.node_runner_pool_canary_compute.models.model_runner_pool_canary.ModelRunnerPoolCanaryVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_runner_pool_canary_compute.handlers.handler_runner_pool_canary:HandlerRunnerPoolCanary
+  handlers:
+    - operation: compute_runner_pool_canary
+      handler:
+        name: HandlerRunnerPoolCanary
+        module: omnimarket.nodes.node_runner_pool_canary_compute.handlers.handler_runner_pool_canary
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this canary round.}
+  observations: {type: list, required: false, description: One entry per canary job read - pool, job_conclusion, runner_name, exit_code.}
+  online_by_pool: {type: object, required: false, description: Runners reading online in the organization listing, per pool.}
+  registered_by_pool: {type: object, required: false, description: Runners registered in the organization listing, per pool.}
+outputs:
+  correlation_id: {type: str}
+  all_working: {type: bool}
+  verdicts: {type: list, description: One state and reason per declared pool, in declaration order.}
+terminal_event: onex.evt.omnimarket.runner-pool-canary-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-pool-canary-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.runner-pool-canary-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.runner-pool-canary-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.runner-pool-canary-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Runner-pool canary verdict compute
+  author: OmniNode Team
+  created: "2026-11-07"
+  related_tickets: [OMN-22945]
+# The rolled pools a canary must complete on. The offline h202 registrations and the prod-deploy
+# runner are excluded. A canary counts for a pool only when the runner that ran it is named
+# <prefix>-<N>: several pools share one label set, so a label can place a job on a neighbour.
+pool_rules:
+  - {pool: omninode-runner, runner_name_prefixes: [omninode-runner]}
+  - {pool: omninode-verify, runner_name_prefixes: [omninode-verify-runner]}
+  - {pool: customer-plane, runner_name_prefixes: [omninode-customer-plane-runner]}
+  - {pool: hp051-ci, runner_name_prefixes: [hp051-ci-runner]}
+  - {pool: hp051-ci-mq, runner_name_prefixes: [hp051-ci-mq-runner]}
+  - {pool: hp053-ci, runner_name_prefixes: [hp053-ci-runner]}
+  - {pool: mini, runner_name_prefixes: [omninode-mini-runner]}

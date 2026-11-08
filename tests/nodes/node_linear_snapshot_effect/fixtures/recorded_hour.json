@@ -1,0 +1,142 @@
+{
+ "date": "2026-11-07",
+ "viewer": {
+  "id": "7f1c0f6e-0000-4000-8000-000000000001"
+ },
+ "expected_issue_count": 5,
+ "note": "Synthetic ticket ids and text shaped as one hourly read of the snapshot query (two pages); no real ticket text.",
+ "pages": [
+  [
+   {
+    "identifier": "OMN-9001",
+    "title": "Recorded ticket one",
+    "description": "Body with **markdown**\n\n- a list\n- of items\n",
+    "updatedAt": "2026-11-07T17:01:12.000Z",
+    "priority": 2,
+    "priorityLabel": "High",
+    "state": {
+     "name": "In Progress",
+     "type": "started"
+    },
+    "assignee": {
+     "id": "7f1c0f6e-0000-4000-8000-000000000001"
+    },
+    "labels": {
+     "nodes": [
+      {
+       "name": "delegation"
+      },
+      {
+       "name": "machinery"
+      }
+     ]
+    },
+    "project": {
+     "name": "Delegation Pillar"
+    }
+   },
+   {
+    "identifier": "OMN-9002",
+    "title": "Recorded ticket two, no description",
+    "description": null,
+    "updatedAt": "2026-11-07T17:02:12.000Z",
+    "priority": 2,
+    "priorityLabel": "High",
+    "state": {
+     "name": "In Progress",
+     "type": "started"
+    },
+    "assignee": {
+     "id": "7f1c0f6e-0000-4000-8000-000000000001"
+    },
+    "labels": {
+     "nodes": []
+    },
+    "project": {
+     "name": "Delegation Pillar"
+    }
+   },
+   {
+    "identifier": "OMN-9003",
+    "title": "Recorded ticket three",
+    "description": "Unicode: café – “quoted”",
+    "updatedAt": "2026-11-07T17:03:12.000Z",
+    "priority": 0,
+    "priorityLabel": "No priority",
+    "state": {
+     "name": "Backlog",
+     "type": "backlog"
+    },
+    "assignee": {
+     "id": "7f1c0f6e-0000-4000-8000-000000000001"
+    },
+    "labels": {
+     "nodes": [
+      {
+       "name": "floor"
+      }
+     ]
+    },
+    "project": null
+   }
+  ],
+  [
+   {
+    "identifier": "OMN-9004",
+    "title": "Recorded ticket four on page two",
+    "description": "Second page body.",
+    "updatedAt": "2026-11-07T17:04:12.000Z",
+    "priority": 2,
+    "priorityLabel": "High",
+    "state": {
+     "name": "Todo",
+     "type": "unstarted"
+    },
+    "assignee": {
+     "id": "7f1c0f6e-0000-4000-8000-000000000001"
+    },
+    "labels": {
+     "nodes": [
+      {
+       "name": "delegation"
+      }
+     ]
+    },
+    "project": {
+     "name": "Delegation Pillar"
+    }
+   },
+   {
+    "identifier": "OMN-9005",
+    "title": "Recorded ticket five",
+    "description": "",
+    "updatedAt": "2026-11-07T17:05:12.000Z",
+    "priority": 2,
+    "priorityLabel": "High",
+    "state": {
+     "name": "In Progress",
+     "type": "started"
+    },
+    "assignee": {
+     "id": "7f1c0f6e-0000-4000-8000-000000000001"
+    },
+    "labels": {
+     "nodes": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b"
+      },
+      {
+       "name": "c"
+      }
+     ]
+    },
+    "project": {
+     "name": "Delegation Pillar"
+    }
+   }
+  ]
+ ]
+}
