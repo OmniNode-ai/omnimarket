@@ -77,6 +77,9 @@ class CommandConsumerCalls:
             code = self._runner(consumer.probe_command, self._timeout)
         except (subprocess.TimeoutExpired, OSError):
             return EnumConsumerCallOutcome.UNREACHABLE
+        except ValueError:
+            # An argument the OS cannot take (an embedded NUL): the call cannot be made.
+            return EnumConsumerCallOutcome.FAILED
         if code == 0:
             return EnumConsumerCallOutcome.COMPLETED
         if code == 1:
