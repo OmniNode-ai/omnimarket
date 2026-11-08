@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the real-backend overlay (reads the GitHub REST API). The token is read from the
+# environment variable named in token_env; its value is never written here.
+settings:
+  repositories: [example-org/example-repo, example-org/example-other]
+  window_seconds: 3600
+  run_lookback_seconds: 86400
+  max_age_seconds: 1800
+  watched_runner_groups: [example-private-group]
+  baseline_public_repositories: []
+source:
+  backend: github
+  api_base: http://192.0.2.10:8080
+  token_env: EXAMPLE_JOB_READ_TOKEN
+  max_calls: 400
+  timeout_seconds: 10
+  page_size: 100
+  max_pages_per_repository: 5
+store:
+  backend: inmemory
