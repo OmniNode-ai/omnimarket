@@ -10,12 +10,14 @@ serves it from its own cache. The lane wrapper now asks the gateway cache first.
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from omnimarket.nodes.node_lane_github_budget_effect.handlers.handler_lane_github_budget import (
     HandlerLaneGithubBudget,
+    quota_consumers,
 )
 from omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget import (
     ModelLaneGithubCall,
@@ -154,3 +156,13 @@ def test_injected_break_without_the_probe_each_window_costs_a_unit(lane, monkeyp
     read(lane, "7", "--offset-bytes", "65536")
     assert spent(lane) == 2
     assert read(lane, "7", "--offset-bytes", "131072").code == 78
+
+
+def test_quota_consumers_count_one_charged_read_for_a_job_read_in_four_windows(lane):
+    read(lane, "7")
+    for offset in ("65536", "131072", "196608"):
+        read(lane, "7", "--offset-bytes", offset, "--length-bytes", "65536")
+    assert actions(lane) == ["allowed", "cache", "cache", "cache"]
+    result = quota_consumers(Path(lane[0]["log"]), None, datetime.now(UTC))
+    assert result["logged"] == 1
+    assert result["top"] == [["lane-probe", 1]]

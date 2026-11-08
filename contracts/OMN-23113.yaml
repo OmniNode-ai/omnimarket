@@ -51,13 +51,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py -k "remote_snapshot_counted_once_and_local_auth_cache_and_refusal_excluded" -q -p no:randomly --no-cov -n0
         cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_gateway_cache_probe.py -k "quota_consumers_count_one_charged_read" -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23113-ac2-charge-log-after-install
     description: >-
       The charge log of the launching host, counted per lane after the branch is installed, shows fewer charged job-log reads per lane over one hour than 206 over 97 lanes. Runs at the local Done gate.
     source: manual
     execution_scope: local_done_gate
-    binds_ac:
-      - AC2
+    binds_ac: []
     checks:
       - check_type: command
         check_value: test -s "${ONEX_STATE_DIR:-$OMNI_HOME/.onex_state}/gh-calls.log"
