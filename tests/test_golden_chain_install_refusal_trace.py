@@ -74,3 +74,32 @@ def test_error_chain_hostile_text_is_unclassified_not_raised() -> None:
     )
     assert result.unclassified == ("h",)
     assert result.classes == ()
+
+
+# The wording the hand-off prints through the remote-lane TERMINAL rows (corpus-010 lines 23 and 87).
+_LANE_LINES = (
+    "Codex handoff refused for svc-a#1599 head=70757793da7e96dad95f8f5c07e76365fe1a2a52 rc=4: "
+    "NOT-READY this PR changes what runs on a host (x.py) and its proof is not enough: "
+    "installed=h1:ee41f98 is not the live head 7075779 and its ancestry is UNREAD (the clone lacks it)",
+    "Codex handoff refused for svc-a#1601 head=a0e280730a437cdce605bbde51e9b22a98363037 rc=4: "
+    "NOT-READY this PR changes what runs on a host (y.py) and its proof is not enough: "
+    "installed=h1:ee41f98 is not the live head a0e2807 and does not contain it: install the pushed head.",
+)
+
+
+def test_golden_chain_lane_terminal_wording_is_classified_not_unclassified() -> None:
+    result = HandlerInstallRefusalTraceCompute().handle(
+        ModelInstallRefusalTraceRequest(
+            window_start="2026-11-01T00:00:00Z",
+            window_end="2026-11-07T00:00:00Z",
+            records=tuple(
+                ModelRefusalRecord(source=f"lane-{i}", text=text)
+                for i, text in enumerate(_LANE_LINES)
+            ),
+        )
+    )
+    assert result.unclassified == ()
+    assert sorted((c.cause, c.count) for c in result.classes) == [
+        ("installed-not-live-head", 1),
+        ("installed-revision-unread", 1),
+    ]

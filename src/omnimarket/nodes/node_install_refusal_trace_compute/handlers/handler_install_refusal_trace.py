@@ -70,7 +70,12 @@ CAUSE_CLASSES: tuple[_CauseClass, ...] = (
         re.compile(r"NOT-READY body cites .* it must include the title ticket"),
     ),
 )
-_REFUSAL_LINE = re.compile(r"handoff_row:\s+\S+#\d+\s+NOT-READY\b")
+# Two printings of the same refusal: the script's own ``handoff_row: <x>#<n> NOT-READY`` line, and the
+# lane TERMINAL rows' ``handoff refused for <x>#<n> head=<sha> rc=4: NOT-READY`` wording.
+_REFUSAL_LINE = re.compile(
+    r"handoff_row:\s+\S+#\d+\s+NOT-READY\b"
+    r"|handoff refused for\s+\S+#\d+\b[^\n]*?\bNOT-READY\b"
+)
 
 
 class HandlerInstallRefusalTraceCompute:
