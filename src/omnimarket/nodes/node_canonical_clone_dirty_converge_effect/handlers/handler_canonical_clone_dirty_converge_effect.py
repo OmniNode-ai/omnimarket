@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -194,6 +195,26 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return paths
 
     # -- live use -----------------------------------------------------------------------------
+    def _live_build_lock(self) -> str:
+        """The first declared build lock that is held and younger than the declared age, else ''.
+
+        The deploy agent takes these mkdir locks from staging through its last image build; its holder
+        record's time (the directory's, without one) is the age, the reclaim rule the agent applies.
+        """
+        now = time.time()
+        for relative in self.declaration.build_lock_dirs:
+            lock = self.registry_root / relative
+            if not lock.is_dir():
+                continue
+            holder = lock / "holder"
+            try:
+                age = now - (holder if holder.is_file() else lock).stat().st_mtime
+            except OSError:
+                continue  # an unreadable age is not evidence of a live build
+            if age <= self.declaration.build_lock_max_age_seconds:
+                return lock.name
+        return ""
+
     def _open_claim_naming(self, clone: Path) -> str:
         """The lane of an open CLAIM that names the clone's path, else an empty string."""
         ledger = self._env.get("ONEX_LEDGER_PATH", "")
@@ -281,6 +302,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
 
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        building = self._live_build_lock()
+        if building:
+            return outcome(
+                skipped, f"an image build holds {building}: converged after it ends"
+            )
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
         if not branch:
             return self._reattach_detached(clone, refused_for, outcome)

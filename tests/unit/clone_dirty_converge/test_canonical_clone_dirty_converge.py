@@ -574,3 +574,73 @@ def test_a_dirty_clone_converges_on_the_next_run_under_the_contract_bound(
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
     assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
     assert _clean(staged_case.clone)
+
+
+# -- an image build holds the reconcile-host lock (OMN-23073) -----------------------------------------
+#
+# The deploy agent stages its siblings into the canonical omnibase_infra clone, then builds. A tracked
+# placeholder it staged reads as a dirty clone, and an off-lineage build (an open pull request's head)
+# reads as a detached clone. Past the contract bound the tick converged the clone back to dev and the
+# agent's second build copied the placeholder: "Per-repo VCS provenance has no sibling entries"
+# (read twice on one host, a hard reset of the clone 3 to 4 minutes after each build began).
+
+BUILD_LOCK = ".onex-reconcile-host.lock"
+
+
+def _hold_build_lock(planted: Planted, *, parent: bool, age: int = 0) -> Path:
+    lock = (planted.home.parent if parent else planted.home) / BUILD_LOCK
+    lock.mkdir()
+    holder = lock / "holder"
+    holder.write_text("pid=1\nhost=h\npurpose=deploy-agent image build\n")
+    if age:
+        past = time.time() - age
+        os.utime(holder, (past, past))
+        os.utime(lock, (past, past))
+    return lock
+
+
+@pytest.mark.parametrize("parent", [False, True], ids=["registry-lock", "host-lock"])
+def test_a_dirty_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    staged_case: Planted, parent: bool
+) -> None:
+    _hold_build_lock(staged_case, parent=parent)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
+
+
+@pytest.mark.parametrize("parent", [False, True], ids=["registry-lock", "host-lock"])
+def test_a_detached_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    detached_case: Planted, parent: bool
+) -> None:
+    _hold_build_lock(detached_case, parent=parent)
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert _git("branch", "--show-current", cwd=detached_case.clone) == ""
+
+
+def test_a_build_lock_past_its_declared_age_does_not_hold_the_clone(
+    staged_case: Planted,
+) -> None:
+    max_age = load_declaration().build_lock_max_age_seconds
+    _hold_build_lock(staged_case, parent=False, age=max_age + 60)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
+
+
+def test_the_build_lock_age_outlasts_the_deploy_agent_build_ceiling() -> None:
+    """The agent's image build is bounded at 3600 s; a lock younger than that is a live build."""
+    assert load_declaration().build_lock_max_age_seconds > 3600
