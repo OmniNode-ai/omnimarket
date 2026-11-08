@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -75,12 +76,23 @@ def _triggers(data: dict[Any, Any]) -> dict[str, Any]:
     return {str(key): value for key, value in raw.items()}
 
 
+def _matches_ordered(patterns: list[str], branch: str) -> bool:
+    """GitHub's filter order: the last pattern that matches decides, and a ``!``
+    pattern excludes what an earlier one included."""
+    reached = False
+    for pattern in patterns:
+        negated = pattern.startswith("!")
+        if fnmatch.fnmatchcase(branch, pattern[1:] if negated else pattern):
+            reached = not negated
+    return reached
+
+
 def _branch_reached(spec: Any, branch: str) -> bool:
     if not isinstance(spec, dict):
         return True
     names = spec.get("branches")
     ignored = spec.get("branches-ignore")
-    if names is not None and not any(fnmatch.fnmatchcase(branch, p) for p in names):
+    if names is not None and not _matches_ordered(list(names), branch):
         return False
     return not (
         ignored is not None and any(fnmatch.fnmatchcase(branch, p) for p in ignored)
@@ -95,8 +107,14 @@ def _never_runs(condition: Any) -> bool:
 
 
 def _runs_on_hosted(runs_on: Any) -> bool:
+    if isinstance(runs_on, dict):
+        # ``{labels: ...}`` selects like its scalar form; a group or an unresolved
+        # expression is never proof of hosted placement.
+        if set(runs_on) != {"labels"}:
+            return False
+        runs_on = runs_on["labels"]
     labels = runs_on if isinstance(runs_on, list) else [runs_on]
-    return all(
+    return bool(labels) and all(
         isinstance(label, str) and HOSTED_LABEL.match(label) is not None
         for label in labels
     )
@@ -138,12 +156,39 @@ def lab_reviewer_jobs(workflows: Path, event: str, branch: str) -> list[LabJob]:
     return found
 
 
-def _plant(source: Path, target: Path) -> None:
-    """Copy ``source`` into ``target`` with a pull_request trigger on every branch."""
-    data = yaml.safe_load(source.read_text())
+def _reviewer_source() -> dict[Any, Any]:
+    """The repository's reviewer workflow when present, otherwise a minimal stand-in.
+
+    Either way the controls plant their own trigger and runner, so deleting the
+    production workflow or moving its job to a hosted runner cannot break them."""
+    path = WORKFLOWS / REVIEWER_WORKFLOW
+    if path.is_file():
+        data = yaml.safe_load(path.read_text())
+        if (
+            isinstance(data, dict)
+            and isinstance(data.get("jobs"), dict)
+            and data["jobs"]
+        ):
+            return data
+    return {
+        "name": "Hostile Reviewer",
+        "on": {"workflow_dispatch": None},
+        "jobs": {"review": {"runs-on": "ubuntu-latest", "steps": [{"run": "true"}]}},
+    }
+
+
+def _plant(source: dict[Any, Any], target: Path) -> None:
+    """Write ``source`` to ``target`` with a pull_request trigger on every branch
+    and every job on a lab runner."""
+    data = dict(source)
     data.pop("on", None)
     data.pop(True, None)
     data["on"] = {"pull_request": {"types": ["opened", "synchronize"]}}
+    data["jobs"] = {
+        job_id: {**job, "runs-on": ["self-hosted", "omnibase-ci"]}
+        for job_id, job in source["jobs"].items()
+        if isinstance(job, dict)
+    }
     target.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
@@ -155,10 +200,10 @@ def test_fresh_event_no_lab_job(event: str, branch: str) -> None:
 
 
 def test_fresh_event_no_lab_job_reads_reviewer_workflows() -> None:
-    """Positive control: the scan sees this repository's reviewer workflow."""
-    stems = {p.name for p in WORKFLOWS.glob("*.y*ml")}
-    assert REVIEWER_WORKFLOW in stems
-    data = yaml.safe_load((WORKFLOWS / REVIEWER_WORKFLOW).read_text())
+    """Positive control: the scan recognises a reviewer workflow by its own markers,
+    whether or not this repository still ships ``hostile-reviewer.yml``."""
+    assert WORKFLOWS.is_dir(), WORKFLOWS
+    data = _reviewer_source()
     assert any(
         _is_reviewer(Path(REVIEWER_WORKFLOW).stem, data, str(job_id), job)
         for job_id, job in data["jobs"].items()
@@ -166,7 +211,7 @@ def test_fresh_event_no_lab_job_reads_reviewer_workflows() -> None:
 
 
 def test_planted_trigger_on_the_repository_reviewer_fails(tmp_path: Path) -> None:
-    _plant(WORKFLOWS / REVIEWER_WORKFLOW, tmp_path / REVIEWER_WORKFLOW)
+    _plant(_reviewer_source(), tmp_path / REVIEWER_WORKFLOW)
     for branch in LANDING_BRANCHES:
         planted = lab_reviewer_jobs(tmp_path, "pull_request", branch)
         assert planted, f"a planted pull_request trigger on {branch} was not named"
@@ -221,3 +266,84 @@ def test_planted_trigger_controls_are_not_flagged(tmp_path: Path) -> None:
         (tmp_path / name).write_text(yaml.safe_dump(workflow, sort_keys=False))
     for branch in LANDING_BRANCHES:
         assert lab_reviewer_jobs(tmp_path, "pull_request", branch) == []
+
+
+@pytest.mark.parametrize(
+    ("branches", "reached_dev", "reached_main"),
+    [
+        (["**", "!dev", "!main"], False, False),
+        (["**", "!dev"], False, True),
+        (["!dev", "**"], True, True),
+        (["**", "!dev", "dev"], True, True),
+        (["main"], False, True),
+    ],
+)
+def test_branch_filter_keeps_ordered_exclusions(
+    branches: list[str], reached_dev: bool, reached_main: bool
+) -> None:
+    """OMN-22946: a later ``!`` pattern excludes and a later plain one re-includes."""
+    spec = {"branches": branches}
+    assert _branch_reached(spec, "dev") is reached_dev
+    assert _branch_reached(spec, "main") is reached_main
+
+
+@pytest.mark.parametrize(
+    ("runs_on", "hosted"),
+    [
+        ("ubuntu-latest", True),
+        ({"labels": "ubuntu-latest"}, True),
+        ({"labels": ["ubuntu-latest"]}, True),
+        ({"labels": ["self-hosted", "omnibase-ci"]}, False),
+        ({"group": "lab-runners"}, False),
+        ({"group": "lab-runners", "labels": "ubuntu-latest"}, False),
+        ({"labels": "${{ matrix.runner }}"}, False),
+        ({}, False),
+        (None, False),
+    ],
+)
+def test_runs_on_mapping_classifies_like_its_scalar_form(
+    runs_on: Any, hosted: bool
+) -> None:
+    assert _runs_on_hosted(runs_on) is hosted
+
+
+def test_hosted_label_mapping_job_is_not_flagged(tmp_path: Path) -> None:
+    (tmp_path / "mapped.yml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "Planted Reviewer",
+                "on": {"pull_request": None},
+                "jobs": {
+                    "review": {"runs-on": {"labels": "ubuntu-latest"}, "steps": []}
+                },
+            },
+            sort_keys=False,
+        )
+    )
+    for branch in LANDING_BRANCHES:
+        assert lab_reviewer_jobs(tmp_path, "pull_request", branch) == []
+
+
+def test_controls_do_not_need_the_production_reviewer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-22946: deleting the production reviewer, or moving its job to a
+    hosted runner, leaves the detection controls passing."""
+    for workflows in (tmp_path / "absent", tmp_path / "hosted"):
+        workflows.mkdir()
+    (tmp_path / "hosted" / REVIEWER_WORKFLOW).write_text(
+        yaml.safe_dump(
+            {
+                "name": "Hostile Reviewer",
+                "on": {"workflow_dispatch": None},
+                "jobs": {"review": {"runs-on": "ubuntu-latest", "steps": []}},
+            },
+            sort_keys=False,
+        )
+    )
+    for name in ("absent", "hosted"):
+        monkeypatch.setattr(sys.modules[__name__], "WORKFLOWS", tmp_path / name)
+        test_fresh_event_no_lab_job_reads_reviewer_workflows()
+        planted = tmp_path / f"planted-{name}"
+        planted.mkdir()
+        test_planted_trigger_on_the_repository_reviewer_fails(planted)
