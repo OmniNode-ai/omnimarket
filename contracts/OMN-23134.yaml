@@ -47,11 +47,11 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23134-compare-node
     description: >-
-      Deploy assessment: the change adds no Kafka topic, migration or prod mutation; it reaches the runtime through the package on the next standard image rebuild. The command fails when the canonical_snapshots symbol the fix introduces is missing from the changed adapter, or when the compare handler no longer imports it. The compare node's tests also run on the in-memory profile, which hosted CI can run.
+      Deploy assessment: the change adds no Kafka topic, migration or prod mutation; it reaches the runtime through the package on the next standard image rebuild. The command reads the changed adapter from GitHub at the fix commit and fails when the canonical_snapshots symbol the fix introduces is missing. The compare node's tests also run on the in-memory profile, which hosted CI can run.
     source: manual
     checks:
       - check_type: command
-        check_value: "grep -q 'def canonical_snapshots' src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py && grep -q 'adapter_repository_names' src/omnimarket/nodes/node_floor_compare_effect/handlers/handler_floor_compare.py"
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py?ref=4c4c8201c91331727f1071d313c3957b110ff84d' --jq .content | base64 -d | grep -q 'def canonical_snapshots'"
         cwd: "."
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect -q -n 0 --no-cov
