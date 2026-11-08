@@ -203,12 +203,14 @@ runtime:
     required: false
     timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
-  # OMN-22478: the friction report with the overlay home's class rules. It runs after the group above (not concurrent with
-  # the copy, which writes the same file): the copy stays the fallback when this step fails, and the status file says so.
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
   - name: friction_classed
+    concurrent: true
     kind: friction_rollup
     required: false
-    timeout_seconds: 120
+    timeout_seconds: 90
     output_relpath: .claude_scratch/friction/friction-report.json
     rollup:
       ledger_path_env: ONEX_LEDGER_PATH

@@ -148,7 +148,7 @@ def test_golden_the_contract_step_names_the_overlay_and_every_setting_it_reads()
     step = friction_step()
     assert step.kind == "friction_rollup"
     assert step.required is False
-    assert step.concurrent is False
+    assert step.concurrent is True  # inside the 240 s cycle bound
     rollup = step.rollup
     assert rollup is not None
     assert rollup.class_overlay_id == "node_friction_rollup_compute"

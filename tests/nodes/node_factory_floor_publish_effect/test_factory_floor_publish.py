@@ -399,6 +399,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "friction",
         "process_health",
         "runner_fleet",
+        "friction_classed",
     ]
     assert steps["factory_floor"].concurrent is False
 
