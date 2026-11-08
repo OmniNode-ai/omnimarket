@@ -23,8 +23,8 @@ description: >
 handler:
   module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
   class: HandlerFloorFillCandidates
-  input_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
-  output_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+  input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+  output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -37,8 +37,8 @@ handler_routing:
     handler:
       name: HandlerFloorFillCandidates
       module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
-    input_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
-    output_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+    input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+    output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
 # The node reads no overlay itself: the orchestrator reads these keys and carries them on the request, and a request
 # that lacks one is refused naming the key (floor_fill.<key>).
 deployment_overlay:
