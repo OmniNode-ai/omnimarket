@@ -30,6 +30,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Migrations half of the projection step only: node_projection_local_alerts' Postgres migrations 0000 to 0002 key public.local_alerts on (tenant_id, code, subject), carry every column the fold plan writes, enable row-level security with the tenant policy in 0000 and force it in 0002, and grant the tenant projection writer SELECT, INSERT and UPDATE but not DELETE, plus USAGE on the cursor. The migrations are absent at the merge base, so the test fails there."
     command: "uv run pytest tests/test_omn19991_local_alerts_migrations.py -q"
+  - kind: "tests"
+    description: "Writer and publication step: the environment writer publishes each alert its write raises or clears on onex.evt.omnimarket.local-alert-transitioned.v1 in an event envelope, re-raising with the same id on redelivery, and node_projection_local_alerts' Postgres writer folds those transitions into one public.local_alerts row per (tenant, code, subject) after the tenant setting, a key lock and a read. Replaying an hour of published transitions, or folding them shuffled, changes no row; an older transition writes nothing; a non-canonical tenant is refused. The writer module does not exist at the merge base, so the file cannot be collected there."
+    command: "uv run pytest tests/test_omn19991_local_alerts_writer.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -75,3 +78,17 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-19991 -- uv run --frozen pytest tests/test_omn19991_local_alerts_migrations.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/nodes/test_work_contract_pins_current.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn19991-ac1-published-transitions-fold-once"
+    description: "AC1 at the bus writers. An hour of compose reports goes through the environment writer, which publishes each raise and clear it derives; the local alerts writer folds the published transitions into one row per (tenant, code, subject). Replaying every transition, or folding them shuffled and reversed, gives the same rows; postgres stopped twice keeps one SERVICE_DOWN row; a redelivered report re-raises with the same transition id; an older transition writes and publishes nothing. Absent at the merge base."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19991_local_alerts_writer.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19991-local-alerts-writer-deploy-probe"
+    description: "Deploy probe. The local alerts projection writer GitHub serves at the checked-out commit exists; the probe reads handler_local_alerts_writer.py from GitHub at that commit and exits nonzero on a tree without its writer class (the file is absent at the merge base), so it fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_local_alerts/handlers/handler_local_alerts_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class LocalAlertsProjectionWriter' | grep -qv '^0$'"

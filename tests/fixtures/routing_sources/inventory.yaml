@@ -72,6 +72,7 @@ sources:
     resolver: omnimarket.inference.delegation_config_provenance:resolve_path_config
     packaged_defaults:
       - src/omnimarket/configs/task_class_contracts.v1.yaml
+      - src/omnimarket/configs/task_class_bars.v1.yaml
     overlay: TASK_CLASS_CONTRACT_PATH pin of a complete file; there is no node overlay for this file
     resolution_sites:
       - "src/omnimarket/nodes/node_context_profile_resolver_effect/handlers/handler_context_profile_resolver.py:resolve_path_config(TASK_CLASS_CONTRACT_PATH_ENV_KEY)"
@@ -178,8 +179,16 @@ not_routing_resolution_sites:
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
     reason: locates the code graph overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the graph schedule and repository set and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_token_pool.py:find_node_overlay(NODE_NAME)"
+    reason: locates the Claude token pool overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the token rotation schedule and pool settings and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_runner_group_exposure_effect/runtime_exposure_probe.py:find_node_overlay(NODE_NAME)"
+    reason: locates the exposure probe overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the runner group source, the reading schedule and ledger locations and selects no delegation backend, model or tier
+  - site: "src/omnimarket/nodes/node_broker_load_reading_effect/runtime_broker_load.py:find_node_overlay(NODE_NAME)"
+    reason: locates the broker load overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the broker load schedule and reading locations and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
+    reason: locates the secret reading overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and declared consumers and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py:find_node_overlay('lab_hosts')"

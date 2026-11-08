@@ -18,8 +18,10 @@ import base64
 import binascii
 import json
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.models.work_ledger_query import (
@@ -95,6 +97,33 @@ def _parsed(entities: Sequence[ModelWorkLedgerStateEntity]) -> list[replay.Ledge
     return rows
 
 
+def load_hold_stale_after(contract_path: Path) -> timedelta:
+    """The age past which an ``until=open`` HOLD with no RELEASE is stale, not in force
+    (cutover plan section 13, answer 2: "A hold order, then 14 days counts as stale")."""
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    section = contract.get("work_ledger_query") if isinstance(contract, dict) else None
+    days = section.get("hold_stale_after_days") if isinstance(section, dict) else None
+    if not isinstance(days, int) or isinstance(days, bool) or days < 1:
+        raise ValueError(
+            "work_ledger_query.hold_stale_after_days must be a positive integer"
+        )
+    return timedelta(days=days)
+
+
+def stale_hold(
+    until: str | None, opened: datetime, now: datetime, stale_after: timedelta
+) -> bool:
+    """An open-ended hold older than the bound; a hold with an end stamp expires on its own."""
+    return (until is None or until in {"", "open"}) and now - opened > stale_after
+
+
+def _stale_heading(count: int, stale_after: timedelta) -> str:
+    return (
+        f"HOLD stale={count}: until=open, no RELEASE, older than {stale_after.days}d; "
+        "not in force"
+    )
+
+
 def _age(now: datetime, moment: datetime) -> str:
     seconds = max(0, int((now - moment).total_seconds()))
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
@@ -105,6 +134,7 @@ def _hold_lines(
     entities: Sequence[ModelWorkLedgerStateEntity],
     page: ModelWorkLedgerStatePage,
     now: datetime,
+    stale_after: timedelta,
 ) -> dict[str, object]:
     rows = _parsed(entities)
     holds, _, stale = replay.holds_in_force(rows, now=now)
@@ -134,6 +164,12 @@ def _hold_lines(
         f"HOLD none checked={counts.checked} released={counts.released} "
         f"expired={counts.expired} legacy-no-id={counts.legacy_no_id}"
     ]
+    if stale:
+        lines.append(_stale_heading(len(stale), stale_after))
+        lines += [
+            f"  STALE {h.hold.hold_id} by={h.hold.by} age={h.age_days}d db:{h.hold.row.row_id}"
+            for h in stale
+        ]
     return {
         "matched": len(holds),
         "holds": tuple(holds),
@@ -148,16 +184,28 @@ def _free_text(row: replay.LedgerRow) -> str:
     return max(free, key=len) if free else ""
 
 
+def stale_hold_row(
+    row: replay.LedgerRow, now: datetime, stale_after: timedelta
+) -> bool:
+    return row.row_type == "HOLD" and stale_hold(
+        row.token("until") or None, row.record.row_ts, now, stale_after
+    )
+
+
 def _inbox_lines(
     request: ModelWorkLedgerQueryRequest,
     entities: Sequence[ModelWorkLedgerStateEntity],
+    now: datetime,
+    stale_after: timedelta,
 ) -> dict[str, object]:
-    rows = _parsed(entities)
+    every = _parsed(entities)
+    rows = [r for r in every if not stale_hold_row(r, now, stale_after)]
     by_id = {r.record.row_id: r for r in rows}
     lanes = request.lanes or ((request.lane,) if request.lane else ())
     boxes = tuple(replay.inbox(rows, lane) for lane in lanes)
     lines: list[str] = []
     for box in boxes:
+        stale_count = len(replay.inbox(every, box.lane).entries) - len(box.entries)
         opened = [by_id[e.row.row_id] for e in box.entries]
         action = [by_id[e.row.row_id] for e in box.entries if e.needs_action]
         holds = sum(r.row_type == "HOLD" for r in action)
@@ -173,6 +221,8 @@ def _inbox_lines(
             f"{_free_text(r)[:_FREE_TEXT_WIDTH]}"
             for r in action
         ]
+        if stale_count:
+            lines.append("  " + _stale_heading(stale_count, stale_after))
     return {
         "matched": sum(len(b.entries) for b in boxes),
         "inbox": boxes,
@@ -250,13 +300,14 @@ def state_answer(
     request: ModelWorkLedgerQueryRequest,
     page: ModelWorkLedgerStatePage,
     now: datetime,
+    stale_after: timedelta,
 ) -> dict[str, object]:
     """The answer sections and verb lines of one state page."""
     kind = request.query
     if kind is EnumWorkLedgerQueryKind.HOLDS:
-        return _hold_lines(request, page.entities, page, now)
+        return _hold_lines(request, page.entities, page, now, stale_after)
     if kind is EnumWorkLedgerQueryKind.INBOX:
-        return _inbox_lines(request, page.entities)
+        return _inbox_lines(request, page.entities, now, stale_after)
     if kind is EnumWorkLedgerQueryKind.OPEN_CLAIMS:
         return _claim_lines(request, page.entities, page, now)
     return _ruling_lines(request, page.entities)

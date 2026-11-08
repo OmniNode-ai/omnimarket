@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -34,6 +35,9 @@ from omnimarket.nodes.node_host_reading_effect.handlers.probe_host_canary import
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_join_j1 import (
     read_join_j1,
 )
+from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_durability import (
+    read_durability,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_old_names import (
     read_old_names,
 )
@@ -53,6 +57,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     stamp_text,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
 
@@ -87,6 +92,9 @@ class HandlerHostReading:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         environ: Mapping[str, str],
+        probe_appender: ProtocolReadingAppender | None = None,
+        durable_reader: ProtocolLedgerRowSource | None = None,
+        sleep: Callable[[float], None] = time.sleep,
         inventory: ProtocolHostInventory | None = None,
         canary_runner: ProtocolCanaryRunner | None = None,
         nonce_for: Callable[[str], str] | None = None,
@@ -100,6 +108,10 @@ class HandlerHostReading:
         self._appender = appender
         self._clock = clock
         self._environ = environ
+        # The durability probe's own routes: its probe row and its read of the durable store.
+        self._probe_appender = probe_appender
+        self._durable_reader = durable_reader
+        self._sleep = sleep
         self._inventory = inventory
         self._canary_runner = canary_runner
         self._adverts = adverts
@@ -144,6 +156,8 @@ class HandlerHostReading:
                 return read_outbox(
                     self._overlay.outbox, self._files, self._environ, now
                 )
+            if probe is EnumHostProbe.LEDGER_DURABILITY:
+                return self._read_durability()
             if probe is EnumHostProbe.HOST_CANARY:
                 if (
                     self._overlay.canary is None
@@ -190,9 +204,32 @@ class HandlerHostReading:
                 reasons=(f"host-read-failed-{reason_token(type(exc).__name__)}",),
             )
 
+    def _read_durability(self) -> ModelProbeReading:
+        settings = self._overlay.durability
+        assert settings is not None
+        if self._probe_appender is None or self._durable_reader is None:
+            return ModelProbeReading(
+                probe=EnumHostProbe.LEDGER_DURABILITY,
+                verdict=EnumReadingVerdict.UNKNOWN,
+                outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                reasons=("durability-routes-not-wired",),
+            )
+        return read_durability(
+            settings,
+            host=self._host,
+            actor=self._overlay.publish.actor,
+            appender=self._probe_appender,
+            reader=self._durable_reader,
+            clock=self._clock,
+            sleep=self._sleep,
+        )
+
     def _fault(self, probe: EnumHostProbe) -> str:
         if probe is EnumHostProbe.LEDGER_OUTBOX:
             return self._overlay.outbox.injected_fault
+        if probe is EnumHostProbe.LEDGER_DURABILITY:
+            assert self._overlay.durability is not None
+            return self._overlay.durability.injected_fault
         if probe is EnumHostProbe.HOST_CANARY:
             assert self._overlay.canary is not None
             return self._overlay.canary.injected_fault

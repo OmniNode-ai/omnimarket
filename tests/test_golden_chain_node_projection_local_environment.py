@@ -37,7 +37,11 @@ def _contract() -> dict[str, Any]:
 def test_declared_output_state_and_terminal_agree() -> None:
     contract = _contract()
     terminal = "onex.evt.omnimarket.projection-local-environment-applied.v1"
-    assert contract["event_bus"]["publish_topics"] == [terminal]
+    # OMN-19991: the writer also publishes each alert a write raises or clears.
+    assert contract["event_bus"]["publish_topics"] == [
+        terminal,
+        "onex.evt.omnimarket.local-alert-transitioned.v1",
+    ]
     assert contract["terminal_event"] == terminal
 
 

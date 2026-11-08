@@ -72,6 +72,9 @@ class ModelOverlayDriftCommand(BaseModel):
 
     correlation_id: str = Field(min_length=1)
     write: bool = True
+    #: Set when the piece upstream of this read failed under this correlation id: the read does not start,
+    #: reads nothing and answers with a typed failure that carries this code (the join's error shape).
+    upstream_failure: str | None = Field(default=None, min_length=1)
 
 
 class ModelOverlayDriftCounts(BaseModel):
