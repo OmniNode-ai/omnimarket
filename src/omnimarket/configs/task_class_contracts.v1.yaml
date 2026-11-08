@@ -1042,6 +1042,7 @@ transitions_default: &transitions_default
   terminate_on:
     - pinned_backend_failed
     - quality_veto
+    - policy_refusal
     - escalation_limit
     - ladder_exhausted
     - non_retryable_failure

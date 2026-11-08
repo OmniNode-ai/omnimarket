@@ -460,6 +460,7 @@ _DEFAULT_MAX_ESCALATIONS = 2
 # receipt from either path keys the same way.
 _MAX_ESCALATION_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
 _NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
+_POLICY_REFUSED_REASON = "policy_refused"
 _ESCALATION_DECIDER = HandlerEscalationDecision()
 
 # OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
@@ -920,13 +921,20 @@ def local_transport_cause(
 
 
 def local_quality_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refused: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the local port (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. OMN-23216: a
+    ``policy_refused`` gate verdict is the cause ``policy_refusal``, which the
+    lists declare terminal too.
     """
+    if policy_refused:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -3732,6 +3740,7 @@ class LocalDelegationDispatchPort:
                     or secret_request_refused
                 ),
                 fail_category=gate_result.fail_category,
+                policy_refused=gate_result.policy_refused,
             )
             ladder_stopped_by_veto = (
                 self._decide_transition(quality_cause, task_type=task_type).kind
@@ -3918,6 +3927,8 @@ class LocalDelegationDispatchPort:
                 ladder_stop_reasons.append(
                     load_secret_request_refusal().terminal_failure_reason
                 )
+            elif ladder_stopped_by_veto and gate_result.policy_refused:
+                ladder_stop_reasons.append(_POLICY_REFUSED_REASON)
             elif ladder_stopped_by_veto:
                 ladder_stop_reasons.append(
                     "repeated_deterministic_floor"

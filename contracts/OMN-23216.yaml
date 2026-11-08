@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23216
+title: A policy refusal on a local model ends the delegation run instead of climbing to a paid model, while a 503 still moves to the next rung
+summary: terminate_on in task_class_contracts.v1.yaml gains the policy_refusal cause. The quality gate stamps a refusal that declines on policy with the REFUSAL_POLICY verdict prefix, the bus orchestrator and the local port classify that verdict as policy_refusal, and the escalation decision node reads the cause from the declared lists, so the run ends with no later attempt. A 503 on rung 1 is still a transient provider error that moves to rung 2.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23216-policy-refusal-terminates
+  statement: A policy refusal on rung 1 ends the delegation run, and a 503 on rung 1 still moves to rung 2.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a fixed policy refusal on rung 1 makes no later attempt, and a 503 on rung 1 still moves to rung 2 -- falsifier: `uv run pytest tests/unit/delegation/test_policy_refusal_terminates.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The policy refusal tests pass at the head; at the merge base the policy_refusal cause, the gate verdict prefix and the policy_refused property do not exist, so the module fails to import.
+  command: uv run pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23216-ac1-policy-refusal-tests
+  description: 'AC1: a stub local rung answering with a policy refusal ends the run with no call to the cloud rung and the attempt recorded as a terminate with cause policy_refusal; the same ladder with a 503 on rung 1 answers on rung 2; a capability-gap apology still climbs; the gate marks only policy phrases; both paths classify the verdict as the terminal cause; every task class lists policy_refusal in terminate_on.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn23216-deploy-probe
+  description: Deploy probe. Read the bus workflow handler and the local dispatch port at the checked-out commit and require both to pass the gate's policy_refused verdict into the cause classifier, with the policy refusal tests passing beside them. At the merge base neither carries the argument, so the search finds nothing and the tests fail to import.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'git grep -qF "policy_refused=result.policy_refused" -- src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py && git grep -qF "policy_refused=gate_result.policy_refused" -- src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn23216-integration-proof
+  description: The pushed head ran the policy refusal tests and the escalation decision node's transition tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23216 -- uv run --frozen pytest tests/unit/delegation/test_policy_refusal_terminates.py src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py tests/unit/nodes/node_delegation_quality_gate_reducer -q --no-cov
+    cwd: .

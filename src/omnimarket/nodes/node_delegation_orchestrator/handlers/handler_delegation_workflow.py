@@ -331,6 +331,7 @@ _EMPTY_INFERENCE_RESPONSE_MARKERS: frozenset[str] = frozenset(
 # told. The rule that vetoed is carried beside it in the terminal's failure
 # reasons, which the gate composes.
 _NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
+_POLICY_REFUSED_REASON = "policy_refused"
 
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
@@ -827,13 +828,20 @@ def inference_error_cause(
 
 
 def quality_result_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refused: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the bus path (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. OMN-23216: a
+    ``policy_refused`` gate verdict is the cause ``policy_refusal``, which the
+    lists declare terminal too.
     """
+    if policy_refused:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -4574,6 +4582,7 @@ class HandlerDelegationWorkflow:
         refusal_cause = quality_result_cause(
             no_rung_can_satisfy=no_rung_can_satisfy,
             fail_category=result.fail_category,
+            policy_refused=result.policy_refused,
         )
         retry_local_intents = (
             self._maybe_retry_local(
@@ -4612,7 +4621,9 @@ class HandlerDelegationWorkflow:
             # same refusal.
             error_retryable=not no_rung_can_satisfy,
             non_retryable_reason=(
-                "repeated_deterministic_floor"
+                _POLICY_REFUSED_REASON
+                if result.policy_refused
+                else "repeated_deterministic_floor"
                 if repeated_deterministic_floor
                 else _NO_RUNG_CAN_SATISFY_REASON
                 if no_rung_can_satisfy
@@ -4625,6 +4636,7 @@ class HandlerDelegationWorkflow:
             cause=quality_result_cause(
                 no_rung_can_satisfy=no_rung_can_satisfy,
                 fail_category=result.fail_category,
+                policy_refused=result.policy_refused,
             ),
         )
         terminal_failure_reason = decision.terminal_failure_reason

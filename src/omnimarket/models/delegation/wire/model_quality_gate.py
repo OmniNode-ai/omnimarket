@@ -58,6 +58,15 @@ SCORE_SOURCE_COMBINED = "combined"
 # model -- see ``ModelQualityGateResult.no_rung_can_satisfy``.
 SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 
+# OMN-23216: the verdict prefix a failure reason carries when the model declined
+# the request for a policy reason ("I cannot assist", "I will not", "against my
+# guidelines"). It starts with ``REFUSAL`` on purpose: every reader that treats a
+# refusal as a refusal (fallback recommendation, the REFUSED outcome, the secret
+# request rule) matches on that start and keeps matching. The declared
+# ``policy_refusal`` cause is terminate, so no later rung is asked a request the
+# model already declined on policy.
+POLICY_REFUSED_VERDICT_PREFIX = "REFUSAL_POLICY"
+
 # OMN-21077: the verdict prefix a failure reason carries when the evidence a
 # code answer is judged on never reached the gate -- a code class's declared
 # ``passes_existing_tests`` with no executed test run. No costlier rung can
@@ -395,6 +404,19 @@ class ModelQualityGateResult(BaseModel):
         return not self.score_unverified_because
 
     @property
+    def policy_refused(self) -> bool:
+        """Whether a reason says the model declined the request on policy (OMN-23216).
+
+        ``any``, not ``all``: a refusal is short, so the length floor fails beside
+        it every time, and that failure is the refusal's consequence, not a second
+        objection a costlier rung could cure.
+        """
+        return any(
+            reason.startswith(POLICY_REFUSED_VERDICT_PREFIX)
+            for reason in self.failure_reasons
+        )
+
+    @property
     def no_rung_can_satisfy(self) -> bool:
         """Whether no costlier rung can cure the reasons refusing this response.
 
@@ -422,6 +444,7 @@ __all__: list[str] = [
     "NO_NAMED_TESTS_UNTESTED_REASON",
     "NO_NAMED_TEST_RUN_REASON",
     "NO_RUNG_CAN_SATISFY_WIRE_KEY",
+    "POLICY_REFUSED_VERDICT_PREFIX",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "SCORE_VERIFYING_CHECKS",

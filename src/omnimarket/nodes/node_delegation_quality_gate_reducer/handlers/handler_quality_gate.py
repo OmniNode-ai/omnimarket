@@ -131,6 +131,7 @@ from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTes
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
     NO_NAMED_TESTS_UNTESTED_REASON,
+    POLICY_REFUSED_VERDICT_PREFIX,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
@@ -193,6 +194,33 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "cannot assist",
     "can't assist",
 )
+
+# OMN-23216: the refusal phrases that decline a request on policy, a subset of
+# _REFUSAL_PHRASES. A model that says it will not or may not help gives the same
+# answer to every rung, so the verdict carries POLICY_REFUSED_VERDICT_PREFIX and
+# the class's ``terminate_on`` list ends the run. "i cannot" and "i'm sorry" stay
+# plain refusals: they also open an honest statement of a capability gap, which a
+# costlier rung can cure.
+_POLICY_REFUSAL_PHRASES: frozenset[str] = frozenset(
+    {
+        "i refuse",
+        "i will not",
+        "i won't",
+        "cannot assist",
+        "can't assist",
+    }
+)
+
+
+def _refusal_reason(detected: list[str]) -> str:
+    """The failure reason for refusal phrases ``detected`` in a response (OMN-23216)."""
+    prefix = (
+        POLICY_REFUSED_VERDICT_PREFIX
+        if any(phrase in _POLICY_REFUSAL_PHRASES for phrase in detected)
+        else "REFUSAL"
+    )
+    return f"{prefix}: detected refusal phrases: {', '.join(detected)}"
+
 
 # Ultra-short response word threshold for the refusal pre-pass (OMN-13409).
 # A response of _REFUSAL_SHORT_WORD_THRESHOLD words or fewer that contains no
@@ -987,7 +1015,7 @@ def _check_no_refusal(
     if _LEADING_ERROR_RE.search(first_200):
         detected.append("error:")
     if detected:
-        return f"REFUSAL: detected refusal phrases: {', '.join(detected)}"
+        return _refusal_reason(detected)
 
     return None
 
@@ -3348,9 +3376,7 @@ def _run_legacy_checks(
         scores["no_refusal"] = 1.0
     else:
         scores["no_refusal"] = 0.0
-        failure_reasons.append(
-            f"REFUSAL: detected refusal phrases: {', '.join(detected_phrases)}"
-        )
+        failure_reasons.append(_refusal_reason(detected_phrases))
 
     expected_markers = gate_input.expected_markers or _TASK_MARKERS.get(task_type, ())
     if not expected_markers:
