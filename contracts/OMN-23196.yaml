@@ -31,16 +31,23 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn23196_runtime_writer_long_lived_pool.py tests/test_omn21288_projection_writers_in_runtime.py tests/test_omn21288_projection_writer_handflip_parity.py tests/test_omn23043_savings_hook_event_skip.py -q --no-cov
     cwd: .
-- id: dod-omn23196-ac2-dev-lag-samples
-  description: 'Evidence for AC2: the lag samples taken on dev over at least two hours after the deploy agent installed this change, written as a JSON list of {at, nonzero_groups} by the lab alarm sampler; fewer than half the samples have a non-zero group. Fails until that file exists.'
+- id: dod-omn23196-ac2-lag-sample-rule
+  description: Runs the rule the dev lag samples are judged by on samples that meet it and samples that do not, including the measured baseline of 107 non-zero samples in 148, too few samples, and a malformed sample.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn23196_lag_sample_verdict.py -q --no-cov
+    cwd: .
+- id: dod-omn23196-ac2-dev-lag-samples
+  description: 'The AC2 measurement itself: the lag samples taken on dev over at least two hours after the deploy agent installed this change, written as a JSON list of {at, nonzero_groups} by the lab alarm sampler and judged by the rule above. Fails until that file exists; the hosted gate cannot reach dev, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
   - check_type: command
     check_value: >-
-      uv run python -c 'import json,os; d=json.load(open(os.path.expandvars("$OMNI_HOME/.claude_scratch/reports/writer-pool-1420/ac2-lag-samples.json"))); n=len(d); z=sum(1 for x in d if x["nonzero_groups"]>0); assert n>=60 and z*2<n, (n, z)'
+      uv run python -c 'import json,os; from omnimarket.handlers.lag_sample_verdict import lag_samples_meet_bar; d=json.load(open(os.path.expandvars("$OMNI_HOME/.claude_scratch/reports/writer-pool-1420/ac2-lag-samples.json"))); assert lag_samples_meet_bar(d, min_samples=60, max_nonzero_share=0.5), len(d)'
     cwd: .
 - id: dod-omn23196-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
