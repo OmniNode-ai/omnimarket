@@ -309,6 +309,20 @@ def test_exec_mode_keeps_a_value_the_environment_already_sets(
     assert seen[_NAME] == ["from-the-env-store"]
 
 
+def test_exec_mode_keeps_an_explicitly_empty_value_the_environment_sets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _exec_capture(monkeypatch)
+    monkeypatch.setenv(_NAME, "")
+    with running_fake_store() as (address, state):
+        _seed(state)
+        monkeypatch.setenv("HOME", str(_host(tmp_path, address)))
+        monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
+        with pytest.raises(SystemExit):
+            main(["--exec-names", _NAME, "--", "agent"])
+    assert seen[_NAME] == [""]
+
+
 def test_exec_mode_names_an_unresolved_key_and_still_starts_the_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

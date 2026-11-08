@@ -40,7 +40,7 @@ _EXIT_NOT_OK = 3
 def _exec_with_keys(names: list[str], command: list[str]) -> NoReturn:
     """Resolve each unset name into the environment, then replace this process with ``command``."""
     for name in names:
-        if os.environ.get(name):
+        if name in os.environ:
             continue
         result = asyncio.run(
             HandlerHouseModelKey().handle(ModelHouseModelKeyRequest(name=name))
