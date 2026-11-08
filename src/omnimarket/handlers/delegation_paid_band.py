@@ -4,8 +4,8 @@
 
 ``task_class_contracts.v1.yaml`` declares ``paid_from_size_band`` (S, M or L) at
 the top level as the default every class inherits, and a class may override it in
-``escalation_policy.paid_from_size_band``. Both models keep unknown keys, so the
-value is read from there and parsed into the band enum here.
+``escalation_policy.paid_from_size_band``. Both models declare the key as a plain
+S, M or L; it is parsed into the band enum here.
 """
 
 from __future__ import annotations
@@ -50,12 +50,11 @@ def paid_from_size_band_for(
     policy = entry.escalation_policy if entry is not None else None
     if policy is not None:
         own = _band(
-            (policy.model_extra or {}).get(_KEY),
-            f"task_classes.{task_class}.escalation_policy",
+            policy.paid_from_size_band, f"task_classes.{task_class}.escalation_policy"
         )
         if own is not None:
             return own
-    return _band((authority.model_extra or {}).get(_KEY), "top level")
+    return _band(authority.paid_from_size_band, "top level")
 
 
 def resolve_paid_from_size_band(task_class: str) -> EnumSizeBand | None:
