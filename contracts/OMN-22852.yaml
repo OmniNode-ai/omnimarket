@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22852
 title: 'node_floor_fill_reducer: the fill''s state as one pure transition function'
-summary: node_floor_fill_reducer (plan task T12 of the stopped-line fill plan) already holds the fill's per-key state as one pure transition function on dev. This change binds each acceptance criterion to the test that reads it, moves the seven tests that read the node's own contract and handler source out of the node package so the core no_io_outside_effects validator (no suppression, no baseline) judges the package clean, adds the named injected break bus-corrupts-seq that shows the parity reading failing, and carries the dotted task id fix of the reducer key (the floor's own ids are T0.1 and CM.0) with its seven tests, red against the old key and green against the fix.
+summary: node_floor_fill_reducer (plan task T12 of the stopped-line fill plan) already holds the fill's per-key state as one pure transition function on dev. This change binds each acceptance criterion to the test that reads it, moves the seven tests that read the node's own contract and handler source out of the node package so the core no_io_outside_effects validator (no suppression, no baseline) judges the package clean, adds the named injected break bus-corrupts-seq that shows the parity reading failing, and carries the dotted task id fix of the reducer key (the floor's own ids are T0.1 and CM.0) with its seven tests, red against the old key and green against the fix. Each criterion's scenario is also replayed over the floor's own dotted task ids (test_floor_fill_reducer_floor_task_ids.py and the dotted case of the parity tests), so every bound check fails at the merge base, where the key refuses a dotted id.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -110,7 +110,7 @@ dod_evidence:
   execution_scope: hosted_and_local
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_fill_reducer/models/model_floor_fill_state.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'A-Za-z0-9_-\]+(?:\\.'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/floor_fill/model_floor_fill_state.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'A-Za-z0-9_-\]+(?:\\.'
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn22852-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

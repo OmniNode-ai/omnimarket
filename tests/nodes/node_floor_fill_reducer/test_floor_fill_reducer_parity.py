@@ -33,6 +33,10 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.floor_fill import (
+    ModelFloorFillReduceInput,
+    ModelFloorFillState,
+)
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
 )
@@ -46,10 +50,6 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     HandlerFloorFillReducer,
     lane_name,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models import (
-    ModelFloorFillReduceInput,
-    ModelFloorFillState,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]
@@ -363,6 +363,22 @@ def test_reducer_parity_the_golden_scenario_decides_what_the_rules_say() -> None
 def test_reducer_parity_in_memory_bus_matches_the_in_process_decisions() -> None:
     [run] = parity_run(profiles=("inmemory",))
     assert {row.key: row.content for row in run.rows} == in_process()
+
+
+def test_reducer_parity_the_golden_scenario_over_dotted_floor_task_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The floor's own task ids carry a dot (``T0.1``): the bus legs decide them as the rules do."""
+    monkeypatch.setitem(globals(), "KEY", "floor:line-a:T0.1")
+    monkeypatch.setitem(globals(), "OTHER", "floor:line-a:CM.0")
+    [run] = parity_run(profiles=("inmemory",))
+    assert {row.key: row.content for row in run.rows} == in_process()
+    assert len(run.rows) == len(golden_scenario())
+    rows = {k: json.loads(v) for k, v in in_process().items()}
+    assert rows["04:ReservedChecked"]["trigger"] == "confirmed"
+    assert rows["04:ReservedChecked"]["state"]["entries"][KEY]["lane"] == lane_name(
+        KEY, 1
+    )
 
 
 class SeqCorruptingBus(InmemoryBus):
