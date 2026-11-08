@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.work_ledger_append.model_work_ledger_join_j5 import (
@@ -16,6 +18,9 @@ class ModelJoinJ5RunCommand(BaseModel):
 
     #: Read what is owed and write nothing: no append, no emission.
     probe: bool = False
+    #: The run's own id: it rides the run's read of piece 5's rows, whose reader requires one. Each chain the run answers
+    #: carries its own id (the reading's) on the read-back of its row.
+    correlation_id: str = Field(default_factory=lambda: str(uuid4()), min_length=1)
 
 
 class ModelJoinJ5RunItem(BaseModel):

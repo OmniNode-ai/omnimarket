@@ -12,7 +12,8 @@ same probe piece 5 reads every consumer through); the value the store returns is
 
 ``SourceProjectedRows`` answers piece 6's side: the projected row, found by asking a ledger row source (the work-ledger
 read command, which reads the projection) for the durable row's own text. A row the projection has not heard yet is
-asked for again, up to the attempts the overlay sets; a source that errors reads as no projected row.
+asked for again, up to the attempts the overlay sets; a source that errors reads as no projected row. Each read carries the
+join run's correlation id (the reading's own), because the read command's request requires one and refuses a read without it.
 """
 
 from __future__ import annotations
@@ -198,7 +199,12 @@ class SourceProjectedRows:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def read_row(
-        self, *, ledger_id: str, ledger_seq: int, raw_row: str | None = None
+        self,
+        *,
+        ledger_id: str,
+        ledger_seq: int,
+        raw_row: str | None = None,
+        correlation_id: str | None = None,
     ) -> ModelWorkLedgerRowRecord | None:
         if raw_row is None:
             return None
@@ -215,6 +221,7 @@ class SourceProjectedRows:
                     row_type=expected.row_type,
                     lane=expected.lane,
                     term=raw_row.strip(),
+                    correlation_id=correlation_id,
                 )
             )
             if read.error is not None:

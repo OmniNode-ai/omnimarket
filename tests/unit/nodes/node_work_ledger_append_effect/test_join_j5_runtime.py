@@ -14,6 +14,7 @@ row, and a store that resolves nothing, each leave the join not passed with the 
 from __future__ import annotations
 
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -50,6 +51,7 @@ from omnimarket.nodes.node_join_refusal_effect.overlay import (
     ModelJoinRefusalOverlay,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerRowSource,
     InMemoryLedger,
     evidence_row_from_text,
 )
@@ -692,3 +694,139 @@ def test_control_a_ledger_that_holds_another_row_at_the_receipt_position_is_not_
     assert [i.outcome for i in result.items] == [EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED]
     state, _ = _floor_read(rig, NOW + timedelta(minutes=5))
     assert state == "not_run"
+
+
+# --- the reader's contract: the projection read carries the join run's correlation id (OMN-23086) ----------------------
+#
+# Recorded (h053, 2026-11-08, after the 09:07Z install): the J5 append landed at ledger line 4698 and the projection held
+# the row, yet the step exited 1 with ``projected_row_missing``. The projection read goes to ``onex ledger query --stdin``,
+# whose request model (``ModelWorkLedgerQueryRequest``) requires a ``correlation_id``; the J5 row source never sent one, so
+# the reader refused every read, and a refused read reads as no projected row. The stub below validates each request with
+# the reader's own model, so it refuses exactly as the real reader did.
+
+_CONTRACT_READER = """
+import json, sys
+from pydantic import ValidationError
+from omnimarket.models.work_ledger_query.model_work_ledger_query import ModelWorkLedgerQueryRequest
+rows_file = sys.argv[1]
+try:
+    request = ModelWorkLedgerQueryRequest.model_validate_json(sys.stdin.read())
+except ValidationError as exc:
+    sys.stderr.write("Error: Work-ledger read refused (ValidationError)\\n")
+    sys.exit(1)
+rows = [
+    {"raw_row": line, "projected_at": "2026-11-08T12:00:30Z"}
+    for line in open(rows_file, encoding="utf-8").read().splitlines()
+    if line.strip()
+]
+print(json.dumps({"status": "ok", "correlation_id": str(request.correlation_id), "rows": rows, "matched": len(rows)}))
+"""
+
+
+class _WireProjection:
+    """The projection as the real row source reaches it: the rows the projection heard go to a file, and the read command
+    (the reader's contract, run as a process) answers from it. Every read crosses the same wire the host's does."""
+
+    def __init__(self, heard: InMemoryProjectedRows, rows_file: Path) -> None:
+        self._heard = heard
+        self._file = rows_file
+        self.reader = CommandLedgerRowSource(
+            [sys.executable, "-c", _CONTRACT_READER, str(rows_file)], 60, 5000
+        )
+
+    def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        self._file.write_text(
+            "\n".join(r.raw_row for r in self._heard.rows()) + "\n", encoding="utf-8"
+        )
+        return self.reader.read(query)
+
+
+def _wire_runner(rig: _Rig, wire: _WireProjection) -> HandlerWorkLedgerJoinJ5Run:
+    runner = rig.runner()
+    runner._join._projection = SourceProjectedRows(
+        wire,
+        attempts=2,
+        interval_seconds=0.1,
+        slack_seconds=60,
+        sleep=lambda _s: None,
+        clock=lambda: NOW + timedelta(hours=1),
+    )
+    return runner
+
+
+def test_the_reader_refuses_a_query_that_carries_no_correlation_id(
+    tmp_path: Path,
+) -> None:
+    """The control for the stub: the recorded rejection, read through the real command route, with nothing sent."""
+    rows_file = tmp_path / "rows.txt"
+    rows_file.write_text(_reading_row(GOLDEN_AT, "WORKING") + "\n", encoding="utf-8")
+    reader = CommandLedgerRowSource(
+        [sys.executable, "-c", _CONTRACT_READER, str(rows_file)], 60, 5000
+    )
+    query = ModelLedgerQuery(
+        since=GOLDEN_AT - timedelta(minutes=5),
+        until=NOW,
+        row_type="STATUS",
+    )
+
+    refused = reader.read(query)
+    assert refused.error == "read-command-exit-1:ValidationError"
+    assert refused.rows == ()
+    answered = reader.read(query.model_copy(update={"correlation_id": uuid4().hex}))
+    assert answered.error is None
+    assert len(answered.rows) == 1
+
+
+def test_the_projection_read_sends_the_correlation_id_the_reader_requires(
+    tmp_path: Path,
+) -> None:
+    """Failing control, then fix: without the id on the wire the append lands and the join still reads
+    ``projected_row_missing``; with it the join lands and the floor reads golden_only."""
+    rig = _Rig([_reading_row(GOLDEN_AT, "WORKING")])
+    wire = _WireProjection(rig.projected, tmp_path / "heard.txt")
+
+    result = _wire_runner(rig, wire).handle(ModelJoinJ5RunCommand())
+
+    assert [i.outcome for i in result.items] == [EnumJoinJ5Outcome.LANDED], result.items
+    assert len(rig.ledger.append_calls) == 1
+    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("golden_only", [])
+
+
+def test_the_projection_read_carries_the_chain_id_not_a_fresh_one(
+    tmp_path: Path,
+) -> None:
+    """The id on the wire is the join run's: the reading's own correlation id, in the reader's UUID form."""
+    seen: list[str | None] = []
+
+    class _Spy(InMemoryLedger):
+        def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+            seen.append(query.correlation_id)
+            return super().read(query)
+
+    row = _reading_row(GOLDEN_AT, "WORKING")
+    cid = "0123456789abcdef0123456789abcdef"
+    SourceProjectedRows(
+        _Spy([row]),
+        attempts=1,
+        interval_seconds=0.1,
+        slack_seconds=60,
+        clock=lambda: NOW,
+    ).read_row(ledger_id=LEDGER_ID, ledger_seq=7, raw_row=row, correlation_id=cid)
+    assert seen == [cid]
+
+
+def test_the_wire_form_of_a_correlation_id_is_a_uuid_and_stays_traceable() -> None:
+    from uuid import UUID
+
+    from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+        wire_correlation_id,
+    )
+
+    cid = "0123456789abcdef0123456789abcdef"
+    assert wire_correlation_id(cid) == str(UUID(cid))
+    # An id that is not a UUID is mapped to one by a fixed rule, the same every time.
+    assert wire_correlation_id("not-a-uuid") == wire_correlation_id("not-a-uuid")
+    assert str(UUID(wire_correlation_id("not-a-uuid"))) == wire_correlation_id(
+        "not-a-uuid"
+    )
+    assert wire_correlation_id("not-a-uuid") != wire_correlation_id("another")

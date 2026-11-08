@@ -86,6 +86,7 @@ class HandlerWorkLedgerJoinJ5Run:
                 until=now + _FUTURE_SLACK,
                 row_type=rule.golden.row_type,
                 lane=rule.golden.lane,
+                correlation_id=request.correlation_id,
             )
         )
         if read.error is not None:

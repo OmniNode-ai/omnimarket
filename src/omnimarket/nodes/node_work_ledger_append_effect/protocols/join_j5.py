@@ -55,10 +55,16 @@ class ProtocolProjectedRows(Protocol):
     """Piece 6's projection, read by position."""
 
     def read_row(
-        self, *, ledger_id: str, ledger_seq: int, raw_row: str | None = None
+        self,
+        *,
+        ledger_id: str,
+        ledger_seq: int,
+        raw_row: str | None = None,
+        correlation_id: str | None = None,
     ) -> ModelWorkLedgerRowRecord | None:
         """The projected row at the position. ``raw_row`` is the durable row the caller expects there; a backend that
-        cannot be asked by position (a read command over rows by text) finds the row by it."""
+        cannot be asked by position (a read command over rows by text) finds the row by it. ``correlation_id`` is the join
+        run's: a backend that reads over a command sends it, because the reader's request requires one."""
         ...
 
 
@@ -96,7 +102,12 @@ class InMemoryProjectedRows:
         self._rows[(ledger_id, ledger_seq)] = result.row
 
     def read_row(
-        self, *, ledger_id: str, ledger_seq: int, raw_row: str | None = None
+        self,
+        *,
+        ledger_id: str,
+        ledger_seq: int,
+        raw_row: str | None = None,
+        correlation_id: str | None = None,
     ) -> ModelWorkLedgerRowRecord | None:
         return self._rows.get((ledger_id, ledger_seq))
 

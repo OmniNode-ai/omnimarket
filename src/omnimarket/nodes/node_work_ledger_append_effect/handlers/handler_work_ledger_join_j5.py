@@ -197,6 +197,7 @@ class HandlerWorkLedgerJoinJ5:
             ledger_id=request.append.ledger_id,
             ledger_seq=ledger_seq,
             raw_row=durable,
+            correlation_id=request.correlation_id,
         )
         if projected is None or projected.raw_row != durable:
             code = policy.projected_row_missing_failure_code
