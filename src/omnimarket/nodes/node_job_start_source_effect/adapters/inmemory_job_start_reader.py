@@ -40,8 +40,13 @@ class InMemoryJobStartReader:
             if fixture.repositories_read is None
             else fixture.repositories_read
         )
+        selected = tuple(
+            s
+            for s in fixture.starts
+            if s.repository in repositories and since <= s.started_at <= until
+        )
         return ModelJobStartRead(
-            starts=fixture.starts,
+            starts=selected,
             repositories_read=read,
             read_at=read_at,
             calls=0,

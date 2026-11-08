@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +163,10 @@ def test_a_not_working_reading_is_still_exit_zero(
     fields["source"]["fixture"]["starts"][0]["runner_group_name"] = fields["settings"][
         "watched_runner_groups"
     ][0]
+    # The in-memory reader keeps to the window now (5275:4), and this verb reads the live clock.
+    fields["source"]["fixture"]["starts"][0]["started_at"] = (
+        datetime.now(UTC) - timedelta(seconds=60)
+    ).isoformat()
     _install(monkeypatch, tmp_path, fields)
     assert main(["read"]) == 0
     assert "verdict=NOT_WORKING" in capsys.readouterr().out

@@ -116,6 +116,13 @@ class GithubJobStartReader:
             items.extend(listing)
             if len(listing) < size:
                 return items
+            total = body.get("total_count")
+            if (
+                isinstance(total, int)
+                and not isinstance(total, bool)
+                and len(items) >= total
+            ):
+                return items  # the final page was exactly full and the listing says nothing follows
         raise JobStartReaderError(
             EnumJobStartFailure.WINDOW_TRUNCATED, repository, self._calls
         )
@@ -134,7 +141,7 @@ class GithubJobStartReader:
         private = bool((run.get("repository") or {}).get("private", True))
         jobs = self._items(
             f"/repos/{repository}/actions/runs/{run_id}/jobs",
-            "filter=latest",
+            "filter=all",
             "jobs",
             repository,
         )
@@ -154,7 +161,8 @@ class GithubJobStartReader:
                     job_name=str(job.get("name", "")),
                     workflow_name=str(run.get("name") or ""),
                     run_event=str(run["event"]),
-                    head_is_fork=bool(head and base and head != base),
+                    # A run that names no head repository is not shown to be the repository's own: it counts as a fork.
+                    head_is_fork=not (head and base and head == base),
                     repository_private=private,
                     runner_group_name=job.get("runner_group_name"),
                     runner_name=job.get("runner_name"),

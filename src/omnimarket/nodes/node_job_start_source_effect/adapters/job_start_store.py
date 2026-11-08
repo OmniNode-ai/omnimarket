@@ -169,8 +169,9 @@ class LedgerJobStartStore:
         if not self._host:
             return ModelJobStartStoreOutcome(status="failed", detail="no-host")
         row = self.row_for(result)
+        # One request id per retained key, whatever the row holds: the row's contents are not part of its identity.
         request_id = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"{self._host}|{result.row_key}|{_sha(row)}")
+            uuid.uuid5(uuid.NAMESPACE_URL, f"{self._host}|{result.row_key}")
         )
         appended = self._appender.append(row + "\n", request_id)
         if not appended.ok:

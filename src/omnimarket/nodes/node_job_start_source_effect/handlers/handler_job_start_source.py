@@ -62,9 +62,6 @@ from omnimarket.nodes.node_job_start_source_effect.protocols.protocol_job_start 
     ProtocolJobStartReader,
     ProtocolJobStartStore,
 )
-from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
-    stamp_text,
-)
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolReadingAppender,
 )
@@ -238,7 +235,10 @@ class HandlerJobStartSource:
             settings,
             age_seconds=(request.now - read.read_at).total_seconds(),
         )
-        row_key = _sha(f"{stamp_text(request.now)}|{overlay.overlay_hash()}")[:32]
+        # The full-precision time and window: stamp_text keeps whole seconds, so two reads in one second collided.
+        row_key = _sha(
+            f"{request.now.isoformat()}|{since.isoformat()}|{overlay.overlay_hash()}"
+        )[:32]
         result = ModelJobStartResult(
             correlation_id=request.correlation_id,
             backend=overlay.source.backend,
