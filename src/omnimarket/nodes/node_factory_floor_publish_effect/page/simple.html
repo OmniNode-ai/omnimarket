@@ -25,7 +25,10 @@ h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
 .p:focus-visible,.line .n a:focus-visible,#pclose:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .line .n a{font-size:inherit;color:inherit;text-decoration:underline dotted}
-.p.cur{background:var(--blue);color:#fff;font-weight:650}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.p.grey{background:#e6e8eb;color:var(--mute)}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.p.cur{border:3px solid var(--ink);box-shadow:inset 0 0 0 2px #fff;font-weight:650}
+.legend{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:6px;font-size:12px;color:var(--mute)}.legend span{white-space:nowrap}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:#e6e8eb}.sw.green{background:var(--green)}.sw.amber{background:var(--amber)}.sw.red{background:var(--red)}.sw.cur{background:#fff;border:2px solid var(--ink)}
 .piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
 .line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
 .line .n{flex:none;width:1.8em;color:var(--mute);text-align:right}.line .t{flex:1}.line .t small{color:var(--mute)}.line .a{flex:none;color:var(--mute);font-size:12px}
@@ -132,6 +135,12 @@ function draw(){
   tintIcon(failure || age > limit || !ICON_TINT[doc.level] ? "grey" : doc.level);
   document.title = (failure || age > limit ? "STALE " : "") + "Factory floor, record " + ago(age);
   h += recordWarning(age, limit);
+  const cur = doc.rebuild.current_piece;
+  // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
+  // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
+  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
@@ -145,9 +154,6 @@ function draw(){
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
-  const cur = doc.rebuild.current_piece;
-  h += `<h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.piece === cur ? "cur" : p.status === "not_started" ? "" : esc(p.draw)}" href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
-  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div>`;
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
@@ -330,14 +336,14 @@ function showTab(){
 // draws, test_simple_page_machines holds the two equal). Every cell names its source, its state (read, stale or unread)
 // and the reason; an unread cell is never drawn as a number and a stale one is marked.
 let mdoc = null, mfailure = "";
-const num = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d;
+const numOr = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d;
 const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
 function ageText(ms){
   const m = Math.max(0, Math.round(ms / 60000));
   return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
 }
 function sinceRecord(){ const t = mdoc ? Date.parse(mdoc.generated_at) : NaN; return Number.isNaN(t) ? 0 : Math.max(0, Date.now() - t); }
-function liveMs(min){ return num(min) * 60000 + sinceRecord(); }
+function liveMs(min){ return numOr(min) * 60000 + sinceRecord(); }
 const HOST_WORD = {out: "Out of selection", unread: "Not read", stale: "Reading out of date", refusing: "Refusing new work", read: "Read"};
 const HOST_TONE = {out: "idle", unread: "idle", stale: "warn", refusing: "warn", read: "ok"};
 function cellMin(c){ return c.age_min == null ? "" : `, read ${ageText(liveMs(c.age_min))} ago`; }
@@ -402,7 +408,6 @@ function drawMachines(){
   const limit = (doc && doc.freshness_max_age_s) || FALLBACK_MAX_AGE_S;
   let h = "";
   if (mfailure) h += `<div class="frozen">The last refresh of the machines failed (${esc(mfailure)}); this is the record from ${ago(age)}.</div>`;
-  else if (age > limit) h += `<div class="frozen">The machine record was read ${ago(age)}, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
   const rows = ((mdoc.floor || {}).host_status) || [];
   if (!rows.length) { box.innerHTML = h + `<p class="unread">The record carries no per-host status: it was written before the Machines tab existed, or the host table was not read.</p>`; return; }
   const out = rows.filter(r => r.condition === "out").length, ok = rows.filter(r => r.condition === "read").length;
