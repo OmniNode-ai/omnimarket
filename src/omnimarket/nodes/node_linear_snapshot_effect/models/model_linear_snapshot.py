@@ -25,6 +25,7 @@ from pydantic import (
 NonEmpty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 TicketId = Annotated[str, StringConstraints(pattern=r"^OMN-\d+$")]
 SNAPSHOT_SCHEMA = "omni.linear-snapshot/1"
+STATE_SCHEMA = "omni.linear-snapshot-state/1"
 
 
 class ModelSnapshotIssue(BaseModel):
@@ -77,6 +78,14 @@ class ModelLinearSnapshotRequest(BaseModel):
     )
     page_size: int = Field(default=100, ge=1, le=250)
     max_pages: int = Field(default=60, ge=1)
+    #: Longest total wait on Linear's rate limit in one run; a Retry-After past what is left ends the wait at once.
+    backoff_budget_s: float = Field(default=1500.0, ge=0)
+    #: A refused read keeps the last good snapshot and exits 0 while it is younger than this; older is a failure.
+    max_stale_s: int = Field(default=21600, ge=0)
+    #: The open list is rebuilt by a full read once this old, so a deleted or archived issue cannot linger.
+    full_read_every_s: int = Field(default=86400, ge=1)
+    #: Each incremental read starts this far before the last good read, so an update racing it is read twice, never missed.
+    overlap_s: int = Field(default=600, ge=0)
 
 
 class ModelLinearSnapshotResult(BaseModel):
@@ -84,8 +93,28 @@ class ModelLinearSnapshotResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    status: Literal["written", "failed"]
+    status: Literal["written", "stale", "failed"]
     path: str
     issue_count: int = Field(ge=0)
     with_description: int = Field(ge=0)
     reason: str = ""
+    #: ``full`` or ``incremental`` for a write; empty when nothing was read.
+    mode: str = ""
+    #: Seconds since the last good read, set on ``stale`` (the kept snapshot's age) and 0 on ``written``.
+    age_s: int | None = Field(default=None, ge=0)
+
+
+class ModelLinearSnapshotState(BaseModel):
+    """The sidecar beside the snapshot: when it was last read well, and what the last attempt did."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    schema_id: Literal["omni.linear-snapshot-state/1"] = Field(
+        default=STATE_SCHEMA, alias="schema"
+    )
+    last_good_read_at: NonEmpty
+    last_full_read_at: NonEmpty
+    last_attempt_at: NonEmpty
+    last_attempt_status: Literal["written", "stale", "failed"]
+    last_attempt_reason: str = ""
+    age_s: int = Field(default=0, ge=0)
