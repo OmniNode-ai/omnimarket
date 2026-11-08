@@ -2,7 +2,7 @@ schema_version: "1.0.0"
 ticket_id: OMN-23079
 title: CI Summary reads its job and asserted-context tables from overlay data, and its verdict on recorded heads is unchanged
 summary: >-
-  First step of porting the CI Summary gate to the canonical validator shape. The six hard-coded rule tables of scripts/ci/ci_summary_gate.py (STRICT_GATE_JOBS, SKIPPABLE_GATE_JOBS, QUEUE_HEAVY_GATE_JOBS, DOCS_ONLY_SKIPPABLE_GATE_JOBS, SOFT_ALLOWLIST and EXPECTED_EXTERNAL_CONTEXTS) move into the overlay scripts/ci/ci_summary_rules.json, each entry keeping the derivation note it carried in code. The gate reads them at import and refuses a missing or malformed overlay, so CI Summary fails closed. The gate file shrinks from 2376 to 1931 lines. No table entry, bound or conclusion set changes. A replay test feeds pull request heads recorded by the PR watcher mirror to the ported gate and asserts every layer's exit code and exact report bytes match the verdicts the pre-port gate gave them.
+  First step of porting the CI Summary gate to the canonical validator shape. Five of the six hard-coded rule tables of scripts/ci/ci_summary_gate.py (STRICT_GATE_JOBS, SKIPPABLE_GATE_JOBS, QUEUE_HEAVY_GATE_JOBS, DOCS_ONLY_SKIPPABLE_GATE_JOBS and SOFT_ALLOWLIST) move into the overlay scripts/ci/ci_summary_rules.json, each entry keeping the derivation note it carried in code. The gate reads them at import and refuses a missing or malformed overlay, so CI Summary fails closed. EXPECTED_EXTERNAL_CONTEXTS stays a literal in the gate file, because omniclaude's pinned advisory-job gate reads it with ast.literal_eval. No table entry, bound or conclusion set changes. A replay test feeds pull request heads recorded by the PR watcher mirror to the ported gate and asserts every layer's exit code and exact report bytes match the verdicts the pre-port gate gave them.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -33,3 +33,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23079-integration-proof
+    description: >-
+      The replay test and the gate's own tests run on a lab host at the pushed head, and the lab run is recorded in the pull request. The advisory-job gate pinned by advisory-job-gate.yml reads EXPECTED_EXTERNAL_CONTEXTS from the gate file statically, so the replay file also pins that constant as a literal.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23079 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py tests/unit/scripts/ci/test_ci_summary_gate.py -q -n 0 --no-cov
+        cwd: .

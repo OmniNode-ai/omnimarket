@@ -274,7 +274,220 @@ GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 
 SOFT_ALLOWLIST: frozenset[str] = RULES.frozenset("SOFT_ALLOWLIST")
 
-EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = RULES.tuple("EXPECTED_EXTERNAL_CONTEXTS")
+# OMN-23079: this table stays a literal in this file. The advisory-job gate
+# (omniclaude scripts/advisory_job_gate.py, pinned by advisory-job-gate.yml) and
+# two other omniclaude audit scripts read it with ast.literal_eval; a call into
+# the overlay fails them with "is not a literal". It moves to overlay data when
+# those readers read the overlay.
+EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
+    # OMN-20073 S6: repo-owned evidence gates PR admission without OCC contexts.
+    "repo-evidence / dod-verify",
+    # OMN-18434: git-env-scrub.yml, standalone and unconditional on
+    # pull_request, so it carries no paths filter and is always present. A test
+    # that shells out to git inherits GIT_DIR from the hook running it and
+    # rewrites this repository; the conftest scrub neutralises the call sites
+    # already written and this gate refuses a new one. Registered here because
+    # on this repo the CI Summary umbrella IS the enforcement surface, and a
+    # context missing from this tuple is silently unenforced.
+    "Git env scrub gate",
+    # OMN-18796 (epic OMN-18775): the no-new-advisory-job gate, called from
+    # .github/workflows/advisory-job-gate.yml against the omniclaude reusable
+    # pinned by commit. Standalone and unconditional on pull_request -- no
+    # `branches:` filter and no `paths:` filter -- so it reports on every
+    # pull-request shape and cannot be legitimately absent. Registered here for
+    # the reason the Git env scrub gate entry above records: on this repo the
+    # CI Summary umbrella IS the enforcement surface, and a context missing
+    # from this tuple is silently unenforced. The census counted 9 advisory
+    # settings and 21 pull-request-reachable verification jobs here.
+    "advisory-job-gate / advisory-job-gate",
+    "Architectural Compliance Lint",
+    # OMN-18311 (byok-catalogue-no-house-entry.yml): release criterion C12's
+    # third clause — no customer catalogue row resolves to a HOUSE credential.
+    # C12's other two clauses are carried by OMN-17353, whose suite is enforced
+    # only incidentally by the generic split `test` job; this one is a named
+    # gate so the clause has a carrier that can turn red. Lives in its own
+    # workflow file, so the in-run poller (layers 1-3) never sees it and this L4
+    # assertion is its enforcement surface on omnimarket dev, exactly as it is
+    # for `Routing Tier Bindability` below.
+    "BYOK Catalogue No House Entry",
+    "Canonical Inference Gate",
+    "CI Naming Convention",
+    "Dep Provenance Gate",
+    # OMN-20287 (deployment-fact-gate.yml): no new deployment fact (backend,
+    # endpoint, model name, secret ref, provider, tier or per-class order) in
+    # the packaged routing configs. Its own workflow file, so this L4 assertion
+    # is its enforcement surface, as for `Routing Tier Bindability` below.
+    "Deployment Fact Gate",
+    "Ecosystem Integration Validation",
+    "Enforce validator-requirements.yaml (OMN-13291)",
+    "Leaked Literals Gate",
+    "Legacy Compatibility Check",
+    "No Faked Boundary Gate",
+    # OMN-20173: enforce the standalone endpoint validator before merge.
+    "No Coding Plan Endpoint",
+    "Omni Standards Gate",
+    # OMN-20073 S6: branch protection no longer requires this one, but it tests
+    # the ticket-contract schema compatibility and reads no PR's companion, so
+    # CI Summary keeps enforcing it. OMN-20885: the schema-compatibility job now
+    # reads the ticket-contract schema from omnibase_core, its owner, and checks
+    # out no onex_change_control; it keeps its context name.
+    "ONEX Change Control Schema Compatibility",
+    "PR Arch Review Gate",
+    "Precommit Fail-Loud Gate",
+    "Projection Exposure Drift Gate",
+    "Repository Structure Validation",
+    "Resolve Bot Token",
+    # OMN-16833 (routing-tier-bindability.yml): a tier may only reference a
+    # backend some lane in the fleet can actually bind. `_load_bifrost_endpoints`
+    # drops an unbindable backend SILENTLY, so without this the cheapest-first
+    # ladder degrades to paid-first with nothing reporting it. Lives in its own
+    # workflow file, so the in-run poller (layers 1-3) never sees it and this L4
+    # assertion is its enforcement surface on omnimarket dev.
+    "Routing Tier Bindability",
+    "Stale TODO Gate",
+    "URL Authority Gate",
+    "call / validate-docs",
+    # OMN-20073: the scan's reusable no longer nests the change-control
+    # preflight (omniclaude#2540), so `call-reject-skip-token / occ-preflight /
+    # eligibility` has no producer. S6 also retires the standalone preflight.
+    "call-reject-skip-token / scan / reject-skip-gate-token",
+    "contract-validation",
+    # OMN-19451 (delegation-health-check.yml): the delegation-health check on
+    # runtime PRs, calling the omnibase_infra reusable pinned by commit. A
+    # runtime-affecting PR is red while the delegation regression nightly or the
+    # M4 C17 verdict is red, unless it carries a `delegation-fix-forward:OMN-<n>`
+    # label. Standalone and unconditional on pull_request and merge_group -- no
+    # `branches:`, no `paths:`, no job-level `if:`, no `needs:` -- so it cannot be
+    # legitimately absent. A single caller job with no `name:` over a called job
+    # named "Delegation Health Check", so the check-run reads
+    # "<caller job id> / <called job name>". Registered here for the reason the
+    # Git env scrub gate entry above records: a context missing from this tuple is
+    # silently unenforced, and there is no shadow or advisory state (operator
+    # ruling 2026-09-29T12:02:35Z).
+    "delegation-health-check / Delegation Health Check",
+    "deploy-gate / deploy-gate",
+    "dispatcher-route-coverage",
+    "fsm-handler-drift",
+    # OMN-18013 (contract-topic-closure.yml): the four wired gates that make a
+    # topic/category/event-type mismatch impossible rather than detectable. They live
+    # in their own workflow file, so the in-run poller (layers 1-3) never sees them —
+    # this L4 assertion is their enforcement surface on omnimarket dev, exactly as it
+    # is for subscriber-dispatcher-resolution below.
+    "handler-event-type-source",
+    "imperative-contract-guard / Imperative Contract Guard",
+    # OMN-21478: enforce the core reusable's internal sibling pin policy.
+    "internal-sibling-pins / Internal Sibling Pins",
+    # OMN-17888 (contract-topic-closure.yml): two routes may not claim one local-ingress
+    # alias. Same workflow file and same L4 reasoning as handler-event-type-source above.
+    "local-ingress-alias-collision",
+    "main-target-guard",
+    "mixed-category-routing",
+    "no-baseline-refreeze",
+    "no-literal-event-type-in-tests",
+    # OMN-18908 (contract-topic-closure.yml): every projection exposure declares
+    # its key grain, no mutable-grain writer publishes a constant source
+    # coordinate, and an immutable claim is backed by a content-addressing
+    # assertion rather than by a docstring. Same workflow file and same L4
+    # reasoning as handler-event-type-source above -- without this entry the
+    # gate would run on a context nobody requires, which is detection.
+    "key-grain-declared",
+    "node-drift-gate",
+    "node-migration-vendor-parity-gate",
+    "non-dev-base-guard",
+    "pr-title / check-title",
+    # OMN-20781 (public-repo-hygiene.yml): five internal-content classes fail
+    # the run on the lines a pull request adds. The caller is a single job with
+    # no `name:` over the reusable's job `public-repo-hygiene`, so the check-run
+    # reads "<caller job id> / <called job name>". It was exempt while the gate
+    # recorded findings and exited 0; it blocks now, and on this repo the CI
+    # Summary umbrella IS the enforcement surface, so a context missing from
+    # this tuple is silently unenforced.
+    "public-repo-hygiene / public-repo-hygiene",
+    # OMN-20940 (public-repo-hygiene.yml): the deployment-config job of the same
+    # reusable. No deployment or lab configuration lives in a shipped repository;
+    # the job reads no vocabulary and no secret, so it runs on a fork, and it is a
+    # required context on dev. Same single-job-over-reusable naming as above.
+    "public-repo-hygiene / deployment-config",
+    "receipt-honesty",
+    # OMN-17427 (reviewer-eval.yml): scores the hostile reviewer against its
+    # eval set and fails on a recall or false-block regression, a case with no
+    # verdict, or a dropped case, flipped label or lowered baseline against the
+    # base branch's copy. An ordinary job, so the check-run carries the job's own
+    # name; no `paths:` filter, so it reports on every pull-request shape.
+    "reviewer-eval",
+    # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
+    # model for two message categories. Same workflow file and same L4 reasoning as
+    # handler-event-type-source above.
+    "routing-input-model-fit",
+    "required-check-skip-guard / check-skip-vectors",
+    "skill-mapping-input-coverage-gate",
+    "state-coverage-gate",
+    "subscriber-dispatcher-resolution",
+    "validate",
+    # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
+    # OMN-14631 workspace content-parity gate, calling an omnibase_infra
+    # composite ACTION pinned by commit. It proves this repository's built
+    # wheel carries byte-for-byte the tracked tree under src/omnimarket plus
+    # its declared force-includes.
+    #
+    # THE STRING IS A SINGLE SEGMENT, and that is load-bearing. The job runs
+    # the action in its own steps rather than being a `uses:` job, so the
+    # check-run carries the job's own name with no "<caller> / <inner job>"
+    # prefix. This entry briefly read "wheel-content-parity /
+    # wheel-content-parity", left over from an earlier reusable-workflow
+    # design of the same gate, and all 63 tests here passed with it: nothing
+    # in this repository knows what GitHub will name the run. It was caught
+    # by reading the live check-run name off an open pull request, and had it
+    # merged the poller would have waited for a context nothing mints and
+    # wedged `dev` at the deadline. Verify against a live run before changing
+    # this string.
+    #
+    # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
+    # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
+    # triggers on `merge_group` as well, so it reports on every pull-request
+    # shape and cannot be legitimately absent. Its ability to REFUSE is not a
+    # claim: this repository at the #2670 merge commit (61187c8c) reds on
+    # exactly ['adapters/codex/skills/merge-sweep/SKILL.md'], the same single
+    # path the image build refused at 21:19Z on 2026-09-19, and the repaired
+    # tree at #2694 (823bae76) passes -- one leading slash apart. Its ability
+    # to PASS is measured on this repository's dev head: 4312 files, 1.8
+    # seconds. Unresolvable cases exit non-zero, never zero.
+    "wheel-content-parity",
+    # OMN-19655 (pin-resolvability-gate.yml): the pre-merge twin of the
+    # "Verify PyPI dependency-pin resolvability" step that release.yml and
+    # release-cut.yml (formerly release-on-merge.yml, retired under OMN-18010)
+    # run before tagging. It builds the pull request's
+    # wheel and runs the SAME script, so a floor raise no published sibling can
+    # co-resolve fails before merge. Twice it did not: #2819 (2026-09-24,
+    # omnibase-core>=0.47.22) and #2896 (2026-09-25, >=0.47.23) merged green and
+    # then failed Release on Merge on every dev push until omnibase_infra
+    # re-released. A single-segment string: the job is an ordinary job, so the
+    # check-run carries the job's own name.
+    #
+    # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
+    # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
+    # triggers on `merge_group`, so it reports on every pull-request shape; a
+    # change touching no declared dependency is judged not applicable and
+    # succeeds, since it cannot change what resolves. Its ability to REFUSE:
+    # this repository at the #2896 merge commit (933d0ca8), with the index held
+    # to 2026-09-25T18:00Z, exits 1 naming the >=0.47.23 floor against
+    # omnibase-infra 0.38.57's ==0.47.22 pin; the parent commit exits 0.
+    "pypi-pin-resolvability",
+    # OMN-21588 (runtime-boot-composed.yml): composed-runtime-boot boots the
+    # omnimarket runtime on pinned omnibase_infra and checks consumer liveness,
+    # service health with a stopped-service negative control, kernel /health and
+    # a crash-loop phase. It is verification and was unenforced. It triggers on
+    # pull_request, merge_group and workflow_dispatch with no paths, branches or
+    # job-level if, so it reports on every pull-request shape. Asserting it makes
+    # the roughly 31-minute composed boot part of every pull request's CI Summary
+    # (operator choice, 2026-10-30).
+    "composed-runtime-boot (omnimarket on infra)",
+    # OMN-22126 (prompt-cost-estimate-contract.yml): import schema, token
+    # provenance and both runtime profiles of the prompt cost estimate node.
+    # Unconditional on pull_request and merge_group; an in-job scope step skips
+    # the checks when the node is untouched, so the context is never absent.
+    "prompt-cost-estimate-contract",
+)
 
 # Conclusions that count as "provably passed" for an L4 external context. A
 # STRICTER set than GOOD_CONCLUSIONS: no L4 entry carries a skip precondition

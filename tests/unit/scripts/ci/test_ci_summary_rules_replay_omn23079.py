@@ -14,6 +14,7 @@ overlay and the same replay must read different, or the replay proves nothing.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
@@ -153,8 +154,38 @@ def test_malformed_overlay_refuses_at_import(tmp_path: Path, mutation: str) -> N
         elif mutation == "wrong-kind":
             doc["rules"]["SOFT_ALLOWLIST"]["kind"] = "tuple"
         else:
-            entries = doc["rules"]["EXPECTED_EXTERNAL_CONTEXTS"]["entries"]
+            entries = doc["rules"]["STRICT_GATE_JOBS"]["entries"]
             entries.append(dict(entries[0]))
         target.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises((OSError, ValueError, KeyError)):
         _load_gate(tmp_path / GATE.name, f"ci_summary_gate_malformed_{mutation}")
+
+
+def _static_expected_external_contexts(path: Path) -> list[str]:
+    """Read the constant the way omniclaude's advisory-job gate does: statically."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "EXPECTED_EXTERNAL_CONTEXTS"
+            and node.value is not None
+        ):
+            return [str(item) for item in ast.literal_eval(node.value)]
+    raise AssertionError("EXPECTED_EXTERNAL_CONTEXTS absent from the gate file")
+
+
+def test_expected_external_contexts_stays_a_static_literal() -> None:
+    """The cross-repo advisory-job gate parses this constant with ast.literal_eval.
+
+    Reading it through the overlay made that gate fail with "is not a literal" on
+    the first head of this change. The named injected break is the call form the
+    first head used.
+    """
+    gate = _load_gate(GATE, "ci_summary_gate_static_literal")
+    assert _static_expected_external_contexts(GATE) == list(
+        gate.EXPECTED_EXTERNAL_CONTEXTS
+    )
+    call_form = ast.parse('RULES.tuple("EXPECTED_EXTERNAL_CONTEXTS")', mode="eval")
+    with pytest.raises(ValueError, match="malformed node"):
+        ast.literal_eval(call_form.body)
