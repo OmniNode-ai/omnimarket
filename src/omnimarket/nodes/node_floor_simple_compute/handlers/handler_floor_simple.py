@@ -17,6 +17,7 @@ by a reader that does not share its code path.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from omnimarket.models.floor_17a import (
     ModelFloorCause,
@@ -26,12 +27,14 @@ from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorNumber,
     ModelFloorPieceRow,
+    ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
     ModelJoinReceipt,
     ModelLabSourceVerdict,
     ModelRebuild,
     ModelRedRule,
+    ModelShadowReading,
 )
 
 
@@ -80,6 +83,20 @@ def live_lanes(
                 or (cause_id and cause_id in lane.owns)
             )
         )
+    )
+
+
+def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
+    """The id of every red cause (listed or not) that declares no owner, in the document's order.
+
+    An owner is declared by the overlay's ``causes.owners`` map or by a lab source's tickets; a cause that stands for
+    its members is judged through them. A red cause with no declared owner reads ``owners: []`` on the board, so nobody
+    is shown on it however many lanes work, and no check fails: this reading names it.
+    """
+    return tuple(
+        c.id
+        for c in document.causes
+        if c.state == "red" and not c.members and not c.owners
     )
 
 
@@ -146,6 +163,7 @@ def check_red_rule(
             "red_rows": red_rows,
             "red_with_work_under_way": with_work,
             "violations": tuple(violations),
+            "unowned_red": unowned_red_causes(document),
         }
     )
 
@@ -321,6 +339,7 @@ class HandlerFloorSimple:
                     status = "unknown" if status == "working" else status
                     if rc is None or rc.last_emission_at is None:
                         text += "; no golden and error event yet"
+            reason = text
             if rc is not None and rc.last_emission_at is not None:
                 text += (
                     f" · golden {_ago(rc.golden_age_s)}, error {_ago(rc.error_age_s)}"
@@ -348,15 +367,76 @@ class HandlerFloorSimple:
                         "golden_age_s": rc.golden_age_s if rc else None,
                         "error_age_s": rc.error_age_s if rc else None,
                         "freshness": rc.freshness if rc else "none",
+                        "what": definition.what,
+                        "reason": reason,
+                        "next_text": self._next_text(status),
+                        "window_s": ov.rebuild.event_window_s,
+                        "golden_in_window": self._chains_in_window(
+                            r, n, "golden", ov.rebuild.event_window_s
+                        ),
+                        "error_in_window": self._chains_in_window(
+                            r, n, "error", ov.rebuild.event_window_s
+                        ),
                         "joins": tuple(
                             self._join_row(j, joins.get(j.id), r.now)
                             for j in ov.joins
                             if j.from_piece == n
                         ),
+                        "shadows": tuple(
+                            self._shadow_line(s, r.now)
+                            for s in r.shadows
+                            if s.piece == n
+                        ),
                     }
                 )
             )
         return rows
+
+    @staticmethod
+    def _chains_in_window(
+        r: ModelFloorSimpleInput,
+        piece: int,
+        kind: Literal["golden", "error"],
+        window_s: int,
+    ) -> int | None:
+        """How many chains of ``piece`` ended as ``kind`` inside the window; ``None`` when the receipts were not read."""
+        if r.receipts is None:
+            return None
+        return sum(
+            1
+            for c in r.receipts.chains
+            if c.piece == piece
+            and c.kind == kind
+            and c.ended_at is not None
+            and 0 <= (r.now - c.ended_at).total_seconds() <= window_s
+        )
+
+    @staticmethod
+    def _next_text(status: str) -> str:
+        """The step a piece's state calls for, in words for the side panel."""
+        if status == "not_started":
+            return "Waits for the go. Nothing of it runs yet."
+        if status in ("unknown", "started"):
+            return "Needs a fresh reading and a golden and an error event from it."
+        if status == "not_working":
+            return "Clear what the reading names, then it reads working again."
+        return "Measured against the old way for 7 days, then kept or rolled back."
+
+    @staticmethod
+    def _shadow_line(shadow: ModelShadowReading, now: datetime) -> ModelFloorShadowLine:
+        """A shadow row as the piece's line: its cells as the rule labels them, and its age against the age it declared."""
+        age = max(0, int((now - shadow.published_at).total_seconds()))
+        return ModelFloorShadowLine(
+            label=shadow.label,
+            text=(
+                f"not read: {shadow.failed_outcome}"
+                if shadow.failed_outcome is not None
+                else ", ".join(f"{label} {value}" for label, value in shadow.values)
+            ),
+            age_s=age,
+            max_age_s=shadow.max_age_s,
+            stale=age > shadow.max_age_s,
+        )
 
     @staticmethod
     def _reading(

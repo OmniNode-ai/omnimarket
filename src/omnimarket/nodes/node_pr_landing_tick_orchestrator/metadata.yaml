@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_landing_tick_orchestrator
+version: "0.1.0"
+description: "The landing tick through the node path beside the script, compared per pull request"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_tick_orchestrator: "omnimarket.nodes.node_pr_landing_tick_orchestrator"
+capabilities:
+  standalone: true
+  # false until the script publishes its tick records: the script still runs its own copy.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "pr-landing", "landing-tick", "observe"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Tick Orchestrator"
+node_role: "orchestrator"
