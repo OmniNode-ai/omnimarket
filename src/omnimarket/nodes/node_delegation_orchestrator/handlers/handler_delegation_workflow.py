@@ -130,6 +130,7 @@ from omnimarket.events.provider_quota import (
     EnumProviderQuotaSource,
     ModelProviderQuotaObserved,
 )
+from omnimarket.handlers.hosted_model_retry import next_customer_retry
 from omnimarket.handlers.routing.backend_placement import (
     load_bound_bifrost_placements,
     placement_digest,
@@ -4857,97 +4858,50 @@ class HandlerDelegationWorkflow:
         prompt_tokens: int,
         completion_tokens: int,
     ) -> list[BaseModel] | None:
-        """Re-issue a TRANSIENT failure to the customer's own route (OMN-18265).
+        """Advance the captured customer model list, then bounded same-model retry."""
 
-        The occasion. The first real-key customer-pass walk to reach delegation
-        (correlation ``c1838c39``, onex-dev, 2026-09-12T19:11:59Z) was answered
-        by OpenRouter with an HTTP 200 carrying a top-level ``error`` object
-        naming a 502 ``provider_unavailable`` from the upstream model host. An
-        immediate re-probe of the same slug on the same key returned content, so
-        the route was momentarily overloaded rather than broken — and the
-        customer was told "the runtime returned no content".
-
-        Why the SAME route rather than a higher tier. On the cloud surface a
-        customer's only lawful responder is their own credential (OMN-17082: no
-        house credential ever executes customer work), which is why a
-        tenant-overlay decision wholesale-replaces the platform ladder and
-        ``next_eligible_tier(TENANT_OVERLAY_TIER_NAME, ...)`` returns None by
-        construction. Escalating such a workflow onto a platform tier would be
-        house pooling wearing a retry. So the chain of responders for these
-        workflows has one member, and re-issuing to it is the only lawful
-        recovery — which is also the cheapest one, since the route it retries is
-        a zero-cost slug on the customer's own account.
-
-        Bounded by contract, not by code. The budget is the BYOK catalogue row's
-        ``max_retries``, resolved from the decision's ``selected_backend_ref``;
-        a ref the catalogue does not declare gets ``None`` and no retry at all,
-        so this can never widen to a route the contract does not describe.
-
-        A no-answer failure can also spend this route's declared retry budget.
-        Exhaustion still cannot move customer work onto a house credential.
-
-        Returns ``None`` (no retry) for a platform tier, an unidentified or
-        undeclared backend, or an exhausted budget, so the caller falls through
-        to the ORIGINAL escalate-or-terminate decision unchanged.
-        """
-        if workflow.current_tier_name != TENANT_OVERLAY_TIER_NAME:
-            return None
-        if workflow.request is None or workflow.routing_decision is None:
-            return None
-
-        backend_ref = (workflow.routing_decision.selected_backend_ref or "").strip()
-        max_retries = byok_backend_max_retries(backend_ref)
-        if max_retries is None:
-            return None
-
-        if self._quota_reader is None:
-            self._quota_reader = provider_quota_state.resolve_provider_quota_reader()
-        quota = read_provider_quota_snapshot(
-            self._quota_reader, tenant_id=_resolve_tenant_id(workflow)
-        ).with_observation(workflow.current_attempt_observation)
-        route = workflow.routing_decision
-        if (
-            quota_block_for_backend(
-                quota,
-                endpoint_url=route.endpoint_url,
-                api_key_ref=route.api_key_ref,
-                model_name=route.selected_model,
+        def is_blocked(model: str) -> bool:
+            if self._quota_reader is None:
+                self._quota_reader = (
+                    provider_quota_state.resolve_provider_quota_reader()
+                )
+            quota = read_provider_quota_snapshot(
+                self._quota_reader, tenant_id=_resolve_tenant_id(workflow)
+            ).with_observation(workflow.current_attempt_observation)
+            route = workflow.routing_decision
+            if route is None:
+                return True
+            return (
+                quota_block_for_backend(
+                    quota,
+                    endpoint_url=route.endpoint_url,
+                    api_key_ref=route.api_key_ref,
+                    model_name=model,
+                )
+                is not None
             )
-            is not None
-        ):
-            return None
 
-        # Per-route budget: a route change resets the count, so two different
-        # customer backends never share one allowance.
-        if workflow.customer_route_retry_backend_ref != backend_ref:
-            workflow.customer_route_retry_backend_ref = backend_ref
-            workflow.customer_route_retry_count = 0
-        if workflow.customer_route_retry_count >= max_retries:
+        retry = next_customer_retry(
+            workflow,
+            max_retries_for=byok_backend_max_retries,
+            is_blocked=is_blocked,
+        )
+        if retry is None:
             return None
-        workflow.customer_route_retry_count += 1
-
-        # Bank the failed attempt's metered spend before the reset discards it,
-        # exactly as every other non-terminal branch does. On a free slug this
-        # is $0 and zero tokens, and banking it anyway keeps the accounting
-        # identical across branches rather than special-casing the cheap path.
         self._bank_attempt_spend(
             workflow,
             cost_usd=attempt_cost_usd,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
-
         workflow.inference_content = None
         workflow.inference_model_used = None
         workflow.inference_intent_in_flight = False
         workflow.routing_decision = None
         self._advance(workflow, EnumDelegationState.ROUTED)
-        assert workflow.request is not None
-        # No ``min_tier_name`` and no exclusion set: the overlay resolution is
-        # keyed on (tenant_id, task_type) and is what must be re-resolved. The
-        # failed backend is deliberately NOT excluded — it is the route being
-        # retried, and excluding it would leave the customer with nothing.
-        return [ModelRoutingIntent(payload=workflow.request)]
+        if isinstance(retry, ModelRoutingDecision):
+            return list(self.handle_routing_decision(retry))
+        return [retry]
 
     def _maybe_retry_local(
         self,
