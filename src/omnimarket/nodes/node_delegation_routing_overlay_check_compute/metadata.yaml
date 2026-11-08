@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_routing_overlay_check_compute
+version: "1.0.0"
+description: "Pure check that every delegation task class holds a bar in the routing overlay frozen under a sha256 hash"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_routing_overlay_check_compute: "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "routing", "overlay", "task-class", "gate", "deterministic"]
+pack: "core"
+display_name: "Delegation Routing Overlay Check"
+node_role: "compute"

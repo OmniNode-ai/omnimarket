@@ -8,13 +8,6 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core import (
-    _parse_aliases,
-    parse_class_owners,
-    parse_class_rules,
-    parse_iso8601,
-)
-
 
 class ModelFrictionRollupSource(BaseModel):
     """One source in live-ledger, sorted-archive, then JSON-lines input order."""
@@ -77,6 +70,14 @@ class ModelFrictionRollupRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_parameters(self) -> Self:
+        # Deferred: the node package imports this module at load time.
+        from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core import (
+            _parse_aliases,
+            parse_class_owners,
+            parse_class_rules,
+            parse_iso8601,
+        )
+
         since = parse_iso8601(self.since)
         until = parse_iso8601(self.until)
         parse_iso8601(self.generated_at)

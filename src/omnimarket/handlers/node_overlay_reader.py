@@ -46,6 +46,21 @@ def find_node_overlay(
     return None
 
 
+def pinned_overlay_root(
+    node_name: str, environ: Mapping[str, str] | None = None
+) -> Path:
+    """Return the overlay root holding ``<node_name>/overlay.yaml``, for pinning in a unit.
+
+    Raises :class:`NodeOverlayError` when no overlay file is found under the roots.
+    """
+    found = find_node_overlay(node_name, environ)
+    if found is None:
+        raise NodeOverlayError(
+            "the overlay file cannot be found to pin its root in the unit"
+        )
+    return found.parent.parent
+
+
 def load_node_overlay(
     node_name: str,
     *,
