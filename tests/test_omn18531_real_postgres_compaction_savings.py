@@ -24,7 +24,6 @@ import pytest
 from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
     COMPACTION_MOD_MODEL,
     COMPACTION_TASK_TYPE,
-    POST_COMPACT_HOOK_EVENT,
 )
 from omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer import (
     SavingsProjectionWriter,
@@ -150,19 +149,9 @@ async def test_real_postgres_ignored_hook_event_is_lossless_to_skip() -> None:
     assert rows_after_runner == [] == rows_after_writer
 
 
-def test_ignored_hook_event_is_skipped_through_the_base_hook_not_a_handle_override() -> (
-    None
-):
-    """OMN-23043: the skip is the ``ignores_delivery`` hook; ``handle`` is the base's."""
-    from omnimarket.handlers.handler_projection_runtime_writer import (
-        RuntimeProjectionWriter,
-    )
-
-    assert "handle" not in vars(SavingsProjectionWriter)
-    assert SavingsProjectionWriter.handle is RuntimeProjectionWriter.handle
+def test_ignored_hook_event_is_skipped_in_the_savings_writer_handle() -> None:
+    """OMN-23043: the savings writer skips an ignored hook event before any setup."""
     writer = SavingsProjectionWriter()
     topic = "onex.evt.omniclaude.hook-event.v1"
-    assert writer.ignores_delivery({"_topic": topic, "hook_event_name": "PreToolUse"})
-    assert not writer.ignores_delivery(
-        {"_topic": topic, "hook_event_name": POST_COMPACT_HOOK_EVENT}
-    )
+    out = writer.handle({"_topic": topic, "hook_event_name": "PreToolUse"})
+    assert out == {"projected": True}

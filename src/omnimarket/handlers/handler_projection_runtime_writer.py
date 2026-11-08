@@ -33,8 +33,6 @@ class RuntimeProjectionWriter:
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Apply one delivery; never start a consumer or retain a pool."""
-        if self.ignores_delivery(request):
-            return {"projected": True}
         data = dict(request)
         # The runtime's synchronous adapter is not an event payload or the
         # asynchronous writer's pool. Per-binding connections below are
@@ -60,15 +58,6 @@ class RuntimeProjectionWriter:
             )
         )
         return {"projected": projected}
-
-    def ignores_delivery(self, request: dict[str, Any]) -> bool:
-        """Return True for a delivery the projection acts on with no read or write.
-
-        A subclass answers here rather than overriding ``handle``, so the skip
-        is reached before any runner or database setup and the source
-        coordinates are still read in one place. Never ignores by default.
-        """
-        return False
 
     def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return the payload ``project_event`` receives, unchanged by default.
