@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_start_criterion import (
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.start_criterion import (
     PrerequisiteReader,
     parse_start_when,
 )

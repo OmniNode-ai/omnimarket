@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
 )
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_start_criterion import (
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.start_criterion import (
     parse_start_when,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
