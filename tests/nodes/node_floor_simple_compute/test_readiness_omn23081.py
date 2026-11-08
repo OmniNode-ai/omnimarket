@@ -521,3 +521,17 @@ def test_error_a_join_outside_the_scope_opens_a_panel_that_says_it_does_not_coun
     assert counts.value.startswith("no")
     assert "Owner lane" not in {s.heading for s in panel.sections}
     assert "cause:join:J14" not in doc.details
+
+
+def test_golden_the_same_finding_in_many_chains_is_one_line_with_its_count() -> None:
+    finding = ModelChainFinding(
+        code="downstream_missing_typed_failure",
+        subject="J2 piece 2 to 3",
+        correlation_id="c1",
+        detail="A failed and B gave no typed failure in 900 s",
+    )
+    doc = board({"J2": "broken"}, findings=(finding, finding, finding))
+    row = next(j for p in doc.pieces for j in p.joins if j.id == "J2")
+    assert row.failed_reason == (
+        "downstream_missing_typed_failure: A failed and B gave no typed failure in 900 s (in 3 chains)"
+    )
