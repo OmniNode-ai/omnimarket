@@ -477,7 +477,9 @@ def test_control_the_contract_declares_the_join_settings_and_the_unresolved_code
 # --- review findings on PR 5286 (OMN-22914): each test failed on the branch before its fix ---------------------------
 
 
-def _request_with_rows(cid: str, rows: str, **extra: object) -> ModelJoinJ5Request:
+def _request_with_rows(
+    cid: str, rows: str, append_if_absent_row_id: str | None = None
+) -> ModelJoinJ5Request:
     """A request whose rows text is the caller's; ``{rid}`` in it is the request id."""
     request_id = uuid4()
     return ModelJoinJ5Request(
@@ -490,7 +492,7 @@ def _request_with_rows(cid: str, rows: str, **extra: object) -> ModelJoinJ5Reque
             requested_by_lane="j5-test",
             requesting_host="test-host",
             requested_at=NOW,
-            **extra,  # type: ignore[arg-type]
+            append_if_absent_row_id=append_if_absent_row_id,
         ),
     )
 
