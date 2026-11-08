@@ -274,13 +274,19 @@ class GithubGroupSource:
                         if (repository, path) not in selecting:
                             continue
                         head = (run.get("head_repository") or {}).get("full_name")
-                        base = (run.get("repository") or {}).get("full_name")
+                        run_repository = run.get("repository") or {}
+                        base = run_repository.get("full_name")
+                        private = run_repository.get("private")
                         jobs.append(
                             ModelGroupJob(
                                 run_id=int(run["id"]),
                                 run_event=str(run["event"]),
                                 head_is_fork=bool(head and base and head != base),
                                 workflow_ref=path,
+                                repository=str(base) if base else repository,
+                                repository_private=(
+                                    private if isinstance(private, bool) else None
+                                ),
                             )
                         )
                 except (KeyError, TypeError, ValueError) as error:
