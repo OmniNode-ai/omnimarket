@@ -3,8 +3,8 @@
 """Rebuild the work-ledger table from the accepted-row topic and compare it with the live one (OMN-22915, L12).
 
 Pure: events in, a table and its comparison out. Order is the topic's ordering contract, never a
-clock: bootstrap history by ``legacy_ordinal``, then rows by ``ledger_seq``. A row seen twice adds
-nothing; one sequence claimed by two rows, one row under two sequences, or a ``row_id`` that is not the
+clock: bootstrap history by ``legacy_ordinal``, then rows by ``ledger_seq``. A row seen twice adds no
+second fold, but an unsequenced copy takes the sequence of its sequenced twin; one sequence claimed by two rows, one row under two sequences, or a ``row_id`` that is not the
 hash of its text is refused, because a rebuild that guessed would equal the live table by luck.
 The comparison is row for row and sequence for sequence over the log columns, and entity for entity
 over the state columns; ``source`` is left out because a bootstrap row and its live twin differ in it
@@ -98,7 +98,13 @@ class WorkLedgerRebuild:
                         f"row {event.row_id} is accepted under two sequences "
                         f"({seen.ledger_seq} and {event.ledger_seq})"
                     )
-                continue  # a replayed row adds nothing
+                if seen.ledger_seq is None and event.ledger_seq is not None:
+                    # An unsequenced bootstrap row met later by its sequenced live twin: the live
+                    # projection promotes the NULL sequence, so the rebuild takes it from the twin.
+                    rows[event.row_id] = seen.model_copy(
+                        update={"ledger_seq": event.ledger_seq}
+                    )
+                continue  # a replayed row adds no fold of its own
             try:
                 folded = fold_row(
                     ModelWorkLedgerFoldRequest(
