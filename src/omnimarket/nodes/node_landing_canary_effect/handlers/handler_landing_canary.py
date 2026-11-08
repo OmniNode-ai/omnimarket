@@ -50,6 +50,8 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=landing-canary"
+#: Backends whose run proves the landing tick; the fixture backend merges its own pull request.
+_OPERATIONAL_BACKENDS = frozenset({"scm"})
 
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
@@ -238,7 +240,7 @@ class HandlerLandingCanary:
         The ``inmemory`` backend merges its own fixture pull request, so its row proves nothing about the
         landing tick whatever the overlay's drill setting says.
         """
-        return not drill and self._overlay.target.backend == "scm"
+        return not drill and self._overlay.target.backend in _OPERATIONAL_BACKENDS
 
     def _publish(
         self, result: ModelLandingCanaryResult, now: datetime, write: bool

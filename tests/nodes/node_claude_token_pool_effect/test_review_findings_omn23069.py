@@ -344,17 +344,19 @@ def test_f8_a_refused_marks_sync_is_not_exit_zero(
 
 
 def test_f8_a_healthy_sync_is_still_exit_zero(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        cli,
-        "run_tick",
-        lambda host, *, dry_run=False: ModelClaudeTokenRotationResult(  # noqa: ARG005
+    def healthy_tick(
+        host: str, *, dry_run: bool = False
+    ) -> ModelClaudeTokenRotationResult:
+        assert dry_run is False
+        return ModelClaudeTokenRotationResult(
             host=host,
             rank=0,
             outcome="kept",
             in_use_state="usable",
             marks_sync=ModelRotationMarksSync(state="unchanged"),
-        ),
-    )
+        )
+
+    monkeypatch.setattr(cli, "run_tick", healthy_tick)
     assert cli.main(["tick", "--host", "h"]) == 0
 
 
