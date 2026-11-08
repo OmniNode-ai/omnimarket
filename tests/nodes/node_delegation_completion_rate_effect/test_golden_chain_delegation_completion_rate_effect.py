@@ -78,6 +78,10 @@ def run_golden_chain() -> None:
     """The golden assertions: contract topics, one good run, a retry of it, and a probe."""
     topics = contract()["topics"]
     assert contract()["terminal_event"] == topics["delegation_rate_run_completed"]
+    assert (
+        topics["delegation_rate_run_completed"]
+        == "onex.evt.omnimarket.delegation-completion-rate-run-completed.v1"
+    )
     run, ledger = handler()
     result = run.handle(command())
     assert result.status == "read"
