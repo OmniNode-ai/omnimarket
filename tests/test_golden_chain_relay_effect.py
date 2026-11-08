@@ -30,6 +30,9 @@ from omnimarket.models.model_stop_only_on_withdrawal import (
     ModelS8RepairAck,
     ModelS8Request,
 )
+from omnimarket.models.remote_lane_close.model_remote_lane_result import (
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendRequest,
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledge
 )
 from omnimarket.nodes.node_remote_lane_close_compute.handlers.handler_remote_lane_result import (
     HandlerRemoteLaneResult,
-)
-from omnimarket.nodes.node_remote_lane_close_compute.models.model_remote_lane_result import (
-    ModelRemoteLaneResultRequest,
 )
 from omnimarket.nodes.node_stop_only_on_withdrawal_compute import (
     NodeStopOnlyOnWithdrawalCompute,

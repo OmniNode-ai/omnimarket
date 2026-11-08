@@ -13,11 +13,8 @@ from __future__ import annotations
 
 import json
 import os
-import signal
-import threading
 import urllib.request
-from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar
@@ -26,6 +23,7 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.handlers.cycle_interrupt import CycleInterrupted, interruptible
 from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
@@ -106,6 +104,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent imp
     record_deploy_agent,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
+    CanaryPublishError,
     GitCanaryPublisher,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
@@ -215,6 +214,7 @@ class ModelFloorSimpleRuntime(BaseModel):
     cycle_deadline_seconds: int
     # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
     abandon_after_seconds: int = Field(gt=0)
+    abandon_chains: tuple[str, ...] = ()
     # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
     # among them, because no downstream piece can answer a row that reads a bad value.
     pipeline_chains: tuple[str, ...] = Field(min_length=1)
@@ -242,56 +242,6 @@ class ModelFloorSimpleRuntime(BaseModel):
 def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFloorSimpleRuntime:
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     return ModelFloorSimpleRuntime.model_validate(raw["runtime"])
-
-
-class CycleInterrupted(BaseException):
-    """The cycle was stopped from outside (a termination signal, or its own deadline) and must say so before it exits.
-
-    A ``BaseException`` so that no ``except Exception`` of a step swallows it; every ``start`` the cycle has emitted is
-    closed with a typed failure on the way out.
-    """
-
-    def __init__(self, code: str, detail: str) -> None:
-        super().__init__(f"{code}: {detail}")
-        self.code = code
-        self.detail = detail
-
-
-@contextmanager
-def interruptible(deadline_seconds: int) -> Iterator[None]:
-    """Turn SIGTERM, SIGHUP and the deadline's SIGALRM into ``CycleInterrupted`` for the span of one cycle.
-
-    Only the main thread can take signals; elsewhere (a test runner's worker thread) the span runs unguarded. SIGKILL
-    cannot be caught: the deadline is set below the publish step's own time limit so that limit is never the one that
-    ends a hung cycle.
-    """
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-
-    def stopped(signum: int, _frame: object) -> None:
-        raise CycleInterrupted(
-            "terminated_by_signal", f"the cycle received {signal.Signals(signum).name}"
-        )
-
-    def overdue(_signum: int, _frame: object) -> None:
-        raise CycleInterrupted(
-            "cycle_deadline_exceeded",
-            f"the cycle did not finish within {deadline_seconds} s",
-        )
-
-    previous = {
-        signal.SIGTERM: signal.signal(signal.SIGTERM, stopped),
-        signal.SIGHUP: signal.signal(signal.SIGHUP, stopped),
-        signal.SIGALRM: signal.signal(signal.SIGALRM, overdue),
-    }
-    signal.setitimer(signal.ITIMER_REAL, deadline_seconds)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
 
 
 def write_atomic(path: Path, data: bytes) -> None:
@@ -620,7 +570,7 @@ class HandlerFloorSimpleTick:
             now=now,
             abandon_after_s=rt.abandon_after_seconds,
             piece=floor_ov.rebuild.lab_state_piece,
-            nodes=frozenset(rt.pipeline_chains),
+            nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
         )
         for event in closing:
             sink.emit(event)
@@ -1188,12 +1138,20 @@ class HandlerFloorSimpleTick:
         if times is None:
             # Nothing new is published: the canary then reads the old status as silent once it is older than its bound.
             return "unpublished_served_page_unread"
-        publisher = (
+        publish_status = (
             self._canary_publisher
             or GitCanaryPublisher(
                 canary, home / rt.state.dir_relpath / rt.state.canary_clone
             ).publish
         )
+
+        def publisher(status: ModelCanaryStatus) -> None:
+            # A failed push is its own typed code, never the generic unexpected-error code of a step (OMN-22924, AC2).
+            try:
+                publish_status(status)
+            except CanaryPublishError as exc:
+                raise FloorSourceError("canary_push_failed", str(exc)) from exc
+
         status = ModelCanaryStatus(
             floor_generated_at=times[0],
             alarm_heartbeat_at=times[1],
