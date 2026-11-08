@@ -37,6 +37,8 @@ dod_evidence:
   - check_type: command
     check_value: "grep -q 'runtime_host_reading' src/omnimarket/nodes/node_factory_floor_publish_effect/contract.yaml"
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py -q --no-cov
 - id: dod-omn23083-integration-proof
   description: The focused tests run on a lab host at the pushed head, and the lab run is recorded in the pull request.
   source: manual
