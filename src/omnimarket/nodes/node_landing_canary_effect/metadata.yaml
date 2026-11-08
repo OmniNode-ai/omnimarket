@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_canary_effect
+version: 1.0.0
+description: 'The daily synthetic landing canary, opens one test pull request, waits for the landing tick to merge it, records the elapsed time against the bar and appends one piece-9 reading row.'
+pack: operator_tooling
+node_role: effect
+display_name: Landing Canary Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_landing_canary_effect: omnimarket.nodes.node_landing_canary_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- landing

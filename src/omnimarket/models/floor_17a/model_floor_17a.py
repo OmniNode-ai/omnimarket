@@ -81,6 +81,19 @@ class ModelPieceDef(_Frozen):
     what: str = ""
 
 
+class ModelPieceChains(_Frozen):
+    """The chains of one piece that a join judges, as the node that runs the piece declares them.
+
+    A node can emit chains that belong to its piece but are not the pipeline a join reads: the floor cycle node also
+    emits one chain per lab source row it reads. A row that reads a bad value ends in an error chain, which gives its
+    piece an error receipt, and no downstream piece can answer it with a typed upstream refusal. A join therefore reads
+    only the chains of ``nodes``; every other chain of the piece still counts toward the piece's own receipt.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelFloorReceiptInput(_Frozen):
     now: datetime
     emissions: tuple[ModelNodeEmission, ...]
@@ -92,6 +105,8 @@ class ModelFloorReceiptInput(_Frozen):
     # The pieces a join may end at and still be judged: admitted pieces and pieces that have emitted. A join into a piece
     # that does not exist yet cannot be broken, so it is not judged. ``None`` judges every join.
     judged_to_pieces: tuple[int, ...] | None = None
+    # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
+    declared_chains: tuple[ModelPieceChains, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
