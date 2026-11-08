@@ -61,3 +61,9 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22909 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_seam_read_orchestrator tests/unit/nodes/node_seam_reading_compute tests/nodes/node_seam_deadline_probe_effect tests/nodes/node_seam_reading_compute tests/nodes/node_seam_read_orchestrator -q --no-cov
+- id: dod-omn22909-durations-record
+  description: The committed durations record covers the test files on this branch, so the freshness test passes with its limit of 50 unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 --no-cov
