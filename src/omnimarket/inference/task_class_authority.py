@@ -35,6 +35,7 @@ from omnimarket.models.delegation.model_lab_rubric import (
     ModelLabFirstPolicy,
     ModelLabRubric,
 )
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
 
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
@@ -866,6 +867,14 @@ class ModelTaskClassEscalationPolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     max_escalations: int | None = None
+    paid_from_size_band: EnumSizeBand | None = Field(
+        default=None,
+        description=(
+            "The smallest measured size band whose request may reach a paid rung "
+            "(OMN-23180). A class that leaves it unset inherits the contract's "
+            "top-level default."
+        ),
+    )
     tier_order: tuple[str, ...] | None = Field(
         default=None,
         description="The closed, ordered set of routing tiers this class may use.",
@@ -1001,6 +1010,13 @@ class ModelTaskClassAuthority(BaseModel):
         default_factory=dict
     )
     size_band_thresholds: ModelSizeBandThresholds | None = None
+    paid_from_size_band: EnumSizeBand | None = Field(
+        default=None,
+        description=(
+            "The default smallest size band whose request may reach a paid rung "
+            "(OMN-23180); a class's escalation_policy.paid_from_size_band overrides it."
+        ),
+    )
     facts_first_prompt: ModelFactsFirstPromptPolicy | None = Field(
         default=None,
         description=(
@@ -1112,6 +1128,14 @@ class ModelTaskClassAuthority(BaseModel):
         if self.size_band_thresholds is not None:
             return self.size_band_thresholds, "size_band_thresholds"
         return None
+
+    def paid_from_size_band_for(self, task_class: str) -> EnumSizeBand | None:
+        """The class's paid-rung band, else the inherited default, else ``None``."""
+        entry = self.task_classes.get(task_class)
+        policy = entry.escalation_policy if entry is not None else None
+        if policy is not None and policy.paid_from_size_band is not None:
+            return policy.paid_from_size_band
+        return self.paid_from_size_band
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
         """The declared budget for ``task_class``, a site overlay's when it sets one."""
@@ -1352,6 +1376,18 @@ def resolve_size_band_thresholds(
     if authority is None:
         return None
     return authority.size_band_thresholds_for(task_class)
+
+
+def resolve_paid_from_size_band(task_class: str) -> EnumSizeBand | None:
+    """The smallest size band that may reach a paid rung, or ``None`` when none is declared.
+
+    ``None`` means the contract declares no such rule for the class (or the
+    authority is unreadable), and routing then applies none.
+    """
+    authority = _size_band_authority()
+    if authority is None:
+        return None
+    return authority.paid_from_size_band_for(task_class)
 
 
 @lru_cache(maxsize=1)
