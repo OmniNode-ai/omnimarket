@@ -22,6 +22,12 @@
 -- Reconciliation is atomic: incompatible existing rows leave no partial DDL.
 BEGIN;
 
+-- Bound the wait for the ACCESS EXCLUSIVE lock the ALTER below requests: while it
+-- queues, every later read and write of the active ledger queues behind it. The
+-- migration runner's advisory lock is taken in another session and bounds nothing
+-- here. Transaction-local, so it ends with COMMIT or ROLLBACK.
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS legacy_ordinal BIGINT;
 
 -- Unique so a second import that numbered a row differently fails loud. The projection
@@ -57,6 +63,25 @@ ALTER TABLE omninode_internal.ledger_line_citation ALTER COLUMN file_key SET NOT
 ALTER TABLE omninode_internal.ledger_line_citation ALTER COLUMN generation SET NOT NULL;
 ALTER TABLE omninode_internal.ledger_line_citation ALTER COLUMN line_no SET NOT NULL;
 ALTER TABLE omninode_internal.ledger_line_citation ALTER COLUMN row_id SET NOT NULL;
+
+-- ADD COLUMN IF NOT EXISTS above does nothing for a column that already exists, so
+-- restore the fresh table's DEFAULT and line_no check on an existing table. A
+-- populated table holding a line_no below 1 fails here and rolls back.
+ALTER TABLE omninode_internal.ledger_line_citation ALTER COLUMN generation SET DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'omninode_internal.ledger_line_citation'::regclass
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid) = 'CHECK ((line_no >= 1))'
+    ) THEN
+        ALTER TABLE omninode_internal.ledger_line_citation
+            ADD CONSTRAINT ledger_line_citation_line_no_check CHECK (line_no >= 1);
+    END IF;
+END;
+$$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_line_citation_pkey
     ON omninode_internal.ledger_line_citation (ledger_id, file_key, generation, line_no);
 
@@ -71,6 +96,28 @@ BEGIN
     WHERE conrelid = 'omninode_internal.ledger_line_citation'::regclass
       AND contype = 'p';
     IF primary_key_definition IS NULL THEN
+        -- CREATE UNIQUE INDEX IF NOT EXISTS above skips an index of that name that
+        -- already exists, so promote it only when it is the citation identity.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_index i
+            JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+            WHERE c.relname = 'ledger_line_citation_pkey'
+              AND c.relnamespace = 'omninode_internal'::regnamespace
+              AND i.indrelid = 'omninode_internal.ledger_line_citation'::regclass
+              AND i.indisunique
+              AND i.indpred IS NULL
+              AND i.indexprs IS NULL
+              AND i.indnkeyatts = 4
+              AND (
+                  SELECT array_agg(a.attname ORDER BY k.ord)
+                  FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+                  JOIN pg_catalog.pg_attribute a
+                    ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+              ) = ARRAY['ledger_id', 'file_key', 'generation', 'line_no']::name[]
+        ) THEN
+            RAISE EXCEPTION 'ledger_line_citation_pkey is not the citation identity (ledger_id, file_key, generation, line_no)';
+        END IF;
         ALTER TABLE omninode_internal.ledger_line_citation
             ADD CONSTRAINT ledger_line_citation_pkey
             PRIMARY KEY USING INDEX ledger_line_citation_pkey;
