@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -35,6 +35,9 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerQuery
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query import (
     HandlerWorkLedgerQuery,
+)
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
+    ProtocolWorkLedgerQueryReader,
 )
 
 pytestmark = pytest.mark.unit
@@ -54,16 +57,13 @@ STORE_ROWS_BOUND = 200
 class CountingStore:
     """Rows of a ledger sized as today's; counts the rows the store hands the node.
 
-    ``narrowing`` is the injected break: without ``read_rows_matching`` the node reads the window whole.
+    This store has no ``read_rows_matching``: it is the injected break, a reader without the
+    narrowing method, so the node reads the window whole.
     """
 
-    def __init__(
-        self, records: tuple[ModelWorkLedgerRowRecord, ...], *, narrowing: bool
-    ) -> None:
+    def __init__(self, records: tuple[ModelWorkLedgerRowRecord, ...]) -> None:
         self.records = records
         self.rows_handed_back = 0
-        if narrowing:
-            self.read_rows_matching = self._read_rows_matching  # type: ignore[method-assign]
 
     def _hand_back(
         self, rows: tuple[ModelWorkLedgerRowRecord, ...]
@@ -79,24 +79,6 @@ class CountingStore:
                 r
                 for r in self.records
                 if (since is None or r.row_ts >= since) and r.row_ts <= until
-            )
-        )
-
-    def _read_rows_matching(
-        self,
-        *,
-        since: datetime,
-        until: datetime,
-        kinds: tuple[str, ...],
-        contains: str | None,
-    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
-        return self._hand_back(
-            tuple(
-                r
-                for r in self.records
-                if since <= r.row_ts <= until
-                and (not kinds or r.row_type in kinds)
-                and (not contains or contains in r.raw_row)
             )
         )
 
@@ -117,6 +99,28 @@ class CountingStore:
         shown = [r for r in self.records if r.row_ts <= until]
         return max(r.row_ts for r in shown), max(
             r.projected_at for r in shown if r.projected_at is not None
+        )
+
+
+class NarrowingCountingStore(CountingStore):
+    """The same store with the narrowing method the node asks for (OMN-19609)."""
+
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        return self._hand_back(
+            tuple(
+                r
+                for r in self.records
+                if since <= r.row_ts <= until
+                and (not kinds or r.row_type in kinds)
+                and (not contains or contains in r.raw_row)
+            )
         )
 
 
@@ -162,60 +166,59 @@ def todays_ledger() -> tuple[ModelWorkLedgerRowRecord, ...]:
     return tuple(sorted(records, key=lambda r: r.row_ts))
 
 
-def piece6_request_as_sent() -> dict[str, Any]:
+def piece6_request_as_sent(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """The query JSON the real command source sends for the piece 6 parity source."""
     sent: dict[str, Any] = {}
 
-    def fake_run(*args: object, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         sent.update(json.loads(kwargs["input"]))
         return subprocess.CompletedProcess(args, 0, stdout='{"rows": []}', stderr="")
 
     source = CommandLedgerRowSource(["read"], timeout_seconds=120, row_limit=20_000)
-    original = subprocess.run
-    subprocess.run = fake_run  # type: ignore[assignment]
-    try:
-        source.read(
-            ModelLedgerQuery(
-                since=WINDOW_END - timedelta(seconds=PARITY_MAX_AGE_SECONDS),
-                until=WINDOW_END,
-                row_type="STATUS",
-                lane=LANE,
-            )
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    source.read(
+        ModelLedgerQuery(
+            since=WINDOW_END - timedelta(seconds=PARITY_MAX_AGE_SECONDS),
+            until=WINDOW_END,
+            row_type="STATUS",
+            lane=LANE,
         )
-    finally:
-        subprocess.run = original
+    )
     return sent
 
 
-def parity_read(store: CountingStore) -> list[str]:
-    sent = piece6_request_as_sent()
+def parity_read(store: CountingStore, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    sent = piece6_request_as_sent(monkeypatch)
     request = ModelWorkLedgerQueryRequest.model_validate(
         {"correlation_id": uuid4(), "now": NOW, **sent}
     )
-    result = HandlerWorkLedgerQuery(reader=store, now=lambda: NOW).handle(request)  # type: ignore[arg-type]
+    reader = cast(ProtocolWorkLedgerQueryReader, store)
+    result = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(request)
     assert result.error is None
     return [row.raw_row for row in result.rows]
 
 
-def test_ledger_is_sized_as_today() -> None:
+def test_ledger_is_sized_as_today(monkeypatch: pytest.MonkeyPatch) -> None:
     records = todays_ledger()
     assert 18_000 <= len(records) <= 19_000
-    assert piece6_request_as_sent()["lane"] == LANE
+    assert piece6_request_as_sent(monkeypatch)["lane"] == LANE
 
 
-def test_parity_read_hands_back_few_rows_on_todays_ledger() -> None:
-    store = CountingStore(todays_ledger(), narrowing=True)
-    rows = parity_read(store)
+def test_parity_read_hands_back_few_rows_on_todays_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = NarrowingCountingStore(todays_ledger())
+    rows = parity_read(store, monkeypatch)
     assert len(rows) == 2
     assert all(f"lane={LANE}" in row for row in rows)
     assert store.rows_handed_back <= STORE_ROWS_BOUND
 
 
-def test_parity_read_without_narrowing_reads_the_whole_window_and_misses_the_bound() -> (
-    None
-):
+def test_parity_read_without_narrowing_reads_the_whole_window_and_misses_the_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The injected break: the same answer, but the store hands back the whole window."""
-    store = CountingStore(todays_ledger(), narrowing=False)
-    rows = parity_read(store)
+    store = CountingStore(todays_ledger())
+    rows = parity_read(store, monkeypatch)
     assert len(rows) == 2
     assert store.rows_handed_back > 10 * STORE_ROWS_BOUND
