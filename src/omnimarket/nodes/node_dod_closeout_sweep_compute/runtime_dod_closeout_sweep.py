@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CLI entry point for node_dod_closeout_sweep_compute's scope bundle (OMN-20655).
+"""Runtime command line of node_dod_closeout_sweep_compute's scope bundle (OMN-20655).
 
-    python -m omnimarket.nodes.node_dod_closeout_sweep_compute bundle \\
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep bundle \\
         --candidates C.json --pr-state P.json --text-state T.json --max 12 \\
         [--contract-state K.json] [--overlay overlay.yaml]
-    python -m omnimarket.nodes.node_dod_closeout_sweep_compute prs OMN-1 OMN-2 \\
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep prs OMN-1 OMN-2 \\
         [--wait-s 60] [--deadline ISO8601] [--overlay overlay.yaml]
 
 ``prs`` prints the PR row of each ticket ({id, merged, open, error}): merged PRs are read on
