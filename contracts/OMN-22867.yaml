@@ -1,0 +1,56 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22867
+title: Tests (Split 12/20) red on dev, the J8 landing join handler is listed in handler_routing though the boot resolver cannot construct it
+summary: >-
+  tests/test_handler_routing_boot_resolvable.py fails on omnimarket dev because node_pr_landing_decision_compute lists HandlerLandingJoinJ8 under handler_routing; its constructor needs an emission sink and a policy that the boot resolver cannot inject. The test file sits in Tests (Split 12/20), so every pull request cut from dev reads that split red. The handler is constructed and called in process by the controller and nothing dispatches it by operation, so the routing entry is removed, the remedy the test names. The handler, its tests and its contract join_j8 settings are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22867-j8-routing-boot-resolvable
+    statement: >-
+      Every handler_routing target on omnimarket dev is boot-resolvable, so Tests (Split 12/20) no longer fails on the J8 landing join entry.
+    acceptance:
+      - id: AC1
+        statement: "AC1: tests/test_handler_routing_boot_resolvable.py passes with the J8 routing entry removed and fails on dev without the change -- falsifier: uv run pytest tests/test_handler_routing_boot_resolvable.py in omnimarket"
+      - id: AC2
+        statement: "AC2: the node_pr_landing_decision_compute unit tests, including the J8 join tests, still pass -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute in omnimarket"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The boot-resolvable guard and the landing decision node's unit tests.
+    command: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/unit/nodes/node_pr_landing_decision_compute -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22867-ac1-boot-resolvable
+    description: >-
+      The guard test passes on this branch. On dev (a10bd9b23) the same test fails naming node_pr_landing_decision_compute, op join_j8_landing_decision, HandlerLandingJoinJ8, required-unresolvable sink and policy.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22867-ac2-landing-node-tests
+    description: >-
+      The 421 tests of the guard plus the landing decision node's unit directory pass, so the J8 handler and its tests are unaffected by the routing entry's removal.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn22867-node-contract
+    description: >-
+      The node's contract still loads and its remaining routed handler resolves at boot, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
