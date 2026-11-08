@@ -1204,6 +1204,7 @@ jobs:
 
       - name: Install uv
         id: install_uv_detect_changes
+        # advisory-ok: OMN-21968 a failed setup-uv download is not swallowed: the next step installs uv from PyPI and fails the job if that fails too
         continue-on-error: true
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -1318,6 +1319,7 @@ jobs:
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         id: install_uv_test_shard
+        # advisory-ok: OMN-21968 a failed setup-uv download is not swallowed: the next step installs uv from PyPI and fails the job if that fails too
         continue-on-error: true
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -3421,6 +3423,7 @@ jobs:
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv (dependency cache — OMN-14680)
         id: install_uv_coverage_gate
+        # advisory-ok: OMN-21968 a failed setup-uv download is not swallowed: the next step installs uv from PyPI and fails the job if that fails too
         continue-on-error: true
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:

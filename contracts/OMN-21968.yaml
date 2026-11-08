@@ -13,8 +13,6 @@ requirements:
     statement: 'AC1: the lane states, with the failing step and its output read from two different heads, whether the red is one cause or several, and names the file and line of each -- falsifier: a report that names no failing step or cites one head only'
   - id: AC2
     statement: 'AC2: for one cause, a fix pull request carries a regression test that fails on the current code and passes on the fix, run through uv run pytest on the named test -- falsifier: uv run pytest -k coverage_sweep_gate_cause -q in omnimarket on the PR head'
-  - id: AC3
-    statement: 'AC3: after the fix lands, a re-run of Coverage Sweep Gate on one affected open head reads green -- falsifier: the check-run conclusion of that context on that head read from the PR watcher state'
 evidence_requirements:
 - kind: tests
   description: The regression tests of the setup-uv fallback on the census path of Coverage Sweep Gate, including the pin that the gate still refuses when the shards did not run.
@@ -41,11 +39,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_coverage_sweep_gate_cause_uv_install_fallback.py -k coverage_sweep_gate_cause -q
 - id: dod-omn21968-ac3
-  description: After the fix merges, one affected open head is re-run and its Coverage Sweep Gate check-run is read from the PR watcher state. Unmet until then; only the local Done gate reads it.
+  description: AC3 of the ticket, not bound in this contract because no hosted check can run it before the merge. After the fix merges, one affected open head is re-run and its Coverage Sweep Gate check-run is read from the PR watcher state. Unmet until then; only the local Done gate reads it.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: python3 "${OMNI_PLUGIN_ROOT:?}"/skills/merge-drain/scripts/pr_state_local.py --pr omnimarket#5170 --json
