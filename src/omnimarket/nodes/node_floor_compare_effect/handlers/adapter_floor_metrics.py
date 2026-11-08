@@ -98,7 +98,28 @@ def snapshot_from_floor_simple(
             key = f"lab:{lab['id']}"
             values[key] = float(rt.piece_rank[str(lab["draw"])])
             labels[key] = str(lab.get("title") or lab["id"])
-    return ModelSnapshot(at=at, source=source, values=values, labels=labels)
+    # The floor lists these collections in full for a document that read them: the producer leaves out a pull request cause
+    # with no pull requests and a lab cause that is WORKING, and the alarms list holds every alarm that is up. A key under
+    # them that the document does not hold was read as absent (zero), not left unread.
+    complete: list[str] = []
+    numbers = {
+        str(i.get("key")): i
+        for i in doc.get("numbers") or ()
+        if isinstance(i, Mapping) and i.get("read") is True
+    }
+    if "open_prs" in numbers and isinstance(doc.get("causes"), list):
+        complete.append("cause:prs:")
+    if doc.get("lab_state"):
+        complete.append("cause:lab:")
+    if isinstance(alarms, list):
+        complete.append("alarm:")
+    return ModelSnapshot(
+        at=at,
+        source=source,
+        values=values,
+        labels=labels,
+        complete=tuple(complete),
+    )
 
 
 def snapshot_from_factory_record(
@@ -119,10 +140,19 @@ def snapshot_from_factory_record(
         if (n := _number(item.get("occurrences"))) is not None:
             values[f"cause:{cid}"] = n
             labels[f"cause:{cid}"] = title
-        if (c := _number(item.get("cost_minutes"))) is not None:
+        if (
+            cid not in rt.estimated_cost_stoppages
+            and (c := _number(item.get("cost_minutes"))) is not None
+        ):
             values[f"stoppage_cost:{cid}"] = c
             labels[f"stoppage_cost:{cid}"] = title
-    bays = [b for b in floor.get("bays") or () if isinstance(b, Mapping)]
-    if bays and not any(b.get("stale") for b in bays):
-        values["slots_busy"] = float(sum(int(b.get("running") or 0) for b in bays))
+    # As the live floor reads slots: the hosts whose bay is stale are left out, the rest are summed, and a reading with no
+    # capacity among the hosts that were read is unread.
+    read = [
+        b
+        for b in floor.get("bays") or ()
+        if isinstance(b, Mapping) and not b.get("stale")
+    ]
+    if sum(int(b.get("slots") or 0) for b in read) > 0:
+        values["slots_busy"] = float(sum(int(b.get("running") or 0) for b in read))
     return ModelSnapshot(at=at, source=source, values=values, labels=labels)
