@@ -143,7 +143,10 @@ HARNESS = textwrap.dedent(
     const els = {};
     const mk = id => ({id, innerHTML: "", textContent: "", href: "", className: "", hidden: false, attrs: {}, style: {}, dataset: {},
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+    // The page builds its tooltip and side panel with createElement and appends them to the body (OMN-22810).
+    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {},
+      createElement: () => mk(""), body: {append() {}}, querySelector: () => null,
+      querySelectorAll: () => ({forEach() {}})};
     globalThis.window = {addEventListener() {}};
     globalThis.location = {hash: ""};
     globalThis.setInterval = () => 0;

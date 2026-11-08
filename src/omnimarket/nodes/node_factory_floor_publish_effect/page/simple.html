@@ -224,15 +224,15 @@ function panelBody(p){
 // the words and numbers are the comparison record's own; a missing record or piece says so.
 const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
 const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
-const num = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+const measureNum = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
 function measureSection(p){
   const pm = pieceMeasures[p.piece];
   if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
   let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
   h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
   for (const m of pm.measures) {
-    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(num(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(num(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
-    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(num(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(measureNum(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(measureNum(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(measureNum(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
     h += `<p class="mute">Source: ${esc(m.source)}</p>`;
   }
   return h;
