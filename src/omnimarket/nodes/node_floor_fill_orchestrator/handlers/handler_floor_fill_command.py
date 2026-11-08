@@ -120,6 +120,8 @@ class HandlerFloorFillCommand:
         worker.start()
         worker.join(self._config.command_timeout_seconds)
         if worker.is_alive():
+            # The command is reported unreachable, so its worker must not act afterwards.
+            self._orchestrator.fence()
             return _unreachable(forwarded=False, timed_out=True)
         answer = box.get("answer")
         if not isinstance(answer, ModelFloorFillAnswer):

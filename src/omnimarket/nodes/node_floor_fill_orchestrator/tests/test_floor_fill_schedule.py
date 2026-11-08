@@ -295,6 +295,29 @@ def test_floor_fill_schedule_uninstall_is_the_rollback(tmp_path: Path) -> None:
     assert not (unit_dir / f"{schedule.unit_name}.service").exists()
 
 
+def test_floor_fill_schedule_uninstall_reports_a_failed_disable(
+    tmp_path: Path,
+) -> None:
+    _install(OVERLAY, tmp_path, omni_root=_registry(tmp_path))
+
+    def run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        if "disable" in command:
+            return subprocess.CompletedProcess(
+                list(command), 5, "", "Failed to disable"
+            )
+        return _ok(command)
+
+    result = run_schedule(
+        ["uninstall", "--this-host", "fill-host"],
+        {"floor_fill": OVERLAY},
+        hosts=HOSTS,
+        home=tmp_path,
+        run=run,
+    )
+    assert result.exit_code != 0
+    assert "Failed to disable" in result.stderr
+
+
 def test_floor_fill_schedule_refuses_a_unit_that_runs_from_a_worktree(
     tmp_path: Path,
 ) -> None:
@@ -331,7 +354,10 @@ def places_violations(paths: Sequence[str]) -> list[str]:
 
 
 def _own_changed_paths() -> list[str]:
-    """The files this pull request's own commits (those citing the ticket) changed."""
+    """The files this pull request's own commits (those citing the ticket) changed.
+
+    An unreadable ``origin/dev..HEAD`` range skips the check with its reason; it never reads as "nothing changed".
+    """
     root = Path(__file__).resolve().parents[5]
     try:
         commits = subprocess.run(
@@ -351,13 +377,26 @@ def _own_changed_paths() -> list[str]:
             ).stdout.split()
             for commit in commits
         ]
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return []
+    except (subprocess.CalledProcessError, FileNotFoundError) as error:
+        pytest.skip(f"the origin/dev..HEAD range is unreadable here: {error}")
     return sorted({path for group in names for path in group} - {TICKET_CONTRACT})
 
 
 def test_no_script_edit_lists_each_changed_file() -> None:
     assert places_violations(_own_changed_paths()) == []
+
+
+def test_own_changed_paths_does_not_pass_silently_when_the_range_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_run(
+        command: list[str], **_: object
+    ) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(128, command)
+
+    monkeypatch.setattr(subprocess, "run", failing_run)
+    with pytest.raises(pytest.skip.Exception):
+        _own_changed_paths()
 
 
 def test_no_script_edit_fails_on_a_match_or_a_stray_path() -> None:

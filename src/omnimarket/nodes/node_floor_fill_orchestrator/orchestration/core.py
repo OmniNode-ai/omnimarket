@@ -25,6 +25,7 @@ start through their effect seams.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
@@ -57,6 +58,7 @@ from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EXIT_CODE_BY_STATUS,
+    LINE_UNREACHABLE,
     EnumFloorFillCommand,
     EnumFloorFillStatus,
     ModelFloorFillAnswer,
@@ -81,6 +83,8 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 from omnimarket.nodes.node_floor_fill_reducer.handlers import (
     EnumFloorFillDropReason,
     EnumFloorFillEntryState,
+    HandlerFloorFillReducer,
+    ModelFloorFillEntry,
     ModelFloorFillObservation,
     ModelFloorFillReduceInput,
     ModelFloorFillReduceOutput,
@@ -92,18 +96,16 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers import (
     ModelFloorFillTicketStored,
     line_and_task,
 )
-from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
-    HandlerFloorFillReducer,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
-    ModelFloorFillEntry,
-)
 
 # The class a floor task is sent as: the name the open-count brake and the stop signal answer to.
 FLOOR_TASK_CLASS = "floor-task"
 ANSWER_ROW_SUFFIX = ":answer"
 LINE_STALE_STATE = "STALE-STATE"
 SOURCES_UNREAD_ORDER = ("floor", "pool", "brake", "stop-signal", "ledger")
+
+
+class CommandFencedError(Exception):
+    """The caller gave up on this command (its deadline passed): it may not write, start a lane or publish."""
 
 
 class StaleStateError(Exception):
@@ -185,6 +187,19 @@ class FloorFillOrchestrator:
         self._candidates = candidates
         self._reducer = reducer
         self._lines = lines
+        self._fenced = threading.Event()
+
+    def fence(self) -> None:
+        """End this orchestrator's authority: every later write, lane start or publish is refused.
+
+        The entry calls it when a command passes its deadline, so a command it reported unreachable
+        cannot go on to change the row or start a lane from its still-running worker thread.
+        """
+        self._fenced.set()
+
+    def _check_fence(self) -> None:
+        if self._fenced.is_set():
+            raise CommandFencedError
 
     # ------------------------------------------------------------------ commands
 
@@ -204,6 +219,8 @@ class FloorFillOrchestrator:
             return self._pass(command, None)
         except FloorFillUnreadableError as error:
             return self._failed(command, f"UNKNOWN fill-state:{error.cause}")
+        except CommandFencedError:
+            return self._failed(command, LINE_UNREACHABLE)
 
     # ------------------------------------------------------------------ the pass
 
@@ -542,6 +559,7 @@ class FloorFillOrchestrator:
         # The reserve write comes before the intent it authorises.
         self._write(ctx, reserved.state)
         (intent,) = reserved.intents
+        self._check_fence()
         outcome = self._runner.start_detached(
             ModelLaneStartSpec(
                 argv=_fill(
@@ -601,6 +619,7 @@ class FloorFillOrchestrator:
 
     def _write(self, ctx: _Pass, next_state: ModelFloorFillState) -> None:
         """One conditional write of the row. A lost race ends the command; nothing is retried."""
+        self._check_fence()
         landed = self._store.compare_and_set(
             self._config.scope,
             ctx.state.seq,
@@ -652,8 +671,9 @@ class FloorFillOrchestrator:
     def _publish(
         self, ctx: _Pass, answer: ModelFloorFillAnswer
     ) -> ModelFloorFillAnswer:
-        """Store the tick's answer: conditional, and never from a lower state sequence than the stored one."""
+        """Store the tick's answer: conditional, and never from a lower state sequence, or an older observation at the same one."""
         key = self._config.scope + ANSWER_ROW_SUFFIX
+        self._check_fence()
         try:
             read = self._store.load(key)
             if read.payload is not None:
@@ -665,7 +685,9 @@ class FloorFillOrchestrator:
                     return self._failed(
                         answer.command, "UNKNOWN fill-state:answer-unparseable", answer
                     )
-                if ctx.state.seq < stored.state_seq:
+                if ctx.state.seq < stored.state_seq or (
+                    ctx.state.seq == stored.state_seq and ctx.now < stored.observed_at
+                ):
                     return self._failed(answer.command, LINE_STALE_STATE, answer)
             payload = ModelFloorFillStoredAnswer(
                 lines=answer.lines,
@@ -674,6 +696,7 @@ class FloorFillOrchestrator:
                 seq=read.version + 1,
                 state_seq=ctx.state.seq,
             ).model_dump_json()
+            self._check_fence()
             if not self._store.compare_and_set(
                 key, read.version, read.version + 1, payload
             ):

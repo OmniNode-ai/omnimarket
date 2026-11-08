@@ -250,8 +250,10 @@ class FloorFillScheduler:
         refused = self._refusal(this_host)
         if refused is not None:
             return refused
-        done = self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
-        output = done.stdout
+        disabled = self.run(
+            ["systemctl", "--user", "disable", "--now", self.timer_name]
+        )
+        output = disabled.stdout
         for unit in (self.timer_name, self.service_name):
             target = self.unit_dir / unit
             if target.exists():
@@ -259,9 +261,9 @@ class FloorFillScheduler:
                 output += f"removed {target}\n"
         reloaded = self.run(["systemctl", "--user", "daemon-reload"])
         return ModelFloorFillScheduleResult(
-            exit_code=reloaded.returncode,
+            exit_code=disabled.returncode or reloaded.returncode,
             stdout=output + reloaded.stdout,
-            stderr=reloaded.stderr,
+            stderr=disabled.stderr + reloaded.stderr,
         )
 
     def run_now(self, *, this_host: str) -> ModelFloorFillScheduleResult:

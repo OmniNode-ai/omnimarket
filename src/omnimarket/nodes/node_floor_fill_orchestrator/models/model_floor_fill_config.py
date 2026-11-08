@@ -106,13 +106,17 @@ def load_floor_fill_config(overlay: Mapping[str, Any]) -> ModelFloorFillConfig:
     except ValidationError as error:
         messages = [str(item["msg"]) for item in error.errors()]
         text = "; ".join(messages)
-        keys = tuple(
-            dict.fromkeys(
-                token.rstrip(",;)(")
-                for token in text.replace(",", " ").split()
-                if token.startswith(OVERLAY_PREFIX)
-            )
+        located = (
+            f"{OVERLAY_PREFIX}{'.'.join(str(part) for part in item['loc'])}"
+            for item in error.errors()
+            if item["loc"]
         )
+        named = (
+            token.rstrip(",;)(")
+            for token in text.replace(",", " ").split()
+            if token.startswith(OVERLAY_PREFIX)
+        )
+        keys = tuple(dict.fromkeys((*located, *named)))
         raise FloorFillConfigError(text, keys) from error
 
 
