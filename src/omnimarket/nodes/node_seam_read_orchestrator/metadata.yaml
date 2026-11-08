@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_seam_read_orchestrator
 version: 1.0.0
-description: The factory line as a graph contract - every station and every seam reading, backlog to running.
+description: The factory line and view seam graphs, including all seventeen declared view seams.
 pack: operator_tooling
 node_role: orchestrator
 display_name: Seam Read Orchestrator
