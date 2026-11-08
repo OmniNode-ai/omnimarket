@@ -13,9 +13,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
-from omnimarket.tenant_credential_ref import is_tenant_credential_ref
+from omnimarket.handlers.tenant_model_candidates import selected_key_models
 
 # The resolver's logger name, so these warnings read exactly as before the move.
 logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")
@@ -53,52 +52,13 @@ def _selected_key_model(
     that cannot prove its own choices keeps that ref and the existing no-model
     sentinel, so the effect refuses it before transport or model discovery.
     """
-    if secret_ref is None or provider is None:
-        return overlay_model
-    try:
-        # OMN-21819: a row stamped with the tenant's other form (name or registry
-        # UUID) is the same tenant's key; the first form that holds it answers.
-        rows = []
-        for tenant_form in sync_tenant_identity_forms(db, tenant_id):
-            rows = db.query(
-                TENANT_CREDENTIALS_TABLE,
-                filters={
-                    "tenant_id": tenant_form,
-                    "provider": provider,
-                    "api_key_ref": secret_ref,
-                },
-            )
-            if rows:
-                break
-    except Exception:
-        logger.warning(
-            "selected credential choices unreadable for tenant_id=%s",
-            tenant_id,
-            exc_info=True,
-        )
-        return (
-            BYOK_MODEL_UNRESOLVED
-            if is_tenant_credential_ref(secret_ref)
-            else overlay_model
-        )
-    if not rows:
-        return (
-            BYOK_MODEL_UNRESOLVED
-            if is_tenant_credential_ref(secret_ref)
-            else overlay_model
-        )
-    models = rows[0].get("models")
-    if (
-        isinstance(models, list)
-        and models
-        and all(
-            isinstance(model, str) and model.strip() and len(model) <= 200
-            for model in models
-        )
-        and len(set(models)) == len(models)
-    ):
-        return str(models[0])
-    return BYOK_MODEL_UNRESOLVED
+    return selected_key_models(
+        db,
+        tenant_id=tenant_id,
+        provider=provider,
+        secret_ref=secret_ref,
+        overlay_model=overlay_model,
+    )[0]
 
 
 def _select_pool_secret_ref(

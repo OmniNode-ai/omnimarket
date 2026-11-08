@@ -63,10 +63,11 @@ dod_evidence:
     description: >
       The pushed head ran both profile legs of the new node tests on a lab host
       through lab-work. Hosted CI cannot reach the lab, so only the local Done
-      gate runs this check.
+      gate runs this check. It binds no criterion: the hosted must-fail control
+      runs bound items only and cannot evaluate a local_done_gate item, so AC1
+      is bound by the two hosted items above.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC1]
     checks:
       - check_type: command
         check_value: >-
