@@ -59,6 +59,10 @@ class ModelLagSettings(BaseModel):
     timeout_seconds: float = Field(gt=0)
     #: Where the previous sample is kept between ticks.
     state_path: str = Field(min_length=1)
+    #: Where each finished run is appended, in the shape the floor's broker lag source reads.
+    record_path: str = Field(min_length=1)
+    #: The condition name the run record carries, the one the floor's overlay lists for the broker.
+    record_condition: str = Field(min_length=1)
 
 
 class ModelLabAlarmOverlay(BaseModel):

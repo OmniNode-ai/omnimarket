@@ -21,6 +21,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
     ManifestUnreadableError,
+    RunRecordUnwritableError,
 )
 
 
@@ -152,4 +153,21 @@ class FileSamples:
         tmp.replace(self._path)
 
 
-__all__ = ["FileSamples", "HttpManifest", "KafkaLag"]
+class FileRunRecords:
+    """The run record the floor reads: one JSON object per finished run, one line each, appended."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def append(self, record: Mapping[str, Any]) -> None:
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(dict(record), sort_keys=True) + "\n")
+        except OSError as exc:
+            raise RunRecordUnwritableError(
+                f"run record unwritable ({type(exc).__name__})"
+            ) from None
+
+
+__all__ = ["FileRunRecords", "FileSamples", "HttpManifest", "KafkaLag"]

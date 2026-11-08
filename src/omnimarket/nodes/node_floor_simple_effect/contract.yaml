@@ -126,6 +126,10 @@ runtime:
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
     lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    # The lag condition comes from node_lab_alarm's finished runs (its overlay's lag.record_path and
+    # lag.record_condition), not from the alarm script's record: see read_broker_lag.
+    broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
+    broker_lag_condition: consumer_group_lag
     overlay_store_relpath: .onex_state/overlay-store/fleet.json
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json

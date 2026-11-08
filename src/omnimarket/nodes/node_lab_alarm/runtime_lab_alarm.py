@@ -8,7 +8,7 @@
 ``--fault`` injects a drill fault; a drill never keeps its sample.
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
-1 the command was refused.
+1 the command was refused, 4 the run record the floor reads could not be written.
 """
 
 from __future__ import annotations
@@ -23,9 +23,11 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryLag,
     InMemoryManifest,
+    InMemoryRunRecords,
     InMemorySamples,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
+    FileRunRecords,
     FileSamples,
     HttpManifest,
     KafkaLag,
@@ -42,11 +44,16 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
 )
 from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay, load_overlay
 
+_EXIT_RECORD_UNWRITABLE = 4
 _EXIT = {
     EnumBrokerLagOutcome.OK: 0,
     EnumBrokerLagOutcome.ALARM: 2,
     EnumBrokerLagOutcome.INDETERMINATE: 3,
 }
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
@@ -55,6 +62,8 @@ def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         manifest=InMemoryManifest({"contracts": []}),
         lag=InMemoryLag({}),
         samples=InMemorySamples(),
+        records=InMemoryRunRecords(),
+        clock=_utc_now,
     )
 
 
@@ -64,6 +73,8 @@ def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         manifest=HttpManifest(overlay.manifest.url, overlay.manifest.timeout_seconds),
         lag=KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds),
         samples=FileSamples(Path(overlay.lag.state_path)),
+        records=FileRunRecords(Path(overlay.lag.record_path)),
+        clock=_utc_now,
     )
 
 
@@ -109,6 +120,8 @@ def run(
     )
     for alarm in result.alarms:
         out(f"ALARM {alarm}\n")
+    if result.failure.startswith("record-unwritable"):
+        return _EXIT_RECORD_UNWRITABLE
     return _EXIT[result.outcome]
 
 

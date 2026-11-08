@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,9 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ManifestUnreadableError,
     ProtocolGroupLagReader,
     ProtocolManifestSource,
+    ProtocolRunRecordStore,
     ProtocolSampleStore,
+    RunRecordUnwritableError,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -177,11 +180,15 @@ class HandlerBrokerLag:
         manifest: ProtocolManifestSource,
         lag: ProtocolGroupLagReader,
         samples: ProtocolSampleStore,
+        records: ProtocolRunRecordStore,
+        clock: Callable[[], datetime],
     ) -> None:
         self._overlay = overlay
         self._manifest = manifest
         self._lag = lag
         self._samples = samples
+        self._records = records
+        self._clock = clock
 
     def handle(self, request: ModelBrokerLagCommand) -> ModelBrokerLagResult:
         drill = request.fault is not EnumLabAlarmFault.NONE
@@ -323,7 +330,7 @@ class HandlerBrokerLag:
         previous: dict[str, int] | None,
     ) -> ModelBrokerLagResult:
         # The previous sample is left as it was: the next tick that can derive compares against it.
-        return ModelBrokerLagResult(
+        result = ModelBrokerLagResult(
             correlation_id=request.correlation_id,
             outcome=EnumBrokerLagOutcome.INDETERMINATE,
             fault=request.fault,
@@ -335,6 +342,43 @@ class HandlerBrokerLag:
             evidence="the watched groups could not be derived from the running image's contracts, so no lag was sampled; an alarm that cannot name its subjects has not read zero lag",
             failure="indeterminate:" + ";".join(reasons),
         )
+        return self._record(request, result)
+
+    def _record(
+        self, request: ModelBrokerLagCommand, result: ModelBrokerLagResult
+    ) -> ModelBrokerLagResult:
+        """Append the finished run to the record the floor reads; a drill never writes to it.
+
+        The floor draws its broker lag source from the last line of this record, so a run that reads
+        INDETERMINATE or ALARM is on the board the same as an OK one. A record that cannot be written
+        is a typed failure of the run, never a silent skip: the floor would otherwise go on reading an
+        old line as if it were this run.
+        """
+        if not request.write or request.fault is not EnumLabAlarmFault.NONE:
+            return result
+        # What the floor shows of a run that is not OK is the first 110 characters of this line, so it leads
+        # with the alarms or the reasons; an OK run says what was read.
+        said = (
+            result.evidence
+            if result.outcome is EnumBrokerLagOutcome.OK
+            else "; ".join(result.alarms or result.reasons) or result.evidence
+        )
+        try:
+            self._records.append(
+                {
+                    "finished_at": self._clock().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "reports": [
+                        {
+                            "condition": self._overlay.lag.record_condition,
+                            "outcome": result.outcome.value,
+                            "evidence": said,
+                        }
+                    ],
+                }
+            )
+        except RunRecordUnwritableError as exc:
+            return result.model_copy(update={"failure": f"record-unwritable:{exc}"})
+        return result
 
     def _result(
         self,
@@ -362,7 +406,7 @@ class HandlerBrokerLag:
             failure = "alarm:" + ";".join(alarms)
         elif outcome is EnumBrokerLagOutcome.INDETERMINATE:
             failure = "indeterminate:" + ";".join(reasons)
-        return ModelBrokerLagResult(
+        result = ModelBrokerLagResult(
             correlation_id=request.correlation_id,
             outcome=outcome,
             fault=request.fault,
@@ -374,6 +418,7 @@ class HandlerBrokerLag:
             evidence=f"{len(groups)} groups derived, {len(sample)} read; {rule}",
             failure=failure,
         )
+        return self._record(request, result)
 
 
 def events_for(
@@ -402,7 +447,7 @@ def events_for(
     )
     final = topics[
         "broker_lag_run_completed"
-        if result.outcome is EnumBrokerLagOutcome.OK
+        if result.outcome is EnumBrokerLagOutcome.OK and not result.failure
         else "broker_lag_run_failed"
     ]
     chain.append(

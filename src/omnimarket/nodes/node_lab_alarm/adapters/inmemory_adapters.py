@@ -11,6 +11,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
     ManifestUnreadableError,
+    RunRecordUnwritableError,
 )
 
 
@@ -56,4 +57,17 @@ class InMemorySamples:
         self.sample = dict(sample)
 
 
-__all__ = ["InMemoryLag", "InMemoryManifest", "InMemorySamples"]
+class InMemoryRunRecords:
+    """Keeps the appended run records in a list; ``unwritable`` makes the next append refuse."""
+
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+        self.unwritable: str | None = None
+
+    def append(self, record: Mapping[str, Any]) -> None:
+        if self.unwritable is not None:
+            raise RunRecordUnwritableError(self.unwritable)
+        self.records.append(dict(record))
+
+
+__all__ = ["InMemoryLag", "InMemoryManifest", "InMemoryRunRecords", "InMemorySamples"]

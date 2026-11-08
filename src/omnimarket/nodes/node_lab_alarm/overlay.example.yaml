@@ -17,4 +17,6 @@ groups:
 lag:
   timeout_seconds: 30
   state_path: .onex_state/lab-alarm/broker-lag-sample.json
+  record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl
+  record_condition: consumer_group_lag
 injected_fault: A watched group's lag grows between two samples

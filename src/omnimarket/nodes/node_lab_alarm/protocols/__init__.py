@@ -20,6 +20,10 @@ class GroupUnreadableError(Exception):
     """The group's lag could not be read (refused, broker down); the message names the type."""
 
 
+class RunRecordUnwritableError(Exception):
+    """The run record could not be appended; the message names the type of the failure, never its text."""
+
+
 class ProtocolManifestSource(Protocol):
     def read(self) -> Mapping[str, Any]:
         """The running image's auto-wiring manifest, or raise ManifestUnreadableError."""
@@ -40,11 +44,19 @@ class ProtocolSampleStore(Protocol):
     def save(self, sample: Mapping[str, int]) -> None: ...
 
 
+class ProtocolRunRecordStore(Protocol):
+    def append(self, record: Mapping[str, Any]) -> None:
+        """Add one finished run to the record the floor reads, or raise RunRecordUnwritableError."""
+        ...
+
+
 __all__ = [
     "GroupNeverCommittedError",
     "GroupUnreadableError",
     "ManifestUnreadableError",
     "ProtocolGroupLagReader",
     "ProtocolManifestSource",
+    "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "RunRecordUnwritableError",
 ]
