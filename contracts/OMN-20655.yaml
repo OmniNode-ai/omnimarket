@@ -1,0 +1,86 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20655"
+title: "The closeout sweep's ticket ranking runs in node_dod_closeout_sweep_compute, as overlay data"
+summary: "The ranking that picks which tickets the dod-closeout-sweep verifies moves into node_dod_closeout_sweep_compute as the scope_bundle kind plus a bundle command: ordered rank rules, the no-contract reserve, the caps and the eligible states are in the node's overlay.yaml, a ticket with a contract on a product default branch ranks before one without, and a ticket the verifier could not run for want of a contract reads 'no contract'. The sweep's bundle command switches to the node and the replaced code is deleted in the code's former repository in its own change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-closeout-ranking-node"
+    statement: |-
+      The closeout sweep's scope ranking runs in node_dod_closeout_sweep_compute with every rule and cap in overlay.yaml.
+    acceptance:
+      - id: "DoD1"
+        statement: |-
+          DoD1: scope_bundle with the script's own rules returns the bundle the replaced ranking printed for the same scope, and with the overlay's rules a ticket with a contract ranks before one without while the reserve keeps the oldest contractless tickets in the run -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py, whose control cases fail with has_contract removed from the rules or the reserve set to 0
+      - id: "DoD2"
+        statement: |-
+          DoD2: a ticket whose verify printed could_not_run with a contract-unresolved detail reads 'no contract' and any other could_not_run keeps its 'no verdict' reading -- falsifier: test_a_ticket_with_no_contract_reads_no_contract and test_failing_control_a_verifier_that_did_not_run_for_another_reason_keeps_its_reading in the same file
+      - id: "DoD3"
+        statement: |-
+          DoD3: the scope_bundle kind is dispatched through the contract on the in-memory bus and a request missing its PR state is refused with no result -- falsifier: test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_bus and test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus in the same file
+      - id: "DoD4"
+        statement: |-
+          DoD4: the PR reader runs in the node with the repository list and each repository's default branch in overlay.yaml, so a ticket whose only merged PR is on a repository whose default branch is main and that the frozen list left out (OMN-18470) reads as merged, and the same read with the frozen list reads no merged PR -- falsifier: test_failing_control_the_frozen_list_reads_omn_18470_as_having_no_merged_pr and test_failing_control_the_ticket_is_waiting_with_the_old_list_and_selected_with_the_new in tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py
+      - id: "DoD5"
+        statement: |-
+          DoD5: the binding rule accepts a merged ref on a repository's own default branch (origin/main for a repository whose default branch is main) and still refuses a ref on any other branch -- falsifier: test_failing_control_a_ref_off_the_default_branch_is_still_refused and test_failing_control_the_binding_refuses_origin_main_with_the_frozen_rule_and_accepts_it_now in the same file
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden-chain, error-chain, parity and failing-control tests for the scope ranking."
+    command: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20655-ranking-and-parity"
+    description: "The scope ranking runs in the node from overlay data, matches the replaced ranking under the script's rules, and its failing controls fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn20655-no-contract-reading"
+    description: "A ticket whose verify found no contract reads 'no contract'; another could_not_run keeps its reading."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py::test_a_ticket_with_no_contract_reads_no_contract -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD2"]
+  - id: "dod-omn20655-bus-chain"
+    description: "scope_bundle dispatches over the in-memory bus and a request missing its PR state is refused with no result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py::test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD3"]
+  - id: "dod-omn20655-integration-proof"
+    description: "On the lab runtime that carries this node, scope_bundle dispatched over the bus returns the bundle and reads the ticket marked without a contract as no_contract; the bundle command read the live clones on h051 from the branch (no_contract empty for a ticket whose contract is on the omnimarket default branch)."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: |-
+          onex run-node node_dod_closeout_sweep_compute --input '{"kind":"scope_bundle","date":"2026-11-08","scope_candidates":[{"id":"OMN-20675","state":"In Review","sources":["started"],"last_closeout_comment_at":""}],"scope_pr_state":[{"id":"OMN-20675","merged":["omnimarket#1"],"open":[],"error":""}],"scope_text_state":[],"scope_contract_state":[{"id":"OMN-20675","has_contract":false}],"max_candidates":1}' | grep -q '"no_contract":\["OMN-20675"\]'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20655-pr-reader-knowledge-base"
+    description: "A ticket whose only merged PR is on a main-default repository the frozen list left out reads as merged with the overlay's list; the frozen list reads none."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py::test_failing_control_the_frozen_list_reads_omn_18470_as_having_no_merged_pr -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD4"]
+  - id: "dod-omn20655-binding-default-branch"
+    description: "The binding rule accepts origin/main for a repository whose default branch is main and refuses a ref off the default branch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py::test_failing_control_a_ref_off_the_default_branch_is_still_refused -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD5"]
