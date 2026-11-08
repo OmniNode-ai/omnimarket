@@ -63,7 +63,8 @@ def build_handler(
 def _run(write: bool) -> int:
     overlay = load_overlay()
     rate_overlay = load_rate_overlay()
-    handler = build_handler(overlay, rate_overlay, os.environ, write)
+    environ = os.environ  # ONEX_FLAG_EXEMPT: variable names are declared by the overlay
+    handler = build_handler(overlay, rate_overlay, environ, write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
         ModelDelegationRateCommand(correlation_id=f"delegation-rate-{now}", write=write)
