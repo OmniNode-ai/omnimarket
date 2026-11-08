@@ -153,6 +153,11 @@ class HandlerJobExitAlarm:
                         stderr_path=reading.stderr_path,
                     )
                 )
+                sent = (
+                    f"lane {kind} dispatched for episode {episode_id}"
+                    if request.dispatch_configured
+                    else f"no lane sent for episode {episode_id}: dispatch unconfigured"
+                )
                 head = (
                     "FRICTION | lane=silent-failure-alarm | ticket=OMN-19998 | "
                     "actor=launchd:silent-failure-alarm | class=job-exit | "
@@ -164,8 +169,7 @@ class HandlerJobExitAlarm:
                         f"cost=est ~{request.threshold * 10} minutes "
                         "of a job exiting nonzero unseen | "
                         f"{label} exited nonzero on {current.streak} runs in a row "
-                        f"(last exit {current.last_exit}); lane {kind} dispatched "
-                        f"for episode {episode_id}"
+                        f"(last exit {current.last_exit}); {sent}"
                     )
                 elif cause == "finding-exit":
                     cells.append(
@@ -173,8 +177,8 @@ class HandlerJobExitAlarm:
                         f"cost=est ~{request.threshold * 10} minutes "
                         "of a job's own finding unacted on | "
                         f"{label} reported its finding (exit {current.last_exit}, declared as "
-                        "this job's finding, not a crash); act on what it reports; lane "
-                        f"{kind} dispatched for episode {episode_id}"
+                        "this job's finding, not a crash); act on what it reports; "
+                        f"{sent}"
                     )
                 else:
                     assert current.last_run_at is not None
@@ -187,7 +191,7 @@ class HandlerJobExitAlarm:
                         f"since={current.last_run_at.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ} | "
                         f"cost=est ~{idle} minutes of a job not running unseen | "
                         f"{label} has not run for {idle} minutes (interval {interval} s); "
-                        f"lane {kind} dispatched for episode {episode_id}"
+                        f"{sent}"
                     )
             if (
                 current.episode is not None

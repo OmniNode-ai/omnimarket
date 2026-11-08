@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-22994
+title: 'The floor''s live-lane reading lists running lanes again: every row read lanes [] at 12:46Z with dozens of lanes running'
+summary: A lane on a child ticket names its parent in the parent_ticket= cell of its CLAIM. The ledger reader dropped that cell, so a red row whose declared owner is the parent read lanes [] while child lanes ran. The reader now keeps the cell, the floor record's lanes carry it, and the live-lane join matches it against the row's declared owners.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22994-child-lanes
+  statement: A red row whose declared owner ticket is the parent of a running lane's ticket shows that lane, and the same ledger without the parent_ticket cell still reads no lane.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the floor''s live-lane reading returns every lane with a live CLAIM and no TERMINAL, and a red row whose owner ticket has a running lane shows it after one publish, with a failing control reproducing tonight''s empty read -- falsifier: uv run pytest of the live-lane reader test plus the board read'
+evidence_requirements:
+- kind: tests
+  description: The live-lane reader test over ledger text, floor record and board, with its control.
+  command: uv run pytest tests/nodes/node_floor_simple_compute/test_live_lane_child_ticket_omn22994.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22994-ac1
+  description: The record lists every CLAIM without a TERMINAL, the board shows the child lanes on the red row after the parent_ticket cell is read, and the control without the cell reads no lane on the row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_simple_compute/test_live_lane_child_ticket_omn22994.py -q
+- id: dod-omn22994-integration-proof
+  description: Run the live-lane reader test and the floor compute and effect tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22994 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_compute tests/nodes/node_floor_simple_effect -q --no-cov
