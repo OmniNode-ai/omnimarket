@@ -14,7 +14,8 @@
 (4) Start: ``node_remote_lane_start_effect`` prepares the worktree at the request's sha (when the
     lane names a repository) and starts the engine detached; an unsettled start is
     ``start-unresolved``: no TERMINAL, the CLAIM stays open, exit 1.
-(5) Supervise: log lines go to the receipt; ``read_engine_exit`` is polled until the engine ends.
+(5) Supervise: log lines go to the receipt; ``read_engine_exit`` is polled until the engine ends, or
+    until the request's ``timeout_min`` runs out, which stops the engine as a stop request does.
 (6) Close: ``node_remote_lane_close_compute`` decides the outcome from the exit code and the final
     message; one TERMINAL is appended, or a STATUS when the lane wrote its own closing row.
 
@@ -29,7 +30,7 @@ import json
 import re
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -565,6 +566,11 @@ class RemoteLaneStartOrchestrator:
         # (5) Supervise.
         log: list[str] = []
         offset = 0
+        deadline = (
+            None
+            if request.timeout_min is None
+            else self._clock() + timedelta(minutes=request.timeout_min)
+        )
         while True:
             tail = self._call(
                 EnumLaneHostOperation.READ_LOG_TAIL,
@@ -608,6 +614,14 @@ class RemoteLaneStartOrchestrator:
                     message=final_message(log),
                     outcome=EnumRemoteLaneStartOutcome.ENDED,
                 )
+            if deadline is not None and self._clock() >= deadline:
+                # The runtime limit: the engine is stopped as a stop request stops it, so the lane
+                # closes only once the stop is confirmed.
+                self._say(
+                    f"REMOTE-LANE-TIMEOUT lane={request.lane} host={host_ref.name}: the engine ran past "
+                    f"{request.timeout_min} min; stopping it"
+                )
+                return self._stop(request, receipt, host_ref, claim_row, log)
             self._sleep(self._s.poll_interval_seconds)
 
     def _stop(
