@@ -77,3 +77,10 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_repo_state_watcher_refresh_effect/handlers/handler_watcher_refresh.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerWatcherRefresh" > /dev/null'
     cwd: .
+- id: dod-omn23033-lab-fill-reads
+  description: Runs the lab fill repository state read tests; a stale planted watcher state without a hold label is read by the old direct read as no hold, and the lab fill's repository state read refreshes the watcher state first, reads the hold, and makes no GitHub-bound git command.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_repo_state_read.py -q --no-cov
+    cwd: .

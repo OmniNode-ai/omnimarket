@@ -49,6 +49,7 @@ from omnimarket.nodes.node_ticket_query.handlers.store_resolved_tracker import (
     resolve_linear_tracker,
 )
 
+from .local_lab_fill_repo_state import RepoStateCliReader
 from .protocol_lab_fill_effect import (
     LabFillClaimFacts,
     LabFillCommandOutcome,
@@ -358,8 +359,19 @@ def _watcher_path() -> Path:
 class LocalLiveChecks:
     """Assignment, fences, PR hold labels and completion for one lane, read right before launch."""
 
-    def __init__(self, facts: ProtocolLabFillTicketFacts | None = None) -> None:
+    def __init__(
+        self,
+        facts: ProtocolLabFillTicketFacts | None = None,
+        repo_state: RepoStateCliReader | None = None,
+    ) -> None:
         self._facts = facts if facts is not None else NodeTicketFactsReader()
+        # OMN-23033: a host that declares the repository state workflow reads a pull
+        # request through it; a host that does not reads the watcher state file as before.
+        self._repo_state = (
+            repo_state
+            if repo_state is not None
+            else RepoStateCliReader.from_environment(os.environ)
+        )
 
     def skip_reason(
         self, *, ticket: str, kind: str, pr: str, operator_id: str, ledger_path: str
@@ -376,7 +388,26 @@ class LocalLiveChecks:
         if ticket in fenced:
             return "fenced", ticket
         if pr:
+            if self._repo_state is not None:
+                return self._pr_hold_from_repo_state(self._repo_state, pr)
             return self._pr_hold(pr)
+        return "", ""
+
+    @staticmethod
+    def _pr_hold_from_repo_state(
+        reader: RepoStateCliReader, pr: str
+    ) -> tuple[str, str]:
+        repo, _, number = pr.partition("#")
+        try:
+            record = reader.pull_request_record(repo, number)
+        except LabFillPortError as exc:
+            return "pr-state-unreadable", str(exc)[:200]
+        facts = record.get("facts")
+        labels = facts.get("labels", []) if isinstance(facts, dict) else []
+        for label in labels:
+            low = str(label).lower()
+            if low.startswith("hold:") and low != "hold:auto-merge":
+                return "held", str(label)
         return "", ""
 
     @staticmethod
