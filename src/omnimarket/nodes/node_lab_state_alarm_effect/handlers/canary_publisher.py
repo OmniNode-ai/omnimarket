@@ -54,7 +54,9 @@ def run_git(argv: Sequence[str], cwd: Path, timeout_s: int) -> tuple[int, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 124, f"git did not run ({type(exc).__name__})"
-    return done.returncode, redact((done.stderr or done.stdout)[-300:])
+    # Redact the whole text first and take the tail of the redacted words: a tail cut before the redaction can begin inside
+    # ``user:password@`` with the scheme gone, and no pattern matches what is left.
+    return done.returncode, redact(done.stderr or done.stdout)[-300:]
 
 
 class GitCanaryPublisher:

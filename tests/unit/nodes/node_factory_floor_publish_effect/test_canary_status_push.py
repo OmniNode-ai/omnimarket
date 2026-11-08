@@ -10,12 +10,18 @@ Named injected breaks (each shown red in the control tests): ``break_no_push`` (
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from omnimarket.models.floor_17a import ModelCanaryStatus
+from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
+    GitCanaryPublisher,
+    RunGit,
+    run_git,
+)
 from tests.unit.nodes.node_factory_floor_publish_effect.canary_support import (
     NOW,
     bare_remote,
@@ -73,6 +79,58 @@ def test_golden_a_second_publication_replaces_the_commit_so_the_branch_does_not_
     run_canary_step(tmp_path / "two", canary, served=second)
     assert commit_count(remote) == 1
     assert_three_fields_pushed(remote, *second)
+
+
+def status_at(published_at: datetime) -> ModelCanaryStatus:
+    return ModelCanaryStatus(
+        floor_generated_at=published_at,
+        alarm_heartbeat_at=published_at,
+        published_at=published_at,
+        floor_max_age_s=900,
+        heartbeat_max_age_s=900,
+    )
+
+
+def publish_three_times_from_one_clone(
+    tmp_path: Path, remote: Path, git_runner: RunGit = run_git
+) -> list[ModelCanaryStatus]:
+    """Successive publications through ONE persisted clone, the way the cycle runs: first the root commit, then the amend path."""
+    publisher = GitCanaryPublisher(
+        canary_block(str(remote)), tmp_path / "persisted-clone", git_runner
+    )
+    statuses = [status_at(NOW + timedelta(minutes=5 * i)) for i in range(3)]
+    for status in statuses:
+        publisher.publish(status)
+    return statuses
+
+
+def test_golden_repeated_publication_from_one_persisted_clone_amends_and_the_history_stays_one_commit(
+    tmp_path: Path,
+) -> None:
+    """The real-git proof of the no-growth claim: the existing-commit amend path is taken and the remote content is the newest."""
+    remote = bare_remote(tmp_path)
+    statuses = publish_three_times_from_one_clone(tmp_path, remote)
+    assert commit_count(remote) == 1
+    pushed = read_pushed(remote)
+    assert pushed is not None
+    assert datetime.fromisoformat(pushed["published_at"]) == statuses[-1].published_at
+
+
+def test_control_break_no_amend_grows_the_history_and_the_persisted_clone_test_goes_red(
+    tmp_path: Path,
+) -> None:
+    """The failing control: a git runner that turns the amend into a plain commit makes the branch grow, so the proof above is red."""
+    remote = bare_remote(tmp_path)
+
+    def break_no_amend(
+        argv: Sequence[str], cwd: Path, timeout_s: int
+    ) -> tuple[int, str]:
+        return run_git([a for a in argv if a != "--amend"], cwd, timeout_s)
+
+    publish_three_times_from_one_clone(tmp_path, remote, break_no_amend)
+    assert commit_count(remote) == 3, (
+        "without the amend the history appends one commit per publication"
+    )
 
 
 def test_control_break_no_push_is_caught_by_the_read_back(tmp_path: Path) -> None:

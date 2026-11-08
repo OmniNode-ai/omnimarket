@@ -9,12 +9,14 @@ Named injected break: ``break_leak_token`` (a status writer that adds a token fi
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from omnimarket.models.floor_17a import ModelCanaryStatus
+from omnimarket.nodes.node_lab_state_alarm_effect.handlers import canary_publisher
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
     GitCanaryPublisher,
 )
@@ -104,6 +106,40 @@ def test_error_git_words_that_echo_the_remote_credential_are_scrubbed_from_the_f
     assert "git push failed" in records
     assert PLANTED not in records
     assert credential_findings(records) == []
+
+
+def test_error_a_long_git_diagnostic_cut_inside_the_remote_userinfo_leaks_no_password(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 300-character tail of git's words must be taken after the redaction, never before it.
+
+    The diagnostic is padded so that the last 300 characters begin inside ``user:password@``: the scheme is gone from the
+    slice, so a redaction that runs on the slice alone cannot match the userinfo and the password survives.
+    """
+    password = "s3cr3tPassw0rd"
+    line = (
+        f"fatal: unable to access 'https://deploy-bot:{password}@example.invalid/"
+        "org/floor-canary.git': Could not resolve host"
+    )
+    userinfo_start = line.index("deploy-bot")
+    filler = "." * (300 + userinfo_start - len(line))
+    stderr = line + filler
+    assert stderr[-300:].startswith("deploy-bot:" + password), (
+        "setup must cut inside the userinfo"
+    )
+
+    def fake_run(
+        argv: Sequence[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 128, stdout="", stderr=stderr)
+
+    monkeypatch.setattr(canary_publisher.subprocess, "run", fake_run)
+    code, words = canary_publisher.run_git(["push"], tmp_path, 5)
+    assert code == 128
+    assert password not in words, (
+        "the tail kept the password: redaction ran after the slice"
+    )
+    assert "deploy-bot" not in words
 
 
 def test_control_break_leak_token_is_caught_by_the_scan(tmp_path: Path) -> None:
