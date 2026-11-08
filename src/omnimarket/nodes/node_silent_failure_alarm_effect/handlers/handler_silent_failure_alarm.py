@@ -1114,10 +1114,14 @@ class HandlerSilentFailureAlarm:
         """The stamps of the rows of ``kinds`` naming a pool host, by host id.
 
         A row written by a host timer (``actor=timer:``) names its host without a lane having run
-        there, so it is not read as one (OMN-22778).
+        there, so it is not read as one (OMN-22778). Neither is a lane's own row naming a host its
+        CLAIM never put the lane on: the ``host=`` cell of a STATUS that reports an install on h051,
+        written by a lane running on h053, describes h051 and sends no hook event for it (OMN-23023).
+        A lane with no CLAIM host in the window is counted as before.
         """
         floor, ceiling = _stamp(now - LOOKBACK), _stamp(now + timedelta(minutes=5))
-        found: dict[str, list[datetime]] = {}
+        rows = []
+        ran_on: dict[str, set[str]] = {}
         for line in text.splitlines():
             head = line[:20]
             if head < floor or head > ceiling or " | host=h" not in line:
@@ -1130,9 +1134,18 @@ class HandlerSilentFailureAlarm:
                 or stamp is None
                 or host is None
                 or not _HOST_CELL.match(host)
-                or row.row_type not in kinds
                 or (row.token("actor") or "").startswith(_TIMER_ACTOR_PREFIX)
             ):
+                continue
+            lane = row.token("lane")
+            if row.row_type == "CLAIM" and lane is not None:
+                ran_on.setdefault(lane, set()).add(host)
+            if row.row_type in kinds:
+                rows.append((stamp, host, lane))
+        found: dict[str, list[datetime]] = {}
+        for stamp, host, lane in rows:
+            claimed = ran_on.get(lane or "")
+            if claimed and host not in claimed:
                 continue
             found.setdefault(host, []).append(stamp)
         return {host: tuple(sorted(stamps)) for host, stamps in found.items()}
