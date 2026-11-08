@@ -808,6 +808,11 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 # self-declared staged/deferred promotion, or an explicitly time-boxed
 # deferral with a stated follow-up condition.
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
+    ("ledger-file-census.yml", "ledger-file-census"): (
+        "shrink-only census of ledger-file readers and writers plus the "
+        "falsifiers that prove it; reports against its ratchet and is not "
+        "yet an independently required context."
+    ),
     ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
         "evidence but is not a merge gate."

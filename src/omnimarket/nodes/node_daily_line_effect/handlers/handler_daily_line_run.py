@@ -40,8 +40,8 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
     CommandPointRead,
+    open_claims_query,
 )
-from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
     ProtocolLedgerPointRead,
 )
@@ -134,7 +134,7 @@ def count_open_claims(read: ProtocolLedgerPointRead | None) -> int | None:
     """The open claims the bus-fed query node counts, or ``None`` when it did not answer (never zero for a failed read)."""
     if read is None:
         return None
-    answer = read.read(ModelPointQuery(query="open-claims"))
+    answer = read.read(open_claims_query())
     return None if answer.error else answer.matched
 
 

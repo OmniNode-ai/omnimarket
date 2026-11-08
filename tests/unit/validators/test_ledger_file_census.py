@@ -53,7 +53,7 @@ from tests.unit.nodes.node_work_ledger_file_census_effect.support import (
 
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
-RATCHET = ROOT / ".onex_ratchets/ledger_file_census_baseline.yaml"
+RATCHET = ROOT / "src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml"
 
 
 def hits(path: str, text: str) -> list[tuple[int, EnumCensusKind]]:

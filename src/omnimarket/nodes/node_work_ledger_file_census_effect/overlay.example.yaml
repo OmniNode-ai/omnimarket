@@ -21,4 +21,4 @@ writer_markers:
   - 'open\([^)]*["''][wax]\+?b?["'']'
   - '--append|\btee\b|\bappend\b'
 journal_env: ONEX_LEDGER_CENSUS_JOURNAL
-ratchet_file: .onex_ratchets/ledger_file_census_baseline.yaml
+ratchet_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml

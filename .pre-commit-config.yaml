@@ -1098,7 +1098,7 @@ repos:
         stages: [manual]
 
       # OMN-22917: the no-file census ratchet (plan 4.3, reading 2). Executable readers and writers of the
-      # ledger file's name or path variable may not grow past .onex_ratchets/ledger_file_census_baseline.yaml.
+      # ledger file's name or path variable may not grow past src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml.
       - id: ledger-file-census
         name: Ledger file census ratchet
         language: system
