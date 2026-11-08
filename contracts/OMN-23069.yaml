@@ -110,3 +110,12 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_pilot_manifest_check_compute/test_golden_chain_pilot_manifest_check.py -q -n 0 --no-cov -k golden_chain_command_json_to_terminal_event_json
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: []
+  - id: dod-omn23069-integration-proof
+    description: >-
+      The new review findings tests run on a lab host at the pushed head, and the lab run is recorded in the pull request.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23069 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_review_findings_omn23069.py tests/nodes/node_pilot_manifest_check_compute/test_review_findings_omn23069.py tests/nodes/node_lab_fill_plan_compute/test_review_findings_omn23069.py tests/unit/nodes/node_landing_canary_effect/test_review_findings_omn23069.py tests/unit/nodes/node_work_ledger_query_effect/test_review_findings_omn23069_ledgerq.py -q --no-cov
+        cwd: .
