@@ -374,6 +374,9 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
+    # on the work of a cause whose declared owner is that parent.
+    parent_ticket: str = ""
 
 
 class ModelFloorCauseIn(_Frozen):
