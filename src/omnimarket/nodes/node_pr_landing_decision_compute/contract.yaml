@@ -108,10 +108,8 @@ handler_routing:
       handler:
         name: "HandlerPrLandingDecision"
         module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
-    - operation: "join_j8_landing_decision"
-      handler:
-        name: "HandlerLandingJoinJ8"
-        module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
+    # HandlerLandingJoinJ8 (OMN-22919) is not routed here: its constructor takes a sink and a
+    # policy the runtime cannot inject, and the landing controller calls it in process.
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
 runtime_dispatch:
