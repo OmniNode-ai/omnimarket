@@ -135,7 +135,7 @@ def postgres() -> Iterator[_Postgres]:
             password=os.environ["INTEGRATION_POSTGRES_PASSWORD"],
         )
         return
-    if _DOCKER is None:  # pragma: no cover - host dependent
+    if _DOCKER is None:
         pytest.skip("docker unavailable and INTEGRATION_POSTGRES_PASSWORD unset")
     database = "omn21970"
     container_id: str | None = None
