@@ -1,0 +1,93 @@
+schema_version: 1.0.0
+ticket_id: OMN-22856
+title: The recorded-floor falsifier, then the lab
+summary: 'Plan task T8 of the stopped-line fill: a replay of the fill''s nodes on the recorded 10:40Z floor (two variants, a working and a refusing runner, determinism), the entry-point tests, the live-mint check fixtures and the parity coverage tests. Test code, and three fixes in the nodes it found red: the reducer key accepts a dotted task id, the lines compute prints line-filled for a line filled to capacity, and the record model accepts the floor state integrating.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22856-recorded-floor-falsifier
+  statement: The stopped-line fill, run end to end on the recorded floor, starts one lane per startable line, prints what the plan says it prints, is deterministic, and its entry points and parity coverage hold.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: Variant A, the recorded 10:40Z floor (six `STARTABLE` lines, two stopped pills), 20 free slots, `max_fill_lanes_per_line = 1`, working runner: exactly six lanes start, one per line, and the tick prints six `NOTE line-filled:` and no `MISSING line-stopped:`; with the runner stubbed to refuse it prints six `MISSING line-stopped:`. Variant B, the operator''s shape: the fixture edited so that exactly four lines are `STARTABLE`: four lanes started, or four MISSING lines with the scripted refusal. Each replay runs twice from identical initial state and the decisions, rendered lines, statuses and resulting rows are compared byte for byte -- falsifier: the replay pins both variants'' counts and the determinism comparison.'
+  - id: AC2
+    statement: 'AC2: The lab `inspect` on the live record returns only tasks that the captured floor shows as `state=prep`, note starting `ready`, no PR, not named by a live lane or open PR and not held by an entry, on a line that is not at capacity net of entries, checked by `jq` on the captured input (the `inspect` answer carries the floor, the row with its `seq`, the verdicts, the overlay values and the clock it decided on) -- falsifier: the PR body carries the captured input, the returned tasks and the `jq` check; a returned task that fails it fails the criterion.'
+  - id: AC4
+    statement: 'AC4: The entry points hold: after a real `tick` against the scripted refusing runner, the `lines` entry prints the four `MISSING line-stopped:` lines of variant B; after a tick with the working runner it prints the `NOTE line-filled:` lines; with the stored answer aged past `max_age_minutes` it prints the stale line; and a command that times out prints `UNKNOWN floor-fill-unreachable` and exits 75 -- falsifier: `-k lines_entry_real_entry_points`.'
+  - id: AC5
+    statement: 'AC5: *The live mint and a lane start.* After T11 and T13 have merged, on the fill host with the live Linear key from the store, `send_key` for one real ready floor task through the orchestrator with a scripted refusing process effect mints a ticket and starts no lane; then `send_key` with the real posix adapter and T15''s entry attempts one real lane on a lab host and records its CLAIM with `key=floor:<line_id>:<task_id>`. The run saves `payload.json` (`{title, parent, criteria[], floor_key_line}`, the create payload), `issue.json` (the read-back in the shape `ProtocolFloorTicketStore.read` returns: `{id, state, parent, project, labels[], pillar, description}`), and `ledger.before` and `ledger.after` (the ledger file copied before and after each step). With `K` the key and `rows() { awk -F'' [|] '' -v k="key=$K" -v kind="$2" ''(kind == "" || $2 == kind) { for (i = 3; i <= NF; i++) if ($i == k) { print; next } }'' "$1"; }`, the checks are: (i) `jq -e --slurpfile p payload.json ''$p[0] as $q | .parent == $q.parent and .project == null and .pillar == null and ([.labels[] | ascii_downcase | contains("delegation")] | any | not) and ([$q.criteria[] as $c | (.description | contains($c))] | all) and (.description | split("\n") | any(. == $q.floor_key_line))'' issue.json` exits 0 (the read-back carries the payload''s parent, every criterion verbatim and the key line, and has no project, no delegation label and no pillar, so the old fill''s rule drops it, T11 criterion 6; the exposures that remain are R9''s); (ii) after the refusing step `diff <(rows ledger.before) <(rows ledger.after)` is empty; (iii) after the posix step `new=$(diff <(rows ledger.before CLAIM) <(rows ledger.after CLAIM) | sed -n ''s/^> //p'')` is exactly one line (`[ "$(printf ''%s\n'' "$new" | grep -c .)" -eq 1 ]` exits 0) and `printf ''%s\n'' "$new" | awk -F'' [|] '' -v t="ticket=$(jq -r .id issue.json)" ''$2 == "CLAIM" { for (i = 3; i <= NF; i++) if ($i == t) ok = 1 } END { exit !ok }''` exits 0. `rows` matches the key cell exactly (`T0.1` never matches `T0.10`) and ignores every other key, because the live tick and the old fill keep writing the ledger. `-k live_mint_check_fixtures` runs the three checks against a matching fixture, a mismatching one (wrong parent, a delegation label, a wrong key) and a ledger fixture holding an unrelated concurrent append and a `T0.10` row, and they must pass, fail and pass, and a fourth fixture with two new CLAIM rows for the key must fail check (iii). The files are attached to the T8 PR and `gh pr view <T8 PR> --json body -q .body | grep -E ''^validator-exit: 0$''` exits 0 (the gate''s validator, run by hand on `payload.json`). A CLAIM does not prove a running engine; the lane''s receipt and TERMINAL are T15''s evidence (R9). -- falsifier: `uv run pytest -k live_mint_check_fixtures` and checks (i) to (iii) above'
+  - id: AC6
+    statement: 'AC6: Every node of section 4 has Redpanda parity coverage and no skip -- falsifier: `uv run pytest -k parity_coverage_complete` (enumerates the nine new node directories and fails on a node with no collected `floor_fill_parity` test), `-k parity_zero_skipped` (runs the parity marker with `-rs` against `FLOOR_FILL_PARITY_BOOTSTRAP` and fails on any skipped test) and, for each task''s PR, `gh pr view <PR> --json body -q .body | grep -E ''^parity-receipt: ''` exits 0.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the recorded-floor falsifier.
+  command: uv run pytest tests/integration/test_stopped_line_fill_replay.py tests/integration/test_stopped_line_fill_live_mint_checks.py tests/integration/test_stopped_line_fill_parity_coverage.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22856-ac1
+  description: 'AC1 the recorded-floor replay: both variants, both runners, determinism, and the controls that turn the count pin and the comparison red.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_stopped_line_fill_replay.py -q --no-cov --tb=line -k "recorded_floor or key_safe_control or count_pin_control or determinism_control or two_variants"
+    cwd: .
+- id: dod-omn22856-ac2
+  description: AC2 inspect on a captured floor is read-only and returns only ready, unheld tasks, checked by jq; the control turns the jq check red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_stopped_line_fill_replay.py -q --no-cov --tb=line -k "inspect"
+    cwd: .
+- id: dod-omn22856-ac4
+  description: 'AC4 the entry points: lines after a refusing tick, after a working tick, stale, absent, a timed-out tick and a failing forward.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_stopped_line_fill_replay.py -q --no-cov --tb=line -k "lines_entry_real_entry_points"
+    cwd: .
+- id: dod-omn22856-ac5
+  description: 'AC5 the three live-mint checks on fixtures: pass, fail and pass, and two new CLAIM rows fail check (iii). The live run itself needs T11 and T13 merged.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_stopped_line_fill_live_mint_checks.py -q --no-cov --tb=line -k "live_mint_check_fixtures"
+    cwd: .
+- id: dod-omn22856-ac6
+  description: AC6 every one of the nine node directories has a collected floor_fill_parity test with a Redpanda leg, and the marker runs with no skipped test.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_stopped_line_fill_parity_coverage.py -q --no-cov --tb=line -k "parity_coverage_complete or parity_zero_skipped"
+    cwd: .
+- id: dod-omn22856-node-fixes
+  description: 'The three node fixes the replay found, each with its own test in the owning node: dotted task ids in the reducer key, line-filled at capacity in the lines compute, the state integrating in the candidates record model.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer/tests src/omnimarket/nodes/node_floor_fill_lines_compute/tests src/omnimarket/nodes/node_floor_fill_candidates_compute/tests -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22856-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22856 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer/tests src/omnimarket/nodes/node_floor_fill_lines_compute/tests src/omnimarket/nodes/node_floor_fill_candidates_compute/tests -q --no-cov
+    cwd: .

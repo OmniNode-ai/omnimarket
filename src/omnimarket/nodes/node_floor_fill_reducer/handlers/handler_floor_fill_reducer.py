@@ -96,11 +96,13 @@ def lane_name(key: str, attempt: int) -> str:
     """``floor-<line_id>-<task_id>-<h8>-a<attempt>``: a function of the key and the count.
 
     ``<h8>`` is the first eight hex digits of the sha256 of the key, which tells apart the
-    keys whose ids concatenate alike (``a-b`` + ``c`` and ``a`` + ``b-c``).
+    keys whose ids concatenate alike (``a-b`` + ``c`` and ``a`` + ``b-c``) and the keys that
+    differ only in a dot (``T0.1`` and ``T0-1``). A dot of the task id is written ``-`` so the
+    name stays in the closed charset of letters, digits, ``_`` and ``-``.
     """
     line_id, task_id = line_and_task(key)
     h8 = hashlib.sha256(key.encode()).hexdigest()[:8]
-    return f"floor-{line_id}-{task_id}-{h8}-a{attempt}"
+    return f"floor-{line_id}-{task_id.replace('.', '-')}-{h8}-a{attempt}"
 
 
 @dataclass(frozen=True)

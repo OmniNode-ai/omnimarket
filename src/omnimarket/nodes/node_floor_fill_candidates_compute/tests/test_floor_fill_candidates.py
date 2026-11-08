@@ -476,6 +476,30 @@ def test_no_startable_lists_the_cause_of_every_task_that_is_not_ready() -> None:
     }
 
 
+def test_the_live_floor_state_integrating_is_read_and_is_not_ready() -> None:
+    """The floor publishes ``integrating`` for an item whose PR is landing: it reads, never malformed."""
+    result = run(
+        request(
+            floor_record=record(
+                [
+                    item(
+                        "A",
+                        "integrating",
+                        "PRs example/repo#1",
+                        prs=("example/repo#1",),
+                    ),
+                    item("B", "prep", "ready"),
+                ]
+            )
+        )
+    )
+    assert result.verdict != "FLOOR-UNREAD"
+    assert result.unread_cause == ""
+    line = only_line(result)
+    assert "A" in dict(line.not_ready_pairs())
+    assert "A" not in [c.task_id for c in line.candidates]
+
+
 def test_line_without_stations_is_no_startable() -> None:
     text = json.dumps(
         {

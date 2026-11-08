@@ -185,6 +185,37 @@ def test_with_the_runner_working_four_lines_are_filled() -> None:
     assert all(f.fix == "" for f in out.findings)
 
 
+def test_a_line_filled_to_capacity_this_pass_prints_filled_not_at_capacity() -> None:
+    """At capacity one the re-read reads the filled line AT-CAPACITY; it was still filled."""
+    lines = [{"line_id": "alpha", "verdict": "AT-CAPACITY"}]
+    results = [{"key": "floor:alpha:alpha-t1", "kind": "started", "lane": "floor-a-a1"}]
+    out = handle(lines=lines, start_results=results)
+    assert out.rendered() == ("NOTE line-filled:alpha | lane=floor-a-a1",)
+
+
+def test_a_line_at_capacity_that_started_nothing_this_pass_still_prints_at_capacity() -> (
+    None
+):
+    lines = [
+        {"line_id": "alpha", "verdict": "AT-CAPACITY"},
+        {"line_id": "bravo", "verdict": "AT-CAPACITY"},
+    ]
+    results = [{"key": "floor:alpha:alpha-t1", "kind": "started", "lane": "floor-a-a1"}]
+    out = handle(lines=lines, start_results=results)
+    assert out.rendered() == (
+        "NOTE line-filled:alpha | lane=floor-a-a1",
+        "NOTE line-at-capacity:bravo",
+    )
+
+
+def test_a_line_at_capacity_whose_start_failed_prints_at_capacity_never_filled() -> (
+    None
+):
+    lines = [{"line_id": "alpha", "verdict": "AT-CAPACITY"}]
+    out = handle(lines=lines, start_results=failed()[:1])
+    assert out.rendered() == ("NOTE line-at-capacity:alpha",)
+
+
 def test_two_lanes_started_on_one_line_print_one_filled_line() -> None:
     results = [
         {"key": "floor:alpha:alpha-t1", "kind": "started", "lane": "floor-a-a1"},

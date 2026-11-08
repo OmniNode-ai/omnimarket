@@ -1,0 +1,8 @@
+{
+  "title": "T0.1. Example task T0.1",
+  "parent": "OMN-22856",
+  "criteria": [
+    "Example behaviour of T0.1 holds -- falsifier: `pytest -k example_t0_1`"
+  ],
+  "floor_key_line": "Floor key: floor:2026-10-01-line-a-plan:T0.1"
+}
