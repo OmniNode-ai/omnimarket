@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22801
+title: The lab host row model accepts volumes_root, so the host table with the h101 volume mount root is no longer refused whole by every placement read
+summary: ModelLabHostRow carries the optional cell volumes_root (already on dev). This change adds the test file the ticket's criteria name, so each criterion has a falsifier that runs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22801-volumes-root
+  statement: A host row with an absolute volumes_root loads, a row without it loads, a relative value is refused, and a host table with the h101 volumes_root cell loads whole.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a host row with volumes_root set to an absolute directory loads through ModelLabHostRow, a row without it still loads, and a relative path is refused -- falsifier: uv run --frozen pytest tests/unit/models/test_lab_host_row_volumes_root_omn22788.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC2
+    statement: "AC2: the shipped packaged lab host table loads through the host table loader on h053 with its h101 volumes_root cell, and the same load on origin/dev refuses naming hosts.1.volumes_root -- falsifier: uv run pytest tests/unit/models/test_lab_host_row_volumes_root_omn22788.py -q --no-cov -n 0 -p no:randomly -k packaged_table"
+evidence_requirements:
+- kind: tests
+  description: The row model and host table loader tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/models/test_lab_host_row_volumes_root_omn22788.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22801-row-model
+  description: The row model tests pass; with the row model at its content before omnimarket#5267 the load-whole and row-with-volumes_root tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/models/test_lab_host_row_volumes_root_omn22788.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22801-packaged-table
+  description: A host table with the h101 volumes_root cell loads through the host table loader, and a relative cell is refused naming hosts.1.volumes_root.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/models/test_lab_host_row_volumes_root_omn22788.py -q --no-cov -n 0 -p no:randomly -k packaged_table
+    cwd: .
