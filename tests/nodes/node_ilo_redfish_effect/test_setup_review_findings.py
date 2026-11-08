@@ -16,6 +16,12 @@ from pydantic import JsonValue
 from omnimarket.nodes.node_ilo_redfish_effect.handlers import (
     setup_certificate as cert,
 )
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
+    ProtocolRedfishTransport,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
+    ModelIloHost,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     EnumIloSetupRefusal as R,
 )
@@ -158,3 +164,35 @@ def test_the_same_bad_sha256_is_refused_through_the_setup(tmp_path: Path) -> Non
     result = rig.run("h9")
     assert result.hosts[0].refusal is R.FINGERPRINT_MISMATCH
     assert device.account_posts == []
+
+
+# -- thread 9: one endpoint for the certificate fetch, the provisioning and the first read -------
+
+
+def test_a_host_configured_on_another_port_is_set_up_on_that_port_throughout(
+    tmp_path: Path,
+) -> None:
+    ports: list[int] = []
+    devices = {"h9": SetupDevice("gen9")}
+
+    def factory(host: ModelIloHost, directory: Path) -> ProtocolRedfishTransport:
+        del directory
+        ports.append(host.port)
+        return devices[host.name]
+
+    rig = Rig(tmp_path, devices, transport_factory=factory)
+    assert rig.run("h9").hosts[0].status == "ready"
+    _edit_overlay(rig, lambda row: row.__setitem__("port", 8443))
+    rig.fetches.clear()
+    ports.clear()
+    assert rig.run("h9").hosts[0].status == "ready"
+    assert [port for _, port in rig.fetches] == [8443]
+    assert ports
+    assert set(ports) == {8443}
+    assert rig.overlay()["hosts"][0]["port"] == 8443
+
+
+def test_a_new_host_is_set_up_on_the_default_port(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
+    assert rig.run("h9").hosts[0].status == "ready"
+    assert [port for _, port in rig.fetches] == [443]

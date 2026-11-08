@@ -372,7 +372,8 @@ class IloSetupSequence:
         )
         admin_user, admin_password = self._admin(name, request, stored, steps)
 
-        der = self._fetch_cert(address)
+        port = _recorded_port(existing)
+        der = self._fetch_cert(address, port or ILO_PORT)
         seen = cert.presented(der)
         issuer_pem: str | None = None
         if cert.is_weak(seen):
@@ -386,6 +387,7 @@ class IloSetupSequence:
                     admin_password,
                     stored,
                     steps,
+                    port,
                 )
             except IloRefusalError as exc:
                 raise _StopError(
@@ -419,6 +421,7 @@ class IloSetupSequence:
                     f"{name}-ilo.pem",
                     False,
                     issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
+                    port=port,
                 )
             )
             self._candidate_transport = self._transport_factory(
@@ -494,6 +497,7 @@ class IloSetupSequence:
             False,
             existing=existing,
             issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
+            port=_recorded_port(existing),
         )
         # The candidate is checked from its own directory; the overlay row and the certificate files of a
         # host that already works are replaced only once the candidate has passed its first read.
@@ -664,9 +668,9 @@ class IloSetupSequence:
 
     # -- certificate ------------------------------------------------------------------------
 
-    def _fetch_cert(self, address: str) -> bytes:
+    def _fetch_cert(self, address: str, port: int) -> bytes:
         try:
-            return self._fetch(address, ILO_PORT)
+            return self._fetch(address, port)
         except TimeoutError:
             raise _StopError(Refusal.CONNECT_FAILED, "timeout") from None
         except (ssl.SSLError, ValueError):
@@ -839,6 +843,7 @@ class IloSetupSequence:
         admin_password: SecretStr,
         stored: frozenset[str],
         steps: list[ModelIloSetupStep],
+        port: int | None,
     ) -> tuple[bytes, str]:
         """Replace an RSA key too weak for a modern client: the new certificate's DER and the CA's PEM.
 
@@ -880,6 +885,7 @@ class IloSetupSequence:
                     seen.sha256,
                     "legacy.pem",
                     False,
+                    port=port,
                 )
             )
             scope = _LegacyScope(self._legacy_factory(legacy_host, Path(work)))
@@ -902,7 +908,7 @@ class IloSetupSequence:
                 session.logout()
             leaf_der = leaf.public_bytes(serialization.Encoding.DER)
             self._await_verified(
-                name, address, leaf_der, leaf_pem, ca, Path(work), steps
+                name, address, leaf_der, leaf_pem, ca, Path(work), steps, port
             )
         return leaf_der, ca.certificate_pem
 
@@ -1019,6 +1025,7 @@ class IloSetupSequence:
         ca: lab_ca.LabCa,
         work: Path,
         steps: list[ModelIloSetupStep],
+        port: int | None,
     ) -> None:
         """Wait out the iLO's reset: connect normally, verifying the lab CA and the new fingerprint."""
         Path(work, "leaf.pem").write_text(leaf_pem, encoding="ascii")
@@ -1033,6 +1040,7 @@ class IloSetupSequence:
                 "leaf.pem",
                 False,
                 issuer_file=lab_ca.LAB_CA_FILE,
+                port=port,
             )
         )
         transport = self._transport_factory(verified_host, work)
@@ -1366,6 +1374,12 @@ def _rows(document: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
     return [r for r in hosts if isinstance(r, dict)]
 
 
+def _recorded_port(existing: dict[str, JsonValue] | None) -> int | None:
+    """The port a host's overlay row configures, or None when the row sets none."""
+    port = existing.get("port") if existing else None
+    return port if isinstance(port, int) and not isinstance(port, bool) else None
+
+
 def _recorded_pin(existing: dict[str, JsonValue] | None) -> str | None:
     """The SHA-256 a host's overlay row already pins, if it pins one."""
     tls = existing.get("tls") if existing else None
@@ -1384,12 +1398,15 @@ def _host_row(
     *,
     existing: dict[str, JsonValue] | None = None,
     issuer_file: str | None = None,
+    port: int | None = None,
 ) -> dict[str, JsonValue]:
     """The overlay row; a column the setup does not own (port, media prefixes, key names) is kept."""
     kept = dict(existing or {})
     tls: dict[str, JsonValue] = {"ca_file": ca_file, "sha256": sha256}
     if issuer_file is not None:
         tls["issuer_file"] = issuer_file
+    if port is not None:
+        kept["port"] = port
     return {
         **kept,
         "name": name,
