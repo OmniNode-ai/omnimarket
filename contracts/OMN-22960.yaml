@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22960
+title: 'J-recover: with the dev runtime down in a drill, a fix still lands and a redeploy still fires, because neither trigger runs on the runtime it deploys'
+summary: tests/integration/test_j_recover.py drills the recovery path. It stops a shared-runtime stand-in, merges two green pull requests through the landing tick orchestrator in act mode with an injected merge writer, publishes the resulting merge events, and asserts that node_dev_merge_redeploy_trigger_effect publishes one redeploy-start command per merge. A trigger built on a runtime-hosted bus handle, or whose contract carries an event_bus or handler_routing block, publishes no command and fails the drill.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22960-j-recover-drill
+  statement: With the runtime stopped, the landing tick merges a fix and the redeploy trigger fires; a trigger that depends on the runtime fails the drill.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with the runtime stopped in a drill a fix merges through the landing tick and the redeploy trigger fires -- falsifier: uv run pytest tests/integration/test_j_recover.py -q -k runtime_down'
+  - id: AC2
+    statement: 'AC2: a trigger that depends on the runtime it deploys fails the drill -- falsifier: uv run pytest tests/integration/test_j_recover.py -q -k dependent_trigger_fails'
+evidence_requirements:
+- kind: tests
+  description: The J-recover drill tests
+  command: uv run pytest tests/integration/test_j_recover.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22960-runtime-down
+  description: With the runtime stopped the landing tick merges two pull requests and the redeploy trigger publishes a start command for each.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_j_recover.py -q -k runtime_down
+    cwd: .
+- id: dod-omn22960-dependent-trigger
+  description: A trigger on a runtime-hosted bus handle, or with a runtime-attaching contract, publishes no command and fails the drill.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_j_recover.py -q -k dependent_trigger_fails
+    cwd: .
