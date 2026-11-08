@@ -19,6 +19,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -53,12 +54,13 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     def fake_sync(
         argv: list[str], **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
-        target = Path(str(kwargs["env"][ec_mod._UV_PROJECT_ENVIRONMENT_ENV]))  # type: ignore[index]
+        env = cast("dict[str, str]", kwargs["env"])
+        target = Path(env[ec_mod._UV_PROJECT_ENVIRONMENT_ENV])
         (target / "bin").mkdir(parents=True, exist_ok=True)
         (target / "bin" / "python").write_text("")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(ec_mod.subprocess, "run", fake_sync)
+    monkeypatch.setattr(subprocess, "run", fake_sync)
     return envs
 
 
