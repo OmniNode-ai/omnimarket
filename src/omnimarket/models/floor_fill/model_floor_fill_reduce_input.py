@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_observation import (
+from omnimarket.models.floor_fill.model_floor_fill_observation import (
     ModelFloorFillObservation,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+from omnimarket.models.floor_fill.model_floor_fill_state import (
     ModelFloorFillState,
 )
 
