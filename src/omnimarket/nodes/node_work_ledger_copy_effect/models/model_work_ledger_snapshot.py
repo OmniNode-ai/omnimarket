@@ -18,6 +18,7 @@ _Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 class EnumSnapshotOutcome(StrEnum):
     WRITTEN = "snapshot-written"
     REFUSED_SAME_HOST = "refused-same-host"
+    REFUSED_NOT_STORE_HOST = "refused-not-on-store-host"
     REFUSED_EMPTY = "refused-empty-source"
     SOURCE_FAILED = "source-failed"
     STORE_FAILED = "store-failed"
@@ -31,6 +32,7 @@ class EnumDrillOutcome(StrEnum):
     REFUSED_SOURCE_REACHABLE = "refused-source-reachable"
     REFUSED_PROBE_FAILED = "refused-probe-failed"
     REFUSED_SAME_HOST = "refused-same-host"
+    REFUSED_NOT_DRILL_HOST = "refused-not-on-drill-host"
     REBUILD_MISMATCH = "rebuild-mismatch"
 
 

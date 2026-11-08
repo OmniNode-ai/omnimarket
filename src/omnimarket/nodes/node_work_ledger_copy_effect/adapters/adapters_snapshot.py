@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import sqlite3
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -108,6 +109,11 @@ class CommandSourceProbe:
             "probe",
             f"the probe exited {done.returncode}, neither reachable nor unreachable",
         )
+
+
+def machine_host_name() -> str:
+    """The machine this process runs on, as the handlers compare it with the overlay's declared hosts."""
+    return socket.gethostname()
 
 
 class DirectorySnapshotStore:
