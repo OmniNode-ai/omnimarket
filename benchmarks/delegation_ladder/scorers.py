@@ -35,7 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
-from benchmarks.delegation_ladder.vendoring import vendor_compat
+from omnimarket.handlers.handler_vendor_compat import vendor_compat
 
 TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
