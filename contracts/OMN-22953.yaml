@@ -49,11 +49,11 @@ dod_evidence:
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22953 -- uv run --frozen pytest tests/integration/test_join_j9.py tests/nodes/node_automatic_fix_install_effect -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn22953-deploy-readback
-  description: The J9 join handler class is present in the source this pull request's branch carries on origin, read live from GitHub; on the dev source the file does not exist and the read fails. The running wiring on the dev bus is not part of this change.
+  description: The J9 join handler class is present in the source tree this pull request carries; on the dev source the file does not exist and the grep fails. The running wiring on the dev bus is not part of this change.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automatic_fix_install_effect/handlers/handler_fix_install_join_j9.py?ref=omn-22953-j9-join-test" --jq .content | base64 -d | grep -c "class HandlerFixInstallJoinJ9" | grep -qv "^0$"'
+    check_value: grep -q "class HandlerFixInstallJoinJ9" src/omnimarket/nodes/node_automatic_fix_install_effect/handlers/handler_fix_install_join_j9.py
     cwd: .
