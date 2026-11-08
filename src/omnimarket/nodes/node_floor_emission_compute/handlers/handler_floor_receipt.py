@@ -13,6 +13,8 @@ and a failure together, a second start, a start with no terminal past the chain 
 A join A to B is judged on the events of the two pieces under one correlation id. Golden: A succeeded, B started
 after that, B succeeded. Error: A failed and B holds a typed ``upstream_`` failure and never started. B starting
 after A failed is a named break, and so is A failing with B silent past the deadline.
+A piece that only refused (a typed ``upstream_`` failure and no start) did not fail itself: the refusal ends the error
+shape at the join that asked for it, so the join after it asks nothing of the piece behind it (OMN-23022).
 
 Two things are not judged. A join into a piece that does not exist yet (the input lists the pieces that do) cannot be
 broken: nothing downstream is there to answer. And a chain run as a drill is not evidence for a join: its fault is
@@ -117,6 +119,7 @@ class _ChainReading:
                 "start_without_terminal",
                 f"no success or typed failure {deadline_s} s after the start",
             )
+        self.refusal = refusal
         self.broken = bool(self.findings)
         last = events[-1]
         self.last = last
@@ -180,6 +183,9 @@ class _PieceView:
         else:
             self.kind = "open"
         self.drill = any(r.drill for r in readings)
+        # A piece that only refused (typed upstream_ failure, no start) did not fail itself: its cause was answered at the
+        # join that wrote the refusal, so the next join asks nothing of the piece after it.
+        self.refused = bool(readings) and all(r.refusal for r in readings)
 
 
 class HandlerFloorReceipt:
@@ -391,7 +397,7 @@ class HandlerFloorReceipt:
             if a_fails:
                 if b is None:
                     waited = _age(now, a_fails[-1].emitted_at) or 0
-                    if waited > request.chain_deadline_s:
+                    if waited > request.chain_deadline_s and not a.refused:
                         find(
                             "downstream_missing_typed_failure",
                             cid,
