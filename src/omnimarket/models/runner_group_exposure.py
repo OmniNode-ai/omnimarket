@@ -61,7 +61,10 @@ class ModelGroupWorkflowFile(BaseModel):
 
 
 class ModelGroupJob(BaseModel):
-    """One job queued or in progress on a runner whose labels intersect the group's."""
+    """One job queued or in progress on a runner whose labels intersect the group's.
+
+    ``repository_private`` is what the run's repository object said: False is a public repository, True a
+    private one, None a read that did not say (it never counts as private)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -69,6 +72,8 @@ class ModelGroupJob(BaseModel):
     run_event: str = Field(min_length=1)
     head_is_fork: bool = False
     workflow_ref: str = Field(min_length=1)
+    repository: str | None = None
+    repository_private: bool | None = None
 
 
 class ModelExposureSettings(BaseModel):
