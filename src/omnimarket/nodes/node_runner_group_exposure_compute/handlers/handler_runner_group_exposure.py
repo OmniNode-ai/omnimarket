@@ -21,12 +21,14 @@ SUBJECT_PUBLIC_REACH_FILES = "g7_public_reach_files"
 SUBJECT_PINNED_EQUALS_FILES = "g7_pinned_equals_files"
 SUBJECT_ALLOWS_PUBLIC = "g7_allows_public"
 SUBJECT_PUBLIC_JOBS_WINDOW = "g7_public_jobs_window"
+SUBJECT_PUBLIC_REPOSITORY_JOBS = "g7_public_repository_jobs"
 SUBJECT_READ_AGE = "g7_read_age"
 SUBJECTS: tuple[str, ...] = (
     SUBJECT_PUBLIC_REACH_FILES,
     SUBJECT_PINNED_EQUALS_FILES,
     SUBJECT_ALLOWS_PUBLIC,
     SUBJECT_PUBLIC_JOBS_WINDOW,
+    SUBJECT_PUBLIC_REPOSITORY_JOBS,
     SUBJECT_READ_AGE,
 )
 
@@ -36,7 +38,7 @@ _U = EnumReadingVerdict.UNKNOWN
 
 
 class HandlerRunnerGroupExposure:
-    """handle(request) -> reading; the five subjects are in a fixed order."""
+    """handle(request) -> reading; the six subjects are in a fixed order."""
 
     def handle(
         self, request: ModelRunnerGroupExposureRequest
@@ -65,6 +67,7 @@ class HandlerRunnerGroupExposure:
             self._pinned_equals_files(request),
             self._allows_public(request),
             self._public_jobs_window(request),
+            self._public_repository_jobs(request),
             self._read_age(request),
         )
         by_name = {s.name: s for s in subjects}
@@ -167,6 +170,34 @@ class HandlerRunnerGroupExposure:
                 if not public
                 else f"{len(public)} of {len(request.jobs)} job(s) on the group are of public origin"
             ),
+        )
+
+    @staticmethod
+    def _public_repository_jobs(
+        request: ModelRunnerGroupExposureRequest,
+    ) -> ModelExposureSubject:
+        """The drain readback: no run queued or in progress on the group for a public repository, whatever its event."""
+        public = [j for j in request.jobs if j.repository_private is False]
+        unsaid = [j for j in request.jobs if j.repository_private is None]
+        if public:
+            return ModelExposureSubject(
+                name=SUBJECT_PUBLIC_REPOSITORY_JOBS,
+                verdict=_N,
+                count=len(public),
+                reason=f"{len(public)} of {len(request.jobs)} job(s) on the group belong to a public repository",
+            )
+        if unsaid:
+            return ModelExposureSubject(
+                name=SUBJECT_PUBLIC_REPOSITORY_JOBS,
+                verdict=_U,
+                count=len(unsaid),
+                reason=f"{len(unsaid)} of {len(request.jobs)} job(s) on the group did not say whether their repository is public",
+            )
+        return ModelExposureSubject(
+            name=SUBJECT_PUBLIC_REPOSITORY_JOBS,
+            verdict=_W,
+            count=0,
+            reason=f"{len(request.jobs)} job(s) on the group, none of a public repository",
         )
 
     @staticmethod
