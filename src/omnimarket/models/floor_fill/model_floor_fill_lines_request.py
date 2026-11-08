@@ -16,16 +16,16 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.nodes.node_floor_fill_lines_compute.models.enum_floor_fill_lines_entry_state import (
+from omnimarket.models.floor_fill.enum_floor_fill_lines_entry_state import (
     EnumFloorFillLinesEntryState,
 )
-from omnimarket.nodes.node_floor_fill_lines_compute.models.enum_floor_fill_lines_source import (
+from omnimarket.models.floor_fill.enum_floor_fill_lines_source import (
     EnumFloorFillLinesSource,
 )
-from omnimarket.nodes.node_floor_fill_lines_compute.models.enum_floor_fill_lines_start_kind import (
+from omnimarket.models.floor_fill.enum_floor_fill_lines_start_kind import (
     EnumFloorFillLinesStartKind,
 )
-from omnimarket.nodes.node_floor_fill_lines_compute.models.enum_floor_fill_lines_verdict import (
+from omnimarket.models.floor_fill.enum_floor_fill_lines_verdict import (
     EnumFloorFillLinesVerdict,
 )
 

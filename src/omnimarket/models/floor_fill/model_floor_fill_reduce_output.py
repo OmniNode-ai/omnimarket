@@ -8,16 +8,16 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_drop_reason import (
+from omnimarket.models.floor_fill.enum_floor_fill_drop_reason import (
     EnumFloorFillDropReason,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_trigger import (
+from omnimarket.models.floor_fill.enum_floor_fill_trigger import (
     EnumFloorFillTrigger,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_intent import (
+from omnimarket.models.floor_fill.model_floor_fill_intent import (
     ModelFloorFillIntent,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+from omnimarket.models.floor_fill.model_floor_fill_state import (
     ModelFloorFillState,
 )
 
