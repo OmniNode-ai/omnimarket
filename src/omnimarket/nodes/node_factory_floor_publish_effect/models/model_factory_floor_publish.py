@@ -157,6 +157,8 @@ class ModelPublishNames(BaseModel):
     simple_page: str = Field(min_length=1)
     simple_data: str = Field(min_length=1)
     simple_reads: str = Field(min_length=1)
+    compare_page: str = Field(min_length=1)
+    compare_data: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -377,6 +379,9 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     # What node_floor_simple_effect writes (relative to the registry home); both are published when they exist.
     simple_data_relpath: str = Field(min_length=1)
     simple_reads_relpath: str = Field(min_length=1)
+    # OMN-23018: the running comparison page and what node_floor_compare_effect writes (relative to the registry home).
+    compare_page_relpath: str = Field(min_length=1)
+    compare_data_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)

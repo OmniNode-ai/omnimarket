@@ -15,6 +15,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_lab_claude_token_effect.handlers.handler_lab_claude_token import (
+    PROBE_SCRIPT,
     TOKEN_FILE,
     HandlerLabClaudeToken,
     account_ref,
@@ -463,3 +464,10 @@ def test_rotate_dry_run_names_candidates_by_reference_only(tmp_path: Path) -> No
     assert pool_ref("spare-a") in text
     assert pool_ref("spare-b") in text
     _no_leak(result, host)
+
+
+def test_probe_script_never_runs_an_unquoted_variable_as_a_command() -> None:
+    """zsh does not word-split an unquoted variable, so ``$B claude`` is one word there (OMN-22478). Needs no zsh on the runner."""
+    for line in PROBE_SCRIPT.splitlines():
+        assert not line.startswith("$"), line
+    assert "${B[@]}" in PROBE_SCRIPT
