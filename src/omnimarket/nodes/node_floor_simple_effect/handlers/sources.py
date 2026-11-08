@@ -8,6 +8,7 @@ empty value for a source it could not read. Paths are the contract's; limits and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from collections.abc import Mapping
@@ -274,7 +275,18 @@ def read_watcher(
                 if isinstance(d, list) and len(d) > 2 and d[2]
             ]
             if done:
-                ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
+                # OMN-23056: the wait starts when the pull request could be landed. Checks that finished while it was a
+                # draft are older than that, so a handoff to landing for this very head moves the start forward to it.
+                started = max(done)
+                handoff = value.get("handoff")
+                if (
+                    isinstance(handoff, dict)
+                    and handoff.get("at")
+                    and handoff.get("head") == facts.get("head_sha")
+                ):
+                    with contextlib.suppress(ValueError):
+                        started = max(started, parse_time(handoff["at"]))
+                ages.append((key, max(int((now - started).total_seconds() // 60), 0)))
                 merge_state = str((value.get("review") or {}).get("merge_state") or "")
                 if merge_state in conflict_states:
                     conflicted.add(str(key))
