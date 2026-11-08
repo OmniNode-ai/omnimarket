@@ -37,6 +37,9 @@ from omnimarket.nodes.node_secret_reading_effect.adapters.drill_consumers import
     LeakyLogConsumer,
     LeakyRowConsumer,
 )
+from omnimarket.nodes.node_secret_reading_effect.handlers.schedule import (
+    load_schedule,
+)
 from tests.unit.nodes.node_secret_reading_effect.test_join_j4 import NOW, Run
 
 pytestmark = pytest.mark.unit
@@ -131,3 +134,10 @@ def test_error_control_the_same_run_without_the_break_never_reads_broken() -> No
     receipts = _fold(run, after=timedelta(seconds=DEADLINE_S + 60))
     assert _j4(receipts) == "golden_only"
     assert not receipts.findings
+
+
+def test_golden_the_row_the_rules_read_is_written_by_a_scheduled_unit() -> None:
+    join_j4 = load_schedule().join_j4
+    assert join_j4 is not None
+    assert join_j4.unit_name == "onex-secret-join-j4-hourly"
+    assert all(r.golden.lane == "secret-join-j4" for r in _rules())
