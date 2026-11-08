@@ -155,6 +155,12 @@ def test_job_log_through_canonical_runtime_bus_reads_the_failure_once(lane):
         "import json, os, sys\nfrom pathlib import Path\n"
         f"sys.path[:0] = {[str(root / 'src'), str(root)]!r}\n"
         "from click.testing import CliRunner\n"
+        # OMN-23032: a lane's job-log read is cache-only by default; this test is the
+        # live read through the budget, so it takes the declared opt-out.
+        "overlays = Path(os.environ['TEST_NETWORK']).parent / 'overlays'\n"
+        "(overlays / 'github_job_logs').mkdir(parents=True, exist_ok=True)\n"
+        "(overlays / 'github_job_logs' / 'overlay.yaml').write_text('lane_reads_cache_only: false\\n')\n"
+        "os.environ['ONEX_SKILL_OVERLAY_ROOTS'] = str(overlays)\n"
         "from omnimarket.handlers.scm.scm_cli import scm_group\n"
         "from omnimarket.nodes.node_github_repo_gateway_effect.handlers import handler_github_repo_gateway as gateway\n"
         "from tests.nodes.node_github_repo_gateway_effect.recorded_transport import BytesExchange, RecordedGatewayTransport, get\n"

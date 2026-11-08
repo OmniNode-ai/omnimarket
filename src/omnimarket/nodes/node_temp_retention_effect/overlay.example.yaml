@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of overlay.yaml: every host, path and number is made up. Copy it, replace the facts, and pin it
+# with ONEX_TEMP_RETENTION_OVERLAY or --overlay.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    # The windows the host applies to its run directories.
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    temp_roots:
+      - path: /srv/example/runs/.tmp
+      - path: /tmp
+        protected_name_patterns: ['session-[0-9]+']
+    store_ceilings:
+      - {path: /srv/example/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}

@@ -46,7 +46,7 @@ class_rules:
     pattern: '(?:from three branches|install branches into the one floor publisher)'
   - name: baselined-script-ratchet-refused-fix
     owner: "the owner of the canonical-file-shape ratchet (a shrink-only baseline refuses a fix to a baselined script)"
-    pattern: '(?:shrink-only ratchet|baselined script)'
+    pattern: '(?:shrink-only ratchet|baselined script|file-shape ratchet refuses any growth)'
   - name: zero-byte-index-lock
     owner: "the owner of the clone sync unit that met it (a zero-byte .git/index.lock no process holds)"
     pattern: 'zero-byte \.git/index\.lock'
@@ -98,7 +98,7 @@ class_rules:
     pattern: 'GitHub read budget of \d+'
   - name: bus-state-read-unavailable-to-lane
     owner: "the owner of the bus state readers a lane uses (workflow job steps, lab-pass receipts, the pr-view live read): no verb returns the state, so the lane reads UNKNOWN"
-    pattern: '(?:No tool reads|bus live read failed)'
+    pattern: '(?:No tool reads|bus live read failed|pull_merge_state can resolve a PR number to a commit for a different|--source bus live read of .{0,120}failed after \d+s)'
   - name: pr-handoff-install-first-unprovable
     owner: "the owner of pr-handoff's install-first check (it demands an installed=<host>:<revision> for a head that no declared installer can install before merge)"
     pattern: '(?:no installed=<host>:<revision>|installed= proof)'
@@ -120,6 +120,43 @@ class_rules:
   - name: pr-handoff-argument-list-too-long
     owner: "the owner of pr-handoff's handoff.sh: it passes a large pull request diff as arguments and the shell refuses"
     pattern: 'Argument list too long'
+  # The 4 rows of 2026-11-08T00:13Z to 05:15Z that the 37 rules above did not name (OMN-23109), one cause each, named from their own text.
+  - name: lane-launch-by-hand-refused-by-brief-checks
+    owner: "the owner of the lane brief checks and the remote-lane mint refusal (slot queueing, the ticket-mint sentence regex, the dev-tag brief refusal and the one-claim-per-parent premise check): launching successor lanes by hand meets each of them"
+    pattern: 'Launching \d+ successor lanes by hand'
+  - name: hook-preflight-minutes-per-commit
+    owner: "the owner of the repository's pre-commit hook set that hook-preflight runs (the type check and the direct-model-call check take most of the minutes of each commit)"
+    pattern: 'hook-preflight runs \d+ to \d+ minutes per commit'
+  - name: clone-sync-dirty-converge-resets-deploy-build-clone
+    owner: "the owner of node_canonical_clone_dirty_converge_effect (it resets the deploy agent's build clone while the agent holds its reconcile lock)"
+    pattern: 'node_canonical_clone_dirty_converge_effect'
+  - name: commit-gates-conflict-local-paths-vs-file-shape-ratchet
+    owner: "the owners of the check-local-paths-compute hook in omnibase_core and of the canonical-file-shape ratchet: the hook's only escape marker counts as suppression growth in the ratchet, so a file the hook flags cannot be changed"
+    pattern: 'check-local-paths-compute hook'
+# The 12 rows of 2026-11-08T08:11Z to 17:37Z that the 41 rules above did not name (OMN-22879), grouped by cause and named from their
+# own text. Three of them are named by widening the pattern of a class that already owned the cause (the file-shape ratchet and the
+# bus state reads, above); the rest are new classes.
+  - name: linear-api-rate-limited
+    owner: "the owner of the Linear read path that lanes and scans share (one read at a time, a backoff on HTTP 429; the 429 lane of OMN-22866 ended partial)"
+    pattern: '(?:Linear (?:API )?returned HTTP 429|hit the Linear rate limit|InfraRateLimitedError)'
+  - name: brief-names-workflow-file-absent-at-dev-tip
+    owner: "the owner of the morning brief that names the workflow (the deploy-agent age stays UNKNOWN every morning until the brief names a workflow that has runs)"
+    pattern: 'Brief names .{0,60}?\.ya?ml .{0,120}does not exist at dev tip'
+  - name: lab-host-hook-test-fails-on-unmodified-base
+    owner: "the owner of the failing hook test (a test that fails on a lab host at the unmodified base blocks hook-preflight for every lane placed there) and of that host's install"
+    pattern: 'fails \d+ of \d+ on host h\d+ on unmodified origin/\w+'
+  - name: lab-lane-has-no-signing-identity
+    owner: "the owner of lab-host lane commit signing (a repository whose ruleset requires verified signatures refuses a lab lane's push and contents write: GH013)"
+    pattern: '(?:requires verified signatures|lab-host lane has no signing identity)'
+  - name: prrp-snapshot-stale-on-lab-host
+    owner: "the host installer for the private-repo-runner-placement snapshot (onex-prrp-snapshot-publish must refresh it on every lab host inside the hook's 24 hour limit)"
+    pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run)'
+  - name: ilo-redfish-logs-verb-reads-links-as-fields
+    owner: "the owner of node_ilo_redfish_effect read_logs (an iLO 4 IML Entries collection holds links in Members, the handler reads inline fields); the overlay journal_dir home-path rejection and the pr-create duplicate-guard match named in the same row need their own owners"
+    pattern: 'node_ilo_redfish_effect logs verb returns'
+  - name: harness-delegate-fixed-call-budget-kills-long-run
+    owner: "the owner of the harness-delegate task class budgets (a class's fixed call budget cannot be raised, and a harness that writes its answer only at the end loses a run that reaches it)"
+    pattern: "fixed \\d+ s call budget"
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness

@@ -187,7 +187,7 @@ class HandlerOverlayDrift:
             )
         now = self._clock().astimezone(UTC)
         result = self._read(command.correlation_id)
-        return self._publish(result, now, command.write)
+        return self._publish(result, now, command.write, command.upstream_cid)
 
     def _unknown(self, correlation_id: str, reason: str) -> ModelOverlayDriftResult:
         return ModelOverlayDriftResult(
@@ -340,7 +340,11 @@ class HandlerOverlayDrift:
         return ",".join(named) or "none"
 
     def _publish(
-        self, result: ModelOverlayDriftResult, now: datetime, write: bool
+        self,
+        result: ModelOverlayDriftResult,
+        now: datetime,
+        write: bool,
+        upstream_cid: str | None = None,
     ) -> ModelOverlayDriftResult:
         overlay_hash = self._overlay.overlay_hash()
         runtime = self._overlay.runtime
@@ -396,6 +400,11 @@ class HandlerOverlayDrift:
                 else ()
             ),
             f"reason={','.join(result.reasons)}",
+            *(
+                (f"{self._overlay.upstream.cid_cell}={upstream_cid}",)
+                if upstream_cid and self._overlay.upstream
+                else ()
+            ),
             *(f"{name}={value}" for name, value in cells_by_name.items()),
             f"probed_at={stamp_text(now)}",
             f"published_at={stamp_text(now)}",
