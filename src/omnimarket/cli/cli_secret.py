@@ -49,6 +49,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
@@ -908,9 +909,6 @@ def _read_model_key(provider: str) -> str:
 
 
 _model_choice = click.Choice(PROVIDERS, case_sensitive=False)
-_model_json = click.option(
-    "--json", "as_json", is_flag=True, help="One JSON object per line."
-)
 
 
 models_group = click.Group(
@@ -947,7 +945,7 @@ models_group = click.Group(
         "OpenAI-compatible API, such as http://<host>:<port>; local needs no key."
     ),
 )
-@_model_json
+@model_json
 def add_model(
     provider: str, model_options: tuple[str, ...], url: str | None, as_json: bool
 ) -> None:
@@ -1021,7 +1019,7 @@ def add_model(
 
 @models_group.command("test")
 @click.argument("provider", required=False, type=_model_choice)
-@_model_json
+@model_json
 def test_models(provider: str | None, as_json: bool) -> None:
     """Test PROVIDER, or every set-up provider, with one pinned delegation each."""
     request = ModelModelSetupRequest(
@@ -1040,7 +1038,8 @@ def test_models(provider: str | None, as_json: bool) -> None:
 
 
 @models_group.command("list")
-@_model_json
+@ladder_option
+@model_json
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
     for row in listed(as_json):  # OMN-21267: the rule in force first
