@@ -632,9 +632,21 @@ workflow_coordination:
             status: declared
 
 # Attach-on-demand activation (OMN-22909, base-first piece 3): HandlerAttachOnDemand takes its
-# attacher and seam bus as constructor parameters, so it runs through answer_command, not
-# handler_routing. It attaches the one on-demand node that consumes a seam's command topic,
+# attacher and seam bus as optional constructor parameters; it is bound here so the node contract owns it,
+# and it runs wired through answer_command. It attaches the one on-demand node that consumes a seam's command topic,
 # demands the command, reads the correlated result by the seam's deadline and detaches.
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_seam_read_plan:HandlerSeamReadPlan
+  handlers:
+    - operation: attach_on_demand
+      topic: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+      handler:
+        name: HandlerAttachOnDemand
+        module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_demand
+      input_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandRequest
+      output_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandResult
+
 topics:
   attach_on_demand_requested: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
   attach_on_demand_started: onex.evt.omnimarket.seam-attach-on-demand-started.v1

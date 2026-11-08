@@ -42,11 +42,20 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
 class HandlerAttachOnDemand:
     """Attach, demand, read, detach, over the injected attacher and bus."""
 
-    def __init__(self, *, attacher: ProtocolNodeAttacher, bus: ProtocolSeamBus) -> None:
+    def __init__(
+        self,
+        *,
+        attacher: ProtocolNodeAttacher | None = None,
+        bus: ProtocolSeamBus | None = None,
+    ) -> None:
         self._attacher = attacher
         self._bus = bus
 
     def handle(self, request: ModelAttachOnDemandRequest) -> ModelAttachOnDemandResult:
+        if self._attacher is None or self._bus is None:
+            raise RuntimeError(
+                "HandlerAttachOnDemand is unwired: inject an attacher and a seam bus"
+            )
         outcome = self._attacher.attach(request)
         if not outcome.attached:
             return ModelAttachOnDemandResult(
