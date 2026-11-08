@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: contract-wired by module path from contract.yaml handler_routing
 """Envelope-shaped handlers for runtime routing of the iLO node.
 
 The real handlers (``HandlerIloRedfish``, ``IloSetupSequence``) take lab-private ports (overlay,

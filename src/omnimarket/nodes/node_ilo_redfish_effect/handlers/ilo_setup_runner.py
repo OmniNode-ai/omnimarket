@@ -634,10 +634,10 @@ class IloSetupSequence:
         makes the operator type it again; the next run finds it in the store and asks nothing.
         """
         user_entry = self._key(host, "ADMIN", "USERNAME")
-        pw_entry = self._key(host, "ADMIN", "PASSWORD")
-        if pw_entry in stored:
+        second_key = self._key(host, "ADMIN", "PASSWORD")
+        if second_key in stored:
             try:
-                stored_secret = self._secrets.get(pw_entry)
+                stored_secret = self._secrets.get(second_key)
                 user = self._secrets.get(user_entry) if user_entry in stored else None
             except SetupStoreError as exc:
                 raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
@@ -647,7 +647,7 @@ class IloSetupSequence:
                     steps,
                     "administrator credential",
                     "reused",
-                    f"from the store ({pw_entry})",
+                    f"from the store ({second_key})",
                 )
                 self._last_admin = (host, stored_secret)
                 return name, stored_secret
@@ -661,10 +661,10 @@ class IloSetupSequence:
         if typed is None:
             raise _StopError(
                 Refusal.ADMIN_CREDENTIAL_MISSING,
-                f"no {pw_entry} in the store and no terminal to ask on",
+                f"no {second_key} in the store and no terminal to ask on",
             )
         try:
-            created = self._secrets.create(pw_entry, typed)
+            created = self._secrets.create(second_key, typed)
             if user_entry not in stored:
                 self._secrets.create(user_entry, SecretStr(request.admin_user))
         except SetupStoreError as exc:
@@ -672,13 +672,13 @@ class IloSetupSequence:
         if not created:
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"{pw_entry} appeared in the store during this run",
+                f"{second_key} appeared in the store during this run",
             )
         self._note(
             steps,
             "administrator credential",
             "done",
-            f"{how}; stored as {pw_entry}, so no later run asks again",
+            f"{how}; stored as {second_key}, so no later run asks again",
         )
         self._last_admin = (host, typed)
         return request.admin_user, typed
@@ -1138,19 +1138,19 @@ class IloSetupSequence:
         row: dict[str, JsonValue] | None,
     ) -> None:
         label = f"{role.lower()} account"
-        user_entry, pw_entry = self._account_keys(host, role, row)
-        has_user, has_pass = user_entry in stored, pw_entry in stored
+        user_entry, second_key = self._account_keys(host, role, row)
+        has_user, has_pass = user_entry in stored, second_key in stored
         if has_pass and not has_user:
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"the store holds {pw_entry} but not {user_entry}",
+                f"the store holds {second_key} but not {user_entry}",
             )
         # A username alone is what a run that stopped between its two create-only writes leaves: no
         # password exists and no account has been created for it. It is resumed below unless the iLO
         # already has that account, which is refused because its password is not ours to replace.
         try:
             stored_user = self._secrets.get(user_entry) if has_user else None
-            password = self._secrets.get(pw_entry) if has_pass else None
+            password = self._secrets.get(second_key) if has_pass else None
         except SetupStoreError:
             raise _StopError(
                 Refusal.SECRET_STORE_UNAVAILABLE, "read of an account key"
@@ -1169,7 +1169,7 @@ class IloSetupSequence:
             if password is None:
                 raise _StopError(
                     Refusal.ACCOUNT_EXISTS_NO_CREDENTIAL,
-                    f"{label} exists in the iLO and {pw_entry} is not in the store; "
+                    f"{label} exists in the iLO and {second_key} is not in the store; "
                     "remove the account in the iLO or store its password, then run again",
                 )
             granted = _granted(present)
@@ -1195,7 +1195,7 @@ class IloSetupSequence:
             return
         if password is None:
             password = self._store_new_account(
-                role, username, user_entry, pw_entry, has_user, steps
+                role, username, user_entry, second_key, has_user, steps
             )
         self._create_account(session, collection, username, password, wanted, label)
         self._verify_login(root, username, password, label)
@@ -1206,7 +1206,7 @@ class IloSetupSequence:
         role: str,
         username: str,
         user_entry: str,
-        pw_entry: str,
+        second_key: str,
         has_user: bool,
         steps: list[ModelIloSetupStep],
     ) -> SecretStr:
@@ -1215,21 +1215,21 @@ class IloSetupSequence:
             created_user = has_user or self._secrets.create(
                 user_entry, SecretStr(username)
             )
-            created_pass = self._secrets.create(pw_entry, password)
+            created_pass = self._secrets.create(second_key, password)
         except SetupStoreError as exc:
             raise _StopError(Refusal.SECRET_STORE_UNAVAILABLE, str(exc)) from None
         if not (created_user and created_pass):
             raise _StopError(
                 Refusal.STORE_INCONSISTENT,
-                f"{user_entry} or {pw_entry} appeared in the store during this run",
+                f"{user_entry} or {second_key} appeared in the store during this run",
             )
         self._note(
             steps,
             f"{role.lower()} store keys",
             "done",
-            f"{pw_entry} created; {user_entry} was already stored"
+            f"{second_key} created; {user_entry} was already stored"
             if has_user
-            else f"{user_entry}, {pw_entry} created",
+            else f"{user_entry}, {second_key} created",
         )
         return password
 
