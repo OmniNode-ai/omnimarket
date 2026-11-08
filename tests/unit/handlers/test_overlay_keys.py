@@ -215,6 +215,37 @@ def test_overlay_keys_hosts_precedence_explicit_then_file_then_overlay(
     ] == ["host-a", "host-b"]
 
 
+def test_overlay_keys_hosts_file_may_be_the_whole_lab_hosts_overlay(
+    overlay_root: Path, tmp_path: Path
+) -> None:
+    """The overlay store's projection of lab_hosts is the whole overlay, registry roots included (OMN-23036).
+
+    Lane records of 2026-11-07 and 2026-11-08 read "lab_hosts.hosts: ONEX_LAB_RUN_HOSTS file .../overlay-store/lab_hosts/overlay.yaml
+    is invalid: fields ['registry_root_candidates']": the bus placement refused the table the overlay store projects, so only
+    the ssh fallback placed the run. A file that holds the whole overlay is a table.
+    """
+    whole = tmp_path / "overlay.yaml"
+    whole.write_text(yaml.safe_dump(FIXTURE_DOCUMENTS["lab_hosts"]), encoding="utf-8")
+    env = _env(None, **{LAB_HOSTS_FILE_ENV: str(whole)})
+    assert [h.name for h in resolve_overlay_key("lab_hosts.hosts", environ=env)] == [
+        "host-a",
+        "host-b",
+    ]
+
+
+def test_overlay_keys_hosts_file_still_refuses_a_key_the_table_does_not_declare(
+    tmp_path: Path,
+) -> None:
+    stray = tmp_path / "stray.yaml"
+    stray.write_text(
+        yaml.safe_dump({"hosts": [_HOST_ROW], "not_a_table_key": 1}), encoding="utf-8"
+    )
+    with pytest.raises(NodeOverlayError, match=r"not_a_table_key"):
+        resolve_overlay_key(
+            "lab_hosts.hosts", environ=_env(None, **{LAB_HOSTS_FILE_ENV: str(stray)})
+        )
+
+
 def test_overlay_keys_hosts_file_that_is_missing_or_invalid_is_refused_not_skipped(
     overlay_root: Path, tmp_path: Path
 ) -> None:

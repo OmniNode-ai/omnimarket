@@ -235,6 +235,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    # The overlay store projects the whole lab_hosts overlay into the file ONEX_LAB_RUN_HOSTS names, so a table file may hold
+    # the registry roots too; the placement reads only the hosts from it, the roots key is read from the overlay (OMN-23036).
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":
