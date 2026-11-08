@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Every setting of the runner-group reading (OMN-22947); a change here is a reviewed change.
+# A runner is a lab runner when it carries one of these labels.
+lab_runner_labels:
+  - self-hosted
+# The org read is judged stale past this age and the reading is then UNKNOWN. The bound is the
+# plan's 30-minute read bar (section 7.1, M1 read within 1,800 s).
+max_age_seconds: 1800

@@ -15,6 +15,10 @@ requirements:
     statement: 'AC2: an install that fails leaves no lock held, so the next install of the unit runs -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py -k released -q --no-cov'
   - id: AC3
     statement: 'AC3: a dry-run and a status read sent while an install runs are answered and never refused for the lock -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py -k never_take -q --no-cov'
+  - id: AC4
+    statement: 'AC4: installs of two different units never take the same lock, so a second unit installs while the first runs -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py -k two_different_units -q --no-cov'
+  - id: AC5
+    statement: 'AC5: the lock dies with its holder process, so after the holder is killed the next install runs -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py -k dies_with_its_holder -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The overlap, release and read-only mode cases of the installer lock
@@ -34,6 +38,16 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
+- id: dod-omn22700-lock-scope
+  description: Installs of two different units never take the same lock, and the lock dies with its holder process so the next install runs.
+  source: manual
+  binds_ac:
+  - AC4
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py -k "two_different_units or dies_with_its_holder" -q --no-cov
     cwd: .
 - id: dod-omn22700-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

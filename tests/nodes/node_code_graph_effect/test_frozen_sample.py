@@ -30,8 +30,8 @@ from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import (
     InMemoryRepoSource,
 )
-from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph import (
-    HandlerCodeGraph,
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
+    CodeGraphRun,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     ModelCodeGraphOverlay,
@@ -121,13 +121,15 @@ def _frozen(
 def _overlay(sample: ModelGraphSample) -> ModelCodeGraphOverlay:
     return overlay(
         repos=[{"name": REPO, "ref": REF}],
+        allowlist=[],
+        shadow=None,
         sample=sample.model_dump(mode="json"),
     )
 
 
 def _run(sample: ModelGraphSample) -> tuple[ModelCodeGraphResult, InMemoryLedger]:
     ledger = InMemoryLedger()
-    handler = HandlerCodeGraph(
+    handler = CodeGraphRun(
         overlay=_overlay(sample),
         host=HOST,
         source=InMemoryRepoSource({REPO: {REF: ("c" * 40, _world())}}),

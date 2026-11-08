@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ask Done Check Effect (OMN-22478, piece 6: operator asks as durable commitments)
+#
+# Runs each operator ask's declared done check against the running system (the floor's JSON, or a
+# ledger row read through the bus-fed query node) and appends one STATUS verdict row on the check
+# lane. node_ask_state_compute closes an ask on a TRUE verdict row only, never on a report or a merge.
+name: node_ask_done_check_effect
+contract_name: node_ask_done_check_effect
+node_name: node_ask_done_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  For each ask with a declared done check, reads the running system and records TRUE, FALSE or
+  UNKNOWN as a STATUS row on the check lane citing the ask. A floor check reads a piece's status
+  on the floor's JSON; a row check reads the ledger through the bus-fed query node for a row of
+  the named lane, type and cells stamped after the ask. A source that cannot be read is UNKNOWN,
+  never FALSE and never TRUE.
+
+handler:
+  module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check
+  class: HandlerAskDoneCheck
+  input_model: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check.ModelAskDoneCheckRequest
+
+# HandlerAskDoneCheck takes the overlay, the floor read, the ledger row source, the appender and
+# the clock as constructor parameters, so it runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [http-read, bus-read, ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelAskDoneCheckRequest
+  module: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check
+  description: The asks with their declared done checks, and whether to write the verdict rows.
+output_model:
+  name: ModelAskDoneCheckResult
+  module: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check
+  description: Per ask, the verdict, its reason, the verdict row and whether it landed.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_ask_done_check_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

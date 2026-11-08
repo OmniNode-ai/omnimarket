@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Runner Group Exposure Compute
+#
+# Pure definition-B compute: handle(ModelRunnerGroupExposureRequest) -> ModelRunnerGroupExposureReading.
+# The fetching effect supplies the org group settings, the workflow files that select the group's
+# labels and the jobs on the group; the overlay supplies the public-origin events and the max age.
+# This contract holds no setting.
+name: node_runner_group_exposure_compute
+contract_name: node_runner_group_exposure_compute
+node_name: node_runner_group_exposure_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Whether a runner group can be reached from a public origin, as six subjects: files that select
+  a group label with a public-origin trigger, the group's pinned workflows against those files,
+  the group's public-repository setting, jobs of public origin in the window, jobs of a public repository on the group (the drain readback), and the read's age.
+  WORKING only when every subject is WORKING; NOT WORKING when a subject is; UNKNOWN when the group
+  was not read (refused, budget exhausted, unreadable) or the read is older than its max age. No clock
+  read, no state, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure
+  class: HandlerRunnerGroupExposure
+  input_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: runner_group_exposure_read
+      topic: onex.cmd.omnimarket.runner-group-exposure-read-requested.v1
+      handler:
+        name: HandlerRunnerGroupExposure
+        module: omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure
+      input_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureRequest
+      output_model: omnimarket.models.runner_group_exposure.ModelRunnerGroupExposureReading
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelRunnerGroupExposureRequest
+  module: omnimarket.models.runner_group_exposure
+  description: The facts of one read, the overlay settings and the time to judge at.
+output_model:
+  name: ModelRunnerGroupExposureReading
+  module: omnimarket.models.runner_group_exposure
+  description: One overall verdict and the six subjects behind it.
+
+terminal_event: onex.evt.omnimarket.runner-group-exposure-read.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runner-group-exposure-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.runner-group-exposure-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.runner-group-exposure-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.runner-group-exposure-read.v1
+
+# The fetching effect (a later piece) sends the request; the reading writer reads the result.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.runner-group-exposure-read-requested.v1
+    producer: "node_runner_group_exposure_effect, which reads the org group and the repository files and asks for the reading (it calls the handler in process; a bus caller may use this topic)"
+externally_consumed_topics:
+  - onex.evt.omnimarket.runner-group-exposure-read.v1
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory
