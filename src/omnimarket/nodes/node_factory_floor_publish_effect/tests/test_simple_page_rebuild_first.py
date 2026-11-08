@@ -203,7 +203,7 @@ def test_failing_control_the_page_as_it_stood_reads_blue_and_has_no_legend() -> 
 def test_golden_the_page_script_loads_in_a_browser_without_a_redeclared_name() -> None:
     """The page's script once declared ``const num`` twice at the top level, a SyntaxError that left the page blank
     (the second came with OMN-23081). Every top-level const, let and function name is declared once."""
-    script = re.search(r"<script>(.*?)</script>", SIMPLE_SRC, re.S)
+    script = re.search(r"<script>(.*?)</script>", SIMPLE_SRC, re.S | re.I)
     assert script is not None
     names = re.findall(
         r"^(?:const|let|function)\s+([A-Za-z_$][\w$]*)", script.group(1), re.M
