@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22975"
+title: "J14: a signed receipt carries a lab-model voter result through the chain of responders, golden and error"
+summary: "Join J14 (piece 14 to piece 15) as a golden and an error join test over the existing review dispatch and hosted gate handlers: the signed receipt for a head names the lab-model voters obtained through the chain of responders and the gate accepts it for the exact head; an unreachable rung is typed on the dispatch terminal and never in the votes, and a chain with no rung able to answer signs and posts no receipt. Two named injected breaks show the assertions fail for real."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-join-j14"
+    statement: "A signed receipt carries a lab-model voter result obtained through the chain of responders, and an unreachable rung is typed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: golden join test: a signed receipt carries a lab-model voter result obtained through the chain of responders -- falsifier: uv run pytest tests/integration/test_join_j14.py -q -k golden"
+      - id: "AC2"
+        statement: "AC2: error join test: an unreachable rung is typed in the receipt -- falsifier: uv run pytest tests/integration/test_join_j14.py -q -k error"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: golden join test: a signed receipt carries a lab-model voter result obtained through the chain of responders."
+    command: "uv run pytest tests/integration/test_join_j14.py -q -k golden"
+  - kind: "tests"
+    description: "AC2: error join test: an unreachable rung is typed in the receipt."
+    command: "uv run pytest tests/integration/test_join_j14.py -q -k error"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22975-ac1-golden"
+    description: "AC1: golden join test: a signed receipt carries a lab-model voter result obtained through the chain of responders."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/test_join_j14.py -q -k golden"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22975-ac2-error"
+    description: "AC2: error join test: an unreachable rung is typed in the receipt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/test_join_j14.py -q -k error"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: dod-omn22975-j14-integration-proof
+    description: The pushed head ran the J14 join tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22975 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/integration/test_join_j14.py -q --no-cov'
+        cwd: .
