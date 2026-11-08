@@ -118,6 +118,11 @@ handler_routing:
 # before this was removed, the operation appeared in this file and nowhere else
 # in src, and only the J8 unit tests construct the handler. The landing
 # controller calls it in process. OMN-23076; the entry arrived with OMN-22919.
+cli_handlers:
+  - operation: join_j8_landing_decision
+    handler:
+      name: HandlerLandingJoinJ8
+      module: omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
 runtime_dispatch:
