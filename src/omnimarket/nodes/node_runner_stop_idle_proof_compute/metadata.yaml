@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runner_stop_idle_proof_compute
+version: "1.0.0"
+description: "Pure idle proof for the stop of runner groups 3 and 7: no runner busy in the proof groups and no queued job naming a stop-set label, on two reads 60 seconds apart"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_runner_stop_idle_proof_compute: "omnimarket.nodes.node_runner_stop_idle_proof_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ci", "runners", "runner-group", "stop", "idle-proof", "deterministic"]
+pack: "core"
+display_name: "Runner Stop Idle Proof"
+node_role: "compute"
