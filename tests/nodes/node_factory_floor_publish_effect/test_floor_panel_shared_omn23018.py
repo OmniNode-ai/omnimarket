@@ -44,8 +44,9 @@ HARNESS = textwrap.dedent(
       const body = {innerHTML: ""}, q = {value: "", handlers: {}, addEventListener(k, f) { this.handlers[k] = f; }};
       const el = {
         classList: {add() {}}, innerHTML: "", handlers: {},
+        removeEventListener(k, f) { this.handlers[k] = (this.handlers[k] || []).filter(x => x !== f); },
         querySelector(sel) { return sel === ".fp-body" ? body : sel === ".fp-q" ? (this.innerHTML.includes("fp-q") ? q : null) : null; },
-        addEventListener(k, f) { this.handlers[k] = f; },
+        addEventListener(k, f) { (this.handlers[k] = this.handlers[k] || []).push(f); },
         getBoundingClientRect: () => ({top: 10}),
       };
       return {el, body, q};
@@ -56,13 +57,14 @@ HARNESS = textwrap.dedent(
     for (const c of cases) {
       const h = host();
       const info = FP.mount(h.el, c.items, {id: c.id});
+      if (c.remount) { FP.mount(h.el, c.items, {id: c.id}); FP.mount(h.el, c.items, {id: c.id}); }
       const r = {shell: h.el.innerHTML, rows: rowsOf(h.body.innerHTML), html: h.body.innerHTML};
       const steps = [];
       for (const s of c.steps || []) {
         if (s.type) {
           h.q.value = s.type; h.q.handlers.input();
         } else if (s.page) {
-          h.el.handlers.click({target: {closest: () => ({disabled: false, getAttribute: () => String(s.page)})}});
+          for (const f of h.el.handlers.click) f({target: {closest: () => ({disabled: false, getAttribute: () => String(s.page)})}});
         }
         steps.push({rows: rowsOf(h.body.innerHTML), html: h.body.innerHTML});
       }
@@ -137,6 +139,24 @@ def test_golden_a_longer_list_gets_a_search_box_and_pages_of_25() -> None:
     assert page3["rows"] == 10
     assert f"51{DASH}60 of 60" in page3["html"]
     assert 'data-pg="1" disabled' in page3["html"]
+
+
+def test_error_mounting_again_into_the_same_element_does_not_stack_page_handlers() -> (
+    None
+):
+    # A page that redraws into one element (the Better or worse page) mounts on every refresh: one tap is one page.
+    got = _run(
+        [
+            {
+                "name": "again",
+                "id": "r",
+                "items": _items(60),
+                "remount": True,
+                "steps": [{"page": 1}],
+            }
+        ]
+    )["again"]
+    assert f"26{DASH}50 of 60" in got["steps"][0]["html"]
 
 
 def test_golden_a_search_narrows_the_list_and_returns_to_the_first_page() -> None:
