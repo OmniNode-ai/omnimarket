@@ -34,21 +34,6 @@ input_model:
   name: "ModelUsagePrivilegesRequest"
   module: "omnimarket.nodes.node_usage_privileges.models"
   description: "The request headers the caller identity resolver reads."
-handler_routing:
-  routing_strategy: "operation_match"
-  handlers:
-    - operation: "usage_privileges.read"
-      event_model:
-        name: "ModelUsagePrivilegesRequest"
-        module: "omnimarket.nodes.node_usage_privileges.models"
-      handler:
-        name: "HandlerUsagePrivileges"
-        module: "omnimarket.nodes.node_usage_privileges.handlers.handler_usage_privileges"
-      supported_operations:
-        - "usage_privileges.read"
-      description: "Refuse an unresolved caller, then read the usage privilege catalog."
-  execution_mode: "single"
-  max_timeout_seconds: 30
 config:
   database:
     # Logical secret name resolved by the runtime secret resolver; the address

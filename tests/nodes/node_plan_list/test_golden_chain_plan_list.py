@@ -23,11 +23,12 @@ CONTRACT = (
 
 async def test_contract_declared_chain_answers_the_catalog() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
-    entry = contract["handler_routing"]["handlers"][0]
-    module = importlib.import_module(entry["handler"]["module"])
-    assert getattr(module, entry["handler"]["name"]) is not None
-    model = importlib.import_module(entry["event_model"]["module"])
-    assert getattr(model, entry["event_model"]["name"]) is not None
+    handler = contract["http_route"]["handler"]
+    module = importlib.import_module(handler["module"])
+    assert getattr(module, handler["name"]) is not None
+    request = contract["input_model"]
+    model = importlib.import_module(request["module"])
+    assert getattr(model, request["name"]) is not None
     transport = httpx.ASGITransport(
         app=create_app(repository=FakePlanCatalogRepository())
     )

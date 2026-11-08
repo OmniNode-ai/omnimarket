@@ -32,21 +32,6 @@ input_model:
   name: "ModelPlanListRequest"
   module: "omnimarket.nodes.node_plan_list.models"
   description: "GET /v1/plans carries no input."
-handler_routing:
-  routing_strategy: "operation_match"
-  handlers:
-    - operation: "plan_list.read"
-      event_model:
-        name: "ModelPlanListRequest"
-        module: "omnimarket.nodes.node_plan_list.models"
-      handler:
-        name: "HandlerPlanList"
-        module: "omnimarket.nodes.node_plan_list.handlers.handler_plan_list"
-      supported_operations:
-        - "plan_list.read"
-      description: "Read the plan catalog and group it into plans with entitlements."
-  execution_mode: "single"
-  max_timeout_seconds: 30
 config:
   database:
     # Logical secret name resolved by the runtime secret resolver; the address
