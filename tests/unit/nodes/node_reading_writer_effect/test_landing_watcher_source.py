@@ -107,6 +107,8 @@ def test_the_snapshot_counts_only_in_scope_non_draft_green_waiting_heads(
     assert waiting == {"scoped#1": 75 * 60, "scoped#2": 10 * 60}
     assert read.snapshot.merges_in_window == 1
     assert read.snapshot.age_seconds == 60
+    # OMN-23077: the watcher's last tick rides with the snapshot so a stale reason can name it.
+    assert read.snapshot.newest_at == RUN_AT - timedelta(minutes=1)
 
 
 def test_a_head_green_over_an_hour_makes_the_written_reading_not_working(
