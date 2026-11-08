@@ -121,5 +121,6 @@ def test_each_new_rule_names_only_its_own_row() -> None:
             r for r in shipped_rules() if r.name not in NEW_NAMES or r.name == rule.name
         ]
         classes = roll(without_others)
-        assert classes.pop(rule.name) == 1, rule.name
+        own = classes.pop(rule.name)
+        assert own == 1, rule.name
         assert classes == {"unclassified": len(ROWS) - 1}, rule.name
