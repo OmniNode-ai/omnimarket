@@ -120,6 +120,19 @@ class_rules:
   - name: pr-handoff-argument-list-too-long
     owner: "the owner of pr-handoff's handoff.sh: it passes a large pull request diff as arguments and the shell refuses"
     pattern: 'Argument list too long'
+  # The 4 rows of 2026-11-08T00:13Z to 05:15Z that the 37 rules above did not name (OMN-23109), one cause each, named from their own text.
+  - name: lane-launch-by-hand-refused-by-brief-checks
+    owner: "the owner of the lane brief checks and the remote-lane mint refusal (slot queueing, the ticket-mint sentence regex, the dev-tag brief refusal and the one-claim-per-parent premise check): launching successor lanes by hand meets each of them"
+    pattern: 'Launching \d+ successor lanes by hand'
+  - name: hook-preflight-minutes-per-commit
+    owner: "the owner of the repository's pre-commit hook set that hook-preflight runs (the type check and the direct-model-call check take most of the minutes of each commit)"
+    pattern: 'hook-preflight runs \d+ to \d+ minutes per commit'
+  - name: clone-sync-dirty-converge-resets-deploy-build-clone
+    owner: "the owner of node_canonical_clone_dirty_converge_effect (it resets the deploy agent's build clone while the agent holds its reconcile lock)"
+    pattern: 'node_canonical_clone_dirty_converge_effect'
+  - name: commit-gates-conflict-local-paths-vs-file-shape-ratchet
+    owner: "the owners of the check-local-paths-compute hook in omnibase_core and of the canonical-file-shape ratchet: the hook's only escape marker counts as suppression growth in the ratchet, so a file the hook flags cannot be changed"
+    pattern: 'check-local-paths-compute hook'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
