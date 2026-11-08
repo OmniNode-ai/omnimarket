@@ -63,6 +63,10 @@ from omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_repo_state_m
     PrWatcherStateFile,
     clones_under,
 )
+from omnimarket.nodes.node_repo_state_query_effect.handlers.adapter_repo_state_unit import (
+    ModelRepoStateUnitResult,
+    RepoStateUnitInstaller,
+)
 from omnimarket.nodes.node_repo_state_query_effect.handlers.handler_repo_state_query import (
     HandlerRepoStateQuery,
 )
@@ -387,12 +391,14 @@ _profile_option = click.option(
 
 def _bus_args(
     overlay: ModelRepoStateOverlay, profile_name: str | None
-) -> tuple[str, str | None, str | None, None]:
+) -> tuple[str, str | None, str | None, Path | None]:
     """(bus, lane, kafka bootstrap, workspace root) for ``positional_opener``."""
     profile = overlay.profile(profile_name)
     env = profile.kafka_bootstrap_env
     bootstrap = os.environ.get(env, "").strip() if env else ""
-    return (profile.kind, profile.lane, bootstrap or None, None)
+    root_env = profile.workspace_root_env
+    root = os.environ.get(root_env, "").strip() if root_env else ""
+    return (profile.kind, profile.lane, bootstrap or None, Path(root) if root else None)
 
 
 @repo_state_group.command("serve")
@@ -436,6 +442,98 @@ def serve_command(
     except LabRunBusError as exc:
         click.echo(f"bus: {exc}", err=True)
         sys.exit(EXIT_BUS)
+
+
+@repo_state_group.group("unit")
+@click.pass_context
+def unit_group(ctx: click.Context) -> None:
+    """Render, install, remove and read the serve unit declared in the overlay."""
+    ctx.ensure_object(dict)
+
+
+_host_option = click.option(
+    "--host", "host", required=True, help="The declared host to act on."
+)
+_omni_root_option = click.option(
+    "--omni-root",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="The registry root on the host ($OMNI_HOME in the overlay).",
+)
+_overlay_root_option = click.option(
+    "--overlay-root",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="The overlay root the unit reads the overlay from (ONEX_SKILL_OVERLAY_ROOTS).",
+)
+
+
+def _installer(overlay_path: Path | None) -> RepoStateUnitInstaller:
+    try:
+        overlay = load_overlay(overlay_path)
+    except (NodeOverlayError, ValueError) as exc:
+        click.echo(f"overlay: {exc}", err=True)
+        sys.exit(EXIT_CONFIG)
+    return RepoStateUnitInstaller(overlay=overlay, home=Path.home())
+
+
+def _finish(result: ModelRepoStateUnitResult) -> None:
+    click.echo(result.stdout, nl=False)
+    click.echo(result.stderr, err=True, nl=False)
+    sys.exit(result.exit_code)
+
+
+@unit_group.command("render")
+@_overlay_option
+@_host_option
+@_omni_root_option
+@_overlay_root_option
+def unit_render(
+    overlay_path: Path | None, host: str, omni_root: Path, overlay_root: Path
+) -> None:
+    """Print the unit file for a declared host."""
+    _finish(
+        _installer(overlay_path).render(
+            host, omni_root=omni_root, overlay_root=overlay_root
+        )
+    )
+
+
+@unit_group.command("install")
+@_overlay_option
+@_host_option
+@_omni_root_option
+@_overlay_root_option
+@click.option("--dry-run", is_flag=True, help="Render and check; write nothing.")
+def unit_install(
+    overlay_path: Path | None,
+    host: str,
+    omni_root: Path,
+    overlay_root: Path,
+    dry_run: bool,
+) -> None:
+    """Write the unit, reload the manager and enable the service now."""
+    _finish(
+        _installer(overlay_path).install(
+            host, omni_root=omni_root, overlay_root=overlay_root, dry_run=dry_run
+        )
+    )
+
+
+@unit_group.command("uninstall")
+@_overlay_option
+@_host_option
+def unit_uninstall(overlay_path: Path | None, host: str) -> None:
+    """The rollback: stop and disable the service and remove its unit file."""
+    _finish(_installer(overlay_path).uninstall(host))
+
+
+@unit_group.command("status")
+@_overlay_option
+@_host_option
+def unit_status(overlay_path: Path | None, host: str) -> None:
+    """Read whether the service is enabled and active."""
+    _finish(_installer(overlay_path).status(host))
 
 
 @repo_state_group.command("query")

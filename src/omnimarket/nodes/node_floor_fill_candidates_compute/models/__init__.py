@@ -10,9 +10,12 @@ from .model_floor_fill_candidates import (
     ModelFloorFillLine,
     ModelFloorFillNotReady,
     ModelFloorFillStateEntry,
+    ModelFloorFillStopped,
+    ModelFloorFillStoppedNotReady,
     ModelFloorFillUnticketable,
     ModelFloorRecordRead,
     ModelFloorTaskPayloadVerdict,
+    ModelStoppedLaneReport,
     parse_stamp,
 )
 
@@ -24,8 +27,11 @@ __all__ = [
     "ModelFloorFillLine",
     "ModelFloorFillNotReady",
     "ModelFloorFillStateEntry",
+    "ModelFloorFillStopped",
+    "ModelFloorFillStoppedNotReady",
     "ModelFloorFillUnticketable",
     "ModelFloorRecordRead",
     "ModelFloorTaskPayloadVerdict",
+    "ModelStoppedLaneReport",
     "parse_stamp",
 ]

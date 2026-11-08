@@ -189,10 +189,11 @@ config:
       source_order: [friction-class, tick-key, machinery-ticket]
       tier_order:
       - [machinery]
+      - [lane-resend]
       - [pr-red]
       - [pr-stalled]
       - [defect]
-      - [ticket]
+      - [ticket, plan-stalled, ruling-pending]
       - [process-fix, partial-node, wiring]
       - [pr-land]
       - [dod-verify]
