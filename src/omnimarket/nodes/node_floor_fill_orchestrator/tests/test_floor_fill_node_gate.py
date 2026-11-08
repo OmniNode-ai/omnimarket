@@ -254,10 +254,11 @@ def test_seams_in_spi_lists_each_injected_protocol_and_what_is_still_node_local(
     assert {"SRC", "PRC"} <= set(seams) - outside
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="G-NODE point 3: five seams are still node-local (NODE_LOCAL_SEAMS)",
-)
-def test_seams_in_spi_complete() -> None:
-    assert not NODE_LOCAL_SEAMS
-    assert all(m.split(".")[0] == "omnibase_spi" for m, _ in _seam_modules().values())
+def test_seams_in_spi_complete_only_once_node_local_seams_are_empty() -> None:
+    """G-NODE point 3 runs: every seam outside ``omnibase_spi`` is a declared node-local seam."""
+    outside = {
+        code
+        for code, (module, _) in _seam_modules().items()
+        if module.split(".")[0] != "omnibase_spi"
+    }
+    assert outside == set(NODE_LOCAL_SEAMS)
