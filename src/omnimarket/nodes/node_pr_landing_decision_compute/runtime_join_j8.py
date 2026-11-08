@@ -65,7 +65,11 @@ def _handler(
         raise WatcherStateError(f"watcher state is unreadable: {exc}") from exc
     return HandlerLandingJoinJ8Live(
         subjects=WatcherLabCheckCollector(state, overlay, datetime.now(UTC), inject),
-        sink=JsonlEmissionSink(_expand(overlay.emission_journal)),
+        sink=JsonlEmissionSink(
+            _expand(
+                overlay.emission_journal if inject is None else overlay.control_journal
+            )
+        ),
         overlay=overlay,
         policy=load_join_j8_policy(),
         clock=lambda: datetime.now(UTC),

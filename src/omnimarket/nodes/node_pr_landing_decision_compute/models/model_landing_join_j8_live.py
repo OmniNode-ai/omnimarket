@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
@@ -67,10 +67,22 @@ class ModelJoinJ8LiveOverlay(BaseModel):
     poster_failure_code: str = Field(min_length=1)
     #: The floor's emission journal both chains are written to (append-only JSON lines).
     emission_journal: str = Field(min_length=1)
+    #: Where a named injected break writes its chains. A failing control is evidence for the join's reading, never for the
+    #: floor: a control chain in the floor's journal is a real broken chain on the floor (piece 8 failed, piece 9 silent for
+    #: the deadline), so the control gets a journal of its own and the two must differ.
+    control_journal: str = Field(min_length=1)
     #: A drill run is tagged so no join counts it as evidence.
     drill: bool
     #: Whether this overlay may run a named injected break (the join's failing control).
     allow_injected_break: bool
+
+    @model_validator(mode="after")
+    def _control_journal_is_not_the_floors(self) -> ModelJoinJ8LiveOverlay:
+        if self.control_journal == self.emission_journal:
+            raise ValueError(
+                "control_journal must differ from emission_journal: an injected break written to the floor's journal reads as a real broken chain"
+            )
+        return self
 
 
 class ModelJ8Subject(BaseModel):

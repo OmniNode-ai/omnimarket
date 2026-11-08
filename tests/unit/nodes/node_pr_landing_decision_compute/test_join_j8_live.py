@@ -76,6 +76,7 @@ def _overlay(**over: Any) -> ModelJoinJ8LiveOverlay:
         "poster_node": "node_lab_check_poster",
         "poster_failure_code": "lab_check_not_passed",
         "emission_journal": "/unused/emissions.jsonl",
+        "control_journal": "/unused/controls.jsonl",
         "drill": False,
         "allow_injected_break": True,
     }
@@ -397,6 +398,7 @@ def _install_overlay(
         "poster_node": "node_lab_check_poster",
         "poster_failure_code": "lab_check_not_passed",
         "emission_journal": str(journal),
+        "control_journal": str(tmp_path / "controls.jsonl"),
         "drill": False,
         "allow_injected_break": True,
         **over,
@@ -434,22 +436,57 @@ def test_the_runtime_verb_refuses_a_stale_state_with_exit_three_and_writes_nothi
     assert not journal.exists()
 
 
-def test_the_runtime_verb_runs_a_named_break_that_reads_broken(
+def test_the_runtime_verb_runs_a_named_break_that_reads_broken_in_the_control_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     journal = _install_overlay(tmp_path, monkeypatch)
+    control = tmp_path / "controls.jsonl"
     out = io.StringIO()
     with redirect_stdout(out):
         code = runtime_join_j8.main(["run", "--inject", "blind-decision"])
     assert code == 0
     sink = InMemoryEmissionSink()
     sink.events.extend(
-        JsonlEmissionSink(journal).read(datetime(2000, 1, 1, tzinfo=UTC))
+        JsonlEmissionSink(control).read(datetime(2000, 1, 1, tzinfo=UTC))
     )
     assert _fold(sink, datetime.now(UTC) + timedelta(seconds=30)) == (
         "broken",
         ["downstream_started_after_upstream_failed"],
     )
+    assert not journal.exists()
+
+
+def test_control_silent_landing_run_leaves_the_floors_journal_unread_as_broken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23084: a named break run against the real overlay once left piece 8 failed and piece 9 silent in the floor's
+    own journal, so the floor read J8 broken (downstream_missing_typed_failure) on a chain that was a control."""
+    journal = _install_overlay(tmp_path, monkeypatch)
+    for want in ("golden", "error"):
+        with redirect_stdout(io.StringIO()):
+            assert runtime_join_j8.main(["run", "--want", want]) == 0
+    with redirect_stdout(io.StringIO()):
+        assert runtime_join_j8.main(["run", "--inject", "silent-landing"]) == 0
+    floor = InMemoryEmissionSink()
+    floor.events.extend(
+        JsonlEmissionSink(journal).read(datetime(2000, 1, 1, tzinfo=UTC))
+    )
+    late = datetime.now(UTC) + timedelta(seconds=CHAIN_DEADLINE_S + 60)
+    assert _fold(floor, late) == ("passed", [])
+    control = InMemoryEmissionSink()
+    control.events.extend(
+        JsonlEmissionSink(tmp_path / "controls.jsonl").read(
+            datetime(2000, 1, 1, tzinfo=UTC)
+        )
+    )
+    assert _fold(control, late) == ("broken", ["downstream_missing_typed_failure"])
+
+
+def test_error_an_overlay_whose_control_journal_is_the_floors_journal_is_refused() -> (
+    None
+):
+    with pytest.raises(ValueError, match="control_journal must differ"):
+        _overlay(control_journal="/unused/emissions.jsonl")
 
 
 def test_the_unit_tick_runs_both_ends_and_writes_its_evidence(

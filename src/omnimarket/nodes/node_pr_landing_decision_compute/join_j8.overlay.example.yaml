@@ -11,5 +11,7 @@ max_candidates: 40
 poster_node: node_lab_check_poster
 poster_failure_code: lab_check_not_passed
 emission_journal: ~/.onex_state/floor-simple/emissions.jsonl
+# An injected break (the failing control) writes here, never to the floor's journal above.
+control_journal: ~/.onex_state/floor-simple/controls/join-j8-emissions.jsonl
 drill: false
 allow_injected_break: false
