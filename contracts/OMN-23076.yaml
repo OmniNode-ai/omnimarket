@@ -47,6 +47,18 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/validation/test_j8_join_is_not_auto_wirable_omn23076.py -q -p no:randomly --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23076-integration-proof-onex-diff
+    description: >-
+      The integration proof: the live onex contract reader, not a test fixture, is handed the merge-base contract and this head's and asked what changed between them. It answers with exactly one change, a REMOVED handler_routing entry carrying join_j8_landing_decision, and nothing added or changed, which is the whole of the runtime effect of this pull request. onex contract diff exits 2 on any difference, the way diff(1) does, so the proof asserts on the reader's output rather than on its exit code.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -c 'set -uo pipefail; C=src/omnimarket/nodes/node_pr_landing_decision_compute/contract.yaml; B=$(mktemp); git show "$(git merge-base origin/dev HEAD):$C" > "$B"; D=$(onex contract diff "$B" "$C" 2>/dev/null || true); printf "%s\n" "$D"; grep -q "^REMOVED:" <<<"$D" && grep -q "join_j8_landing_decision" <<<"$D" && grep -q "Added: 0" <<<"$D" && grep -q "Changed: 0" <<<"$D" && echo INTEGRATION-PROOF-OK'
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23076-ac3-validation-suite
     description: >-
       The whole validation suite is green at this head: 1269 passed, 4 skipped. That suite is what the red shard runs. At the merge base the ownership guard alone is 1 failed, 75 passed, and the two new assertions are 2 failed.
