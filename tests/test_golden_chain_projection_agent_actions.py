@@ -15,6 +15,7 @@ import asyncio
 import json
 import re
 import sqlite3
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -77,13 +78,15 @@ def _sqlite_schema() -> str:
 class _SqliteDb:
     """The slice of the runner's database the node uses, over SQLite."""
 
-    def __init__(self) -> None:
+    def __init__(self, clock: Callable[[], str] | None = None) -> None:
+        # NOW() is the injected clock, never SQLite's second-resolution CURRENT_TIMESTAMP.
+        self.clock = clock or (lambda: "2026-11-01T12:00:00+00:00")
         self.conn = sqlite3.connect(":memory:")
         self.conn.executescript(_sqlite_schema())
 
     async def execute(self, query: str, *params: object) -> list[dict[str, Any]]:
         sql = re.sub(r"\$\d+", "?", query).replace("::jsonb", "")
-        sql = sql.replace("NOW()", "CURRENT_TIMESTAMP")
+        sql = sql.replace("NOW()", f"'{self.clock()}'")
         bound = [
             p.isoformat()
             if isinstance(p, datetime)

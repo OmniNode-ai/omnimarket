@@ -9,7 +9,8 @@ the table, conflict column and column values.
 Two events (agent actions and agent status) arrive with no ``id``; the retired
 consumer minted a random one, so a replayed event wrote a second row. Here the id
 is derived from the topic and the event's content, so the same event names the same
-row on every replay, and a redelivery changes nothing.
+row on every replay, and a redelivery changes nothing. The delivery's partition and offset are part of
+that content, so two distinct events that carry the same payload are two rows.
 """
 
 from __future__ import annotations
@@ -48,11 +49,13 @@ def topic_tables(contract_path: Path = _CONTRACT) -> dict[str, str]:
     return declared
 
 
-def derived_id(topic: str, payload: dict[str, object]) -> str:
-    """The row id for an event that carries none: a function of topic and content."""
+def derived_id(
+    topic: str, payload: dict[str, object], partition: int = 0, offset: int = 0
+) -> str:
+    """The row id for an event that carries none: a function of topic, position and content."""
     content = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    return str(uuid5(NAMESPACE_URL, f"{topic}#{digest}"))
+    return str(uuid5(NAMESPACE_URL, f"{topic}#{partition}#{offset}#{digest}"))
 
 
 def _column_value(spec: TableSpec, model: BaseModel, column: str) -> object:
@@ -76,12 +79,17 @@ class HandlerProjectionAgentActions:
         spec = TABLE_SPECS[table]
         payload = {k: v for k, v in request.payload.items() if not k.startswith("_")}
         if spec.derives_id and not payload.get("id"):
-            payload["id"] = derived_id(topic, payload)
+            payload["id"] = derived_id(
+                topic, payload, request.partition, request.offset
+            )
         if spec.derives_id and "created_at" not in payload:
             # The producer sends its event time as ``timestamp``; the retired
             # consumer ignored it and stamped ingestion time. Event time keeps a
             # replay deterministic; ingestion time is the fallback when absent.
-            payload["created_at"] = payload.get("timestamp") or datetime.now(UTC)
+            event_time = payload.get("timestamp") or datetime.now(UTC)
+            if "timestamp" not in spec.model.model_fields:
+                payload.pop("timestamp", None)  # a model that forbids extras refuses it
+            payload["created_at"] = event_time
         model = spec.model.model_validate(payload)
         return ModelAgentActionsRow(
             table=spec.table,

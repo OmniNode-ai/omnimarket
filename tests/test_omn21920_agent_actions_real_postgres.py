@@ -109,3 +109,44 @@ async def test_two_replays_leave_one_row_per_key_on_postgres(
         await runner.db.close()
         await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await admin.close()
+
+
+@pytest.mark.integration
+async def test_same_status_payload_at_two_offsets_is_two_rows_on_postgres(
+    integration_postgres_dsn: str,
+) -> None:
+    """A keyless event takes its id from topic, position and content; the producer timestamp is accepted."""
+    schema = f"omn21920_agent_actions_{uuid4().hex[:8]}"
+    topic = "onex.evt.omniclaude.agent-status.v1"
+    payload = {
+        "correlation_id": "11111111-1111-4111-8111-111111111111",
+        "agent_name": "code-reviewer",
+        "session_id": "sess-1",
+        "state": "working",
+        "message": "Reviewing",
+        "timestamp": "2026-11-01T10:00:07Z",
+    }
+    admin = await asyncpg.connect(integration_postgres_dsn)
+    runner = AgentActionsRowWriter()
+    try:
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        await admin.execute(f"SET search_path TO {schema}")
+        await admin.execute(
+            (_NODE / "migrations" / "0000_create_agent_observability_tables.sql")
+            .read_text(encoding="utf-8")
+            .replace("public.", f"{schema}.")
+        )
+        separator = "&" if "?" in integration_postgres_dsn else "?"
+        runner.bind_projection_database_url(
+            f"{integration_postgres_dsn}{separator}search_path={schema}"
+        )
+        await runner.db.connect()
+        for offset in (4, 5, 4):
+            meta = MessageMeta(partition=0, offset=offset, fallback_id="", topic=topic)
+            assert await runner.project_event(topic, payload, meta)
+        rows = await admin.fetch("SELECT id FROM agent_status_events")
+        assert len(rows) == 2
+    finally:
+        await runner.db.close()
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
