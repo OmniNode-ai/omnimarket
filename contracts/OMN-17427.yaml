@@ -410,6 +410,11 @@ requirements:
     acceptance:
       - id: "AC2249601"
         statement: "AC2249601: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
+  - id: "req-retirement-carrier-adds-no-duplicate-checks"
+    statement: "A contract item that retires criterion bindings carries only checks of its own and repeats no check of the items it retires, so each check runs once."
+    acceptance:
+      - id: "AC1742795"
+        statement: "AC1742795: no item that carries supersedes_ac_binding repeats a check of an item it retires -- falsifier: tests/ci/test_omn17427_retirement_carrier_runs_no_duplicate_checks.py fails at the merge base, where the test file does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -3881,8 +3886,9 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_uv_lock_security_floors_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: .
   - id: dod-omn-17427-contract-only-retirement
-    description: "Retires the claims of the contract-only criteria OMN-17427 never carried on the live ticket (173 labels). The live ticket was read on 2026-11-05; each retired item still runs its own tests here as a regression guard, and this item binds no criterion and carries one check of its own."
+    description: "Retires the claims of the contract-only criteria OMN-17427 never carried on the live ticket (173 labels). The live ticket was read on 2026-11-05; each retired item still runs its own tests here as a regression guard, and this item binds only AC1742795 and carries one check of its own."
     source: manual
+    binds_ac: ["AC1742795"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_omn17427_retirement_carrier_runs_no_duplicate_checks.py -q -n 0 --no-cov --refuse-skips"
