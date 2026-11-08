@@ -204,7 +204,7 @@ runtime:
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 40
+    timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
@@ -212,7 +212,7 @@ runtime:
   - name: floor_simple
     kind: module
     required: false
-    timeout_seconds: 20
+    timeout_seconds: 15
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--defer-canary"]
   # OMN-23018: the floor's numbers are kept as a dated history and compared with 1, 7 and 30 days ago. Not required: when it
@@ -220,7 +220,7 @@ runtime:
   - name: floor_compare
     kind: module
     required: false
-    timeout_seconds: 60
+    timeout_seconds: 15
     module: omnimarket.nodes.node_floor_compare_effect
     args: ["--home", "{home}"]
   # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).

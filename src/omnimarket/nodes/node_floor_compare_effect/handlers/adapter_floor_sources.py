@@ -527,6 +527,10 @@ def class_title(name: str) -> str:
     return name.replace("-", " ").replace(":", ": ")
 
 
+def _as_float(value: object) -> float:
+    return float(value) if isinstance(value, (int, float, str)) else 0.0
+
+
 def friction_values_from_classes(
     classes: list[Mapping[str, object]], hs: ModelHistorySources
 ) -> tuple[dict[str, float], dict[str, str]]:
@@ -536,11 +540,14 @@ def friction_values_from_classes(
     rows = minutes = refusals = 0.0
     for item in classes:
         name = str(item["class"])
-        occurrences, cost = float(item["occurrences"]), float(item["cost_minutes"])  # type: ignore[arg-type]
+        occurrences, cost = (
+            _as_float(item["occurrences"]),
+            _as_float(item["cost_minutes"]),
+        )
         cid = f"stoppage:{name}"
         values[f"cause:{cid}"], values[f"stoppage_cost:{cid}"] = occurrences, cost
         labels[f"cause:{cid}"] = labels[f"stoppage_cost:{cid}"] = class_title(name)
-        rows += float(item.get("rows", occurrences))  # type: ignore[arg-type]
+        rows += _as_float(item.get("rows", occurrences))
         minutes += cost
         if name.startswith(hs.refusal_class_prefix):
             refusals += occurrences
