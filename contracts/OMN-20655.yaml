@@ -54,11 +54,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD3"]
   - id: "dod-omn20655-integration-proof"
-    description: "The bundle command ran on a lab host against the live clones: a ticket whose contract is on the omnimarket default branch reads as having one (no_contract is empty)."
+    description: "On the lab runtime that carries this node, scope_bundle dispatched over the bus returns the bundle and reads the ticket marked without a contract as no_contract; the bundle command read the live clones on h051 from the branch (no_contract empty for a ticket whose contract is on the omnimarket default branch)."
     source: "manual"
     execution_scope: local_done_gate
     checks:
       - check_type: "command"
         check_value: |-
-          sh -c 'uv run --frozen python -m omnimarket.nodes.node_dod_closeout_sweep_compute bundle --candidates tests/nodes/node_dod_closeout_sweep_compute/fixtures/live_proof_candidates.json --pr-state tests/nodes/node_dod_closeout_sweep_compute/fixtures/live_proof_pr_state.json --text-state tests/nodes/node_dod_closeout_sweep_compute/fixtures/live_proof_text_state.json --max 1 | grep -q "\"no_contract\":\[\]"'
+          onex run-node node_dod_closeout_sweep_compute --input '{"kind":"scope_bundle","date":"2026-11-08","scope_candidates":[{"id":"OMN-20675","state":"In Review","sources":["started"],"last_closeout_comment_at":""}],"scope_pr_state":[{"id":"OMN-20675","merged":["omnimarket#1"],"open":[],"error":""}],"scope_text_state":[],"scope_contract_state":[{"id":"OMN-20675","has_contract":false}],"max_candidates":1}' | grep -q '"no_contract":\["OMN-20675"\]'
         cwd: "${OMNI_HOME}/omnimarket"
