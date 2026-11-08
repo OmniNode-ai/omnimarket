@@ -13,6 +13,8 @@
 #   ledger_append    the command in command_env appends rows; host_env holds the host name
 #   publish          the rows' lane and actor, how long a row stays fresh, how many failing overlays
 #                    a row names
+#   emission         optional: the floor piece and node of this read, and the variable naming the emission
+#                    journal; with it each run emits one chain under the command's correlation id
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
 #   schedule_hosts   hosts that install the daily systemd user timer
 #   unit_environment environment the installed unit carries
@@ -43,6 +45,10 @@ publish:
   actor: node:node_overlay_drift_effect
   publish_max_age_seconds: 129600
   max_named: 10
+emission:
+  piece: 4
+  node: example-node:read
+  journal_env: EXAMPLE_EMISSION_JOURNAL
 injected_fault: An overlay key the runtime rejects (the rung_order case)
 schedule_hosts:
 - name: host-a
