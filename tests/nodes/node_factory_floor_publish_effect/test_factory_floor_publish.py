@@ -337,6 +337,7 @@ FACTORY = "omnimarket.nodes.node_factory_floor_effect"
 FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
 FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
+JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
@@ -377,7 +378,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     assert calls[-1] == FLOOR_COMPARE
     calls = calls[:-1]
     assert sorted(calls[:-2]) == sorted(
-        ["hosts", "pool", HEALTH_MODULE, JOIN_REFUSAL, JOIN_J2]
+        ["hosts", "pool", HEALTH_MODULE, JOIN_REFUSAL, JOIN_J2, JOIN_J16]
     )
     assert calls[-2] == FACTORY
     # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
@@ -413,6 +414,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "join_j2",
         "friction_classed",
         "join_refusal",
+        "join_j16",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -434,6 +436,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and FLOOR_SIMPLE not in argv
                 and FLOOR_COMPARE not in argv
                 and JOIN_REFUSAL not in argv
+                and JOIN_J16 not in argv
                 and JOIN_J2 not in argv
             ):
                 barrier.wait()

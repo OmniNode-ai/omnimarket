@@ -264,6 +264,20 @@ runtime:
     timeout_seconds: 30
     module: omnimarket.nodes.node_join_refusal_effect
     args: ["run"]
+  # OMN-23122: join J16 (piece 16 to piece 17). One run per cycle reads the newest eval reading of piece 16 on the ledger and the
+  # floor record, and writes piece 16's chain and piece 17's chain under one correlation id to the emission journal, before the
+  # simple floor reads its receipts. With no step here the join was tested and never run: the served floor read J16 not_run
+  # (measured on the served board of 2026-11-08 08:16Z: golden_age_s and error_age_s both empty, last_run_age_s empty).
+  # Not required: when the ledger cannot be read the step is recorded failed and no chain is written, which the floor reads as
+  # J16 not run, never as success. It reads the ledger and appends to the journal, so it joins the concurrent group and adds
+  # nothing to the longest declared path.
+  - name: join_j16
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_j16_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
