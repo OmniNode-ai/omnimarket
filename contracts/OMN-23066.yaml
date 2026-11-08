@@ -56,3 +56,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane oneruntime-t14-0315 -- uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -p no:randomly"
         cwd: "."
+  - id: "dod-omn23066-deploy-probe"
+    description: "After the dev runtime image carries this change, the one dev runtime container imports the context audit node. The import fails on a runtime image built before the node existed, so the probe reads the deployed system and not a file this pull request wrote. It prints no secret."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "ssh \"$DEPLOY_PROBE_HOST\" docker exec omninode-runtime python -c 'import omnimarket.nodes.node_projection_context_audit.handlers.handler_context_audit_writer'"
+        cwd: "."
