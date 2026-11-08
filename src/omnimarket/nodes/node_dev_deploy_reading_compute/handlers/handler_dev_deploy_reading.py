@@ -54,22 +54,28 @@ def judge_receipts(
         if age < timedelta(0):
             failures.append(f"merge-after-read:{tag}")
             continue
-        own = by_sha.get(merge.sha, [])
+        # A receipt that finishes after the read time is not evidence yet.
+        own = [r for r in by_sha.get(merge.sha, []) if r.finished_at <= request.now]
         passes = sorted(r.finished_at for r in own if r.result == "PASS")
+        if any(
+            merge.merged_at <= finished <= merge.merged_at + deadline
+            for finished in passes
+        ):
+            receipted += 1
+            continue
+        if age <= deadline:
+            # An unusable receipt does not fail a merge that still has time to get a usable one.
+            pending.append(f"receipt-pending:{tag}")
+            continue
         if passes:
             finished = passes[0]
             if finished < merge.merged_at:
                 failures.append(f"receipt-before-merge:{tag}")
-            elif finished - merge.merged_at > deadline:
+            else:
                 late = int((finished - merge.merged_at).total_seconds())
                 failures.append(
                     f"receipt-late:{tag}:{late}s-over-{request.receipt_deadline_seconds}s"
                 )
-            else:
-                receipted += 1
-            continue
-        if age <= deadline:
-            pending.append(f"receipt-pending:{tag}")
             continue
         failures.append(
             f"no-pass-receipt:{tag}:age-{int(age.total_seconds())}s-over-{request.receipt_deadline_seconds}s"
@@ -88,11 +94,13 @@ def judge_probe(
     newest: ModelRuntimeProbeFact = max(
         request.probes, key=lambda p: (p.probed_at, p.probe_id)
     )
-    age = int((request.now - newest.probed_at).total_seconds())
-    if age < 0:
+    elapsed = request.now - newest.probed_at
+    if elapsed < timedelta(0):
         return [f"probe-future-dated:{newest.probe_id}"], None
+    # Eligibility keeps the timestamp's precision; the reported age is whole seconds.
+    age = int(elapsed.total_seconds())
     failures: list[str] = []
-    if age > request.probe_max_age_seconds:
+    if elapsed > timedelta(seconds=request.probe_max_age_seconds):
         failures.append(
             f"probe-stale:{newest.probe_id}:age-{age}s-over-{request.probe_max_age_seconds}s"
         )

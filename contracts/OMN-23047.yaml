@@ -1,0 +1,47 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23047
+title: Tessl pilot, slice 3 of 6, the real findings left open on the merged pull requests omnimarket#5331 and omnimarket#5337 are fixed
+summary: >-
+  The other pull requests numbered 3 mod 6 were fixed on their own branches by earlier lanes. omnimarket#5331 (node_workflow_baseline_compare_compute) and omnimarket#5337 (node_dev_deploy_reading_compute) merged before their findings were fixed, so their branches are gone and the fixes land here as one follow-up on dev, each with a test that fails on the base commit.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23047-slice-3-fixes
+    statement: >-
+      Each real Tessl finding on the slice 3 pull requests that merged unfixed is fixed with a test that fails on the base and passes on the fix, and the findings not fixed are listed with their reason.
+    acceptance:
+      - id: AC1
+        statement: "AC1: each real finding on the pull requests numbered 3 mod 6 is fixed on that pull request's existing branch with a test that fails on the base and passes on the fix -- falsifier: uv run pytest of each added test, red on the base commit first"
+      - id: AC2
+        statement: "AC2: the false findings and the two false Criticals are untouched and each skipped finding is listed with its reason in the lane report -- falsifier: the lane report's skipped-findings table, one row per skipped finding"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The test directories of the two nodes, with the tests added by this change.
+    command: uv run --frozen pytest tests/nodes/node_workflow_baseline_compare_compute tests/nodes/node_dev_deploy_reading_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23047-ac1-fixes-with-tests
+    description: >-
+      The 11 findings of omnimarket#5331 (5) and omnimarket#5337 (6) are fixed; the tests added for them fail on the base commit and pass on the fix.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_workflow_baseline_compare_compute/test_error_chain_workflow_baseline_compare.py tests/nodes/node_dev_deploy_reading_compute/test_receipt_and_probe.py -q --no-cov
+        cwd: .
+  - id: dod-omn23047-ac2-only-fix-files-changed
+    description: >-
+      This change touches only the two nodes, their tests, and the contract OMN-22958 falsifier paths; the skipped findings are in the lane report's table.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: git diff --name-only origin/dev...HEAD
+        cwd: .

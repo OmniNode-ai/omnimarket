@@ -14,6 +14,8 @@ Every NOT WORKING receipt carries one cause-lane request keyed to the run.
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
+from urllib.parse import quote
 
 from omnimarket.nodes.node_workflow_baseline_compare_compute.models import (
     EnumBaselineMetricKind,
@@ -35,10 +37,13 @@ def _outcome(
 ) -> EnumBaselineOutcome:
     if observed is None:
         return EnumBaselineOutcome.MISSING
+    # Decimal of the shortest repr keeps the inclusive boundary exact for decimal measurements.
+    value, tolerance = Decimal(str(metric.value)), Decimal(str(metric.tolerance))
+    reading = Decimal(str(observed))
     if metric.worse_when is EnumBaselineWorseWhen.LOWER:
-        worse = observed < metric.value - metric.tolerance
+        worse = reading < value - tolerance
     else:
-        worse = observed > metric.value + metric.tolerance
+        worse = reading > value + tolerance
     return EnumBaselineOutcome.WORSE if worse else EnumBaselineOutcome.OK
 
 
@@ -58,10 +63,10 @@ class HandlerWorkflowBaselineCompare:
             "result_command_id": result.command_id if result else None,
             "result_observed_at": result.observed_at if result else None,
         }
+        deadline = command.issued_at + timedelta(
+            seconds=request.result_deadline_seconds
+        )
         if result is None:
-            deadline = command.issued_at + timedelta(
-                seconds=request.result_deadline_seconds
-            )
             if request.now <= deadline:
                 return self._receipt(
                     request,
@@ -96,6 +101,16 @@ class HandlerWorkflowBaselineCompare:
                 (),
                 "the result was observed before its command was issued",
                 ("correlation",),
+            )
+
+        if result.observed_at > deadline:
+            return self._not_working(
+                request,
+                common,
+                True,
+                (),
+                "the result was observed after its deadline",
+                ("runtime-result",),
             )
 
         observed = {r.name: r for r in result.readings}
@@ -169,9 +184,13 @@ class HandlerWorkflowBaselineCompare:
         cause_lane = None
         if verdict is EnumBaselineVerdict.NOT_WORKING:
             cause_lane = ModelBaselineCauseLaneRequest(
-                dispatch_key=(
-                    f"{request.command.route}:{request.baseline.baseline_id}:"
-                    f"{request.command.command_id}"
+                dispatch_key=":".join(
+                    quote(part, safe="")
+                    for part in (
+                        request.command.route,
+                        request.baseline.baseline_id,
+                        request.command.command_id,
+                    )
                 ),
                 route=request.command.route,
                 command_id=request.command.command_id,

@@ -201,3 +201,65 @@ def test_receipt_and_probe_malformed_request_is_refused_by_name(
         request(**edits)
     assert request().now is not None  # positive control: the good request validates
     assert good()["required_lane"] == LANE
+
+
+def test_receipt_and_probe_fractional_future_dated_probe_is_not_working() -> None:
+    assert _reasons(probes=[probe(probed_at="2026-11-08T12:00:00.500Z")]) == (
+        "probe-future-dated:probe-1",
+    )
+
+
+def test_receipt_and_probe_probe_a_fraction_past_max_age_is_stale() -> None:
+    reasons = _reasons(probes=[probe(probed_at="2026-11-07T11:59:59.500Z")])
+    assert reasons == ("probe-stale:probe-1:age-86400s-over-86400s",)
+    exactly = probe(probed_at="2026-11-07T12:00:00Z")
+    assert (
+        _read(probes=[exactly]).verdict is V.WORKING
+    )  # control: exactly max age holds
+
+
+def test_receipt_and_probe_a_later_qualifying_pass_masks_an_earlier_ineligible_one() -> (
+    None
+):
+    receipts = [
+        receipt(SHA_A, "2026-11-08T07:50:00Z"),
+        receipt(SHA_A, "2026-11-08T08:20:00Z"),
+        receipt(SHA_B, "2026-11-08T09:20:00Z"),
+    ]
+    reading = _read(receipts=receipts)
+    assert reading.verdict is V.WORKING
+    assert reading.reasons == ()
+    assert reading.merges_receipted == 2
+
+
+def test_receipt_and_probe_an_ineligible_pass_does_not_fail_a_pending_merge() -> None:
+    merges = [merge(SHA_A, "2026-11-08T11:30:00Z")]
+    receipts = [receipt(SHA_A, "2026-11-08T11:20:00Z")]
+    reading = _read(merges=merges, receipts=receipts)
+    assert reading.verdict is V.WORKING
+    assert reading.pending == (f"receipt-pending:{SHA_A[:12]}",)
+    assert reading.merges_receipted == 0
+
+
+def test_receipt_and_probe_a_receipt_finishing_after_the_read_time_is_no_evidence() -> (
+    None
+):
+    merges = [merge(SHA_A, "2026-11-08T11:30:00Z")]
+    for finished in ("2026-11-08T12:45:00Z", "2026-11-08T12:15:00Z"):
+        reading = _read(merges=merges, receipts=[receipt(SHA_A, finished)])
+        assert reading.verdict is V.WORKING
+        assert reading.pending == (f"receipt-pending:{SHA_A[:12]}",)
+        assert reading.merges_receipted == 0
+    on_time = _read(merges=merges, receipts=[receipt(SHA_A, "2026-11-08T11:45:00Z")])
+    assert (
+        on_time.merges_receipted == 1
+    )  # control: a receipt finished by the read counts
+
+
+def test_receipt_and_probe_a_trailing_newline_is_not_an_exact_sha() -> None:
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(merges=[merge(SHA_A + "\n", "2026-11-08T08:00:00Z")])
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(receipts=[receipt(SHA_A + "\n", "2026-11-08T08:20:00Z")])
+    with pytest.raises(ValueError, match="not an exact sha"):
+        request(probes=[probe(observed=SHA_B + "\n")])
