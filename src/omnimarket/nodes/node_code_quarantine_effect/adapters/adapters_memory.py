@@ -13,14 +13,19 @@ from omnimarket.nodes.node_code_quarantine_effect.models import (
     ModelQuarantineEvent,
     ModelQuarantineRecord,
 )
+from omnimarket.nodes.node_code_quarantine_effect.protocols import QuarantineStepError
 
 
 class InMemoryStore:
     def __init__(self) -> None:
+        #: An injected break: while set, every read of the store fails as a down store does.
+        self.down = False
         self.records: dict[tuple[str, str], ModelQuarantineRecord] = {}
         self.catalog: list[tuple[str, ModelCatalogRow]] = []
 
     def get(self, repository: str, entity: str) -> ModelQuarantineRecord | None:
+        if self.down:
+            raise QuarantineStepError("store", "store is down")
         return self.records.get((repository, entity))
 
     def put(self, record: ModelQuarantineRecord) -> None:

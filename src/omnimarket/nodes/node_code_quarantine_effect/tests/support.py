@@ -45,7 +45,6 @@ from omnimarket.nodes.node_code_quarantine_effect.models import (
     ModelRemovalBatch,
     ModelRemovalEvidence,
 )
-from omnimarket.nodes.node_code_quarantine_effect.protocols import QuarantineStepError
 
 REPO = "repo_a"
 ENTITY = "unused_pkg"
@@ -139,10 +138,7 @@ def memory_rig(handler_cls: type[HandlerCodeQuarantine] = HandlerCodeQuarantine)
         setattr(gates, name, green)
 
     def break_store() -> None:
-        def boom(*_args: object) -> None:
-            raise QuarantineStepError("store", "store is down")
-
-        store.get = boom  # type: ignore[method-assign,assignment]
+        store.down = True
 
     return Rig(
         handler=handler_cls(
