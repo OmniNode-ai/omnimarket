@@ -505,6 +505,7 @@ class HandlerWorkStateProjection:
                     lanes=(name,),
                     live_lane=name if lane.state is EnumLaneState.LIVE else None,
                     left=lane.left,
+                    attributes=tuple(sorted(lane.aliases)),
                 )
             )
 
