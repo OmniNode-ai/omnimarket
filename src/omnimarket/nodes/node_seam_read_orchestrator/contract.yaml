@@ -34,6 +34,7 @@ description: >
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles: [effects]
   idempotent: false
   timeout_ms: 60000
 
