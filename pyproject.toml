@@ -1237,6 +1237,7 @@ node_tailnet_https_serve_effect = "omnimarket.nodes.node_tailnet_https_serve_eff
 node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_team_identity_compute = "omnimarket.nodes.node_team_identity_compute"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
+node_temp_retention_effect = "omnimarket.nodes.node_temp_retention_effect"
 node_test_generator = "omnimarket.nodes.node_test_generator"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_reading_compute"
