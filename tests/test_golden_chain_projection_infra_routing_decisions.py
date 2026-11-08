@@ -32,6 +32,9 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_infra.handlers.handler_contract_subscribe_preflight import (
+    load_consumer_group_handover,
+)
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _extract_rows_upserted,
     _is_standalone_projection_runner,
@@ -235,17 +238,32 @@ def test_the_contract_routes_only_the_writer() -> None:
 
 
 def test_the_handover_names_the_group_the_old_consumer_commits_under() -> None:
-    declared = _load_contract()["retired_consumer_group"]
+    contract = _load_contract()
+    assert "retired_consumer_group" not in contract, (
+        "the inert key is replaced by consumer_group_handover, which the "
+        "runtime subscribe preflight reads"
+    )
+    declared = contract["consumer_group_handover"]
     old_default = ConfigInfraRoutingDecisionsConsumer.model_fields["kafka_group_id"]
+    old_reset = ConfigInfraRoutingDecisionsConsumer.model_fields["auto_offset_reset"]
     assert old_default.default == _OLD_GROUP
-    assert declared["group_id"] == old_default.default
-    assert declared["topics"] == [_TOPIC]
     # The old consumer used auto_offset_reset=earliest on a partition it never
     # committed; the successor continues the same way.
-    assert (
-        declared["from_auto_offset_reset"]
-        == ConfigInfraRoutingDecisionsConsumer.model_fields["auto_offset_reset"].default
-    )
+    assert declared == {
+        "from_group_id": old_default.default,
+        "from_auto_offset_reset": old_reset.default,
+    }
+
+
+@pytest.mark.parametrize("environment", ["local", "dev", "prod"])
+def test_the_runtime_preflight_reads_the_handover_from_the_contract(
+    environment: str,
+) -> None:
+    handover = load_consumer_group_handover(_CONTRACT)
+    assert handover is not None, "the preflight finds no handover in the contract"
+    assert handover.source_group(environment) == _OLD_GROUP
+    assert handover.from_auto_offset_reset == "earliest"
+    assert handover.handover_rule == "copy_if_uncommitted"
 
 
 # --------------------------------------------------------------------------
