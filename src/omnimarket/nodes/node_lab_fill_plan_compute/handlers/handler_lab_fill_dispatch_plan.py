@@ -482,7 +482,7 @@ class HandlerLabFillDispatchPlan:
             if c["kind"] in APPROVED_KINDS:
                 fields["id"] = c.get("id")
             if truthy(c.get("cause")):
-                fields["cause"] = c["cause"]
+                fields["cause"] = text_of(c["cause"])
             if c.get("escalated") is True:
                 fields["escalated"] = True
             if c["kind"] in SOURCE_KINDS:
