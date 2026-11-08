@@ -28,6 +28,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect -q --no-cov
+- id: dod-omn23086-publisher-env-and-bound
+  description: The publisher unit declares the ledger environment of its J5 step, and the J5 reading judges chains by the overlay's bound, with failing controls.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_publisher_ledger_environment.py tests/nodes/node_floor_emission_compute/test_join_judged_since.py -q --no-cov
 - id: dod-omn23086-integration-proof
   description: The J5 runner tests run on a lab host at the pushed head, and the lab run is recorded in the pull request body.
   source: manual

@@ -12,7 +12,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
 
@@ -71,6 +71,10 @@ class ModelJoinDef(_Frozen):
     from_piece: int = Field(ge=1, le=18)
     to_piece: int = Field(ge=1, le=18)
     label: str = Field(min_length=1)
+    # The join's judging bound (OMN-23086), declared by the overlay: a from-piece chain whose newest event is older than this
+    # instant is not judged, because the join's to-piece could not have answered it. A chain at or after the bound is judged
+    # as ever, so a chain that is really broken stays red. ``None`` judges every chain in the window.
+    judged_since: AwareDatetime | None = None
 
 
 class ModelPieceDef(_Frozen):
