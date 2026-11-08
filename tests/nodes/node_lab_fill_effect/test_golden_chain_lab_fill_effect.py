@@ -149,7 +149,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
             ledger_path="/l",
         )
     )
-    assert owners.called == ["claims", "pr_claims", "watcher"]
+    assert owners.called == ["claims", "pr_claims", "watcher", "work_state"]
     assert facts.claim_index == {"OMN-5": {"lane": "peer", "state": "held"}}
     assert facts.pr_claims == {"repo#9": "peer2"}
     assert facts.watcher_merged == {"OMN-7": ("repo#3",)}
