@@ -51,6 +51,9 @@ class _RecordingRunner:
         type(self).calls.append((topic, data, meta))
         return True
 
+    async def close_runtime_resources(self) -> None:
+        return None
+
 
 def _bound_handler_class(node: str) -> type[Any]:
     contract = yaml.safe_load((NODES / node / "contract.yaml").read_text())
