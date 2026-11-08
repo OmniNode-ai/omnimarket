@@ -13,6 +13,8 @@ requirements:
     statement: 'AC1: each live piece declares, as overlay data, the outcome measure that compares it with the old way (for example piece 2: lab slots available and lanes refused for capacity; piece 6: ledger read freshness and parity), its baseline from history before it went live, and the date it went live -- falsifier: the floor''s piece JSON carrying the measure, baseline and live date for pieces 1, 2, 3, 5 and 6'
   - id: AC2
     statement: 'AC2: the floor shows each piece''s measure against its baseline over its first 7 days, and on day 7 a verdict of better, worse or unread (never inferred) -- falsifier: uv run pytest of the comparison''s tests with a planted better and a planted worse history'
+  - id: AC3
+    statement: 'AC3: the floor_simple publisher reads the ledger once per cycle whatever the number of queries, so the ledger read stays far under the 15 s step limit and returns the same facts as one read per query -- falsifier: uv run pytest of the step-time tests, which fail on a read that opens each ledger file once per query'
 evidence_requirements:
 - kind: tests
   description: The piece measure tests (planted better and planted worse history), the comparison node and the page tests pass
@@ -43,6 +45,8 @@ dod_evidence:
 - id: dod-omn23081-floor-simple-step-time
   description: Runs the floor_simple step-time tests, which fail on a ledger read that opens each ledger file once per query, and the parity of the batched read with one read per query.
   source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_step_time_floor_simple.py -q --no-cov
