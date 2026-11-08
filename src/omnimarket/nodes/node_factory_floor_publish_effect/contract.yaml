@@ -221,6 +221,20 @@ runtime:
     required: false
     timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-23083: join J2 (piece 2 to piece 3), run for each host its overlay names. A canary on the host publishes one command,
+  # placement consumes the host's capacity advertisement and one correlated result returns on the bus; the node writes the
+  # canary's chain (piece 2) and the seam's chain (piece 3) under one correlation id to the emission journal, before the
+  # simple floor reads its receipts. With no step here the join was built and tested and never run: the floor read J2 with
+  # no golden chain from it (measured on the served board of 2026-11-08 05:07Z: golden_at and error_at both empty).
+  # Not required: when the bus cannot be read the step is recorded failed and no chain is written, which the floor reads
+  # as J2 not run, never as success. It runs with the other input steps, so it adds nothing past the slowest member.
+  - name: join_j2
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
+    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
   # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
   # writes the same file in milliseconds; a failed rollup leaves the copy's file.
@@ -238,6 +252,18 @@ runtime:
       umbrella_tickets: [OMN-17427]
       class_overlay_id: node_friction_rollup_compute
       class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
+  # OMN-22864: the downstream piece's typed refusal of every real upstream failure (the joins its overlay declares), written to
+  # the emission journal before the simple floor reads it. node_join_refusal_effect runs only when something calls it; with no step here
+  # each failure of piece 2 to 5 read downstream_missing_typed_failure 900 s later. It is independent of the other input steps
+  # (it reads the ledger and appends to the journal), so it joins their group and adds nothing to the longest declared path.
+  # Not required: when it fails the floor still reads, and the floor's chains row names the joins that stayed unanswered.
+  - name: join_refusal
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_refusal_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
