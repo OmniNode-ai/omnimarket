@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_eval_corpus_reader_effect
+version: "0.1.0"
+description: "Effect: reads the eval corpus, where each delegated result sits with its cost row or the typed word that the cost is missing, and runs the J15 join (piece 15 to piece 16) under the floor's emission contract."
+pack: pipeline
+node_role: effect
+display_name: "Eval Corpus Reader Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_eval_corpus_reader_effect: "omnimarket.nodes.node_eval_corpus_reader_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "eval", "corpus", "join-j15"]

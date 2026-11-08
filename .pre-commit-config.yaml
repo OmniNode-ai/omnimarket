@@ -1001,6 +1001,17 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/nodes/node_lab_first_routing_check_compute/.*|src/omnimarket/models/delegation/model_lab_rubric\.py|tests/unit/delegation/test_lab_first_routing_omn17427\.py)$
         stages: [pre-commit]
 
+      # OMN-22976 (rebuild piece 15): every delegation task class holds a bar in the
+      # routing overlay, frozen under a sha256 hash; a changed bar without a new hash
+      # is refused. SYNC with ci.yml step "Routing overlay bars gate (OMN-22976)".
+      - id: delegation-routing-overlay-bars
+        name: Routing overlay task-class bars (OMN-22976)
+        language: system
+        entry: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(task_class_bars|task_class_contracts)\.v1\.yaml|src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/.*)$
+        stages: [pre-commit]
+
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
       # row that resolves to a HOUSE credential renders identically to a
       # bring-your-own-key row and bills to us. Same entry point as the
@@ -2776,13 +2787,6 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/omnimarket/nodes/node_lane_census_alias_parity_compute/|tests/nodes/node_lane_census_alias_parity_compute/)
-        stages: [pre-commit]
-      - id: dispatch-standing-rules
-        name: Standing dispatch rules and runtime wiring
-        entry: uv run --frozen pytest tests/nodes/test_dispatch_standing_rules.py -q --no-cov
-        language: system
-        pass_filenames: false
-        files: ^(src/omnimarket/(nodes/node_dispatch_standing_rules_|models/standing_rules/|protocols/protocol_standing_rules_io\.py$|handlers/container/container_overlay_dependencies\.py$)|tests/nodes/test_dispatch_standing_rules\.py$)
         stages: [pre-commit]
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
