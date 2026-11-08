@@ -49,21 +49,33 @@ _EXIT = {
 }
 
 
-def build_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
-    """The handler wired to the overlay's backend."""
-    if overlay.bus.backend == "inmemory":
-        return HandlerBrokerLag(
-            overlay=overlay,
-            manifest=InMemoryManifest({"contracts": []}),
-            lag=InMemoryLag({}),
-            samples=InMemorySamples(),
-        )
+def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+    return HandlerBrokerLag(
+        overlay=overlay,
+        manifest=InMemoryManifest({"contracts": []}),
+        lag=InMemoryLag({}),
+        samples=InMemorySamples(),
+    )
+
+
+def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
     return HandlerBrokerLag(
         overlay=overlay,
         manifest=HttpManifest(overlay.manifest.url, overlay.manifest.timeout_seconds),
         lag=KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds),
         samples=FileSamples(Path(overlay.lag.state_path)),
     )
+
+
+_BACKEND_BUILDERS: dict[str, Callable[[ModelLabAlarmOverlay], HandlerBrokerLag]] = {
+    "inmemory": _inmemory_handler,
+    "runtime": _runtime_handler,
+}
+
+
+def build_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+    """The handler wired to the overlay's backend."""
+    return _BACKEND_BUILDERS[overlay.bus.backend](overlay)
 
 
 def run(

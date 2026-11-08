@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -263,7 +264,8 @@ def test_the_derivation_reproduces_a_live_runtime_group_name() -> None:
 
 def test_a_plugin_managed_or_non_subscribing_contract_mints_no_group() -> None:
     manifest = _manifest()
-    manifest["contracts"][0]["event_bus"]["plugin_managed"] = True  # type: ignore[index]
+    contracts = cast("list[dict[str, dict[str, object]]]", manifest["contracts"])
+    contracts[0]["event_bus"]["plugin_managed"] = True
     with pytest.raises(ConsumerGroupDerivationError, match="projection_example"):
         derive_groups(
             manifest,
