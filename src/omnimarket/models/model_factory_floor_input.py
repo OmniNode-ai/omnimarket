@@ -165,6 +165,8 @@ class ModelFloorLedgerRow(BaseModel):
     kind: str = Field(min_length=1)
     lane: str = ""
     tickets: tuple[str, ...] = ()
+    # The parent_ticket= cell a child CLAIM carries: the ticket of the work this row's ticket was minted under.
+    parent_tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
     row_id: str = ""
     re: str = ""

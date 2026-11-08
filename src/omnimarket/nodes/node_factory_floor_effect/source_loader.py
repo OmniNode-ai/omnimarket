@@ -86,7 +86,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run|head|ruling|cited-rulings|mechanism-ticket)$"
+    r"^(?:lane|from|ticket|tickets|parent_ticket|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run|head|ruling|cited-rulings|mechanism-ticket)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -231,6 +231,7 @@ def parse_ledger_text(
             kind=cells[1],
             lane=fields.get("lane") or fields.get("from", ""),
             tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
+            parent_tickets=_csv(fields.get("parent_ticket", "")),
             prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
             row_id=fields.get("id", ""),
             re=fields.get("re", ""),
