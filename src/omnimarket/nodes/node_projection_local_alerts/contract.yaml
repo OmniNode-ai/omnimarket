@@ -95,5 +95,16 @@ projection_api:
   bus_backed: true
   key_columns: [tenant_id, code, subject]
   tenant_column: tenant_id
+  # The exposure-reader-coverage gate (a served bus_backed exposure needs a
+  # reader or a reasoned opt-out) turns red on every omnibase_infra pull request
+  # whose omnimarket pin carries this contract. This opt-out is self-expiring:
+  # the gate fails a `consumers: none` left standing once a reader exists, so the
+  # change that adds the reader deletes both keys. Both are required together.
+  consumers: none
+  consumers_reason: >-
+    No omnidash component declares this topic in its dataSources and no shipped
+    layout places one: the alert banner derives its rows from the environment
+    projection today. The reader is an omnidash change, outside this repository;
+    that change adds it and deletes this self-expiring opt-out.
 metadata:
   transport_type: kafka
