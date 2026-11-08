@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22985
+title: Piece 18's generated golden and error chain tests and the customer-path whole-flow golden and error run exist, and a named mutation turns each red
+summary: Piece 18 (the customer path) holds the clean-VM onboarding walk node and its weekly reading. The chain test file generates its scenarios from the walk node's contract.yaml (the command, success and failure topics and the documented steps, one error chain per documented step plus the two log-level legs a passing script can hide), carries each over the in-memory bus, and runs a whole-flow golden and error run that takes a clean VM fixture from install to a first delegated result and types each failing leg. Six named mutations are each run against their unbroken control first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22985-piece18-whole-flow
+  statement: Piece 18 has a golden and an error chain test generated from its contract and a whole-flow run, and a named injected break turns each red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the whole-flow golden run takes a clean VM fixture from install to a first delegated result and the error run types each failing leg -- falsifier: uv run --frozen pytest tests/chain/test_piece18_whole_flow.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a named mutation turns each red -- falsifier: uv run --frozen pytest tests/chain/test_piece18_whole_flow.py -q --no-cov -k mutation'
+evidence_requirements:
+- kind: tests
+  description: The generated golden and error chain tests, the whole-flow run and their named mutations
+  command: uv run --frozen pytest tests/chain/test_piece18_whole_flow.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22985-whole-flow
+  description: The whole-flow golden run and the error run, one chain per failing leg, pass on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_piece18_whole_flow.py -q --no-cov
+    cwd: .
+- id: dod-omn22985-named-mutations
+  description: Each named mutation turns its chain assertion red against an unbroken control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_piece18_whole_flow.py -q --no-cov -k mutation
+    cwd: .
