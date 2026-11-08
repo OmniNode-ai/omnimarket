@@ -11,6 +11,8 @@ success topic.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
@@ -41,7 +43,7 @@ async def test_raised_decision_is_carried_on_the_failure_topic(
     overlay = ModelLandingChainOverlay()
     buses = []
 
-    def make(chosen: ModelLandingChainOverlay):  # type: ignore[no-untyped-def]
+    def make(chosen: ModelLandingChainOverlay) -> Any:
         bus = make_bus(chosen)
         buses.append(bus)
         return bus

@@ -81,20 +81,20 @@ class _SilentChain:
     retry under the same correlation id keeps the evidence already written; a second start or a terminal after a
     terminal would turn it into a broken chain."""
 
-    def start(self) -> None:  # stub-ok
-        pass
+    def start(self) -> None:
+        return None
 
-    def resume(self) -> None:  # stub-ok
-        pass
+    def resume(self) -> None:
+        return None
 
-    def success(self, counters: dict[str, int] | None = None) -> None:  # stub-ok
-        pass
+    def success(self, counters: dict[str, int] | None = None) -> None:
+        return None
 
-    def failure(self, code: str, detail: str = "") -> None:  # stub-ok
-        pass
+    def failure(self, code: str, detail: str = "") -> None:
+        return None
 
-    def refuse(self, code: str, detail: str = "") -> None:  # stub-ok
-        pass
+    def refuse(self, code: str, detail: str = "") -> None:
+        return None
 
 
 class HandlerWorkLedgerJoinJ5:

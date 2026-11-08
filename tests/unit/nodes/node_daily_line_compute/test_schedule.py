@@ -301,11 +301,13 @@ def test_schedule_overlapping_publications_each_complete_without_sharing_a_tempo
     real_replace = os.replace
     nested: list[bool] = []
 
-    def replace_after_a_second_run(source: object, destination: object) -> None:
+    def replace_after_a_second_run(
+        source: str | os.PathLike[str], destination: str | os.PathLike[str]
+    ) -> None:
         if not nested:
             nested.append(True)
             write_atomic(target, '{"run": "second"}\n')
-        real_replace(source, destination)  # type: ignore[arg-type]
+        real_replace(source, destination)
 
     monkeypatch.setattr(run_module.os, "replace", replace_after_a_second_run)
     write_atomic(target, '{"run": "first"}\n')
