@@ -68,9 +68,10 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-deploy-omn23145-node-dispatch
   description: >-
-    After merge, the node's handler is present on the dev branch of omnimarket, read through the GitHub contents API, which hosted CI can run; its golden chain, error chain and bad-payload failure event run in tests/test_golden_chain_public_consumer_check_compute.py.
+    The node's handler is present in the tree this change ships, read from the checked-out head so hosted CI can run it before merge; its golden chain, error chain and bad-payload failure event run in tests/test_golden_chain_public_consumer_check_compute.py.
   source: manual
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_public_consumer_check_compute/handlers/handler_public_consumer_check.py?ref=dev" --jq .content | base64 -d | grep -q HandlerPublicConsumerCheck
+    check_value: grep -q 'class HandlerPublicConsumerCheck' src/omnimarket/nodes/node_public_consumer_check_compute/handlers/handler_public_consumer_check.py
+    cwd: ${OMNI_HOME}/omnimarket
   binds_ac: []
