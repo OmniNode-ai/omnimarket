@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23077
+title: Rebuild piece 9, landing and merge queue, reads WORKING on the factory floor
+summary: >-
+  First task under this ticket: piece 9's reading is replay-stable. The stale-snapshot reason of node_reading_compute carried the snapshot age, which moves with the probe time, so a second probe of one window over the same unchanged pr_state projection wrote replay-failed:key-reused-with-different-content, the reason the served floor showed on 2026-11-08. The reason now names the snapshot's newest observation (or only the bound) and never the age. A snapshot whose newest observation moved is still a replay failure. Piece 9 still reads NOT WORKING while the pr_state projection is stale; that source is outside this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23077-piece9-reading
+    statement: >-
+      Piece 9 reads WORKING on the served floor from its own reading; its reading is replay-stable so a second probe of a window is not itself a failure.
+    acceptance:
+      - id: AC1
+        statement: "AC1: piece 9 reads WORKING on the served floor from its own reading, with the rebuild plan's piece 9 tasks built and installed beside the current landing controller for the 7-day comparison -- falsifier: the floor's piece 9 reading"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The reading writer and compute tests, including a stale window probed twice (already-written; replay-failed at the merge base) and a stale window whose newest observation moved (still replay-failed).
+    command: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect tests/nodes/node_reading_writer_effect tests/nodes/node_reading_compute -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23077-ac1-replay-stable-stale-reading
+    description: >-
+      A stale piece 9 window probed twice with different ages over the same snapshot reads already-written, and a snapshot whose newest observation moved still reads replay-failed. At the merge base the first test fails with replay-failed.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_reading_writer_effect/test_landing_row.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

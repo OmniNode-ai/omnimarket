@@ -98,6 +98,7 @@ class WatcherFileLandingSource:
         return ModelLandingRead(
             snapshot=ModelLandingSnapshot(
                 age_seconds=max(int((now - watcher.last_tick).total_seconds()), 0),
+                newest_at=watcher.last_tick,
                 heads=heads,
                 merges_in_window=watcher.merges_in_window,
             )
