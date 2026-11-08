@@ -256,10 +256,9 @@ def test_request_bound_is_injected_not_hard_coded() -> None:
     past = HandlerDelegationWorkflow(workflows={}, completion_bound_seconds=60)
     expired = past.handle_delegation_request(young)
     assert len(_terminals(expired)) == 1
-    assert past._workflows[_CID].expired_delegation_request is not None
-    assert (
-        past._workflows[_CID].expired_delegation_request.completion_bound_seconds == 60
-    )  # type: ignore[union-attr]
+    record = past._workflows[_CID].expired_delegation_request
+    assert record is not None
+    assert record.completion_bound_seconds == 60
 
 
 # ------------------------------------------------------- quality-gate result
