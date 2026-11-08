@@ -102,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     gate_refused = False
     run_start = time.monotonic()
     access_start = run_start
+    access_seconds = 0.0
     try:
         access = HandlerOperatorAccess().handle(
             ModelOperatorAccessRequest(
@@ -115,11 +116,12 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"REFUSED operator-access: {exc}\n")
         gate_refused = True
     else:
+        access_seconds = time.monotonic() - access_start
         sys.stdout.write(
             f"operator-access: admitted_devices={access.admitted_devices} "
             f"include={access.include_sha256[:12]} changed={access.include_changed} "
             f"published={len(access.published)} files unread={','.join(access.unread) or 'none'} "
-            f"seconds={time.monotonic() - access_start:.0f}\n"
+            f"seconds={access_seconds:.0f}\n"
         )
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home,
@@ -128,12 +130,16 @@ def main(argv: list[str] | None = None) -> int:
         refresh_delegation=a.refresh_delegation,
     )
     floor_refused = False
+    publisher = HandlerFactoryFloorPublish()
+    publish_seconds = 0.0
+    publish_start = time.monotonic()
     try:
-        result = HandlerFactoryFloorPublish().handle(request)
+        result = publisher.handle(request)
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
         floor_refused = True
     else:
+        publish_seconds = time.monotonic() - publish_start
         for step in result.steps:
             if step.status == "failed":
                 sys.stderr.write(
@@ -147,7 +153,23 @@ def main(argv: list[str] | None = None) -> int:
             f"cycle_seconds={result.cycle_seconds:.0f} "
             f"phases={','.join(f'{k}:{v:.0f}s' for k, v in result.phase_seconds.items())}\n"
         )
+
+    def record_tick(reports_seconds: float) -> None:
+        """The served status names the seconds of the whole tick, so a slow gate or reports site is seen too (OMN-22699)."""
+        try:
+            publisher.record_tick(
+                {
+                    "operator_access": access_seconds,
+                    "floor_publish": publish_seconds,
+                    "reports_site": reports_seconds,
+                    "run": time.monotonic() - run_start,
+                }
+            )
+        except PublishRefusedError as exc:
+            sys.stderr.write(f"factory-floor-publish: tick seconds not served: {exc}\n")
+
     if a.skip_reports:
+        record_tick(0.0)
         return 2 if gate_refused or floor_refused else 0
     reports_start = time.monotonic()
     try:
@@ -156,7 +178,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED reports-site-publish: {exc}\n")
+        record_tick(time.monotonic() - reports_start)
         return 2
+    record_tick(time.monotonic() - reports_start)
     sys.stdout.write(
         f"reports-site-publish: published={len(reports.published)} files "
         f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "

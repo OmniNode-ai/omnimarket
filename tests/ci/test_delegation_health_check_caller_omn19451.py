@@ -59,7 +59,7 @@ import contextlib
 import importlib
 import json
 import sys
-from datetime import datetime, tzinfo
+from datetime import datetime, timedelta, tzinfo
 from io import StringIO
 from pathlib import Path
 
@@ -83,7 +83,27 @@ class FrozenDatetime(datetime):
         return infra_test.NOW
 
 
-infra_test._replay(ReplayShim(), scenario["red"])
+if "runs" in scenario:
+    # OMN-22820: newest-first run rows for every verdict source, each stamped
+    # relative to the owner's frozen clock.
+    rows = [
+        {
+            **infra_test._run(row["id"], conclusion=row["conclusion"], repo="x/y"),
+            "created_at": (
+                infra_test.NOW - timedelta(hours=row["hours_ago"])
+            ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "run_started_at": (
+                infra_test.NOW - timedelta(hours=row["hours_ago"])
+            ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        for row in scenario["runs"]
+    ]
+    lab_pass_receipt = importlib.import_module("scripts.ci.lab_pass_receipt")
+    lab_pass_receipt._gh_api = lambda _path: json.dumps(
+        {"workflow_runs": rows}
+    ).encode()
+else:
+    infra_test._replay(ReplayShim(), scenario["red"])
 dh.datetime = FrozenDatetime
 record_path = tree / "record.json"
 record_path.unlink(missing_ok=True)
@@ -179,13 +199,20 @@ def infra_tree(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def _run_check(
     tree: Path,
     *,
-    red: dict[str, int],
+    red: dict[str, int] | None = None,
+    runs: list[dict[str, object]] | None = None,
     changed_files: list[str],
     labels: list[str],
 ) -> tuple[int, str, dict[str, object]]:
-    scenario = json.dumps(
-        {"red": red, "changed_files": changed_files, "labels": labels}
-    )
+    scenario_map: dict[str, object] = {
+        "changed_files": changed_files,
+        "labels": labels,
+    }
+    if runs is not None:
+        scenario_map["runs"] = runs
+    else:
+        scenario_map["red"] = red or {}
+    scenario = json.dumps(scenario_map)
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     completed = subprocess.run(
@@ -391,3 +418,62 @@ def test_runtime_change_label_cannot_admit_a_red(infra_tree: Path) -> None:
     )
     assert code == 1, stdout
     assert record["admitted_by"] == []
+
+
+# Section 4 (OMN-22820): a cancelled verdict run is no verdict at the pin.
+CANCELLED_RUN_ID = 42288463416
+
+
+def _verdict_runs(*newest_first: tuple[int, str, float]) -> list[dict[str, object]]:
+    return [
+        {"id": run_id, "conclusion": conclusion, "hours_ago": hours_ago}
+        for run_id, conclusion, hours_ago in newest_first
+    ]
+
+
+def test_cancelled_newest_verdict_run_does_not_block_a_runtime_change(
+    infra_tree: Path,
+) -> None:
+    code, stdout, record = _run_check(
+        infra_tree,
+        runs=_verdict_runs(
+            (CANCELLED_RUN_ID, "cancelled", 1.0), (900002, "success", 2.0)
+        ),
+        changed_files=RUNTIME_FILES,
+        labels=[],
+    )
+    assert record["runtime_affecting"] is True, record
+    assert code == 0, stdout
+    assert record["red_runs"] == [], record
+    assert "other(s) ignored" in stdout, stdout
+
+
+def test_completed_failure_behind_a_cancelled_run_still_blocks(
+    infra_tree: Path,
+) -> None:
+    """Failing control for the cancelled-run fix: no verdict is not a pass."""
+    code, stdout, record = _run_check(
+        infra_tree,
+        runs=_verdict_runs(
+            (CANCELLED_RUN_ID, "cancelled", 1.0),
+            (900003, "failure", 2.0),
+            (900002, "success", 3.0),
+        ),
+        changed_files=RUNTIME_FILES,
+        labels=[],
+    )
+    assert code == 1, stdout
+    assert {
+        entry["run_id"] for entry in cast("list[dict[str, str]]", record["red_runs"])
+    } == {"900003"}, record
+
+
+def test_only_cancelled_verdict_runs_are_refused_not_passed(infra_tree: Path) -> None:
+    code, stdout, _ = _run_check(
+        infra_tree,
+        runs=_verdict_runs((CANCELLED_RUN_ID, "cancelled", 1.0)),
+        changed_files=RUNTIME_FILES,
+        labels=[],
+    )
+    assert code == 1, stdout
+    assert "an absent measurement is not a pass" in stdout, stdout

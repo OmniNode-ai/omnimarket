@@ -252,7 +252,7 @@ def test_entry_exits_process_at_timeout() -> None:
                 runner=ScriptedCommandForward(ModelRunOutcome(state="failed", cause="x")))
 
         result = run_entry(["tick"], {"floor_fill": dict(OVERLAY, command_timeout_seconds=1, reserved_timeout_seconds=5)},
-                           host_id=OVERLAY["host_id"], build_handler=build)
+                           host_id=OVERLAY["host_id"], hosts=[(OVERLAY["host_id"], True)], build_handler=build)
         sys.stdout.write(result.stdout); sys.stdout.flush()
         if result.timed_out:
             os._exit(result.exit_code)

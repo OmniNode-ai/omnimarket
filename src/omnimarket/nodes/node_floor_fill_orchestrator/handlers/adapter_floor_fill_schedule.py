@@ -71,10 +71,21 @@ def _quote(value: str) -> str:
     return f'"{escaped}"'
 
 
-def overlay_json(config: ModelFloorFillConfig) -> str:
-    """``J``: the overlay's ``floor_fill`` section, validated, as one compact JSON line."""
+def overlay_json(
+    config: ModelFloorFillConfig, hosts: Iterable[tuple[str, bool]]
+) -> str:
+    """``J``: the overlay's ``floor_fill`` section, validated, as one compact JSON line.
+
+    The entry re-checks ``floor_fill.host_id`` against the ``lab_hosts`` rows it is handed beside the overlay, so ``J``
+    carries the fill host's own row as read at install time (a host that is not an available row never reaches here).
+    """
+    rows = [
+        {"name": name, "available": available}
+        for name, available in hosts
+        if name == config.host_id
+    ]
     return json.dumps(
-        {OVERLAY_SECTION: config.model_dump(mode="json")},
+        {OVERLAY_SECTION: config.model_dump(mode="json"), "lab_hosts": rows},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -86,12 +97,15 @@ def dispatch_python(schedule: ModelFloorFillSchedule, omni_root: Path) -> Path:
 
 
 def exec_start(
-    schedule: ModelFloorFillSchedule, config: ModelFloorFillConfig, omni_root: Path
+    schedule: ModelFloorFillSchedule,
+    config: ModelFloorFillConfig,
+    omni_root: Path,
+    hosts: Iterable[tuple[str, bool]],
 ) -> str:
     """The unit's command line: the runtime module, the overlay as JSON, this host, and ``tick``."""
     python = _safe(dispatch_python(schedule, omni_root), "dispatch venv interpreter")
     return (
-        f"{_quote(python)} -m {NODE_MODULE} --overlay-json {_quote(overlay_json(config))} "
+        f"{_quote(python)} -m {NODE_MODULE} --overlay-json {_quote(overlay_json(config, hosts))} "
         f"--this-host {_quote(config.host_id)} tick"
     )
 
@@ -102,6 +116,7 @@ def render_systemd(
     *,
     omni_root: Path,
     home: Path,
+    hosts: Iterable[tuple[str, bool]],
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
@@ -121,7 +136,7 @@ def render_systemd(
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={exec_start(schedule, config, omni_root)}\n"
+        f"ExecStart={exec_start(schedule, config, omni_root, hosts)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
     )
     timer = (
@@ -195,6 +210,7 @@ class FloorFillScheduler:
                 self.config,
                 omni_root=omni_root,
                 home=self.home,
+                hosts=self.hosts,
             )
             refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:

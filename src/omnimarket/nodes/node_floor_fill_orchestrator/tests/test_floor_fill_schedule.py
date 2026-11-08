@@ -142,7 +142,10 @@ def test_floor_fill_schedule_exec_is_the_runtime_module_form(tmp_path: Path) -> 
     words = exec_words(out)
     assert words[:3] == [VENV_PYTHON, "-m", NODE_MODULE]
     assert words[3] == "--overlay-json"
-    assert json.loads(words[4]) == {"floor_fill": OVERLAY}
+    assert json.loads(words[4]) == {
+        "floor_fill": OVERLAY,
+        "lab_hosts": [{"name": OVERLAY["host_id"], "available": True}],
+    }
     assert words[5:] == ["--this-host", OVERLAY["host_id"], "tick"]
     assert "run-node" not in out
     assert "/usr/bin/env" not in out

@@ -130,6 +130,12 @@ def _line(
             for task in line.untickable
         ]
     if line.verdict is _V.AT_CAPACITY:
+        # A line this pass filled to its capacity reads AT_CAPACITY on the re-read; it is
+        # still a filled line, so it prints what the pass did, not that it is full.
+        started = [r for r in _results_of(line, request) if r.kind is _K.STARTED]
+        if started:
+            lanes = ",".join(str(r.lane) for r in started)
+            return [_finding(_L.NOTE, f"line-filled:{line.line_id}", f"lane={lanes}")]
         return [_finding(_L.NOTE, f"line-at-capacity:{line.line_id}")]
     return [_finding(_L.NOTE, f"line-blocked:{line.line_id}", str(line.cause))]
 

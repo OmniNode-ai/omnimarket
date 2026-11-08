@@ -19,7 +19,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
@@ -44,15 +44,21 @@ def run_entry(
     overlay: Mapping[str, Any],
     *,
     host_id: str,
+    hosts: Iterable[tuple[str, bool]],
     build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand],
 ) -> ModelFloorFillEntryResult:
-    """Parse the command, build the handler from the overlay and run it. A refused overlay prints and fails."""
+    """Parse the command, build the handler from the overlay and run it. A refused overlay prints and fails.
+
+    ``hosts`` is the lab host table as ``(name, available)`` pairs. The configured ``host_id`` must be an available row of
+    it before any handler is built, so an unlisted or unavailable host never reaches the local execution path.
+    """
     parser = argparse.ArgumentParser(prog="node_floor_fill_orchestrator")
     parser.add_argument("command", choices=[c.value for c in EnumFloorFillCommand])
     parser.add_argument("key", nargs="?", default=None)
     args = parser.parse_args(list(argv))
     try:
         config = load_floor_fill_config(overlay.get(OVERLAY_SECTION, {}))
+        config.check_fill_host(hosts)
     except FloorFillConfigError as error:
         return ModelFloorFillEntryResult(
             exit_code=EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED],
@@ -63,6 +69,15 @@ def run_entry(
             command=EnumFloorFillCommand(args.command), key=args.key, host_id=host_id
         )
     )
+
+
+def lab_host_rows(overlay: Mapping[str, Any]) -> list[tuple[str, bool]]:
+    """The ``lab_hosts`` rows the caller passes beside the overlay, as ``(name, available)``; none means no host is listed."""
+    return [
+        (str(row["name"]), bool(row["available"]))
+        for row in overlay.get("lab_hosts", [])
+        if "name" in row and "available" in row
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -95,7 +110,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     result = run_entry(
-        rest, overlay, host_id=known.this_host, build_handler=build_inmemory_handler
+        rest,
+        overlay,
+        host_id=known.this_host,
+        hosts=lab_host_rows(overlay),
+        build_handler=build_inmemory_handler,
     )
     sys.stdout.write(result.stdout)
     sys.stdout.flush()
