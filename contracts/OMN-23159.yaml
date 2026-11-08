@@ -40,17 +40,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn23159-ac2-gate-untouched
+- id: dod-omn23159-ac2-exposure-stays-in-gate-input
   description: >-
-    This change touches no omnibase_infra file: the gate's workflow and validator are unchanged and the exposure is
-    declared on its own contract, not deleted or hidden from the gate's input.
+    The exposure is declared through the gate's own consumers opt-out and stays bus_backed on its own contract, so the
+    gate still reads it: it is not deleted, not set to bus_backed false and not hidden from the gate's input. This
+    change touches no omnibase_infra file, so the gate's workflow and validator are unchanged. The test fails at the
+    merge base (no consumers opt-out declared) and passes with it.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: test -z "$(git diff --name-only origin/dev...HEAD | grep -v -e '^contracts/OMN-23159.yaml$' -e '^src/omnimarket/nodes/node_projection_local_alerts/contract.yaml$' -e '^tests/test_omn23159_local_alerts_exposure_reader_declared.py$')"
-    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py::test_exposure_stays_bus_backed_in_the_gate_input -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn23159-integration-proof
   description: >-
     The pushed head ran the control test on a lab host through the lab work runner and exited 0. The gate's own run

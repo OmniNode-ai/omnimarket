@@ -57,6 +57,21 @@ def test_local_alerts_exposure_is_bus_backed_and_names_a_reasoned_opt_out() -> N
     assert reason.strip(), "`consumers: none` needs a non-empty `consumers_reason`"
 
 
+def test_exposure_stays_bus_backed_in_the_gate_input() -> None:
+    """The opt-out is the gate's declared route, not a way to hide the exposure from it."""
+    block = _projection_api(CONTRACT)
+    assert block["topic"] == TOPIC
+    assert block["bus_backed"] is True, (
+        "the exposure must stay bus_backed so the gate reads it"
+    )
+    assert block.get("consumers") == "none", (
+        "the exposure is declared through `consumers: none`, the gate's own route"
+    )
+    assert str(block.get("consumers_reason", "")).strip(), (
+        "the opt-out carries a reason"
+    )
+
+
 def test_consumers_reason_never_stands_without_consumers_none() -> None:
     offenders: list[str] = []
     for contract in sorted(NODES.glob("*/contract.yaml")):
