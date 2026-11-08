@@ -36,3 +36,11 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect -q --no-cov
+- id: dod-omn23025-integration-proof
+  description: The lane-reasons tests run on a lab host at the pushed head, and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23025 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_placement_lane_reasons_omn23025.py -q --no-cov
+    cwd: .
