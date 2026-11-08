@@ -74,6 +74,8 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 </main>
 <script>
 "use strict";
+let pieceMeasures = {}, measuresFailure = "not read yet";
+const COMPARE_DATA = "floor-compare.json";
 const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000, TABS = ["process", "machines"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
@@ -94,6 +96,14 @@ async function load(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     doc = await r.json(); failure = "";
   } catch (e) { failure = String(e.message || e); }
+  // Each live piece against the old way (OMN-23081) is in the comparison record; a failed read leaves the panel saying so.
+  try {
+    const c = await fetch(COMPARE_DATA, {cache: "no-store"});
+    if (!c.ok) throw new Error("HTTP " + c.status);
+    const cd = await c.json();
+    pieceMeasures = {}; for (const pm of (cd.pieces || [])) pieceMeasures[pm.piece] = pm;
+    measuresFailure = "";
+  } catch (e) { measuresFailure = String(e.message || e); }
   draw();
 }
 // The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
@@ -202,13 +212,30 @@ function panelBody(p){
   const cnt = v => v == null ? "not read" : String(v);
   h += `<h3>Events in the last ${esc(winText)}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`;
   h += `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
-  h += `<h3>Against the old way, 7 days</h3><p class="mute">The floor record carries no 7-day comparison for this piece yet.</p>`;
+  h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
   h += `<h3>Who is on it</h3>`;
   h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
   h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
   const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
   if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
   return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+}
+// The piece's measure against its baseline over its first 7 days, and on day 7 the verdict (OMN-23081). Never inferred:
+// the words and numbers are the comparison record's own; a missing record or piece says so.
+const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
+const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
+const num = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+function measureSection(p){
+  const pm = pieceMeasures[p.piece];
+  if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
+  let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
+  h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
+  for (const m of pm.measures) {
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(num(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(num(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(num(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p class="mute">Source: ${esc(m.source)}</p>`;
+  }
+  return h;
 }
 const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
 function renderPanel(){
