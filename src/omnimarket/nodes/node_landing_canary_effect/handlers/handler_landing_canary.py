@@ -44,6 +44,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     stamp_text,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelAppendOutcome,
     ProtocolReadingAppender,
 )
 
@@ -68,6 +69,9 @@ def _clean(text: str) -> str:
 
 #: The longest append cause kept on a result, so one refusal text cannot swell an event.
 _CAUSE_MAX = 200
+
+#: The append answers that may clear on a second try; a refused row would be refused again.
+_RETRYABLE_STATUSES = frozenset({"error", "pending"})
 
 
 class HandlerLandingCanary:
@@ -101,6 +105,22 @@ class HandlerLandingCanary:
         started = self._clock().astimezone(UTC)
         result = self._run(command.correlation_id, started)
         return self._publish(result, started, command.write)
+
+    def _append_with_retry(self, rows: str, request_id: str) -> ModelAppendOutcome:
+        """Append the row, trying again after a transient failure, as ``publish.append_attempts`` says."""
+        assert self._appender is not None
+        publish = self._overlay.publish
+        appended = self._appender.append(rows, request_id)
+        attempt = 1
+        while (
+            not appended.ok
+            and appended.status in _RETRYABLE_STATUSES
+            and attempt < publish.append_attempts
+        ):
+            self._sleep(float(publish.append_retry_wait_seconds))
+            appended = self._appender.append(rows, request_id)
+            attempt += 1
+        return appended
 
     def _result(
         self,
@@ -289,7 +309,7 @@ class HandlerLandingCanary:
         ]
         row = f"{stamp_text(now)} | {_ROW_TYPE} | " + " | ".join(cells)
         request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}|{content}"))
-        appended = self._appender.append(row + "\n", request_id)
+        appended = self._append_with_retry(row + "\n", request_id)
         if not appended.ok:
             return result.model_copy(
                 update={

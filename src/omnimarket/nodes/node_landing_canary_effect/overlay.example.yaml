@@ -6,7 +6,8 @@
 #   target           the test repository, the base branch, the bar the canary must land inside and how often the
 #                    pull request is read while waiting; backend inmemory (default for tests) or scm (a real
 #                    test repository, written and read through the commands the scm block names)
-#   publish          the lane and actor of the reading row, the piece it is for, whether the run is a drill
+#   publish          the lane and actor of the reading row, the piece it is for, whether the run is a drill, and how
+#                    many times the row's append is tried (and how long between tries) before the run is failed
 #   hosts            where the daily schedule may be installed, and the unit environment of each
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
 target:
@@ -32,6 +33,8 @@ publish:
   piece: 9
   drill: false
   publish_max_age_seconds: 93600
+  append_attempts: 3
+  append_retry_wait_seconds: 20
 hosts:
   - name: example-host
     scheduler: systemd-user

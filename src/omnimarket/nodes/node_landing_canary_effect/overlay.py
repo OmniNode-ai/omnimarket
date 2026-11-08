@@ -69,6 +69,12 @@ class ModelCanaryPublish(BaseModel):
     drill: bool
     #: How long a published reading stays fresh: the daily cadence plus the run bound; older, NOT WORKING.
     publish_max_age_seconds: int = Field(ge=1)
+    #: How many times the row's append is tried before the run is failed; 1 tries once. Only an ``error`` or
+    #: ``pending`` answer is tried again (a ``refused`` row would be refused again), and every attempt carries the
+    #: same request id, so an append that landed after its caller gave up is answered ``duplicate``.
+    append_attempts: int = Field(ge=1, le=10)
+    #: How long to wait between two attempts of the append.
+    append_retry_wait_seconds: int = Field(ge=0)
 
 
 class ModelCanaryHost(BaseModel):

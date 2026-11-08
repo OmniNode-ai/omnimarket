@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23077
+title: Rebuild piece 9, landing and merge queue, reads WORKING on the factory floor
+summary: >-
+  Task under this ticket: the daily landing canary tries its ledger append again after a transient failure. On 2026-11-08 the h053 daily unit's one append outlived its 60 second timeout and left the piece 9 reading with no row; the same command answered in 7.6 seconds a few hours later. Two overlay values, publish.append_attempts and publish.append_retry_wait_seconds, say how many tries and how long between them; only an error or pending answer is tried again, and every try carries the same request id. No verdict, bound or landing value changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23077-canary-append-retry
+    statement: >-
+      A canary row whose first ledger append fails is appended again, as the overlay says, so one slow append no longer leaves the reading with no row.
+    acceptance:
+      - id: AC1
+        statement: "AC1: piece 9 reads WORKING on the served floor from its own reading, with the rebuild plan's piece 9 tasks built and installed beside the current landing controller for the 7-day comparison -- falsifier: the floor's piece 9 reading"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The landing canary node tests, including the second attempt that lands the row and the run whose every attempt fails.
+    command: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23077-canary-append-retry
+    description: >-
+      An append that fails once and then answers lands the row (ledger=written, one request id across both tries); with every try failing, the run fails and keeps the last cause. With the retry loop cut to one try, two of the four new tests fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_canary_append_retry.py -q --no-cov
+        cwd: .
