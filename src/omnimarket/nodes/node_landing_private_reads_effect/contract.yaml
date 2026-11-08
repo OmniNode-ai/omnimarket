@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Private Reads Effect (rebuild piece 9, day one)
+name: "node_landing_private_reads_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Day one of rebuild piece 9: list each read the staged landing controller copy makes of a private clone or
+  overlay, by file, root and line, with the destination the read moves to. The private roots, the words that
+  name them and the declared reads come from the overlay. The reading is WORKING when files were scanned and
+  every read is declared, NOT_WORKING (undeclared_private_read, no_sources) otherwise. Pure over the sources
+  it is given; the directory backend reads the staged copy named by the overlay.
+input_model:
+  name: "ModelLandingPrivateReadsRequest"
+  module: "omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_private_reads"
+  description: "The overlay and the staged copy's files."
+output_model:
+  name: "ModelLandingPrivateReadsResult"
+  module: "omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_private_reads"
+  description: "The day-one list, the undeclared reads, the verdict and the published event."
+handler:
+  module: "omnimarket.nodes.node_landing_private_reads_effect.handlers.handler_landing_private_reads"
+  class: "HandlerLandingPrivateReads"
+  input_model: "omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_private_reads.ModelLandingPrivateReadsRequest"
+  output_model: "omnimarket.nodes.node_landing_private_reads_effect.models.model_landing_private_reads.ModelLandingPrivateReadsResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_landing_private_reads_effect.handlers.handler_landing_private_reads:HandlerLandingPrivateReads"
+  handlers:
+    - operation: "list_private_reads"
+      handler:
+        name: "HandlerLandingPrivateReads"
+        module: "omnimarket.nodes.node_landing_private_reads_effect.handlers.handler_landing_private_reads"
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.omnimarket.landing-private-reads-listed.v1"
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_landing_private_reads_effect, with ONEX_SKILL_OVERLAY_ROOTS naming the overlay root."
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  side_effects: [filesystem-read]
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: filesystem
+  description: "Landing Private Reads Effect - the day-one list of the staged controller copy's private reads."
+  author: "OmniNode Team"
+  created: "2026-11-08"
+  tags: ['effect', 'landing-private-reads', 'rebuild-piece-9', 'OMN-22478']
+  related_tickets: ['OMN-22478']
