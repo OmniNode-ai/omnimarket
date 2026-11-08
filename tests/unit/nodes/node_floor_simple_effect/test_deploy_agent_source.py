@@ -323,3 +323,41 @@ def test_a_legacy_record_full_of_superseded_jobs_does_not_lose_a_failure_to_the_
     read = read_deploy_agent(path, OVERLAY, NOW)
     assert read.subjects[0].value == 2.0
     assert not read.subjects[0].ok
+
+
+def test_a_merge_read_as_not_running_names_the_unread_running_build() -> None:
+    """OMN-23031: the row read 'merged, not running' while the count's own record said it could not read the running build."""
+    record = {
+        "floor": {
+            "merged_running": {
+                "generated_at": NOW.isoformat(),
+                "evidence_unread": [
+                    "deployed: omnibase_infra: history of the deployed ref unreadable (git rev-list exited 128)"
+                ],
+                "days": [
+                    {
+                        "merges": [
+                            {
+                                "repo": "omnibase_infra",
+                                "number": 5663,
+                                "merged_at": (
+                                    NOW - timedelta(minutes=2773)
+                                ).isoformat(),
+                                "running": False,
+                                "reason": "not_yet_deployed",
+                            }
+                        ]
+                    }
+                ],
+            }
+        }
+    }
+    read = read_deploy_lag(record, NOW, OVERLAY)
+    assert "evidence unread: deployed: omnibase_infra: history of the deployed ref" in (
+        read.subjects[0].note
+    )
+    clean = cast(dict[str, Any], record["floor"])["merged_running"]
+    del clean["evidence_unread"]
+    assert (
+        "evidence unread" not in read_deploy_lag(record, NOW, OVERLAY).subjects[0].note
+    )

@@ -157,5 +157,13 @@
     "basis": "Each test file this branch adds that the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The real-postgres projection test errored for want of a database on the runner, so its entry covers only the tests that ran.",
     "runner": "lab host h106, lane landing-L31273, Python 3.12; the next CI refresh replaces these entries",
     "base_sha": "ec58c63e8c202dc6d26a8ca791e587082fbcbba1"
+  },
+  "supplement_omn22935": {
+    "ticket": "OMN-22935",
+    "recorded_on": "2026-11-08",
+    "files_added": 4,
+    "basis": "Four work-state projection test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were.",
+    "runner": "lab host h101, lane landing-L31295; the next CI refresh replaces these entries",
+    "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
   }
 }

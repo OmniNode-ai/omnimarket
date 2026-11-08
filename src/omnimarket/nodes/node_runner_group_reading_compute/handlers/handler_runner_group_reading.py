@@ -19,6 +19,8 @@ from omnimarket.nodes.node_runner_group_reading_compute.models import (
     ModelCanaryFacts,
     ModelCanaryRun,
     ModelGroupFact,
+    ModelGroupRunner,
+    ModelMergeGroupJobFact,
     ModelReadingSubject,
     ModelRepositoryFact,
     ModelRunnerGroupReadingRequest,
@@ -28,6 +30,8 @@ from omnimarket.nodes.node_runner_group_reading_compute.models import (
 SUBJECT_GROUPS_READ = "groups_read"
 SUBJECT_CANARY = "canary_public_workflow"
 SUBJECT_READ_AGE = "read_age"
+SUBJECT_PRIVATE_QUEUE_GROUP = "private_queue_group"
+SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB = "private_queue_merge_group_job"
 
 _W = EnumReadingVerdict.WORKING
 _N = EnumReadingVerdict.NOT_WORKING
@@ -88,6 +92,16 @@ class HandlerRunnerGroupReading:
                 if run.picked_up_by_group_id in lab_ids
                 and run.picked_up_by_group_id is not None
             )
+        if request.settings.private_queue is not None:
+            queue_group = self._private_queue_group(request)
+            queue_job = self._private_queue_merge_group_job(request)
+            subjects.extend((queue_group, queue_job))
+            if _N in (queue_group.verdict, queue_job.verdict):
+                failing.update(
+                    g.group_id
+                    for g in groups
+                    if g.name == request.settings.private_queue.group_name
+                )
         age = self._read_age(request)
         subjects.append(age)
 
@@ -249,6 +263,130 @@ class HandlerRunnerGroupReading:
         )
 
     @staticmethod
+    def _queue_members(group: ModelGroupFact, prefix: str) -> list[ModelGroupRunner]:
+        return [r for r in group.runners if r.name.startswith(prefix)]
+
+    def _private_queue_group(
+        self, request: ModelRunnerGroupReadingRequest
+    ) -> ModelReadingSubject:
+        """OMN-23156 AC1: the queue group reads private, closed to public, with every expected runner online in it."""
+        queue = request.settings.private_queue
+        assert queue is not None
+        group = next((g for g in request.groups if g.name == queue.group_name), None)
+        if group is None:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_GROUP,
+                verdict=_N,
+                count=0,
+                reason=f"group {queue.group_name} is not in the organization's runner groups",
+            )
+        members = self._queue_members(group, queue.runner_name_prefix)
+        online = [m for m in members if m.online]
+        unread = [m for m in members if m.online is None]
+        elsewhere = sorted(
+            r.name
+            for g in request.groups
+            if g.group_id != group.group_id
+            for r in self._queue_members(g, queue.runner_name_prefix)
+        )
+        problems: list[str] = []
+        if group.visibility is not EnumGroupVisibility.PRIVATE:
+            problems.append(f"visibility reads {group.visibility.value}, not private")
+        if group.allows_public_repositories:
+            problems.append("it allows public repositories")
+        if elsewhere:
+            problems.append(
+                f"{len(elsewhere)} {queue.runner_name_prefix} runner(s) are registered in another group: {', '.join(elsewhere)}"
+            )
+        short = len(online) < queue.expected_online_members
+        if short:
+            problems.append(
+                f"{len(online)} of {queue.expected_online_members} {queue.runner_name_prefix} runners are online in it"
+            )
+        if problems and not (short and unread and len(problems) == 1):
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_GROUP,
+                verdict=_N,
+                count=len(online),
+                reason=f"group {group.name}: {'; '.join(problems)}",
+            )
+        if short:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_GROUP,
+                verdict=_U,
+                count=len(online),
+                reason=f"group {group.name}: {len(unread)} runner(s) carried no online status",
+            )
+        return ModelReadingSubject(
+            name=SUBJECT_PRIVATE_QUEUE_GROUP,
+            verdict=_W,
+            count=len(online),
+            reason=(
+                f"group {group.name} reads private with {len(online)} online "
+                f"{queue.runner_name_prefix} runner(s) and none registered elsewhere"
+            ),
+        )
+
+    def _private_queue_merge_group_job(
+        self, request: ModelRunnerGroupReadingRequest
+    ) -> ModelReadingSubject:
+        """OMN-23156 AC2: a completed merge-group job of a private repository ran on a runner of the queue group."""
+        queue = request.settings.private_queue
+        assert queue is not None
+        jobs: tuple[ModelMergeGroupJobFact, ...] | None = request.merge_group_jobs
+        if jobs is None:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB,
+                verdict=_U,
+                reason="the merge-group job runs were not read",
+            )
+        group = next((g for g in request.groups if g.name == queue.group_name), None)
+        if group is None:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB,
+                verdict=_N,
+                count=0,
+                reason=f"group {queue.group_name} is not in the organization's runner groups",
+            )
+        on_pool = [j for j in jobs if j.runner_group_id == group.group_id]
+        public = [
+            j
+            for j in on_pool
+            if j.repository_visibility is not EnumRepositoryVisibility.PRIVATE
+        ]
+        if public:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB,
+                verdict=_N,
+                count=len(public),
+                reason=f"{len(public)} merge-group job(s) of a non-private repository ran on group {group.name}",
+            )
+        proven = [
+            j
+            for j in on_pool
+            if j.conclusion == "success"
+            and j.runner_name is not None
+            and j.runner_name.startswith(queue.runner_name_prefix)
+        ]
+        if not proven:
+            return ModelReadingSubject(
+                name=SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB,
+                verdict=_N,
+                count=0,
+                reason=(
+                    f"no completed merge-group job of a private repository ran on a "
+                    f"{queue.runner_name_prefix} runner of group {group.name} ({len(jobs)} job(s) read)"
+                ),
+            )
+        first = proven[0]
+        return ModelReadingSubject(
+            name=SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB,
+            verdict=_W,
+            count=len(proven),
+            reason=f"run {first.run_id} completed on {first.runner_name} of group {group.name}",
+        )
+
+    @staticmethod
     def _read_age(request: ModelRunnerGroupReadingRequest) -> ModelReadingSubject:
         elapsed = request.now - request.read_at
         limit = request.settings.max_age_seconds
@@ -277,6 +415,8 @@ class HandlerRunnerGroupReading:
 __all__: list[str] = [
     "SUBJECT_CANARY",
     "SUBJECT_GROUPS_READ",
+    "SUBJECT_PRIVATE_QUEUE_GROUP",
+    "SUBJECT_PRIVATE_QUEUE_MERGE_GROUP_JOB",
     "SUBJECT_READ_AGE",
     "HandlerRunnerGroupReading",
     "group_setting_subject",
