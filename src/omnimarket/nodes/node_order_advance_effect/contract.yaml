@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Order Advance Effect (OMN-23055, step 0 row 3)
+#
+# The one order writer of rebuild plan section 7.5: on a timer, as the holder of the gate store's
+# record, it advances the order by one position when the piece at the current position reads ready.
+# It holds no start; if it fails nothing is recorded and work continues. Its holder name, step-key
+# prefix, run engine backend, readiness read and takeover rule come from the order_writer overlay;
+# the gate store it writes to is the gate_store overlay's. This contract holds no setting.
+name: node_order_advance_effect
+contract_name: node_order_advance_effect
+node_name: node_order_advance_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  One tick: read the gate store; claim the holder record by a fenced handover when it is the
+  writer's to claim; advance the order by one position, keyed run_key/advance/<n>, when the piece at
+  the current position reads ready. A tick that is fenced, refused, waiting or complete writes
+  nothing and says so by type. A request the writer cannot answer is a typed failure event, never
+  dropped.
+
+handler:
+  module: omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance
+  class: HandlerOrderAdvance
+  input_model: omnimarket.models.model_order_advance.ModelOrderAdvanceRequest
+
+# Not a runtime-dispatched handler: HandlerOrderAdvance takes the gate store, the readiness read
+# and the policy as constructor parameters (the overlays select them), so the bus edge is
+# answer_command and the timer is a unit that runs `python -m omnimarket.nodes.node_order_advance_effect tick`.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [gate-store-write]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelOrderAdvanceRequest
+  module: omnimarket.models.model_order_advance
+  description: One tick and the time the caller read.
+output_model:
+  name: ModelOrderAdvanceResult
+  module: omnimarket.models.model_order_advance
+  description: What the tick did, the position and epoch it ended at.
+
+terminal_event: onex.evt.omnimarket.order-advanced.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  order_advance_requested: onex.cmd.omnimarket.order-advance-requested.v1
+  order_advanced: onex.evt.omnimarket.order-advanced.v1
+  order_advance_failed: onex.evt.omnimarket.order-advance-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.order-advanced.v1
+  - onex.evt.omnimarket.order-advance-failed.v1
+
+overlay:
+  node: order_writer
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23055
+  transport_type: inmemory

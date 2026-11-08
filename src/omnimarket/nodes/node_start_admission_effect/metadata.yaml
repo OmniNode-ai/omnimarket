@@ -1,0 +1,22 @@
+name: node_start_admission_effect
+version: "0.1.0"
+description: "start admission: reserve on the gate store before a start, consume at the start, observe or refuse by path"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_start_admission_effect: "omnimarket.nodes.node_start_admission_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "gate-store", "holder", "admission"]
+pack: "routing"
+display_name: "Start Admission Effect"
+node_role: "effect"

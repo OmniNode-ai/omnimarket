@@ -896,6 +896,7 @@ node_operator_access_mode_effect = "omnimarket.nodes.node_operator_access_mode_e
 node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
 node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick_effect"
+node_order_advance_effect = "omnimarket.nodes.node_order_advance_effect"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 node_overlay_drift_effect = "omnimarket.nodes.node_overlay_drift_effect"
 node_overlay_resolver_effect = "omnimarket.nodes.node_overlay_resolver_effect"
@@ -1193,6 +1194,7 @@ node_stall_responder_compute = "omnimarket.nodes.node_stall_responder_compute"
 node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_service_redeploy_effect"
 node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
+node_start_admission_effect = "omnimarket.nodes.node_start_admission_effect"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_stop_only_on_withdrawal_compute = "omnimarket.nodes.node_stop_only_on_withdrawal_compute"
 node_stop_only_on_withdrawal_effect = "omnimarket.nodes.node_stop_only_on_withdrawal_effect"
@@ -1894,6 +1896,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# psycopg2 ships no stubs; scoped to the gate store backend so the existing ignore comments elsewhere stay used.
+module = ["omnimarket.nodes.node_gate_store_effect.handlers.*", "tests.nodes.node_gate_store_effect.*"]
+disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
 module = ["aiokafka", "aiokafka.*"]
