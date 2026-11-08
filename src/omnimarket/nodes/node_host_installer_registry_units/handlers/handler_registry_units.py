@@ -424,6 +424,12 @@ class HandlerRegistryUnits:
             "HOME": str(home),
             "USER": user,
             "STATE_DIR": str(state),
+            # launchd opens the log files before the job runs, so a state directory on an external volume (a registry
+            # root that links to /Volumes) ends the job with EX_CONFIG and no log. A unit may declare log_directory,
+            # relative to the home, to keep its logs off the registry root; undeclared, the logs sit in the state directory.
+            "LOG_DIR": str(home / str(unit["log_directory"]))
+            if unit.get("log_directory")
+            else str(state),
             "START_INTERVAL": str(unit["schedule"]["start_interval"]),
             "PROCESS_TYPE": process_type,
         }
