@@ -11,15 +11,15 @@ requirements:
     statement: |-
       The closeout sweep's scope ranking runs in node_dod_closeout_sweep_compute with every rule and cap in overlay.yaml.
     acceptance:
-      - id: "PORT1"
+      - id: "DoD1"
         statement: |-
-          PORT1: scope_bundle with the script's own rules returns the bundle the replaced ranking printed for the same scope, and with the overlay's rules a ticket with a contract ranks before one without while the reserve keeps the oldest contractless tickets in the run -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py, whose control cases fail with has_contract removed from the rules or the reserve set to 0
-      - id: "PORT2"
+          DoD1: scope_bundle with the script's own rules returns the bundle the replaced ranking printed for the same scope, and with the overlay's rules a ticket with a contract ranks before one without while the reserve keeps the oldest contractless tickets in the run -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py, whose control cases fail with has_contract removed from the rules or the reserve set to 0
+      - id: "DoD2"
         statement: |-
-          PORT2: a ticket whose verify printed could_not_run with a contract-unresolved detail reads 'no contract' and any other could_not_run keeps its 'no verdict' reading -- falsifier: test_a_ticket_with_no_contract_reads_no_contract and test_failing_control_a_verifier_that_did_not_run_for_another_reason_keeps_its_reading in the same file
-      - id: "PORT3"
+          DoD2: a ticket whose verify printed could_not_run with a contract-unresolved detail reads 'no contract' and any other could_not_run keeps its 'no verdict' reading -- falsifier: test_a_ticket_with_no_contract_reads_no_contract and test_failing_control_a_verifier_that_did_not_run_for_another_reason_keeps_its_reading in the same file
+      - id: "DoD3"
         statement: |-
-          PORT3: the scope_bundle kind is dispatched through the contract on the in-memory bus and a request missing its PR state is refused with no result -- falsifier: test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_bus and test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus in the same file
+          DoD3: the scope_bundle kind is dispatched through the contract on the in-memory bus and a request missing its PR state is refused with no result -- falsifier: test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_bus and test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus in the same file
 evidence_requirements:
   - kind: "tests"
     description: "Golden-chain, error-chain, parity and failing-control tests for the scope ranking."
@@ -29,9 +29,27 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20655-closeout-ranking-node"
-    description: "The scope ranking runs in the node from overlay data and matches the replaced ranking under the script's rules."
+  - id: "dod-omn20655-ranking-and-parity"
+    description: "The scope ranking runs in the node from overlay data, matches the replaced ranking under the script's rules, and its failing controls fail."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn20655-no-contract-reading"
+    description: "A ticket whose verify found no contract reads 'no contract'; another could_not_run keeps its reading."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py::test_a_ticket_with_no_contract_reads_no_contract -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD2"]
+  - id: "dod-omn20655-bus-chain"
+    description: "scope_bundle dispatches over the in-memory bus and a request missing its PR state is refused with no result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_scope_bundle_dod_closeout_sweep_compute.py::test_error_chain_scope_bundle_without_its_pr_state_fails_over_the_bus -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD3"]
