@@ -61,6 +61,14 @@ SETUP_PROVIDERS: tuple[str, ...] = (
     "openai_compatible",
     "local",
 )
+#: Providers setup refuses, each with its problem and the way to reach it instead.
+REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {
+    "ollama": (
+        "ollama is not a setup provider",
+        "reach Ollama by its OpenAI-compatible URL: "
+        "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
+    ),
+}
 URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
 KEYLESS_PROVIDERS: tuple[str, ...] = ("local",)
 ARGUMENTS_STEP = "arguments"
@@ -237,12 +245,12 @@ def refused_before_any_step(
     naming its flag, with nothing written.
     """
     provider = request.provider.lower() if request.provider else None
-    if provider == "ollama":
+    if provider in REFUSED_PROVIDERS:
+        problem, fix = REFUSED_PROVIDERS[provider]
         return _refuse(
             request,
-            "ollama is not a setup provider",
-            "reach Ollama by its OpenAI-compatible URL: "
-            "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
+            problem,
+            fix,
             retry_request=request.model_copy(update={"provider": None}),
         )
     if provider is not None and provider not in SETUP_PROVIDERS:
@@ -557,6 +565,7 @@ __all__ = [
     "INSTALL_PATHS",
     "INSTALL_SH_MARKER",
     "KEYLESS_PROVIDERS",
+    "REFUSED_PROVIDERS",
     "RUNTIME_CONFIG_RELPATH",
     "SETUP_MARKER",
     "SETUP_PROVIDERS",

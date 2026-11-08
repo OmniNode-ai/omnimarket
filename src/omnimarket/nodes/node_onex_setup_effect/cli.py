@@ -30,6 +30,7 @@ from pydantic import SecretStr
 
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
+    REFUSED_PROVIDERS,
     SETUP_PROVIDERS,
     URL_PROVIDERS,
     HandlerOnexSetup,
@@ -85,7 +86,7 @@ def _ask_choices(
         )
     if provider in URL_PROVIDERS and url is None:
         url = str(click.prompt("Server base URL (http://<host>:<port>)", type=str))
-    if model is None and provider.lower() != "ollama":
+    if model is None:
         model = str(click.prompt("Model", type=str)).strip()
     return provider, model, url
 
@@ -176,7 +177,7 @@ def setup_command(
             workspace = state.workspace
         elif interactive:
             workspace = Path(click.prompt("Workspace root (OMNIBASE_PATH)", type=str))
-    if provider is not None and provider.lower() == "ollama":
+    if provider is not None and provider.lower() in REFUSED_PROVIDERS:
         interactive = False  # refused by name below; never prompt for it
     if interactive:
         provider, model, url = _ask_choices(provider, model, url)

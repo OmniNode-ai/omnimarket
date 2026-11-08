@@ -33,6 +33,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner, Result
 from omnibase_core.cli.cli_commands import cli
+from pydantic import SecretStr
 
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
 from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
@@ -145,7 +146,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def recorder(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Recorder:
     recording = Recorder(receipts_dir=tmp_path / "runs")
-    monkeypatch.setattr(handler_model_setup.subprocess, "run", recording)
+    monkeypatch.setattr(subprocess, "run", recording)
     return recording
 
 
@@ -489,7 +490,7 @@ def test_sentinel_key_never_leaks(
             provider="openai_compatible",
             model=MODEL,
             url=any_key_server,
-            key=sentinel,  # type: ignore[arg-type]  # pydantic coerces str to SecretStr
+            key=SecretStr(sentinel),
             unattended=True,
         )
     )
@@ -504,7 +505,7 @@ def test_sentinel_key_never_leaks(
             result.output,
             caplog.text,
             handler_result.model_dump_json(),
-            repr(ModelOnexSetupRequest(onex_home=home, key=sentinel)),  # type: ignore[arg-type]
+            repr(ModelOnexSetupRequest(onex_home=home, key=SecretStr(sentinel))),
         ],
         roots=[home, workspace, tmp_path / "delegation"],
     )
