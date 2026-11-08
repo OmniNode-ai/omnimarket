@@ -72,6 +72,10 @@ GENERATE = f"{HTTPS}actions/hpehttpscert.generatecsr/"
 IMPORT = f"{HTTPS}actions/hpehttpscert.importcertificate/"
 
 
+# The iLO 4 firmware 2.82 certificate size the weak-certificate path exists for (twice the 512-bit halves).
+LEGACY_ILO_KEY_BITS = 2 * 512
+
+
 def _self_signed(bits: int, common_name: str, serial: int) -> tuple[bytes, bytes]:
     """(DER, key PEM) of a self-signed RSA certificate."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=bits)
@@ -94,7 +98,7 @@ def _self_signed(bits: int, common_name: str, serial: int) -> tuple[bytes, bytes
 
 
 def _weak_der(serial: int = 0x1A2B3C4D) -> bytes:
-    return _self_signed(1024, "ILOUSE443DE5W", serial)[0]
+    return _self_signed(LEGACY_ILO_KEY_BITS, "ILOUSE443DE5W", serial)[0]
 
 
 class WeakDevice(SetupDevice):
@@ -761,7 +765,7 @@ class _Server:
 
 @pytest.fixture
 def weak_server(tmp_path: Path) -> Iterator[tuple[_Server, bytes]]:
-    material = _self_signed(1024, "ILOUSE443DE5W", 0x1A2B3C4D)
+    material = _self_signed(LEGACY_ILO_KEY_BITS, "ILOUSE443DE5W", 0x1A2B3C4D)
     server = _Server(tmp_path, material)
     yield server, material[0]
     server.close()

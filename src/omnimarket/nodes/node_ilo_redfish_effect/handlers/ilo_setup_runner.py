@@ -651,7 +651,13 @@ class IloSetupSequence:
                 )
                 self._last_admin = (host, stored_secret)
                 return name, stored_secret
-        typed, how = self._typed_admin_password(host, request)
+        previous_host = self._previous_host_to_reuse(host)
+        if previous_host is not None and self._last_admin is not None:
+            how = f"same as {previous_host}"
+            typed: SecretStr | None = self._last_admin[1]
+        else:
+            how = "from the hidden prompt"
+            typed = self._prompt_password(host, request.admin_user)
         if typed is None:
             raise _StopError(
                 Refusal.ADMIN_CREDENTIAL_MISSING,
@@ -677,18 +683,16 @@ class IloSetupSequence:
         self._last_admin = (host, typed)
         return request.admin_user, typed
 
-    def _typed_admin_password(
-        self, host: str, request: ModelIloSetupRequest
-    ) -> tuple[SecretStr | None, str]:
-        """One host's password from the operator: the previous host's on a yes, else the hidden prompt."""
+    def _previous_host_to_reuse(self, host: str) -> str | None:
+        """The previous host of this run when the operator says its administrator password is the same."""
         previous = self._last_admin
         if (
             previous is not None
             and previous[0] != host
             and self._ask_same(host, previous[0])
         ):
-            return previous[1], f"same as {previous[0]}"
-        return self._prompt_password(host, request.admin_user), "from the hidden prompt"
+            return previous[0]
+        return None
 
     # -- certificate ------------------------------------------------------------------------
 

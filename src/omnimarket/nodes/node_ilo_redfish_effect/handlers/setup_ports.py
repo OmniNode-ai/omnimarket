@@ -23,13 +23,15 @@ class ProtocolSetupSecrets(Protocol):
 
     def names(self) -> frozenset[str]:
         """The key names in the iLO folder. Never values."""
-        ...
+        raise NotImplementedError
 
-    def get(self, key: str) -> SecretStr | None: ...
+    def get(self, key: str) -> SecretStr | None:
+        """The value under ``key``, or ``None`` when absent."""
+        raise NotImplementedError
 
     def create(self, key: str, value: SecretStr) -> bool:
         """Create ``key``; ``False`` when it already exists (never updated)."""
-        ...
+        raise NotImplementedError
 
 
 # DER bytes of the certificate the iLO at (address, port) presents. Nothing is sent to the device.

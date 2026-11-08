@@ -234,7 +234,7 @@ def test_two_writers_staging_the_same_file_each_publish_only_their_own_complete_
 
 
 def test_concurrent_host_updates_do_not_erase_each_others_overlay_rows(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first = Rig(tmp_path, {"h1": SetupDevice("gen9")}).handler
     second = Rig(tmp_path, {"h2": SetupDevice("gen9")}).handler
@@ -247,7 +247,7 @@ def test_concurrent_host_updates_do_not_erase_each_others_overlay_rows(
         other.join(timeout=0.5)
         return read
 
-    first._overlay_document = document_then_the_other_host_writes  # type: ignore[method-assign]
+    monkeypatch.setattr(first, "_overlay_document", document_then_the_other_host_writes)
     first._write_overlay(_row("h1"))
     other.join()
     document = yaml.safe_load(
@@ -298,12 +298,14 @@ def _seed_row(rig: Rig, credentials: dict[str, str] | None) -> None:
 
 
 def test_the_accounts_are_stored_under_the_keys_the_overlay_row_names(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rig = Rig(tmp_path, {"h9": SetupDevice("gen9")})
     _seed_row(rig, MAPPED)
     asked: list[str] = []
-    rig.handler._node_reader = lambda key: asked.append(key) or object()  # type: ignore[assignment]
+    monkeypatch.setattr(
+        rig.handler, "_node_reader", lambda key: asked.append(key) or object()
+    )
     result = rig.run("h9")
     assert result.hosts[0].status == "ready"
     assert sorted(_account_keys(rig)) == sorted(MAPPED.values())
