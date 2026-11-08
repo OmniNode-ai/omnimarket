@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -258,21 +259,26 @@ class HandlerFactoryFloorEffect:
         host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
-        ledger = read_ledger_rows(
-            window_days=rt.ledger_window_days,
-            cut_chars=rt.ledger_cut_chars,
-            timeout_seconds=rt.ledger_timeout_seconds,
-            plugin_root=Path(plugin_root) if plugin_root else None,
-            plugin_root_env=rt.plugin_root_env,
-            ledger_rows_file=Path(request.ledger_rows_file)
-            if request.ledger_rows_file
-            else None,
-        )
-        cloud_accounts, cloud_cause = read_cloud_account_source(
-            home,
-            rt.cloud_source,
-            overlay.cloud_accounts_node_command if overlay is not None else (),
-        )
+        # The cloud account node is a subprocess of its own and waits on nothing the ledger read produces: the two
+        # run together (OMN-23081: sequential, the reads took 12 s of the step's 30 s bound).
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            cloud_read = pool.submit(
+                read_cloud_account_source,
+                home,
+                rt.cloud_source,
+                overlay.cloud_accounts_node_command if overlay is not None else (),
+            )
+            ledger = read_ledger_rows(
+                window_days=rt.ledger_window_days,
+                cut_chars=rt.ledger_cut_chars,
+                timeout_seconds=rt.ledger_timeout_seconds,
+                plugin_root=Path(plugin_root) if plugin_root else None,
+                plugin_root_env=rt.plugin_root_env,
+                ledger_rows_file=Path(request.ledger_rows_file)
+                if request.ledger_rows_file
+                else None,
+            )
+            cloud_accounts, cloud_cause = cloud_read.result()
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
