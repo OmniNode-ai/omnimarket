@@ -21,6 +21,7 @@ from omnimarket.handlers.runtime_proof_close_rules import (
     evaluate_proof_close,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
+    merged_branch,
     refusal_of,
     refusal_reason,
     same_actor,
@@ -832,17 +833,17 @@ def refuse_binding(
     check = request.check
     if check is not None and not check.label and request.criterion_label:
         check = check.model_copy(update={"label": request.criterion_label})
-    refusal = refusal_of(
-        check,
-        load_scope_overlay()
-        if request.scope_overlay is None
-        else request.scope_overlay,
+    overlay = (
+        load_scope_overlay() if request.scope_overlay is None else request.scope_overlay
     )
+    refusal = refusal_of(check, overlay)
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
         refused=refusal is not None,
         refusal_class=refusal,
-        reason=None if refusal is None else refusal_reason(refusal),
+        reason=None
+        if refusal is None
+        else refusal_reason(refusal, merged_branch(check, overlay)),
     )
 
 

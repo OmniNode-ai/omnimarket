@@ -639,3 +639,28 @@ def test_error_chain_the_prs_command_refuses_without_omni_home() -> None:
     )  # fmt: skip
     assert run.returncode == 2
     assert "OMNI_HOME is not set" in run.stderr
+
+
+def test_the_refusal_names_the_branch_the_repository_merges_to() -> None:
+    def reason(repo: str) -> str | None:
+        return (
+            HandlerDodCloseoutSweep()
+            .handle(
+                ModelDodCloseoutDecisionRequest(
+                    kind="refuse_binding",  # type: ignore[arg-type]
+                    date="2026-11-08",
+                    check=_test_check(repo, "origin/feature"),
+                    scope_overlay=_overlay(),
+                )
+            )
+            .reason
+        )
+
+    assert reason("docs_main") == (
+        "binding refused (not-on-merged-dev): the check does not run at origin/main "
+        "or a full merged sha"
+    )
+    assert reason("omnimarket") == (
+        "binding refused (not-on-merged-dev): the check does not run at origin/dev "
+        "or a full merged sha"
+    )

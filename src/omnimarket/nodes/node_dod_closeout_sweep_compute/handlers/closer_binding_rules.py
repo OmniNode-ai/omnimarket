@@ -143,7 +143,7 @@ REFUSAL_REASONS = {
     "no-test-selector": "a test check names no pytest node id",
     "test-selector-not-a-test-id": "the test selector is not a pytest node id (path/to/test_x.py::test_name)",
     "no-repo": "the test check names no single registry repo to run it in",
-    "not-on-merged-dev": "the check does not run at origin/<the repository's default branch> or a full merged sha",
+    "not-on-merged-dev": "the check does not run at origin/{branch} or a full merged sha",
     "no-command": "the check carries no runnable command",
     "no-cwd": "a command check names no working directory",
     "no-host": "a lab readback names no host",
@@ -157,8 +157,12 @@ UNKNOWN_REFUSAL_REASON = (
 )
 
 
-def refusal_reason(refusal_class: str) -> str:
-    reason = REFUSAL_REASONS.get(refusal_class) or UNKNOWN_REFUSAL_REASON
+def refusal_reason(refusal_class: str, branch: str = "dev") -> str:
+    """The open comment's words for a refusal; ``branch`` is the default branch the merged ref
+    must name for the check's repository (dev unless the overlay says otherwise)."""
+    reason = (REFUSAL_REASONS.get(refusal_class) or UNKNOWN_REFUSAL_REASON).format(
+        branch=branch
+    )
     return f"binding refused ({refusal_class}): {reason}"
 
 
@@ -340,6 +344,15 @@ def _text(value: str | None) -> str:
     return (value or "").strip()
 
 
+def merged_branch(
+    check: ModelBindingCheck | None, overlay: ModelCloseoutScopeOverlay
+) -> str:
+    """The default branch a merged ref must name for the check's repository: the one the overlay
+    lists for it, else the overlay's fallback branch."""
+    repo = normalize_repo(check.repo if check else None)
+    return overlay.default_branches().get(repo, overlay.binding_default_branch)
+
+
 def merged_ref_ok(check: ModelBindingCheck, overlay: ModelCloseoutScopeOverlay) -> bool:
     """A full sha, or ``origin/<branch>`` where the branch is the one the overlay names as the
     check's repository's default branch (a repository it does not list: its fallback branch).
@@ -347,10 +360,7 @@ def merged_ref_ok(check: ModelBindingCheck, overlay: ModelCloseoutScopeOverlay) 
     ref = check.ref or ""
     if _FULL_SHA.fullmatch(ref):
         return True
-    branch = overlay.default_branches().get(
-        normalize_repo(check.repo), overlay.binding_default_branch
-    )
-    return ref == f"origin/{branch}"
+    return ref == f"origin/{merged_branch(check, overlay)}"
 
 
 def refusal_of(
