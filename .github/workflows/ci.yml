@@ -4382,11 +4382,12 @@ jobs:
             scripts/ci/ci_summary_external_producers.json
             scripts/ci/ci_summary_sweep_non_pr_events.json
             scripts/ci/ci_summary_sweep_exclusions.json
+            scripts/ci/ci_summary_rules.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json .ci-summary-head/scripts/ci/ci_summary_sweep_exclusions.json scripts/ci/
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json .ci-summary-head/scripts/ci/ci_summary_sweep_exclusions.json .ci-summary-head/scripts/ci/ci_summary_rules.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:

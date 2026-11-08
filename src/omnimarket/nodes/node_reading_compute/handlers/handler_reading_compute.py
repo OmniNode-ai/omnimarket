@@ -22,9 +22,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import UTC, datetime, timedelta
 
+# stamp_text and reason_token are owned by omnimarket.handlers.reading_text; the other nodes that still
+# import them from here keep working through this explicit re-export.
+from omnimarket.handlers.reading_text import (
+    reason_token as reason_token,
+)
+from omnimarket.handlers.reading_text import (
+    stamp_text as stamp_text,
+)
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
     EnumReadingVerdict,
@@ -39,22 +46,10 @@ from omnimarket.models.model_reading import (
 )
 
 _KEY_LENGTH = 24
-_TOKEN_LIMIT = 120
-_NOT_TOKEN = re.compile(r"[^a-z0-9]+")
-
-
-def stamp_text(moment: datetime) -> str:
-    """The ledger's stamp form, UTC to the second."""
-    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def reason_token(text: str) -> str:
-    """A free-text reason as one cell-safe token."""
-    return _NOT_TOKEN.sub("-", text.lower()).strip("-")[:_TOKEN_LIMIT] or "unspecified"
 
 
 def row_key(
@@ -133,9 +128,14 @@ def _judge_landing(
 ) -> list[str]:
     """The landing goal's hourly requirements against one watcher snapshot; the reasons it fails, none when it holds."""
     if snapshot.age_seconds > requirements.snapshot_max_age_seconds:
-        return [
-            f"snapshot-stale:age-{snapshot.age_seconds}s-over-{requirements.snapshot_max_age_seconds}s"
-        ]
+        # The age moves with the probe time, so it never goes in the reason: a later probe of the
+        # same window over the same snapshot must give the same content (OMN-23077).
+        newest = (
+            ""
+            if snapshot.newest_at is None
+            else f"newest-{snapshot.newest_at.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-"
+        )
+        return [f"snapshot-stale:{newest}over-{requirements.snapshot_max_age_seconds}s"]
     failures = [
         f"head-unmerged-over-limit:{reason_token(head.ref)}"
         for head in sorted(snapshot.heads, key=lambda h: h.ref)
