@@ -207,6 +207,9 @@ def test_the_writer_inserts_one_row_per_event_under_the_house_tenant() -> None:
     assert _deliver(writer, _COMPLETED_TOPIC, _completed()) == 1
     assert len(table.rows) == 2
     assert table.tenants == ["omninode", "omninode"]
+    # One pool stays open on the writer's dispatch loop until the writer is closed.
+    assert table.loop is not None
+    writer.close_dispatch()
     assert table.loop is None
 
 

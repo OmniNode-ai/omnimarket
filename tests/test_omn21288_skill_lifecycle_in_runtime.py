@@ -177,4 +177,9 @@ def test_runtime_dispatch_writes_once_and_replay_writes_nothing(
         assert args[0] == UUID(event_id)
         assert args[2] == "completed"
         assert kwargs == {"tenant": "omninode"}
+    # The pool lives on the writer's dispatch loop between deliveries, so it is open
+    # until the writer is closed (OMN-21933).
+    assert len(boundary["pools"]) == 1
+    assert not boundary["pools"][0].test_closed
+    writer.close_dispatch()
     assert all(pool.test_closed for pool in boundary["pools"])

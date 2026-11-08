@@ -14,7 +14,6 @@ binds the same value to the transaction's ``app.tenant_id``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -22,6 +21,9 @@ from typing import Any
 import yaml
 
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_consumer_flow.dispatch_session import (
+    DispatchSession,
+)
 from omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_projection_skill_lifecycle import (
     HandlerProjectionSkillLifecycle,
 )
@@ -52,7 +54,7 @@ _INSERT_SKILL_EXECUTION = """
 
 
 class SkillLifecycleProjectionWriter(BaseProjectionRunner):
-    """One event loop and pool per in-process dispatch, explicit tenant context."""
+    """One dispatch loop and one pool for the writer's life, explicit tenant context."""
 
     onex_runtime_inprocess_dispatch = True
 
@@ -61,6 +63,9 @@ class SkillLifecycleProjectionWriter(BaseProjectionRunner):
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         self._contract: dict[str, Any] = yaml.safe_load(path.read_text())
         self._fold = HandlerProjectionSkillLifecycle()
+        # Worker threads hand each message to this one loop, so the pool is opened
+        # once on it and no delivery replaces or closes another's (OMN-21933).
+        self._dispatch = DispatchSession(f"{type(self).__name__}-dispatch")
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -71,19 +76,26 @@ class SkillLifecycleProjectionWriter(BaseProjectionRunner):
         return self.subscribe_topics
 
     def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
+        """RuntimeLocal handler protocol shim: one message on the writer's dispatch loop."""
         # No injected topic falls through to the payload's own event type; the
         # first subscribed topic would mislabel a completed event as started.
-        return asyncio.run(self._project_one_message(request.topic, request.payload))
+        return self._dispatch.run(
+            self._project_one_message(request.topic, request.payload)
+        )
+
+    def close_dispatch(self) -> None:
+        """Close the pool and stop the dispatch loop, if started."""
+        self._dispatch.stop(self.aclose)
+
+    async def aclose(self) -> None:
+        """Release the pool the message path opened on the current loop."""
+        await self._dispatch.release_connection()
 
     async def _project_one_message(
         self, topic: str | None, data: dict[str, Any]
     ) -> dict[str, Any]:
-        await self.db.connect()
-        try:
-            written = await self._project(topic, data)
-        finally:
-            await self.db.close()
+        await self._dispatch.ensure_connected(self.db)
+        written = await self._project(topic, data)
         # The runtime's write-path guard reads this exact row-count key.
         return {
             "rows_upserted": len(written),

@@ -10,6 +10,7 @@ credentials this proof skips.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -21,11 +22,13 @@ import asyncpg
 import pytest
 import yaml
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_projection_skill_lifecycle import (
     HandlerProjectionSkillLifecycle,
 )
 from omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_skill_lifecycle_writer import (
     _INSERT_SKILL_EXECUTION,
+    SkillLifecycleProjectionWriter,
 )
 from omnimarket.nodes.node_projection_skill_lifecycle.models import (
     ModelSkillLifecycleProjectionRequest,
@@ -43,22 +46,28 @@ _RUN = "6f1d9d3e-3a53-4d3b-8f0b-0f1c1e6f1a01"
 _CORRELATION = "0b7f1a52-7a5e-4e53-b1b1-5c0a6a9f2c02"
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
+def _configured_dsn_or_skip() -> str:
     dsn = os.environ.get("INTEGRATION_POSTGRES_DSN")
-    if not dsn:
-        secret = os.environ.get(
-            "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    if dsn:
+        return dsn
+    secret = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    if not secret:
+        pytest.skip(
+            "INTEGRATION_POSTGRES_DSN/INTEGRATION_POSTGRES_PASSWORD unset -- "
+            "skipping the skill lifecycle write-path proof"
         )
-        if not secret:
-            pytest.skip(
-                "INTEGRATION_POSTGRES_DSN/INTEGRATION_POSTGRES_PASSWORD unset -- "
-                "skipping the skill lifecycle write-path proof"
-            )
-        host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
-        port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
-        user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
-        db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
-        dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+    return dsn
+
+
+async def _connect_or_skip() -> asyncpg.Connection:
+    dsn = _configured_dsn_or_skip()
     try:
         return await asyncpg.connect(dsn, timeout=10)
     except (OSError, asyncpg.PostgresError) as exc:
@@ -262,3 +271,56 @@ async def test_tenant_isolation_holds_for_the_non_superuser_writer() -> None:
         assert await _count(conn, schema) == 1
 
     await _with_scratch_schema(body)
+
+
+class _ScratchSchemaAdapter(AsyncpgAdapter):
+    """The real asyncpg pool, with the writer's statement retargeted to a scratch schema."""
+
+    def __init__(self, dsn: str, schema: str) -> None:
+        super().__init__(dsn=dsn)
+        self._schema = schema
+
+    async def execute(
+        self, query: str, *params: Any, tenant: str | None = None, **kwargs: Any
+    ) -> list[dict[str, Any]]:
+        return await super().execute(
+            _scoped(query, self._schema), *params, tenant=tenant, **kwargs
+        )
+
+
+@pytest.mark.integration
+async def test_concurrent_deliveries_write_through_one_real_pool() -> None:
+    """OMN-21933: worker threads hand the writer deliveries at once; every row lands.
+
+    The writer's real adapter is driven, not a double: a delivery that replaced or
+    closed another's pool fails its write or leaves the table short.
+    """
+    dsn = _configured_dsn_or_skip()
+    admin = await _connect_or_skip()
+    schema = f"omn21933_skill_concurrent_{uuid4().hex}"
+    role = f"omn21933_writer_{uuid4().hex[:12]}"
+    writer = SkillLifecycleProjectionWriter()
+    try:
+        try:
+            await admin.execute(f"CREATE ROLE {role} NOLOGIN")
+        except asyncpg.InsufficientPrivilegeError:
+            pytest.skip("integration user cannot create the scratch writer role")
+        await admin.execute(f"CREATE SCHEMA {schema}")
+        for migration in sorted((_NODE / "migrations").glob("*.sql")):
+            await admin.execute(
+                _scoped(migration.read_text(encoding="utf-8"), schema, role)
+            )
+        writer._db = _ScratchSchemaAdapter(dsn, schema)
+        deliveries = [{**_completed(), "_topic": _COMPLETED_TOPIC} for _ in range(24)]
+        results = await asyncio.gather(
+            *(asyncio.to_thread(writer.handle, delivery) for delivery in deliveries)
+        )
+        assert [r["rows_upserted"] for r in results] == [1] * len(deliveries)
+        assert await _count(admin, schema) == len(deliveries)
+    finally:
+        await asyncio.to_thread(writer.close_dispatch)
+        try:
+            await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            await admin.execute(f"DROP ROLE IF EXISTS {role}")
+        finally:
+            await admin.close()
