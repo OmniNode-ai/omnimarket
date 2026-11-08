@@ -137,15 +137,12 @@ def _hold_lines(
     stale_after: timedelta,
 ) -> dict[str, object]:
     rows = _parsed(entities)
-    open_holds, _ = replay.holds_in_force(rows, now=now)
-    if len(open_holds) != len(entities):
+    holds, _, stale = replay.holds_in_force(rows, now=now)
+    if len(holds) + len(stale) != len(entities):
         raise WorkLedgerReadError(
-            f"state page holds {len(entities)} open holds but {len(open_holds)} read as in force"
+            f"state page holds {len(entities)} open holds but {len(holds)} read as in force "
+            f"and {len(stale)} as stale"
         )
-    stale = [
-        h for h in open_holds if stale_hold(h.until, h.row.row_ts, now, stale_after)
-    ]
-    holds = [h for h in open_holds if h not in stale]
     counts = ModelWorkLedgerHoldCounts(
         checked=page.total, released=page.released, expired=page.expired
     )
@@ -170,12 +167,13 @@ def _hold_lines(
     if stale:
         lines.append(_stale_heading(len(stale), stale_after))
         lines += [
-            f"  STALE {h.hold_id} by={h.by} age={_age(now, h.row.row_ts)} db:{h.row.row_id}"
+            f"  STALE {h.hold.hold_id} by={h.hold.by} age={h.age_days}d db:{h.hold.row.row_id}"
             for h in stale
         ]
     return {
         "matched": len(holds),
         "holds": tuple(holds),
+        "stale_holds": tuple(stale),
         "hold_counts": counts,
         "lines": tuple(lines),
     }

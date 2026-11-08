@@ -48,7 +48,6 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_a
     encode_cursor,
     load_hold_stale_after,
     parse_claims_since,
-    stale_hold,
     stale_hold_row,
     state_answer,
 )
@@ -146,7 +145,7 @@ class HandlerWorkLedgerQuery:
             parity = ModelWorkLedgerParity(
                 status=EnumWorkLedgerParityStatus.UNMEASURED, days=parity.days
             )
-        parsed = replay.parse_rows(records)
+        parsed = replay.parse_rows(replay.in_contract_order(records))
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
         answer = self._answer(request, parsed, now, self._hold_stale_after)
@@ -253,7 +252,7 @@ class HandlerWorkLedgerQuery:
             shown = matched[-request.limit :] if request.limit else matched
             return {"matched": len(matched), "rows": tuple(r.record for r in shown)}
         if kind is EnumWorkLedgerQueryKind.HOLDS:
-            holds, counts = replay.holds_in_force(
+            holds, counts, stale = replay.holds_in_force(
                 rows,
                 now=now,
                 pr=request.pr,
@@ -261,12 +260,12 @@ class HandlerWorkLedgerQuery:
                 surface=request.surface,
                 to=request.to,
             )
-            holds = [
-                h
-                for h in holds
-                if not stale_hold(h.until, h.row.row_ts, now, stale_after)
-            ]
-            return {"matched": len(holds), "holds": tuple(holds), "hold_counts": counts}
+            return {
+                "matched": len(holds),
+                "holds": tuple(holds),
+                "stale_holds": tuple(stale),
+                "hold_counts": counts,
+            }
         if kind is EnumWorkLedgerQueryKind.INBOX:
             lanes = request.lanes or ((request.lane,) if request.lane else ())
             fresh = [r for r in rows if not stale_hold_row(r, now, stale_after)]

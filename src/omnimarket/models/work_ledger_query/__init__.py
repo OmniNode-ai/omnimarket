@@ -24,6 +24,7 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
     ModelWorkLedgerRowRecord,
+    ModelWorkLedgerStaleHold,
 )
 from omnimarket.models.work_ledger_query.model_work_ledger_refusal import (
     ModelWorkLedgerRefusal,
@@ -58,6 +59,7 @@ __all__ = [
     "ModelWorkLedgerQueryResult",
     "ModelWorkLedgerRefusal",
     "ModelWorkLedgerRowRecord",
+    "ModelWorkLedgerStaleHold",
     "ModelWorkLedgerStateCursor",
     "ModelWorkLedgerStateEntity",
     "ModelWorkLedgerStatePage",

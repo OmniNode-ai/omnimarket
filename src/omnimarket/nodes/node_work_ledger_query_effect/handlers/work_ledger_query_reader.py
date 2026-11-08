@@ -306,17 +306,27 @@ class PostgresWorkLedgerQueryReader:
     def read_rows(
         self, *, since: datetime | None, until: datetime
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The window's rows. The SQL order is only a stable base; the handler puts them
+        in the ordering contract's order (``ledger_seq`` and ``legacy_ordinal`` ride along)."""
+        columns = "row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, legacy_ordinal"
         if since is None:
             rows = self._query(
-                "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_ts <= %s ORDER BY row_ts, projected_at, row_id",
+                f"SELECT {columns} FROM {{relation}} WHERE row_ts <= %s ORDER BY row_ts, projected_at, row_id",
                 (until,),
             )
         else:
             rows = self._query(
-                "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
+                f"SELECT {columns} FROM {{relation}} WHERE row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
                 (since, until),
             )
-        return self._records(rows)
+        return tuple(
+            record.model_copy(update={"ledger_seq": seq, "legacy_ordinal": ordinal})
+            for record, (seq, ordinal) in zip(
+                self._records([row[:7] for row in rows]),
+                [(row[7], row[8]) for row in rows],
+                strict=True,
+            )
+        )
 
     def read_history(
         self, *, ledger_id: str, first_seq: int, last_seq: int, until: datetime
