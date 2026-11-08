@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-22879
+title: The friction rollup classes the 12 stoppages the floor's unclassified row held and reads the cost of a cell-less row from its own estimate
+summary: The floor's stoppage:unclassified row held 12 FRICTION rows (23,560 lane-minutes). The rollup already classifies through the node's class rules (the floor publish step reads them, OMN-22814), so the rows stayed because no rule named them. This change names them in the shipped class rules (seven new classes, two widened patterns of classes that already owned the cause) and corrects the cost reading, because 23,400 of the 23,560 lane-minutes came from one row whose prose said a snapshot was 390 hours old and whose own estimate was 0.5 lane-hours.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22879-class-rules
+  statement: Each of the 12 FRICTION rows that carried no class is named by a shipped class rule with an owner, the same rows read as unclassified through the rules as they stood, and a row with no cost cell costs what its own lane-hours estimate says.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the rollup unit classifies through the node''s class rules and the unclassified count on the floor falls by the classified rows, with a failing control -- falsifier: uv run pytest of the rollup unit tests plus the floor read'
+evidence_requirements:
+- kind: tests
+  description: The class rule and cost tests of the friction rollup node, including the 12 rows of 2026-11-08 and their control.
+  command: uv run pytest tests/nodes/node_friction_rollup_compute -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22879-ac1
+  description: The new tests pass on the branch. With the rollup core and the overlay as origin/dev holds them in place of the branch's, the tests that read the 12 rows and the cost fail (12 unclassified, 23,400 lane-minutes on one row).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_friction_rollup_compute/test_class_rules_unclassified_stoppages_2026_11_08.py -q
+- id: dod-omn22879-integration-proof
+  description: Run the friction rollup node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22879 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov

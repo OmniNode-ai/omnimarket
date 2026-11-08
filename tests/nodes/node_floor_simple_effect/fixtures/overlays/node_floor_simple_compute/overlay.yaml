@@ -122,6 +122,41 @@ ledger_readings:
   reason_cell: reason
   lookback_days: 3
 
+# A piece's shadow results (OMN-22902): the code graph's pull request check logs what it would refuse and holds no merge. The
+# floor shows the newest row under piece 1 with its age against the max age the row declares, and never draws the piece red from it.
+ledger_shadows:
+  # The delegation completion rate (OMN-23108): the compute node of piece 15 carries R_all, R_dep and failed_rate as one STATUS row;
+  # the floor shows the newest one with its age against the max age the row declares, and its own verdict word.
+  - piece: 15
+    label: Delegation completion rate
+    row_type: STATUS
+    lane: delegation-rate
+    cells: {src: delegation-rate, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: verdict, label: verdict}
+      - {cell: r_all, label: completions an hour}
+      - {cell: r_dep, label: by the deployed lane}
+      - {cell: failed_rate, label: failed share}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
+  - piece: 1
+    label: Pull request check in shadow
+    row_type: STATUS
+    lane: code-graph
+    cells: {src: code-graph-shadow, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: checked, label: checked}
+      - {cell: would_refuse, label: would refuse}
+      - {cell: indeterminate, label: unreadable}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
+
 freshness_max_age_s: 900
 error_receipt_max_age_s: 86400
 error_drill_after_s: 21600

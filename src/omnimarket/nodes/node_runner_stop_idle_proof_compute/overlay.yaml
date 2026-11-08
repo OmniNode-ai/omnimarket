@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Every setting of the runner-stop idle proof (OMN-22952); a change here is a reviewed change.
+# The stop-set labels and the proof groups are the caller's: they come from the private overlay home
+# that owns the runner group list, and no label is named in this repository.
+# The proof needs this many reads, each at least min_gap_seconds after the one before.
+required_reads: 2
+min_gap_seconds: 60
+# The newest read is judged stale past this age and the proof is then UNKNOWN.
+max_age_seconds: 300
+# OMN-23156: the queue runners that stop only after the replacement queue pool is proven by one real merge-group job.
+# A stop request that names one of these runners is refused until the pool's proof reads WORKING within this age.
+queue_pool_stop_name_prefixes:
+  - hp051-ci-mq-runner
+queue_pool_proof_max_age_seconds: 1800

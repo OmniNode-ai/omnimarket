@@ -37,6 +37,10 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.models.work_state_projection import (
+    EnumWorkItemKind,
+    ModelWorkStateResult,
+)
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
 )
@@ -348,6 +352,13 @@ class NodeTicketFactsReader:
         return outcome
 
 
+def _work_state_path() -> Path:
+    declared = os.environ.get("ONEX_WORK_STATE_PATH")
+    if declared:
+        return Path(declared)
+    return Path(os.environ["OMNI_HOME"]) / ".onex_state/work-state/work-state.json"
+
+
 def _watcher_path() -> Path:
     declared = os.environ.get("ONEX_PR_WATCHER_STATE")
     if declared:
@@ -432,15 +443,26 @@ class LocalBriefBlocks:
         skills = self._skills if self._skills is not None else resolve_skills_dir()
         rules_script = skills.parent / "scripts" / "lane_rules_block.py"
         try:
-            rules = subprocess.run(
+            ran = subprocess.run(
                 [sys.executable, str(rules_script)],
                 capture_output=True,
                 text=True,
                 timeout=60,
-                check=True,
-            ).stdout
+                check=False,
+            )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise LabFillPortError(f"lane_rules_block: {type(exc).__name__}") from exc
+            raise LabFillPortError(
+                f"lane_rules_block.py {rules_script}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if ran.returncode != 0:
+            # OMN-23025: the reader's own stderr names the rules file it could not read and why
+            # (the resolved rules checkout, a missing block, an unreadable file); the
+            # exception class alone left 22 skipped lanes with no cause to read.
+            said = " / ".join(ran.stderr.strip().splitlines()[-3:]) or "no stderr"
+            raise LabFillPortError(
+                f"lane_rules_block.py exit {ran.returncode} ({rules_script}): {said}"
+            )
+        rules = ran.stdout
         sys.path.insert(0, str(skills / "lane-brief/scripts"))
         try:
             lb = _load(skills, "lane_brief", "lane-brief/scripts/lane_brief.py")
@@ -743,3 +765,30 @@ class LocalOwnerReader:
                     f"{repo}#{facts.get('number', '')}"
                 )
         return {t: sorted(names) for t, names in merged.items()}
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        path = Path(state_path) if state_path else _work_state_path()
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise LabFillPortError(f"work-state {type(exc).__name__}") from exc
+        try:
+            projection = ModelWorkStateResult.model_validate_json(raw)
+        except ValueError as exc:
+            raise LabFillPortError("work-state projection is not readable") from exc
+        age_s = (datetime.now(UTC) - projection.as_of).total_seconds()
+        if not 0 <= age_s <= max_age_s:
+            raise LabFillPortError("work-state projection is stale")
+        owners: dict[str, list[str]] = {}
+        for item in projection.items:
+            if (
+                item.ticket
+                and item.live_lane
+                and item.kind is not EnumWorkItemKind.LANE
+            ):
+                owners.setdefault(item.ticket, []).append(item.live_lane)
+        return {t: sorted(set(lanes)) for t, lanes in owners.items()}

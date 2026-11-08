@@ -26,12 +26,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from omnimarket.handlers.install_file_list import file_list_comparison, resolve
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.handlers.runtime_paths import runtime_path
-from omnimarket.nodes.node_install_superset_guard_effect.handlers.handler_install_superset import (
-    file_list_comparison,
-    resolve,
-)
 
 CANARY_RECORD = "$ONEX_REGISTRY_ROOT/.claude_scratch/adoption/canary.json"
 CANARY_RECORD_REL = ".claude_scratch/adoption/canary.json"
@@ -112,6 +109,7 @@ class HandlerInstallCanary:
                 "canary_hold",
                 "adopt_marketplace",
                 "canary_cap",
+                "first_reading",
                 "merged_plugin_sha",
                 "installed_commit",
                 "shipped_plugin_sha",
@@ -677,6 +675,25 @@ class HandlerInstallCanary:
             ):
                 return None
         return passed
+
+    def first_reading(self, events: Sequence[Mapping[str, Any]]) -> str:
+        """The first install-canary result, dated, as the floor shows it (OMN-22954).
+
+        ``events`` are the adoption event log's rows (``kind`` ``canary``, written by ``canary_install``). The
+        earliest by ``ts`` names the reading; the date is that row's own UTC day. With no canary row the answer is
+        empty: the floor then shows no reading, never a date that was not read."""
+        canary = sorted(
+            (e for e in events if e.get("kind") == "canary" and e.get("ts")),
+            key=lambda e: str(e["ts"]),
+        )
+        if not canary:
+            return ""
+        first = canary[0]
+        return (
+            f"{str(first['ts'])[:10]} {first.get('verdict', 'unread')} "
+            f"{first.get('plugin', 'unknown')} {first.get('version', 'unknown')} "
+            f"on {first.get('host', 'unknown')}"
+        )
 
     def installed_commit(self, claude_dir: Path, plugin: str) -> str:
         """The commit the launching host has installed for ``plugin`` (``gitCommitSha`` in its ``installed_plugins.json``),

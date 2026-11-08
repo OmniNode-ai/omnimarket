@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "node": "golden_chain_sweep",
+  "receipts": [
+    {
+      "case_name": "golden_complete_row_passes_the_sweep",
+      "case_hash": "c973e9673aa6364acf29db99032f2dda84417b9c12408c7ee78ac11eee434b67",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "golden_complete_row_passes_the_sweep",
+      "case_hash": "c973e9673aa6364acf29db99032f2dda84417b9c12408c7ee78ac11eee434b67",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    },
+    {
+      "case_name": "error_row_missing_a_field_fails_the_sweep",
+      "case_hash": "c4c9f916e5a49fd6328f2d194afd4fe80540bda1790a14b47f181f0757bb4a71",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "error_row_missing_a_field_fails_the_sweep",
+      "case_hash": "c4c9f916e5a49fd6328f2d194afd4fe80540bda1790a14b47f181f0757bb4a71",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    }
+  ]
+}
