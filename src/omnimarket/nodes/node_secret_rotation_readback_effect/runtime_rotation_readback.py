@@ -58,7 +58,13 @@ from omnimarket.nodes.node_secret_rotation_readback_effect.protocols import (
 def build_store(overlay: ModelRotationReadbackOverlay) -> ProtocolSecretProbeStore:
     addressing = overlay.store.secret_store
     if addressing is None:
-        return InMemorySecretProbeStore({})
+        # Synthetic profile: every consumer's key resolves to a value derived from its own handle.
+        return InMemorySecretProbeStore(
+            {
+                (c.folder, c.key): f"synthetic:{c.folder}:{c.key}"
+                for c in overlay.consumers
+            }
+        )
     return SecretStoreEffectProbeStore.from_overlay(addressing)
 
 
