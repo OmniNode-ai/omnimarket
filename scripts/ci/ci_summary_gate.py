@@ -849,43 +849,25 @@ class SweepExclusion:
 
 SWEEP_EXCLUSION_MAX_DAYS: int = 90
 
-# OMN-17427: measured over 43 merged PR heads on 2026-10-17. Only these
-# external pull_request rows skip by design; ci.yml owns the other skips.
+# The registry is data, in ci_summary_sweep_exclusions.json beside this file
+# (stdlib json: the poller runs with no third-party packages). Each entry names
+# its reason, ticket, added date and expiry. The first two were measured over 43
+# merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
+# that skip by design. The Tessl Reviewer entry is RULING 2026-11-05T20:27:56Z
+# (OMN-22478, now OMN-23029): the automated reviewer's neutral row never blocks a merge.
 # Expiry re-arms the sweep.
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
-    "AC1 exact revision row on PostgreSQL 16": SweepExclusion(
-        reason="omn20025-ac1-postgres-proof.yml restricts the proof to PR 3094 from this repository.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-    "auto-tag": SweepExclusion(
-        reason="auto-tag-on-merge.yml runs on closed PRs; the job requires a merged PR with a release label or release title.",
-        ticket="OMN-17427",
-        added="2026-10-17",
-        expires="2026-12-20",
-    ),
-    # OMN-23029. The tessl-reviewer app runs in advisory mode here and reports
-    # `neutral` as its NORMAL successful outcome: its own check-run carries the
-    # title "Tessl Reviewer completed an advisory review" and the summary "This
-    # repository runs Tessl Reviewer in advisory mode, so the review doesn't
-    # block merging". SWEEP_GOOD_CONCLUSIONS admits `success` alone, so that
-    # neutral read as red on 23 open pull requests at once while this gate's own
-    # verdict one line above was SUCCESS over 56 green jobs and 59 green asserted
-    # contexts (job 128511383807, #5346). The context is pull_request-only, so the
-    # dev head never carries it and dev's CI Summary stayed green throughout,
-    # which is why reading dev could not find this.
-    #
-    # SWEEP_GOOD_CONCLUSIONS is deliberately NOT widened to accept `neutral`:
-    # that relaxes a default-deny control for every swept context at once, and
-    # it is the ruling OMN-18355 carries, not this entry's business.
-    "Tessl Reviewer": SweepExclusion(
-        reason="tessl-reviewer runs in advisory mode here; neutral is its success. See OMN-23029.",
-        ticket="OMN-23029",
-        added="2026-11-07",
-        expires="2027-01-09",
-    ),
-}
+SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
+
+
+def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
+    """Read the exclusion registry; a malformed file raises and fails the gate."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {name: SweepExclusion(**fields) for name, fields in raw.items()}
+
+
+EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
+    SWEEP_EXCLUSIONS_FILE
+)
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
 _SWEEP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
