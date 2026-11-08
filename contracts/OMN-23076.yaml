@@ -1,0 +1,70 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23076
+title: The J8 join handler is a handler_routing entry it cannot be auto-wired as, so the runtime-ownership guard reddens every omnimarket pull request
+summary: >-
+  OMN-22919 (#5301, on dev at 2026-11-08T03:27:37Z as 7dd22344) routed HandlerLandingJoinJ8 under the operation join_j8_landing_decision. The handler is an EFFECT taking sink and policy through its constructor, which the auto-wiring cannot supply, so the runtime-ownership guard refused on every pull request: Tests (Split 4/20) red on 18 of 52 open ones, omnimarket merged 0 in 60 minutes, and the fleet fell to 4 merges in 60 minutes, under its 5/h stall line. The shard is pull_request-only, so dev's own head carried no Tests (Split N/20) row and read green throughout, which is why reading dev could not find this. The entry was also dead and a live hazard: the operation appeared in that contract and nowhere else in src, only the J8 unit tests construct the handler, the landing controller calls it in process, and an entry declaring no event_model is granted every contract subscribe_topic by the auto-wiring, so it would have become an independent consumer of the node's command topic and thrown on the mismatched payload. The fix removes the routing entry and binds the handler under in_process_handlers so the canonical-file-shape ratchet still finds it inside its node; the handler, its policy model and its unit tests are untouched.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23076-unroutable-handler-not-routed
+    statement: >-
+      A handler whose constructor dependencies the auto-wiring cannot supply is not declared as a handler_routing entry, so the runtime-ownership guard passes and no auto-wired consumer can be built for an operation nothing dispatches.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the runtime-ownership guard passes at this head and the J8 handler keeps its own tests -- falsifier: uv run --frozen pytest tests/validation/test_runtime_profile_contract_ownership.py tests/unit/nodes/node_pr_landing_decision_compute/ -q -p no:randomly --no-cov"
+      - id: AC2
+        statement: "AC2: the operation is routed by no contract under src/omnimarket/nodes, and node_pr_landing_decision_compute routes exactly one handler, its pure decision handler -- falsifier: uv run --frozen pytest tests/validation/test_j8_join_is_not_auto_wirable_omn23076.py -q -p no:randomly --no-cov"
+      - id: AC3
+        statement: "AC3: the whole validation suite is green -- falsifier: uv run --frozen pytest tests/validation -q -p no:randomly --no-cov"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The runtime-ownership guard that named the defect, the node's own unit tests (the handler and its policy are unchanged, so they must stay green), and the two new assertions that pin the removal rather than the symptom.
+    command: uv run --frozen pytest tests/validation/test_runtime_profile_contract_ownership.py tests/validation/test_j8_join_is_not_auto_wirable_omn23076.py tests/unit/nodes/node_pr_landing_decision_compute/ -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23076-ac1-guard-passes
+    description: >-
+      The runtime-ownership guard passes and the J8 handler's own 418 unit tests stay green. At the merge base the guard fails on the exact line that reddened 18 open pull requests: node_pr_landing_decision_compute/HandlerLandingJoinJ8 requires constructor dependencies ('sink', 'policy'); declare runtime_profiles or dependency ownership.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/validation/test_runtime_profile_contract_ownership.py tests/unit/nodes/node_pr_landing_decision_compute/ -q -p no:randomly --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23076-ac2-operation-unrouted
+    description: >-
+      No contract routes the operation and the node routes exactly one handler. At the merge base both assertions fail, because the entry exists. The operation is read from the parsed handler_routing, never by grepping the file, so the contract's own prose explanation of the removal cannot trip it.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/validation/test_j8_join_is_not_auto_wirable_omn23076.py -q -p no:randomly --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23076-integration-proof-onex-diff
+    description: >-
+      The integration proof: the live onex CLI's own contract reader, not a test fixture, is handed the merge-base contract and this head's and asked what changed between them. It answers with a REMOVED handler_routing entry carrying join_j8_landing_decision, one ADDED in_process_handlers key (the node-local binding of the handler the canonical-file-shape ratchet requires, read by no auto-wiring) and nothing changed -- which is the whole of this pull request's runtime effect. Hosted CI cannot run a local_done_gate item, so it binds no criterion, read off the product's own loader. onex contract diff exits 2 on any difference, the way diff(1) does, so the proof asserts on the reader's output and never on its exit code. It is not wrapped in bash -c, because a command inside a quoted string is not parsed by the proof classifier and would not be read as reaching a live surface.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: []
+    checks:
+      - check_type: command
+        check_value: |-
+          git show "$(git merge-base origin/dev HEAD):src/omnimarket/nodes/node_pr_landing_decision_compute/contract.yaml" > /tmp/omn23076-merge-base-contract.yaml && onex contract diff /tmp/omn23076-merge-base-contract.yaml src/omnimarket/nodes/node_pr_landing_decision_compute/contract.yaml | tee /tmp/omn23076-contract-diff.txt | grep -q join_j8_landing_decision && grep -q "^REMOVED:" /tmp/omn23076-contract-diff.txt && grep -q "Removed: 1" /tmp/omn23076-contract-diff.txt && grep -q "Added: 1" && grep -q "^ADDED:" /tmp/omn23076-contract-diff.txt && grep -q in_process_handlers /tmp/omn23076-contract-diff.txt /tmp/omn23076-contract-diff.txt && grep -q "Changed: 0" /tmp/omn23076-contract-diff.txt
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23076-ac3-validation-suite
+    description: >-
+      The whole validation suite is green at this head: 1269 passed, 4 skipped. That suite is what the red shard runs. At the merge base the ownership guard alone is 1 failed, 75 passed, and the two new assertions are 2 failed.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/validation -q -p no:randomly --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

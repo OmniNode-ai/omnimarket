@@ -88,6 +88,10 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
+    SKIP_FOR_VERDICT,
+    read_lab_check,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
@@ -141,6 +145,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingRerunRun,
     ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
+    EnumLabCheckVerdict,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
@@ -1669,7 +1676,15 @@ def _mergeable(p: ModelLandingPrFacts) -> bool:
 
 
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
-    """Merge pinned to the head; a runtime PR lands only holding the token (R6)."""
+    """Merge pinned to the head; a runtime PR lands only holding the token (R6).
+
+    A PR that carries a lab-bound check lands only on a pass of the current attempt on this exact head (J8): any
+    other reading holds the head with its own named reason.
+    """
+    reading = read_lab_check(p, t.now, t.facts.policy)
+    if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
+        t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN

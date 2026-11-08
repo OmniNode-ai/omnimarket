@@ -21,6 +21,9 @@ NOW = "2026-11-02T10:45:00Z"
 MAX_AGE = 30
 MAX_LANES = 2
 WINDOW = 60
+STOPPED_LANES = 2
+REPORT_CHARS = 600
+RULE = "Push the predecessor's branch and continue from its head; do not start over and do not wait on a reply."
 
 # The ready lane tasks of the 10:40Z record, in record order, per line: the pinned table of the test.
 READY_10_40 = {
@@ -122,6 +125,9 @@ def request(**overrides: Any) -> ModelFloorFillCandidatesRequest:
         "max_age_minutes": MAX_AGE,
         "max_fill_lanes_per_line": MAX_LANES,
         "sent_window_minutes": WINDOW,
+        "stopped_max_lanes": STOPPED_LANES,
+        "stopped_report_chars": REPORT_CHARS,
+        "stopped_continue_rule": RULE,
     }
     fields.update(overrides)
     return ModelFloorFillCandidatesRequest(**fields)
