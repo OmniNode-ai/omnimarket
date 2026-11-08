@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloOutcome,
     EnumIloRefusal,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
     ModelIloRedfishRequest,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloRedfishResult,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (

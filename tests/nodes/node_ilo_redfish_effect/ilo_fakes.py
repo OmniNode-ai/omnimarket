@@ -20,13 +20,13 @@ from typing import Literal
 
 from pydantic import JsonValue, SecretStr
 
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
+    ModelIloApproval,
+    ModelIloJournalRecord,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ModelRedfishResponse,
     RedfishTransportError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
-    ModelIloApproval,
-    ModelIloJournalRecord,
 )
 
 TOKEN = "tok-3f9a-secret-session-value"
