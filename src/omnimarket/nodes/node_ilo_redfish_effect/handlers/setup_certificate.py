@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from cryptography import x509
@@ -42,9 +43,12 @@ MIN_RSA_BITS = 2048
 @dataclass(frozen=True)
 class ReportedCertificate:
     serial: str | None
-    sha256: str | None
+    # Every SHA-256 the iLO reports; empty when it reports none.
+    sha256: tuple[str, ...]
     subject: str | None
     not_after: str | None
+    # True when the iLO names a SHA-256 it reports but the value cannot be read as one.
+    sha256_invalid: bool = False
 
 
 def is_weak(seen: PresentedCertificate) -> bool:
@@ -101,51 +105,74 @@ def _text(body: JsonObject, *names: str) -> str | None:
     return None
 
 
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+_FINGERPRINT_SEPARATORS = re.compile(r"[\s:\-]")
+
+
+def _fingerprint_fields(body: JsonValue) -> Iterator[tuple[str, JsonValue]]:
+    """Every field anywhere in the body whose name says fingerprint or thumbprint."""
+    if isinstance(body, dict):
+        for key, value in body.items():
+            lowered = key.lower()
+            if "fingerprint" in lowered or "thumbprint" in lowered:
+                yield lowered, value
+            else:
+                yield from _fingerprint_fields(value)
+    elif isinstance(body, list):
+        for item in body:
+            yield from _fingerprint_fields(item)
+
+
+def _sha256_evidence(body: JsonObject) -> tuple[tuple[str, ...], bool]:
+    """(every SHA-256 the iLO reports, True when it reports one that cannot be read).
+
+    A field named for SHA-256 is SHA-256 evidence whatever its value; an unnamed fingerprint counts only
+    when it is 64 hex digits; a SHA-1 field or any other length is never SHA-256 evidence. No field
+    hides another: a SHA-256 that is present and wrong must never be taken for one that is absent.
+    """
+    found: list[str] = []
+    invalid = False
+    for key, value in _fingerprint_fields(body):
+        if "sha1" in key or "sha-1" in key:
+            continue
+        explicit = "sha256" in key or "sha-256" in key
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        digits = (
+            _FINGERPRINT_SEPARATORS.sub("", value).lower()
+            if isinstance(value, str)
+            else ""
+        )
+        if _SHA256_HEX.fullmatch(digits):
+            found.append(digits)
+        elif explicit:
+            invalid = True
+    return tuple(dict.fromkeys(found)), invalid
+
+
 def reported(body: JsonObject) -> ReportedCertificate:
     """What the iLO's HttpsCert resource says about its certificate."""
     info = as_object(_find(body, "SerialNumber"))
-    fingerprint_holder = _find_fingerprint(body)
-    fingerprint = None
-    if fingerprint_holder is not None:
-        for key, value in fingerprint_holder.items():
-            if (
-                isinstance(value, str)
-                and ("fingerprint" in key.lower() or "thumbprint" in key.lower())
-                and "sha1" not in key.lower()
-            ):
-                fingerprint = re.sub(r"[^0-9a-f]", "", value.lower())
-                break
+    sha256, invalid = _sha256_evidence(body)
     return ReportedCertificate(
         serial=_text(info, "SerialNumber"),
-        sha256=fingerprint if fingerprint and len(fingerprint) == 64 else None,
+        sha256=sha256,
         subject=_text(info, "Subject"),
         not_after=_text(info, "ValidNotAfter", "NotAfter"),
+        sha256_invalid=invalid,
     )
 
 
-def _find_fingerprint(body: JsonValue) -> JsonObject | None:
-    if isinstance(body, dict):
-        for key in body:
-            lowered = key.lower()
-            if "fingerprint" in lowered or "thumbprint" in lowered:
-                return body
-        for value in body.values():
-            found = _find_fingerprint(value)
-            if found is not None:
-                return found
-    elif isinstance(body, list):
-        for item in body:
-            found = _find_fingerprint(item)
-            if found is not None:
-                return found
-    return None
-
-
 def matches(seen: PresentedCertificate, told: ReportedCertificate) -> bool:
-    """True only when the iLO reported a serial and it, and any reported SHA-256, equal the presented ones."""
+    """True only when the iLO reported a serial and it, and every reported SHA-256, equal the presented ones.
+
+    A SHA-256 the iLO reported but that cannot be read never matches; only an absent one is optional.
+    """
     if told.serial is None or _hex(told.serial) != _hex(seen.serial):
         return False
-    return told.sha256 is None or told.sha256 == seen.sha256
+    return not told.sha256_invalid and all(
+        value == seen.sha256 for value in told.sha256
+    )
 
 
 def side_by_side(
@@ -153,8 +180,10 @@ def side_by_side(
 ) -> tuple[str, ...]:
     """Printable rows: what the connection presented, and what the iLO reports, in two columns."""
     absent = "(not reported by this iLO)"
+    if told.sha256_invalid:
+        absent = "(reported, but not a readable SHA-256)"
     rows = (
-        ("sha256", seen.sha256, told.sha256 or absent),
+        ("sha256", seen.sha256, ", ".join(told.sha256) or absent),
         ("serial", seen.serial, told.serial or absent),
         ("subject", seen.subject, told.subject or absent),
         ("not after", seen.not_after, told.not_after or absent),

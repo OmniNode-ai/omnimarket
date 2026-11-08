@@ -623,8 +623,9 @@ def test_a_modern_rsa_certificate_is_never_replaced(tmp_path: Path) -> None:
         der=der,
     )
     assert rig.run("h9").hosts[0].status == "ready"
-    # a 2048-bit certificate takes the ordinary path: no confirmation, no CA, no CSR
-    assert rig.confirmations == []
+    # a 2048-bit certificate takes the ordinary path: no CA, no CSR, no replacement; being self-signed
+    # and unpinned it is confirmed once, before any password is sent
+    assert len(rig.confirmations) == 1
     assert lab_ca.LAB_CA_STORE_KEY not in rig.secrets.values
 
 

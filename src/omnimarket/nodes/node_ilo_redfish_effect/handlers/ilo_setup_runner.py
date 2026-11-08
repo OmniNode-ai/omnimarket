@@ -400,9 +400,11 @@ class IloSetupSequence:
             seen = cert.presented(der)
         elif not seen.self_signed:
             issuer_pem = self._lab_issuer_pem(der, stored)
+        else:
+            self._trust_self_signed(name, address, seen, existing, steps)
         with tempfile.TemporaryDirectory(prefix="ilo-candidate-") as candidate_dir:
             pem = ssl.DER_cert_to_PEM_cert(der)
-            Path(candidate_dir, "candidate.pem").write_text(pem, encoding="ascii")
+            Path(candidate_dir, f"{name}-ilo.pem").write_text(pem, encoding="ascii")
             if issuer_pem is not None:
                 Path(candidate_dir, lab_ca.LAB_CA_FILE).write_text(
                     issuer_pem, encoding="ascii"
@@ -414,7 +416,7 @@ class IloSetupSequence:
                     address,
                     "unverified",
                     seen.sha256,
-                    "candidate.pem",
+                    f"{name}-ilo.pem",
                     False,
                     issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
                 )
@@ -437,6 +439,7 @@ class IloSetupSequence:
                     admin_password,
                     stored,
                     issuer_pem,
+                    Path(candidate_dir),
                 )
             except IloRefusalError as exc:
                 raise _StopError(
@@ -465,6 +468,7 @@ class IloSetupSequence:
         admin_password: SecretStr,
         stored: frozenset[str],
         issuer_pem: str | None,
+        candidate_dir: Path,
     ) -> ModelIloSetupHostResult:
         root = session.read_root()
         session.login(root, SecretStr(admin_user), admin_password)
@@ -480,16 +484,6 @@ class IloSetupSequence:
             self._account(name, role, session, root, collection, stored, steps)
 
         ca_file = f"{name}-ilo.pem"
-        self._write_pem(ca_file, pem)
-        if issuer_pem is not None:
-            self._write_pem(lab_ca.LAB_CA_FILE, issuer_pem)
-        self._note(
-            steps,
-            "certificate pin",
-            "done",
-            f"sha256 {seen.sha256[:16]}... saved as {ca_file}"
-            + (" (signed by the lab CA, chain verified)" if issuer_pem else ""),
-        )
         row = _host_row(
             name,
             generation,
@@ -501,17 +495,27 @@ class IloSetupSequence:
             existing=existing,
             issuer_file=lab_ca.LAB_CA_FILE if issuer_pem else None,
         )
+        # The candidate is checked from its own directory; the overlay row and the certificate files of a
+        # host that already works are replaced only once the candidate has passed its first read.
+        serial = self._first_read(name, row, existing, steps, candidate_dir)
+        self._write_pem(ca_file, pem)
+        if issuer_pem is not None:
+            self._write_pem(lab_ca.LAB_CA_FILE, issuer_pem)
+        self._note(
+            steps,
+            "certificate pin",
+            "done",
+            f"sha256 {seen.sha256[:16]}... saved as {ca_file}"
+            + (" (signed by the lab CA, chain verified)" if issuer_pem else ""),
+        )
+        row = {**row, "live": True, "expected_serial": serial}
         self._write_overlay(row)
         self._note(
             steps,
             "overlay row",
             "done",
-            "written, live false until the first read passes",
+            "written live; first read passed and serial recorded",
         )
-
-        serial = self._first_read(name, row, existing, steps)
-        row = {**row, "live": True, "expected_serial": serial}
-        self._write_overlay(row)
         self._note(steps, "live", "done", "live true; serial recorded")
         ready = self._reader_ready(name)
         self._emit(
@@ -669,6 +673,59 @@ class IloSetupSequence:
             raise _StopError(Refusal.TLS_FAILED, "handshake") from None
         except OSError:
             raise _StopError(Refusal.CONNECT_FAILED, "connect") from None
+
+    def _trust_self_signed(
+        self,
+        name: str,
+        address: str,
+        seen: cert.PresentedCertificate,
+        existing: dict[str, JsonValue] | None,
+        steps: list[ModelIloSetupStep],
+    ) -> None:
+        """Trust a self-signed certificate before any credential is sent over it.
+
+        The iLO's own report of its certificate is read over the connection that carries the
+        administrator password, so it cannot authenticate that connection. The trust comes from the pin
+        this host already has, or from the operator comparing the fingerprint with the iLO's own
+        certificate page.
+        """
+        pinned = _recorded_pin(existing)
+        if pinned is not None:
+            if pinned != seen.sha256:
+                raise _StopError(
+                    Refusal.FINGERPRINT_MISMATCH,
+                    "the certificate on the connection is not the one pinned for this host; "
+                    "nothing was sent to the iLO",
+                )
+            self._note(
+                steps,
+                "certificate trust",
+                "reused",
+                "matches the pin recorded for this host",
+            )
+            return
+        fingerprint = cert.colon_fingerprint(seen.sha256)
+        for line in (
+            f"   {name}'s iLO presents a self-signed certificate nothing has vouched for yet.",
+            f"   SHA-256 {fingerprint}",
+            f"   serial  {seen.serial}",
+            "   Open the iLO's own certificate page (Administration, Security, SSL Certificate)",
+            "   and compare. Only an exact match lets the setup send a password.",
+        ):
+            self._emit(line)
+        if not self._confirm(
+            name, address, fingerprint, seen.serial, seen.rsa_bits or 0
+        ):
+            raise _StopError(
+                Refusal.FINGERPRINT_UNCONFIRMED,
+                "the certificate fingerprint was not confirmed; nothing was sent to the iLO",
+            )
+        self._note(
+            steps,
+            "certificate trust",
+            "done",
+            "sha256 confirmed by the operator against the iLO's page",
+        )
 
     def _https_cert(
         self, session: RedfishSession, manager: JsonObject
@@ -1195,6 +1252,10 @@ class IloSetupSequence:
         except OSError:
             raise _StopError(Refusal.OVERLAY_WRITE_FAILED, path.name) from None
 
+    def _prepare_journal_dir(self) -> None:
+        self._journal_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(self._journal_dir, 0o700)
+
     def _write_overlay(self, row: dict[str, JsonValue]) -> None:
         document = self._overlay_document()
         rows = _rows(document)
@@ -1213,8 +1274,7 @@ class IloSetupSequence:
         except ValidationError as exc:
             fields = sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors()})
             raise _StopError(Refusal.OVERLAY_INVALID, ",".join(fields)) from None
-        self._journal_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self._journal_dir, 0o700)
+        self._prepare_journal_dir()
         self._write_private(
             self._overlay_path(), yaml.safe_dump(document, sort_keys=False)
         )
@@ -1227,15 +1287,22 @@ class IloSetupSequence:
         row: dict[str, JsonValue],
         existing: dict[str, JsonValue] | None,
         steps: list[ModelIloSetupStep],
+        directory: Path,
     ) -> str:
         document = self._overlay_document()
         live = {**row, "live": True}
         live.pop("expected_serial", None)
-        overlay = ModelIloOverlay.model_validate({**document, "hosts": [live]})
-        overlay_dir = self._overlay_dir
+        overlay = ModelIloOverlay.model_validate(
+            {
+                **document,
+                "hosts": [live],
+                "journal_dir": document.get("journal_dir") or str(self._journal_dir),
+            }
+        )
+        self._prepare_journal_dir()
         handler = HandlerIloRedfish(
             overlay=overlay,
-            transport_factory=lambda host: self._transport_factory(host, overlay_dir),
+            transport_factory=lambda host: self._transport_factory(host, directory),
             credentials=_StoreCredentials(self._secrets),
             approvals=_NoApprovals(),
             journal=FileActionJournal(Path(overlay.journal_dir)),
@@ -1297,6 +1364,13 @@ def _rows(document: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
     if not isinstance(hosts, list):
         return []
     return [r for r in hosts if isinstance(r, dict)]
+
+
+def _recorded_pin(existing: dict[str, JsonValue] | None) -> str | None:
+    """The SHA-256 a host's overlay row already pins, if it pins one."""
+    tls = existing.get("tls") if existing else None
+    pin = tls.get("sha256") if isinstance(tls, dict) else None
+    return pin.lower() if isinstance(pin, str) else None
 
 
 def _host_row(
