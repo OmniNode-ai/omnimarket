@@ -459,7 +459,7 @@ def test_the_runtime_verb_runs_a_named_break_that_reads_broken_in_the_control_jo
 def test_control_silent_landing_run_leaves_the_floors_journal_unread_as_broken(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OMN-23084: a named break run against the real overlay once left piece 8 failed and piece 9 silent in the floor's
+    """OMN-23218: a named break run against the real overlay once left piece 8 failed and piece 9 silent in the floor's
     own journal, so the floor read J8 broken (downstream_missing_typed_failure) on a chain that was a control."""
     journal = _install_overlay(tmp_path, monkeypatch)
     for want in ("golden", "error"):
