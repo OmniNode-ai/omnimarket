@@ -17,6 +17,17 @@ handler:
   module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_copy
   class: HandlerWorkLedgerCopy
   input_model: omnimarket.nodes.node_work_ledger_copy_effect.models.model_work_ledger_copy.ModelCopyRequest
+# OMN-22916: the snapshot job and the restore drill are built by the CLI (runtime_work_ledger_copy),
+# not resolved at boot, so they are declared here as bindings rather than as handler_routing.
+cli_operations:
+  - operation: work_ledger_snapshot
+    handler:
+      module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      class: HandlerWorkLedgerSnapshot
+  - operation: work_ledger_restore_drill
+    handler:
+      module: omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_snapshot
+      class: HandlerWorkLedgerRestoreDrill
 descriptor:
   node_archetype: effect
   purity: impure

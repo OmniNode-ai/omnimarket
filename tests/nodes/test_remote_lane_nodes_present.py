@@ -33,7 +33,9 @@ def node_files():
         path
         for name in NODES
         for path in (ROOT / "src/omnimarket/nodes" / name).rglob("*")
-        if path.is_file() and path.suffix in {".py", ".yaml"}
+        if path.is_file()
+        and path.suffix in {".py", ".yaml"}
+        and "tests" not in path.relative_to(ROOT / "src/omnimarket/nodes" / name).parts
     ]
 
 
