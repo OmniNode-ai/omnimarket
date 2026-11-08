@@ -467,7 +467,9 @@ def test_runtime_dispatch_resolves_only_the_writer() -> None:
         "UsageByModelDayProjectionWriter"
     ]
     assert contract["event_bus"]["subscribe_topics"] == [  # type: ignore[index]
-        "onex.evt.omniintelligence.llm-call-completed.v1"
+        "onex.evt.omniintelligence.llm-call-completed.v1",
+        # OMN-22478: the delegation terminal is the lab's source of calls.
+        "onex.evt.omnibase-infra.delegation-completed.v1",
     ]
 
 

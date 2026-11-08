@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.events.topics import DELEGATION_COMPLETED_TOPIC_V1
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
     HandlerProjectionUsageByModelDay,
@@ -220,6 +221,31 @@ async def write_usage_call(
     return UsageCallWrite(rows=rows, removed=removed)
 
 
+def usage_call_from_delegation_completed(data: dict[str, Any]) -> ModelUsageCallEvent:
+    """The usage call a delegation terminal reports (OMN-22478).
+
+    One run is one call, keyed by its correlation id so a replay stores it once. Tokens are the deciding attempt's
+    (the terminal's prompt and completion tokens, the definition ``onex metering`` reads) and cost is the run's
+    cumulative attempt cost. The terminal does not say how the cost was obtained, so the source stays unknown and the
+    recount never counts it as measured. It is dated by the envelope's own event time, never by the clock: a terminal
+    without one is refused.
+    """
+    payload = strip_runner_injected_keys(data)
+    payload.pop("_db", None)
+    return ModelUsageCallEvent.model_validate(
+        {
+            "call_id": payload.get("correlation_id") or "",
+            "model_name": payload.get("model_used"),
+            "tenant_id": payload.get("tenant_id") or data.get("_tenant_id"),
+            "prompt_tokens": payload.get("prompt_tokens") or 0,
+            "completion_tokens": payload.get("completion_tokens") or 0,
+            "estimated_cost_usd": payload.get("cumulative_attempt_cost") or 0.0,
+            "cost_tier_name": payload.get("cost_tier_name") or "",
+            "timestamp": data.get("_envelope_timestamp"),
+        }
+    )
+
+
 class UsageByModelDayProjectionWriter(BaseProjectionRunner):
     """Deduplicate calls, recount their key atomically, and publish accepted rows."""
 
@@ -283,10 +309,14 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
     async def _project_call(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any] | None:
-        payload = strip_runner_injected_keys(data)
-        payload.pop("_db", None)
         # ValidationError must reach the runtime's POISON/DLQ classifier.
-        delta = self._derive.handle(ModelUsageCallEvent.model_validate(payload))
+        if meta.topic.endswith(DELEGATION_COMPLETED_TOPIC_V1):
+            event = usage_call_from_delegation_completed(data)
+        else:
+            payload = strip_runner_injected_keys(data)
+            payload.pop("_db", None)
+            event = ModelUsageCallEvent.model_validate(payload)
+        delta = self._derive.handle(event)
         # execute() acquires a new connection/transaction for each statement.
         # Keep the insert, recount and shares on ONE connection instead. Lock
         # the tenant's day before inserting: every share of the day moves with
@@ -342,4 +372,9 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
         )
 
 
-__all__ = ["UsageByModelDayProjectionWriter", "UsageCallWrite", "write_usage_call"]
+__all__ = [
+    "UsageByModelDayProjectionWriter",
+    "UsageCallWrite",
+    "usage_call_from_delegation_completed",
+    "write_usage_call",
+]
