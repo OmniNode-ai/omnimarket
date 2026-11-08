@@ -86,6 +86,20 @@ def live_lanes(
     )
 
 
+def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
+    """The id of every red cause (listed or not) that declares no owner, in the document's order.
+
+    An owner is declared by the overlay's ``causes.owners`` map or by a lab source's tickets; a cause that stands for
+    its members is judged through them. A red cause with no declared owner reads ``owners: []`` on the board, so nobody
+    is shown on it however many lanes work, and no check fails: this reading names it.
+    """
+    return tuple(
+        c.id
+        for c in document.causes
+        if c.state == "red" and not c.members and not c.owners
+    )
+
+
 def check_red_rule(
     document: ModelFloorSimple, lanes: tuple[ModelFloorLane, ...]
 ) -> ModelRedRule:
@@ -149,6 +163,7 @@ def check_red_rule(
             "red_rows": red_rows,
             "red_with_work_under_way": with_work,
             "violations": tuple(violations),
+            "unowned_red": unowned_red_causes(document),
         }
     )
 

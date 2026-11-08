@@ -442,6 +442,8 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-19486: the pr_state exposure declares `cursor_column:
         # observed_at`, a member column, from its first commit.
         "node_projection_pr_state::pr_state#0",
+        # OMN-22020: declares `cursor_column: read_at`, a member column.
+        "node_view_seam_reading_reducer::view_seam_readings#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -471,7 +473,8 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # change, so the measured backlog is unmoved.
 # 81 as of OMN-19991: local_alerts declares its BIGSERIAL cursor in the same
 # change as the exposure, so the measured backlog is unmoved.
-_AC3_TOTAL_EXPOSURES = 81
+# 82 as of OMN-22020: view_seam_readings declares its cursor in the same change.
+_AC3_TOTAL_EXPOSURES = 82
 _AC3_MEASURED_GAP = 55
 
 

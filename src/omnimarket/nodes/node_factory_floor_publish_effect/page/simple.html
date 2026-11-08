@@ -68,7 +68,7 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
 .hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
 </style></head><body><main>
-<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a></div>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a></div>
 <section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
 <section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
 </main>
@@ -131,6 +131,7 @@ function draw(){
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
+  if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
