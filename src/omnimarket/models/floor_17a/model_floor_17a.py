@@ -804,6 +804,8 @@ class ModelFloorSimpleInput(_Frozen):
     lanes: tuple[ModelFloorLane, ...] = ()
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
+    # How far back the loaded receipt chains reach; a count over a longer window is incomplete, so it is unread.
+    receipts_covered_s: int | None = Field(default=None, gt=0)
     readings: dict[int, ModelReadingRow] | None = None
     shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
