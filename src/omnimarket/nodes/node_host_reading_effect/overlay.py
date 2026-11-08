@@ -176,6 +176,10 @@ class ModelJoinJ1Settings(BaseModel):
     nodes: tuple[ModelJoinJ1Node, ...] = Field(min_length=1)
     #: Absent means the join publishes its row only and emits no chains.
     emission: ModelJoinJ1Emission | None = None
+    #: The failing control: the name of a node host discovery would need that the graph can never hold. A writing run
+    #: also judges the same graph run against it, so the join's error side is a real typed failure under its own graph
+    #: run id and the floor reads the join from both sides. Null means the host runs no control.
+    control_node: str | None
     injected_fault: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -185,6 +189,10 @@ class ModelJoinJ1Settings(BaseModel):
         names = [node.name for node in self.nodes]
         if len(names) != len(set(names)):
             raise ValueError("a join node is declared twice")
+        if self.control_node is not None and self.control_node in names:
+            raise ValueError(
+                "the control node is a node the graph does not hold, so it cannot be a required node"
+            )
         return self
 
 
@@ -213,6 +221,9 @@ class ModelJoinJ2Overlay(BaseModel):
     #: The variable naming the floor's state directory, and the journal's path under it.
     emission_home_env: str = Field(min_length=1)
     emission_journal_relpath: str = Field(min_length=1)
+    #: The hosts the join runs for; empty means every pooled host of the lab host table. A host named here that the
+    #: table does not pool is run anyway and reads its own typed failure.
+    hosts: tuple[str, ...] = ()
 
 
 class ModelHostReadingOverlay(BaseModel):

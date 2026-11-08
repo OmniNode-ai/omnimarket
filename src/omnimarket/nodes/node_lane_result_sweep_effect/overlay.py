@@ -39,6 +39,15 @@ class ModelLaneResultSweepPublish(BaseModel):
     action_deadline_seconds: int = Field(ge=60)
 
 
+class ModelLaneResultSweepJoinJ12(BaseModel):
+    """The J12 join (rebuild plan 4.1, piece 12 to piece 13): a typed receipt gets a class row."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: How long a receipt may stand without its class row before the reading fails (the plan says 900).
+    class_row_deadline_seconds: int = Field(ge=60)
+
+
 class ModelLaneResultSweepOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -48,6 +57,8 @@ class ModelLaneResultSweepOverlay(BaseModel):
     ]
     ledger_append: ModelLedgerAppendRoute
     publish: ModelLaneResultSweepPublish
+    #: Optional. Absent, a receipt waits for its class row until the action deadline, as before.
+    join_j12: ModelLaneResultSweepJoinJ12 | None = None
     #: The error event's source and producer, as the normalizer's adapter table names them.
     source: str = Field(min_length=1)
     producer: str = Field(min_length=1)
@@ -60,8 +71,14 @@ class ModelLaneResultSweepOverlay(BaseModel):
     error_rule_document: dict[str, Any]
 
     def overlay_hash(self) -> str:
+        join = (
+            {"class_row": self.join_j12.class_row_deadline_seconds}
+            if self.join_j12 is not None
+            else {}
+        )
         text = json.dumps(
             {
+                **join,
                 "deadline": self.publish.action_deadline_seconds,
                 "rules": sorted(
                     str(row.get("id", ""))
@@ -87,6 +104,7 @@ def load_overlay(
 
 __all__ = [
     "NODE_NAME",
+    "ModelLaneResultSweepJoinJ12",
     "ModelLaneResultSweepOverlay",
     "ModelLaneResultSweepPublish",
     "load_overlay",

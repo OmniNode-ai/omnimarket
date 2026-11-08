@@ -419,12 +419,22 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched once per consumed skill-started or skill-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionSkillLifecycle, does
     # NOT declare the capability.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only
+    # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
+    # ContextAuditProjectionWriter is node_projection_context_audit's only DB
+    # writer, dispatched once per consumed audit event by runtime auto-wiring;
+    # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
+    # writer, dispatched once per consumed overlay event by runtime
+    # auto-wiring; its pure fold does NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
+        "ContextAuditProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
@@ -459,6 +469,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
         "DelegationProjectionWriter",
+        "OverlayStoreProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
