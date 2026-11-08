@@ -100,7 +100,9 @@ def test_the_tick_keeps_the_prefixes_the_floor_document_lists_in_full(
 ) -> None:
     home = build_home(tmp_path)
     assert _run(home).recorded
-    (stored,) = read_history(home / RT.history_relpath)[0]
+    snapshots, _skipped = read_history(home / RT.history_relpath)
+    assert len(snapshots) == 1
+    stored = snapshots[0]
     assert {"cause:prs:", "cause:lab:", "alarm:"} <= set(stored.complete)
 
 
