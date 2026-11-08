@@ -178,6 +178,20 @@ def lab_alarm_run(outcome: str = "OK", finished_minutes_ago: int = 4) -> dict[st
     }
 
 
+def lag_node_run(outcome: str = "OK", finished_minutes_ago: int = 4) -> dict[str, Any]:
+    """One finished run of node_lab_alarm, the record the floor reads the lag condition from."""
+    return {
+        "finished_at": iso(NOW - timedelta(minutes=finished_minutes_ago)),
+        "reports": [
+            {
+                "condition": "consumer_group_lag",
+                "outcome": outcome,
+                "evidence": "no group grew" if outcome == "OK" else "a group grew",
+            }
+        ],
+    }
+
+
 def build_home(
     tmp_path: Path,
     *,
@@ -186,6 +200,7 @@ def build_home(
     fleet_doc: dict[str, Any] | None = None,
     pool: dict[str, Any] | None = None,
     alarm_run: dict[str, Any] | None = None,
+    lag_run: dict[str, Any] | None = None,
 ) -> Path:
     """A registry home with every source the cycle reads. A ``None`` argument takes the healthy default."""
     home = tmp_path / "home"
@@ -211,6 +226,11 @@ def build_home(
     put(
         ".onex_state/lab-alarm/alarm-runs.jsonl",
         alarm_run if alarm_run is not None else lab_alarm_run(),
+        jsonl=True,
+    )
+    put(
+        ".onex_state/lab-alarm/broker-lag-runs.jsonl",
+        lag_run if lag_run is not None else lag_node_run(),
         jsonl=True,
     )
     return home
