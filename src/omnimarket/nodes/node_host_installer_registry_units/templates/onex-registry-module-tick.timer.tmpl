@@ -1,0 +1,11 @@
+# Timer of a registry module tick on a Linux pool host, rendered by node_host_installer_registry_units.
+[Unit]
+Description=__LABEL__ timer: __DESCRIPTION__
+
+[Timer]
+__RUN_AT_LOAD__
+OnUnitActiveSec=__START_INTERVAL__
+Unit=__LABEL__.service
+
+[Install]
+WantedBy=timers.target
