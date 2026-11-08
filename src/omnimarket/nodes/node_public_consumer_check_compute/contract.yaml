@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Public Consumer Check (OMN-23145, rebuild plan section 5 of OMN-22478)
+name: node_public_consumer_check_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Before any entity is removed, searches the declared public repositories and published packages
+  for imports and references to it and records the evidence found per scope. An entity with a
+  public consumer that has no recorded resolution is kept, and so is one whose scope could not be
+  read; an entity declared a rare path stays only when the declaration names a drill, and one that
+  names none is not exempt. A removal batch that names any kept entity is refused as a whole.
+  Search scopes and limits come from the overlay; the search source is injected (in-memory default,
+  checkout scan as the real backend).
+input_model: omnimarket.nodes.node_public_consumer_check_compute.models.model_public_consumer_check.ModelPublicConsumerCheckRequest
+output_model: omnimarket.nodes.node_public_consumer_check_compute.models.model_public_consumer_check.ModelPublicConsumerCheckResult
+handler:
+  module: omnimarket.nodes.node_public_consumer_check_compute.handlers.handler_public_consumer_check
+  class: HandlerPublicConsumerCheck
+  input_model: omnimarket.nodes.node_public_consumer_check_compute.models.model_public_consumer_check.ModelPublicConsumerCheckRequest
+  output_model: omnimarket.nodes.node_public_consumer_check_compute.models.model_public_consumer_check.ModelPublicConsumerCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_public_consumer_check_compute.handlers.handler_public_consumer_check:HandlerPublicConsumerCheck
+  handlers:
+    - operation: check_public_consumers
+      handler:
+        name: HandlerPublicConsumerCheck
+        module: omnimarket.nodes.node_public_consumer_check_compute.handlers.handler_public_consumer_check
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 600000
+terminal_event: onex.evt.omnimarket.public-consumer-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.public-consumer-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.public-consumer-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.public-consumer-checked.v1
+    - onex.evt.omnimarket.public-consumer-check-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.public-consumer-checked.v1
+  - onex.evt.omnimarket.public-consumer-check-failed.v1
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-23145]

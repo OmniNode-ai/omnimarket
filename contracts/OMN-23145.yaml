@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-23145
+title: Before any entity is removed a public-consumer check searches the public repositories and published packages and an unresolved consumer keeps the entity
+summary: >-
+  Rebuild plan section 5, public-consumer gate. node_public_consumer_check_compute takes a removal batch, searches
+  the declared public repositories and published packages (scopes, limits and root variables from its overlay; the
+  search source is injected, in-memory by default, a checkout scan as the real backend) for references to each entity,
+  records the per-scope evidence, keeps an entity with an unresolved consumer or an unreadable scope, refuses the batch
+  that names a kept entity, and honours a rare-path declaration only when it names a drill.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23145-public-consumer-check
+  statement: A removal batch passes the public-consumer check before any entity in it is removed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: for an entity the check searches the public repositories and published packages and records the evidence it found -- falsifier: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute -q -k records_evidence'
+  - id: AC2
+    statement: 'AC2: an entity with an unresolved public consumer is kept and the removal batch that names it is refused -- falsifier: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute -q -k unresolved_consumer_keeps_entity'
+  - id: AC3
+    statement: 'AC3: an entity declared a rare path names its drill, and one that names none is not exempt -- falsifier: uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute -q -k rare_path_declaration'
+evidence_requirements:
+- kind: tests
+  description: The node's acceptance, golden chain, error chain and injected-break tests.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23145-ac1-records-evidence
+  description: The per-scope readings and every hit are recorded in the entity's evidence; a clean search names each scope read.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k records_evidence
+- id: dod-omn23145-ac2-unresolved-consumer
+  description: An unresolved consumer or an unreadable scope keeps the entity and refuses the batch; the blind-source break flips the reading.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k unresolved_consumer_keeps_entity
+- id: dod-omn23145-ac3-rare-path
+  description: A rare-path declaration naming a drill keeps the entity; one naming none exempts nothing.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k rare_path_declaration
+- id: dod-omn23145-integration-proof-lab-run
+  description: >-
+    The integration proof: the node's acceptance tests and its golden and error chain events run on a lab host at the
+    pushed branch through onex lab-work, the real placement and execution path, not on the launching host.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work --lane sup-23145-1235 --repo omnimarket --ref omn-23145-public-consumer-check -- uv run pytest src/omnimarket/nodes/node_public_consumer_check_compute tests/test_golden_chain_public_consumer_check_compute.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
