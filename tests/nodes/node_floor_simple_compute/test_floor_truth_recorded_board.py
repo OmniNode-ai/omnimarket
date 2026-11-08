@@ -258,7 +258,11 @@ def test_error_piece_8_does_not_draw_green_while_its_runner_groups_are_unread() 
 def test_golden_piece_8_is_green_once_the_runner_groups_are_read() -> None:
     doc, _ = board(lab_overrides={"runner_groups": "WORKING"})
     piece = next(p for p in doc.pieces if p.piece == 8)
-    assert (piece.status, piece.draw) == ("working", "green")
+    # Working is no longer green (OMN-23081): J8 to the landing piece has not run on this board, so the piece works and is
+    # not integrated, and it draws amber until the join passes.
+    assert (piece.status, piece.draw) == ("working", "amber")
+    assert (piece.ready, piece.integration) == (False, "working_not_integrated")
+    assert piece.blocking_joins == ("J8",)
 
 
 # --- the chains: a join into a piece that does not exist is not judged, and a drill is not evidence for a join ------------

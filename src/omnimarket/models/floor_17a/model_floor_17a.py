@@ -453,12 +453,30 @@ class ModelFloorCause(_Frozen):
 
 
 class ModelFloorJoinRow(_Frozen):
+    """One join as the board draws it (OMN-23081): its state, whether it counts toward ready, who owns it and which side failed."""
+
     id: str
     label: str
     to_piece: int
     state: str
     golden_age_s: int | None
     error_age_s: int | None
+    from_piece: int = 0
+    # The join counts toward READY when both of its pieces are in the readiness scope.
+    counted: bool = False
+    # The join's state is one the overlay lists as passing.
+    passes: bool = False
+    # The red row of a counted join that does not pass (``join:<id>``); ``None`` for a passing or uncounted join.
+    cause_id: str | None = None
+    # The join's definition in words, from the overlay: which pieces it joins.
+    definition: str = ""
+    # Which side failed: ``from``, ``to`` or ``neither`` (both pieces read, no cycle ran it); empty for a passing join.
+    failed_side: str = ""
+    failed_reason: str = ""
+    # Age of the newest chain of the join, golden or error; ``None`` when the join never ran.
+    last_run_age_s: int | None = None
+    owners: tuple[str, ...] = ()
+    lanes: tuple[str, ...] = ()
 
 
 class ModelFloorShadowLine(_Frozen):
@@ -496,6 +514,17 @@ class ModelFloorPieceRow(_Frozen):
     golden_in_window: int | None = None
     error_in_window: int | None = None
     shadows: tuple[ModelFloorShadowLine, ...] = ()
+    # READY (OMN-23081): the piece is in the readiness scope, its own reading is WORKING and every counted join at either end
+    # passes. ``integration`` says which of the four a piece is; a piece that works and is not ready draws amber.
+    ready: bool = False
+    in_scope: bool = False
+    integration: Literal[
+        "ready", "working_not_integrated", "not_working", "not_started"
+    ] = "not_started"
+    # The ids of the counted joins, at either end of the piece, that do not pass.
+    blocking_joins: tuple[str, ...] = ()
+    # How many joins count for this piece (both ends in scope).
+    counted_joins: int = 0
 
 
 class ModelFloorLabLine(_Frozen):
@@ -529,6 +558,17 @@ class ModelFloorAlarmLine(_Frozen):
     channel: str
     sends: tuple[ModelFloorAlarmSend, ...] = ()
     escalated: bool = False
+
+
+class ModelFloorReadiness(_Frozen):
+    """The count the board reports in place of "working" pieces (OMN-23081): ready pieces, and those that work but are not integrated."""
+
+    in_scope: tuple[int, ...]
+    ready: tuple[int, ...]
+    working_not_integrated: tuple[int, ...]
+    not_working: tuple[int, ...]
+    broken_joins: tuple[str, ...]
+    text: str
 
 
 class ModelRebuild(_Frozen):
@@ -662,6 +702,8 @@ class ModelFloorSimple(_Frozen):
     details_href: str
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
+    # How many pieces are ready, not how many work (OMN-23081); ``None`` is a record written before the rule existed.
+    readiness: ModelFloorReadiness | None = None
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
@@ -824,6 +866,27 @@ class ModelFloorLinks(_Frozen):
     pr_url: str = "https://github.com/OmniNode-ai/{repo}/pull/{number}"
 
 
+class ModelReadinessOverlay(_Frozen):
+    """What READY means for a rebuild piece (OMN-23081, the operator's ruling of 2026-11-08 05:08:55Z).
+
+    A piece is READY when it is in scope, its own reading is WORKING, at least ``min_joins`` joins count for it and every
+    counted join reads one of ``passing_join_states``. A join counts when both of its pieces are in ``in_scope_pieces``.
+    Every counted join that does not pass is a red row (``join:<id>``) whose owner tickets are the cause overlay's owners.
+    ``finding_sides`` says which side of a join a chain finding blames; no value of this kind is in code.
+    """
+
+    in_scope_pieces: tuple[int, ...] = Field(min_length=1)
+    min_joins: int = Field(ge=1)
+    passing_join_states: tuple[str, ...] = Field(min_length=1)
+    finding_sides: dict[str, Literal["from", "to"]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _pieces_exist(self) -> ModelReadinessOverlay:
+        if any(not 1 <= p <= 18 for p in self.in_scope_pieces):
+            raise ValueError("the readiness scope names pieces 1 to 18 only")
+        return self
+
+
 class ModelFloorSimpleOverlay(_Frozen):
     """The overlay of node_floor_simple_compute: the pieces, the joins, the numbers' goal and the cause wording."""
 
@@ -832,6 +895,7 @@ class ModelFloorSimpleOverlay(_Frozen):
     rebuild: ModelRebuildOverlay
     numbers: ModelNumbersOverlay
     causes: ModelCauseOverlay
+    readiness: ModelReadinessOverlay
     piece_events: tuple[ModelPieceEventRule, ...] = ()
     # Where the reading writer's rows are on the ledger; ``None`` reads none (the file route of the runtime alone).
     ledger_readings: ModelLedgerReadingRule | None = None
