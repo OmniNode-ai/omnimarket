@@ -49,6 +49,8 @@ _BOX_LABEL = re.compile(
     r"^[\W_]*((?:AC|DOD)[-_ .]?\d+[a-zA-Z]?)(?![a-zA-Z0-9])", re.IGNORECASE
 )
 _NOT_VERIFIED = "no verdict for this criterion"
+# The verifier never ran: the acceptor said it could not, or the run clock cut it off.
+_VERIFY_NOT_RUN = re.compile(r"^VERIFY_(NOT_REACHED|COULD_NOT_RUN)$")
 
 
 def _js_text(value: Any) -> str:
@@ -173,6 +175,17 @@ def read_dod_verify(receipt_json: str) -> dict[str, Any]:
         "verify_status": verdict.get("status"),
         "error_code": code,
         "checks": verdict["checks"],
+    }
+
+
+def could_not_run_reading(detail: str) -> dict[str, Any]:
+    """The verify command printed outcome could_not_run with this detail: no receipt, no
+    checks, and the detail kept so the reason can say why (OMN-20655)."""
+    return {
+        "verify_status": "not_run",
+        "error_code": "VERIFY_COULD_NOT_RUN",
+        "error_detail": " ".join(detail.split()),
+        "checks": [],
     }
 
 
@@ -306,9 +319,12 @@ def decide_ticket(
     dod_verify: dict[str, Any],
     criteria_note: str,
     criteria_amendment: str,
+    no_contract_prefix: str = "contract unresolved",
 ) -> tuple[EnumTicketDecision, list[ModelUnmetCriterion]]:
     unmet: list[ModelUnmetCriterion] = []
     verdicts = ac_verdicts(dod_verify)
+    code = dod_verify.get("error_code") or ""
+    detail = str(dod_verify.get("error_detail") or "")
     if not acs:
         unmet.append(
             _unmet(
@@ -341,6 +357,17 @@ def decide_ticket(
         else:
             verdict = verdicts.get(binding_label(label))
             if verdict != "verified":
+                if not verdict and _VERIFY_NOT_RUN.match(code):
+                    # A ticket with no contract reads "no contract", not a bound check
+                    # with no verdict: the verifier had nothing to run (OMN-20655).
+                    reason = (
+                        "no contract: no contracts/<id>.yaml on a default branch, so "
+                        "dod_verify had nothing to run"
+                        if detail.startswith(no_contract_prefix)
+                        else f"dod_verify did not run ({code}), so the bound check has no verdict"
+                    )
+                    unmet.append(_unmet(label, reason))
+                    continue
                 shown = _js_text(verdict) if verdict else _NOT_VERIFIED
                 unmet.append(
                     _unmet(

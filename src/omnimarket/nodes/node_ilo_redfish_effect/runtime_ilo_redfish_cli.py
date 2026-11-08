@@ -34,23 +34,33 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
+    EnumIloBootTarget,
+    EnumIloLogKind,
+    EnumIloMediaAction,
+    EnumIloOutcome,
+    EnumIloPowerAction,
+    EnumIloVerb,
+)
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ILO_ACCOUNT_REF_PATTERN,
+    ModelIloOverlay,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
+    ModelIloRedfishRequest,
+)
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.compose_handler import (
+    compose_ilo_handler,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.credential_store import (
     StoreCredentialSource,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish import (
-    HandlerIloRedfish,
     load_credential_key_template,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
     OVERLAY_NODE_DIR,
     IloSetupSequence,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.journal_file import (
-    FileActionJournal,
-    LedgerApprovalSource,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
-    ProtocolRedfishTransport,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_adapters import (
     InfisicalSetupSecrets,
@@ -67,22 +77,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_ports import (
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
     build_legacy_pinned_transport,
     build_pinned_transport,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
-    EnumIloBootTarget,
-    EnumIloLogKind,
-    EnumIloMediaAction,
-    EnumIloOutcome,
-    EnumIloPowerAction,
-    EnumIloVerb,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ILO_ACCOUNT_REF_PATTERN,
-    ModelIloHost,
-    ModelIloOverlay,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
-    ModelIloRedfishRequest,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
     ModelIloSetupRequest,
@@ -290,21 +284,7 @@ def main(argv: list[str] | None = None) -> int:
             "ledger_path_missing",
             f"a write needs {LEDGER_ENV} to read the approval row",
         )
-    approvals = LedgerApprovalSource(ledger_path or Path(os.devnull))
-
-    def factory(host: ModelIloHost) -> ProtocolRedfishTransport:
-        return build_pinned_transport(host, overlay_dir)
-
-    handler = HandlerIloRedfish(
-        overlay=overlay,
-        transport_factory=factory,
-        credentials=StoreCredentialSource(),
-        approvals=approvals,
-        journal=FileActionJournal(Path(overlay.journal_dir)),
-        clock=lambda: datetime.now(UTC),
-        sleeper=time.sleep,
-        credential_key_template=load_credential_key_template(),
-    )
+    handler = compose_ilo_handler(overlay, overlay_dir, ledger_path)
     result = handler.handle(request)
     print(result.model_dump_json(indent=2))
     if result.outcome in {EnumIloOutcome.OK, EnumIloOutcome.NOOP}:

@@ -17,6 +17,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.seam_reading.model_required_sender import (
+    EnumSeamTrigger,
+    ModelSeamDeclaration,
+)
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_seam_deadline_probe_effect"
@@ -40,6 +44,9 @@ class ModelSeamSpec(BaseModel):
     #: runtime's typed failure terminal for a command it could not handle).
     error_keys: tuple[str, ...] = Field(min_length=1)
     deadline_seconds: float = Field(gt=0)
+    #: True when the seam's node has an on-demand path only: nothing consumes its command topic
+    #: until the activation attaches it for the demand (OMN-22909).
+    on_demand: bool = False
 
 
 class ModelSeamBusSettings(BaseModel):
@@ -83,6 +90,10 @@ class ModelSeamDeadlineOverlay(BaseModel):
     history_days: int = Field(ge=1)
     seams: tuple[ModelSeamSpec, ...] = Field(min_length=1)
     injected_fault: str = Field(min_length=1)
+    #: Declared seams with their trigger and bound sender (OMN-22909). Empty means the row carries
+    #: no seam counts and no sender is read. An on-demand declaration names a seam run with
+    #: ``on_demand: true``.
+    seam_declarations: tuple[ModelSeamDeclaration, ...] = ()
     #: Hosts that install the schedule; empty means the reading runs only by hand.
     schedule_hosts: tuple[ModelSeamDeadlineHost, ...]
 
@@ -91,6 +102,17 @@ class ModelSeamDeadlineOverlay(BaseModel):
         names = [seam.name for seam in self.seams]
         if len(names) != len(set(names)):
             raise ValueError("a seam is declared twice")
+        run_on_demand = {seam.name for seam in self.seams if seam.on_demand}
+        for declaration in self.seam_declarations:
+            if declaration.trigger is EnumSeamTrigger.ON_DEMAND and (
+                declaration.seam not in run_on_demand
+            ):
+                raise ValueError(
+                    f"on-demand seam {declaration.seam} is not run as an on_demand seam"
+                )
+        declared = [d.seam for d in self.seam_declarations]
+        if len(declared) != len(set(declared)):
+            raise ValueError("a seam is declared twice in seam_declarations")
         hosts = [host.name for host in self.schedule_hosts]
         if len(hosts) != len(set(hosts)):
             raise ValueError("a schedule host is declared twice")
@@ -106,8 +128,22 @@ class ModelSeamDeadlineOverlay(BaseModel):
         """Hash of what the reading depends on, so a deadline change shows in the row."""
         text = json.dumps(
             {
-                "seams": [seam.model_dump(mode="json") for seam in self.seams],
+                "seams": [
+                    seam.model_dump(
+                        mode="json", exclude=None if seam.on_demand else {"on_demand"}
+                    )
+                    for seam in self.seams
+                ],
                 "history_days": self.history_days,
+                **(
+                    {
+                        "seam_declarations": [
+                            d.model_dump(mode="json") for d in self.seam_declarations
+                        ]
+                    }
+                    if self.seam_declarations
+                    else {}
+                ),
             },
             sort_keys=True,
             separators=(",", ":"),

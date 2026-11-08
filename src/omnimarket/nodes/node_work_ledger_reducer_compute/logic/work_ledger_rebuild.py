@@ -98,7 +98,12 @@ class WorkLedgerRebuild:
                         f"row {event.row_id} is accepted under two sequences "
                         f"({seen.ledger_seq} and {event.ledger_seq})"
                     )
-                continue  # a replayed row adds nothing
+                if seen.ledger_seq is None and event.ledger_seq is not None:
+                    # the live twin of a bootstrap row gives it the sequence the projection promotes
+                    rows[event.row_id] = seen.model_copy(
+                        update={"ledger_seq": event.ledger_seq}
+                    )
+                continue  # a replayed row adds nothing else
             try:
                 folded = fold_row(
                     ModelWorkLedgerFoldRequest(
