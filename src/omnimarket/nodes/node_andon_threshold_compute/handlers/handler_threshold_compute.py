@@ -31,7 +31,7 @@ class HandlerThresholdCompute:
         )
         document = {
             "window_hours": freeze.window_hours,
-            "thresholds": freeze.thresholds,
+            "thresholds": dict(freeze.thresholds),
             "threshold_hash": freeze.threshold_hash,
             "recalibrated_on": freeze.recalibrated_on.isoformat(),
         }

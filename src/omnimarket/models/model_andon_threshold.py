@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import date
+from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 WINDOW_HOURS = 24
 PIECE_MIN = 1
@@ -25,10 +27,10 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-def freeze_hash(window_hours: int, thresholds: dict[str, int]) -> str:
+def freeze_hash(window_hours: int, thresholds: Mapping[str, int]) -> str:
     """The hash of a threshold set: sha256 over canonical JSON of the window and the values."""
     body = json.dumps(
-        {"window_hours": window_hours, "thresholds": thresholds},
+        {"window_hours": window_hours, "thresholds": dict(thresholds)},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -54,10 +56,20 @@ class ModelAndonThresholdFreeze(_Frozen):
     schema_id: Literal["omni.andon-threshold-freeze/1"] = (
         "omni.andon-threshold-freeze/1"
     )
-    window_hours: int = Field(default=WINDOW_HOURS, gt=0)
-    thresholds: dict[str, int] = Field(min_length=1)
+    # Only the 24 hour window: burst scope compares a threshold with a 24 hour count.
+    window_hours: int = Field(default=WINDOW_HOURS, ge=WINDOW_HOURS, le=WINDOW_HOURS)
+    thresholds: Mapping[str, int] = Field(min_length=1)
     threshold_hash: str = Field(min_length=64, max_length=64)
     recalibrated_on: date
+
+    @field_validator("thresholds")
+    @classmethod
+    def _read_only_non_negative(cls, value: Mapping[str, int]) -> Mapping[str, int]:
+        """A threshold is a count, never negative, and the frozen set refuses mutation."""
+        negative = sorted(name for name, count in value.items() if count < 0)
+        if negative:
+            raise ValueError(f"negative andon thresholds: {negative}")
+        return MappingProxyType(dict(value))
 
     @model_validator(mode="after")
     def _hash_matches_values(self) -> ModelAndonThresholdFreeze:
@@ -73,7 +85,7 @@ class ModelAndonThresholdFreeze(_Frozen):
 class ModelThresholdComputeRequest(_Frozen):
     classes: tuple[ModelClassWindowCounts, ...] = Field(min_length=1)
     recalibrated_on: date
-    window_hours: int = Field(default=WINDOW_HOURS, gt=0)
+    window_hours: int = Field(default=WINDOW_HOURS, ge=WINDOW_HOURS, le=WINDOW_HOURS)
 
     @model_validator(mode="after")
     def _unique_classes(self) -> ModelThresholdComputeRequest:
