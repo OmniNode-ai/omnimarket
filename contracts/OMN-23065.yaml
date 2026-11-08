@@ -1,0 +1,46 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23065"
+title: "T14 infra routing decisions node declares its handover from the retired consumer group"
+summary: >
+  node_projection_infra_routing_decisions declared its takeover from the retired
+  infra-routing-decisions-postgres consumer group under retired_consumer_group, a
+  key the runtime subscribe preflight never reads. The contract now declares
+  consumer_group_handover with from_group_id, which omnibase_infra's preflight
+  loader reads, so retiring the old container hands its committed offsets to the
+  runtime group.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23065-handover"
+    statement: "The node contract names the retired group through the key the runtime preflight reads."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the node contract declares consumer_group_handover with from_group_id infra-routing-decisions-postgres and from_auto_offset_reset earliest, and no retired_consumer_group key remains -- falsifier: uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q -k handover, red on the base contract"
+      - id: "AC2"
+        statement: "AC2: omnibase_infra's ModelConsumerGroupHandover parses the declared block and source_group returns the old consumer's default group id in every environment -- falsifier: uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q -k handover with a planted wrong group id failing it"
+evidence_requirements:
+  - kind: "tests"
+    description: "The handover test reads the contract through omnibase_infra's own loader."
+    command: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k handover"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23065-declared"
+    description: "The contract declares the handover in the shape the preflight loader reads, naming the old consumer's default group. Fails on the base contract, which holds the inert key."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k test_the_handover_names_the_group"
+        cwd: "."
+  - id: "dod-omn23065-loader"
+    description: "omnibase_infra's load_consumer_group_handover reads the contract and source_group returns the group in local, dev and prod. Fails on the base contract, where the loader returns None."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k test_the_runtime_preflight_reads"
+        cwd: "."
