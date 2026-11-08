@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22982
+title: Piece 16's generated golden and error chain event tests exist and a named mutation turns each red
+summary: Piece 16 (context, memory and evals) holds the pilot manifest check node and the J15 join of the eval corpus reader node. The chain test file generates its scenarios from the two contract.yaml files (the command and terminal topics, the floor's emission topics, the typed failure codes, the statuses), runs each over the in-memory bus and, with the flag set, over a real broker of the declared test lane on disposable topics tagged drill, and records eleven named mutations, each run against its unbroken control first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22982-piece16-chain
+  statement: Piece 16 has a golden and an error chain event test generated from its contracts, and a named injected break turns each of the two red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden and error chain event tests generated from piece 16 contracts run on the in-memory bus, and on the real broker when RUN_REDPANDA_PIECE16=1 -- falsifier: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a named mutation turns each of the two red, each recorded in NAMED_MUTATIONS -- falsifier: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov -k mutation'
+evidence_requirements:
+- kind: tests
+  description: The generated golden and error chain event tests and their named mutations
+  command: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22982-chain-tests
+  description: The generated golden and error chain event tests pass on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov
+    cwd: .
+- id: dod-omn22982-named-mutations
+  description: Each named mutation turns its chain assertion red against an unbroken control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov -k mutation
+    cwd: .
+- id: dod-omn22982-integration-proof
+  description: Run this pull request's chain tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22982 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/piece16 -q --no-cov
+    cwd: .
