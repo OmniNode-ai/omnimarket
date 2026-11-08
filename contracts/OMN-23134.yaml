@@ -51,7 +51,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py?ref=4c4c8201c91331727f1071d313c3957b110ff84d' --jq .content | base64 -d | grep -q 'def canonical_snapshots'"
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py?ref=4c4c8201c91331727f1071d313c3957b110ff84d' --jq .content | base64 -d | grep 'def canonical_snapshots' >/dev/null"
         cwd: "."
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect -q -n 0 --no-cov
