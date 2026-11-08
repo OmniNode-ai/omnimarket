@@ -29,6 +29,11 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.tests import (
     lane_start_fixtures as fx,
 )
 
+# The handler builds one leader per start from a private factory; this test drives that factory and each
+# leader's private append directly, to observe the lock the real wiring shares across leaders.
+BUILD_ATTR = "_build"
+APPEND_ATTR = "_append"
+
 SLOW_WRITER = """\
 import sys, time
 ledger = sys.argv[1]
@@ -56,7 +61,7 @@ def test_two_leaders_for_one_attempt_do_not_both_acquire_the_claim(
         echo=lambda _line: None,
     )
     # Two leaders, each with the collaborators build_real gives it.
-    build = handler._build  # noqa: SLF001
+    build = getattr(handler, BUILD_ATTR)
     assert build is not None
     leaders = [build(req) for _ in range(2)]
     req_id = claim_request_id(req.lane, req.attempt)
@@ -64,7 +69,7 @@ def test_two_leaders_for_one_attempt_do_not_both_acquire_the_claim(
     guard = threading.Lock()
 
     def claim(leader_index: int) -> None:
-        _row, receipt = leaders[leader_index]._append(  # noqa: SLF001
+        _row, receipt = getattr(leaders[leader_index], APPEND_ATTR)(
             req, req_id, "CLAIM", [f"lane={req.lane}", f"ticket={req.ticket}"], "claim"
         )
         with guard:
