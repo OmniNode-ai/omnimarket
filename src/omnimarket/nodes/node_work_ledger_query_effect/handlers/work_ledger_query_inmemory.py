@@ -154,11 +154,11 @@ class InMemoryWorkLedgerQueryReader:
         kinds: tuple[str, ...],
         contains: str | None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
-        wanted = {kind.upper() for kind in kinds}
+        wanted = set(kinds)
         return tuple(
             r
             for r in self.read_rows(since=since, until=until)
-            if (not wanted or r.row_type.upper() in wanted)
+            if (not wanted or r.row_type in wanted)
             and (not contains or contains in r.raw_row)
         )
 
