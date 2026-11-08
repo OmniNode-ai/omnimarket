@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_state_source import (
+from omnimarket.models.work_state_projection.enum_work_state_source import (
     EnumWorkStateSource,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+from omnimarket.models.work_state_projection.model_source_budget import (
     ModelSourceBudget,
 )
 

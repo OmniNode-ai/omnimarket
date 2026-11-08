@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
-from omnimarket.nodes.node_work_state_projection_compute.models import (
+from omnimarket.models.work_state_projection import (
     EnumCriterionReading,
     EnumLaneState,
     EnumScopeStatus,

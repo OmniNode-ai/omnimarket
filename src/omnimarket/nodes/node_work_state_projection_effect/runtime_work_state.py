@@ -31,6 +31,19 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.models.work_state_projection import (
+    EnumSourceReading,
+    EnumWorkStateSource,
+    ModelLaneReceiptSource,
+    ModelPlanTaskSource,
+    ModelPullRequestSource,
+    ModelReadingSource,
+    ModelSourceStatus,
+    ModelTicketSource,
+    ModelWorkStateRequest,
+    ModelWorkStateResult,
+    ModelWorkStateRules,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     FileLedgerRowSource,
 )
@@ -56,19 +69,6 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_sou
     receipts_from_documents,
     scope_from_declaration,
     tickets_from_linear_snapshot,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
-    EnumSourceReading,
-    EnumWorkStateSource,
-    ModelLaneReceiptSource,
-    ModelPlanTaskSource,
-    ModelPullRequestSource,
-    ModelReadingSource,
-    ModelSourceStatus,
-    ModelTicketSource,
-    ModelWorkStateRequest,
-    ModelWorkStateResult,
-    ModelWorkStateRules,
 )
 
 # The projection overlay belongs to the compute node; this effect reads the sources and calls it.

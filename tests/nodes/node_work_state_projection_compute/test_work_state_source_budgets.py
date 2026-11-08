@@ -22,6 +22,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.work_state_projection import (
+    EnumSourceReading,
+    EnumWorkItemState,
+    EnumWorkStateSource,
+    ModelPullRequestSource,
+    ModelSourceBudget,
+    ModelWorkStateRules,
+)
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ModelLedgerRead,
@@ -36,14 +44,6 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_sou
     SourceSpec,
     SourceUnreadableError,
     read_source_budgeted,
-)
-from omnimarket.nodes.node_work_state_projection_compute.models import (
-    EnumSourceReading,
-    EnumWorkItemState,
-    EnumWorkStateSource,
-    ModelPullRequestSource,
-    ModelSourceBudget,
-    ModelWorkStateRules,
 )
 from omnimarket.nodes.node_work_state_projection_effect import runtime_work_state
 

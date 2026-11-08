@@ -21,13 +21,13 @@ from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_source_reading import (
+from omnimarket.models.work_state_projection.enum_source_reading import (
     EnumSourceReading,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.enum_work_state_source import (
+from omnimarket.models.work_state_projection.enum_work_state_source import (
     EnumWorkStateSource,
 )
-from omnimarket.nodes.node_work_state_projection_compute.models.model_source_budget import (
+from omnimarket.models.work_state_projection.model_source_budget import (
     ModelSourceBudget,
     ModelSourceSnapshot,
     ModelSourceStatus,
