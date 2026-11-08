@@ -13,6 +13,11 @@ requirements:
     statement: 'AC1: each named chain ends in a success or a typed failure within its bound, and the board''s chains:broken row clears by its own rule, with a failing control that drops the terminal emission -- falsifier: uv run pytest of the chain tests for node_floor_simple_effect plus the board read after one publish'
   - id: AC2
     statement: 'AC2: J0 ends at the cycle node, so a typed piece 17 failure no longer reads as downstream_missing_typed_failure, while a cycle with no terminal, a malformed cycle chain and every join the declaration does not name still break -- falsifier: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_join_ends_at_typed_outcome.py -q --no-cov'
+- id: req-omn22864-compare-cycle-terminal
+  statement: Every way out of the comparison cycle of piece 17 (node_floor_compare_effect run_floor_compare_cycle), a finish, a termination signal and the cycle's own 12 s deadline below the publish step's 15 s limit, ends its start in a success or a typed failure.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a termination signal and the cycle deadline each end a comparison cycle start in the typed failures terminated_by_signal and cycle_deadline_exceeded, and the real receipt reader then finds no open chain, while the same cycle with the handler dropped still reads start_without_terminal -- falsifier: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_every_exit_terminal_floor_compare.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The abandoned-start tests with their failing controls, and the cycle exit tests.
@@ -38,6 +43,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_join_ends_at_typed_outcome.py -q --no-cov
+- id: dod-omn22864-ac3-tests
+  description: The comparison cycle exit tests pass, with the failing controls (the handler dropped, a deadline at or above the publish limit).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_every_exit_terminal_floor_compare.py -q --no-cov
 - id: dod-omn22864-integration-proof
   description: The lab run at the pushed head of the whole node_floor_simple_effect test directory and the emission receipt tests.
   source: manual

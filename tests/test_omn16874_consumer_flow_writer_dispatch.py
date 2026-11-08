@@ -415,12 +415,16 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # ContextAuditProjectionWriter is node_projection_context_audit's only DB
+    # writer, dispatched once per consumed audit event by runtime auto-wiring;
+    # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
+        "ContextAuditProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
