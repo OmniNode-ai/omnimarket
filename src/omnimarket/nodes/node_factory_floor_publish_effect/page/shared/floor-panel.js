@@ -4,6 +4,7 @@
  *
  *   FloorPanel.mount(el, items, {id})   a paged list (25 rows) into any element, with a search box when it holds more than
  *                                        25 items. An item is {title, sub, group, href, at, count, tag, tone, opens}.
+ *   FloorPanel.reset(id)                forget a list's search and page (a page does this when its filters change).
  *   FloorPanel.configure({resolve})     resolve(key) returns the panel spec for a key, or null. A spec is {key, title,
  *                                        kicker, summary, tone, facts:[{label,value,at}], sources:[text], total, lead
  *                                        (html the page already escaped), sections:[{heading, note, items, empty}]}.
@@ -77,14 +78,17 @@
     paint();
     var q = el.querySelector(".fp-q");
     if (q) q.addEventListener("input", function () { st.q = q.value; st.page = 0; paint(); });
-    el.addEventListener("click", function (e) {
+    // One click handler per host: a page that mounts into the same element on every redraw must not stack them.
+    if (el.__fpClick) el.removeEventListener("click", el.__fpClick);
+    el.__fpClick = function (e) {
       var b = e.target.closest ? e.target.closest("button[data-pg]") : null;
       if (!b || b.disabled) return;
       st.page += Number(b.getAttribute("data-pg"));
       paint();
       var top = el.getBoundingClientRect().top;
       if (top < 0 && el.scrollIntoView) el.scrollIntoView({block: "start"});
-    });
+    };
+    el.addEventListener("click", el.__fpClick);
     return {rows: items.length, state: st};
   }
 
@@ -227,7 +231,7 @@
   window.addEventListener("hashchange", sync);
 
   root.FloorPanel = {
-    mount: mount, bodyHTML: body, open: open, close: close, update: update, sync: sync,
+    mount: mount, reset: function (id) { delete listState[id]; }, bodyHTML: body, open: open, close: close, update: update, sync: sync,
     configure: function (c) { cfg = Object.assign({}, cfg, c); },
     isOpen: function () { return openKey != null; },
     key: function () { return openKey; },
