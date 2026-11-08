@@ -364,6 +364,10 @@ class HandlerFactoryFloorPublish:
             (name, (NODE_DIR / rt.icons_relpath / name).read_bytes())
             for name in rt.names.icons
         ]
+        shared = [
+            (name, (NODE_DIR / rt.shared_relpath / name).read_bytes())
+            for name in rt.names.shared
+        ]
         health_payload = HandlerProcessHealthPayload().handle(
             ModelProcessHealthPayloadRequest(
                 source_path=str(home / rt.process_health_relpath)
@@ -402,6 +406,7 @@ class HandlerFactoryFloorPublish:
         files: list[tuple[str, bytes]] = [
             *theme_css,
             *icons,
+            *shared,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.simple_page, simple_page),

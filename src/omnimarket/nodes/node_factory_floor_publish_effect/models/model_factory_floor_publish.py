@@ -170,7 +170,11 @@ class ModelPublishNames(BaseModel):
     # The site's icons (the SVG, the 32 px PNG, the apple-touch icon), published beside the pages under these names.
     icons: tuple[str, ...] = Field(min_length=1)
 
-    @field_validator("theme_css", "icons")
+    # The details panel and list shared by the first page and the Better or worse page (OMN-23018), published beside the pages
+    # under these names so both read one component.
+    shared: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("theme_css", "icons", "shared")
     @classmethod
     def _theme_css(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for name in value:
@@ -387,6 +391,8 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     theme_css_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the icon files named by ``names.icons``.
     icons_relpath: str = Field(min_length=1)
+    # The directory, relative to the node, holding the shared panel files named by ``names.shared``.
+    shared_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
