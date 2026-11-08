@@ -214,6 +214,15 @@ class ModelStatePaths(BaseModel):
     canary_clone: str
 
 
+class ModelAbandonedPieceChains(BaseModel):
+    """The chains of one other piece whose starts this node closes when no process can still close them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelMvpLaunchRuntime(BaseModel):
     """The MVP launch block (OMN-23205): its overlay and the command route its run histories are read through."""
 
@@ -242,6 +251,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
     abandon_after_seconds: int = Field(gt=0)
     abandon_chains: tuple[str, ...] = ()
+    # Starts of nodes of other pieces that a publish step runs and a kill can strand (OMN-23230), closed the same way.
+    abandon_other_pieces: tuple[ModelAbandonedPieceChains, ...] = ()
     # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
     # among them, because no downstream piece can answer a row that reads a bad value.
     pipeline_chains: tuple[str, ...] = Field(min_length=1)
@@ -594,13 +605,26 @@ class HandlerFloorSimpleTick:
         """Close each start of this node's pipeline chains that no process can still close; the count of closures."""
         now = self._clock()
         journal = sink.read(now - timedelta(hours=rt.state.emission_window_hours))
-        closing = abandoned_starts(
-            journal,
-            now=now,
-            abandon_after_s=rt.abandon_after_seconds,
-            piece=floor_ov.rebuild.lab_state_piece,
-            nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
-        )
+        closing = [
+            *abandoned_starts(
+                journal,
+                now=now,
+                abandon_after_s=rt.abandon_after_seconds,
+                piece=floor_ov.rebuild.lab_state_piece,
+                nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
+            ),
+            *(
+                event
+                for other in rt.abandon_other_pieces
+                for event in abandoned_starts(
+                    journal,
+                    now=now,
+                    abandon_after_s=rt.abandon_after_seconds,
+                    piece=other.piece,
+                    nodes=frozenset(other.nodes),
+                )
+            ),
+        ]
         for event in closing:
             sink.emit(event)
         return len(closing)
