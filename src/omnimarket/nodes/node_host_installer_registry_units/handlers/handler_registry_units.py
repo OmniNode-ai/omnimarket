@@ -69,6 +69,18 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
 # launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
 DEFAULT_PROCESS_TYPE = "Background"
 PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
+# launchd has no run limit for a StartInterval job, so a hung run holds the job and no tick follows (the overlay store
+# refresh hung 40 minutes at 0% CPU on 2026-11-06 and the alarm opened a missed-interval episode). A unit that declares
+# run_timeout_s runs under this wrapper: it puts the command in its own process group, ends the whole group with TERM
+# and then KILL when the limit passes, and exits 124 so the job-exit alarm reads a failed exit instead of silence.
+TIMEOUT_PROGRAM = (
+    "my $limit = shift; my $pid = fork(); defined $pid or exit 71; "
+    "if (!$pid) { setpgrp(0, 0); exec @ARGV; exit 127 } "
+    "$SIG{ALRM} = sub { kill 'TERM', -$pid; sleep 5; kill 'KILL', -$pid; exit 124 }; "
+    "alarm $limit; waitpid($pid, 0); "
+    "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
+)
+TIMEOUT_INTERPRETER = "/usr/bin/perl"
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -245,6 +257,135 @@ class HandlerRegistryUnits:
                     )
         return filled
 
+    def config_target(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Path | None:
+        """Where the unit's declared configuration file is written: the value of the environment variable the
+        declaration names, which is the path the installed unit reads (a path override included)."""
+        declared = unit.get("config_file")
+        if not declared:
+            return None
+        name = str(declared["environment"])
+        value = self.environment(request, unit).get(name)
+        if not value:
+            raise ValueError(
+                f"{request.unit} declares a configuration file at ${name}, which the unit does not set"
+            )
+        return Path(value)
+
+    def config_text(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The unit's declared configuration document with every placeholder filled.
+
+        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
+        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        variable of the installing shell, and falls back to the value the unit's last install recorded, so a
+        reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
+        never written with a hole in it.
+        """
+        declared = unit.get("config_file")
+        if not declared:
+            return ""
+        root = Path(request.registry_root)
+        values = {
+            "home": request.home,
+            "registry_root": request.registry_root,
+            "ledger_path": request.ledger_path
+            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
+        }
+        values.update(self.config_inputs(request, unit))
+
+        def fill(node: Any) -> Any:
+            if isinstance(node, str):
+                for key, value in values.items():
+                    node = node.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(node)
+                if left is not None:
+                    raise ValueError(
+                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
+                        "(name it as a request input, export its environment variable, or reinstall once with it)"
+                    )
+                return node
+            if isinstance(node, list):
+                return [fill(item) for item in node]
+            if isinstance(node, dict):
+                return {str(key): fill(item) for key, item in node.items()}
+            return node
+
+        return json.dumps(fill(declared["document"]), indent=1) + "\n"
+
+    def config_inputs(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> dict[str, str]:
+        """The values of the configuration's declared inputs: the request, else the installing shell, else the last install."""
+        declared = (unit.get("config_file") or {}).get("inputs") or {}
+        if not declared:
+            return {}
+        root = Path(request.registry_root)
+        record = root / str(unit["state_directory"]) / f"{request.unit}.installed.json"
+        try:
+            recorded = dict(
+                json.loads(record.read_text(encoding="utf-8")).get("config_inputs")
+                or {}
+            )
+        except (OSError, ValueError, AttributeError, TypeError):
+            recorded = {}
+        found: dict[str, str] = {}
+        for name, source in declared.items():
+            value = (
+                str(getattr(request, str(source["field"]), "")).strip()
+                or os.environ.get(str(source.get("env") or ""), "").strip()
+                or str(recorded.get(str(name)) or "")
+            )
+            if value:
+                found[str(name)] = value
+        return found
+
+    @staticmethod
+    def write_config(target: Path, text: str, mode: int) -> str:
+        """Write ``text`` at ``target`` with ``mode`` and keep a differing file it replaces as ``<name>.previous``.
+
+        Returns the path of the kept copy, or '' when nothing was replaced or the content was the same.
+        """
+        target.parent.mkdir(parents=True, exist_ok=True)
+        kept = ""
+        if target.is_file() and target.read_text(encoding="utf-8") != text:
+            previous = target.with_name(target.name + ".previous")
+            shutil.copyfile(target, previous)
+            previous.chmod(mode)
+            kept = str(previous)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+        try:
+            temporary.chmod(mode)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return kept
+
+    @staticmethod
+    def timeout_args(unit: dict[str, Any]) -> str:
+        """The wrapper's ProgramArguments entries for a unit that declares run_timeout_s, else nothing."""
+        limit = unit.get("run_timeout_s")
+        if limit is None:
+            return ""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError(
+                f"{unit['label']} declares run_timeout_s {limit!r}; it must be a whole number of seconds, at least 1"
+            )
+        return "".join(
+            f"<string>{escape(part)}</string>\n    "
+            for part in (TIMEOUT_INTERPRETER, "-e", TIMEOUT_PROGRAM, str(limit))
+        )
+
     def render(
         self,
         request: ModelRegistryUnitsRequest,
@@ -259,6 +400,7 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
             )
+        timeout_args = self.timeout_args(unit)
         home, root = Path(request.home), Path(request.registry_root)
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
@@ -289,6 +431,7 @@ class HandlerRegistryUnits:
             "<true/>" if unit["schedule"]["run_at_load"] else "<false/>",
         )
         text = text.replace("__ENVIRONMENT__", environment)
+        text = text.replace("__TIMEOUT_ARGS__", timeout_args)
         text = text.replace(
             "__TICK_SYNC_ARGS__",
             "<string>--no-sync</string>" if unit.get("tick_no_sync") else "",
@@ -342,15 +485,20 @@ class HandlerRegistryUnits:
             raise ValueError(f"uv is not on PATH; it runs {unit['module']} for {label}")
         python = self.interpreter_for(unit)
         text = self.render(request, unit, project, uv, python)
+        config_path = self.config_target(request, unit)
+        config = self.config_text(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
                 0,
-                out=text,
+                out=text
+                + (f"\nconfiguration {config_path}:\n{config}" if config else ""),
                 rendered=text,
                 project=project,
                 revision=revision,
                 canonical=canonical,
+                config=config,
+                config_path=str(config_path or ""),
             )
         proof = self.run(
             [
@@ -372,6 +520,13 @@ class HandlerRegistryUnits:
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
+        kept_config = ""
+        if config_path is not None:
+            kept_config = self.write_config(
+                config_path,
+                config,
+                int(str(unit["config_file"].get("mode", "0600")), 8),
+            )
         plist.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="registry-units-") as scratch:
             rendered = Path(scratch) / "agent.plist"
@@ -398,6 +553,7 @@ class HandlerRegistryUnits:
                     "project": str(project),
                     "project_is_canonical": canonical,
                     "revision": revision,
+                    "config_inputs": self.config_inputs(request, unit),
                     "installed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 },
                 indent=1,
@@ -410,12 +566,25 @@ class HandlerRegistryUnits:
             request,
             0,
             out=f"installed {label}: {unit['schedule']['description']}, runs {unit['module']} from {project} at {revision}, "
-            f"heartbeat {evidence}, logs in {state}\n",
+            f"heartbeat {evidence}, logs in {state}\n"
+            + (
+                f"wrote configuration {config_path}"
+                + (
+                    f", kept the file it replaced as {kept_config}"
+                    if kept_config
+                    else ""
+                )
+                + "\n"
+                if config_path is not None
+                else ""
+            ),
             rendered=text,
             project=project,
             revision=revision,
             canonical=canonical,
             record=str(record),
+            config=config,
+            config_path=str(config_path or ""),
         )
 
     def head_of(self, project: Path) -> str:
@@ -472,6 +641,8 @@ class HandlerRegistryUnits:
         revision: str = "",
         canonical: bool = True,
         record: str = "",
+        config: str = "",
+        config_path: str = "",
     ) -> ModelRegistryUnitsResult:
         return ModelRegistryUnitsResult(
             unit=request.unit,
@@ -485,6 +656,8 @@ class HandlerRegistryUnits:
             revision=revision,
             project_is_canonical=canonical,
             record=record,
+            config=config,
+            config_path=config_path,
         )
 
     def copied_unit(

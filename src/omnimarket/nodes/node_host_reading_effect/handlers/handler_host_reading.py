@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_sink import ProtocolEmissionSink
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostProbeOutcome,
@@ -30,6 +32,12 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_host_canary import (
     read_canary,
 )
+from omnimarket.nodes.node_host_reading_effect.handlers.probe_join_j1 import (
+    read_join_j1,
+)
+from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_durability import (
+    read_durability,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_ledger_old_names import (
     read_old_names,
 )
@@ -40,6 +48,7 @@ from omnimarket.nodes.node_host_reading_effect.overlay import ModelHostReadingOv
 from omnimarket.nodes.node_host_reading_effect.protocols import (
     ProtocolAdvertisementSource,
     ProtocolCanaryRunner,
+    ProtocolGraphVerdictSource,
     ProtocolHostFiles,
     ProtocolHostInventory,
 )
@@ -48,6 +57,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     stamp_text,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
 
@@ -82,10 +92,15 @@ class HandlerHostReading:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         environ: Mapping[str, str],
+        probe_appender: ProtocolReadingAppender | None = None,
+        durable_reader: ProtocolLedgerRowSource | None = None,
+        sleep: Callable[[float], None] = time.sleep,
         inventory: ProtocolHostInventory | None = None,
         canary_runner: ProtocolCanaryRunner | None = None,
         nonce_for: Callable[[str], str] | None = None,
         adverts: ProtocolAdvertisementSource | None = None,
+        graph_source: ProtocolGraphVerdictSource | None = None,
+        sink: ProtocolEmissionSink | None = None,
     ) -> None:
         self._overlay = overlay
         self._host = host
@@ -93,9 +108,15 @@ class HandlerHostReading:
         self._appender = appender
         self._clock = clock
         self._environ = environ
+        # The durability probe's own routes: its probe row and its read of the durable store.
+        self._probe_appender = probe_appender
+        self._durable_reader = durable_reader
+        self._sleep = sleep
         self._inventory = inventory
         self._canary_runner = canary_runner
         self._adverts = adverts
+        self._graph_source = graph_source
+        self._sink = sink
         self._nonce_for = nonce_for or (lambda _host: uuid.uuid4().hex[:16])
 
     def handle(self, command: ModelHostReadingCommand) -> ModelHostReadingResult:
@@ -127,12 +148,16 @@ class HandlerHostReading:
             failure=why,
         )
 
-    def _read(self, probe: EnumHostProbe, now: datetime) -> ModelProbeReading:
+    def _read(
+        self, probe: EnumHostProbe, now: datetime, write: bool
+    ) -> ModelProbeReading:
         try:
             if probe is EnumHostProbe.LEDGER_OUTBOX:
                 return read_outbox(
                     self._overlay.outbox, self._files, self._environ, now
                 )
+            if probe is EnumHostProbe.LEDGER_DURABILITY:
+                return self._read_durability()
             if probe is EnumHostProbe.HOST_CANARY:
                 if (
                     self._overlay.canary is None
@@ -154,6 +179,21 @@ class HandlerHostReading:
                     self._adverts,
                     now,
                 )
+            if probe is EnumHostProbe.JOIN_J1:
+                if self._overlay.join_j1 is None or self._graph_source is None:
+                    return ModelProbeReading(
+                        probe=probe,
+                        verdict=EnumReadingVerdict.UNKNOWN,
+                        outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                        reasons=("join-j1-ports-not-wired",),
+                    )
+                return read_join_j1(
+                    self._overlay.join_j1,
+                    self._graph_source,
+                    self._sink if write else None,
+                    correlation_id=f"graph-run-{self._nonce_for(self._host)}",
+                    clock=self._clock,
+                )[1]
             assert self._overlay.old_names is not None
             return read_old_names(self._overlay.old_names, self._files, self._environ)
         except OSError as exc:
@@ -164,19 +204,45 @@ class HandlerHostReading:
                 reasons=(f"host-read-failed-{reason_token(type(exc).__name__)}",),
             )
 
+    def _read_durability(self) -> ModelProbeReading:
+        settings = self._overlay.durability
+        assert settings is not None
+        if self._probe_appender is None or self._durable_reader is None:
+            return ModelProbeReading(
+                probe=EnumHostProbe.LEDGER_DURABILITY,
+                verdict=EnumReadingVerdict.UNKNOWN,
+                outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                reasons=("durability-routes-not-wired",),
+            )
+        return read_durability(
+            settings,
+            host=self._host,
+            actor=self._overlay.publish.actor,
+            appender=self._probe_appender,
+            reader=self._durable_reader,
+            clock=self._clock,
+            sleep=self._sleep,
+        )
+
     def _fault(self, probe: EnumHostProbe) -> str:
         if probe is EnumHostProbe.LEDGER_OUTBOX:
             return self._overlay.outbox.injected_fault
+        if probe is EnumHostProbe.LEDGER_DURABILITY:
+            assert self._overlay.durability is not None
+            return self._overlay.durability.injected_fault
         if probe is EnumHostProbe.HOST_CANARY:
             assert self._overlay.canary is not None
             return self._overlay.canary.injected_fault
+        if probe is EnumHostProbe.JOIN_J1:
+            assert self._overlay.join_j1 is not None
+            return self._overlay.join_j1.injected_fault
         assert self._overlay.old_names is not None
         return self._overlay.old_names.injected_fault
 
     def _probe(
         self, probe: EnumHostProbe, now: datetime, write: bool
     ) -> ModelHostProbeOutcome:
-        reading = self._read(probe, now)
+        reading = self._read(probe, now, write)
         overlay_hash = self._overlay.overlay_hash()
         key = _sha("|".join((self._host, probe.value, stamp_text(now), overlay_hash)))[
             :32

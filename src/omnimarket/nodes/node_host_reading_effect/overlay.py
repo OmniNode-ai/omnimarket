@@ -18,7 +18,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_host_reading import EnumHostProbe
-from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
+from omnimarket.models.model_join_j2 import ModelJoinJ2Settings
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+    ModelLedgerAppendRoute,
+)
 
 NODE_NAME = "node_host_reading_effect"
 
@@ -93,6 +97,10 @@ class ModelHostCanaryProbeSettings(BaseModel):
     pool_admitted_marker: str = Field(min_length=1)
     #: The text by which the route's pool read says a host could not be read.
     pool_unreadable_marker: str = Field(min_length=1)
+    #: Texts by which the route's pool read refuses a host for a reason of the host table or the
+    #: load bar (out of rotation, job kinds, over the bar, hot, short of memory), after ``<host>: ``.
+    #: Such a host ends parked: listed with the refusal, never a failed host. Empty parks none.
+    pool_parked_markers: tuple[str, ...]
     #: Paths read on the host for free disk (``~`` expands there); the smallest counts.
     disk_paths: tuple[str, ...] = Field(min_length=1)
     disk_floor_gb: float = Field(ge=0)
@@ -108,6 +116,78 @@ class ModelHostCanaryProbeSettings(BaseModel):
     injected_fault: str = Field(min_length=1)
 
 
+class ModelDurabilityProbeSettings(BaseModel):
+    """One probe row appended through the bus and read back from the durable store by a deadline.
+
+    The probe row has its own append route so a drill can break that route alone (an append that
+    answers accepted and publishes nothing) while the reading row still lands. The read route is
+    the lab read node over the database projection: the durable store, never the file.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    append: ModelLedgerAppendRoute
+    read: ModelCommandLedgerReadRoute
+    #: The lane of the probe rows, apart from the reading rows' lane.
+    probe_lane: str = Field(min_length=1)
+    #: A probe row not read back from the durable store by then reads NOT WORKING.
+    deadline_seconds: int = Field(ge=1)
+    poll_interval_seconds: int = Field(ge=1)
+    #: A drill overlay sets this, so its rows carry drill=yes and never count as operational.
+    drill: bool
+    injected_fault: str = Field(min_length=1)
+
+
+class ModelJoinJ1Node(BaseModel):
+    """One node the host stage needs the graph's verdict for, and where its modules sit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    repo: str = Field(min_length=1)
+    #: Repository-relative directory holding the node's modules.
+    package_dir: str = Field(min_length=1)
+
+
+class ModelJoinJ1Emission(BaseModel):
+    """The emission journal the floor reads its receipts from, relative to a directory an environment variable names."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    home_env: str = Field(min_length=1)
+    journal_relpath: str = Field(min_length=1)
+
+
+class ModelJoinJ1Settings(BaseModel):
+    """Join J1, the code graph to hosts and capacity: which graph run it reads and what the host stage must find in it.
+
+    The join emits its two chains under the graph run's correlation id: the graph run's own (``graph_chain_node``,
+    ``from_piece``) and the host stage's (``host_chain_node``, ``to_piece``), so the floor judges the join from them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    join: str = Field(pattern=r"^J\d{1,2}$")
+    from_piece: int = Field(ge=1, le=18)
+    to_piece: int = Field(ge=1, le=18)
+    graph_chain_node: str = Field(min_length=1)
+    host_chain_node: str = Field(min_length=1)
+    #: The nodes host discovery and placement depend on; a graph run must carry a verdict for each.
+    nodes: tuple[ModelJoinJ1Node, ...] = Field(min_length=1)
+    #: Absent means the join publishes its row only and emits no chains.
+    emission: ModelJoinJ1Emission | None = None
+    injected_fault: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelJoinJ1Settings:
+        if self.from_piece == self.to_piece:
+            raise ValueError("a join joins two pieces")
+        names = [node.name for node in self.nodes]
+        if len(names) != len(set(names)):
+            raise ValueError("a join node is declared twice")
+        return self
+
+
 class ModelHostReadingHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -121,6 +201,20 @@ class ModelHostReadingHost(BaseModel):
     environment: dict[str, str]
 
 
+class ModelJoinJ2Overlay(BaseModel):
+    """The J2 join (piece 2 to piece 3): its settings, how long the caller listens for
+    advertisements, and the emission journal the floor reads its two chains from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    settings: ModelJoinJ2Settings
+    #: Seconds the caller listens for advertisements before it runs the join (the cadence plus slack).
+    collect_window_seconds: int = Field(ge=1)
+    #: The variable naming the floor's state directory, and the journal's path under it.
+    emission_home_env: str = Field(min_length=1)
+    emission_journal_relpath: str = Field(min_length=1)
+
+
 class ModelHostReadingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -128,8 +222,13 @@ class ModelHostReadingOverlay(BaseModel):
     publish: ModelHostReadingPublish
     outbox: ModelOutboxProbeSettings
     old_names: ModelOldNamesProbeSettings | None
+    durability: ModelDurabilityProbeSettings | None
     #: Absent means no host declares the host-canary probe.
     canary: ModelHostCanaryProbeSettings | None = None
+    #: Absent means no host declares the join-j1 probe.
+    join_j1: ModelJoinJ1Settings | None = None
+    #: Absent means the join-j2 verb refuses to run on this deployment.
+    join_j2: ModelJoinJ2Overlay | None = None
     hosts: tuple[ModelHostReadingHost, ...]
 
     @model_validator(mode="after")
@@ -144,9 +243,17 @@ class ModelHostReadingOverlay(BaseModel):
                 raise ValueError(
                     f"host {host.name} declares ledger-old-names with no old_names settings"
                 )
+            if EnumHostProbe.LEDGER_DURABILITY in host.probes and not self.durability:
+                raise ValueError(
+                    f"host {host.name} declares ledger-durability with no durability settings"
+                )
             if EnumHostProbe.HOST_CANARY in host.probes and not self.canary:
                 raise ValueError(
                     f"host {host.name} declares host-canary with no canary settings"
+                )
+            if EnumHostProbe.JOIN_J1 in host.probes and not self.join_j1:
+                raise ValueError(
+                    f"host {host.name} declares join-j1 with no join_j1 settings"
                 )
         return self
 
@@ -162,8 +269,18 @@ class ModelHostReadingOverlay(BaseModel):
                 if self.old_names
                 else None,
                 **(
+                    {"durability": self.durability.model_dump(mode="json")}
+                    if self.durability
+                    else {}
+                ),
+                **(
                     {"canary": self.canary.model_dump(mode="json")}
                     if self.canary
+                    else {}
+                ),
+                **(
+                    {"join_j1": self.join_j1.model_dump(mode="json")}
+                    if self.join_j1
                     else {}
                 ),
             },

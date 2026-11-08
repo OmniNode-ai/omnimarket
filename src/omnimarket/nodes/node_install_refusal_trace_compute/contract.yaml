@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: install_refusal_trace_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Classifies the hand-off refusals of one window by the cause each record states, with a count per class,
+  the classes no record reached (unread) and the records no class names.
+input_model: omnimarket.nodes.node_install_refusal_trace_compute.models.ModelInstallRefusalTraceRequest
+output_model: omnimarket.nodes.node_install_refusal_trace_compute.models.ModelInstallRefusalTraceResult
+handler:
+  module: omnimarket.nodes.node_install_refusal_trace_compute.handlers.handler_install_refusal_trace
+  class: HandlerInstallRefusalTraceCompute
+  input_model: omnimarket.nodes.node_install_refusal_trace_compute.models.ModelInstallRefusalTraceRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerInstallRefusalTraceCompute
+      module: omnimarket.nodes.node_install_refusal_trace_compute.handlers.handler_install_refusal_trace
+    event_model:
+      name: ModelInstallRefusalTraceRequest
+      module: omnimarket.nodes.node_install_refusal_trace_compute.models
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.install-refusal-trace-computed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.install-refusal-trace-compute.v1
+  publish_topics:
+  - onex.evt.omnimarket.install-refusal-trace-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.install-refusal-trace-compute.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.install-refusal-trace-computed.v1
+metadata:
+  transport_type: kafka
+inputs:
+  window_start:
+    type: string
+    required: true
+    description: UTC start of the window.
+  window_end:
+    type: string
+    required: true
+    description: UTC end of the window.
+  records:
+    type: array
+    required: true
+    description: Every refusal record read for the window, each with its source and text.
+outputs:
+  total:
+    type: integer
+    description: Records read.
+  install_proof_total:
+    type: integer
+    description: Records in a class that is a refusal for want of installed proof.
+  classes:
+    type: array
+    description: Classes with at least one record, with count and sources, largest first.
+  unread_classes:
+    type: array
+    description: Declared classes no record reached.
+  unclassified:
+    type: array
+    description: Sources of records no declared class names.

@@ -97,6 +97,9 @@ _JOB_STDOUT = re.compile(r"^\s*stdout path\s*=\s*(\S.*?)\s*$", re.MULTILINE)
 _JOB_STDERR = re.compile(r"^\s*stderr path\s*=\s*(\S.*?)\s*$", re.MULTILINE)
 _LOG_TAIL_LINES = 60
 _HOST_CELL = re.compile(r"^h\d+$")
+# A host timer (host-drift) writes drift-pass rows that name its host. It runs no session, so it
+# sends no hook event; its rows are not lanes and prove nothing about capture (OMN-22778).
+_TIMER_ACTOR_PREFIX = "timer:"
 _RUN_KEY = re.compile(r"^\d{4}-(\d\d)-(\d\d)T(\d\d)(\d\d)Z$")
 _LANE_RUN_KEY = re.compile(r"^lab-fill-.+-(\d{8})$")
 _STATUS = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -1093,7 +1096,11 @@ class HandlerSilentFailureAlarm:
         now: datetime,
         kinds: tuple[str, ...] = ("CLAIM", "STATUS", "TERMINAL"),
     ) -> dict[str, tuple[datetime, ...]]:
-        """The stamps of the rows of ``kinds`` naming a pool host, by host id."""
+        """The stamps of the rows of ``kinds`` naming a pool host, by host id.
+
+        A row written by a host timer (``actor=timer:``) names its host without a lane having run
+        there, so it is not read as one (OMN-22778).
+        """
         floor, ceiling = _stamp(now - LOOKBACK), _stamp(now + timedelta(minutes=5))
         found: dict[str, list[datetime]] = {}
         for line in text.splitlines():
@@ -1109,6 +1116,7 @@ class HandlerSilentFailureAlarm:
                 or host is None
                 or not _HOST_CELL.match(host)
                 or row.row_type not in kinds
+                or (row.token("actor") or "").startswith(_TIMER_ACTOR_PREFIX)
             ):
                 continue
             found.setdefault(host, []).append(stamp)
@@ -1121,6 +1129,12 @@ class HandlerSilentFailureAlarm:
         nobody declared is left out, and a line that does not parse is a failed read.
         """
         command = self._options.hook_events_command
+        if self._options.host_table_error:
+            return (
+                {},
+                f"host table unreadable, hook-event hosts cannot be attributed: "
+                f"{self._options.host_table_error}",
+            )
         if not self._options.host_aliases:
             return (
                 {},

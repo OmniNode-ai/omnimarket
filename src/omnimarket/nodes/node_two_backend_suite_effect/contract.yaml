@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Two-Backend Suite Effect (OMN-22911, rebuild piece 4)
+#
+# Plan section 3.1 and 3.6: every effect has an in-memory default and a real backend chosen by
+# overlay, with one suite on both. This node is that suite. It reads the list the core
+# effect-backends validator produced, runs each effect declared on both backends against both, and
+# publishes the count of effects not yet on both. It reads and runs; it gates and stops nothing.
+name: node_two_backend_suite_effect
+contract_name: node_two_backend_suite_effect
+node_name: node_two_backend_suite_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Runs the two-backend suite over the effect list in the overlay-named report. An effect passes only when its scenario passes on the in-memory backend and on the real backend with equal results; one backend only, backends that disagree, and both failing are each a typed failure event. An unreadable report is one typed suite failure, never an empty list.
+
+handler:
+  module: omnimarket.nodes.node_two_backend_suite_effect.handlers.handler_two_backend_suite
+  class: HandlerTwoBackendSuite
+  input_model: omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite.ModelTwoBackendRequest
+# Not a runtime-dispatched handler: HandlerTwoBackendSuite takes its report source, resolver and
+# work directory as constructor parameters, so the node runs through its own CLI.
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [filesystem-temp]
+  timeout_ms: 300000
+input_model:
+  name: ModelTwoBackendRequest
+  module: omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite
+  description: A correlation id.
+output_model:
+  name: ModelTwoBackendResult
+  module: omnimarket.nodes.node_two_backend_suite_effect.models.model_two_backend_suite
+  description: Per effect verdict and the count of effects not on both backends.
+terminal_event: onex.evt.omnimarket.two-backend-suite-completed.v1
+runtime_dispatch:
+  external_trigger: true
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  two_backend_suite_requested: onex.cmd.omnimarket.two-backend-suite-requested.v1
+  two_backend_effect_passed: onex.evt.omnimarket.two-backend-effect-passed.v1
+  two_backend_effect_failed: onex.evt.omnimarket.two-backend-effect-failed.v1
+  two_backend_suite_completed: onex.evt.omnimarket.two-backend-suite-completed.v1
+  two_backend_suite_failed: onex.evt.omnimarket.two-backend-suite-failed.v1
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+externally_consumed_topics:
+  - onex.evt.omnimarket.two-backend-effect-passed.v1
+  - onex.evt.omnimarket.two-backend-effect-failed.v1
+  - onex.evt.omnimarket.two-backend-suite-completed.v1
+  - onex.evt.omnimarket.two-backend-suite-failed.v1
+# This node is on both backends itself: the effect list is a fixed report in memory by default and
+# the core validator's report file when the overlay says `report.route: file`.
+backends:
+  default: in_memory
+  in_memory:
+    factory: omnimarket.nodes.node_two_backend_suite_effect.adapters.two_backend.make_in_memory_backend
+  real:
+    factory: omnimarket.nodes.node_two_backend_suite_effect.adapters.two_backend.make_file_backend
+    overlay_key: report.route
+  suite:
+    scenario: omnimarket.nodes.node_two_backend_suite_effect.adapters.two_backend.scenario_report_roundtrip
+overlay:
+  node: node_two_backend_suite_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-22911
+  transport_type: inmemory

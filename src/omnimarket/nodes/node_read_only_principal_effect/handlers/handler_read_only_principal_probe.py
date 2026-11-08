@@ -44,6 +44,8 @@ from ..protocols.protocol_attempt_executor import (
     ModelAttemptRun,
     ProtocolAttemptExecutor,
 )
+from ..protocols.protocol_credential_resolver import ProtocolCredentialResolver
+from .adapter_memory_credential_resolver import MemoryCredentialResolver
 from .adapter_subprocess_attempt_executor import SubprocessAttemptExecutor
 from .handler_read_only_command_gate import load_overlay
 
@@ -84,7 +86,13 @@ class HandlerReadOnlyPrincipalProbe:
         sink: ProtocolEmissionSink | None = None,
         clock: Callable[[], datetime] | None = None,
         environ: Mapping[str, str] | None = None,
+        credential_resolver: ProtocolCredentialResolver | None = None,
     ) -> None:
+        self._credentials = (
+            credential_resolver
+            if credential_resolver is not None
+            else MemoryCredentialResolver()
+        )
         self._executor = (
             executor if executor is not None else SubprocessAttemptExecutor()
         )
@@ -97,6 +105,13 @@ class HandlerReadOnlyPrincipalProbe:
         overlay = (
             request.overlay if request.overlay is not None else self._overlay_source()
         )
+        if not self._credentials.resolves(overlay.credential):
+            raise NodeOverlayError(
+                f"credential reference {overlay.credential.secret_ref} for lane "
+                f"{overlay.credential.lane} does not resolve in "
+                f"{overlay.credential.store.value}: store the principal's identity "
+                "there with `onex auth lane-login`, then probe"
+            )
         chain = self._chain(overlay)
         if chain is None:
             return self._probe(overlay, request)
