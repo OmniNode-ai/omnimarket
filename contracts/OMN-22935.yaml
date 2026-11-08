@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-22935
+title: One work-state projection from the sources (ledger, PR watcher, Linear, plans, receipts, readings) that both the floor and the fill dispatcher read
+summary: node_work_state_projection_compute projects every work item (ticket, plan task, pull request, red required check, lane) from the sources with a state of available, blocked, stopped, in progress or done, its reason and its start criterion's reading. Lanes attribute to items only through their CLAIM's ticket, owns, cause and key cells. The scope is read from the goal's scope declaration. The node never reads the floor record or the floor page's data file.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22935-projection
+  statement: One projection node computes every work item from the sources with its state, its reason and its start criterion's reading, on the in-memory and Redpanda overlays.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one projection node computes, from the ledger, the PR watcher and controller decisions, Linear, the plan files, lane receipts and piece and host readings, every work item (task, pull request, red check, lane) with a state of available, blocked or stopped and its reason, on the in-memory and Redpanda overlays, and the floor and the fill dispatcher both read it -- falsifier: uv run pytest of the projection node''s tests on both overlays'
+  - id: AC2
+    statement: 'AC2: a lane is attributed to a floor row from its CLAIM''s ticket, cause or owns cells, with no owner typed into the overlay, and a lane whose CLAIM names a row shows on it after one publish, with a failing control -- falsifier: uv run pytest of the attribution test plus the board read'
+evidence_requirements:
+- kind: tests
+  description: The projection, attribution, source and parity tests of the work-state projection node.
+  command: uv run --frozen pytest tests/nodes/node_work_state_projection_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22935-ac1
+  description: The projection and parity tests pass, including the new-project ticket that reads available with no code change, the stopped lane with a pushed branch that reads stopped, their injected-break twins, and the in-memory bus golden and error chains.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_projection.py tests/nodes/node_work_state_projection_compute/test_work_state_parity.py tests/nodes/node_work_state_projection_compute/test_work_state_sources.py -q --no-cov
+- id: dod-omn22935-ac2
+  description: The attribution tests pass, including the failing control that drops the owns cell from the overlay's attribution cells and leaves the pull request with no lane.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_attribution.py -q --no-cov
+- id: dod-omn22935-integration-proof
+  description: Run the projection node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22935 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_compute -q --no-cov
