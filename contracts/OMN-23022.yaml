@@ -11,10 +11,18 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: the golden chain (a real piece 2 failure is answered once and join J2 reads error_only with no finding), the error chains (a drill, a success and an unreadable ledger are not answered) and the failing control (the piece 3 terminal emission dropped turns J2 broken with downstream_missing_typed_failure) all hold -- falsifier: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov'
+- id: req-omn23022-refusal-cascade
+  statement: A typed upstream refusal of piece N+1 answers its own join and asks nothing of piece N+2, so the refusals node_join_refusal_effect writes stop reading downstream_missing_typed_failure at the next join; a real failure of that piece, or a typed failure that has a start, still demands the next piece's typed failure.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the golden chain (a piece 2 failure answered by a piece 3 refusal leaves J2 and J3 with no finding 3600 s later, 28 chains at once) and the failing controls (a real piece 3 failure, a typed failure with a start, and a piece 4 that starts after the refusal are still named; with the refusal read as a failure J3 names all 28) all hold -- falsifier: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_refusal_is_not_an_upstream_failure.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The join refusal tests with the failing control.
   command: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
+- kind: tests
+  description: The refusal cascade tests with the failing controls.
+  command: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_refusal_is_not_an_upstream_failure.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -36,3 +44,11 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23022 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect -q --no-cov
     cwd: .
+- id: dod-omn23022-ac3-cascade
+  description: The refusal cascade tests pass, with the golden chain at 28 chains and the failing controls.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_refusal_is_not_an_upstream_failure.py -q --no-cov
