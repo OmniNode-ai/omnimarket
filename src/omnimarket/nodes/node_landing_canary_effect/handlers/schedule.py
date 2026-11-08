@@ -22,7 +22,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
+from omnimarket.handlers.rules_unit_roots import (
+    refuse_worktree_plists,
+    refuse_worktree_roots,
+)
 from omnimarket.nodes.node_landing_canary_effect.overlay import (
     NODE_NAME,
     ModelCanaryHost,
@@ -247,11 +250,17 @@ class LandingCanaryScheduler:
                     (self.unit_dir / self.service_name, service.encode("utf-8")),
                     (self.unit_dir / self.timer_name, timer.encode("utf-8")),
                 ]
-            refuse_worktree_roots(
-                {target.name: body.decode("utf-8") for target, body in files}
-            )
+            if host.scheduler == "launchd":
+                refuse_worktree_plists({target.name: body for target, body in files})
+            else:
+                refuse_worktree_roots(
+                    {target.name: body.decode("utf-8") for target, body in files}
+                )
         except ValueError as exc:
             return ModelCanaryScheduleResult(exit_code=1, stderr=f"{exc}\n")
+        no_room = self._no_room_after_the_bar()
+        if no_room:
+            return ModelCanaryScheduleResult(exit_code=1, stderr=f"{no_room}\n")
         if dry_run:
             text = "".join(body.decode("utf-8") + "\n" for _, body in files)
             return ModelCanaryScheduleResult(exit_code=0, stdout=text)
@@ -279,6 +288,24 @@ class LandingCanaryScheduler:
                 target.write_bytes(body)
                 output += f"wrote {target}\n"
         return self._activate(host, output)
+
+    def _no_room_after_the_bar(self) -> str:
+        """Empty when the scheduled run's timeout leaves room to publish after the landing bar runs out.
+
+        After the bar the run still reads the pull request once more and appends its row, each bounded by
+        the overlay's command timeouts; a timeout without that room kills the run before it publishes.
+        """
+        target = self.overlay.target
+        room = self.overlay.ledger_append.timeout_seconds
+        if target.scm is not None:
+            room += target.scm.command_timeout_seconds
+        needed = target.landing_bound_seconds + room
+        if self.schedule.timeout_seconds >= needed:
+            return ""
+        return (
+            f"the schedule timeout {self.schedule.timeout_seconds}s leaves no room to publish after the "
+            f"landing bound {target.landing_bound_seconds}s (needs at least {needed}s)"
+        )
 
     def _activate(
         self, host: ModelCanaryHost, output: str
@@ -320,8 +347,30 @@ class LandingCanaryScheduler:
             return ModelCanaryScheduleResult(
                 exit_code=0, stdout=output + f"removed {self.plist}\n"
             )
-        done = self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
-        output += done.stdout
+        # Stopping the timer ends future triggers only: a service it already started keeps running, so
+        # it is stopped too. A failure to stop either is a failed rollback and the unit files stay, so
+        # the rollback can be run again. A unit that was never installed has nothing to stop.
+        installed = any(
+            (self.unit_dir / unit).exists()
+            for unit in (self.timer_name, self.service_name)
+        )
+        failures: list[subprocess.CompletedProcess[str]] = []
+        for step in (
+            ["systemctl", "--user", "disable", "--now", self.timer_name],
+            ["systemctl", "--user", "stop", self.service_name],
+        ):
+            done = self.run(step)
+            output += done.stdout
+            if done.returncode and installed:
+                failures.append(done)
+        if failures:
+            return ModelCanaryScheduleResult(
+                exit_code=failures[0].returncode,
+                stdout=output,
+                stderr="rollback incomplete, unit files kept: "
+                + " ".join(failure.stderr.strip() for failure in failures)
+                + "\n",
+            )
         for unit in (self.timer_name, self.service_name):
             target = self.unit_dir / unit
             if target.exists():

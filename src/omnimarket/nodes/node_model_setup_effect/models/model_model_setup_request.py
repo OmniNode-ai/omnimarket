@@ -50,7 +50,10 @@ class ModelModelSetupRequest(BaseModel):
 
     OMN-21267: ``set_only`` records the rule ``only`` (``local`` or ``free``):
     every delegation on this machine skips a model outside it. ``clear_only``
-    removes the rule, so routing is what it was."""
+    removes the rule, so routing is what it was.
+
+    OMN-23167: ``ladder`` lists every routable model in the order delegation
+    tries it, with its cost class."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -68,6 +71,7 @@ class ModelModelSetupRequest(BaseModel):
         "clear_first",
         "set_only",
         "clear_only",
+        "ladder",
     ]
     provider: ModelProvider | None = None
     models: tuple[str, ...] = ()

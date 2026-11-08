@@ -17,6 +17,8 @@ requirements:
         statement: "AC2: each of the six findings has a test that fails on dev and passes on the branch -- falsifier: uv run pytest of the six added tests"
       - id: AC3
         statement: "AC3: each of the nine real findings on the merged pull request 5345 has a test in tests/nodes/node_floor_compare_effect/test_tessl_review_findings.py that fails on dev and passes on the branch -- falsifier: uv run pytest of that file, 11 failed on dev and 16 passed on the branch"
+      - id: AC4
+        statement: "AC4: each real finding left by the Tessl reviewer on the merged omnimarket pull requests 5249, 5273, 5297, 5309 and 5321 has a test that fails on dev and passes on the branch -- falsifier: uv run pytest of the added tests, failing on the dev commit first"
 evidence_requirements:
   - kind: tests
     description: >-
@@ -26,6 +28,10 @@ evidence_requirements:
     description: >-
       The floor compare findings test file.
     command: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_tessl_review_findings.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The test files holding the findings of the merged pull requests 5249, 5273, 5297, 5309 and 5321.
+    command: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_panel_counts_availability_floor_simple_compute.py tests/nodes/node_floor_simple_effect/test_panel_counts_window_floor_simple.py tests/nodes/node_factory_floor_publish_effect/test_simple_page_panel_honesty.py tests/handlers/test_rules_unit_roots_plist_literal_paths.py tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py tests/nodes/node_delegation_synthetic_probe_compute/test_synthetic_probe_judgement.py tests/chains/test_piece15_chain.py tests/chains/test_piece15_synthetic.py tests/unit/nodes/node_secret_reading_effect/test_rotation_readback_findings.py -q -n 0 --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -90,4 +96,35 @@ dod_evidence:
         cwd: "."
       - check_type: command
         check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/handlers/handler_delegation_routing_overlay_check.py?ref=omn-23064-tessl-merged-followups')\" && case \"$body\" in *raw_classes*) exit 0;; *) exit 1;; esac"
+        cwd: "."
+  - id: dod-omn23064-ac4-slice5-more-findings
+    description: >-
+      The real findings on the merged pull requests 5249, 5273, 5297, 5309 and 5321 each have a test that is red on dev and green on the branch.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_panel_counts_availability_floor_simple_compute.py tests/nodes/node_floor_simple_effect/test_panel_counts_window_floor_simple.py tests/nodes/node_factory_floor_publish_effect/test_simple_page_panel_honesty.py tests/handlers/test_rules_unit_roots_plist_literal_paths.py tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py tests/nodes/node_delegation_synthetic_probe_compute/test_synthetic_probe_judgement.py tests/chains/test_piece15_chain.py tests/chains/test_piece15_synthetic.py tests/unit/nodes/node_secret_reading_effect/test_rotation_readback_findings.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23064-slice5-more-integration-proof
+    description: >-
+      The pushed head ran the added test files on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane cap-23049-1810 -- uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_panel_counts_availability_floor_simple_compute.py tests/nodes/node_floor_simple_effect/test_panel_counts_window_floor_simple.py tests/nodes/node_factory_floor_publish_effect/test_simple_page_panel_honesty.py tests/handlers/test_rules_unit_roots_plist_literal_paths.py tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py tests/unit/nodes/node_projection_work_ledger/test_rebuild_from_topic.py tests/nodes/node_delegation_synthetic_probe_compute/test_synthetic_probe_judgement.py tests/chains/test_piece15_chain.py tests/chains/test_piece15_synthetic.py tests/unit/nodes/node_secret_reading_effect/test_rotation_readback_findings.py -q -n 0 --no-cov
+        cwd: .
+  - id: dod-deploy-omn23064-slice5-more
+    description: >-
+      Deploy assessment: the pull request changes the floor simple compute and tick handlers and page, the unit roots rule, the work ledger rebuild and guard replay, the delegation synthetic probe and the secret rotation readback node. None adds a Kafka topic, a migration or a prod mutation; they reach the runtime through the package on the next standard image rebuild and deploy cycle. The check reads the changed files from GitHub at the pull request branch and fails when the symbol a fix introduces is missing.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/floor_17a/model_floor_17a.py?ref=omn-23064-tessl-slice5-more-followups')\" && case \"$body\" in *receipts_covered_s*) exit 0;; *) exit 1;; esac"
+        cwd: "."
+      - check_type: command
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_secret_rotation_readback_effect/handlers/handler_rotation_readback.py?ref=omn-23064-tessl-slice5-more-followups')\" && case \"$body\" in *consumer-not-of-rotated-key*) exit 0;; *) exit 1;; esac"
         cwd: "."
