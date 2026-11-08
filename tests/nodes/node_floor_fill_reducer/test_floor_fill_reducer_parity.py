@@ -394,11 +394,26 @@ class SeqCorruptingBus(InmemoryBus):
 def test_reducer_parity_the_injected_break_bus_corrupts_seq_is_judged_unequal() -> None:
     """The parity reading can fail: a transport that changes one decision is not equal to the baseline."""
     baseline = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
-    broken = asyncio.run(run_over(SeqCorruptingBus(), "redpanda", "inmemory"))
-    assert compare_runs((baseline, baseline)).passed
+    uncorrupted = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    broken = asyncio.run(run_over(SeqCorruptingBus(), "inmemory", "inmemory"))
+    # The control: the same provenance with no corruption passes, so only the seq differs.
+    assert compare_runs((baseline, uncorrupted)).passed
     result = compare_runs((baseline, broken))
+    assert result.comparisons[0].provenance_errors == ()
     assert not result.passed
     assert "ReservedChecked" in result.first_difference
+
+
+def test_reducer_parity_a_run_whose_binding_is_not_its_profile_is_judged_on_provenance() -> (
+    None
+):
+    """The provenance rejection is separate from the row diagnostic, so the break test above must not rely on it."""
+    baseline = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    mismatched = asyncio.run(run_over(InmemoryBus(), "redpanda", "inmemory"))
+    result = compare_runs((baseline, mismatched))
+    assert not result.passed
+    assert result.comparisons[0].provenance_errors
+    assert result.first_difference.startswith("provenance:")
 
 
 @pytest.mark.kafka
