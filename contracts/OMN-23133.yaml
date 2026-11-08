@@ -48,3 +48,13 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23133 -- uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
+- id: dod-deploy-omn23133-phase-budget
+  description: 'Deploy assessment: the change rounds the publish phase limit down and rewords one refusal in the publish handler. It adds no Kafka topic, migration or prod mutation, and reaches the runtime through the package on the next standard image rebuild. The check runs the phase budget tests, which hosted CI can run, and fails when the handler still rounds up.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: 'grep -q "math.floor(self.remaining())" src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py'
+    cwd: .
