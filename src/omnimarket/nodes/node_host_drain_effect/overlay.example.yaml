@@ -12,6 +12,7 @@ drain:
     unknown_host: unknown_host
     host_draining: host_draining
     readback_failed: drain_readback_failed
+    write_failed: drain_write_failed
   injected_fault: Use a drain store that accepts the write and keeps nothing, so the readback finds the host not draining
 runner_stop:
   piece: 2
@@ -26,6 +27,7 @@ runner_stop:
     idle_token: idle
     running_command: [example-container-inspect, "{unit}"]
     running_token: "true"
+    stopped_token: "false"
     timeout_seconds: 20
   proc_root: /proc
   worker_process_name: Runner.Worker

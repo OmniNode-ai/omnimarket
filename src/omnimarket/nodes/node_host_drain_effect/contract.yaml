@@ -14,7 +14,7 @@ description: >
   when the count is 0. The idle-only runner stop stops a runner only when its process table shows no worker
   process; a busy or unreadable runner is refused and nothing is stopped. Each command is one chain on the
   emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
-  drain_readback_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
+  drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
   runner_stop_failed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
   file on one host) or redpanda (a compacted topic keyed by host). Every setting is in the overlay.
 

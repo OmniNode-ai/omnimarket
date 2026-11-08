@@ -54,8 +54,12 @@ class ProcWorkerProbe:
         for entry in entries:
             try:
                 raw = (entry / "cmdline").read_bytes()
-            except OSError:
+            except (FileNotFoundError, ProcessLookupError):
+                # The process exited between the listing and the read: it holds no job.
                 continue
+            except OSError:
+                # A process that is there but cannot be read may be a live worker: stay uncertain.
+                return None
             argv0 = raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
             if argv0.startswith(prefix):
                 found.add(Path(argv0).name)
@@ -79,7 +83,10 @@ class ProcWorkerProbe:
 
 
 class CommandWorkerProbe:
-    """Reads a runner by the overlay's argv (a container runner): busy, idle or unknown, and whether it is up."""
+    """Reads a runner by the overlay's argv (a container runner): busy, idle or unknown, and whether it is up.
+
+    Only the declared running and stopped tokens establish a state; any other output reads unknown (None).
+    """
 
     def __init__(
         self, settings: ModelRunnerStopSettings, *, run: CommandRun = subprocess.run
@@ -115,9 +122,12 @@ class CommandWorkerProbe:
 
     def is_running(self, runner_name: str) -> bool | None:
         out = self._output(self._probe.running_command, runner_name)
-        if out is None:
-            return None
-        return out == self._probe.running_token
+        if out == self._probe.running_token:
+            return True
+        if out == self._probe.stopped_token:
+            return False
+        # No output, a failed command or an unrecognized status establishes neither state.
+        return None
 
 
 class CommandWorkerStopper:

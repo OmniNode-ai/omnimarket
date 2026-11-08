@@ -60,7 +60,8 @@ class ModelHostDrainResult(_Frozen):
     correlation_id: str
     draining: bool = False
     #: Lanes still running on the host. A drain never stops them; the host is drained when this reads 0.
-    lanes_running: int = Field(default=0, ge=0)
+    #: None when the count could not be read: an unknown count is never a measured zero.
+    lanes_running: int | None = Field(default=0, ge=0)
     drained: bool = False
     #: Only a start check sets this: True when a new lane may be placed on the host.
     admitted: bool | None = None

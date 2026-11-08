@@ -155,7 +155,13 @@ class AiokafkaStateTopicConnection:
         )
         await consumer.start()
         try:
-            partitions = await consumer.partitions_for_topic(topic) or set()
+            # ``topics()`` refreshes the metadata; ``partitions_for_topic`` is a plain read of that refresh.
+            await consumer.topics()
+            partitions = consumer.partitions_for_topic(topic)
+            if not partitions:
+                raise LookupError(
+                    f"no metadata for the state topic {topic}: its state is unknown, not empty"
+                )
             assigned = [TopicPartition(topic, p) for p in sorted(partitions)]
             consumer.assign(assigned)
             await consumer.seek_to_beginning(*assigned)

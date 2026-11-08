@@ -33,6 +33,8 @@ class ModelDrainCodes(_Frozen):
     unknown_host: str = Field(min_length=1)
     host_draining: str = Field(min_length=1)
     readback_failed: str = Field(min_length=1)
+    #: The drain store raised while writing the state: the write is not known to have happened.
+    write_failed: str = Field(min_length=1)
 
 
 class ModelRunnerStopCodes(_Frozen):
@@ -70,7 +72,8 @@ class ModelCommandProbeSettings(_Frozen):
 
     Each argv replaces {unit}. The activity command prints ``busy_token`` when the runner holds a job and
     ``idle_token`` when it does not; any other output, a non-zero exit or a timeout reads UNKNOWN.
-    The running command prints ``running_token`` when the runner's service is up. No shell on the host.
+    The running command prints ``running_token`` when the runner's service is up and ``stopped_token`` when it is
+    down; any other output, a non-zero exit or a timeout reads unknown, never down. No shell on the host.
     """
 
     activity_command: tuple[str, ...] = Field(min_length=1)
@@ -78,6 +81,7 @@ class ModelCommandProbeSettings(_Frozen):
     idle_token: str = Field(min_length=1)
     running_command: tuple[str, ...] = Field(min_length=1)
     running_token: str = Field(min_length=1)
+    stopped_token: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1)
 
 

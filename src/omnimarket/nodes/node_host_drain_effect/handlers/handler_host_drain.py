@@ -68,10 +68,31 @@ class HandlerHostDrain:
             return self._check_start(chain, host, cid)
         if request.op in (EnumDrainOp.DRAIN, EnumDrainOp.UNDRAIN):
             want = request.op is EnumDrainOp.DRAIN
-            self._store.set_draining(
-                host, want, reason=request.reason, at=self._clock()
-            )
-            if self._store.is_draining(host) is not want:
+            try:
+                self._store.set_draining(
+                    host, want, reason=request.reason, at=self._clock()
+                )
+            except (
+                Exception
+            ) as exc:  # any backend failure ends the chain with a typed failure
+                return self._failed(
+                    chain,
+                    host,
+                    cid,
+                    codes.write_failed,
+                    f"the drain store did not take the write: {type(exc).__name__}",
+                )
+            readback = self._read_draining(host)
+            if readback is None:
+                return self._failed(
+                    chain,
+                    host,
+                    cid,
+                    codes.readback_failed,
+                    f"the write to the drain store returned, but its readback for {host} failed: "
+                    "the state is changed or not, unverified",
+                )
+            if readback is not want:
                 return self._failed(
                     chain,
                     host,
@@ -80,28 +101,59 @@ class HandlerHostDrain:
                     f"the drain store does not read {host} as "
                     f"{'draining' if want else 'placeable'} after the write",
                 )
-        draining = self._store.is_draining(host)
+        draining = self._read_draining(host)
+        if draining is None:
+            return self._failed(
+                chain,
+                host,
+                cid,
+                codes.readback_failed,
+                f"the drain store could not be read for {host}",
+            )
         running, detail = self._count(host)
         outcome = {
             EnumDrainOp.DRAIN: EnumDrainOutcome.DRAINING,
             EnumDrainOp.UNDRAIN: EnumDrainOutcome.CLEARED,
             EnumDrainOp.STATUS: EnumDrainOutcome.STATUS_READ,
         }[request.op]
-        chain.success({"lanes_running": max(running, 0), "draining": int(draining)})
+        # An unreadable count is neither published nor returned as a measured zero.
+        counters = {"draining": int(draining)}
+        if running is None:
+            counters["lanes_unreadable"] = 1
+        else:
+            counters["lanes_running"] = running
+        chain.success(counters)
         return ModelHostDrainResult(
             outcome=outcome,
             host_name=host,
             correlation_id=cid,
             draining=draining,
-            lanes_running=max(running, 0),
+            lanes_running=running,
             drained=draining and running == 0,
             detail=detail,
         )
 
+    def _read_draining(self, host: str) -> bool | None:
+        """Whether the store reads the host as draining; None when the store could not be read."""
+        try:
+            return self._store.is_draining(host)
+        except Exception:  # a backend failure is an unreadable state, not an escape
+            return None
+
     def _check_start(
         self, chain: ChainEmitter, host: str, cid: str
     ) -> ModelHostDrainResult:
-        if self._store.is_draining(host):
+        draining = self._read_draining(host)
+        if draining is None:
+            # A start is admitted only on a state that was read: an unreadable store fails closed.
+            return self._failed(
+                chain,
+                host,
+                cid,
+                self._settings.codes.readback_failed,
+                f"the drain store could not be read for {host}: no start is admitted",
+            )
+        if draining:
             code = self._settings.codes.host_draining
             detail = f"{host} is draining: no new lane is placed on it"
             chain.failure(code, detail)
@@ -123,11 +175,11 @@ class HandlerHostDrain:
             admitted=True,
         )
 
-    def _count(self, host: str) -> tuple[int, str]:
+    def _count(self, host: str) -> tuple[int | None, str]:
         try:
             return self._lanes.running(host), ""
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
-            return -1, f"lane count unreadable: {type(exc).__name__}"
+            return None, f"lane count unreadable: {type(exc).__name__}"
 
     @staticmethod
     def _failed(
