@@ -60,13 +60,13 @@ class GitRepositorySource:
         return (self._dir(repository) / ".git").exists()
 
     def candidates(self, repository: str, tokens: Sequence[str]) -> tuple[str, ...]:
-        args = ["grep", "-l", "-I", "-F", "--no-recurse-submodules"]
+        args = ["grep", "-l", "-z", "-I", "-F", "--no-recurse-submodules"]
         for token in tokens:
             args += ["-e", token]
         done = self._git(repository, *args)
         if done.returncode not in (0, 1):
             raise OSError(f"git grep failed in {repository}: exit {done.returncode}")
-        return tuple(line for line in done.stdout.splitlines() if line)
+        return tuple(name for name in done.stdout.split("\0") if name)
 
     def read(self, repository: str, path: str) -> str | None:
         target = self._dir(repository) / path
@@ -94,8 +94,25 @@ class YamlRatchetStore:
         return {str(k): v for k, v in table.items()}
 
     def write(self, table: Mapping[str, int], header: str) -> None:
-        body = yaml.safe_dump({"ratchet": dict(sorted(table.items()))}, sort_keys=True)
-        self._path.write_text(header + body, encoding="utf-8")
+        """Merge with the row values now on disk, keeping the lower of each, then replace the file whole.
+
+        A run that read the table before another run lowered a row cannot raise that row back, and a
+        write that dies midway leaves the earlier file in place.
+        """
+        merged = dict(table)
+        try:
+            current = self.read()
+        except (OSError, ValueError, yaml.YAMLError):
+            current = {}
+        for repository, files in current.items():
+            merged[repository] = min(files, merged.get(repository, files))
+        body = yaml.safe_dump({"ratchet": dict(sorted(merged.items()))}, sort_keys=True)
+        temporary = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(header + body, encoding="utf-8")
+            os.replace(temporary, self._path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 class InMemoryRatchetStore:

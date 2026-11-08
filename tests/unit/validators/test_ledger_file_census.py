@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -184,3 +185,103 @@ def test_the_repository_is_at_or_under_its_ratchet_row() -> None:
         "in_memory",
     ).handle(ModelCensusRequest(correlation_id="tree", repositories=("omnimarket",)))
     assert result.passed, (result.failure_code, result.failure_detail)
+
+
+# ---- review findings on the census (OMN-22917): each fails on the code it names ----
+
+
+def lines_hit(path: str, text: str) -> list[int]:
+    return [h.line for h in executable_hits(path, text, overlay())]
+
+
+def test_code_sharing_a_line_with_a_docstring_still_counts() -> None:
+    text = 'class A:\n    """doc"""; path = os.environ["ONEX_LEDGER_PATH"]\n'
+    assert lines_hit("a.py", text) == [2]
+
+
+def test_the_docstring_text_itself_still_counts_as_none() -> None:
+    text = 'def f():\n    """Reads ONEX_LEDGER_PATH.\n    ROLLING_WORK_LEDGER too.\n    """\n'
+    assert lines_hit("a.py", text) == []
+
+
+def test_a_python_file_with_many_comments_is_scanned_in_linear_time() -> None:
+    count = 12000
+    text = "".join(f"x{n} = {n}  # note {n}\n" for n in range(count))
+    text += 'p = os.environ["ONEX_LEDGER_PATH"]\n'
+    started = time.monotonic()
+    assert lines_hit("big.py", text) == [count + 1]
+    assert time.monotonic() - started < 3.0
+
+
+def test_a_name_inside_a_block_comment_counts_as_none() -> None:
+    one_line = "/* ROLLING_WORK_LEDGER */ const x = 1;\n"
+    many_lines = "/*\n * read ONEX_LEDGER_PATH here\n */\nconst x = 1;\n"
+    assert lines_hit("a.js", one_line) == []
+    assert lines_hit("a.js", many_lines) == []
+
+
+def test_code_after_a_block_comment_and_a_string_with_a_marker_still_count() -> None:
+    assert lines_hit("a.js", "/* c */ const p = process.env.ONEX_LEDGER_PATH;\n") == [1]
+    assert lines_hit("a.js", 'const u = "http://x"; read(ONEX_LEDGER_PATH);\n') == [1]
+
+
+def git_repo_with_file(tmp_path: Path, name: str, text: str) -> Path:
+    registry = tmp_path / "registry"
+    repo = registry / "alpha"
+    repo.mkdir(parents=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "init", "-q"],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    (repo / name).write_text(text, encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "--", name],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    return registry
+
+
+def test_a_file_whose_name_git_would_quote_is_still_a_candidate_and_readable(
+    tmp_path: Path,
+) -> None:
+    name = "r\u00e9ader tab\u00e9.sh"
+    registry = git_repo_with_file(tmp_path, name, 'cat "$ONEX_LEDGER_PATH"\n')
+    source = GitRepositorySource(registry, 100000)
+    candidates = source.candidates("alpha", ("ONEX_LEDGER_PATH",))
+    assert candidates == (name,)
+    assert source.read("alpha", candidates[0]) == 'cat "$ONEX_LEDGER_PATH"\n'
+
+
+def test_a_lowering_that_raced_another_lowering_never_raises_a_row(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ratchet.yaml"
+    store = YamlRatchetStore(path)
+    store.write({"alpha": 5, "beta": 2}, "# h\n")
+    snapshot_read = store.read()
+    store.write({"alpha": 3, "beta": 2}, "# h\n")  # another run lowered alpha meanwhile
+    store.write({**snapshot_read, "beta": 1}, "# h\n")  # this run still holds alpha=5
+    assert store.read() == {"alpha": 3, "beta": 1}
+
+
+def test_a_write_that_dies_midway_leaves_the_ratchet_file_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "ratchet.yaml"
+    store = YamlRatchetStore(path)
+    store.write({"alpha": 5}, "# h\n")
+    before = path.read_text(encoding="utf-8")
+    real = Path.write_text
+
+    def dying(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        real(self, data[: len(data) // 2], *args, **kwargs)  # type: ignore[arg-type]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", dying)
+    with pytest.raises(OSError, match="disk full"):
+        store.write({"alpha": 4}, "# h\n")
+    monkeypatch.undo()
+    assert path.read_text(encoding="utf-8") == before
+    assert [p.name for p in tmp_path.iterdir()] == ["ratchet.yaml"]

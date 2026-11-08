@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 
@@ -135,6 +135,12 @@ class ModelNoFileOverlay(_Frozen):
     max_age_seconds: int = Field(gt=0)
     route: ModelNoFileRoute
     journal_env: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _numbers_are_one_to_seven_once(self) -> ModelNoFileOverlay:
+        if sorted(spec.number for spec in self.readings) != list(range(1, 8)):
+            raise ValueError("the readings must number 1 to 7 exactly once")
+        return self
 
 
 # ---- request and result --------------------------------------------------------------------------

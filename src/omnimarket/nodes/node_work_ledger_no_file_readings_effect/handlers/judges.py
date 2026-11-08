@@ -9,6 +9,8 @@ judged (nothing to compare) is UNKNOWN, never WORKING. Named breaks live in the 
 
 from __future__ import annotations
 
+from collections import Counter
+
 from omnimarket.nodes.node_work_ledger_no_file_readings_effect.models import (
     ModelAbsenceFacts,
     ModelCensusFacts,
@@ -65,9 +67,18 @@ def judge_absence(facts: ModelAbsenceFacts, overlay: ModelNoFileOverlay) -> Judg
 def judge_rebuild(facts: ModelRebuildFacts) -> Judgement:
     if not facts.live and not facts.rebuilt:
         return ["no-rows-to-compare"], False
+    reasons: list[str] = []
+    for side, rows in (("live", facts.live), ("rebuilt", facts.rebuilt)):
+        counts = Counter(r.seq for r in rows)
+        repeated = sorted(seq for seq, n in counts.items() if n > 1)
+        if repeated:
+            reasons.append(
+                f"{side}-table-has-duplicate-seq-{repeated[0]}-of-{len(repeated)}"
+            )
+    if reasons:
+        return reasons, True
     live = {r.seq: r.digest for r in facts.live}
     rebuilt = {r.seq: r.digest for r in facts.rebuilt}
-    reasons: list[str] = []
     missing = sorted(set(live) - set(rebuilt))
     extra = sorted(set(rebuilt) - set(live))
     differ = sorted(s for s in set(live) & set(rebuilt) if live[s] != rebuilt[s])

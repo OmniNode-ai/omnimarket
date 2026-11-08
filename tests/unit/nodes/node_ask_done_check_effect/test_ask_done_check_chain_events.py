@@ -248,7 +248,7 @@ def test_an_overlay_that_names_a_file_read_route_is_refused(tmp_path: Path) -> N
     """The done check reads the ledger through the query node's command and never the file."""
     body = yaml.safe_load(EXAMPLE.read_text("utf-8"))
     assert body["read"]["route"] == "command"
-    body["read"] = {"route": "file", "path_env": "ONEX_LEDGER_PATH"}
+    body["read"] = {"route": "file", "path_env": "ONEX_ASK_DONE_FILE_PATH"}
     refused = tmp_path / "overlay.yaml"
     refused.write_text(yaml.safe_dump(body), encoding="utf-8")
     with pytest.raises(NodeOverlayError, match=r"fields \['read\."):

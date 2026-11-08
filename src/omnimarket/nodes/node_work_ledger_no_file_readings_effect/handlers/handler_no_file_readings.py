@@ -87,7 +87,7 @@ class HandlerNoFileReadings:
         if request.write:
             written: list[ModelNoFileReading] = []
             for reading in readings:
-                reading = self._write(reading, now)
+                reading = self._write(reading, now, request.correlation_id)
                 written.append(reading)
                 if reading.ledger.startswith("append-failed"):
                     return self._failed(
@@ -172,11 +172,15 @@ class HandlerNoFileReadings:
             injected_fault=spec.injected_fault,
         )
 
-    def _write(self, reading: ModelNoFileReading, now: datetime) -> ModelNoFileReading:
+    def _write(
+        self, reading: ModelNoFileReading, now: datetime, correlation_id: str
+    ) -> ModelNoFileReading:
         assert self._appender is not None
         o = self._overlay
         overlay_hash = _sha(o.model_dump_json())[:12]
-        key = _sha(f"{o.lane}|{reading.number}|{_stamp(now)}|{overlay_hash}")[:32]
+        # The key rides on the request's correlation id, not the clock: a redelivery of the same request
+        # in another second must reach the appender under the same request id.
+        key = _sha(f"{o.lane}|{reading.number}|{correlation_id}|{overlay_hash}")[:32]
         content = _sha(
             json.dumps(
                 [reading.verdict.value, reading.outcome.value, list(reading.reasons)]

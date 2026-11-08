@@ -3,9 +3,11 @@
 # names, per reading, the variable holding the probe's argv; the probe prints that reading's facts as JSON.
 # A reading with no probe wired reads UNKNOWN, which counts as NOT_WORKING.
 #
-# The floor reads piece 6 from the reading writer's rows. To show these seven there, add to the piece 6
-# sources of the reading writer's overlay:
-#   - {source_id: no_file, row_type: STATUS, lane: <lane below>, cells: {src: <row_source below>},
+# The floor reads piece 6 from the reading writer's rows. To show these seven there, add one source per
+# reading (one source per reading: the seven rows carry the same stamp, so a source keyed on src alone
+# would judge only whichever row sorts last) to the piece 6 sources of the reading writer's overlay,
+# n being 1 to 7:
+#   - {source_id: no_file_<n>, row_type: STATUS, lane: <lane below>, cells: {src: <row_source below>, reading: '<n>'},
 #      mode: newest, pass_when: [{cell: verdict, op: eq, value: WORKING}], max_age_seconds: 129600}
 readings:
   - number: 1
