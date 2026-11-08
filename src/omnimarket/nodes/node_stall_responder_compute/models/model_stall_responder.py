@@ -50,8 +50,21 @@ class ModelCauseSkip(BaseModel):
     occurrences: int
 
 
+class ModelRowRefusal(BaseModel):
+    """A stall row the responder refused to read, with the row's stamp and the typed reason."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    stamp: str
+    reason: str
+
+
 class ModelStallResponderResult(BaseModel):
-    """Dispatches (one per distinct cause key), skips, the updated dispatched map and counts."""
+    """Dispatches (one per distinct cause key), skips, the updated dispatched map and counts.
+
+    refusals: stall rows whose stamp is not a calendar date (a shape-valid 2026-11-31T00:00:00Z);
+    each is refused alone and the rest of the batch is answered.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -61,6 +74,7 @@ class ModelStallResponderResult(BaseModel):
     stall_rows: int
     unreadable_rows: int
     truncated_findings: int
+    refusals: tuple[ModelRowRefusal, ...] = ()
 
 
 class ModelLabIdleCostRequest(BaseModel):
