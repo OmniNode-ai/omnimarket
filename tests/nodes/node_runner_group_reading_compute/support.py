@@ -89,7 +89,7 @@ def repositories() -> tuple[ModelRepositoryFact, ...]:
     )
 
 
-def canary(*runs: ModelCanaryRun, age_seconds: int = 60) -> ModelCanaryFacts:
+def canary(*runs: ModelCanaryRun, age_seconds: float = 60) -> ModelCanaryFacts:
     return ModelCanaryFacts(read_at=NOW - timedelta(seconds=age_seconds), runs=runs)
 
 
@@ -112,7 +112,7 @@ def request(
     groups: tuple[ModelGroupFact, ...] | None = None,
     *,
     canary_facts: ModelCanaryFacts | None = None,
-    age_seconds: int = 120,
+    age_seconds: float = 120,
     read_failure: Any = None,
 ) -> ModelRunnerGroupReadingRequest:
     return ModelRunnerGroupReadingRequest(

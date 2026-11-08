@@ -28,7 +28,7 @@ _LIMIT = settings().max_age_seconds
 
 
 def _age_verdict(age_seconds: float) -> EnumReadingVerdict:
-    result = _HANDLER.handle(request(age_seconds=age_seconds))  # type: ignore[arg-type]
+    result = _HANDLER.handle(request(age_seconds=age_seconds))
     return next(s for s in result.subjects if s.name == "read_age").verdict
 
 
