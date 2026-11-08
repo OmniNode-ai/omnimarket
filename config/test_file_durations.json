@@ -1006,6 +1006,7 @@
   "tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py": 0.09,
   "tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py": 0.28,
   "tests/nodes/node_floor_simple_effect/test_piece_events_overlay_floor_simple.py": 0.17,
+  "tests/nodes/node_floor_simple_effect/test_queue_age_handoff_floor_simple.py": 0.17,
   "tests/nodes/node_floor_simple_effect/test_registry_unit_environment.py": 0.06,
   "tests/nodes/node_floor_simple_effect/test_runner_groups_from_fleet_rows.py": 0.11,
   "tests/nodes/node_floor_simple_effect/test_shadow_rows_floor_simple.py": 0.73,
