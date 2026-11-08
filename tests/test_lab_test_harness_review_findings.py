@@ -37,7 +37,6 @@ from tests.nodes.node_floor_simple_effect.support import NOW
 from tests.test_chain_events_lab_test_harness import (
     CHAIN_NODE,
     RecordingAppender,
-    _host,  # noqa: F401  (the autouse host fixture the overlay's ledger cell reads)
     of,
     overlay,
     request,
@@ -45,6 +44,11 @@ from tests.test_chain_events_lab_test_harness import (
 from tests.test_runtime_lab_test_harness import _evidence, _install_overlay
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONEX_TEST_HOST", "h053")
 
 
 @asynccontextmanager
