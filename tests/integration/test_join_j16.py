@@ -22,6 +22,7 @@ then draws as empty), and an eval result that never reaches the reader (the gold
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -333,7 +334,9 @@ def test_control_injected_break_a_floor_that_drops_a_stale_reading_draws_it_empt
 ) -> None:
     original = HandlerFloorSimple._reading
 
-    def dropping(r, piece, default_max, lab):  # type: ignore[no-untyped-def]
+    def dropping(
+        r: Any, piece: Any, default_max: Any, lab: Any
+    ) -> tuple[Any, Any, Any, Any]:
         state, age, max_age, why = original(r, piece, default_max, lab)
         if state == "NOT WORKING" and why.startswith("stale"):
             return None, None, default_max, ""
