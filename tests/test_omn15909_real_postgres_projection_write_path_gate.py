@@ -860,6 +860,13 @@ async def _provisioned_rls_writer() -> AsyncIterator[
             f"GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA {schema} "
             f"TO {_RLS_WRITER_ROLE}"
         )
+        # OMN-21970: delegation_events.projection_cursor is a BIGSERIAL, so an
+        # insert takes nextval() from its sequence, as the migration grants
+        # tenant_projection_writer on a real lane.
+        await admin_conn.execute(
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema} "
+            f"TO {_RLS_WRITER_ROLE}"
+        )
 
         pool = await asyncpg.create_pool(
             _rls_writer_dsn(schema),
