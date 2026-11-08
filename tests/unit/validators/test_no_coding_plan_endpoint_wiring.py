@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-20173 Rule 5: the endpoint gate is enforced before commit and merge."""
 
-import json
+import ast
 import re
 from pathlib import Path
 
@@ -50,9 +50,13 @@ def test_ci_wiring() -> None:
     steps = [step.get("run", "") for step in job["steps"]]
     assert ENTRY in steps
     assert any("test_no_coding_plan_endpoint.py" in step for step in steps)
-    rules = json.loads((ROOT / "scripts/ci/ci_summary_rules.json").read_text())
-    contexts = [
-        entry["name"]
-        for entry in rules["rules"]["EXPECTED_EXTERNAL_CONTEXTS"]["entries"]
-    ]
+    module = ast.parse((ROOT / "scripts/ci/ci_summary_gate.py").read_text())
+    contexts = next(
+        ast.literal_eval(node.value)
+        for node in module.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "EXPECTED_EXTERNAL_CONTEXTS"
+        and node.value is not None
+    )
     assert "No Coding Plan Endpoint" in contexts

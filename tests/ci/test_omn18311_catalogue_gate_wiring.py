@@ -29,7 +29,6 @@ tree. That is exactly the shape AC4 forbids for this one.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -65,11 +64,14 @@ def _hooks() -> list[dict[str, object]]:
 
 def _expected_external_contexts() -> tuple[str, ...]:
     """Read the tuple literal without importing the script (CI-only imports)."""
-    doc = json.loads(
-        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
+    source = CI_SUMMARY_GATE.read_text(encoding="utf-8")
+    match = re.search(
+        r"EXPECTED_EXTERNAL_CONTEXTS:\s*tuple\[str, \.\.\.\]\s*=\s*\((?P<body>.*?)\n\)",
+        source,
+        re.DOTALL,
     )
-    entries = doc["rules"]["EXPECTED_EXTERNAL_CONTEXTS"]["entries"]
-    return tuple(entry["name"] for entry in entries)
+    assert match is not None, "EXPECTED_EXTERNAL_CONTEXTS tuple not found"
+    return tuple(re.findall(r'"([^"]+)"', match.group("body")))
 
 
 class TestTheGateHasAllThreeSurfaces:
