@@ -14,6 +14,7 @@ from omnimarket.handlers.node_overlay_reader import (
     not_configured_message,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill_overlay import (
+    ModelBoardOverlay,
     ModelCloudBacklogOverlay,
     ModelIdleSlotFillOverlay,
     ModelReposRoles,
@@ -90,3 +91,9 @@ def repo_required_kinds(
     declaration = load_structured_overlay(OVERLAY_ID, ModelIdleSlotFillOverlay, environ)
     kinds = declaration.repo_required_kinds if declaration is not None else None
     return frozenset(kinds or ())
+
+
+def board(environ: Mapping[str, str] | None = None) -> ModelBoardOverlay | None:
+    """Where the fill reads the board's work list, or ``None`` when the overlay declares none (the fill reads no board)."""
+    declaration = load_structured_overlay(OVERLAY_ID, ModelIdleSlotFillOverlay, environ)
+    return declaration.board if declaration is not None else None
