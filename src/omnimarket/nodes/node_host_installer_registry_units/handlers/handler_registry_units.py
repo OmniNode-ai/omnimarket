@@ -405,6 +405,9 @@ class HandlerRegistryUnits:
             )
         timeout_args = self.timeout_args(unit)
         home, root = Path(request.home), Path(request.registry_root)
+        job_root = (
+            home / str(unit["launchd_root"]) if unit.get("launchd_root") else root
+        )
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
         environment = "".join(
@@ -419,7 +422,11 @@ class HandlerRegistryUnits:
             "PYTHON": python,
             "PROJECT": str(project),
             "MODULE": str(unit["module"]),
-            "OMNI_HOME": str(root),
+            # launchd holds no grant to an external volume: a job started with a working directory there waits in getcwd
+            # forever, and one that writes there is refused. A unit may declare launchd_root, relative to the home, to stand
+            # in for the registry root in the job (working directory, OMNI_HOME, the tick's --omni-home); undeclared, the
+            # job keeps the registry root.
+            "OMNI_HOME": str(job_root),
             "EVIDENCE_DIR": str(evidence.parent),
             "HOME": str(home),
             "USER": user,
@@ -529,6 +536,8 @@ class HandlerRegistryUnits:
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
+        if unit.get("launchd_root"):
+            (home / str(unit["launchd_root"])).mkdir(parents=True, exist_ok=True)
         kept_config = ""
         if config_path is not None:
             kept_config = self.write_config(

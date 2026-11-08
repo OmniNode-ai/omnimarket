@@ -89,3 +89,41 @@ def test_error_a_unit_that_declares_no_log_directory_keeps_its_logs_in_the_state
     plist = render(tmp_path, UNIT, None)
     state = tmp_path / "omni" / str(load_units()[UNIT]["state_directory"])
     assert plist["StandardOutPath"] == str(state / f"{UNIT}.out.log")
+
+
+def test_the_reader_unit_declares_a_launchd_root() -> None:
+    assert (
+        load_units()[READER]["launchd_root"]
+        == ".local/state/omni/overlay-store-refresh"
+    )
+
+
+def test_golden_the_reader_job_runs_from_the_home_not_the_registry_root(
+    tmp_path: Path,
+) -> None:
+    """launchd holds no grant to the external volume: a uv started with a cwd there waits in getcwd forever (h101)."""
+    plist = render(
+        tmp_path,
+        READER,
+        READER_ENTRY,
+        path_overrides={
+            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays"),
+            "LAB_WORK_HOST_NAME": "h101",
+        },
+    )
+    root = str(tmp_path / "home/.local/state/omni/overlay-store-refresh")
+    arguments = plist["ProgramArguments"]
+    assert plist["WorkingDirectory"] == root
+    assert plist["EnvironmentVariables"]["OMNI_HOME"] == root
+    assert arguments[arguments.index("--omni-home") + 1] == root
+    assert str(tmp_path / "omni") not in str(plist["WorkingDirectory"])
+
+
+def test_error_a_unit_that_declares_no_launchd_root_keeps_the_registry_root(
+    tmp_path: Path,
+) -> None:
+    """Failing control: the floor publisher declares none, so its working directory stays the registry root."""
+    assert "launchd_root" not in load_units()[UNIT]
+    plist = render(tmp_path, UNIT, None)
+    assert plist["WorkingDirectory"] == str(tmp_path / "omni")
+    assert plist["EnvironmentVariables"]["OMNI_HOME"] == str(tmp_path / "omni")
