@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The class rules for the four FRICTION rows of 2026-11-08 that the 37 shipped rules left unclassified (OMN-22865).
+"""The class rules for the four FRICTION rows of 2026-11-08 that the 37 shipped rules left unclassified (OMN-23109).
 
 Each row below is the text of a real ledger row (the part the rule reads). With the shipped rules every one names
 its class; the control runs the same rows through the rules as they stood before this change and the rollup

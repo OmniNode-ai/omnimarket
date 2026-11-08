@@ -120,7 +120,7 @@ class_rules:
   - name: pr-handoff-argument-list-too-long
     owner: "the owner of pr-handoff's handoff.sh: it passes a large pull request diff as arguments and the shell refuses"
     pattern: 'Argument list too long'
-  # The 4 rows of 2026-11-08T00:13Z to 05:15Z that the 37 rules above did not name (OMN-22865), one cause each, named from their own text.
+  # The 4 rows of 2026-11-08T00:13Z to 05:15Z that the 37 rules above did not name (OMN-23109), one cause each, named from their own text.
   - name: lane-launch-by-hand-refused-by-brief-checks
     owner: "the owner of the lane brief checks and the remote-lane mint refusal (slot queueing, the ticket-mint sentence regex, the dev-tag brief refusal and the one-claim-per-parent premise check): launching successor lanes by hand meets each of them"
     pattern: 'Launching \d+ successor lanes by hand'
