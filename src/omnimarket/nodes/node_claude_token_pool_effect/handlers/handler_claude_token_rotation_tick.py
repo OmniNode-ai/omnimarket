@@ -23,6 +23,7 @@ No result, event, line or file this writes carries a token: labels and states on
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -49,6 +50,8 @@ from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_rotation_
     ProtocolLoginFile,
     ProtocolMarksSource,
 )
+
+_MAX_REINSTALLS = 3
 
 
 def _utc_now() -> datetime:
@@ -83,8 +86,8 @@ class HandlerClaudeTokenRotation:
         rank = self._overlay.rank(request.host)
         if rank is None:
             raise ValueError(f"{request.host} is not a host of the overlay")
-        sync = self._sync_marks(request)
-        entries = self._status().tokens
+        sync, effective = self._sync_marks(request)
+        entries = (effective or self._status(dry_run=request.dry_run)).tokens
         order = self._order(entries, rank)
         if not request.dry_run and order:
             self._pool.handle(
@@ -150,7 +153,6 @@ class HandlerClaudeTokenRotation:
             secret = self._pool.secret(chosen.label)
             if secret is None:
                 continue
-            self._write_login(secret)
             event = ModelRotationEvent(
                 kind="rotated",
                 host=request.host,
@@ -159,7 +161,15 @@ class HandlerClaudeTokenRotation:
                 reason=reason,
                 at=self._now(),
             )
+            # The record comes first: a journal that cannot be written stops the swap before the login
+            # changes, so a login never changes without its event.
             self._record(event)
+            try:
+                self._write_login(secret)
+            except Exception:
+                self._record_failed(event)
+                raise
+            self._keep_login_managed(chosen.label)
             return ModelClaudeTokenRotationResult(
                 **base,
                 outcome="swapped",
@@ -188,8 +198,26 @@ class HandlerClaudeTokenRotation:
 
     # --- steps ------------------------------------------------------------------------------------
 
-    def _status(self) -> ModelClaudeTokenPoolResult:
-        return self._pool.handle(ModelClaudeTokenPoolRequest(operation="status"))
+    def _status(self, *, dry_run: bool = False) -> ModelClaudeTokenPoolResult:
+        return self._pool.handle(
+            ModelClaudeTokenPoolRequest(operation="status", dry_run=dry_run)
+        )
+
+    def _keep_login_managed(self, label: str) -> None:
+        """Re-install ``label`` while the pool holds a different fingerprint than the login just written.
+
+        ``add --force`` can replace the label between the candidate being read and the login being
+        written; the old credential would then be installed under a fingerprint the pool no longer
+        holds, and every later tick would leave it alone as unmanaged.
+        """
+        for _ in range(_MAX_REINSTALLS):
+            current = next((e for e in self._status().tokens if e.label == label), None)
+            if current is None or current.fingerprint == self._login.fingerprint():
+                return
+            fresh = self._pool.secret(label)
+            if fresh is None:
+                return
+            self._write_login(fresh)
 
     @staticmethod
     def _order(
@@ -203,29 +231,53 @@ class HandlerClaudeTokenRotation:
 
     def _sync_marks(
         self, request: ModelClaudeTokenRotationRequest
-    ) -> ModelRotationMarksSync:
+    ) -> tuple[ModelRotationMarksSync, ModelClaudeTokenPoolResult | None]:
+        """Sync the source's marks; the second value is the pool as the sync leaves it, when it ran.
+
+        A dry run applies the same marks to a view of the pool and persists neither the pool nor the mirror,
+        so it decides on the marks a real tick decides on.
+        """
         if self._overlay.marks_source.host == request.host:
-            return ModelRotationMarksSync(state="is_source")
+            return ModelRotationMarksSync(state="is_source"), None
         read = self._source.read()
         if read.state != "read" or read.at is None:
-            return ModelRotationMarksSync(state="unreadable", detail=read.detail)
+            return ModelRotationMarksSync(state="unreadable", detail=read.detail), None
         age = (self._now() - read.at).total_seconds()
         if age > self._overlay.marks_source.max_age_seconds:
-            return ModelRotationMarksSync(
-                state="stale",
-                detail=f"source marks are {int(age)} s old, over the {self._overlay.marks_source.max_age_seconds} s bound",
+            return (
+                ModelRotationMarksSync(
+                    state="stale",
+                    detail=f"source marks are {int(age)} s old, over the {self._overlay.marks_source.max_age_seconds} s bound",
+                ),
+                None,
             )
-        if request.dry_run:
-            return ModelRotationMarksSync(state="unchanged", detail="dry run")
         done = self._pool.handle(
-            ModelClaudeTokenPoolRequest(operation="sync_marks", marks=read.marks)
+            ModelClaudeTokenPoolRequest(
+                operation="sync_marks",
+                marks=read.marks,
+                marks_at=read.at,
+                dry_run=request.dry_run,
+            )
         )
-        return ModelRotationMarksSync(
-            state="applied" if done.synced else "unchanged", changed=done.synced
+        return (
+            ModelRotationMarksSync(
+                state="applied" if done.synced else "unchanged",
+                changed=done.synced,
+                detail="dry run" if request.dry_run else "",
+            ),
+            done,
         )
 
     def _write_login(self, secret: SecretStr) -> None:
         self._login.write(secret)
+
+    def _record_failed(self, event: ModelRotationEvent) -> None:
+        """Name the rotation whose login write failed, so the record never claims a swap that did not happen."""
+        # the login write's own error is the one to surface
+        with contextlib.suppress(OSError):
+            self._record(
+                event.model_copy(update={"kind": "rotation_failed", "at": self._now()})
+            )
 
     def _record(self, event: ModelRotationEvent) -> None:
         self._events_path.parent.mkdir(parents=True, exist_ok=True)

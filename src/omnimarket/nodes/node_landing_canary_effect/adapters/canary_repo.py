@@ -11,12 +11,16 @@ names; none is a literal here.
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import re
 import shlex
 import subprocess
 import tempfile
-from collections.abc import Callable, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -64,7 +68,11 @@ class InMemoryCanaryRepo:
             raise CanaryRepoError(self.open_error)
         self.opened_requests.append(request)
         self._opened_at = self._clock()
-        return ModelCanaryOpened(number=len(self.opened_requests), head_sha="a" * 40)
+        return ModelCanaryOpened(
+            number=len(self.opened_requests),
+            head_sha="a" * 40,
+            opened_at=self._opened_at,
+        )
 
     def state(self, number: int) -> ModelCanaryState:
         if self.state_error is not None:
@@ -127,6 +135,9 @@ class ScmCanaryRepo:
         repo: str,
         environ: Mapping[str, str],
         run: Runner = run_command,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], None] = time.sleep,
+        lock_wait_seconds: float | None = None,
     ) -> None:
         self._repo = repo
         self._timeout = scm.command_timeout_seconds
@@ -134,6 +145,12 @@ class ScmCanaryRepo:
         self._create = shlex.split(self._env(scm.pr_create_command_env, environ))
         self._state = shlex.split(self._env(scm.pr_state_command_env, environ))
         self._run = run
+        self._clock = clock
+        self._sleep = sleep
+        #: How long a run waits for another run on the same clone; the command timeout unless told.
+        self._lock_wait = float(
+            self._timeout if lock_wait_seconds is None else lock_wait_seconds
+        )
 
     @staticmethod
     def _env(name: str, environ: Mapping[str, str]) -> str:
@@ -149,12 +166,62 @@ class ScmCanaryRepo:
             raise CanaryRepoError(f"git-{args[0]}-exit-{done.returncode}")
         return done.stdout
 
+    @contextmanager
+    def _exclusive_clone(self) -> Iterator[None]:
+        """Hold the clone for one run: checkout, commit and push of two runs must never interleave.
+
+        An advisory lock on the clone directory itself, so it covers every caller of the same clone and
+        needs no file in the repository. A run that cannot get it within the wait fails with a typed reason.
+        """
+        descriptor = os.open(self._clone, os.O_RDONLY)
+        try:
+            waited = 0.0
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if waited >= self._lock_wait:
+                        raise CanaryRepoError("clone-busy") from None
+                    self._sleep(min(1.0, self._lock_wait - waited))
+                    waited = min(waited + 1.0, self._lock_wait)
+            yield
+        finally:
+            os.close(descriptor)
+
+    def _write_marker(self, request: ModelCanaryOpenRequest) -> Path:
+        """Write the marker file, refusing any path that leaves the clone through a symlink.
+
+        The checked-out repository controls ``.canary``: a symlink there, or at the marker itself, would
+        redirect the write with the scheduled user's authority. Both are refused before anything is written.
+        """
+        root = self._clone.resolve()
+        directory = self._clone / ".canary"
+        marker = directory / f"{request.nonce}.txt"
+        if directory.is_symlink() or marker.is_symlink():
+            raise CanaryRepoError("marker-path-is-a-symlink")
+        directory.mkdir(parents=True, exist_ok=True)
+        if not directory.resolve().is_relative_to(root):
+            raise CanaryRepoError("marker-path-outside-the-clone")
+        marker.write_text(f"{request.nonce}\n", encoding="utf-8")
+        return marker
+
     def open(self, request: ModelCanaryOpenRequest) -> ModelCanaryOpened:
+        """Push the one-file branch and open the pull request; every failure is a ``CanaryRepoError``.
+
+        A filesystem failure (a full disk, a permission refusal) is translated to the typed failure so the
+        run publishes its UNKNOWN reading instead of ending without a row.
+        """
+        try:
+            with self._exclusive_clone():
+                return self._open(request)
+        except OSError as exc:
+            raise CanaryRepoError(f"filesystem-{type(exc).__name__}") from exc
+
+    def _open(self, request: ModelCanaryOpenRequest) -> ModelCanaryOpened:
         self._git("fetch", "origin", request.base)
         self._git("checkout", "-B", request.branch, f"origin/{request.base}")
-        marker = self._clone / ".canary" / f"{request.nonce}.txt"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(f"{request.nonce}\n", encoding="utf-8")
+        marker = self._write_marker(request)
         self._git("add", "--", str(marker.relative_to(self._clone)))
         self._git("commit", "-m", request.title)
         head = self._git("rev-parse", "HEAD").strip()
@@ -175,6 +242,9 @@ class ScmCanaryRepo:
             "--body-file",
             body.name,
         ]
+        # The pull request exists from some instant inside the create command, so the landing time
+        # counts from before it, never from when the command returned.
+        opened_at = self._clock().astimezone(UTC)
         try:
             done = self._run(argv, self._clone, self._timeout)
         finally:
@@ -184,7 +254,9 @@ class ScmCanaryRepo:
         found = _PR_NUMBER.search(done.stdout)
         if found is None:
             raise CanaryRepoError("pr-create-printed-no-number")
-        return ModelCanaryOpened(number=int(found[1]), head_sha=head)
+        return ModelCanaryOpened(
+            number=int(found[1]), head_sha=head, opened_at=opened_at
+        )
 
     def state(self, number: int) -> ModelCanaryState:
         done = self._run(

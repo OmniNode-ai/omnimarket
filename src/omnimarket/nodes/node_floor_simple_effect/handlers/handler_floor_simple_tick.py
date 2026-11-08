@@ -91,6 +91,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
     load_record,
+    merge_lanes,
     overlay_store_events,
     parse_time,
     read_admissions,
@@ -102,9 +103,11 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     read_queue_age,
     read_runner_groups,
     read_watcher,
+    read_work_state,
     record_lanes,
     record_slots,
     record_stoppages,
+    work_state_lanes,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
     deploy_agent_events,
@@ -164,6 +167,7 @@ class ModelSourcePaths(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_relpath: str
+    work_state_relpath: str
     watcher_relpath: str
     controller_state_dir_env: str
     controller_state_dir_fallback: str
@@ -838,6 +842,7 @@ class HandlerFloorSimpleTick:
         record_read_at = (
             parse_time(record["generated_at"]) if record is not None else None
         )
+        work_state = read_work_state(home / rt.sources.work_state_relpath)
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
@@ -858,7 +863,10 @@ class HandlerFloorSimpleTick:
                 home / rt.sources.friction_report_relpath
             ),
             stoppages=record_stoppages(record) if record else (),
-            lanes=record_lanes(record) if record else (),
+            lanes=merge_lanes(
+                record_lanes(record) if record else (),
+                work_state_lanes(work_state) if work_state else (),
+            ),
             lab=lab,
             receipts=receipts,
             receipts_covered_s=rt.state.emission_window_hours * 3600,
@@ -873,6 +881,7 @@ class HandlerFloorSimpleTick:
             go_given_through=go,
             sources_read={
                 "floor_record": record is not None,
+                "work_state_projection": work_state is not None,
                 "pull_request_watcher": watcher is not None,
                 "goal_scope": goal_scope is not None,
                 "ledger": ledger.facts is not None,
