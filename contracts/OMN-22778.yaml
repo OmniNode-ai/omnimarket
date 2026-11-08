@@ -21,6 +21,8 @@ requirements:
         statement: 'AC3: an install writes the document at mode 0600 where the unit reads it and keeps the file it replaced; a dry-run writes nothing -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k alarm_config_install'
       - id: AC4
         statement: 'AC4: the document an install would write equals the configuration the Mac unit runs today -- falsifier: dry-run the unit from the branch with the Mac request inputs and diff the parsed result with the live configuration file'
+      - id: AC5
+        statement: 'AC5: the quiet-host reading leaves out hosts the lab host table declares unavailable, and reads a host quiet when no table declares it unavailable -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_unavailable_hosts_omn22778.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The installer and alarm tests, run on a lab host at the pushed head.
@@ -69,6 +71,8 @@ dod_evidence:
 - id: dod-omn22778-skip-unavailable-hosts
   description: "The silent-failure alarm's quiet-host reading leaves out hosts the lab host table declares unavailable, with a default-off control and a control that reads the host quiet when no table declares it unavailable."
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_unavailable_hosts_omn22778.py -q --no-cov
