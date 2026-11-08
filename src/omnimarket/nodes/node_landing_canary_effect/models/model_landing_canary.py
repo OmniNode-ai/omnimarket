@@ -47,6 +47,9 @@ class ModelCanaryOpened(BaseModel):
 
     number: int = Field(ge=1)
     head_sha: str = Field(min_length=1)
+    #: The instant the pull request began to open, when the repository can say; the run counts its own
+    #: instant from before the open call otherwise. Never the instant the create command finished.
+    opened_at: datetime | None = None
 
 
 class ModelCanaryState(BaseModel):

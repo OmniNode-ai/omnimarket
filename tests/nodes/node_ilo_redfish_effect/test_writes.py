@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
+from omnimarket.models.ilo_redfish.enum_ilo_redfish import (
     EnumIloBootTarget,
     EnumIloJournalStatus,
     EnumIloMediaAction,
@@ -15,10 +15,10 @@ from omnimarket.nodes.node_ilo_redfish_effect.models.enum_ilo_redfish import (
     EnumIloRefusal,
     EnumIloVerb,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_request import (
     ModelIloRedfishRequest,
 )
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
 )
 from tests.nodes.node_ilo_redfish_effect.conftest import (

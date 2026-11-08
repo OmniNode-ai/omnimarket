@@ -125,9 +125,10 @@ def test_golden_the_three_numbers_come_from_reads_a_checker_can_repeat(
     again = HandlerFloorSimple().handle(
         ModelFloorSimpleInput.model_validate(reads["floor_input"])
     )
-    # The customer health line (OMN-22923) is added after this compute from the same piece rows; it is repeated in its own test.
+    # The customer health line (OMN-22923) is added after this compute from the same piece rows; it is repeated in its own
+    # test. The MVP launch block (OMN-23205) reads the producers' runs, not this input, and is tested on its own.
     assert again.model_dump(mode="json") == doc.model_copy(
-        update={"health": None}
+        update={"health": None, "mvp_launch": None}
     ).model_dump(mode="json")
 
 

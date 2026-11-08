@@ -24,6 +24,11 @@ from .model_lab_fill_lane_render import (
     ModelLabFillLaneRenderResult,
     ModelLabFillRenderConfig,
 )
+from .model_lab_fill_lane_states import (
+    ModelLabFillLaneState,
+    ModelLabFillLaneStatesRequest,
+    ModelLabFillLaneStatesResult,
+)
 from .model_lab_fill_machinery import (
     ModelLabFillMachineryCandidate,
     ModelLabFillMachineryCandidatesRequest,
@@ -110,6 +115,9 @@ __all__ = [
     "ModelLabFillHostProbe",
     "ModelLabFillLaneRenderRequest",
     "ModelLabFillLaneRenderResult",
+    "ModelLabFillLaneState",
+    "ModelLabFillLaneStatesRequest",
+    "ModelLabFillLaneStatesResult",
     "ModelLabFillLaunch",
     "ModelLabFillMachineryCandidate",
     "ModelLabFillMachineryCandidatesRequest",
