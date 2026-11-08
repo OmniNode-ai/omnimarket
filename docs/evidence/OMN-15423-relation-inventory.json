@@ -4579,6 +4579,8 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_delegation_completion_rate_compute",
+        "node_delegation_completion_rate_effect",
         "node_delegation_dod_verify_request_compute",
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
