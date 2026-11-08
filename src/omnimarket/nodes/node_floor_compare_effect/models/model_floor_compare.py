@@ -9,7 +9,7 @@ snapshot does not hold was not read then, which the reader reports as ``unread``
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -50,8 +50,14 @@ class ModelComparisonWindow(_Frozen):
 class ModelBackfillSource(_Frozen):
     """A directory of dated copies read once into the history: ``kind`` names the parser."""
 
-    kind: Literal["floor_simple", "factory_record"]
+    kind: Literal["floor_simple", "factory_record", "factory_measures"]
     glob: str = Field(min_length=1, description="Relative to the registry home.")
+
+
+class ModelLedgerPattern(_Frozen):
+    key: str = Field(min_length=1)
+    row_types: tuple[str, ...] = Field(min_length=1)
+    pattern: str = Field(min_length=1)
 
 
 class ModelHistorySources(_Frozen):
@@ -112,6 +118,10 @@ class ModelHistorySources(_Frozen):
         description="Canonical clones are found under the registry home by this glob; the key is the directory name."
     )
     git_timeout_seconds: int = Field(ge=1)
+    ledger_patterns: tuple[ModelLedgerPattern, ...] = Field(
+        default=(),
+        description="Keys counted from ledger rows whose type is listed and whose text matches the pattern (OMN-23081).",
+    )
 
 
 class ModelFloorCompareRuntime(_Frozen):
@@ -193,6 +203,8 @@ class ModelFloorComparison(_Frozen):
     history_points: int
     oldest_point: datetime | None
     windows: tuple[ModelWindowComparison, ...]
+    # Each live rebuild piece against the old way (OMN-23081); typed by model_piece_measure.
+    pieces: tuple[dict[str, Any], ...] = ()
 
 
 class ModelFloorCompareRequest(_Frozen):
