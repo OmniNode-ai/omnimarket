@@ -13,6 +13,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
+    ModelRotationMark,
+)
+
 
 class ModelClaudeTokenPoolRequest(BaseModel):
     """One operation on this host's pool.
@@ -29,9 +33,16 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal[
-        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+        "add",
+        "resolve",
+        "mark_limited",
+        "mark_revoked",
+        "reorder",
+        "sync_marks",
+        "status",
     ]
     label: str | None = None
+    marks: tuple[ModelRotationMark, ...] = ()
     labels: tuple[str, ...] = ()
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
@@ -57,7 +68,13 @@ class ModelClaudeTokenPoolResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal[
-        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+        "add",
+        "resolve",
+        "mark_limited",
+        "mark_revoked",
+        "reorder",
+        "sync_marks",
+        "status",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
@@ -65,6 +82,7 @@ class ModelClaudeTokenPoolResult(BaseModel):
     token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     limited: int = 0
     revoked: tuple[str, ...] = ()
+    synced: tuple[str, ...] = ()
     alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None
