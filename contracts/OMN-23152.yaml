@@ -4,11 +4,11 @@ title: Ledger rows reach the bus only after the judge accepts them, the emitter 
 summary: >-
   Rebuild plan 4.3 step 1, code half. The work-ledger emit node refuses a row the judge (the append effect) did not
   accept, with a typed refusal and nothing spooled; the contract declares the gate. The append effect records each row
-  it accepts with the sequence it gave. The projection gains migration 0007 (duplicates of one sequence are copied whole
+  it accepts with the sequence it gave. The projection gains migration 0009 (duplicates of one sequence are copied whole
   into work_ledger_seq_conflicts and a unique index on ledger_id and ledger_seq is added), a writer that records a
   second holder as a conflict instead of failing on the index, the pure plan of the order-preserving history backfill,
   and the unjudged-row reading over the contract's 24-hour window, which names each emitter by source and lane. Not
-  covered here and named in the pull request: the live run of migration 0007 on the lab database, the 24-hour live reading
+  covered here and named in the pull request: the live run of migration 0009 on the lab database, the 24-hour live reading
   of zero, and the live naming of the emitter from the bus and the host.
 is_seam_ticket: false
 interface_change: false

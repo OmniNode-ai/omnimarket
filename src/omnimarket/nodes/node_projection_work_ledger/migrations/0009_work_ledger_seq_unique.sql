@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS omninode_internal.work_ledger_seq_conflicts (
     PRIMARY KEY (row_id)
 );
 
+-- A guarded CREATE leaves an existing table untouched; reconcile its declared columns.
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS row_id TEXT NOT NULL;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS ledger_id TEXT NOT NULL;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS ledger_seq BIGINT NOT NULL;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS held_row_id TEXT;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS raw_row TEXT NOT NULL;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL;
+ALTER TABLE omninode_internal.work_ledger_seq_conflicts ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp();
+
 WITH ranked AS (
     SELECT row_id, ledger_id, ledger_seq, raw_row, source,
            first_value(row_id) OVER ordered AS kept_row_id,

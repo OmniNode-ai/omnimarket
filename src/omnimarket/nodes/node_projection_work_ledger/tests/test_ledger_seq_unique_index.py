@@ -193,7 +193,7 @@ async def test_ledger_seq_unique_index_injected_break_without_the_writer_check_p
 
 
 def test_ledger_seq_unique_index_migration_declares_the_index_and_the_dedupe() -> None:
-    sql = (MIGRATIONS / "0007_work_ledger_seq_unique.sql").read_text()
+    sql = (MIGRATIONS / "0009_work_ledger_seq_unique.sql").read_text()
     index = re.search(
         r"CREATE UNIQUE INDEX IF NOT EXISTS (\w+)\s+ON omninode_internal\.work_ledger_rows"
         r"\s*\(ledger_id, ledger_seq\)\s+WHERE ledger_seq IS NOT NULL",
@@ -204,7 +204,7 @@ def test_ledger_seq_unique_index_migration_declares_the_index_and_the_dedupe() -
     assert sql.index("rank_in_seq > 1") < sql.index("CREATE UNIQUE INDEX")
     assert "work_ledger_seq_conflicts" in sql
     assert re.search(r"\bDELETE\s+FROM\b", sql, re.IGNORECASE) is None
-    grant = (MIGRATIONS / "0008_grant_work_ledger_seq_conflicts.sql").read_text()
+    grant = (MIGRATIONS / "0010_grant_work_ledger_seq_conflicts.sql").read_text()
     granted = grant.split("GRANT SELECT", 1)[1].split("TO", 1)[0]
     assert "INSERT, UPDATE" in granted
     assert "DELETE" not in granted

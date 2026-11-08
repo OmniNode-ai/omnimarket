@@ -152,9 +152,9 @@ async def _migrated(
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
-        # 0008 grants the runtime role, which the throwaway schema lacks, so only 0007 is applied.
+        # 0010 grants the runtime role, which the throwaway schema lacks, so only 0009 is applied.
         await connection.execute(
-            (MIGRATION.parent / "0007_work_ledger_seq_unique.sql")
+            (MIGRATION.parent / "0009_work_ledger_seq_unique.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
