@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23081
+title: A rebuild piece reads ready only when its own reading works and every join it owns to a piece in scope passes
+summary: >-
+  On 2026-11-08 the floor drew pieces 1, 2, 3, 5, 6, 8 and 15 as working while every join between them read broken or never run, so working but unintegrated looked done. A piece now reads ready only when it is in the readiness scope, its own reading is WORKING and every join that counts for it (both of its pieces in scope) passes; otherwise it reads "working, not integrated" (amber) or not working (red). The summary and the counts report ready pieces. Every counted join that is broken or never run is a red row (join:<id>) under the colour rule with owner tickets from the overlay. A join row opens a panel with its definition, last run, failed side and owner lane. The scope and the requirement are overlay data (readiness), not code.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23081-ready-means-integrated
+    statement: >-
+      A piece never reads ready while a join that counts for it does not pass, and each such join is a red row with an owner ticket.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a piece with a WORKING reading and one broken join reads working_not_integrated and amber, never ready; ready appears only when every counted join passes -- falsifier: uv run pytest tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py with handler_floor_simple.py restored to origin/dev, the readiness tests fail"
+      - id: AC2
+        statement: "AC2: every counted join that is broken or never run is a listed red row join:<id> whose owners come from the overlay, and the colour rule names a join with no row or no owner -- falsifier: the same test file with the overlay owners for join:J3 removed fails the colour rule"
+      - id: AC3
+        statement: "AC3: after the build is installed on the host that runs factory-floor-publish, the served floor-simple.json lists no ready piece while a counted join does not pass, and each such join is a red row with its owner -- falsifier: curl of floor-simple.json after one publish"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The readiness controls: a working piece with a broken join is never ready, a broken or never-run join is a red row with an owner, ready appears only when every join passes, the scope is overlay data, the join panel carries its definition, last run, failed side and owner lane.
+    command: uv run --frozen pytest tests/nodes/node_floor_simple_compute tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23081-ac1-ready-means-integrated
+    description: >-
+      The readiness test file passes on the branch and the recorded board of 2026-11-06 still passes with the join causes owned.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23081-ac3-served-board
+    description: >-
+      After the build is installed on the host that runs factory-floor-publish, one publish later the floor serves no ready piece beside a join that does not pass. The floor is reachable only from the lab network, so hosted CI cannot run this check and only the local Done gate runs it, with FLOOR_SIMPLE_JSON_URL set to the floor page JSON address from the lab overlay.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -c 'curl -fsS "$FLOOR_SIMPLE_JSON_URL" | python3 -I -c "import json,sys; d=json.load(sys.stdin); bad=[j for p in d[\"pieces\"] for j in p[\"joins\"] if j.get(\"counted\") and not j.get(\"passes\")]; ready=[p for p in d[\"pieces\"] if p.get(\"ready\")]; sys.exit(1 if bad and any(p[\"piece\"] in (j[\"from_piece\"], j[\"to_piece\"]) for p in ready for j in bad) else 0)"'
