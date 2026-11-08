@@ -31,7 +31,7 @@ from omnimarket.nodes.node_repo_state_watcher_refresh_effect.models.model_watche
 )
 
 
-class HandlerSubprocessStep:
+class SubprocessStep:
     """Run one declared step as a subprocess with the overlay's timeout."""
 
     def __init__(self, timeout_seconds: float) -> None:
@@ -95,8 +95,8 @@ def build_handler(overlay: ModelWatcherRefreshOverlay) -> HandlerWatcherRefresh:
     return HandlerWatcherRefresh(
         clock=PrWatcherStateFile(Path(_required_env(overlay.watcher_state_env))),
         steps=steps,
-        runner=HandlerSubprocessStep(overlay.step_timeout_seconds),
+        runner=SubprocessStep(overlay.step_timeout_seconds),
     )
 
 
-__all__ = ["HandlerSubprocessStep", "build_handler", "load_overlay"]
+__all__ = ["SubprocessStep", "build_handler", "load_overlay"]
