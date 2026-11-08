@@ -17,6 +17,7 @@ permissions:
   contents: read
 
 jobs:
+  # advisory-ok: OMN-22917 the census ratchet runs on every PR and fails on a planted break, but is not yet in the umbrella's EXPECTED_EXTERNAL_CONTEXTS; enforcement is a separate change in the umbrella's owner repo.
   ledger-file-census:
     name: Ledger File Census
     runs-on: ubuntu-latest
