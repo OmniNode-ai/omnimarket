@@ -37,22 +37,24 @@ def lim(limit: int) -> dict[str, object]:
 
 
 @pytest.mark.parametrize(
-    ("kind", "open_prs", "outcome", "reason"),
+    ("kind", "item_kind", "items", "outcome", "reason"),
     [
-        ("new_work", 2, "admit", "under_limit"),
-        ("new_work", 3, "refuse", "at_repo_limit"),
-        ("ticket_create", 3, "admit", "ticket_record"),
+        ("new_work", "ticket_claim", 2, "admit", "under_limit"),
+        ("new_work", "ticket_claim", 3, "refuse", "at_repo_limit"),
+        # AC1 (OMN-23028): 94 open pull requests are not work sent to lanes.
+        ("new_work", "pull_request", 94, "admit", "under_limit"),
+        ("ticket_create", "ticket_claim", 3, "admit", "ticket_record"),
     ],
 )
 def test_decision_through_runtime_local(
-    tmp_path: Path, kind: str, open_prs: int, outcome: str, reason: str
+    tmp_path: Path, kind: str, item_kind: str, items: int, outcome: str, reason: str
 ) -> None:
     read = {
         "readable": True,
         "read_at": NOW.isoformat(),
         "items": [
-            {"kind": "pull_request", "repo": "fixture-repo", "ref": f"fixture-repo#{i}"}
-            for i in range(open_prs)
+            {"kind": item_kind, "repo": "fixture-repo", "ref": f"fixture-repo#{i}"}
+            for i in range(items)
         ],
     }
     input_path = tmp_path / "input.json"
