@@ -43,8 +43,10 @@ from omnimarket.nodes.node_read_only_principal_effect.handlers.handler_read_only
 )
 from omnimarket.nodes.node_read_only_principal_effect.models import (
     EnumChannel,
+    EnumCredentialStore,
     ModelAllowedCommand,
     ModelChannelProbe,
+    ModelCredentialRef,
     ModelProbeAttempt,
     ModelProbeEmission,
     ModelProbeRequest,
@@ -87,6 +89,11 @@ def _overlay(emission: ModelProbeEmission | None) -> ModelReadOnlyPrincipalOverl
     )
     return ModelReadOnlyPrincipalOverlay(
         principal="ro-test",
+        credential=ModelCredentialRef(
+            store=EnumCredentialStore.ONEX_CREDENTIAL_STORE,
+            lane="dev",
+            secret_ref="dev-lane-sasl",
+        ),
         ssh=ModelSshGate(
             allowed_commands=(ModelAllowedCommand(argv_prefix=("uptime",)),),
             gate_command="/usr/local/bin/onex-read-only-principal gate",
