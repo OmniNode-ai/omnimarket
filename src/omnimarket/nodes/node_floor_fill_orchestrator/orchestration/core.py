@@ -31,27 +31,38 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers import (
-    ModelFloorEntryTicketVerdict,
-    ModelFloorFillCandidatesRequest,
-    ModelFloorFillCandidatesResult,
-    ModelFloorFillLine,
-    ModelFloorFillStateEntry,
-    ModelFloorRecordRead,
-    ModelFloorTaskPayloadVerdict,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
-    HandlerFloorFillCandidates,
-)
-from omnimarket.nodes.node_floor_fill_lines_compute.handlers import (
+from omnimarket.models.floor_fill import (
+    EnumFloorFillDropReason,
+    EnumFloorFillEntryState,
     EnumFloorFillLinesEntryState,
     EnumFloorFillLinesStartKind,
     EnumFloorFillLinesVerdict,
+    ModelFloorEntryTicketVerdict,
+    ModelFloorFillCandidatesRequest,
+    ModelFloorFillCandidatesResult,
+    ModelFloorFillEntry,
+    ModelFloorFillLine,
     ModelFloorFillLinesEntry,
     ModelFloorFillLinesLine,
     ModelFloorFillLinesRequest,
     ModelFloorFillLinesStartResult,
     ModelFloorFillLinesUntickable,
+    ModelFloorFillObservation,
+    ModelFloorFillReduceInput,
+    ModelFloorFillReduceOutput,
+    ModelFloorFillReservedChecked,
+    ModelFloorFillReserveRequested,
+    ModelFloorFillSentChecked,
+    ModelFloorFillStartFailed,
+    ModelFloorFillState,
+    ModelFloorFillStateEntry,
+    ModelFloorFillTicketStored,
+    ModelFloorRecordRead,
+    ModelFloorTaskPayloadVerdict,
+    line_and_task,
+)
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
+    HandlerFloorFillCandidates,
 )
 from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines import (
     HandlerFloorFillLines,
@@ -79,25 +90,8 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ProtocolFloorTickets,
     ProtocolLaneProcessRunner,
 )
-from omnimarket.nodes.node_floor_fill_reducer.handlers import (
-    EnumFloorFillDropReason,
-    EnumFloorFillEntryState,
-    ModelFloorFillObservation,
-    ModelFloorFillReduceInput,
-    ModelFloorFillReduceOutput,
-    ModelFloorFillReservedChecked,
-    ModelFloorFillReserveRequested,
-    ModelFloorFillSentChecked,
-    ModelFloorFillStartFailed,
-    ModelFloorFillState,
-    ModelFloorFillTicketStored,
-    line_and_task,
-)
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     HandlerFloorFillReducer,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
-    ModelFloorFillEntry,
 )
 
 # The class a floor task is sent as: the name the open-count brake and the stop signal answer to.
@@ -448,6 +442,9 @@ class FloorFillOrchestrator:
             max_age_minutes=self._config.max_age_minutes,
             max_fill_lanes_per_line=self._config.max_fill_lanes_per_line,
             sent_window_minutes=self._config.sent_window_minutes,
+            stopped_max_lanes=self._config.stopped_max_lanes,
+            stopped_report_chars=self._config.stopped_report_chars,
+            stopped_continue_rule=self._config.stopped_continue_rule,
             payload_verdicts=payloads,
             ticket_verdicts=ticket_verdicts,
             entries=entries,

@@ -72,6 +72,9 @@ OVERLAY: dict[str, Any] = {
     "process_working_directory": "/scripted/work",
     "max_age_minutes": 15,
     "max_fill_lanes_per_line": 2,
+    "stopped_max_lanes": 1,
+    "stopped_report_chars": 2000,
+    "stopped_continue_rule": "push and continue",
 }
 
 

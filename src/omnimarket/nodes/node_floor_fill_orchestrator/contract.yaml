@@ -97,6 +97,9 @@ overlay:
     - process_working_directory
     - max_age_minutes
     - max_fill_lanes_per_line
+    - stopped_max_lanes
+    - stopped_report_chars
+    - stopped_continue_rule
 descriptor:
   node_archetype: orchestrator
   purity: effectful
