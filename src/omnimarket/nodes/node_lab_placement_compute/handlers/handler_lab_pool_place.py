@@ -42,7 +42,11 @@ def newest_per_host(
 
 
 class HandlerLabPoolPlace:
-    """COMPUTE handler: table admission followed by capacity admission and ranking."""
+    """COMPUTE handler: table admission followed by capacity admission and ranking.
+
+    The hosts the drain verb stopped (OMN-22905) are read from the drain node at every placement, so no caller wires
+    them. A drain state that cannot be read refuses the placement; it never reads as no host draining.
+    """
 
     def __init__(
         self,
@@ -50,10 +54,19 @@ class HandlerLabPoolPlace:
         table_source: Callable[[], ModelLabHostsTable] = load_host_table,
         judge: HandlerLabPlacement | None = None,
         environ: Mapping[str, str] | None = None,
+        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._table_source = table_source
         self._judge = judge
         self._environ = environ
+        self._draining_hosts = draining_hosts or self._drain_node_hosts
+
+    def _drain_node_hosts(self) -> tuple[str, ...]:
+        from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
+            read_draining_hosts,
+        )
+
+        return read_draining_hosts(self._environ)
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -64,6 +77,17 @@ class HandlerLabPoolPlace:
         return "COMPUTE"
 
     def handle(self, request: ModelLabPoolPlaceRequest) -> ModelPlacement:
+        try:
+            draining = frozenset(request.draining_hosts) | frozenset(
+                self._draining_hosts()
+            )
+        except (OSError, ValueError) as exc:
+            return ModelPlacement(
+                decision=EnumPlacementDecision.REFUSED,
+                refusal=EnumRefusalReason.COULD_NOT_CHECK,
+                verdicts=[],
+                detail=f"the drain state could not be read ({type(exc).__name__}: {exc})",
+            )
         try:
             document = request.table or self._table_source()
             environ = os.environ if self._environ is None else self._environ
@@ -107,7 +131,9 @@ class HandlerLabPoolPlace:
                 reason = "not the requested host"
             else:
                 fresh_seen = True
-                if table is None or not table.eligible:
+                if ad.host_name in draining:
+                    reason = "draining: the drain verb stopped placement on this host"
+                elif table is None or not table.eligible:
                     reason = "host table: " + (
                         table.reason
                         if table
