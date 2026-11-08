@@ -100,6 +100,18 @@ schedule:
   schedulers:
     systemd-user: installed by this node (schedule install) as a systemd user timer
 
+# On both backends (OMN-22911, plan section 3.1): the ledger the readings are read from is the
+# in-memory ledger by default and the file ledger when the overlay says `ledger_read.route: file`.
+backends:
+  default: in_memory
+  in_memory:
+    factory: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.make_in_memory_backend
+  real:
+    factory: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.make_file_backend
+    overlay_key: ledger_read.route
+  suite:
+    scenario: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.scenario_row_roundtrip
+
 overlay:
   node: node_reading_writer_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
