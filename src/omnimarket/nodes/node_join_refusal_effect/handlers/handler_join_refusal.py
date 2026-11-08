@@ -75,6 +75,8 @@ class HandlerJoinRefusal:
             if request.only_joins and join.join not in request.only_joins:
                 continue
             reading, refusals = self._read_join(join, journal, now)
+            # A later join over the same upstream failure sees this join's refusal as the answer.
+            journal = (*journal, *refusals)
             if request.write and refusals:
                 for refusal in refusals:
                     self._sink.emit(refusal)
