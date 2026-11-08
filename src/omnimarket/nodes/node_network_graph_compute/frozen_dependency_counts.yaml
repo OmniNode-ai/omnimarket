@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The frozen cross-dependency baseline (OMN-23136). The gate reads this file and hashes its content:
+# sha256 covers every field but itself, as sorted compact JSON. A changed number without a new hash
+# reads RED. Raising a value is a reviewed change to this file, with the plan's section 4.1 and its
+# cut order as the reason; lowering one after a cut lands is how the baseline ratchets down.
+schema_version: '1'
+frozen_at: '2026-11-08T12:50:00Z'
+source: 'the rebuild plan''s section 4.1, recomputed from all 49 directed import relations: one component
+  spans 11 subsystems; the smallest cut is 229 edge occurrences in five relations'
+subsystems: 11
+relations:
+- key:
+    source: dispatch
+    target: ledger-session
+  occurrences: 177
+- key:
+    source: dispatch
+    target: tickets-plans
+  occurrences: 19
+- key:
+    source: landing
+    target: tickets-plans
+  occurrences: 19
+- key:
+    source: intelligence-memory
+    target: seams-verify
+  occurrences: 12
+- key:
+    source: intelligence-memory
+    target: landing
+  occurrences: 2
+total_occurrences: 229
+sha256: 3800225dae77fe76258362e2cca3f36caabcd85d0fabf5841914bdcd6c94173b

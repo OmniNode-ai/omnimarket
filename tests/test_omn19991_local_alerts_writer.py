@@ -45,12 +45,17 @@ from omnimarket.models.model_local_alert_transitioned import (
 from omnimarket.nodes.node_projection_local_alerts.handlers.handler_local_alerts_writer import (
     HandlerLocalAlertsProjectionRunner,
     LocalAlertsProjectionWriter,
+    require_canonical_tenant,
 )
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer import (
     HandlerLocalEnvironmentProjectionRunner,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.projection.error_classification import (
+    ProjectionErrorClass,
+    classify_projection_error,
+)
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn19988_local_environment_writer import _Conn as _EnvConn
 from tests.test_omn19988_local_environment_writer import _Db as _EnvDb
@@ -81,11 +86,17 @@ class _AlertsConn:
         self.table = table
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
         self.tenant_setting: str | None = None
+        self.in_transaction = False
+        self.published_in_transaction: list[bool] = []
         self._cursor = max((r["projection_cursor"] for r in table.values()), default=0)
 
     @asynccontextmanager
     async def transaction(self) -> Any:
-        yield
+        self.in_transaction = True
+        try:
+            yield
+        finally:
+            self.in_transaction = False
 
     async def execute(self, sql: str, *args: Any) -> str:
         self.statements.append((sql, args))
@@ -142,6 +153,7 @@ def _alerts_writer(
     published: list[dict[str, Any]] = []
 
     async def _capture(exposure: Any, **kwargs: Any) -> bool:
+        conn.published_in_transaction.append(conn.in_transaction)
         published.append({"topic": exposure.topic, **kwargs})
         return True
 
@@ -268,15 +280,54 @@ def test_a_redelivered_report_re_raises_with_the_same_transition_id() -> None:
     env.fail_transition_publish = True
     with pytest.raises(RuntimeError, match="bus unavailable"):
         env.report("postgres", "down", T0)
-    assert (TENANT, "compose", "postgres") in env.table
+    # The transition is published inside the write's transaction: a failed
+    # publish rolls the row back, so the redelivery plans the write again.
+    assert (TENANT, "compose", "postgres") not in env.table
     env.fail_transition_publish = False
 
     env.report("postgres", "down", T0)
     env.report("postgres", "down", T0)
 
-    first, second = env.payloads()
-    assert first["transition_id"] == second["transition_id"]
-    assert _directions([first]) == [("SERVICE_DOWN", "compose/postgres", "raised")]
+    (only,) = env.payloads()
+    assert _directions([only]) == [("SERVICE_DOWN", "compose/postgres", "raised")]
+
+
+def test_a_clear_whose_publish_failed_is_published_on_redelivery() -> None:
+    """Tessl finding (OMN-23064): a clear lost when its publish failed after the commit."""
+    env = _EnvironmentWriter()
+    env.report("postgres", "down", T0)
+    env.fail_transition_publish = True
+    with pytest.raises(RuntimeError, match="bus unavailable"):
+        env.report("postgres", "running", T0 + timedelta(seconds=30))
+    env.fail_transition_publish = False
+    env.report("postgres", "running", T0 + timedelta(seconds=30))
+    assert _directions(env.payloads()) == [
+        ("SERVICE_DOWN", "compose/postgres", "raised"),
+        ("SERVICE_DOWN", "compose/postgres", "cleared"),
+    ]
+
+
+def test_a_replayed_report_publishes_no_transition_built_from_the_current_row() -> None:
+    env = _EnvironmentWriter()
+    env.report("postgres", "down", T0)
+    assert len(env.bus) == 1
+    env.report("postgres", "down", T0)
+    assert len(env.bus) == 1
+
+
+def test_no_publisher_for_a_pending_transition_fails_the_report_and_stores_nothing() -> (
+    None
+):
+    """Tessl finding (OMN-23064): the report was acknowledged with its transition unpublished."""
+    env = _EnvironmentWriter()
+
+    async def _no_publisher() -> None:
+        return None
+
+    pytest.MonkeyPatch().setattr(env.runner, "get_publish_fn", _no_publisher)
+    with pytest.raises(RuntimeError, match="publisher"):
+        env.report("postgres", "down", T0)
+    assert (TENANT, "compose", "postgres") not in env.table
 
 
 # ---- F1: the tenant ------------------------------------------------------------
@@ -501,3 +552,39 @@ def test_runtime_dispatch_resolves_only_the_in_process_writer() -> None:
     )
     assert contract["runtime_profiles"] == ["tenant-projection"]
     assert contract["event_bus"]["dlq_topics"]
+
+
+def test_a_refused_tenant_is_classified_poison_not_retried() -> None:
+    """Tessl finding (OMN-23064): a bare ValueError classified RECOVERABLE and was retried."""
+    with pytest.raises(ValueError, match="tenant") as refused:
+        require_canonical_tenant("local-ee67b16e7aab")
+    assert classify_projection_error(refused.value) is ProjectionErrorClass.POISON
+
+
+def test_the_snapshot_delta_is_published_while_the_key_lock_is_held() -> None:
+    """Tessl finding (OMN-23064): the delta left after the lock ended, so deltas for one key reordered."""
+    table: dict[_Key, dict[str, Any]] = {}
+    writer, conn, published = _alerts_writer(table)
+    _fold(writer, _transition_payload())
+    assert len(published) == 1
+    assert conn.published_in_transaction == [True]
+    published.clear()
+    conn.published_in_transaction.clear()
+    _fold(writer, _transition_payload())
+    assert conn.published_in_transaction == [True]
+
+
+def test_a_failed_snapshot_publish_is_published_by_the_redelivery() -> None:
+    table: dict[_Key, dict[str, Any]] = {}
+    writer, _conn, published = _alerts_writer(table)
+    capture = writer.publish_snapshot_delta
+
+    async def _fail(exposure: Any, **kwargs: Any) -> bool:
+        raise RuntimeError("publish unavailable")
+
+    pytest.MonkeyPatch().setattr(writer, "publish_snapshot_delta", _fail)
+    with pytest.raises(RuntimeError, match="publish unavailable"):
+        _fold(writer, _transition_payload())
+    pytest.MonkeyPatch().setattr(writer, "publish_snapshot_delta", capture)
+    _fold(writer, _transition_payload())
+    assert len(published) == 1
