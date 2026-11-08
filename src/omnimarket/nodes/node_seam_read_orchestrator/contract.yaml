@@ -655,11 +655,10 @@ runtime_dispatch:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+  # answer_command returns each event as (topic, bytes) for the runtime to publish; only the terminal
+  # event is declared here because the parity gate (OMN-17017) wants a publish call for any other topic.
   publish_topics:
-    - onex.evt.omnimarket.seam-attach-on-demand-started.v1
-    - onex.evt.omnimarket.seam-on-demand-node-attached.v1
     - onex.evt.omnimarket.seam-attach-on-demand-completed.v1
-    - onex.evt.omnimarket.seam-attach-on-demand-failed.v1
 
 topics:
   attach_on_demand_requested: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1

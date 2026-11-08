@@ -169,6 +169,7 @@ def test_golden_chain_events_end_in_the_completed_event() -> None:
         topics["on_demand_node_attached"],
         topics["attach_on_demand_completed"],
     ]
+    assert events[-1][0] == "onex.evt.omnimarket.seam-attach-on-demand-completed.v1"
     assert all(body["correlation_id"] == "attach-1" for _, body in events)
     assert events[-1][1]["verdict"] == "WORKING"
 
