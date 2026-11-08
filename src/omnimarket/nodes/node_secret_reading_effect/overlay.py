@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -84,6 +85,16 @@ class ModelOpenExposure(BaseModel):
     awaiting: str = Field(min_length=1)
 
 
+class ModelSecretReadingScheduleHost(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    scheduler: Literal["systemd-user"]
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or
+    #: absolute). A dedicated venv of a worktree or a release, never a dispatch venv.
+    venv: str = Field(min_length=1)
+
+
 class ModelSecretReadingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -95,12 +106,23 @@ class ModelSecretReadingOverlay(BaseModel):
     #: Exposures recorded and not yet rotated. Any here keeps the reading NOT WORKING.
     open_exposures: tuple[ModelOpenExposure, ...]
     injected_fault: str = Field(min_length=1)
+    schedule_hosts: tuple[ModelSecretReadingScheduleHost, ...] = ()
+    #: Environment the installed unit carries (the home root, the runtime interpreter, the
+    #: append command, the host name).
+    unit_environment: dict[str, str] = Field(default_factory=dict)
+    #: The overlay root of the drill (the same overlay with a made-up machine identity and
+    #: drill true). When set, schedule install adds the contract's daily drill unit, so the
+    #: error event stays fresh. ``~`` and environment variables are expanded.
+    drill_overlay_root: str | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelSecretReadingOverlay:
         names = [consumer.consumer for consumer in self.consumers]
         if len(names) != len(set(names)):
             raise ValueError("a consumer is declared twice")
+        hosts = [host.name for host in self.schedule_hosts]
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("a schedule host is declared twice")
         return self
 
     def consumer(self, name: str) -> ModelSecretHandle | None:
@@ -133,6 +155,7 @@ __all__ = [
     "ModelPlantedDummy",
     "ModelSecretReadingOverlay",
     "ModelSecretReadingPublish",
+    "ModelSecretReadingScheduleHost",
     "ModelSecretReadingStore",
     "load_overlay",
 ]
