@@ -26,6 +26,8 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
+from omnimarket.models.floor_17a import ModelNodeEmission
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
     EnumOverlayVerdict,
@@ -55,6 +57,7 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+UPSTREAM_PREFIX = "upstream_"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=overlay-drift"
 
@@ -90,7 +93,9 @@ class HandlerOverlayDrift:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         pin_history: ProtocolPinHistory | None = None,
+        emissions: ProtocolEmissionSink | None = None,
     ) -> None:
+        self._emissions = emissions
         self._pin_history = pin_history
         self._overlay = overlay
         self._host = host
@@ -100,6 +105,79 @@ class HandlerOverlayDrift:
         self._clock = clock
 
     def handle(self, command: ModelOverlayDriftCommand) -> ModelOverlayDriftResult:
+        chain = self._chain(command.correlation_id)
+        if command.upstream_failure is not None:
+            return self._refuse(command, chain is not None)
+        if chain is not None:
+            chain.start()
+        result = self._run(command)
+        if chain is not None:
+            self._close_chain(chain, result)
+        return result
+
+    def _chain(self, correlation_id: str) -> ChainEmitter | None:
+        emission = self._overlay.emission
+        if emission is None or self._emissions is None:
+            return None
+        return ChainEmitter(
+            self._emissions,
+            node=emission.node,
+            piece=emission.piece,
+            clock=self._clock,
+            correlation_id=correlation_id,
+        )
+
+    def _refuse(
+        self, command: ModelOverlayDriftCommand, emit: bool
+    ) -> ModelOverlayDriftResult:
+        """The piece upstream failed: no start, no reading, one typed failure under the same correlation id."""
+        code = command.upstream_failure or ""
+        if not code.startswith(UPSTREAM_PREFIX):
+            code = f"{UPSTREAM_PREFIX}{code}"
+        emission = self._overlay.emission
+        if emit and emission is not None and self._emissions is not None:
+            self._emissions.emit(
+                ModelNodeEmission(
+                    node=emission.node,
+                    piece=emission.piece,
+                    correlation_id=command.correlation_id,
+                    phase="failure",
+                    emitted_at=self._clock(),
+                    failure_code=code,
+                    failure_detail="the upstream piece failed; no overlay was read",
+                )
+            )
+        return ModelOverlayDriftResult(
+            correlation_id=command.correlation_id,
+            status="failed",
+            host=self._host,
+            failure=code,
+        )
+
+    def _close_chain(
+        self, chain: ChainEmitter, result: ModelOverlayDriftResult
+    ) -> None:
+        """A WORKING reading closes the chain with a success; every other end is a typed failure naming the key."""
+        if result.status == "failed":
+            chain.failure("run_failed", result.failure or "")
+        elif result.failed:
+            chain.failure(
+                "reading_not_written",
+                ",".join(result.reasons) or result.ledger,
+            )
+        elif result.verdict is EnumReadingVerdict.WORKING:
+            chain.success(
+                {
+                    "checked": result.counts.checked,
+                    "accepted": result.counts.accepted,
+                }
+            )
+        elif result.verdict is EnumReadingVerdict.NOT_WORKING:
+            chain.failure("overlay_not_accepted", self._named(result))
+        else:
+            chain.failure("reading_unknown", ",".join(result.reasons))
+
+    def _run(self, command: ModelOverlayDriftCommand) -> ModelOverlayDriftResult:
         if command.write and self._appender is None:
             return ModelOverlayDriftResult(
                 correlation_id=command.correlation_id,
@@ -109,7 +187,7 @@ class HandlerOverlayDrift:
             )
         now = self._clock().astimezone(UTC)
         result = self._read(command.correlation_id)
-        return self._publish(result, now, command.write)
+        return self._publish(result, now, command.write, command.upstream_cid)
 
     def _unknown(self, correlation_id: str, reason: str) -> ModelOverlayDriftResult:
         return ModelOverlayDriftResult(
@@ -262,7 +340,11 @@ class HandlerOverlayDrift:
         return ",".join(named) or "none"
 
     def _publish(
-        self, result: ModelOverlayDriftResult, now: datetime, write: bool
+        self,
+        result: ModelOverlayDriftResult,
+        now: datetime,
+        write: bool,
+        upstream_cid: str | None = None,
     ) -> ModelOverlayDriftResult:
         overlay_hash = self._overlay.overlay_hash()
         runtime = self._overlay.runtime
@@ -312,7 +394,17 @@ class HandlerOverlayDrift:
             f"host={self._host}",
             f"verdict={result.verdict.value}",
             f"outcome={result.outcome.value}",
+            *(
+                (f"piece={self._overlay.emission.piece}",)
+                if self._overlay.emission
+                else ()
+            ),
             f"reason={','.join(result.reasons)}",
+            *(
+                (f"{self._overlay.upstream.cid_cell}={upstream_cid}",)
+                if upstream_cid and self._overlay.upstream
+                else ()
+            ),
             *(f"{name}={value}" for name, value in cells_by_name.items()),
             f"probed_at={stamp_text(now)}",
             f"published_at={stamp_text(now)}",

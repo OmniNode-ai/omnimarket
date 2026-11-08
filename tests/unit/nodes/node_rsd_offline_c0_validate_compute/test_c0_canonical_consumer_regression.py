@@ -157,7 +157,7 @@ def _request() -> ModelDelegationRequest:
         task_type="research",
         correlation_id=_CORRELATION_ID,
         max_tokens=512,
-        emitted_at=datetime(2026, 9, 10, tzinfo=UTC),
+        emitted_at=datetime.now(UTC),
     )
 
 

@@ -17,6 +17,7 @@ reading rows only and never a gate, a stop or an admission: a reading informs, i
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Callable
@@ -51,6 +52,9 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
+from omnimarket.protocols.protocol_effect_backend_report_source import (
+    ProtocolEffectBackendReportSource,
+)
 
 COMPUTE_CONTRACT = (
     Path(__file__).resolve().parents[2] / "node_reading_compute" / "contract.yaml"
@@ -58,6 +62,16 @@ COMPUTE_CONTRACT = (
 WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
+_UNREAD = "unread"
+#: The row type and source cell of every reading row; other handlers of this node import them.
+ROW_TYPE = _ROW_TYPE
+ROW_SOURCE_CELL = _ROW_SOURCE_CELL
+
+
+def _identity_with(content_hash: str, token: str) -> str:
+    """The content hash widened with the two-backend token, at the length of the hash it replaces."""
+    digest = hashlib.sha256(f"{content_hash}|{token}".encode()).hexdigest()
+    return digest[: len(content_hash)]
 
 
 def load_revision(path: Path = COMPUTE_CONTRACT) -> str:
@@ -99,6 +113,7 @@ def build_reading_row(
     probed_at: datetime,
     max_age_seconds: int,
     attempt: str | None = None,
+    two_backend_pending: str | None = None,
 ) -> str:
     """The reading row the floor draws: one STATUS row, every cell one token."""
     cells = [
@@ -127,6 +142,10 @@ def build_reading_row(
         f"revision={result.revision}",
         f"manifest={result.manifest_hash[:12]}",
         f"rows_read={result.rows_read}",
+    ]
+    if two_backend_pending is not None:
+        cells.append(f"two_backend_pending={two_backend_pending}")
+    cells += [
         _clean(f"injected fault: {result.injected_fault}"),
     ]
     return f"{stamp_text(published_at)} | {_ROW_TYPE} | " + " | ".join(cells)
@@ -145,8 +164,10 @@ class HandlerReadingWriter:
         compute: HandlerReadingCompute | None = None,
         revision: str | None = None,
         landing: ProtocolLandingSource | None = None,
+        two_backend_source: ProtocolEffectBackendReportSource | None = None,
     ) -> None:
         self._landing = landing
+        self._two_backend_source = two_backend_source
         self._overlay = overlay
         self._source = source
         self._appender = appender
@@ -207,6 +228,18 @@ class HandlerReadingWriter:
         )
 
     # -- one piece --------------------------------------------------------------------------
+
+    def _two_backend_pending(self, piece: int) -> str | None:
+        """The count of effects not yet on both backends for the piece that carries it; ``unread`` if the list is."""
+        setting = self._overlay.two_backend
+        if setting is None or setting.piece != piece:
+            return None
+        if self._two_backend_source is None:
+            return _UNREAD
+        read = self._two_backend_source.read()
+        if read.report is None or read.report.incomplete_cause:
+            return _UNREAD
+        return str(read.report.not_on_both_count)
 
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
@@ -288,6 +321,30 @@ class HandlerReadingWriter:
             )
         )
 
+        pending = self._two_backend_pending(spec.piece)
+        token = (
+            None
+            if pending is None
+            else "two-backend-unread"
+            if pending == _UNREAD
+            else f"two-backend-pending-{pending}"
+        )
+
+        base_content_hash = result.content_hash
+
+        def tagged(final: ModelReadingComputeResult) -> ModelReadingComputeResult:
+            """The result with the two-backend reason and an identity that covers it, so another count is another content."""
+            if token is None:
+                return final
+            update: dict[str, object] = {
+                "content_hash": _identity_with(base_content_hash, token)
+            }
+            if token not in final.reasons:
+                update["reasons"] = (*final.reasons, token)
+            return final.model_copy(update=update)
+
+        result = tagged(result)
+
         def outcome(
             final: ModelReadingComputeResult, ledger: str, row: str | None = None
         ) -> ModelReadingPieceOutcome:
@@ -329,8 +386,10 @@ class HandlerReadingWriter:
                         ),
                     }
                 )
+                result = tagged(result)
         row = build_reading_row(
             result,
+            two_backend_pending=pending,
             lane=self._overlay.publish.lane,
             actor=self._overlay.publish.actor,
             published_at=now,

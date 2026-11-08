@@ -563,6 +563,9 @@ def test_contract_declares_the_overlay_keys_the_node_reads() -> None:
         "floor_fill.max_age_minutes",
         "floor_fill.max_fill_lanes_per_line",
         "floor_fill.sent_window_minutes",
+        "floor_fill.stopped_continue_rule",
+        "floor_fill.stopped_max_lanes",
+        "floor_fill.stopped_report_chars",
     ]
 
 

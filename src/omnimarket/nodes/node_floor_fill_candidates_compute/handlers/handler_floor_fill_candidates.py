@@ -32,14 +32,20 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
     ModelFloorFillLine,
     ModelFloorFillNotReady,
     ModelFloorFillStateEntry,
+    ModelFloorFillStopped,
+    ModelFloorFillStoppedNotReady,
     ModelFloorFillUnticketable,
     ModelFloorRecordRead,
     ModelFloorTaskPayloadVerdict,
     parse_stamp,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates import (
+    STOPPED_KEY_PREFIX,
+    STOPPED_LINE,
     ModelRecordItem,
     ModelRecordLine,
+    ModelRecordStopped,
+    StoppedVerdict,
     UnreadCause,
 )
 
@@ -55,6 +61,11 @@ Pair = tuple[str, str]
 def floor_key(line_id: str, task_id: str) -> str:
     """The key a floor lane is held under: ``floor:<line_id>:<task_id>``."""
     return f"{KEY_PREFIX}{line_id}:{task_id}"
+
+
+def stopped_key(lane: str) -> str:
+    """The key a stopped lane's continuation is held under: ``stopped:<lane>``."""
+    return f"{STOPPED_KEY_PREFIX}{lane}"
 
 
 def _split_key(key: str) -> Pair | None:
@@ -76,8 +87,21 @@ class HandlerFloorFillCandidates:
                 verdict="FLOOR-UNREAD", unread_cause=cause
             )
         view = _View(request, record)
+        stopped, not_ready, capacity_left = view.stopped_lanes(record)
+        verdict: StoppedVerdict = (
+            "STARTABLE"
+            if stopped
+            else "AT-CAPACITY"
+            if capacity_left == 0 and view.stopped_ready
+            else "NO-STOPPED"
+        )
         return ModelFloorFillCandidatesResult(
-            verdict="READ", lines=tuple(view.line(line) for line in record.lines)
+            verdict="READ",
+            lines=tuple(view.line(line) for line in record.lines),
+            stopped_verdict=verdict,
+            stopped_capacity_left=capacity_left,
+            stopped=stopped,
+            stopped_not_ready=not_ready,
         )
 
     @staticmethod
@@ -109,7 +133,21 @@ class _View:
         window = timedelta(minutes=request.sent_window_minutes)
         self.held: dict[Pair, str] = {}
         self.consuming: dict[str, int] = {}
+        self.stopped_held: dict[str, str] = {}
+        self.stopped_consuming = 0
+        # Stopped lanes that are ready (held and capacity aside); a held or live one is not.
+        self.stopped_ready = 0
         for entry in request.entries:
+            if entry.key.startswith(STOPPED_KEY_PREFIX):
+                name = entry.key[len(STOPPED_KEY_PREFIX) :]
+                if (
+                    self._holds(entry, now, window)
+                    and self.stopped_held.get(name) != "RESERVED"
+                ):
+                    self.stopped_held[name] = entry.status
+                if entry.status == "RESERVED" or not entry.ended:
+                    self.stopped_consuming += 1
+                continue
             pair = _split_key(entry.key)
             if pair is None:
                 continue
@@ -138,6 +176,91 @@ class _View:
             pieces_record=request.pieces_record,
             merged_refs=request.merged_refs,
             m0_verdict=request.m0_verdict,
+        )
+
+    def stopped_lanes(
+        self, record: ModelFloorRecordRead
+    ) -> tuple[
+        tuple[ModelFloorFillStopped, ...],
+        tuple[ModelFloorFillStoppedNotReady, ...],
+        int,
+    ]:
+        """The stopped lanes of the record that may be continued, those that may not with their cause, and room left."""
+        live = {lane.lane for lane in record.floor.lanes}
+        live_tickets = {lane.ticket for lane in record.floor.lanes if lane.ticket}
+        reports = {r.lane: r.text for r in self.request.reports}
+        ready: list[ModelFloorFillStopped] = []
+        refused: list[ModelFloorFillStoppedNotReady] = []
+        for entry in record.floor.stopped:
+            cause = self._stopped_not_ready_cause(entry, live, live_tickets)
+            if cause:
+                refused.append(
+                    ModelFloorFillStoppedNotReady(lane=entry.lane, cause=cause)
+                )
+                continue
+            verdict = self.tickets.get((STOPPED_LINE, entry.lane))
+            ticket = (
+                verdict.ticket
+                if verdict is not None and verdict.status == "usable"
+                else entry.ticket
+            )
+            ready.append(
+                ModelFloorFillStopped(
+                    key=stopped_key(entry.lane),
+                    lane=entry.lane,
+                    ticket=ticket,
+                    branch=entry.branch,
+                    head=entry.head,
+                    brief=self._brief(entry, ticket, reports.get(entry.lane)),
+                )
+            )
+        self.stopped_ready = len(ready)
+        capacity_left = max(0, self.request.stopped_max_lanes - self.stopped_consuming)
+        return (tuple(ready) if capacity_left else ()), tuple(refused), capacity_left
+
+    def _stopped_not_ready_cause(
+        self, entry: ModelRecordStopped, live: set[str], live_tickets: set[str]
+    ) -> str:
+        if entry.lane in live:
+            return f"live-lane:{entry.lane}"
+        shared = sorted(live_tickets & set(entry.tickets))
+        if shared:
+            return f"live-ticket:{shared[0]}"
+        held = self.stopped_held.get(entry.lane)
+        if held is not None:
+            return f"held:{held}"
+        verdict = self.tickets.get((STOPPED_LINE, entry.lane))
+        if verdict is not None and verdict.status == "refused":
+            return f"ticket-refused:{verdict.refusal}"
+        if verdict is not None and verdict.status == "unreadable":
+            return "ticket-unreadable"
+        if not entry.ticket and not (
+            verdict is not None and verdict.status == "usable"
+        ):
+            return "no-ticket"
+        return ""
+
+    def _brief(self, entry: ModelRecordStopped, ticket: str, report: str | None) -> str:
+        request = self.request
+        named = ", ".join(entry.names) or "nothing"
+        where = f"branch {entry.branch}" if entry.branch else "no branch named"
+        if entry.head:
+            where += f" head {entry.head}"
+        if entry.prs:
+            where += f"; pull requests {', '.join(entry.prs)}"
+        rows = "\n".join(f"- {row}" for row in entry.rows) or "- (no rows were carried)"
+        if report is None:
+            said = (
+                f"not supplied; read {entry.report_path} if it exists"
+                if entry.report_path
+                else "none"
+            )
+        else:
+            said = report[: request.stopped_report_chars]
+        return (
+            f"Continue lane {entry.lane} on ticket {ticket}. It ended {entry.outcome} at {entry.ended_at}, naming {named}; "
+            f"{where}.\n\nThe predecessor's last rows:\n{rows}\n\nThe predecessor's report ({entry.report_path or 'no path'}):\n"
+            f"{said}\n\nRule: {request.stopped_continue_rule}"
         )
 
     @staticmethod
