@@ -37,7 +37,7 @@ class HandlerTenantDelegationsRead:
     def __init__(
         self,
         *,
-        reader: ProtocolTenantDelegationProjectionReader | None,
+        reader: ProtocolTenantDelegationProjectionReader | None = None,
         clock: ProtocolClock | None = None,
     ) -> None:
         self._reader = reader
