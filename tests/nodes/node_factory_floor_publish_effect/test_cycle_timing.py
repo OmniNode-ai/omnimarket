@@ -74,19 +74,37 @@ def test_every_step_the_phases_and_the_cycle_carry_their_seconds(
 def test_the_served_status_and_the_heartbeat_name_the_seconds_and_the_slowest_step(
     tmp_path: Path,
 ) -> None:
-    _, evidence, status = _run(tmp_path)
+    result, evidence, status = _run(tmp_path)
     served = json.loads(status.read_text(encoding="utf-8"))
+    runtime = load_runtime()
     assert all(step["seconds"] > 0 for step in served["steps"])
     assert served["cycle_seconds_before_copy"] > 0
-    assert set(served["phase_seconds"]) == {"input_steps", "delegation"}
+    # The status served last names every phase, the after-publish steps, the slowest step and the cycle's total.
+    assert set(served["phase_seconds"]) == {
+        "input_steps",
+        "delegation",
+        "copy",
+        "history_prune",
+        "after_publish",
+    }
+    assert all(v > 0 for v in served["phase_seconds"].values())
+    assert [s["name"] for s in served["after_publish_steps"]] == [
+        s.name for s in runtime.after_publish_steps
+    ]
+    assert all(step["seconds"] > 0 for step in served["after_publish_steps"])
+    assert served["cycle_seconds"] == result.cycle_seconds
+    assert served["cycle_seconds"] >= sum(served["phase_seconds"].values())
+    assert served["cycle_seconds"] > served["cycle_seconds_before_copy"]
+    assert served["cycle_bound_seconds"] == runtime.cycle.bound_seconds
     beat = json.loads(evidence.read_text(encoding="utf-8"))
-    runtime = load_runtime()
     names = {s.name for s in runtime.steps} | {
         s.name for s in runtime.after_publish_steps
     }
     assert set(beat["step_seconds"]) == names
     assert beat["slowest_step"] in names
+    assert served["slowest_step"] == beat["slowest_step"]
     assert beat["step_seconds"][beat["slowest_step"]] == max(
         beat["step_seconds"].values()
     )
     assert beat["cycle_seconds"] > 0
+    assert beat["cycle_seconds"] == served["cycle_seconds"]

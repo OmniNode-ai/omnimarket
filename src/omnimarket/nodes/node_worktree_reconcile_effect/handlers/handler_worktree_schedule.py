@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunResult
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_schedule import (
     ModelWorktreeSchedule,
     ModelWorktreeScheduleOverlay,
@@ -24,6 +25,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_sched
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 MODULE = "omnimarket.nodes.node_worktree_reconcile_effect"
+DROPIN_NAME = "10-low-priority.conf"
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 
@@ -144,10 +146,29 @@ class HandlerWorktreeSchedule:
             f"OnUnitActiveSec={schedule.interval_seconds}s\nPersistent=true\n"
             f"Unit={schedule.unit_name}.service\n\n[Install]\nWantedBy=timers.target\n"
         )
+        resources = schedule.resources
+        dropin = (
+            "[Service]\n"
+            f"Nice={resources.nice}\n"
+            f"IOSchedulingClass={resources.io_scheduling_class}\n"
+            f"IOSchedulingPriority={resources.io_scheduling_priority}\n"
+            f"CPUWeight={resources.cpu_weight}\n"
+        )
+        if request.mode != "status":
+            # A unit that runs from a worktree dies when this node removes the tree: refuse before
+            # anything is written or returned, naming the path (OMN-22783).
+            refuse_worktree_roots(
+                {
+                    f"{schedule.unit_name}.service": service,
+                    f"{schedule.unit_name}.timer": timer,
+                    f"{schedule.unit_name}.service.d/{DROPIN_NAME}": dropin,
+                }
+            )
         result = ModelWorktreeScheduleResult(
             exit_code=0,
             service=service,
             timer=timer,
+            dropin=dropin,
             revision=head,
         )
         if request.mode == "render":
@@ -164,6 +185,10 @@ class HandlerWorktreeSchedule:
             state.mkdir(parents=True, exist_ok=True)
             (self.unit_directory / f"{schedule.unit_name}.service").write_text(service)
             (self.unit_directory / f"{schedule.unit_name}.timer").write_text(timer)
+            # The one drop-in the unit has: a hand-made override of the same name is replaced.
+            dropin_directory = self.unit_directory / f"{schedule.unit_name}.service.d"
+            dropin_directory.mkdir(exist_ok=True)
+            (dropin_directory / DROPIN_NAME).write_text(dropin)
             for argv in (
                 ["systemctl", "--user", "daemon-reload"],
                 [

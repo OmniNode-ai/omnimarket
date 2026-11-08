@@ -8,17 +8,34 @@ read attempt, which must exit 0, and the overlay's mutating attempt, which must 
 one of the channel's refusal words in what it printed. A mutation that exits 0 is ACCEPTED and fails
 the verdict; one that fails without a refusal word is INDETERMINATE and fails it too, so a dead
 network or a missing program never reads as a refusal. The receipt holds outcomes only.
+
+When the overlay declares an ``emission`` the probe runs under the floor's emission contract (OMN-22566): a start,
+then a success when every probed channel read and refused, or a typed failure. A mutation that goes through is
+``mutation_accepted`` and names its channels; a read that failed or a mutation that neither succeeded nor was
+refused by word is ``probe_inconclusive``; a probe that raises is ``probe_cannot_run``. All of them go to the
+floor's journal under one correlation id, where the receipt fold counts the chain for the overlay's piece.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Mapping
+from datetime import datetime
+from pathlib import Path
+
+from omnimarket.handlers.emission_sink import (
+    ChainEmitter,
+    JsonlEmissionSink,
+    ProtocolEmissionSink,
+)
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
 from ..models.model_read_only_principal import (
     EnumAttemptOutcome,
     EnumChannel,
     ModelChannelProbe,
     ModelChannelReceipt,
+    ModelProbeEmission,
     ModelProbeRequest,
     ModelProbeResult,
     ModelReadOnlyPrincipalOverlay,
@@ -27,8 +44,16 @@ from ..protocols.protocol_attempt_executor import (
     ModelAttemptRun,
     ProtocolAttemptExecutor,
 )
+from ..protocols.protocol_credential_resolver import ProtocolCredentialResolver
+from .adapter_memory_credential_resolver import MemoryCredentialResolver
 from .adapter_subprocess_attempt_executor import SubprocessAttemptExecutor
 from .handler_read_only_command_gate import load_overlay
+
+EMIT_NODE = "node_read_only_principal_effect:probe"
+FAILURE_MUTATION_ACCEPTED = "mutation_accepted"
+FAILURE_INCONCLUSIVE = "probe_inconclusive"
+FAILURE_CANNOT_RUN = "probe_cannot_run"
+FAILURE_INTERRUPTED = "interrupted"
 
 
 def read_outcome(run: ModelAttemptRun) -> EnumAttemptOutcome:
@@ -57,16 +82,104 @@ class HandlerReadOnlyPrincipalProbe:
         self,
         executor: ProtocolAttemptExecutor | None = None,
         overlay_source: Callable[[], ModelReadOnlyPrincipalOverlay] | None = None,
+        *,
+        sink: ProtocolEmissionSink | None = None,
+        clock: Callable[[], datetime] | None = None,
+        environ: Mapping[str, str] | None = None,
+        credential_resolver: ProtocolCredentialResolver | None = None,
     ) -> None:
+        self._credentials = (
+            credential_resolver
+            if credential_resolver is not None
+            else MemoryCredentialResolver()
+        )
         self._executor = (
             executor if executor is not None else SubprocessAttemptExecutor()
         )
         self._overlay_source = overlay_source or load_overlay
+        self._sink = sink
+        self._clock = clock
+        self._environ = environ
 
     def handle(self, request: ModelProbeRequest) -> ModelProbeResult:
         overlay = (
             request.overlay if request.overlay is not None else self._overlay_source()
         )
+        if not self._credentials.resolves(overlay.credential):
+            raise NodeOverlayError(
+                f"credential reference {overlay.credential.secret_ref} for lane "
+                f"{overlay.credential.lane} does not resolve in "
+                f"{overlay.credential.store.value}: store the principal's identity "
+                "there with `onex auth lane-login`, then probe"
+            )
+        chain = self._chain(overlay)
+        if chain is None:
+            return self._probe(overlay, request)
+        chain.start()
+        try:
+            result = self._probe(overlay, request)
+        except KeyboardInterrupt:
+            chain.failure(FAILURE_INTERRUPTED, "KeyboardInterrupt")
+            raise
+        except Exception as exc:
+            chain.failure(FAILURE_CANNOT_RUN, type(exc).__name__)
+            raise
+        self._conclude(chain, result)
+        return result
+
+    def _chain(self, overlay: ModelReadOnlyPrincipalOverlay) -> ChainEmitter | None:
+        emission = overlay.emission
+        if emission is None:
+            return None
+        return ChainEmitter(
+            self._sink or self._journal(emission),
+            node=EMIT_NODE,
+            piece=emission.piece,
+            clock=self._clock,
+        )
+
+    def _journal(self, emission: ModelProbeEmission) -> ProtocolEmissionSink:
+        env = os.environ if self._environ is None else self._environ
+        home = env.get(emission.home_env, "").strip()
+        if not home:
+            raise NodeOverlayError(
+                f"{emission.home_env} is not set (fail fast, no default): "
+                "the probe's emission journal is relative to it"
+            )
+        return JsonlEmissionSink(Path(home) / emission.journal_relpath)
+
+    @staticmethod
+    def _conclude(chain: ChainEmitter, result: ModelProbeResult) -> None:
+        accepted = [
+            r.channel.value
+            for r in result.receipts
+            if r.mutate == EnumAttemptOutcome.MUTATION_ACCEPTED
+        ]
+        if accepted:
+            chain.failure(
+                FAILURE_MUTATION_ACCEPTED,
+                "a mutation went through on: " + ", ".join(accepted),
+            )
+            return
+        unproven = [
+            f"{r.channel.value} read={r.read.value} mutate={r.mutate.value}"
+            for r in result.receipts
+            if not r.passed
+        ]
+        if unproven:
+            chain.failure(FAILURE_INCONCLUSIVE, "; ".join(unproven))
+            return
+        chain.success(
+            {
+                "channels": len(result.receipts),
+                "reads_ok": len(result.receipts),
+                "mutations_refused": len(result.receipts),
+            }
+        )
+
+    def _probe(
+        self, overlay: ModelReadOnlyPrincipalOverlay, request: ModelProbeRequest
+    ) -> ModelProbeResult:
         chosen = set(request.channels) or set(EnumChannel)
         receipts = tuple(
             self._channel(probe) for probe in overlay.probes if probe.channel in chosen

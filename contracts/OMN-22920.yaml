@@ -1,0 +1,67 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22920
+title: "A daily synthetic landing canary lands one test pull request inside an hour while fewer than 10 wait, and a planted stall turns piece 9 NOT WORKING"
+summary: >-
+  New node node_landing_canary_effect (rebuild piece 9). Once a day it opens one test pull request in a test
+  repository, waits for the landing tick to merge it, records the elapsed time and appends one piece-9 reading row.
+  WORKING when it merged inside the overlay's bar (an hour), NOT_WORKING when it merged late, was closed unmerged or
+  was still open when the bar ran out, UNKNOWN with a typed reason when it could not be opened or read. The test
+  repository, the bar and every other setting are overlay values. The node ships its own daily schedule, installed
+  from the registry root and refused from a worktree, and the piece 9 entry for the reading writer's overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22920-landing-canary
+    statement: The landing goal is read by a daily synthetic canary while fewer than 10 eligible pull requests wait, with a golden and an error chain event test and a failing control.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a canary creates one test pull request in a test repository, the landing tick merges it, and the node records the elapsed time -- falsifier: uv run pytest tests/unit/nodes/node_landing_canary_effect/test_canary_lands.py -q'
+      - id: AC2
+        statement: 'AC2: a planted stall (the landing tick disabled in the test) leaves the canary unmerged past an hour and piece 9 reads NOT WORKING -- falsifier: uv run pytest tests/unit/nodes/node_landing_canary_effect/test_canary_stall.py -q'
+      - id: AC3
+        statement: 'AC3: the canary runs once a day from a lab schedule installed from the registry root and never from a worktree -- falsifier: uv run pytest tests/unit/nodes/node_landing_canary_effect/test_schedule_root.py -q'
+evidence_requirements:
+  - kind: tests
+    description: The lands, stall and schedule-root tests, the golden and error chain event tests and the scm backend tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22920-canary-lands
+    description: The canary opens one test pull request, the in-memory landing tick merges it, the elapsed time is recorded on the row; with the verdict logic reverted the test fails.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_canary_lands.py -q --no-cov
+        cwd: .
+  - id: dod-omn22920-canary-stall
+    description: With the landing tick disabled the canary is unmerged past an hour and piece 9 reads NOT WORKING; the named control with the tick running turns the same assertion red, and so do the golden chain assertion and the stall test with the verdict logic reverted.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_canary_stall.py tests/unit/nodes/node_landing_canary_effect/test_canary_chain_events.py -q --no-cov
+        cwd: .
+  - id: dod-omn22920-schedule-root
+    description: The daily unit renders from the registry root and the install is refused from a worktree root, an overlay root inside a worktree and a relative root; with the guard removed the tests fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_schedule_root.py -q --no-cov
+        cwd: .
+  - id: dod-omn22920-canary-integration-proof
+    description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the lab install readback is in the pull request's Lab line.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22920 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect -q --no-cov'
+        cwd: .

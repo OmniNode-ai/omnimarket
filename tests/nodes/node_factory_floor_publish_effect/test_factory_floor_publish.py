@@ -38,9 +38,11 @@ from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_pu
 
 pytestmark = pytest.mark.unit
 
-# The only links the page may carry: the empty icon and the vendored theme files published beside it.
+# The only links the page may carry: the site's icons and the vendored theme files published beside it.
 _ICON_AND_THEME_LINKS = [
-    '<link rel="icon" href="data:,">',
+    '<link rel="icon" type="image/svg+xml" href="favicon.svg">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">',
+    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
     '<link rel="stylesheet" href="onex.theme.light.css">',
     '<link rel="stylesheet" href="onex.theme.dark.css">',
     '<link rel="stylesheet" href="onex.theme.warm.css">',
@@ -186,8 +188,11 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     site = tmp_path / "site"
     assert sorted(p.name for p in site.iterdir()) == [
+        "apple-touch-icon.png",
         "detail.html",
         "factory-floor.json",
+        "favicon-32.png",
+        "favicon.svg",
         "floor",
         "index.html",
         "onex.theme.dark.css",
@@ -196,6 +201,10 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
+    for icon in ("favicon.svg", "favicon-32.png", "apple-touch-icon.png"):
+        assert (site / icon).read_bytes() == (
+            NODE_DIR / "page/icons" / icon
+        ).read_bytes()
     assert (
         json.loads((site / "factory-floor.json").read_text())["generated_at"]
         == RECORD["generated_at"]
@@ -213,13 +222,17 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
         "detail.html",
         "index.html",
         "publish-status.json",
         "factory-floor.json",
     )
-    # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
+    # The snapshot goes first and the live record last of the copies; the listing for pruning follows, and the final
+    # status write (OMN-22699) closes the run.
     assert [
         c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
     ] == [
@@ -231,9 +244,14 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         False,
         False,
         False,
+        False,
+        False,
+        False,
         True,
         False,
+        False,
     ]
+    assert "publish-status.json" in ssh.calls[-1][0][-1]
     evidence = json.loads((tmp_path / "state/last-run.json").read_text())
     assert evidence["record_generated_at"] == RECORD["generated_at"]
     assert "ssh_target" not in json.dumps(evidence)
@@ -545,6 +563,9 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "onex.theme.light.css",
         "onex.theme.dark.css",
         "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
         "detail.html",
         "index.html",
@@ -663,8 +684,11 @@ def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", PAGE, re.IGNORECASE
     )
-    assert PAGE.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in PAGE
+    assert re.findall(r"<link[^>]*>", PAGE) == [
+        '<link rel="icon" type="image/svg+xml" href="../favicon.svg">',
+        '<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">',
+        '<link rel="apple-touch-icon" href="../apple-touch-icon.png">',
+    ]
     assert "src=" not in PAGE
 
 
@@ -1805,11 +1829,15 @@ def test_canary_is_published_after_the_last_file_of_the_page_is_served(
     canary = _canary_calls(ssh)
     assert len(canary) == 1
     served = [
-        index for index, (argv, _stdin) in enumerate(ssh.calls) if argv[0] == "ssh"
+        index
+        for index, (argv, _stdin) in enumerate(ssh.calls)
+        if argv[0] == "ssh" and index != len(ssh.calls) - 1
     ]
     assert served
     assert max(served) < canary[0]
-    assert canary[0] == len(ssh.calls) - 1  # nothing follows it
+    # Only the final status write follows it (OMN-22699): it names the canary step's seconds.
+    assert canary[0] == len(ssh.calls) - 2
+    assert "publish-status.json" in ssh.calls[-1][0][-1]
 
 
 def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
