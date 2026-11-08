@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -121,11 +121,15 @@ class _FakeDb:
         self.pool = _Pool(connection)
 
 
+class _FakeDbWriter(WorkLedgerProjectionWriter):
+    def __init__(self, connection: _FakeConnection) -> None:
+        super().__init__()
+        self._db = cast("Any", _FakeDb(connection))
+
+
 def _writer() -> tuple[WorkLedgerProjectionWriter, _FakeConnection]:
     connection = _FakeConnection()
-    writer = WorkLedgerProjectionWriter()
-    writer._db = _FakeDb(connection)  # type: ignore[assignment]  # noqa: SLF001
-    return writer, connection
+    return _FakeDbWriter(connection), connection
 
 
 def _meta(topic: str) -> MessageMeta:
