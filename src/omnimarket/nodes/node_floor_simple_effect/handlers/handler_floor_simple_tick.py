@@ -161,6 +161,8 @@ class ModelSourcePaths(BaseModel):
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
+    broker_lag_runs_relpath: str
+    broker_lag_condition: str
     overlay_store_relpath: str
     deploy_agent_relpath: str
     readings_relpath: str
@@ -760,7 +762,12 @@ class HandlerFloorSimpleTick:
                 read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
-                read_broker_lag(home / rt.sources.lab_alarm_runs_relpath, lab_ov),
+                read_broker_lag(
+                    home / rt.sources.lab_alarm_runs_relpath,
+                    lab_ov,
+                    home / rt.sources.broker_lag_runs_relpath,
+                    rt.sources.broker_lag_condition,
+                ),
             ]
             if any(s.kind == "overlay_store" for s in lab_ov.sources):
                 overlay_store = read_overlay_store(
