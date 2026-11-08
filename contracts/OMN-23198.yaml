@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23198
+title: dod-verify removes the virtual environment it builds for a run when the run ends, so lab hosts do not fill with old evidence venvs
+summary: >-
+  A dod-verify run built a lock-exact environment for each uv project a behaviour check named, under DOD_VERIFY_HERMETIC_VENV_ROOT (default ~/.cache/onex/dod-verify-venvs), keyed by project path and uv.lock content, and never removed it. On 2026-11-08 h053 held 34 of them (about 20 GB) and its root filesystem was at 8.1 GB free. The collector now gives each run its own environment path, records every directory it starts building, and removes them in close(), which the handler calls in a finally block, so success, failure, timeout of a check and an exception out of the collector all leave none behind. A directory a peer run built is never touched. Pre-existing environments from older runs are not removed by this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23198-run-removes-its-venv
+    statement: >-
+      A dod-verify run removes the virtual environment it created when it ends.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a dod-verify run removes the virtual environment it created when it ends, on success, failure or timeout -- falsifier: a test that runs dod-verify to each end state and counts its venv directories after"
+evidence_requirements:
+  - kind: tests
+    description: The environment cleanup tests and the hermetic environment tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py tests/unit/nodes/node_dod_verify/test_omn_16846_hermetic_behaviour_check_env.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23198-ac1-venv-removed-at-each-end-state
+    description: >-
+      The real handler is run to success, a failing check, a check that times out and a collector that raises, with a real uv sync building the environment each time, and zero environment directories remain. On dev the success case leaves one (assert 1 == 0).
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23198-hermetic-env-tests
+    description: >-
+      The existing hermetic environment tests still pass beside the cleanup, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_16846_hermetic_behaviour_check_env.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn23198-venv-cleanup-integration-proof
+    description: >-
+      The pushed head ran the environment cleanup tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-23198-1700 -- uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py -q -n 0 --no-cov
+        cwd: .
