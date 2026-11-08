@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_alarm
+version: 1.0.0
+description: The lab alarm as a node - the broker lag condition derives the runtime's live consumer groups from the contracts the running image serves, then applies the growth rule.
+pack: operator_tooling
+node_role: effect
+display_name: Lab Alarm
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lab_alarm: omnimarket.nodes.node_lab_alarm
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- aiokafka>=0.13.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- alarm
+- broker-lag

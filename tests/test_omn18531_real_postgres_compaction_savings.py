@@ -25,6 +25,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_saving
     COMPACTION_MOD_MODEL,
     COMPACTION_TASK_TYPE,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer import (
+    SavingsProjectionWriter,
+)
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from tests.test_omn20303_real_postgres_savings_one_row_per_run import (
@@ -107,3 +110,40 @@ async def test_real_postgres_mod_answered_compaction_is_a_savings_row() -> None:
     assert len(surfaced) == 1
     assert Decimal(str(surfaced[0]["cumulative_savings_usd"])) == Decimal("0.2")
     assert surfaced[0]["session_count"] == 1
+
+
+@pytest.mark.integration
+async def test_real_postgres_ignored_hook_event_is_lossless_to_skip() -> None:
+    """OMN-23043: the writer's early skip of a non-PostCompact hook event loses nothing.
+
+    The runtime writer passes such an event over before it opens any binding. The
+    real runner is the reference: it returns True for the same event and leaves
+    ``savings_estimates`` untouched, so the skip is its own result reached sooner.
+    """
+    if not os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD")
+    ):
+        pytest.skip("no INTEGRATION_POSTGRES_PASSWORD -- skipping OMN-23043 test")
+    ignored = _post_compact(summary_length=0)
+    ignored["hook_event_name"] = "PreToolUse"
+    meta = MessageMeta(
+        partition=0,
+        offset=0,
+        fallback_id=str(ignored["event_id"]),
+        topic=HOOK_EVENT_TOPIC,
+    )
+    async with _provisioned_runner() as (runner, admin_conn):
+        assert await runner.project_event(HOOK_EVENT_TOPIC, dict(ignored), meta)
+        rows_after_runner = await admin_conn.fetch("SELECT 1 FROM savings_estimates")
+        skipped = SavingsProjectionWriter().handle(
+            {
+                "_topic": HOOK_EVENT_TOPIC,
+                "_partition": 0,
+                "_offset": 0,
+                **ignored,
+            }
+        )
+        rows_after_writer = await admin_conn.fetch("SELECT 1 FROM savings_estimates")
+
+    assert skipped == {"projected": True}
+    assert rows_after_runner == [] == rows_after_writer
