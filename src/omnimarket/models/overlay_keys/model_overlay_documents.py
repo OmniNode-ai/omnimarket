@@ -83,6 +83,13 @@ VolumesRoot = Annotated[
     AfterValidator(_volumes_root),
 ]
 
+# The address of a host's iLO management processor (OMN-22870): a bare IPv4, IPv6 or DNS name, as the iLO setup verb of
+# ``node_ilo_redfish_effect`` takes it. No scheme, path, port, space or leading dash; the port and the pinned certificate live
+# in that node's own overlay.
+IloAddress = Annotated[
+    str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -161,6 +168,8 @@ class ModelLabHostRow(_ModelOverlayBase):
         ]
         | None
     ) = None
+    # The address of the host's iLO management processor (OMN-22870), carried by the hosts that have one.
+    ilo_address: IloAddress | None = None
     # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
     volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
