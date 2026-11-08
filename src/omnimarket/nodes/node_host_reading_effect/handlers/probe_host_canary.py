@@ -8,7 +8,10 @@ result carrying the nonce it was sent and the host's free disk. The reading is W
 every pooled host ended typed (a typed busy refusal counts), every disk read is over the floor and,
 where the overlay names an advertisement source, every pooled host's newest capacity advertisement
 is fresh.
-A parked host is listed with the table's reason and never fails it.
+A parked host is listed with the table's reason and never fails it: a host the table marks out of
+rotation, and a host the route's pool read refuses for a reason of the table or the load bar (it takes
+no unit of the canary's kind, or it is over the bar), which ends ``parked`` with the refusal in the
+``refused`` cell. A refusal for any other reason stays a typed busy and is named there too.
 
 What it never does (the OMN-22538 pool-read lesson): a canary cut at its deadline, a host the pool
 read could not reach, or a host the pool read never named (a busy exit with no line for the host)
@@ -66,6 +69,7 @@ CANARY_SOURCE = (
 )
 
 _SLOTS = re.compile(r"\bslots=(\d+)")
+_REFUSAL_TAIL = re.compile(r"\s+load/core=.*$")
 
 
 class CanaryRouteError(ValueError):
@@ -121,6 +125,28 @@ def _pool_line(text: str, host: str, marker: str) -> str | None:
     return next((line for line in text.splitlines() if needle in line), None)
 
 
+def _refusal_token(text: str, host: str, markers: tuple[str, ...]) -> str | None:
+    """The first pool line that refuses this host for a listed reason, as one cell-safe token."""
+    needle = f"{host}: "
+    for line in text.splitlines():
+        _, found, tail = line.partition(needle)
+        if not found:
+            continue
+        if any(tail.startswith(marker) for marker in markers):
+            return reason_token(_REFUSAL_TAIL.sub("", tail))
+    return None
+
+
+def _first_refusal_token(text: str, host: str, admitted_marker: str) -> str:
+    """The reason the pool read gave this host in its first line that is not an admission."""
+    needle = f"{host}: "
+    for line in text.splitlines():
+        _, found, tail = line.partition(needle)
+        if found and tail.strip() and not tail.startswith(admitted_marker):
+            return reason_token(_REFUSAL_TAIL.sub("", tail))
+    return ""
+
+
 def _pool_named(text: str, host: str) -> bool:
     """The route's pool read gave this host a line of its own (admitted or refused)."""
     needle = f"{host}: "
@@ -143,12 +169,22 @@ def classify(
         line.startswith(settings.wrapper_end_marker) for line in text.splitlines()
     )
     token = reason_token(host)
+    refusal = ""
     if run.timed_out:
         ending = EnumCanaryEnding.TIMED_OUT
     elif _pool_line(text, host, settings.pool_unreadable_marker) is not None:
         ending = EnumCanaryEnding.UNREACHABLE
+    elif run.exit_code in settings.busy_exit_codes and (
+        parked := _refusal_token(text, host, settings.pool_parked_markers)
+    ):
+        # The host table or the load bar keeps this host out: it is listed as parked with the
+        # refusal and never fails the reading (a canary that fails there reads the host, not the
+        # pipeline). Checked before busy, since the pool read may also have admitted the host.
+        ending = EnumCanaryEnding.PARKED
+        refusal = parked
     elif run.exit_code in settings.busy_exit_codes and _pool_named(text, host):
         ending = EnumCanaryEnding.BUSY
+        refusal = _first_refusal_token(text, host, settings.pool_admitted_marker)
     elif run.exit_code in settings.busy_exit_codes:
         # The pool read never named the host (no advertisement reached it): the refusal is not
         # the host's own busy answer, so the host failed, never free or full capacity.
@@ -165,7 +201,7 @@ def classify(
             failures = (f"disk-under-floor-{token}",)
         else:
             failures = ()
-    elif ending is EnumCanaryEnding.BUSY:
+    elif ending in (EnumCanaryEnding.BUSY, EnumCanaryEnding.PARKED):
         failures = ()
     else:
         failures = (f"canary-{ending.value}-{token}",)
@@ -174,6 +210,7 @@ def classify(
         ending=ending,
         free_disk_gb=disk if ending is EnumCanaryEnding.TYPED else None,
         slots=slots,
+        refusal=refusal,
         failures=failures,
     )
 
@@ -311,12 +348,14 @@ def read_canary(
     def by(ending: EnumCanaryEnding) -> str:
         return _names([r.host for r in readings if r.ending is ending])
 
+    parked_by_run = [r.host for r in readings if r.ending is EnumCanaryEnding.PARKED]
     cells = {
         "pooled": _names([r.host for r in readings]),
         "typed": by(EnumCanaryEnding.TYPED),
         "busy": by(EnumCanaryEnding.BUSY),
         "failed_hosts": _names(failed_hosts),
-        "parked": _names(parked),
+        "parked": _names([*parked, *parked_by_run]),
+        "refused": _names([f"{r.host}:{r.refusal}" for r in readings if r.refusal]),
         "free_disk_gb": _names(
             [
                 f"{r.host}:{r.free_disk_gb:g}"

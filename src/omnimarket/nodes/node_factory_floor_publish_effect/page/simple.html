@@ -96,6 +96,17 @@ async function load(){
   } catch (e) { failure = String(e.message || e); }
   draw();
 }
+// The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
+// A line older than its own limit is drawn red whatever it says; a record with no line says so.
+const HEALTH_DOT = {"WORKING": "green", "NOT WORKING": "red", "UNKNOWN": "amber"};
+function healthRow(hl){
+  if (!hl) return `<div class="row" id="health-line"><span class="dot red"></span><div><b>Customer health line: this record carries none.</b><small>The record was written before the line existed, or the line was not computed.</small></div></div>`;
+  const hAge = Math.max(0, Math.floor((Date.now() - Date.parse(hl.generated_at)) / 1000));
+  const stale = hAge > hl.max_age_s;
+  const dot = stale ? "red" : (HEALTH_DOT[hl.state] || "red");
+  const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
+  return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
+}
 function draw(){
   const app = document.getElementById("app");
   if (!doc) { app.innerHTML = `<div class="frozen">The floor record cannot be read (${esc(failure)}). Nothing below can be trusted.</div><div class="more"><a href="detail.html">Details: lines, machines, shipping, delegation</a></div>`; return; }
@@ -107,6 +118,7 @@ function draw(){
   if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
   else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
+  h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
   const open = doc.alarms.filter(a => a.delivery !== "delivered");
   if (open.length) h += `<div class="row"><span class="dot red"></span><div><b>${open.length} lab alarms have no delivery receipt</b><small>${open.some(a => a.delivery === "undelivered") ? "No channel has proven delivery; it needs you." : "Waiting for a delivery receipt."} Oldest raised ${ago(Math.max(...open.map(a => Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))))}.</small></div></div>`;
@@ -127,6 +139,7 @@ function draw(){
   for (const p of doc.pieces) {
     const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
     h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+    for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;

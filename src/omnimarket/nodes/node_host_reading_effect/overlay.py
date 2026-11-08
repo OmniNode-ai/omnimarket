@@ -97,6 +97,10 @@ class ModelHostCanaryProbeSettings(BaseModel):
     pool_admitted_marker: str = Field(min_length=1)
     #: The text by which the route's pool read says a host could not be read.
     pool_unreadable_marker: str = Field(min_length=1)
+    #: Texts by which the route's pool read refuses a host for a reason of the host table or the
+    #: load bar (out of rotation, job kinds, over the bar, hot, short of memory), after ``<host>: ``.
+    #: Such a host ends parked: listed with the refusal, never a failed host. Empty parks none.
+    pool_parked_markers: tuple[str, ...]
     #: Paths read on the host for free disk (``~`` expands there); the smallest counts.
     disk_paths: tuple[str, ...] = Field(min_length=1)
     disk_floor_gb: float = Field(ge=0)

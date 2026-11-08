@@ -26,4 +26,5 @@ source:
       - run_id: 1001
         run_event: push
         head_is_fork: false
+        repository_private: true
         workflow_ref: .github/workflows/build.yml
