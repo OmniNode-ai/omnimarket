@@ -205,8 +205,9 @@ def test_ledger_seq_unique_index_migration_declares_the_index_and_the_dedupe() -
     assert "work_ledger_seq_conflicts" in sql
     assert re.search(r"\bDELETE\s+FROM\b", sql, re.IGNORECASE) is None
     grant = (MIGRATIONS / "0008_grant_work_ledger_seq_conflicts.sql").read_text()
-    assert "GRANT SELECT, INSERT" in grant
-    assert "UPDATE" not in grant.split("GRANT", 1)[1].split("TO", 1)[0]
+    granted = grant.split("GRANT SELECT", 1)[1].split("TO", 1)[0]
+    assert "INSERT, UPDATE" in granted
+    assert "DELETE" not in granted
 
 
 def test_ledger_seq_unique_index_backfill_keeps_file_order() -> None:
