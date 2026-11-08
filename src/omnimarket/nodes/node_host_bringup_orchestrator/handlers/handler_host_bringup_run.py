@@ -26,6 +26,7 @@ The five conditions of the OMN-21882 design-review verdict, each held here:
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Mapping
 from functools import partial
 
@@ -102,6 +103,16 @@ class HandlerHostBringupRun:
 
     def handle(self, request: ModelHostBringupRunRequest) -> ModelHostBringupRunResult:
         by_name = {t.name: t for t in request.graph.targets}
+        shape_error = self._graph_shape_error(request.graph, by_name)
+        if shape_error is not None:
+            return ModelHostBringupRunResult(
+                run_id=request.run_id,
+                host=request.host,
+                fence=0,
+                outcome=EnumRunOutcome.USAGE,
+                exit_code=EXIT_CODE[EnumRunOutcome.USAGE],
+                detail=shape_error,
+            )
         if request.top_target not in by_name:
             return ModelHostBringupRunResult(
                 run_id=request.run_id,
@@ -188,7 +199,7 @@ class HandlerHostBringupRun:
                 )
             acting = [s for s in plan.steps if s.decision is EnumStepDecision.ACT]
             if not acting:
-                return finish(EnumRunOutcome.COMPLETED)
+                return self._complete_if_held(request, fence, finish)
             remaining = tuple(s.target for s in acting)
             target = by_name[acting[0].target]
 
@@ -214,7 +225,7 @@ class HandlerHostBringupRun:
 
             start = self._clock.time()
             act: Callable[[], ModelActionResult] = partial(
-                self._actuator.act, request.host, target, fence
+                self._act_bounded, request, target, fence
             )
             held, result = self._lease.fenced(
                 request.host, fence, start + request.lease_grace_s, act
@@ -253,10 +264,91 @@ class HandlerHostBringupRun:
                     detail=f"{target.name} action ran and its check reads {after.value}",
                 )
 
+        # The last pass's action has been probed ok but not read in a pass of its own: read once more before giving up.
+        reads = self._read_pass(request.host, graph)
+        closing = self._planner.handle(
+            ModelHostBringupPlanRequest(
+                graph=graph,
+                observations=tuple(
+                    ModelCheckObservation(target=n, state=s)
+                    for n, s in sorted(reads.items())
+                ),
+            )
+        )
+        if closing.status is not EnumPlanStatus.REFUSED and not any(
+            s.decision is EnumStepDecision.ACT for s in closing.steps
+        ):
+            return self._complete_if_held(request, fence, finish)
         return finish(
             EnumRunOutcome.FAILED,
             detail=f"max_passes {request.max_passes} reached with targets still acting",
         )
+
+    def _complete_if_held(
+        self,
+        request: ModelHostBringupRunRequest,
+        fence: int,
+        finish: Callable[..., ModelHostBringupRunResult],
+    ) -> ModelHostBringupRunResult:
+        """COMPLETED only while this run still holds the lease: a replaced fence ends the run REFUSED_STALE."""
+        held, _ = self._lease.fenced(
+            request.host,
+            fence,
+            self._clock.time() + request.lease_grace_s,
+            lambda: None,
+        )
+        if not held:
+            return finish(
+                EnumRunOutcome.REFUSED_STALE,
+                detail=f"fence {fence} replaced before the run completed",
+            )
+        return finish(EnumRunOutcome.COMPLETED)
+
+    def _act_bounded(
+        self,
+        request: ModelHostBringupRunRequest,
+        target: ModelBringupTarget,
+        fence: int,
+    ) -> ModelActionResult:
+        """Run the actuator on a daemon thread; one that does not return inside ``action_timeout_s`` is a failed action."""
+        box: dict[str, ModelActionResult | BaseException] = {}
+
+        def work() -> None:
+            try:
+                box["result"] = self._actuator.act(request.host, target, fence)
+            except (
+                BaseException
+            ) as error:  # carried out of the thread and raised in the caller
+                box["error"] = error
+
+        worker = threading.Thread(target=work, name="host-bringup-act", daemon=True)
+        worker.start()
+        worker.join(request.action_timeout_s)
+        if worker.is_alive():
+            return ModelActionResult(
+                ok=False,
+                detail=f"{target.name} action did not return inside {request.action_timeout_s} s",
+            )
+        outcome = box.get("error") or box["result"]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    @staticmethod
+    def _graph_shape_error(
+        graph: ModelBringupGraph, by_name: Mapping[str, ModelBringupTarget]
+    ) -> str | None:
+        """Why the declared graph cannot be run as declared, or None. Judged on the request's own targets, before any closure."""
+        names = [t.name for t in graph.targets]
+        duplicates = sorted({n for n in names if names.count(n) > 1})
+        if duplicates:
+            return f"target {', '.join(duplicates)} is declared more than once"
+        undeclared = sorted(
+            {n for t in graph.targets for n in t.needs if n not in by_name}
+        )
+        if undeclared:
+            return f"a target needs {', '.join(undeclared)}, which names no declared target"
+        return None
 
     def _read_pass(
         self, host: str, graph: ModelBringupGraph
@@ -300,7 +392,10 @@ class HandlerHostBringupRun:
                 return None
             if self._clock.time() >= deadline:
                 return EnumRunOutcome.WAITING, line
-            self._clock.sleep(request.poll_interval_s)
+            # Never sleep past the deadline: a reading after it must not be accepted as inside the timeout.
+            self._clock.sleep(
+                max(0, min(request.poll_interval_s, deadline - self._clock.time()))
+            )
             held, _ = self._lease.fenced(
                 request.host,
                 fence,

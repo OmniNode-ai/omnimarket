@@ -101,6 +101,16 @@ class HandlerHostDeclarationDerive:
         want = {_host(r): r for r in want_rows}
         have = {_host(r): r for r in have_rows}
         out: list[ModelHostCopyDifference] = []
+        # A copy holding one host twice is a difference of its own: the dict above keeps only the last row.
+        have_names = [_host(r) for r in have_rows]
+        for host in sorted({n for n in have_names if have_names.count(n) > 1}):
+            out.append(
+                ModelHostCopyDifference(
+                    surface=surface,
+                    host=host,
+                    kind=EnumCopyDifferenceKind.DUPLICATE_HOST,
+                )
+            )
         for host in sorted(set(want) | set(have)):
             if host not in have:
                 out.append(

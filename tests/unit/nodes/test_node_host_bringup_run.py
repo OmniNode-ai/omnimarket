@@ -31,7 +31,10 @@ from omnimarket.nodes.node_host_bringup_orchestrator.models.model_host_bringup_r
 from omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan import (
     load_bringup_graph,
 )
-from omnimarket.nodes.node_host_bringup_plan_compute.models import ModelBringupGraph
+from omnimarket.nodes.node_host_bringup_plan_compute.models import (
+    EnumBringupCheckKind,
+    ModelBringupGraph,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -306,3 +309,104 @@ def test_committed_graph_flips_the_host_row_last_and_reinstalls_units() -> None:
     assert {"host-units", "lab-work-serve", "declared"} <= set(host.acts)
     assert "storage-up" not in host.acts
     assert "data-moved" not in host.acts
+
+
+# ---- OMN-21899 review findings: fenced completion, a closing pass, a wait that ends at its deadline, a declared graph
+
+
+def test_completed_run_whose_fence_was_replaced_is_refused_stale() -> None:
+    """Break: another run takes the lease while this run reads, then every target reads ok. COMPLETED needs the fence."""
+    host, lease, bus, clock = _world(satisfied=_ALL)
+    original_read = host.read
+    taken: list[int] = []
+
+    def read_then_lose_the_lease(host_name, target):  # type: ignore[no-untyped-def]
+        if not taken:
+            taken.append(lease.grant("hfixture", "run-other", clock.time() + 30).fence)
+        return original_read(host_name, target)
+
+    host.read = read_then_lose_the_lease  # type: ignore[method-assign]
+    result = _handler(host, lease, bus, clock).handle(_request())
+
+    assert result.outcome is EnumRunOutcome.REFUSED_STALE
+    assert [t.outcome for t in bus.terminals] == [EnumRunOutcome.REFUSED_STALE]
+
+
+def test_the_last_pass_action_that_reads_ok_completes_the_run() -> None:
+    """With max_passes equal to the actions the host needs, the run is COMPLETED, not 'max_passes reached'."""
+    host, lease, bus, clock = _world()
+    needed = len(_handler(*_world()).handle(_request()).steps)
+    result = _handler(host, lease, bus, clock).handle(_request(max_passes=needed))
+
+    assert result.outcome is EnumRunOutcome.COMPLETED, result.detail
+    assert result.exit_code == 0
+
+
+def test_a_person_step_that_lands_after_the_wait_deadline_is_not_accepted() -> None:
+    """wait_timeout_s=2 with poll_interval_s=5 and a step that lands at 5 s: the wait ends at 2 s as WAITING."""
+    host, lease, bus, clock = _world(satisfied=())
+    host.person_lands_after_s["operator_sudo"] = 5
+    result = _handler(host, lease, bus, clock).handle(
+        _request(wait_timeout_s=2, poll_interval_s=5)
+    )
+
+    assert result.outcome is EnumRunOutcome.WAITING
+    assert result.exit_code == 75
+    assert "operator_sudo" not in host.satisfied
+
+
+def test_a_graph_that_declares_a_target_twice_is_refused_not_collapsed() -> None:
+    graph = _graph()
+    doubled = graph.model_copy(update={"targets": (*graph.targets, graph.targets[0])})
+    host, lease, bus, clock = _world()
+    result = _handler(host, lease, bus, clock).handle(_request(graph=doubled))
+
+    assert result.outcome is EnumRunOutcome.USAGE
+    assert graph.targets[0].name in result.detail
+    assert host.acts == []
+
+
+def test_a_target_that_needs_an_undeclared_name_is_refused_not_a_key_error() -> None:
+    graph = _graph()
+    top = graph.targets[-1]
+    broken = top.model_copy(
+        update={
+            "needs": ("not_declared",),
+            "check": top.check.model_copy(
+                update={"kind": EnumBringupCheckKind.AGGREGATE}
+            ),
+        }
+    )
+    bad = graph.model_copy(update={"targets": (*graph.targets[:-1], broken)})
+    host, lease, bus, clock = _world()
+    result = _handler(host, lease, bus, clock).handle(_request(graph=bad))
+
+    assert result.outcome is EnumRunOutcome.USAGE
+    assert "not_declared" in result.detail
+    assert host.acts == []
+
+
+def test_an_action_that_does_not_return_inside_action_timeout_is_a_failed_action() -> (
+    None
+):
+    """Break: the actuator of ``os_packages`` blocks past ``action_timeout_s``; the run fails that target and says why."""
+    import threading
+
+    release = threading.Event()
+    host, lease, bus, clock = _world()
+    original_act = host.act
+
+    def blocking_act(host_name, target, fence):  # type: ignore[no-untyped-def]
+        if target.name == "os_packages":
+            release.wait(timeout=10)
+        return original_act(host_name, target, fence)
+
+    host.act = blocking_act  # type: ignore[method-assign]
+    try:
+        result = _handler(host, lease, bus, clock).handle(_request(action_timeout_s=1))
+    finally:
+        release.set()
+
+    assert result.outcome is EnumRunOutcome.FAILED
+    assert result.failed_target == "os_packages"
+    assert "did not return inside 1 s" in result.detail

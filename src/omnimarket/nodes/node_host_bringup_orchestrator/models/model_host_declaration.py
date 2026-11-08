@@ -27,6 +27,7 @@ class EnumCopyDifferenceKind(StrEnum):
     MISSING_FIELD = "missing_field"
     SURPLUS_FIELD = "surplus_field"
     VALUE_DIFFERS = "value_differs"
+    DUPLICATE_HOST = "duplicate_host"
 
 
 class ModelHostSurfaceSpec(_Frozen):

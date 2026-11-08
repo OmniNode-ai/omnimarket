@@ -149,3 +149,17 @@ def test_a_copy_of_an_undeclared_surface_is_refused() -> None:
 
     assert result.refusals
     assert "handmade" in result.refusals[0]
+
+
+def test_copy_holding_one_host_twice_names_the_duplicate_even_when_the_last_row_matches() -> (
+    None
+):
+    """Break: a stale first row of ``ha`` beside a correct last row; the last row alone matches the derivation."""
+    derived = _derive().derived
+    stale = {"name": "ha", "target": "ha", "cap": 1}
+    copies = {**derived, "packaged": (stale, *derived["packaged"])}
+    result = _derive(copies=copies)
+
+    assert not result.in_sync
+    named = {(d.surface, d.host, d.kind) for d in result.differences}
+    assert ("packaged", "ha", EnumCopyDifferenceKind.DUPLICATE_HOST) in named
