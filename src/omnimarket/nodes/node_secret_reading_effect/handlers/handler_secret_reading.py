@@ -235,6 +235,7 @@ class HandlerSecretReading:
             f"host={self._host}",
             f"piece={publish.piece}",
             f"tag={'drill' if publish.drill else 'operational'}",
+            f"drill={'yes' if publish.drill else 'no'}",
             f"verdict={result.verdict.value}",
             f"outcome={result.outcome.value}",
             f"reason={','.join(result.reasons) or 'none'}",
