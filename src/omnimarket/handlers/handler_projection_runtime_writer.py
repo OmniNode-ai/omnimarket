@@ -52,12 +52,23 @@ class RuntimeProjectionWriter:
                 )
             ),
         )
+        if self.ignores_delivery(topic, data):
+            return {"projected": True}
         projected = asyncio.run(
             self.runner_type().project_runtime_event(
                 topic, self.event_payload(data), meta
             )
         )
         return {"projected": projected}
+
+    def ignores_delivery(self, topic: str, data: dict[str, Any]) -> bool:
+        """Return True for a delivery the projection passes over by design.
+
+        A subclass skips here rather than overriding ``handle``, so the source
+        coordinates are still read in one place, and the skip happens before any
+        runner or workload binding is set up.
+        """
+        return False
 
     def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return the payload ``project_event`` receives, unchanged by default.

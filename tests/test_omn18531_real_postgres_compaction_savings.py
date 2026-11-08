@@ -116,7 +116,8 @@ async def test_real_postgres_mod_answered_compaction_is_a_savings_row() -> None:
 async def test_real_postgres_ignored_hook_event_is_lossless_to_skip() -> None:
     """OMN-23043: the writer's early skip of a non-PostCompact hook event loses nothing.
 
-    The runtime writer passes such an event over before it opens any binding. The
+    The runtime writer passes such an event over (``ignores_delivery``) before it
+    opens any binding. The
     real runner is the reference: it returns True for the same event and leaves
     ``savings_estimates`` untouched, so the skip is its own result reached sooner.
     """
