@@ -42,7 +42,7 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_sources i
     load_book,
     load_friction_rules,
 )
-from omnimarket.nodes.node_floor_compare_effect.handlers.handler_piece_measure import (
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_piece_measure import (
     append_verdicts,
     load_overlay,
     measure_pieces,
