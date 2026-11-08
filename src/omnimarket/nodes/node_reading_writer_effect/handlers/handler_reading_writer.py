@@ -282,12 +282,29 @@ class HandlerReadingWriter:
             return _UNREAD
         return str(read.report.not_on_both_count)
 
+    def _read_again_on_error(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """Read a source; when the read fails, ask again for the passes the overlay declares (OMN-23119).
+
+        The bound of the read is never raised: a slow bus reply is asked for again, and a source that stays dead
+        still reads UNKNOWN after the last pass.
+        """
+        read = self._source.read(query)
+        retry = self._overlay.read_retry
+        if retry is None:
+            return read
+        for _ in range(retry.passes):
+            if read.error is None:
+                break
+            self._pause(retry.pause_seconds)
+            read = self._source.read(query)
+        return read
+
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
         for source in spec.all_sources:
-            read = self._source.read(
+            read = self._read_again_on_error(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
                     until=end,

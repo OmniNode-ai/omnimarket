@@ -45,6 +45,16 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23119-ac1-source-read-retry
+    description: >-
+      A source read that times out is read again for the passes the overlay declares: a source that times out once reads WORKING on the retry, a source that times out on every pass still reads UNKNOWN, a clean run never pauses, and with no read_retry block the writer reads each source once.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_source_read_retry_omn23119.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23119-ac1-served-ages
     description: >-
       After the writer is reinstalled from the branch and the floor compute is installed on the publisher, the served floor lists every piece's reading_age_s below its reading_max_age_s except a piece whose own source is unread. The floor is reachable only from the lab network, so hosted CI cannot run this check and only the local Done gate runs it, with FLOOR_SIMPLE_JSON_URL set to the floor page JSON address from the lab overlay.
