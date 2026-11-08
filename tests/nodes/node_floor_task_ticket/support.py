@@ -12,16 +12,17 @@ from omnibase_spi.contracts.services import (
     ModelFloorTicketCreateResult,
 )
 
-from omnimarket.handlers.handler_lane_intake import read_lane_intake_policy
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
 )
+from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+    CoreTicketGuard,
+    core_lane_intake_policy,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
-    InstalledPluginTicketGuard,
     TicketGuardRefusedError,
-    locate_ticket_guard,
 )
 from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_graphql_floor_ticket_store import (
     READ_QUERY,
@@ -164,12 +165,8 @@ class StubbedCreateTicket:
 
 
 def real_gate_create_ticket() -> StubbedCreateTicket:
-    """``node_create_ticket`` with the installed guard as its gate and a stubbed Linear."""
-    guard_path = locate_ticket_guard()
-    return StubbedCreateTicket(
-        InstalledPluginTicketGuard(guard_path, LANE),
-        read_lane_intake_policy(guard_path),
-    )
+    """``node_create_ticket`` with its own gate, the omnibase_core validator run in process, and a stubbed Linear."""
+    return StubbedCreateTicket(CoreTicketGuard(LANE), core_lane_intake_policy())
 
 
 def payload_request(

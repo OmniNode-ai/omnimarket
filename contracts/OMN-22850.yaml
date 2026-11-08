@@ -33,7 +33,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22850-ac1
-  description: AC1 a ready task yields exactly one create whose payload the gate accepts and that carries the parent, the criteria, the Definition of done block and the Floor key line (the hosted run uses the stub gate; the real gate runs where the guard is installed, see the local-gate entry).
+  description: AC1 a ready task yields exactly one create whose payload the gate accepts and that carries the parent, the criteria, the Definition of done block and the Floor key line (the stubbed node_create_ticket runs its own gate, the omnibase_core validator, in process, on every runner).
   source: manual
   binds_ac:
   - AC1
@@ -96,12 +96,13 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "contract_loads or seams_in_spi or missing_key_refused or config_variation or floor_task_ticket_parity"
     cwd: .
 - id: dod-omn22850-ac1-real-gate
-  description: AC1 the stubbed node_create_ticket runs the installed ticket-creation guard and accepts the payload; the same guard refuses a payload whose criteria lose their falsifiers. The hosted verifier has no installed guard, so this unbound check belongs to the local Done gate.
+  description: AC1 the stubbed node_create_ticket runs the omnibase_core ticket-creation validator in process and accepts the payload; the same gate refuses a payload whose criteria lose their falsifiers.
   source: manual
-  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
   checks:
-  - check_type: command
-    check_value: env ONEX_TICKET_GUARD_PATH="$ONEX_TICKET_GUARD_PATH" uv run pytest tests/nodes/node_floor_task_ticket -q --no-cov -p no:randomly -m real_gate
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_task_ticket tests/nodes/node_create_ticket/test_core_ticket_guard.py -q --no-cov --tb=line -p no:randomly -k "mint_payload_passes_gate or mint_gate_refusal_by_the_real_gate or core_guard"
     cwd: .
 - id: dod-omn22850-ac7-redpanda
   description: AC7 the Redpanda leg equals the in-memory leg on the payload compute's scenarios. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.

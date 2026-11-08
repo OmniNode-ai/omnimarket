@@ -1949,5 +1949,4 @@ markers = [
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
     "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
-    "real_gate: runs the installed ticket-creation guard (ONEX_TICKET_GUARD_PATH or the enabled onex plugin); deselected at collection where none is installed",
 ]

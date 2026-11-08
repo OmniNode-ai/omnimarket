@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """The floor-task ticket mint, both nodes composed on a stubbed Linear (plan T11, criteria 1 to 3).
 
-``-k mint_payload_passes_gate`` runs ``node_create_ticket``'s installed gate for real and needs the guard installed (the
-``real_gate`` marker; see conftest). The rest run everywhere on a stub gate.
+``-k mint_payload_passes_gate`` runs ``node_create_ticket``'s own gate for real: the omnibase_core ticket-creation
+validator, in process, so it runs on every runner. The rest run on a stub gate.
 """
 
 from __future__ import annotations
@@ -42,7 +42,6 @@ STAMP_PREFIX = "created-by-lane:"
 # ------------------------------------------------------------------ criterion 1: the real gate accepts the payload
 
 
-@pytest.mark.real_gate
 def test_mint_payload_passes_gate() -> None:
     world = real_gate_create_ticket()
     verdict, minted = mint_task(world.store, LINE, "T1", PLAN)
@@ -78,7 +77,7 @@ def test_mint_payload_passes_gate_on_a_stub_gate_with_one_create_carrying_the_pa
 ):
     """The hosted run's reading of criterion 1: a stub gate that checks the parts the real gate reads.
 
-    It is not the real gate (the real gate is the test above, which runs where the guard is installed); it holds the
+    It is not the real gate (the real gate is the test above); it holds the
     payload to the same parts: a parent, a binding line, labelled criteria that each name a falsifier and the Floor key.
     """
     seen: list[ModelFloorTicketCreateRequest] = []
@@ -119,7 +118,6 @@ def test_mint_payload_passes_gate_on_a_stub_gate_with_one_create_carrying_the_pa
     )
 
 
-@pytest.mark.real_gate
 def test_mint_payload_passes_gate_exactly_one_create_and_none_on_the_second_pass() -> (
     None
 ):
@@ -131,7 +129,6 @@ def test_mint_payload_passes_gate_exactly_one_create_and_none_on_the_second_pass
     assert len(world.client.calls) == 1
 
 
-@pytest.mark.real_gate
 def test_mint_gate_refusal_by_the_real_gate_makes_no_ticket() -> None:
     world = real_gate_create_ticket()
     verdict = HandlerFloorTaskTicketPayload().handle(payload_request(LINE, "T1", PLAN))
