@@ -229,6 +229,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
 from omnimarket.models.delegation.model_paid_rung_decision import (
     ModelPaidRungRequest,
 )
+from omnimarket.models.delegation.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
@@ -269,9 +272,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
-    load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,

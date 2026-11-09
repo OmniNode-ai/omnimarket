@@ -185,6 +185,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecisionRequest,
 )
@@ -207,9 +210,6 @@ from omnimarket.models.routing.model_escalation_decision_result import (
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_test_run import (
     HandlerNamedTestRun,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
-    load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
