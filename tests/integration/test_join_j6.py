@@ -9,7 +9,9 @@ Rebuild plan 4.1, J6. The gate store is the real in-memory twin, never a stub of
   next send of that piece is refused by the store, while a send admitted before the stop stays admitted;
 * error: a stop whose commit gets no answer by its deadline refuses the send of that piece at the fence (the store is
   never asked), and a send of another piece is admitted;
-* mutation: a sink that drops the audit row turns the golden and the error scenario red.
+* mutation: a sink that drops the audit row turns the golden and the error scenario red;
+* stop drill (OMN-22941): a send above a stop on a test piece is refused, and the stop then clears on a go-and-see row and
+  a WORKING reading, or is escalated once when it is not cleared by ``stale_after_hours``, and stays open.
 
 Not covered here: running the join on the bus (the join answers by return value in these tests) and the Postgres backend
 of the store, which is not built.
@@ -20,9 +22,15 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from omnimarket.handlers.rules_stop_gate import (
+    fold_stop_event,
+    load_andon_stop_contract,
+    stop_gate,
+)
 from omnimarket.models.model_gate_store import (
     EnumGateStoreBackend,
     EnumGateStoreOperation,
@@ -38,6 +46,26 @@ from omnimarket.models.model_gate_store_join_j6 import (
     ModelJoinJ6Request,
     ModelJoinJ6Result,
 )
+from omnimarket.models.model_stop_escalation import (
+    EnumStopEscalationOutcome,
+    ModelStopEscalationRequest,
+)
+from omnimarket.models.stop_gate import (
+    EnumFloorVerdict,
+    EnumReadingOrigin,
+    EnumReadingVerdict,
+    EnumStopEventKind,
+    EnumStopGateOutcome,
+    EnumStopMode,
+    ModelGoAndSeeRow,
+    ModelStopEvent,
+    ModelStopGateRequest,
+    ModelStopPolicy,
+    ModelStopReading,
+    ModelStopRecord,
+    ModelStopScope,
+    ModelWorkingReading,
+)
 from omnimarket.nodes.node_gate_store_effect.handlers.adapters_join_j6 import (
     InMemoryJoinJ6AuditSink,
     InMemoryJoinJ6Projection,
@@ -48,6 +76,13 @@ from omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6
 )
 from omnimarket.nodes.node_gate_store_effect.handlers.store_in_memory import (
     InMemoryGateStore,
+)
+from omnimarket.nodes.node_stop_escalation_effect.handlers.adapters_stop_escalation import (
+    InMemoryStopAlarm,
+    InMemoryStopEscalationRows,
+)
+from omnimarket.nodes.node_stop_escalation_effect.handlers.handler_stop_escalation import (
+    HandlerStopEscalation,
 )
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 
@@ -350,3 +385,185 @@ def test_policy_reads_the_contract_section() -> None:
     assert policy.commit_deadline_seconds > 0
     with pytest.raises(ValueError, match="join_j6"):
         load_join_j6_policy({"name": "x"})
+
+
+# ---- the stop drill (OMN-22941): a send above a stop on a test piece is refused; the stop then clears or escalates ----
+
+DRILL_T0 = datetime(2026, 11, 1, 10, 0, tzinfo=UTC)
+DRILL_FSM, DRILL_CONFIG = load_andon_stop_contract()
+DRILL_CLASS = "engine-policy-breach"
+DRILL_SCOPE = ModelStopScope(kind="piece", key=STOPPED)
+DRILL_POLICY = ModelStopPolicy(modes={DRILL_CLASS: EnumStopMode.ENFORCE})
+
+
+def _drill_at(minutes: int) -> datetime:
+    return DRILL_T0 + timedelta(minutes=minutes)
+
+
+def _drill_event(
+    kind: EnumStopEventKind, minutes: int, role: str, **fields: object
+) -> ModelStopEvent:
+    return ModelStopEvent.model_validate(
+        {
+            "stop_id": "drill-stop",
+            "kind": kind,
+            "role": role,
+            "at": _drill_at(minutes),
+            **fields,
+        }
+    )
+
+
+def _drill_fixed_reading(working_at: int | None) -> ModelStopReading:
+    return ModelStopReading(
+        verdict=EnumReadingVerdict.PASS,
+        proof_eligible=True,
+        origin=EnumReadingOrigin.EXECUTED,
+        covers_scope=True,
+        working=None
+        if working_at is None
+        else ModelWorkingReading(
+            verdict=EnumFloorVerdict.WORKING, read_at=_drill_at(working_at)
+        ),
+    )
+
+
+def _drill_stop_admits(record: ModelStopRecord) -> EnumStopGateOutcome:
+    return stop_gate(
+        ModelStopGateRequest(
+            scope=DRILL_SCOPE,
+            stops=(record,),
+            policy=DRILL_POLICY,
+            now=_drill_at(0),
+            lane_id="some-other-lane",
+        ),
+        DRILL_FSM,
+    ).outcome
+
+
+def _drill_open_stop_on_the_test_piece(rig: Rig) -> ModelStopRecord:
+    """The test piece is stopped in the gate store (J6) and in the stop queue's record; a send is then refused."""
+    assert (
+        _send(rig, STOPPED, "send-before", "res-before").outcome
+        is EnumJoinJ6Outcome.SEND_ADMITTED
+    )
+    committed = _stop(rig, STOPPED, "stop-drill", "cid-drill")
+    assert committed.outcome is EnumJoinJ6Outcome.STOP_COMMITTED
+    record = ModelStopRecord(
+        id="drill-stop",
+        cls=DRILL_CLASS,
+        scope=DRILL_SCOPE,
+        state="open",
+        stopped_at=DRILL_T0,
+    )
+    refused = _send(rig, STOPPED, "send-above-stop", "res-above-stop")
+    assert refused.outcome is EnumJoinJ6Outcome.SEND_REFUSED, refused
+    assert _drill_stop_admits(record) is EnumStopGateOutcome.REFUSE
+    assert (
+        _send(rig, OTHER, "send-other", "res-other").outcome
+        is EnumJoinJ6Outcome.SEND_ADMITTED
+    )
+    return record
+
+
+def test_stop_drill_the_stop_clears_on_a_go_and_see_row_and_a_working_reading() -> None:
+    rig = _build()
+    record = _drill_open_stop_on_the_test_piece(rig)
+    record = fold_stop_event(
+        record,
+        _drill_event(
+            EnumStopEventKind.LEASE_GRANTED, 1, "swarm_lane", lane_id="lane-drill"
+        ),
+        DRILL_FSM,
+        DRILL_CONFIG,
+    ).stop
+    record = fold_stop_event(
+        record,
+        _drill_event(EnumStopEventKind.COUNTERMEASURE_MERGED, 2, "swarm_lane"),
+        DRILL_FSM,
+        DRILL_CONFIG,
+    ).stop
+    cleared = None
+    for minute in (3, 4):
+        result = fold_stop_event(
+            record,
+            _drill_event(
+                EnumStopEventKind.READBACK,
+                minute,
+                "readback",
+                reading=_drill_fixed_reading(working_at=minute),
+                go_and_see=ModelGoAndSeeRow(
+                    row_id="gas-drill",
+                    lane_id="lane-drill",
+                    seen_at=_drill_at(3),
+                    observed="went to the test piece and saw its send path work",
+                ),
+            ),
+            DRILL_FSM,
+            DRILL_CONFIG,
+        )
+        record, cleared = result.stop, result
+    assert record.state == "cleared"
+    assert cleared is not None
+    assert cleared.release is not None
+    assert cleared.release.go_and_see_row_id == "gas-drill"
+    assert _drill_stop_admits(record) is EnumStopGateOutcome.ADMIT
+    assert (
+        len(rig.audit.rows_for(STOPPED)) == 1
+    )  # the audit of the stop is not erased by its clearing
+
+
+def test_stop_drill_fixed_readings_alone_leave_the_stop_open_and_it_escalates_once() -> (
+    None
+):
+    rig = _build()
+    record = _drill_open_stop_on_the_test_piece(rig)
+    record = fold_stop_event(
+        record,
+        _drill_event(EnumStopEventKind.COUNTERMEASURE_MERGED, 1, "swarm_lane"),
+        DRILL_FSM,
+        DRILL_CONFIG,
+    ).stop
+    for minute in (2, 3, 4):  # control: before OMN-22941 two of these cleared the stop
+        record = fold_stop_event(
+            record,
+            _drill_event(
+                EnumStopEventKind.READBACK,
+                minute,
+                "readback",
+                reading=_drill_fixed_reading(working_at=None),
+            ),
+            DRILL_FSM,
+            DRILL_CONFIG,
+        ).stop
+    assert record.state == "fixed"
+    assert record.fixed_readings_seen == 3
+    assert _drill_stop_admits(record) is EnumStopGateOutcome.REFUSE
+    assert (
+        _send(rig, STOPPED, "send-still-above", "res-still").outcome
+        is EnumJoinJ6Outcome.SEND_REFUSED
+    )
+
+    rows = InMemoryStopEscalationRows()
+    stale_at = DRILL_T0 + timedelta(hours=DRILL_CONFIG.stale_after_hours)
+    alarm = InMemoryStopAlarm("drill-alarm", stale_at)
+    escalation = HandlerStopEscalation(rows, alarm)
+    early = escalation.handle(
+        ModelStopEscalationRequest(stop=record, now=stale_at - timedelta(seconds=1))
+    )
+    assert early.outcome is EnumStopEscalationOutcome.NOT_STALE
+    first = escalation.handle(ModelStopEscalationRequest(stop=record, now=stale_at))
+    second = escalation.handle(
+        ModelStopEscalationRequest(stop=record, now=stale_at + timedelta(hours=1))
+    )
+    assert first.outcome is EnumStopEscalationOutcome.ESCALATED
+    assert first.receipt is not None
+    assert second.outcome is EnumStopEscalationOutcome.ALREADY_ESCALATED
+    assert len(rows.all_rows()) == 1
+    assert alarm.deliveries == 1
+    assert first.stop.state == "fixed"  # escalating leaves the stop open
+    assert _drill_stop_admits(first.stop) is EnumStopGateOutcome.REFUSE
+    assert (
+        _send(rig, STOPPED, "send-after-escalation", "res-after").outcome
+        is EnumJoinJ6Outcome.SEND_REFUSED
+    )

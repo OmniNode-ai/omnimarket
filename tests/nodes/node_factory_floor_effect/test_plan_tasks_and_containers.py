@@ -356,6 +356,10 @@ def test_the_listing_command_names_its_fields_and_the_overlay_validates() -> Non
     overlay = ModelFactoryFloorOverlay.model_validate(
         {
             "plan_path_contains": ["x"],
+            "processes": [],
+            "roles": [],
+            "release_required_repos": [],
+            "held_gates": [],
             "container_read_line": "x",
             "container_hosts": [{"host": "h", "ssh_target": "u@h"}],
             "container_budgets": [

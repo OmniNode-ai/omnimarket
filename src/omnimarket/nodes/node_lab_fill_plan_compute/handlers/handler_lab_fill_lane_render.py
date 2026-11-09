@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Render the exact authorized task; the caller alone launches its structured spec."""
 
-from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
+from omnimarket.models.lab_fill import (
+    PUSH_AND_REPORT_LINE,
+    ModelLabFillApprovedRow,
+    ModelLabFillLaunch,
+)
 
 from ..models.model_lab_fill_lane_render import (
     ModelLabFillFallbackItem,
@@ -107,6 +111,8 @@ class HandlerLabFillLaneRender:
             LINES[3].format_map(values),
             "",
             "TASK: " + task,
+            "",
+            PUSH_AND_REPORT_LINE,
             "",
         ]
         if not fallback and getattr(item, "repo_source", None):
