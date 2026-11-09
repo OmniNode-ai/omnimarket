@@ -71,6 +71,7 @@ steps:
     node: node_pr_landing_github_effect
     command_topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
     role: the only GitHub write (merge pinned to the head, rerun, update-branch, arm, disarm)
+    writer: GithubEffectTickWriter of node_pr_landing_tick_orchestrator (merge is arm or enqueue at the head; other action kinds are refused as not a GitHub write; an action outside the cutover repository is refused)
   - id: superseded_sweep
     node: node_superseded_run_cancel_effect
     command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
@@ -91,12 +92,9 @@ steps:
     command_topic: onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1
     role: runs the chain for one tick and emits the compared or failed event
 to_build:
-  - id: tick_writer
-    host_node: node_pr_landing_tick_orchestrator
-    what: an act-mode ProtocolTickWriter that sends each action as a node_pr_landing_github_effect command and reads its completed or failed event
   - id: snapshot
     node: node_pr_landing_snapshot_effect
-    what: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts
+    what: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts, and the per-PR write facts the writer needs (GraphQL node id, the head's failed run ids, merge-queue base)
   - id: worker_lease
     node: node_pr_landing_worker_lease_effect
     what: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr
