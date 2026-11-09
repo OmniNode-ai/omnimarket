@@ -36,7 +36,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_spine_reading_compute -q -n 0 --no-cov -k reading
-        cwd: ${OMNI_HOME}/omnimarket
+        cwd: .
   - id: dod-omn22943-ac2-fault-injection
     description: >-
       The same drill against an instance that accepts the drill's lane reads NOT WORKING with the reason instance-accepted-drill-lane in the same probe where the sound instance read WORKING.
@@ -46,7 +46,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_spine_reading_compute -q -n 0 --no-cov -k fault_injection
-        cwd: ${OMNI_HOME}/omnimarket
+        cwd: .
   - id: dod-omn22943-ac3-chain
     description: >-
       The golden chain (run chain start and success, planted drill chain start and typed failure, a WORKING row with drill=no and a NOT_WORKING row with drill=yes) and the error chains (an accepting instance, a drill that cannot plant its fault, a ledger that refuses the rows, a replayed run id) pass; the mutation gate_ignores_stop turns the golden chain red and the mutation fault_not_planted turns the error chain red.
@@ -56,7 +56,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_spine_reading_compute -q -n 0 --no-cov -k chain
-        cwd: ${OMNI_HOME}/omnimarket
+        cwd: .
   - id: dod-deploy-omn22943-node-import
     description: >-
       The drill's timer units, entry point and overlay load, which hosted CI can run.
@@ -64,7 +64,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_stop_drill_effect -q -n 0 --no-cov
-        cwd: ${OMNI_HOME}/omnimarket
+        cwd: .
     binds_ac: []
   - id: dod-omn22943-integration-proof
     description: >-
@@ -74,13 +74,13 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |-
-          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane gatecore-0850 -- uv run --frozen pytest tests/nodes/node_process_spine_reading_compute tests/nodes/node_stop_drill_effect -q -n 0 --no-cov
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22943 --kind test -- uv run --frozen pytest tests/nodes/node_process_spine_reading_compute tests/nodes/node_stop_drill_effect -q -n 0 --no-cov
         cwd: .
   - id: dod-deploy-omn22943-live-source
     description: >-
-      Deploy assessment: the PR adds two nodes and no migration or Kafka subscription; the drill runs from its own systemd user timer on a lab host installed with schedule install, not from the runtime image. The check reads the drill handler from GitHub at the PR branch and fails when the planted fault code is missing.
+      Deploy assessment: the PR adds two nodes and no migration or Kafka subscription; the drill runs from its own systemd user timer on a lab host installed with schedule install, not from the runtime image. The check reads the drill handler from GitHub at the checked-out head and fails when the planted fault code is missing.
     source: manual
     checks:
       - check_type: command
-        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_stop_drill_effect/handlers/handler_stop_drill.py?ref=omn-22943-stop-drill')\" && case \"$body\" in *planted_instance_accepts_lane_red*) exit 0;; *) exit 1;; esac"
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_stop_drill_effect/handlers/handler_stop_drill.py?ref=$(git rev-parse HEAD)\")\" && case \"$body\" in *planted_instance_accepts_lane_red*) exit 0;; *) exit 1;; esac"
         cwd: "."
