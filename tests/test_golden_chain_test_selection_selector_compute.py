@@ -66,6 +66,7 @@ async def _run_chain(
     assert contract["event_bus"]["publish_topics"] == [terminal_topic, failed_topic]
     assert request_topic == "onex.cmd.omnimarket.test-selection-select-requested.v1"
     assert terminal_topic == "onex.evt.omnimarket.test-selection-selected.v1"
+    assert failed_topic == "onex.evt.omnimarket.test-selection-select-failed.v1"
 
     bus = EventBusInmemory()
     seen: list[tuple[str, bytes]] = []
