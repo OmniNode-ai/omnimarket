@@ -156,6 +156,14 @@ class ModelCreateTicketResult(BaseModel):
         default="",
         description="The description sent to Linear (create) or read from it (read).",
     )
+    parent_ticket_id: str | None = Field(
+        default=None,
+        description=(
+            "read: the identifier of the ticket's live parent, an empty string when it has "
+            "none, null when the parent was not read (a lane without the Linear key proves a "
+            "child claim from this field over the bus)."
+        ),
+    )
     dry_run: bool = Field(default=False)
     project_cleared: bool = Field(
         default=False,

@@ -57,3 +57,7 @@ class ModelTicketWriteFailed(_TicketTerminal):
     reason: str
     terminal_failure_cause: str
     finding_codes: list[str] = Field(default_factory=list)
+    existing_ticket_ids: list[str] = Field(
+        default_factory=list,
+        description="duplicate_ticket: the open tickets that already carry the title.",
+    )

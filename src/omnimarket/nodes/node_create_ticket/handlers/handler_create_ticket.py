@@ -156,6 +156,29 @@ query GetIssueByIdentifier($identifier: String!) {
 }
 """
 
+_ISSUE_PARENT_QUERY = """
+query GetIssueParent($identifier: String!) {
+  issue(id: $identifier) { parent { identifier } }
+}
+"""
+
+# The duplicate search (create gate step 1, run next to the key): an open ticket of the same team whose title
+# is the same ignoring case. Canceled and completed tickets do not count.
+_OPEN_DUPLICATE_QUERY = """
+query FindOpenDuplicates($team: String!, $title: String!) {
+  issues(
+    first: 5
+    filter: {
+      team: { name: { eq: $team } }
+      title: { eqIgnoreCase: $title }
+      state: { type: { nin: ["canceled", "completed"] } }
+    }
+  ) {
+    nodes { identifier }
+  }
+}
+"""
+
 _ISSUE_CREATE_MUTATION = """
 mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String, $labelIds: [String!]) {
   issueCreate(input: {
@@ -279,6 +302,18 @@ class TicketGuardRefusedError(RuntimeError):
     def __init__(self, message: str, finding_codes: Sequence[str] = ()) -> None:
         super().__init__(message)
         self.finding_codes = list(finding_codes)
+
+
+class TicketDuplicateError(TicketGuardRefusedError):
+    """An open ticket of the team already carries this title (the create gate's duplicate search).
+
+    ``existing_ticket_ids`` names them, so the caller reads the one that exists instead of
+    filing a second.
+    """
+
+    def __init__(self, message: str, existing_ticket_ids: Sequence[str]) -> None:
+        super().__init__(message, ["duplicate_ticket"])
+        self.existing_ticket_ids = list(existing_ticket_ids)
 
 
 class ModelTicketGuardDecision(BaseModel):
@@ -513,6 +548,19 @@ class LinearTicketClientProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class TicketLookupProtocol(Protocol):
+    """The two live Linear lookups the bus path needs beside a write."""
+
+    def read_parent(self, ticket_id: str) -> str:
+        """The identifier of ``ticket_id``'s live parent, an empty string when it has none."""
+        ...
+
+    def find_open_duplicates(self, *, team: str, title: str) -> list[str]:
+        """Identifiers of open tickets of ``team`` whose title equals ``title`` ignoring case."""
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Real Linear HTTP gateway (GraphQL)
 # ---------------------------------------------------------------------------
@@ -636,6 +684,24 @@ class LinearTicketHttpGateway:
             clear_inherited_project(self.project_gateway(), identifier)
         return identifier, url
 
+    def read_parent(self, ticket_id: str) -> str:
+        """The identifier of ``ticket_id``'s live parent, an empty string when it has none."""
+        data = self._post(_ISSUE_PARENT_QUERY, {"identifier": ticket_id})
+        issue = data.get("data", {}).get("issue")
+        if not isinstance(issue, dict):
+            raise RuntimeError(f"Linear returned no issue for {ticket_id!r}")
+        parent = issue.get("parent") or {}
+        return str(parent.get("identifier", ""))
+
+    def find_open_duplicates(self, *, team: str, title: str) -> list[str]:
+        """Identifiers of open tickets of ``team`` whose title equals ``title`` ignoring case."""
+        data = self._post(_OPEN_DUPLICATE_QUERY, {"team": team, "title": title})
+        if data.get("errors"):
+            # An unanswered search is never read as "no duplicate".
+            raise RuntimeError("Linear duplicate search returned errors")
+        nodes = (data.get("data", {}).get("issues") or {}).get("nodes") or []
+        return [str(node["identifier"]) for node in nodes if node.get("identifier")]
+
     def project_gateway(self) -> LinearTicketProjectGateway:
         """The project gateway over this client's own GraphQL transport."""
         return LinearTicketProjectGateway(self._post)
@@ -720,6 +786,15 @@ class HandlerCreateTicket:
     def _get_client(self) -> LinearTicketClientProtocol:
         if self._injectable_client is not None:
             return self._injectable_client
+        return LinearTicketHttpGateway(self._linear_api_key())
+
+    def _get_lookup(self) -> TicketLookupProtocol | None:
+        """The live Linear lookups; None when a caller injected a tracker and no client (no live gateway)."""
+        if self._injectable_client is not None:
+            client = self._injectable_client
+            return client if isinstance(client, TicketLookupProtocol) else None
+        if self._injectable_tracker is not None:
+            return None
         return LinearTicketHttpGateway(self._linear_api_key())
 
     def _get_tracker(self) -> TicketTrackerProtocol:
@@ -851,8 +926,11 @@ class HandlerCreateTicket:
                 await tracker.close()
 
         issue = _run_coroutine(_get)
+        lookup = self._get_lookup()
+        parent = lookup.read_parent(ticket_id) if lookup is not None else None
         return ModelCreateTicketResult(
             status="read",
+            parent_ticket_id=parent,
             operation=EnumTicketOperation.READ,
             ticket_id=str(issue.identifier),
             ticket_url=str(issue.url or ""),
@@ -997,6 +1075,21 @@ class HandlerCreateTicket:
         )
         self._assert_lane_actor("create")
         client = self._get_client()
+        # The create gate's duplicate search (step 1 of the create-ticket skill), run in the node next
+        # to the key so a lab lane with no Linear tool is held to it too. A dry run calls Linear not at
+        # all, so it does not search. An open ticket with this title refuses the create; a search that
+        # cannot answer raises and refuses it as well.
+        lookup = client if isinstance(client, TicketLookupProtocol) else None
+        if lookup is not None:
+            existing = lookup.find_open_duplicates(
+                team=request.team, title=request.title
+            )
+            if existing:
+                raise TicketDuplicateError(
+                    "node_create_ticket: an open ticket of this team already has this title: "
+                    + ", ".join(existing),
+                    existing,
+                )
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,
             description=description,
@@ -1040,9 +1133,11 @@ __all__: list[str] = [
     "ModelCreateTicketRequest",
     "ModelCreateTicketResult",
     "ModelTicketGuardDecision",
+    "TicketDuplicateError",
     "TicketGuardProtocol",
     "TicketGuardRefusedError",
     "TicketGuardUnavailableError",
+    "TicketLookupProtocol",
     "TicketProjectGatewayProtocol",
     "TicketStateResolverProtocol",
     "TicketTrackerProtocol",

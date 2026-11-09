@@ -146,6 +146,9 @@ outputs:
   contract_completeness:
     type: str
     description: "stub | enriched | full"
+  parent_ticket_id:
+    type: str
+    description: "read: the live parent's identifier, an empty string when the ticket has none, null when the parent was not read (OMN-22478)"
 
 terminal_event: onex.evt.omnimarket.create-ticket-completed.v1
 

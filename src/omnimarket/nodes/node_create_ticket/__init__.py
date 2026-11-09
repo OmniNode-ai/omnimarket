@@ -2,6 +2,7 @@
 
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
+    TicketDuplicateError,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "HandlerCreateTicket",
     "ModelCreateTicketCompletedEvent",
     "NodeCreateTicket",
+    "TicketDuplicateError",
     "TicketGuardRefusedError",
     "TicketGuardUnavailableError",
 ]

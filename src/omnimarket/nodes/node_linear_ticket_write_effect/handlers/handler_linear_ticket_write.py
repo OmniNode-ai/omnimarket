@@ -30,6 +30,7 @@ from omnimarket.models.secret_store.model_secret_resolution_error import (
 )
 from omnimarket.nodes.node_create_ticket import (
     HandlerCreateTicket,
+    TicketDuplicateError,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
 )
@@ -92,13 +93,16 @@ class HandlerLinearTicketWriteEffect:
         }
 
         def failed(
-            reason: str, codes: list[str] | None = None
+            reason: str,
+            codes: list[str] | None = None,
+            existing: list[str] | None = None,
         ) -> ModelTicketWriteFailed:
             return ModelTicketWriteFailed(
                 **identity,
                 reason=reason,
                 terminal_failure_cause=reason,
                 finding_codes=codes or [],
+                existing_ticket_ids=existing or [],
             )
 
         # Correlation ids change on retry; the operation and lane/run identity do not.
@@ -128,6 +132,10 @@ class HandlerLinearTicketWriteEffect:
             try:
                 core = self._factory(request.requested_by_lane)
                 result = await asyncio.to_thread(core.handle, request.ticket_request())
+            except TicketDuplicateError as exc:
+                return failed(
+                    "guard_refused", exc.finding_codes, exc.existing_ticket_ids
+                )
             except TicketGuardRefusedError as exc:
                 return failed("guard_refused", exc.finding_codes)
             except (TicketGuardUnavailableError, LaneIntakeRefusedError):
