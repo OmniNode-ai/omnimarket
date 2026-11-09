@@ -19,6 +19,7 @@ from omnimarket.models.model_order_advance import (
     EnumPieceState,
     EnumRunEngineBackend,
     ModelOrderAdvancePolicy,
+    ModelPieceEvidence,
     ModelPieceRecordRequest,
     holder_host,
     holder_id,
@@ -96,8 +97,8 @@ def test_advance_and_restart_a_test_order_passes_every_state() -> None:
     handler = make_handler(store, records)
     seen: list[EnumPieceState] = []
 
-    def step(**kw: object) -> None:
-        answer = handler.handle(tick(**kw))  # type: ignore[arg-type]
+    def step(now: float, evidence: ModelPieceEvidence | None = None) -> None:
+        answer = handler.handle(tick(now=now, evidence=evidence))
         if answer.piece_state is not None and answer.outcome is A.ADVANCED:
             seen.append(answer.piece_state)
 
