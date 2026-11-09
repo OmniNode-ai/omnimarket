@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23106
+title: The effects_held_behind_runtime alarm opens a lane when the effects consumer is absent past its bound
+summary: >-
+  The alarm raised on 2026-11-07 when the delegate-skill runtime-effects consumer had no live member and wrote one ledger row; nothing acted for seven hours and 45 delegation requests waited. node_lab_alarm now carries the effects-held condition with the alarm script's rule and 60 second bound unchanged, and an ALARM opens one lane per episode through the overlay's dispatch command, retries a dispatch that could not start, and exits ALARM with the failed escalation named.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23106-effects-held-alarm-acts
+    statement: >-
+      An effects-held alarm past its bound opens one lane for the episode, none while a member is live or the hold is under the bound, and none twice for one episode.
+    acceptance:
+      - id: AC2
+        statement: "AC2: the effects_held_behind_runtime alarm names an owner or acts within its bound -- falsifier: uv run pytest of the alarm routing test shows the alarm opens a lane or page when the effects consumer is absent past the bound"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The effects-held chain-event tests: golden chains (live consumer, hold under the bound), error chains (absent past the bound opens one lane, a second run opens none, a refused dispatch is retried, unreadable groups are INDETERMINATE), the consumer-absent break, and the real command dispatcher over a real subprocess.
+    command: uv run --frozen pytest tests/nodes/node_lab_alarm/test_effects_held_chain_events.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23106-ac2-alarm-opens-a-lane
+    description: >-
+      With no live member in the group for the bound or longer the handler opens exactly one lane whose brief names the condition and when it began; with the alarm's escalation removed the six tests that read the lane fail. The live read on the dev broker and the real-dispatcher run are recorded in the pull request.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_effects_held_chain_events.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23106-integration-proof
+    description: >-
+      The pushed head ran the node_lab_alarm tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live read of the dev broker's delegate-skill groups and the real-dispatcher run are recorded in the pull request.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23106 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+        cwd: .
