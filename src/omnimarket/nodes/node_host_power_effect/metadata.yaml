@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_power_effect
+version: 1.0.0
+description: Power a lab host on, off or restart through the route its overlay declares; a host with no declared route is refused with a typed result.
+pack: distributed_validation
+node_role: effect
+display_name: Host Power Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_power_effect: omnimarket.nodes.node_host_power_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_write
+dependencies:
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-power

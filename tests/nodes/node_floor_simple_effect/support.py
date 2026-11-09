@@ -20,10 +20,11 @@ def iso(moment: datetime) -> str:
 
 
 def environ(home: Path) -> dict[str, str]:
-    """The environment of a cycle: the overlay root, the lane directory under the home and no pinned files."""
+    """The environment of a cycle: the overlay root, the lane and landing controller directories under the home and no pinned files."""
     return {
         "ONEX_SKILL_OVERLAY_ROOTS": str(OVERLAYS),
         "ONEX_REMOTE_LANE_DIR": str(home / "lanes"),
+        "LANDING_STATE_DIR": str(home / "landing"),
     }
 
 
@@ -177,6 +178,20 @@ def lab_alarm_run(outcome: str = "OK", finished_minutes_ago: int = 4) -> dict[st
     }
 
 
+def lag_node_run(outcome: str = "OK", finished_minutes_ago: int = 4) -> dict[str, Any]:
+    """One finished run of node_lab_alarm, the record the floor reads the lag condition from."""
+    return {
+        "finished_at": iso(NOW - timedelta(minutes=finished_minutes_ago)),
+        "reports": [
+            {
+                "condition": "consumer_group_lag",
+                "outcome": outcome,
+                "evidence": "no group grew" if outcome == "OK" else "a group grew",
+            }
+        ],
+    }
+
+
 def build_home(
     tmp_path: Path,
     *,
@@ -185,6 +200,7 @@ def build_home(
     fleet_doc: dict[str, Any] | None = None,
     pool: dict[str, Any] | None = None,
     alarm_run: dict[str, Any] | None = None,
+    lag_run: dict[str, Any] | None = None,
 ) -> Path:
     """A registry home with every source the cycle reads. A ``None`` argument takes the healthy default."""
     home = tmp_path / "home"
@@ -210,6 +226,11 @@ def build_home(
     put(
         ".onex_state/lab-alarm/alarm-runs.jsonl",
         alarm_run if alarm_run is not None else lab_alarm_run(),
+        jsonl=True,
+    )
+    put(
+        ".onex_state/lab-alarm/broker-lag-runs.jsonl",
+        lag_run if lag_run is not None else lag_node_run(),
         jsonl=True,
     )
     return home

@@ -18,11 +18,11 @@ import yaml
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_friction_rollup_compute as node_package
+from omnimarket.models.friction_rollup import (
+    ModelFrictionRollupRequest,
+)
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
-)
-from omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup import (
-    ModelFrictionRollupRequest,
 )
 
 pytestmark = pytest.mark.unit
@@ -40,9 +40,10 @@ EXPECTED = {
         "lab-stack-reaper-pass-refused",
         "ledger-window-file-unreadable",
     },
-    "b0-m0-1530": {"local-hooks-fail-one-per-attempt"},
+    # The broad pre-commit / pre-push alternatives of the hooks rule filed the first and third under it (OMN-23220).
+    "b0-m0-1530": {"pre-commit-stash-in-registry-clone-opens-ledger-path-window"},
     "dropped-prs-1545": {"local-hooks-fail-one-per-attempt"},
-    "review-keystone-1845": {"local-hooks-fail-one-per-attempt"},
+    "review-keystone-1845": {"landing-deferred-by-criteria-drift"},
     "m0-reader-2410": {"installed-copy-behind-merged-code"},
 }
 ALARM_SOURCES = {

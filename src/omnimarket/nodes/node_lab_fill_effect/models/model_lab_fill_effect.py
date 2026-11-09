@@ -68,6 +68,10 @@ class ModelLabFillOwnerFactsRequest(BaseModel):
     ledger_path: str
     pr_claim_cli: str = ""
     watcher_state_path: str = ""
+    # The work-state projection's file; empty reads the one the projection node writes under the registry home.
+    work_state_path: str = ""
+    # A projection older than this is unreadable, never free (an unread owner is not a free one).
+    work_state_max_age_s: float = Field(default=1800.0, gt=0, allow_inf_nan=False)
 
 
 class ModelLabFillOwnerFacts(BaseModel):
@@ -86,6 +90,9 @@ class ModelLabFillOwnerFacts(BaseModel):
     staleness_hours: float
     pr_claims: dict[str, str] | str
     watcher_merged: dict[str, tuple[str, ...]] | str
+    # Ticket -> the live lanes the work-state projection attributes to it from their CLAIM cells; None when the projection
+    # is not published yet (it adds no reading), a string when it exists and could not be read.
+    work_state_owners: dict[str, tuple[str, ...]] | str | None = None
 
 
 class ModelLabFillLaunchRequest(BaseModel):

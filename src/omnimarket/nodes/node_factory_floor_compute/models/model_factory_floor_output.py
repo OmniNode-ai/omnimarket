@@ -332,6 +332,10 @@ class ModelFloorLane(BaseModel):
     claim_full: str
     liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
     liveness_detail: str = "no process reading was supplied"
+    # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
+    owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell), "" when the CLAIM names none.
+    parent_ticket: str = ""
 
 
 class ModelFloorLamp(BaseModel):
@@ -470,6 +474,39 @@ class ModelFloorHostStatus(BaseModel):
     reading_age: ModelHostNumber
 
 
+class ModelFloorStoppedLane(BaseModel):
+    """A lane that ended short with work left (OMN-22934): what it named, its last rows and where its report is."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    # The ticket the lane worked on: the first of its tickets that is not an umbrella, else its first ticket.
+    ticket: str
+    # The lane's tickets that are not umbrellas: what ties a live lane to the same work.
+    tickets: tuple[str, ...] = ()
+    outcome: str
+    ended_at: str
+    age_minutes: int
+    # What the ending row names: any of "branch", "ask", "next-step".
+    names: tuple[str, ...]
+    branch: str = ""
+    head: str = ""
+    prs: tuple[str, ...] = ()
+    # The lane's last rows, newest last, each cut; the continuation lane's brief carries them.
+    rows: tuple[str, ...]
+    report_path: str
+
+
+class ModelFloorStoppedSkip(BaseModel):
+    """A lane whose newest TERMINAL ended short but is not listed, with the cause."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    outcome: str
+    cause: str
+
+
 class ModelFloorSection(BaseModel):
     """The floor around the lines."""
 
@@ -490,6 +527,12 @@ class ModelFloorSection(BaseModel):
     merged_running: ModelMergedRunningCountResult | None = None
     # One status per host of the host table (the Machines tab); empty only in a record written before it existed.
     host_status: tuple[ModelFloorHostStatus, ...] = ()
+    # Lanes that ended partial, blocked or failed with a branch, an ask or a next step named and no lane on them since.
+    stopped: tuple[ModelFloorStoppedLane, ...] = ()
+    # Lanes inside the window that ended short and are not listed, each with its cause.
+    stopped_skipped: tuple[ModelFloorStoppedSkip, ...] = ()
+    # Why no stopped lane could be listed (an unread goal scope); empty when the source was read.
+    stopped_cause: str = ""
 
 
 class ModelFloorSources(BaseModel):

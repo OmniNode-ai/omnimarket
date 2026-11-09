@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23167
+title: One command shows the order models are tried in and which of them cost money
+summary: onex models list --ladder prints each routable model in the order delegation tries it (the model chosen first, then the local models, then each key's models), with its provider, model id and cost class free, paid or unknown. The cost class comes from the catalogue pricing, the pricing manifest and the OpenRouter free marker; a model with no price is unknown and never free. The typed ladder rides on the model setup effect's result.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23167-models-list-ladder
+  statement: onex models list --ladder shows the order models are tried in and each one's cost class.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a key with one free and one paid model lists both in order with their cost classes -- falsifier: `uv run pytest tests/unit/cli -q -k models_list_ladder`'
+  - id: AC2
+    statement: 'AC2: a model whose price is not in the catalogue prints unknown and not free -- falsifier: `uv run pytest tests/unit/cli -q -k models_list_ladder_unknown`'
+evidence_requirements:
+- kind: tests
+  description: The models list ladder tests pass.
+  command: uv run --frozen pytest tests/unit/cli/test_omn23167_models_list_ladder.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23167-ac1-tests
+  description: A key with a paid and a free model lists both in the key's order with cost classes paid and free; local models come before keys and the model chosen first leads.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/cli/test_omn23167_models_list_ladder.py -q --no-cov -k models_list_ladder
+    cwd: .
+- id: dod-omn23167-ac2-tests
+  description: A model with no price in the catalogue or the pricing manifest prints unknown, in JSON and in text, and is never classed free.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/cli/test_omn23167_models_list_ladder.py -q --no-cov -k models_list_ladder_unknown
+    cwd: .
+- id: dod-omn23167-integration-proof
+  description: Run this pull request's own ladder tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23167 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/cli/test_omn23167_models_list_ladder.py -q --no-cov
+    cwd: .

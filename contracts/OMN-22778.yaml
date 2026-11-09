@@ -1,0 +1,82 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22778
+title: "The registry-unit installer renders the silent-failure alarm's configuration file from the unit declaration, so a reinstall reproduces it"
+summary: >-
+  The alarm unit's configuration was written by hand on the operator Mac from the old unit's plist. The unit declaration
+  now carries the document (config_file) and the installer renders it from the request, refusing an unfilled placeholder,
+  writes it at the path the unit reads (mode 0600, keeping the differing file it replaces), and a dry-run shows it and
+  writes nothing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22778-alarm-config-rendered
+    statement: A reinstall of the silent-failure alarm unit writes the configuration the unit reads, from the declaration, with no hand-written file.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a dry-run of the silent-failure-alarm unit renders the configuration document from the declaration with every placeholder filled from the request, and an unfilled placeholder is refused -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k alarm_config, whose control test fails when the declaration holds no document'
+      - id: AC2
+        statement: 'AC2: the rendered document loads as the alarm node''s own options model -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k alarm_config_loads_as_options'
+      - id: AC3
+        statement: 'AC3: an install writes the document at mode 0600 where the unit reads it and keeps the file it replaced; a dry-run writes nothing -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k alarm_config_install'
+      - id: AC4
+        statement: 'AC4: the document an install would write equals the configuration the Mac unit runs today -- falsifier: dry-run the unit from the branch with the Mac request inputs and diff the parsed result with the live configuration file'
+      - id: AC5
+        statement: 'AC5: the quiet-host reading leaves out hosts the lab host table declares unavailable, and reads a host quiet when no table declares it unavailable -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_unavailable_hosts_omn22778.py -q --no-cov'
+evidence_requirements:
+  - kind: tests
+    description: The installer and alarm tests, run on a lab host at the pushed head.
+    command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22778-tests
+  description: "The document renders from the declaration, an unfilled placeholder is refused, the document loads as the alarm's options, and an install writes it at 0600 keeping the replaced file."
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units tests/nodes/node_silent_failure_alarm_compute -q --no-cov
+    cwd: .
+- id: dod-omn22778-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22778 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
+- id: dod-omn22778-config-equals-live
+  description: "The Mac unit's live configuration equals the document the installer renders for the Mac's request inputs. Runtime evidence read at the local Done gate."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: test -s "$HOME/.local/state/omni/silent-failure-alarm/config.json"
+    cwd: .
+- id: dod-omn22778-ac4-rendered-document
+  description: "The document the installer renders for a request equals the declared document with every placeholder filled (the hosted counterpart of AC4; the comparison with the Mac's live file is read at the local Done gate)."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -k "alarm_config_dry_run_renders_the_declared_document or alarm_config_control_declaration_without_a_document_renders_none"
+    cwd: .
+- id: dod-omn22778-skip-unavailable-hosts
+  description: "The silent-failure alarm's quiet-host reading leaves out hosts the lab host table declares unavailable, with a default-off control and a control that reads the host quiet when no table declares it unavailable."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_unavailable_hosts_omn22778.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: grep -q "skip_unavailable_hosts" src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py
+    cwd: .

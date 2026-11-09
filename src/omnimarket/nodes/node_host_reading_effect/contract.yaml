@@ -18,8 +18,19 @@ runtime_profiles: [effects]
 description: >
   Runs the probes the overlay declares for this host: ledger-outbox reads queued and refused rows
   beside the host's ledger, ledger-old-names reads that the old ledger names are links to the
-  configured ledger. A source that cannot be read gives UNKNOWN; an append that does not land and
-  a bad command are typed failures.
+  configured ledger, host-canary (piece 2, hosts and capacity) sends one canary lane to every host
+  the lab host table pools through the route lanes take and reads its typed ending and free disk,
+  join-j1 (join J1, the code graph to hosts and capacity) reads one graph run's used-or-unused
+  verdict for the nodes host discovery and placement depend on and publishes a typed result under
+  the graph run's correlation id: both pieces' chains on success, the graph run's failure and the
+  host stage's typed upstream_ failure with no start when a verdict is missing (OMN-22904).
+  ledger-durability appends one probe row through the bus and reads it back from the durable
+  store (the read node over the database projection) by a deadline.
+  A source that cannot be read gives UNKNOWN; an append that does not land and a bad command are
+  typed failures.
+  The join-j2 verb (OMN-22907) runs the J2 join of the rebuild plan for each pooled host on the bus: a
+  canary reads the host's advertisement, placement consumes it, one correlated result returns, and
+  both chains are emitted under one correlation id in the floor's emission contract.
 
 handler:
   module: omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading

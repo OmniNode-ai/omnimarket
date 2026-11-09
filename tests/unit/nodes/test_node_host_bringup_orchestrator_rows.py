@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The 57 target rows of the host bring-up orchestrator contract (OMN-21883).
+"""The 58 target rows of the host bring-up orchestrator contract (OMN-21883).
 
-Binds the generated contract to the plan: 4, 7, 15, 8, 7, 9 and 7 targets across
+Binds the generated contract to the plan: 4, 7, 15, 8, 7, 9 and 8 targets across
 stages A to G, every row loading through ``load_bringup_graph`` with a check, a
 falsifier and an enum action, a planted row without a falsifier refused, and no
 host, address, path or version anywhere in the contract. The generator that
@@ -47,7 +47,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _CONTRACT = _REPO / "src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml"
 _EXCERPT = _REPO / "tests/fixtures/host_bringup/plan_excerpt.md"
 
-_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 9, "G": 7}
+_STAGE_COUNTS = {"A": 4, "B": 7, "C": 15, "D": 8, "E": 7, "F": 9, "G": 8}
 _TOP_TARGETS = {"up", "storage-up"}
 
 
@@ -77,12 +77,12 @@ def _plan(observations: dict[str, EnumObservedState]) -> Any:
     )
 
 
-# --- the 57 rows -------------------------------------------------------------
+# --- the 58 rows -------------------------------------------------------------
 
 
 def test_target_rows_count_per_stage() -> None:
     graph = load_bringup_graph(_contract())
-    assert len(graph.targets) == 57
+    assert len(graph.targets) == 58
     assert dict(sorted(Counter(t.stage for t in graph.targets).items())) == (
         _STAGE_COUNTS
     )
@@ -91,7 +91,7 @@ def test_target_rows_count_per_stage() -> None:
 def test_target_rows_every_row_loads_with_check_falsifier_and_action() -> None:
     graph = load_bringup_graph(_contract())
     names = [t.name for t in graph.targets]
-    assert len(set(names)) == 57
+    assert len(set(names)) == 58
     for target in graph.targets:
         assert target.check.kind in EnumBringupCheckKind
         assert target.action in EnumBringupAction
@@ -136,7 +136,7 @@ def test_target_rows_graph_plans_with_no_cycle_orphan_or_unknown_need() -> None:
     plan = _plan({})
     assert plan.status is EnumPlanStatus.PLANNED
     assert plan.refusals == ()
-    assert len(plan.steps) == 57
+    assert len(plan.steps) == 58
     order = {s.target: s.order for s in plan.steps}
     for row in _contract()["targets"]:
         for need in row["needs"]:
@@ -175,6 +175,67 @@ def test_target_rows_dropping_the_top_target_refuses_the_orphans() -> None:
     assert plan.status is EnumPlanStatus.REFUSED
     unreached = {name for r in plan.refusals for name in r.names}
     assert {"nvme-fitted", "ci-capacity", "cap-raised"} <= unreached
+
+
+# --- the run volume moves onto the drive (OMN-22993) ---------------------------
+
+
+def _drive_host_with_run_volume_in_ram(contract: dict[str, Any]) -> Any:
+    """Every check reads ok except the switch: the drive is mounted, the data is moved, and the
+    run volume is still the RAM filesystem (h053 on 2026-11-07 before its switch)."""
+    names = [t["name"] for t in contract["targets"]]
+    observed = dict.fromkeys(names, EnumObservedState.OK)
+    observed["run-volume-on-drive"] = EnumObservedState.NOT_OK
+    return HandlerHostBringupPlan().handle(
+        ModelHostBringupPlanRequest(
+            graph=load_bringup_graph(contract),
+            observations=tuple(
+                ModelCheckObservation(target=n, state=s) for n, s in observed.items()
+            ),
+        )
+    )
+
+
+def test_run_volume_switch_is_a_declared_step_after_the_drive_and_before_the_measurement() -> (
+    None
+):
+    row = _row(_contract(), "run-volume-on-drive")
+    assert row["stage"] == "G"
+    assert row["action"] == "host_unit_install"
+    assert row["check"]["kind"] == "unit_status"
+    assert set(row["needs"]) == {"data-moved", "ram-filesystem"}
+    assert "run-volume-on-drive" in _row(_contract(), "storage-verified")["needs"]
+    order = {s.target: s.order for s in _plan({}).steps}
+    assert (
+        order["data-volume"]
+        < order["data-moved"]
+        < order["run-volume-on-drive"]
+        < order["storage-verified"]
+    )
+
+
+def test_a_drive_host_with_its_run_volume_still_in_ram_acts_on_the_switch_alone() -> (
+    None
+):
+    plan = _drive_host_with_run_volume_in_ram(_contract())
+    assert plan.status is EnumPlanStatus.PLANNED
+    acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
+    assert acting == ["run-volume-on-drive"]
+
+
+def test_error_chain_without_the_switch_row_the_same_host_plans_no_act() -> None:
+    """The injected break: the graph before OMN-22993 has no row for the switch, so a host whose
+    RAM filesystem install reads ok and whose drive is moved plans nothing, and the run volume
+    stays in RAM. The reading above fails for real under this break."""
+    contract = copy.deepcopy(_contract())
+    contract["targets"] = [
+        t for t in contract["targets"] if t["name"] != "run-volume-on-drive"
+    ]
+    for row in contract["targets"]:
+        row["needs"] = [n for n in row["needs"] if n != "run-volume-on-drive"]
+    plan = _drive_host_with_run_volume_in_ram(contract)
+    acting = [s.target for s in plan.steps if s.decision is EnumStepDecision.ACT]
+    assert acting == []
 
 
 # --- a row missing a part fails the load --------------------------------------
@@ -284,7 +345,7 @@ def test_generator_renders_rows_that_load() -> None:
 
 def test_generator_refuses_a_plan_that_does_not_match_the_declared_shape() -> None:
     rows = parse_plan_rows(_EXCERPT.read_text(encoding="utf-8"))
-    with pytest.raises(PlanShapeError, match="57"):
+    with pytest.raises(PlanShapeError, match="58"):
         build_contract_text(rows)
 
 

@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-22952
+title: "R5 and R6: the idle proof that gates the stop of groups 3 and 7 and of the internal CI, verify, deploy and mini runners"
+summary: A pure compute node reads, from reads a fetching effect already took, whether the runners of the proof groups are idle and no queued job names a stop-set label, on the overlay's number of reads each at least the overlay's gap apart. The stop-set labels and the proof groups come from the caller; none is named in this repository. This pull request adds the node and its tests; the effect that takes the reads and the group commands themselves are the operator's and a later piece.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22952-idle-proof
+  statement: The idle proof reads WORKING only when no runner of groups 3 and 7 is busy and no queued job names a stop-set label on two reads 60 seconds apart.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the idle proof reads no runner busy in groups 3 and 7 and no queued job naming a stop-set label, twice 60 seconds apart -- falsifier: uv run pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q -k idle_proof'
+  - id: AC2
+    statement: 'AC2: a queued job naming a stop-set label makes the proof fail -- falsifier: uv run pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q -k queued_label_blocks'
+evidence_requirements:
+- kind: tests
+  description: The idle proof tests and the queued-label tests of the node.
+  command: uv run pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22952-ac1
+  description: The idle proof tests pass on the branch and fail under the injected break that makes the handler ignore a busy runner.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q -k idle_proof
+- id: dod-omn22952-ac2
+  description: The queued-label tests pass on the branch and fail under the injected break that makes no queued job match a stop-set label.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q -k queued_label_blocks
+- id: dod-omn22952-integration-proof
+  description: Run the idle proof node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22952 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_runner_stop_idle_proof_compute -q --no-cov

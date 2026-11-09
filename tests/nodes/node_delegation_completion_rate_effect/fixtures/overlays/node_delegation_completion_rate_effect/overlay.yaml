@@ -1,0 +1,16 @@
+# Test fixture of the overlay of node_delegation_completion_rate_effect (OMN-23108), with synthetic values. The deployed overlay is
+# overlays/node_delegation_completion_rate_effect/overlay.yaml in the overlays repository; the schema is omnimarket's
+# ModelDelegationRateEffectOverlay and no key has a default.
+events_source:
+  ssh_host_env: TEST_RUNTIME_SSH_HOST
+  compose_project: test-project
+  service: postgres
+  database: test_analytics
+  db_user: test_user
+  read_timeout_seconds: 30
+ledger_append:
+  command_env: TEST_LEDGER_APPEND_COMMAND
+  host_env: TEST_LEDGER_HOST_NAME
+  timeout_seconds: 60
+publish:
+  actor: node:node_delegation_completion_rate_effect

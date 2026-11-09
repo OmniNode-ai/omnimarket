@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""What the floor reads from the ledger (OMN-22674): the go for rebuild pieces and the events of pieces that write rows.
+"""What the floor reads from the ledger (OMN-22674): the go for rebuild pieces, the events of pieces that write rows and
+(OMN-22478) the reading writer's reading rows.
 
 Two facts of the strip were values set by hand, and the floor drew them wrong: the highest piece the operator said go to,
 and whether a piece had started. Both are on the ledger already. The go is a RULING row, written when the operator
@@ -23,11 +24,18 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelGoRule,
+    ModelLedgerReadingRule,
+    ModelLedgerShadowRule,
     ModelNodeEmission,
     ModelPieceEventRule,
+    ModelReadingRow,
     ModelRowMatch,
+    ModelShadowReading,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    read_queries,
+)
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
@@ -45,6 +53,15 @@ class ModelLedgerFacts(BaseModel):
     go_given_through: int
     go_rows: tuple[str, ...] = ()
     events: tuple[ModelNodeEmission, ...] = ()
+    # The newest reading row of each piece the reading writer wrote, and how many matching rows could not be read as one.
+    readings: tuple[ModelReadingRow, ...] = ()
+    readings_rejected: int = 0
+    # The newest shadow row of each shadow rule that has one, and how many matching rows could not be read as one.
+    shadows: tuple[ModelShadowReading, ...] = ()
+    shadows_rejected: int = 0
+    # A shadow rule whose query failed, with its reason. The shadow rows are advisory: the go, the events and the readings
+    # stay readable without them, and the failure stays visible here.
+    shadows_unread: tuple[str, ...] = ()
 
 
 class ModelLedgerFloorRead(BaseModel):
@@ -113,7 +130,8 @@ def _chain(
     row: ModelLedgerEvidenceRow, rule: ModelPieceEventRule, *, failed: bool
 ) -> tuple[ModelNodeEmission, ...]:
     """The start and the terminal event one ledger row stands for, under a correlation id the row decides."""
-    correlation = hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
+    named = row.cells.get(rule.correlation_cell, "") if rule.correlation_cell else ""
+    correlation = named or hashlib.sha256(row.raw.encode("utf-8")).hexdigest()[:32]
     start = ModelNodeEmission(
         node=rule.node,
         piece=rule.piece,
@@ -153,44 +171,186 @@ def piece_events(
     return tuple(events)
 
 
+_READING_VERDICTS = {
+    "WORKING": "WORKING",
+    "NOT_WORKING": "NOT WORKING",
+    "UNKNOWN": "UNKNOWN",
+}
+
+
+def _reading_row(
+    row: ModelLedgerEvidenceRow, rule: ModelLedgerReadingRule
+) -> ModelReadingRow | None:
+    """One reading row of the reading writer as the floor's reading of a piece, or ``None`` when a cell is not usable."""
+    verdict = _READING_VERDICTS.get(row.cells.get(rule.verdict_cell, ""))
+    try:
+        piece = int(row.cells[rule.piece_cell])
+        probed = datetime.fromisoformat(row.cells[rule.probed_at_cell])
+        published = datetime.fromisoformat(row.cells[rule.published_at_cell])
+        max_age = int(row.cells[rule.max_age_cell])
+    except (KeyError, ValueError):
+        return None
+    if verdict is None or not 1 <= piece <= 18 or max_age <= 0:
+        return None
+    if probed.tzinfo is None or published.tzinfo is None:
+        return None
+    return ModelReadingRow(
+        piece=piece,
+        state=verdict,
+        probed_at=probed,
+        published_at=published,
+        max_age_s=max_age,
+        reason=row.cells.get(rule.reason_cell, "") if rule.reason_cell else "",
+    )
+
+
+def reading_rows(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelLedgerReadingRule
+) -> tuple[tuple[ModelReadingRow, ...], int]:
+    """The newest reading row of each piece, and the count of matching rows that could not be read as a reading."""
+    match = ModelRowMatch(row_type=rule.row_type, lane=rule.lane, cells=rule.cells)
+    newest: dict[int, ModelReadingRow] = {}
+    rejected = 0
+    for row in rows:
+        if not _row_matches(row, match):
+            continue
+        reading = _reading_row(row, rule)
+        if reading is None:
+            rejected += 1
+        elif (
+            reading.piece not in newest
+            or reading.published_at > newest[reading.piece].published_at
+        ):
+            newest[reading.piece] = reading
+    return tuple(newest[p] for p in sorted(newest)), rejected
+
+
+def shadow_readings(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelLedgerShadowRule
+) -> tuple[ModelShadowReading | None, int]:
+    """The newest row of a shadow rule as a reading, and the count of matching rows whose cells were not usable."""
+    match = ModelRowMatch(row_type=rule.row_type, lane=rule.lane, cells=rule.cells)
+    newest: ModelShadowReading | None = None
+    rejected = 0
+    for row in rows:
+        if not _row_matches(row, match):
+            continue
+        try:
+            published = datetime.fromisoformat(row.cells[rule.published_at_cell])
+            max_age = int(row.cells[rule.max_age_cell])
+            values = tuple((f.label, row.cells[f.cell]) for f in rule.fields)
+            outcome = row.cells[rule.outcome_cell] if rule.outcome_cell else None
+        except (KeyError, ValueError):
+            rejected += 1
+            continue
+        if published.tzinfo is None or max_age <= 0:
+            rejected += 1
+            continue
+        if newest is None or published > newest.published_at:
+            newest = ModelShadowReading(
+                piece=rule.piece,
+                label=rule.label,
+                published_at=published,
+                max_age_s=max_age,
+                values=values,
+                failed_outcome=outcome if outcome != rule.outcome_ok else None,
+            )
+    return newest, rejected
+
+
 def read_ledger_facts(
     source: ProtocolLedgerRowSource, overlay: ModelFloorSimpleOverlay, now: datetime
 ) -> ModelLedgerFloorRead:
-    """Read the go rulings and the piece event rows. Any read that fails fails the whole read, with its reason."""
+    """Read the go rulings and the piece event rows. Any read of those that fails fails the whole read, with its reason.
+
+    The ledger is read once per cycle (OMN-23081): every query is built first and a source with a single-pass read
+    answers them all from one scan of the live file and its rolls. Before, each query scanned and parsed every line
+    again, which took 14 s of the publisher's 15 s step limit. The answers are used in the order the queries were asked,
+    so the reason a failed read gives is the same as before.
+
+    A shadow row is advisory telemetry: a failed shadow query is listed in ``shadows_unread`` and costs no other fact.
+    """
     until = now + _FUTURE_SLACK
     go_rule = overlay.rebuild.go
-    rulings = source.read(
-        ModelLedgerQuery(
-            since=now - timedelta(days=go_rule.lookback_days),
-            until=until,
-            row_type=RULING_ROW_TYPE,
-            lane=go_rule.lane,
-        )
-    )
-    if rulings.error is not None:
-        return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
     # One read per (row type, lane) of the rules; a row two rules would both read is one row.
     wanted: dict[tuple[str, str], int] = {}
     for rule in overlay.piece_events:
         for match in (rule.golden, rule.error):
             key = (match.row_type, match.lane)
             wanted[key] = max(wanted.get(key, 0), rule.lookback_days)
-    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
-    for (row_type, lane), days in sorted(wanted.items()):
-        read = source.read(
+    event_keys = sorted(wanted.items())
+    reading_rule = overlay.ledger_readings
+    queries: list[ModelLedgerQuery] = [
+        ModelLedgerQuery(
+            since=now - timedelta(days=go_rule.lookback_days),
+            until=until,
+            row_type=RULING_ROW_TYPE,
+            lane=go_rule.lane,
+        ),
+        *(
             ModelLedgerQuery(
                 since=now - timedelta(days=days),
                 until=until,
                 row_type=row_type,
                 lane=lane,
             )
+            for (row_type, lane), days in event_keys
+        ),
+    ]
+    if reading_rule is not None:
+        queries.append(
+            ModelLedgerQuery(
+                since=now - timedelta(days=reading_rule.lookback_days),
+                until=until,
+                row_type=reading_rule.row_type,
+                lane=reading_rule.lane,
+            )
         )
+    queries.extend(
+        ModelLedgerQuery(
+            since=now - timedelta(days=shadow_rule.lookback_days),
+            until=until,
+            row_type=shadow_rule.row_type,
+            lane=shadow_rule.lane,
+        )
+        for shadow_rule in overlay.ledger_shadows
+    )
+    answers = iter(read_queries(source, queries))
+    rulings = next(answers)
+    if rulings.error is not None:
+        return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
+    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
+    for (row_type, lane), _days in event_keys:
+        read = next(answers)
         if read.error is not None:
             return ModelLedgerFloorRead(
                 error=f"{row_type} rows of {lane} unread: {read.error}"
             )
         for row in read.rows:
             event_rows[row.raw] = row
+    readings: tuple[ModelReadingRow, ...] = ()
+    rejected = 0
+    if reading_rule is not None:
+        read = next(answers)
+        if read.error is not None:
+            return ModelLedgerFloorRead(
+                error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
+            )
+        readings, rejected = reading_rows(list(read.rows), reading_rule)
+    shadows: list[ModelShadowReading] = []
+    shadows_rejected = 0
+    shadows_unread: list[str] = []
+    for shadow_rule in overlay.ledger_shadows:
+        shadow_read = next(answers)
+        if shadow_read.error is not None:
+            shadows_unread.append(
+                f"{shadow_rule.row_type} rows of {shadow_rule.lane} unread: {shadow_read.error}"
+            )
+            continue
+        reading, shadow_rejects = shadow_readings(list(shadow_read.rows), shadow_rule)
+        shadows_rejected += shadow_rejects
+        if reading is not None:
+            shadows.append(reading)
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(
@@ -203,5 +363,10 @@ def read_ledger_facts(
                 and re.search(go_rule.question_pattern, r.cells.get("question", ""))
             ),
             events=piece_events(list(event_rows.values()), overlay.piece_events),
+            readings=readings,
+            readings_rejected=rejected,
+            shadows=tuple(shadows),
+            shadows_rejected=shadows_rejected,
+            shadows_unread=tuple(shadows_unread),
         )
     )

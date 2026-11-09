@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Every setting of the runner-group reading (OMN-22947); a change here is a reviewed change.
+# A runner is a lab runner when it carries one of these labels.
+lab_runner_labels:
+  - self-hosted
+# The org read is judged stale past this age and the reading is then UNKNOWN. The bound is the
+# plan's 30-minute read bar (section 7.1, M1 read within 1,800 s).
+max_age_seconds: 1800
+# The private merge-queue pool (OMN-23156). The operator places the group; the installer's declared unit registers the
+# queue runners into it. The reading is WORKING for the pool only when the group's visibility reads private, no public
+# repository is allowed, the expected number of runners with this name prefix are online in it, and no runner with the
+# prefix is registered in another group.
+private_queue:
+  group_name: omni-private-queue
+  runner_name_prefix: hp053-ci-mq-runner
+  expected_online_members: 4

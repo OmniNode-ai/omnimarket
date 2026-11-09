@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The work-in-progress admission rule (RULING 2026-10-30T00:03:58Z).
 
-New work is not started while the count of started-but-unlanded work is at the limit.
+New work is not sent to a lane while the count of started tickets that a live CLAIM holds is at the limit.
+There is no limit on open pull requests (RULING 2026-11-07T20:02:38Z); a pull request is read only so
+that a fix-forward request can name the red or blocked pull request it repairs.
 Fix-forward work for a red, a repeat break or a landing blocker is never refused,
 because it is what makes work land; creating a ticket is never refused by count,
 because a ticket is a record. Every number comes in as an argument (the contract's
@@ -159,36 +161,22 @@ def claims_from_ledger(
 def count_started_unlanded(
     read: ModelWipRead, *, own_ticket: str = ""
 ) -> ModelWipCounts:
-    """Open non-draft PRs plus started tickets with a live CLAIM, once each.
+    """Started tickets that a live CLAIM holds: the work sent to lanes, once each.
 
-    A ticket a counted pull request cites is that pull request's, not a second item.
-    ``own_ticket`` (the caller's) is left out so a re-dispatch never blocks itself.
+    Open pull requests are never counted (RULING 2026-11-07T20:02:38Z: there is no pull
+    request limit); the limit is on what is sent to lanes. ``own_ticket`` (the caller's) is
+    left out so a re-dispatch never blocks itself.
     """
-    counted_prs = [
-        i
-        for i in read.items
-        if i.kind is EnumWipItemKind.PULL_REQUEST
-        and not i.draft
-        and not (own_ticket and own_ticket in i.tickets)
-    ]
-    carried = {t for pr in counted_prs for t in pr.tickets}
     claims = [
         i
         for i in read.items
-        if i.kind is EnumWipItemKind.TICKET_CLAIM
-        and i.ref != own_ticket
-        and i.ref not in carried
+        if i.kind is EnumWipItemKind.TICKET_CLAIM and i.ref != own_ticket
     ]
     by_repo: dict[str, int] = {}
-    for item in (*counted_prs, *claims):
+    for item in claims:
         if item.repo:
             by_repo[item.repo] = by_repo.get(item.repo, 0) + 1
-    return ModelWipCounts(
-        by_repo=by_repo,
-        fleet=len(counted_prs) + len(claims),
-        pull_requests=len(counted_prs),
-        ticket_claims=len(claims),
-    )
+    return ModelWipCounts(by_repo=by_repo, fleet=len(claims), ticket_claims=len(claims))
 
 
 def _read_problem(

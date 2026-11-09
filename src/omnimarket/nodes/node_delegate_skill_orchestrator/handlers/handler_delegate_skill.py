@@ -46,6 +46,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
+from omnimarket.enums.enum_delegation_end_of_ladder_reason import (
+    EnumDelegationEndOfLadderReason,
+)
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
@@ -90,6 +93,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
+    resolve_end_of_ladder_reason,
     resolve_terminal_failure_cause,
 )
 from omnimarket.models.delegation.wire.model_delegation_output_files import (
@@ -144,6 +148,7 @@ from omnimarket.pricing import (
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -707,6 +712,20 @@ def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
     }
 
 
+def _attempt_key(raw: dict[str, object]) -> dict[str, Any]:
+    """OMN-22474: the minted tenant key this rung ran on, or none.
+
+    A house-key name or any other ref without the minted tenant-key shape is
+    never carried, so only a customer key's last_used_at can move.
+    """
+    ref = raw.get("secret_ref")
+    return {
+        "secret_ref": ref
+        if isinstance(ref, str) and is_tenant_credential_ref(ref)
+        else None
+    }
+
+
 def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
     """The OMN-20168 lineage and placement fields, typed or dropped."""
     fields: dict[str, Any] = {}
@@ -851,6 +870,7 @@ def _attempt_records(
                     finish_reason=_as_finish_reason(raw.get("finish_reason")),
                     **truncated_fields,
                     **_provider_facts(raw),
+                    **_attempt_key(raw),
                     **_lineage_fields(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -883,6 +903,7 @@ def _attempt_records(
                 ),
                 error_message=str(raw.get("error_message", "")),
                 **_provider_facts(raw),
+                **_attempt_key(raw),
                 **_lineage_fields(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
@@ -1170,26 +1191,44 @@ def _response_from_result(
     # was accepted, so the run goes back to its caller. Each attempt's own
     # cause stays on its attempt record; the run's cause names the hand-back,
     # and the message tells the caller plainly that the session does the task.
-    returned_to_caller = (
+    #
+    # OMN-23165: a run that made no provider call because no rung could be
+    # called ends the same way. The port states that fact on
+    # ``terminal_failure_reason``; a zero-attempt refusal at the ingress
+    # boundary (``pre_dispatch_refusal``) stays ``refused_before_dispatch``.
+    zero_attempt_no_rung_reachable = (
+        status_value == "failed"
+        and not attempts
+        and not pre_dispatch_refusal
+        and result.get("attempts_count") == 0
+        and result.get("terminal_failure_reason")
+        == EnumDelegationEndOfLadderReason.NO_RUNG_REACHABLE.value
+        and terminal_failure_cause not in _NOT_AN_EXHAUSTED_LADDER
+    )
+    returned_to_caller = zero_attempt_no_rung_reachable or (
         status_value == "failed"
         and bool(attempts)
         and not any(attempt.quality_gate_passed for attempt in attempts)
         and terminal_failure_cause not in _NOT_AN_EXHAUSTED_LADDER
     )
-    # The cause that decided the last rung stays readable as the reason, so a
-    # gate veto, a quota refusal and a rejected key are still told apart.
+    # OMN-23165: the reason is one word from a closed list, read from the whole
+    # ladder record. The last rung's own cause stays on its attempt record, so a
+    # quota refusal or a rejected key is still told apart there.
     returned_reason: str | None = None
     if returned_to_caller:
-        if terminal_failure_cause is not None:
-            returned_reason = terminal_failure_cause.value
+        returned_reason = resolve_end_of_ladder_reason(
+            attempts,
+            port_stop_reason=str(result.get("terminal_failure_reason") or "") or None,
+        ).value
         terminal_failure_cause = EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
         last_error = error_message or next(
             (a.error_message for a in reversed(attempts) if a.error_message), ""
         )
         error_message = (
-            f"{RETURNED_TO_CALLER_MESSAGE} (last error: {last_error})"
+            f"{RETURNED_TO_CALLER_MESSAGE} (reason: {returned_reason}; "
+            f"last error: {last_error})"
             if last_error
-            else RETURNED_TO_CALLER_MESSAGE
+            else f"{RETURNED_TO_CALLER_MESSAGE} (reason: {returned_reason})"
         )
     score_vs_required_bar = _as_quality_score_comparison(
         result.get("score_vs_required_bar")

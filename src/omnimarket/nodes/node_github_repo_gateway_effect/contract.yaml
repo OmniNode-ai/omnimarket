@@ -7,9 +7,9 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 4, patch: 1}
+contract_version: {major: 1, minor: 6, patch: 0}
 node_type: effect
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 lifecycle: experimental
 
 # The bytes already streamed for the first view are shared by all subsequent
@@ -17,6 +17,9 @@ lifecycle: experimental
 job_log_cache:
   root: null
   ttl_seconds: 86400
+  # OMN-23032: a lane's `onex scm job-log` answers from this cache only; a miss is
+  # refused naming the cache path. node_job_log_filler_effect fills the cache.
+  lane_reads_cache_only: true
 
 cli_aliases:
   job-log-cached:
@@ -29,7 +32,7 @@ description: >
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
   job_log_tail, artifacts, pr_text, releases, pr_heads, commit_check_runs,
-  merged_pr, pr_review_threads) and returns a small typed object
+  merged_pr, pr_review_threads, open_pr_facts) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
   log reads, `gh run download`, `gh release list`, commit check-run reads,
   PR state/head/merge detail reads, and a PR's review threads with their
@@ -54,6 +57,9 @@ description: >
   or falls back to HTTP. Use the first read's bus binding for gateway-shared
   bytes; --bus inmemory uses the canonical adapter on the calling host and
   can reuse covered byte ranges from its previous successful job-log cache.
+  A lane's `job-log` read is cache-only while job_log_cache.lane_reads_cache_only
+  is true, and a miss is refused naming the cache path; node_job_log_filler_effect
+  fills the cache from the merge-relevant runs of open pull requests.
   Missing ranges and uncached step metadata remain misses; a partial cached
   answer is never represented as a whole log. A github_job_logs/overlay.yaml
   under ONEX_SKILL_OVERLAY_ROOTS can set root and ttl_seconds. Shared gateway
@@ -106,6 +112,10 @@ operations:
   # GraphQL reports. The id a reply to a thread names is root_comment_id.
   - name: pr_review_threads
     description: "Request ModelGithubGatewayRequest, result ModelPrReviewThreadsResult; replaces gh api graphql (pullRequest reviewThreads)."
+
+  # OMN-22654: every open PR's head, base, title and fix markers in one read, for the duplicate-fix guard on a host that has no PR watcher state.
+  - name: open_pr_facts
+    description: "Request ModelGithubGatewayRequest, result ModelOpenPrFactsResult; replaces gh pr list --json number,headRefName,headRefOid,baseRefName,title,isDraft,body (the Fix-Check and Fix-Cause lines only)."
 
 input_model:
   name: ModelGithubGatewayRequest

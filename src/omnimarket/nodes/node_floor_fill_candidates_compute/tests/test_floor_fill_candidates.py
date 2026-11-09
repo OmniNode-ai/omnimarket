@@ -12,15 +12,15 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
-    HandlerFloorFillCandidates,
-)
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorFillCandidatesResult,
     ModelFloorFillLine,
     ModelFloorTaskPayloadVerdict,
+)
+from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
+    HandlerFloorFillCandidates,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
     LINE,
@@ -563,6 +563,9 @@ def test_contract_declares_the_overlay_keys_the_node_reads() -> None:
         "floor_fill.max_age_minutes",
         "floor_fill.max_fill_lanes_per_line",
         "floor_fill.sent_window_minutes",
+        "floor_fill.stopped_continue_rule",
+        "floor_fill.stopped_max_lanes",
+        "floor_fill.stopped_report_chars",
     ]
 
 

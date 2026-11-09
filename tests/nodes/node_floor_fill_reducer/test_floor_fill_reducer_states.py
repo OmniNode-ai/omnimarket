@@ -13,10 +13,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.floor_fill import EnumFloorFillEntryState
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     VALID_TRANSITIONS,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models import EnumFloorFillEntryState
 
 pytestmark = pytest.mark.unit
 

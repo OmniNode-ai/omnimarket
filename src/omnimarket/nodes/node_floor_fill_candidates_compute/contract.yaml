@@ -19,12 +19,16 @@ description: >
   (payload verdict ok, no entry ticket yet) or UNTICKETABLE with its cause. A line is STARTABLE, NEEDS-TICKET,
   UNTICKETABLE, AT-CAPACITY (no capacity left while ready usable work remains; none returned) or NO-STARTABLE; every
   ready usable task is returned in record order with no cutoff by capacity. An absent, malformed or old record is one
-  global FLOOR-UNREAD. Called in process by the floor-fill orchestrator.
+  global FLOOR-UNREAD. A stopped lane (the floor record's floor.stopped: a lane whose newest TERMINAL is partial, blocked
+  or failed, in the goal's scope, naming a branch, an ask or a next step, with no lane on the same work since) is a
+  stopped candidate under the key stopped:<lane> unless a live lane holds it, a RESERVED or SENT entry holds it, its
+  entry ticket is refused or it has no ticket; its brief inlines the predecessor's last rows and report and the rule to
+  push and continue. Called in process by the floor-fill orchestrator.
 handler:
   module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
   class: HandlerFloorFillCandidates
-  input_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
-  output_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+  input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+  output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -37,8 +41,8 @@ handler_routing:
     handler:
       name: HandlerFloorFillCandidates
       module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
-    input_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
-    output_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+    input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+    output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
 # The node reads no overlay itself: the orchestrator reads these keys and carries them on the request, and a request
 # that lacks one is refused naming the key (floor_fill.<key>).
 deployment_overlay:
@@ -48,8 +52,12 @@ deployment_overlay:
   - floor_fill.max_age_minutes
   - floor_fill.max_fill_lanes_per_line
   - floor_fill.sent_window_minutes
-  description: Freshness limit of the floor record, lanes a line may hold at once, and how long a started key is held.
-    A key no overlay supplies refuses naming the key.
+  - floor_fill.stopped_max_lanes
+  - floor_fill.stopped_report_chars
+  - floor_fill.stopped_continue_rule
+  description: Freshness limit of the floor record, lanes a line may hold at once, how long a started key is held, how many
+    continuation lanes of stopped lanes may run at once, how much of a predecessor's report a brief carries, and the rule
+    a continuation brief ends with. A key no overlay supplies refuses naming the key.
 # No injected seams: a pure compute takes everything it reads on the request.
 protocol_dependencies: []
 descriptor:

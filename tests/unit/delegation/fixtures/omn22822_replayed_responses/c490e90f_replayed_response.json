@@ -1,0 +1,29 @@
+{
+ "envelope_timestamp": "2026-11-05T14:08:35.037504Z",
+ "headers": {
+  "x-original-dlq-offset": "500865",
+  "x-replay-correlation-id": "2e70bda3-3947-47fa-8cf3-2daa05d32f57",
+  "x-replay-count": "1",
+  "x-replayed-at": "2026-11-07T02:40:20.107709+00:00",
+  "x-replayed-by": "node_dlq_replay_effect"
+ },
+ "offset": 108354,
+ "partition": 0,
+ "payload": {
+  "completion_tokens": 0,
+  "content": "",
+  "correlation_id": "c490e90f-bdbc-4bfd-9fb9-3eeadf485146",
+  "error_message": "[ONEX_CORE_085_RESOURCE_NOT_FOUND] Failed to resolve secret from Infisical (SecretResolutionError)",
+  "inference_attempt_id": "649b9b71-3ceb-5b11-8a2d-89c22c6c9e4a",
+  "latency_ms": 16,
+  "llm_call_id": "ff7f4ee6-7178-4758-b1eb-c033909047a5",
+  "model_used": "claude-sonnet-5-5",
+  "prompt_tokens": 0,
+  "provider": "anthropic",
+  "route": "byok-anthropic",
+  "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+  "total_tokens": 0
+ },
+ "timestamp_ms": 1794019220107,
+ "topic": "onex.evt.omnibase-infra.inference-response.v1"
+}

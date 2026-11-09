@@ -22,13 +22,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import UTC, datetime, timedelta
 
+# stamp_text and reason_token are owned by omnimarket.handlers.reading_text; the other nodes that still
+# import them from here keep working through this explicit re-export.
+from omnimarket.handlers.reading_text import (
+    reason_token as reason_token,
+)
+from omnimarket.handlers.reading_text import (
+    stamp_text as stamp_text,
+)
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
     EnumReadingVerdict,
     EnumSourceMode,
+    ModelLandingRequirements,
+    ModelLandingSnapshot,
     ModelLedgerEvidenceRow,
     ModelReadingComputeRequest,
     ModelReadingComputeResult,
@@ -37,22 +46,10 @@ from omnimarket.models.model_reading import (
 )
 
 _KEY_LENGTH = 24
-_TOKEN_LIMIT = 120
-_NOT_TOKEN = re.compile(r"[^a-z0-9]+")
-
-
-def stamp_text(moment: datetime) -> str:
-    """The ledger's stamp form, UTC to the second."""
-    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def reason_token(text: str) -> str:
-    """A free-text reason as one cell-safe token."""
-    return _NOT_TOKEN.sub("-", text.lower()).strip("-")[:_TOKEN_LIMIT] or "unspecified"
 
 
 def row_key(
@@ -123,6 +120,41 @@ def _judge(
     return None
 
 
+def _judge_landing(
+    requirements: ModelLandingRequirements,
+    snapshot: ModelLandingSnapshot,
+    canary_rows: list[ModelLedgerEvidenceRow],
+    window_end: datetime,
+) -> list[str]:
+    """The landing goal's hourly requirements against one watcher snapshot; the reasons it fails, none when it holds."""
+    if snapshot.age_seconds > requirements.snapshot_max_age_seconds:
+        # The age moves with the probe time, so it never goes in the reason: a later probe of the
+        # same window over the same snapshot must give the same content (OMN-23077).
+        newest = (
+            ""
+            if snapshot.newest_at is None
+            else f"newest-{snapshot.newest_at.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-"
+        )
+        return [f"snapshot-stale:{newest}over-{requirements.snapshot_max_age_seconds}s"]
+    failures = [
+        f"head-unmerged-over-limit:{reason_token(head.ref)}"
+        for head in sorted(snapshot.heads, key=lambda h: h.ref)
+        if head.waiting_seconds > requirements.head_max_age_seconds
+    ]
+    waiting = len(snapshot.heads)
+    if waiting >= requirements.waiting_threshold:
+        if snapshot.merges_in_window < requirements.goal_merges_per_window:
+            failures.append(
+                f"goal-not-met:waiting-{waiting}:merges-{snapshot.merges_in_window}"
+                f"-of-{requirements.goal_merges_per_window}"
+            )
+    else:
+        canary = _judge(requirements.canary, canary_rows, window_end)
+        if canary is not None:
+            failures.append(canary)
+    return failures
+
+
 class HandlerReadingCompute:
     """Compute one piece's reading for one closed window."""
 
@@ -189,7 +221,11 @@ class HandlerReadingCompute:
         supplied = {item.source_id: item for item in request.sources}
         unreadable: list[str] = []
         gathered: dict[str, _Gathered] = {}
-        for source in spec.sources:
+        if spec.landing is not None and request.landing is None:
+            unreadable.append(
+                f"source-unreadable:landing:{reason_token(request.landing_error or 'not-supplied')}"
+            )
+        for source in spec.all_sources:
             item = supplied.get(source.source_id)
             if item is None:
                 unreadable.append(f"source-unreadable:{source.source_id}:not-supplied")
@@ -211,12 +247,12 @@ class HandlerReadingCompute:
 
         manifest = [
             f"{source.source_id}|{row.key}|{_sha(row.raw)}"
-            for source in spec.sources
+            for source in spec.all_sources
             for row in gathered[source.source_id].rows
         ]
         conflicts = [
             f"conflicting-duplicate:{source.source_id}:{digest}"
-            for source in spec.sources
+            for source in spec.all_sources
             for digest in gathered[source.source_id].conflicts
         ]
         if conflicts:
@@ -236,6 +272,13 @@ class HandlerReadingCompute:
             )
             is not None
         ]
+        if spec.landing is not None and request.landing is not None:
+            failures += _judge_landing(
+                spec.landing,
+                request.landing,
+                gathered[spec.landing.canary.source_id].rows,
+                request.window_end,
+            )
         if failures:
             return result(
                 EnumReadingVerdict.NOT_WORKING,

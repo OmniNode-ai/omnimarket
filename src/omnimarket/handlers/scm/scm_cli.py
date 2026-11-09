@@ -95,6 +95,7 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
 )
+from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
 from omnimarket.handlers.scm.scm_git_credential import git_credential_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
@@ -481,6 +482,15 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
 )
 
 
+def _lane_job_log_reads_cache_only() -> bool:
+    """The gateway contract's (or its overlay's) lane job-log policy; imported when asked."""
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
+        lane_reads_cache_only,
+    )
+
+    return lane_reads_cache_only()
+
+
 def _read_command(spec: ModelScmVerb) -> click.Command:
     pr_scoped = spec.operation in _PR_SCOPED_READS
 
@@ -583,6 +593,10 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         elif source == "local":
             raise click.UsageError(f"{spec.verb} has no local answer; use the bus")
         given = {name: value for name, value in fields.items() if value is not None}
+        if spec.verb == "job-log" and _lane_job_log_reads_cache_only():
+            # OMN-23032: the declared policy makes a lane's job-log read cache-only;
+            # node_job_log_filler_effect fills the cache, and a miss names its path.
+            given["cache_only"] = True
         correlation_id = uuid.uuid4()
         try:
             request = ModelGithubGatewayRequest(
@@ -839,6 +853,18 @@ def _carried_claim(
         return None
 
 
+def gateway_open_prs_source(
+    bus_opts: dict[str, object], timeout_s: float
+) -> GatewayOpenPrFactsSource:
+    """The duplicate-fix guard's read of the open pull requests on a host with no PR watcher state (OMN-22654).
+
+    It opens the bus only when the guard asks, which is only when the watcher state could not be read.
+    """
+    return GatewayOpenPrFactsSource(
+        open_bus=_open_bus, bus_opts=bus_opts, timeout_s=timeout_s
+    )
+
+
 def _write_command(spec: ModelScmVerb) -> click.Command:
     pr_scoped = spec.operation not in _REPO_SCOPED_WRITES
 
@@ -880,6 +906,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 body=body,
                 lane=lane,
                 watcher_state=watcher_state,
+                open_prs_source=gateway_open_prs_source(bus_opts, timeout_s),
             )
             if refused is not None:
                 sys.exit(refused)

@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Context Recall Reading Compute (OMN-22980, piece 16 of the base-first rebuild)
+#
+# Pure definition-B compute: handle(ModelContextRecallReadRequest) -> ModelContextRecallReading.
+# The caller supplies the planted-fact probes, the eval runs, the overlay and the read time. The
+# compaction itself belongs to the compaction epic; this node only measures recall after it.
+# Every threshold travels on the request from the overlay; this contract holds none.
+name: node_context_recall_reading_compute
+contract_name: node_context_recall_reading_compute
+node_name: node_context_recall_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Piece 16's reading at a read time. WORKING only while every planted fact in the window was
+  recalled after a compaction that was forced and finished, and every eval run in the window
+  ended in a result. NOT WORKING when a planted fact was not recalled, a compaction was not
+  forced or did not finish, a probe is out of order, future-dated or stale, an eval run ended
+  with no result or stayed open past its deadline, or the evidence is under the overlay's
+  minimum. UNKNOWN when no probe or no eval run was supplied. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_recall_reading
+      handler:
+        name: HandlerContextRecallReading
+        module: omnimarket.nodes.node_context_recall_reading_compute.handlers.handler_context_recall_reading
+
+handler:
+  module: omnimarket.nodes.node_context_recall_reading_compute.handlers.handler_context_recall_reading
+  class: HandlerContextRecallReading
+  input_model: omnimarket.models.model_context_recall_reading.ModelContextRecallReadRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelContextRecallReadRequest
+  module: omnimarket.models.model_context_recall_reading
+  description: The probes, the eval runs, the overlay and the read time.
+output_model:
+  name: ModelContextRecallReading
+  module: omnimarket.models.model_context_recall_reading
+  description: The verdict with its reasons, each probe and run as read, and the overlay hash.
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  read_requested: onex.cmd.omnimarket.context-recall-read-requested.v1
+  probe_read: onex.evt.omnimarket.context-recall-probe-read.v1
+  eval_run_read: onex.evt.omnimarket.context-eval-run-read.v1
+  reading_completed: onex.evt.omnimarket.context-recall-reading-completed.v1
+  reading_failed: onex.evt.omnimarket.context-recall-reading-failed.v1
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.context-recall-read-requested.v1"
+    operation: "context_recall_reading"
+
+terminal_event: onex.evt.omnimarket.context-recall-reading-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-recall-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-recall-probe-read.v1
+    - onex.evt.omnimarket.context-eval-run-read.v1
+    - onex.evt.omnimarket.context-recall-reading-completed.v1
+    - onex.evt.omnimarket.context-recall-reading-failed.v1
+
+# The floor's reading source sends the request and reads the results; neither is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.context-recall-read-requested.v1
+    producer: "the floor's reading source, which asks for the reading at a read time; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-recall-probe-read.v1
+  - onex.evt.omnimarket.context-eval-run-read.v1
+  - onex.evt.omnimarket.context-recall-reading-completed.v1
+  - onex.evt.omnimarket.context-recall-reading-failed.v1
+
+# What proves this reading works, and what turns it red. The plan's built-in-quality rule reads this.
+reading:
+  piece: 16
+  states: [WORKING, NOT_WORKING, UNKNOWN]
+  falsifiers:
+    - id: AC1
+      test: tests/nodes/node_context_recall_reading_compute -k planted_fact
+    - id: AC2
+      test: tests/nodes/node_context_recall_reading_compute -k eval_without_result
+
+overlay:
+  example: overlay.example.yaml
+
+metadata:
+  description: "Piece 16 reading: planted-fact recall after a forced compaction, eval runs that end in a result"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-07"
+  tags: [compute, context, recall, eval, reading, pure]
+  related_tickets: ["OMN-22980"]

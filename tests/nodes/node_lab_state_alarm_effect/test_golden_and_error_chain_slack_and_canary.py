@@ -19,6 +19,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelAlarm,
     ModelAlarmChannelDef,
@@ -31,9 +34,6 @@ from omnimarket.models.floor_17a import (
     ModelLabSourceVerdict,
     ModelLabStateAlarmRequest,
     ModelLabStateAlarmResult,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
@@ -507,11 +507,11 @@ def test_error_a_publish_that_fails_is_a_typed_failure_on_its_own_chain_and_the_
         sink=sink,
     )
     assert result.ok
-    assert result.canary == "failed_unexpected_CanaryPublishError"
+    assert result.canary == "failed_canary_push_failed"
     chain = [e for e in sink.events if e.node.endswith("publish_canary")]
     assert [(e.phase, e.failure_code) for e in chain] == [
         ("start", None),
-        ("failure", "unexpected_CanaryPublishError"),
+        ("failure", "canary_push_failed"),
     ]
 
 
@@ -614,7 +614,7 @@ def test_error_a_canary_only_run_that_cannot_publish_is_a_failed_run(
         tmp_path, served=(NOW, NOW), fail_publish=True
     )
     assert not result.ok
-    assert result.failure_code == "canary_failed_unexpected_CanaryPublishError"
+    assert result.failure_code == "canary_failed_canary_push_failed"
     assert published == []
 
 

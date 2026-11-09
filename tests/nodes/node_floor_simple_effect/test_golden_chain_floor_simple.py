@@ -16,6 +16,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.models.floor_17a import (
     ModelFloorSimple,
     ModelFloorSimpleInput,
@@ -24,9 +27,6 @@ from omnimarket.models.floor_17a import (
 )
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (
     HandlerFloorSimple,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
@@ -125,7 +125,11 @@ def test_golden_the_three_numbers_come_from_reads_a_checker_can_repeat(
     again = HandlerFloorSimple().handle(
         ModelFloorSimpleInput.model_validate(reads["floor_input"])
     )
-    assert again.model_dump(mode="json") == doc.model_dump(mode="json")
+    # The customer health line (OMN-22923) is added after this compute from the same piece rows; it is repeated in its own
+    # test. The MVP launch block (OMN-23205) reads the producers' runs, not this input, and is tested on its own.
+    assert again.model_dump(mode="json") == doc.model_copy(
+        update={"health": None, "mvp_launch": None}
+    ).model_dump(mode="json")
 
 
 def test_golden_each_node_emits_a_start_then_a_success_under_one_correlation_id(
@@ -145,6 +149,7 @@ def test_golden_each_node_emits_a_start_then_a_success_under_one_correlation_id(
         "node_lab_state_alarm_effect:alarm_lab_state",
         "node_floor_emission_compute:compute_floor_receipts",
         "node_floor_simple_compute:compute_floor_simple",
+        "node_product_floor_verdict_compute:decide_customer_health",
     ]
     assert inner == [(n, p) for n in steps for p in ("start", "success")]
     assert chain[-1].counters["pieces"] == 18

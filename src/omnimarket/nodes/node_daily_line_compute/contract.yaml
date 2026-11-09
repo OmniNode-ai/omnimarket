@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Daily Line Compute (OMN-22925, rebuild plan section 11)
+#
+# The daily line: `Piece 1, code graph: <state> (<why>), joined to piece 2, hosts, by J1: <state>; claims with no
+# TERMINAL: <n>.` The handler is pure. node_daily_line_effect reads the three sources, publishes the line and runs it
+# at 05:30 Eastern.
+name: node_daily_line_compute
+contract_name: node_daily_line_compute
+node_name: node_daily_line_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Renders the daily line from the floor record's piece 1 reading, the state of join J1 and the count of claims with no
+  TERMINAL. A source that was not read renders UNKNOWN for its part and the sentence keeps its shape; no part is ever an
+  empty cell. No clock read, no state, no I/O in the handler.
+
+handler:
+  module: omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line
+  class: HandlerDailyLine
+  input_model: omnimarket.models.model_daily_line.ModelDailyLineRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute_daily_line
+      handler:
+        name: HandlerDailyLine
+        module: omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line
+      input_model: omnimarket.models.model_daily_line.ModelDailyLineRequest
+      output_model: omnimarket.models.model_daily_line.ModelDailyLineResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDailyLineRequest
+  module: omnimarket.models.model_daily_line
+  description: Piece 1's reading, J1's state and the open-claim count, each None when its source was not read.
+output_model:
+  name: ModelDailyLineResult
+  module: omnimarket.models.model_daily_line
+  description: The finished sentence and its three parts.
+
+terminal_event: onex.evt.omnimarket.daily-line-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.daily-line-compute-requested.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.daily-line-computed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.daily-line-computed.v1
+
+metadata:
+  ticket: OMN-22925
+  transport_type: inmemory

@@ -34,7 +34,10 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     window_for,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerQuery
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLedgerQuery,
+    ModelLedgerRead,
+)
 from tests.nodes.node_reading_writer_effect.reading_support import (
     END,
     RUN_AT,
@@ -143,6 +146,58 @@ def test_every_declared_piece_gets_a_row_and_the_rows_pass_the_ledger_grammar() 
     assert unknown_row is not None
     assert unknown_row.cells["reason"].startswith("no-producer:")
     assert "injected fault" in rows[0]
+
+
+class _CountingLedger(InMemoryLedger):
+    """The in-memory ledger counting every read by query, with one injected failure per query."""
+
+    def __init__(self, lines) -> None:
+        super().__init__(lines)
+        self.reads: list[ModelLedgerQuery] = []
+        self.fail_next_reading_row_read = False
+
+    def read(self, query: ModelLedgerQuery):
+        self.reads.append(query)
+        if query.lane == "reading-writer" and self.fail_next_reading_row_read:
+            self.fail_next_reading_row_read = False
+            return ModelLedgerRead(error="read-command-exit-1:TimeoutError")
+        return super().read(query)
+
+
+def _reading_row_reads(ledger: _CountingLedger) -> list[ModelLedgerQuery]:
+    return [q for q in ledger.reads if q.lane == "reading-writer"]
+
+
+def test_a_cycle_reads_the_reading_rows_once_not_once_per_piece() -> None:
+    """OMN-23119: through the command route every read is a process and a bus round trip, and the one
+    that stalls turns its piece UNKNOWN. The replay check asks one question for every computed piece."""
+    ledger = _CountingLedger(healthy_ledger())
+    result = _writer(ledger).handle(_command())
+    assert {p.piece: p.ledger for p in result.pieces} == {
+        1: "written",
+        6: "written",
+        15: "written",
+    }
+    assert len(_reading_row_reads(ledger)) == 1
+
+
+def test_a_failed_read_is_not_kept_so_the_next_piece_reads_again() -> None:
+    ledger = _CountingLedger(healthy_ledger())
+    ledger.fail_next_reading_row_read = True
+    result = _writer(ledger).handle(_command())
+    outcomes = {p.piece: p.ledger for p in result.pieces}
+    assert outcomes[1].startswith("append-failed:replay-check-")
+    assert outcomes[6] == outcomes[15] == "written"
+    assert len(_reading_row_reads(ledger)) == 2
+
+
+def test_a_second_run_reads_again_and_sees_the_rows_the_first_wrote() -> None:
+    ledger = _CountingLedger(healthy_ledger())
+    writer = _writer(ledger)
+    writer.handle(_command())
+    again = writer.handle(_command())
+    assert {p.piece: p.ledger for p in again.pieces}[6] == "already-written"
+    assert len(_reading_row_reads(ledger)) == 2
 
 
 def test_the_same_window_run_twice_writes_once() -> None:
@@ -359,6 +414,34 @@ def test_the_command_route_never_turns_an_error_or_truncation_into_an_empty_answ
     missing = CommandLedgerRowSource(["/nonexistent/reader"], 5, 10).read(_query())
     assert missing.error is not None
     assert missing.rows == ()
+
+
+_STUB_REFUSED = """
+import sys
+sys.stdin.read()
+sys.stderr.write({text!r})
+sys.exit(1)
+"""
+
+
+def test_refusal_class_of_a_failed_read_is_kept() -> None:
+    """Recorded: h053 ticks at 19:15Z and 20:15Z read `read-command-exit-1` and nothing more (OMN-22775)."""
+    refused = CommandLedgerRowSource(
+        [
+            sys.executable,
+            "-c",
+            _STUB_REFUSED.format(
+                text="Error: Work-ledger read refused (DelegateLaneSelectionError)\n"
+            ),
+        ],
+        30,
+        1000,
+    ).read(_query())
+    assert refused.error == "read-command-exit-1:DelegateLaneSelectionError"
+    unnamed = CommandLedgerRowSource(
+        [sys.executable, "-c", _STUB_REFUSED.format(text="boom\n")], 30, 1000
+    ).read(_query())
+    assert unnamed.error == "read-command-exit-1"
 
 
 _STUB_APPEND = """

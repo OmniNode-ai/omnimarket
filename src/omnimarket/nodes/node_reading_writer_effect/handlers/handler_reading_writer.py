@@ -17,6 +17,7 @@ reading rows only and never a gate, a stop or an admission: a reading informs, i
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Callable
@@ -45,9 +46,15 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLandingRead,
     ModelLedgerQuery,
+    ModelLedgerRead,
+    ProtocolLandingSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
+)
+from omnimarket.protocols.protocol_effect_backend_report_source import (
+    ProtocolEffectBackendReportSource,
 )
 
 COMPUTE_CONTRACT = (
@@ -56,6 +63,16 @@ COMPUTE_CONTRACT = (
 WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
+_UNREAD = "unread"
+#: The row type and source cell of every reading row; other handlers of this node import them.
+ROW_TYPE = _ROW_TYPE
+ROW_SOURCE_CELL = _ROW_SOURCE_CELL
+
+
+def _identity_with(content_hash: str, token: str) -> str:
+    """The content hash widened with the two-backend token, at the length of the hash it replaces."""
+    digest = hashlib.sha256(f"{content_hash}|{token}".encode()).hexdigest()
+    return digest[: len(content_hash)]
 
 
 def load_revision(path: Path = COMPUTE_CONTRACT) -> str:
@@ -97,6 +114,7 @@ def build_reading_row(
     probed_at: datetime,
     max_age_seconds: int,
     attempt: str | None = None,
+    two_backend_pending: str | None = None,
 ) -> str:
     """The reading row the floor draws: one STATUS row, every cell one token."""
     cells = [
@@ -125,6 +143,10 @@ def build_reading_row(
         f"revision={result.revision}",
         f"manifest={result.manifest_hash[:12]}",
         f"rows_read={result.rows_read}",
+    ]
+    if two_backend_pending is not None:
+        cells.append(f"two_backend_pending={two_backend_pending}")
+    cells += [
         _clean(f"injected fault: {result.injected_fault}"),
     ]
     return f"{stamp_text(published_at)} | {_ROW_TYPE} | " + " | ".join(cells)
@@ -142,17 +164,24 @@ class HandlerReadingWriter:
         clock: Callable[[], datetime],
         compute: HandlerReadingCompute | None = None,
         revision: str | None = None,
+        landing: ProtocolLandingSource | None = None,
+        two_backend_source: ProtocolEffectBackendReportSource | None = None,
     ) -> None:
+        self._landing = landing
+        self._two_backend_source = two_backend_source
         self._overlay = overlay
         self._source = source
         self._appender = appender
         self._clock = clock
         self._compute = compute or HandlerReadingCompute()
         self._revision = revision or load_revision()
+        # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
+        self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
+        self._cycle_reads = {}
         now = self._clock().astimezone(UTC)
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
@@ -204,12 +233,41 @@ class HandlerReadingWriter:
 
     # -- one piece --------------------------------------------------------------------------
 
+    def _two_backend_pending(self, piece: int) -> str | None:
+        """The count of effects not yet on both backends for the piece that carries it; ``unread`` if the list is."""
+        setting = self._overlay.two_backend
+        if setting is None or setting.piece != piece:
+            return None
+        if self._two_backend_source is None:
+            return _UNREAD
+        read = self._two_backend_source.read()
+        if read.report is None or read.report.incomplete_cause:
+            return _UNREAD
+        return str(read.report.not_on_both_count)
+
+    def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """One read per distinct query in a cycle (OMN-23119).
+
+        The replay check asks the same question, the reading rows of this window, once for every
+        computed piece. Through the command route each ask is a process and a bus round trip of
+        its own, about 9 s when the lab is quiet and the 60 s bus timeout when the read node is
+        stalled, and the one that stalls turns its piece UNKNOWN for the hour. An answer is kept
+        only when it was read: an error is never kept, so the next ask reads again.
+        """
+        kept = self._cycle_reads.get(query)
+        if kept is not None:
+            return kept
+        read = self._source.read(query)
+        if read.error is None:
+            self._cycle_reads[query] = read
+        return read
+
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
-        for source in spec.sources:
-            read = self._source.read(
+        for source in spec.all_sources:
+            read = self._read(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
                     until=end,
@@ -225,11 +283,20 @@ class HandlerReadingWriter:
             )
         return tuple(gathered)
 
+    def _landing_read(
+        self, spec: ModelPieceReadingSpec, now: datetime
+    ) -> ModelLandingRead:
+        if spec.landing is None:
+            return ModelLandingRead()
+        if self._landing is None:
+            return ModelLandingRead(error="no landing source wired")
+        return self._landing.read(spec.landing, now)
+
     def _existing(
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
     ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         publish = self._overlay.publish
-        read = self._source.read(
+        read = self._read(
             ModelLedgerQuery(
                 since=window_end,
                 until=now + timedelta(seconds=1),
@@ -259,6 +326,7 @@ class HandlerReadingWriter:
         now: datetime,
         write: bool,
     ) -> ModelReadingPieceOutcome:
+        landing = self._landing_read(spec, now)
         result = self._compute.handle(
             ModelReadingComputeRequest(
                 spec=spec,
@@ -269,8 +337,34 @@ class HandlerReadingWriter:
                 overlay_hash=self._overlay.overlay_hash(spec.piece),
                 revision=self._revision,
                 sources=self._evidence(spec, end),
+                landing=landing.snapshot,
+                landing_error=landing.error,
             )
         )
+
+        pending = self._two_backend_pending(spec.piece)
+        token = (
+            None
+            if pending is None
+            else "two-backend-unread"
+            if pending == _UNREAD
+            else f"two-backend-pending-{pending}"
+        )
+
+        base_content_hash = result.content_hash
+
+        def tagged(final: ModelReadingComputeResult) -> ModelReadingComputeResult:
+            """The result with the two-backend reason and an identity that covers it, so another count is another content."""
+            if token is None:
+                return final
+            update: dict[str, object] = {
+                "content_hash": _identity_with(base_content_hash, token)
+            }
+            if token not in final.reasons:
+                update["reasons"] = (*final.reasons, token)
+            return final.model_copy(update=update)
+
+        result = tagged(result)
 
         def outcome(
             final: ModelReadingComputeResult, ledger: str, row: str | None = None
@@ -313,8 +407,10 @@ class HandlerReadingWriter:
                         ),
                     }
                 )
+                result = tagged(result)
         row = build_reading_row(
             result,
+            two_backend_pending=pending,
             lane=self._overlay.publish.lane,
             actor=self._overlay.publish.actor,
             published_at=now,

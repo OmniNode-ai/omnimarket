@@ -50,6 +50,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
     ModelLandingExhaustionOwner,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
+    ModelLandingLabCheckFacts,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -157,6 +160,15 @@ class ModelLandingPrFacts(BaseModel):
         ),
     )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
+    lacks_base_head: bool = Field(
+        default=False,
+        description=(
+            "The head does not contain its base branch's newest head, read from "
+            "the clone's ancestry (never GitHub's merge state, which reads a PR "
+            "BLOCKED, not BEHIND, on a base that is not strict). False when "
+            "unread: an unread head is never updated on this evidence."
+        ),
+    )
     merge_queue: bool = Field(
         default=False,
         description=(
@@ -205,6 +217,16 @@ class ModelLandingPrFacts(BaseModel):
         description=(
             "Red check name -> its failure annotation text on this head; a red "
             "check absent here is unread and never clusters."
+        ),
+    )
+    lab_check: ModelLandingLabCheckFacts | None = Field(
+        default=None,
+        description=(
+            "The lab-bound check this PR needs before it lands (J8, OMN-22919): the "
+            "current attempt's identity and every run of the check the collector read. "
+            "Only a run on this exact head carrying the current attempt's identity "
+            "counts; a pass lets the head merge, a failing, running, missing or "
+            "superseded one holds it with its own reason. Absent: decided as before."
         ),
     )
     gate_since: datetime | None = Field(
@@ -448,6 +470,14 @@ class ModelLandingPolicy(BaseModel):
         ge=1,
         description="Backoff after an update-branch 422 no-new-commits response.",
     )
+    lab_check_wait_seconds: int = Field(
+        default=900,
+        ge=1,
+        description=(
+            "J8: how long a lab-bound check may take to post after its dispatch; a "
+            "check not posted inside it is pending, past it missing."
+        ),
+    )
     stale_gate_seconds: int = Field(
         default=600,
         ge=0,
@@ -577,6 +607,16 @@ class ModelLandingFacts(BaseModel):
     )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
+    )
+    base_green_checks: tuple[ModelLandingRepoChecks, ...] = Field(
+        default=(),
+        description=(
+            "Checks whose newest copy at each repo's newest base head "
+            "(``base_heads``) is green. A red head whose every fixable red check "
+            "is listed here, and which lacks that base head, is red from an older "
+            "base: its branch is updated, never a worker sent. A repo missing "
+            "here is unread, never green."
+        ),
     )
     base_heads: tuple[ModelLandingRepoHead, ...] = Field(
         default=(),

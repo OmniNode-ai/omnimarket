@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_commitment_check_runner_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root, or name the
+# file in ONEX_COMMITMENT_CHECK_OVERLAY. Every value decides what runs and when; the handler holds none of them.
+#
+#   runner_lane               the lane the reading rows are written as
+#   allowed_executables       a check runs only when its argv[0] is one of these; anything else is refused unexecuted
+#   check_timeout_seconds     one check's budget; a check that exceeds it did not pass
+#   recheck_interval_seconds  a verified commitment is checked again when its newest reading is this old
+#   max_checks_per_run        checks started in one run; the rest wait for the next
+#   ledger_lookback_hours     how far back the commitment rows are read
+#   output_tail_chars         how much of a check's output is kept in the result
+#   ledger_read               how rows are read: `file` (the live ledger named by the variable path_env, with its archive)
+#                             or `command` (the command in command_env)
+#   ledger_append             the command in command_env appends rows; host_env holds the host name
+#   schedule_hosts            the hosts `schedule install --host <name>` installs the systemd user timer on; each names the venv
+#                             (relative to the registry root) that runs the unit and the environment the unit carries
+runner_lane: commitment-check-runner
+allowed_executables: [uv, curl, test, psql]
+check_timeout_seconds: 120
+recheck_interval_seconds: 21600
+max_checks_per_run: 20
+ledger_lookback_hours: 2160
+output_tail_chars: 400
+ledger_read:
+  route: file
+  path_env: ONEX_LEDGER_PATH
+  archive_subdir: archive
+  timeout_seconds: 30
+  row_limit: 5000
+ledger_append:
+  command_env: ONEX_LEDGER_APPEND_COMMAND
+  host_env: ONEX_HOST_NAME
+  timeout_seconds: 60
+schedule_hosts:
+  - name: example-lab-host
+    venv: omnimarket/.venv
+    environment:
+      ONEX_LEDGER_PATH: $OMNI_HOME/docs/tracking/ROLLING_WORK_LEDGER.md
+      ONEX_LEDGER_APPEND_COMMAND: $OMNI_HOME/omnimarket/.venv/bin/python -m example.ledger_append
+      ONEX_HOST_NAME: example-lab-host

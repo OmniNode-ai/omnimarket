@@ -21,7 +21,8 @@ description: >
   NOT_WORKING or UNKNOWN per piece, and appends one reading row per piece. A conflicting
   duplicate fails the window; the same row key with different content is a replay failure; a
   source that cannot be read gives UNKNOWN; a window that has not reached its cutoff is refused
-  with a typed failure.
+  with a typed failure. A piece that declares landing requirements (piece 9) is read from the pull
+  request watcher's snapshot through the overlay's landing route, beside the ledger rows of its canary.
 
 handler:
   module: omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
@@ -30,6 +31,14 @@ handler:
 
 # Not a runtime-dispatched handler: HandlerReadingWriter takes its overlay, source, appender and clock
 # as constructor parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+# The node's second handler, bound here so the canonical file shape check finds it. It routes nothing:
+# HandlerRelationMapReading takes constructor parameters too, and the CLI builds it.
+secondary_handlers:
+  relation_map_reading:
+    handler:
+      name: HandlerRelationMapReading
+      module: omnimarket.nodes.node_reading_writer_effect.handlers.handler_relation_map_reading
 
 descriptor:
   node_archetype: effect
@@ -60,6 +69,9 @@ topics:
   reading_piece_failed: onex.evt.omnimarket.reading-piece-failed.v1
   reading_window_completed: onex.evt.omnimarket.reading-window-completed.v1
   reading_window_failed: onex.evt.omnimarket.reading-window-failed.v1
+  relation_map_requested: onex.cmd.omnimarket.relation-map-reading-requested.v1
+  relation_map_written: onex.evt.omnimarket.relation-map-reading-written.v1
+  relation_map_failed: onex.evt.omnimarket.relation-map-reading-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -70,6 +82,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.reading-piece-failed.v1
   - onex.evt.omnimarket.reading-window-completed.v1
   - onex.evt.omnimarket.reading-window-failed.v1
+  - onex.evt.omnimarket.relation-map-reading-written.v1
+  - onex.evt.omnimarket.relation-map-reading-failed.v1
 
 # The node's own hourly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on each host the overlay's schedule_hosts names, removed by `schedule uninstall`.
@@ -85,6 +99,18 @@ schedule:
     description: hourly, fifteen minutes past, after the previous window's cutoff
   schedulers:
     systemd-user: installed by this node (schedule install) as a systemd user timer
+
+# On both backends (OMN-22911, plan section 3.1): the ledger the readings are read from is the
+# in-memory ledger by default and the file ledger when the overlay says `ledger_read.route: file`.
+backends:
+  default: in_memory
+  in_memory:
+    factory: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.make_in_memory_backend
+  real:
+    factory: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.make_file_backend
+    overlay_key: ledger_read.route
+  suite:
+    scenario: omnimarket.nodes.node_reading_writer_effect.adapters.two_backend.scenario_row_roundtrip
 
 overlay:
   node: node_reading_writer_effect

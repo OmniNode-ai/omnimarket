@@ -22,6 +22,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_sink import JsonlEmissionSink, ProtocolEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
     LocalOverlayHome,
@@ -29,8 +30,13 @@ from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
 from omnimarket.nodes.node_overlay_drift_effect.adapters.pin_history import (
     GitPinHistory,
 )
+from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_revision import (
+    GitRevisionTree,
+    ProvenanceRuntimeRevision,
+)
 from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_validator import (
     InterpreterRuntimeValidator,
+    RevisionTreeRuntimeValidator,
 )
 from omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift import (
     HandlerOverlayDrift,
@@ -38,6 +44,9 @@ from omnimarket.nodes.node_overlay_drift_effect.handlers.handler_overlay_drift i
 from omnimarket.nodes.node_overlay_drift_effect.handlers.schedule import (
     DriftScheduler,
     load_schedule,
+)
+from omnimarket.nodes.node_overlay_drift_effect.handlers.upstream_chain import (
+    newest_unanswered_upstream_cid,
 )
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
     ModelOverlayDriftCommand,
@@ -47,9 +56,13 @@ from omnimarket.nodes.node_overlay_drift_effect.overlay import (
     ModelOverlayDriftOverlay,
     load_overlay,
 )
+from omnimarket.nodes.node_overlay_drift_effect.protocols import (
+    ProtocolRuntimeValidator,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
+    build_row_source,
 )
 
 
@@ -67,9 +80,26 @@ def build_handler(
     home = LocalOverlayHome(
         Path(_required(overlay.home.root_env, environ)), overlay.home
     )
-    validator = InterpreterRuntimeValidator(
+    interpreter = InterpreterRuntimeValidator(
         Path(_required(overlay.runtime.python_env, environ)),
         overlay.runtime.timeout_seconds,
+    )
+    source = overlay.runtime.revision_source
+    validator: ProtocolRuntimeValidator = (
+        RevisionTreeRuntimeValidator(
+            interpreter,
+            ProvenanceRuntimeRevision(source, environ),
+            GitRevisionTree(
+                Path(_required(source.clone_env, environ)), source.git_timeout_seconds
+            ),
+        )
+        if source
+        else interpreter
+    )
+    emissions: ProtocolEmissionSink | None = (
+        JsonlEmissionSink(Path(_required(overlay.emission.journal_env, environ)))
+        if overlay.emission
+        else None
     )
     handler = HandlerOverlayDrift(
         overlay=overlay,
@@ -87,8 +117,21 @@ def build_handler(
         )
         if overlay.pin_history
         else None,
+        emissions=emissions,
     )
     return handler, host
+
+
+def _upstream_cid(overlay: ModelOverlayDriftOverlay) -> str | None:
+    """The upstream chain this run answers (join J3), or ``None`` when the overlay names no upstream or the ledger cannot say."""
+    if overlay.upstream is None:
+        return None
+    return newest_unanswered_upstream_cid(
+        build_row_source(overlay.upstream.ledger_read, os.environ),
+        overlay.upstream,
+        overlay.publish.lane,
+        datetime.now(UTC),
+    )
 
 
 def _run(write: bool) -> int:
@@ -97,7 +140,9 @@ def _run(write: bool) -> int:
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
         ModelOverlayDriftCommand(
-            correlation_id=f"overlay-drift-{host}-{now}", write=write
+            correlation_id=f"overlay-drift-{host}-{now}",
+            write=write,
+            upstream_cid=_upstream_cid(overlay),
         )
     )
     if result.status == "failed":

@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
+from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule import (
     HandlerWorktreeSchedule,
 )
@@ -18,6 +19,25 @@ from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_sched
     ModelWorktreeScheduleOverlay,
     ModelWorktreeScheduleRequest,
 )
+
+
+class _NoInstalledUnits:
+    """A host with no installed service, so a tick never reads the runner's own systemd."""
+
+    def read(self) -> UnitRoots:
+        return UnitRoots.from_paths({})
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_unit_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tick reads installed units through `systemctl`; a runner whose systemd cannot answer must not fail it."""
+    from omnimarket.nodes.node_worktree_reconcile_effect import (
+        runtime_worktree_reconcile,
+    )
+
+    monkeypatch.setattr(
+        runtime_worktree_reconcile, "SystemdUnitRootReader", _NoInstalledUnits
+    )
 
 
 def overlay(tmp_path: Path) -> Path:
@@ -334,3 +354,34 @@ def test_host_reconciliation_is_not_a_boot_dispatched_route() -> None:
     assert contract["runtime_dispatch"]["external_trigger"] is True
     routes = contract["handler_routing"]["handlers"]
     assert [route["operation"] for route in routes] == ["schedule"]
+
+
+def test_the_unit_declares_its_priority_and_the_installer_replaces_a_hand_made_idle_drop_in(
+    tmp_path: Path,
+) -> None:
+    """Recorded case (OMN-22799): a hand-made drop-in set IOSchedulingClass=idle, a git read
+    that takes 0.1 s took 5 to 10 s behind lane work, and the 60 s git budget fired."""
+    path = overlay(tmp_path)
+    units = tmp_path / "units"
+    drop_in = units / "onex-worktree-reconcile.service.d" / "10-low-priority.conf"
+    drop_in.parent.mkdir(parents=True)
+    drop_in.write_text("[Service]\nNice=19\nIOSchedulingClass=idle\nCPUWeight=10\n")
+
+    def run(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        output = "active\n" if "is-active" in argv else "enabled\n"
+        if "list-timers" in argv:
+            output = "onex-worktree-reconcile.timer onex-worktree-reconcile.service\n"
+        return subprocess.CompletedProcess(argv, 0, output, "")
+
+    result = HandlerWorktreeSchedule(unit_directory=units, runner=run).handle(
+        ModelWorktreeScheduleRequest(
+            mode="install", host="lab-host", overlay_path=str(path)
+        )
+    )
+    assert result.exit_code == 0
+    assert "IOSchedulingClass=best-effort" in result.dropin
+    assert "IOSchedulingPriority=7" in result.dropin
+    assert "Nice=19" in result.dropin
+    assert "CPUWeight=10" in result.dropin
+    assert drop_in.read_text() == result.dropin
+    assert "idle" not in drop_in.read_text()

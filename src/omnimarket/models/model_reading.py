@@ -139,6 +139,59 @@ class ModelReadingSource(BaseModel):
         return all(predicate.holds(row.cells) for predicate in self.pass_when)
 
 
+class ModelLandingRequirements(BaseModel):
+    """The landing goal's hourly requirements, read for piece 9 (plan section 3.5, row 9).
+
+    An eligible head is open, in scope, non-draft and green on every required context. The reading fails
+    when an eligible head has waited over ``head_max_age_seconds``; or, while at least ``waiting_threshold``
+    heads wait, when fewer than ``goal_merges_per_window`` merged inside ``merge_window_seconds``; or, while
+    fewer wait, when the daily synthetic landing canary has not landed (``canary`` names its row). A watcher
+    snapshot older than ``snapshot_max_age_seconds`` is stale and reads NOT WORKING.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    head_max_age_seconds: int = Field(ge=1)
+    goal_merges_per_window: int = Field(ge=1)
+    merge_window_seconds: int = Field(ge=60)
+    waiting_threshold: int = Field(ge=1)
+    snapshot_max_age_seconds: int = Field(ge=1)
+    canary: ModelReadingSource
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelLandingRequirements:
+        if self.merge_window_seconds % 60:
+            raise ValueError("merge_window_seconds is a whole number of minutes")
+        return self
+
+
+class ModelLandingHead(BaseModel):
+    """One eligible head and how long its checks have been green without a merge."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ref: str = Field(min_length=1)
+    waiting_seconds: int = Field(ge=0)
+    #: Green but the branch conflicts, so it cannot be armed; still waiting.
+    conflicted: bool = False
+
+
+class ModelLandingSnapshot(BaseModel):
+    """What the pull request watcher says about landing, read once by the writer's landing source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: How old the watcher's last tick is at the read.
+    age_seconds: int = Field(ge=0)
+    #: When the newest observation behind the snapshot was made (the watcher's last tick, the
+    #: projection's newest row), when the source knows it. A stale reason names this stamp and
+    #: never the age, so the same snapshot probed again for one window is the same reading
+    #: (OMN-23077).
+    newest_at: datetime | None = None
+    heads: tuple[ModelLandingHead, ...] = ()
+    merges_in_window: int = Field(ge=0)
+
+
 class ModelPieceReadingSpec(BaseModel):
     """What one piece's reading reads today, and the fault that must flip it."""
 
@@ -152,31 +205,40 @@ class ModelPieceReadingSpec(BaseModel):
     #: A token for the row's ``basis`` cell when the producer is narrower than the table's.
     basis: str | None = None
     sources: tuple[ModelReadingSource, ...] = ()
+    #: Piece 9 reads from the watcher's snapshot against the landing goal's requirements, not from ledger rows alone.
+    landing: ModelLandingRequirements | None = None
     #: The fault injected on purpose; the reading must then go NOT WORKING.
     injected_fault: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPieceReadingSpec:
         if self.readable_today:
-            if not self.sources:
+            if not self.sources and self.landing is None:
                 raise ValueError(f"piece {self.piece}: readable today needs a source")
         else:
-            if self.sources:
+            if self.sources or self.landing is not None:
                 raise ValueError(
-                    f"piece {self.piece}: a piece that is not readable today has no source"
+                    f"piece {self.piece}: a piece that is not readable today has no source or landing requirements"
                 )
             if not self.unknown_reason:
                 raise ValueError(
                     f"piece {self.piece}: UNKNOWN needs an unknown_reason (never blank)"
                 )
-        ids = [source.source_id for source in self.sources]
+        ids = [source.source_id for source in self.all_sources]
         if len(ids) != len(set(ids)):
             raise ValueError(f"piece {self.piece}: source ids repeat")
         return self
 
     @property
+    def all_sources(self) -> tuple[ModelReadingSource, ...]:
+        """The ledger sources of the reading: its own, and the landing canary's."""
+        if self.landing is None:
+            return self.sources
+        return (*self.sources, self.landing.canary)
+
+    @property
     def lookback_seconds(self) -> int:
-        return max((source.max_age_seconds for source in self.sources), default=0)
+        return max((source.max_age_seconds for source in self.all_sources), default=0)
 
 
 class ModelReadingSourceRows(BaseModel):
@@ -202,6 +264,9 @@ class ModelReadingComputeRequest(BaseModel):
     overlay_hash: str = Field(min_length=1)
     revision: str = Field(min_length=1)
     sources: tuple[ModelReadingSourceRows, ...] = ()
+    #: The watcher snapshot of a landing piece, or why it could not be read.
+    landing: ModelLandingSnapshot | None = None
+    landing_error: str | None = None
 
 
 class ModelReadingComputeResult(BaseModel):

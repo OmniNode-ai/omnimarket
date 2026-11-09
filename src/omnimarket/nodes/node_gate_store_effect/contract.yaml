@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Gate Store Effect (OMN-22478, step 0 row 3)
+#
+# The one store behind admission, stops and the holder (rebuild plan section 7.5): the epoch, the
+# reservations and consumed reservations, the holder record, step keys, safety and stop state, and
+# the order. Every compare is evaluated inside one transaction of the store. This node is the store's
+# effect with its in-memory twin; the Postgres backend is a later step and the overlay naming it is
+# refused. It holds no start by itself: nothing calls it from a start path until the admission effect
+# (step 0 row 4) is built and its drill passes.
+name: node_gate_store_effect
+contract_name: node_gate_store_effect
+node_name: node_gate_store_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers one request in one transaction: reserve (counted against the piece's limit with
+  consumed reservations counting until their process is read as gone), consume (single use),
+  release, record_safety (a stop commits before any later reservation counts it), handover and
+  advance_order (both fenced by the epoch), and read. A mutating request carries a step key; a
+  replayed key returns the first answer and writes nothing. A request the store cannot answer is
+  a typed failure event, never dropped.
+
+handler:
+  module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store
+  class: HandlerGateStore
+  input_model: omnimarket.models.model_gate_store.ModelGateStoreRequest
+
+# Not a runtime-dispatched handler: HandlerGateStore takes its backend as a constructor parameter
+# (the overlay selects it through build_store), so the bus edge is answer_command. The J6 join
+# handler (OMN-22936) takes the store, the audit sink and the projection as constructor parameters
+# in the same way. Both are bound here so the contract owns them; they run in process, not through
+# handler_routing, which would quarantine them at boot.
+cli_handlers:
+  - operation: gate_store_transact
+    handler:
+      name: HandlerGateStore
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store
+  - operation: join_j6_gate_store_stop_and_send
+    handler:
+      name: HandlerGateStoreJoinJ6
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [gate-store-write]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelGateStoreRequest
+  module: omnimarket.models.model_gate_store
+  description: One request, its step key and the facts it is decided on.
+output_model:
+  name: ModelGateStoreResult
+  module: omnimarket.models.model_gate_store
+  description: The typed outcome, the epoch and the count it was decided at.
+
+terminal_event: onex.evt.omnimarket.gate-store-answered.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  gate_store_requested: onex.cmd.omnimarket.gate-store-requested.v1
+  gate_store_answered: onex.evt.omnimarket.gate-store-answered.v1
+  gate_store_failed: onex.evt.omnimarket.gate-store-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.gate-store-answered.v1
+  - onex.evt.omnimarket.gate-store-failed.v1
+
+# OMN-22936, rebuild plan 4.1 join J6 (piece 6 to piece 7): a stop committed in the gate store lands as one durable audit
+# row and one projected audit row, and another send of that piece is refused; a stop whose commit gets no answer by the
+# deadline leaves the piece's send fence closed. Nothing of this is spelled in code.
+join_j6:
+  join_id: "J6"
+  from_piece: 6
+  to_piece: 7
+  commit_deadline_seconds: 5.0
+  audit_kinds:
+    committed: "stop_committed"
+    unanswered: "stop_unanswered"
+    refused: "stop_refused"
+  failure_codes:
+    audit_row_missing: "audit_row_missing"
+    projected_row_missing: "projected_row_missing"
+
+overlay:
+  node: gate_store
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

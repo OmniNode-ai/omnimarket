@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.cycle_interrupt import CycleInterrupted
+from omnimarket.handlers.emission_sink import (
+    InMemoryEmissionSink,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -30,12 +34,6 @@ from omnimarket.models.floor_17a import (
 )
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state import (
     HandlerLabState,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers import (
-    handler_floor_simple_tick as tick,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers.emission_sink import (
-    InMemoryEmissionSink,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     EMIT_CYCLE,
@@ -135,7 +133,7 @@ def test_error_a_termination_signal_closes_the_cycle_and_the_step_it_stopped(
 
     monkeypatch.setattr(HandlerLabState, "handle", stopped_in_the_step)
     before = signal.getsignal(signal.SIGTERM)
-    with pytest.raises(tick.CycleInterrupted) as stopped:
+    with pytest.raises(CycleInterrupted) as stopped:
         handler(sink).run(
             ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
         )
@@ -168,7 +166,7 @@ def test_error_a_cycle_past_its_deadline_ends_itself_with_a_typed_failure(
 
     monkeypatch.setattr(HandlerLabState, "handle", hung)
     began = time.monotonic()
-    with pytest.raises(tick.CycleInterrupted) as overdue:
+    with pytest.raises(CycleInterrupted) as overdue:
         handler(sink).run(
             ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
         )

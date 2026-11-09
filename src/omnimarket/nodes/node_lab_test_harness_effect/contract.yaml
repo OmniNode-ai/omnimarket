@@ -48,6 +48,7 @@ side_effects:
   writes:
     - the current-result file the overlay names
     - lab work unit commands on the overlay's bus lane
+    - the floor's emission journal the overlay names: a start and a success or a typed failure of the run, and the planted failure's own chain (piece 8's golden and error events, OMN-23007)
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -65,6 +66,22 @@ runtime_dispatch:
 # The floor reads the reading; it is not a node contract.
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-test-harness-read.v1
+# The node's own timer, installed by `schedule install --host <name>` as a systemd user timer on each host the
+# overlay's schedule_hosts names, removed by `schedule uninstall`. The interval is the overlay's schedule block;
+# this block holds only how the unit is run.
+schedule:
+  unit_name: onex-central-test-harness
+  state_directory: .onex_state/lab-test-harness
+  timeout_seconds: 900
+  boot_delay: 120s
+  randomized_delay: 30s
+  persistent: true
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+overlay:
+  node: node_lab_test_harness_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.models.lab_test_harness.ModelLabTestHarnessOverlay
 metadata:
   transport_type: kafka
   description: "Central test harness: golden and error cases as lab work units"
@@ -72,4 +89,4 @@ metadata:
   license: MIT
   created: "2026-11-05"
   tags: [effect, lab-test-harness]
-  related_tickets: ["OMN-22478"]
+  related_tickets: ["OMN-22478", "OMN-23007"]

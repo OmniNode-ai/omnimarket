@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Host configuration of the alarm tick: paths and executables (OMN-19998)."""
 
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..host_table import HostTableError, read_host_aliases
 from .model_drainer_watch_options import ModelDrainerWatchOptions
 from .model_quiet_host_repair import ModelHostDrainerCommand
 
@@ -43,6 +46,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # --min-merges-per-hour) and lanes placed on a pool host per hour. Zero turns a measure off.
     min_merges_per_hour: int = Field(default=5, ge=0)
     min_lanes_placed_per_hour: int = Field(default=1, ge=0)
+    # How long a lane the lab fill handed to a detached send job may read ``pending`` with no CLAIM
+    # row before the placement alarm counts it unplaced: the fill's own send cap (sendCapS 900 s).
+    lane_send_cap_minutes: int = Field(default=15, ge=1)
     controller_state_dir: Path = Field(
         default_factory=lambda: Path.home() / ".local/state/omni/landing"
     )
@@ -61,7 +67,19 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # configured none, which the tick reports as UNCONFIGURED and never treats as a pass.
     drainer: ModelDrainerWatchOptions | None = None
     # Alias/host and remote execution bindings come from deployment data, never from a request.
-    host_aliases: dict[str, str] = Field(default_factory=dict)
+    # A host id maps to the event label (or labels) its hook events carry. Name a ``host_table``
+    # instead of listing them: the aliases are then derived from that table at load time, so the
+    # two cannot disagree (OMN-22755). Naming both is refused.
+    host_aliases: dict[str, str | tuple[str, ...]] = Field(default_factory=dict)
+    host_table: Path | None = None
+    # Why ``host_table`` could not be read ('' when it was, or none is named); set by the
+    # validator below. Hook events are then unattributable, which the tick reports as UNKNOWN.
+    host_table_error: str = ""
+    # True reads the lab host table (the one lab host list, however the deployment names it) and leaves
+    # out of the quiet-host reading each host it declares unavailable: such a host takes no lane, so a
+    # ledger row that names it is not lane work that lost its hook events (OMN-22778). False, the default,
+    # skips no host. A table that cannot be read is reported and skips nothing.
+    skip_unavailable_hosts: bool = False
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (
@@ -107,6 +125,22 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     bash: str = "bash"
     python: str = Field(default_factory=lambda: sys.executable)
 
+    @model_validator(mode="before")
+    @classmethod
+    def derive_host_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not data.get("host_table"):
+            return data
+        if data.get("host_aliases"):
+            raise ValueError("name host_table or host_aliases, not both")
+        try:
+            aliases: dict[str, str | tuple[str, ...]] = dict(
+                read_host_aliases(Path(data["host_table"]))
+            )
+            error = ""
+        except HostTableError as exc:
+            aliases, error = {}, str(exc)
+        return {**data, "host_aliases": aliases, "host_table_error": error}
+
     @model_validator(mode="after")
     def declared_hosts(self) -> "ModelSilentFailureAlarmOptions":
         missing = set(self.host_drainers) - set(self.host_aliases)
@@ -122,7 +156,13 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     def from_environment(cls) -> "ModelSilentFailureAlarmOptions":
         config = os.environ.get("ONEX_SILENT_FAILURE_ALARM_CONFIG")
         if config:
-            return cls.model_validate_json(Path(config).read_text())
+            path = Path(config)
+            document = json.loads(path.read_text())
+            table = document.get("host_table") if isinstance(document, dict) else None
+            if table and not Path(table).is_absolute():
+                # A relative table path is read from the configuration file's own directory.
+                document["host_table"] = str(path.resolve().parent / table)
+            return cls.model_validate(document)
         root = os.environ.get("OMNI_HOME")
         if not root:
             raise ValueError(

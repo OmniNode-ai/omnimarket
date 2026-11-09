@@ -32,6 +32,9 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
     ModelFloorStationRef,
 )
 
+# A lane owns a floor holdup by an ``owns=floor:<holdup id>`` cell, the explicit rule the ledger MSG uses for pull requests.
+FLOOR_OWNS_PREFIX = "floor:"
+
 
 def _stamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -180,10 +183,6 @@ def build_lanes(
         claim = max(claims, key=_key)
         if any(r.kind == "TERMINAL" and r.ts >= claim.ts for r in rows):
             continue
-        newest = rows[-1]
-        silent = _minutes(now, newest.ts)
-        if silent > window:
-            continue
         statuses = [r for r in rows if r.kind == "STATUS" and r.ts >= claim.ts]
         status = max(statuses, key=_key) if statuses else None
         status_row = status or claim
@@ -196,6 +195,20 @@ def build_lanes(
             or (not claim.run_id and receipt.started_at < claim.ts)
         ):
             receipt = None
+        # A remote lane writes no ledger row between CLAIM and TERMINAL: its progress is the runner's streamed output.
+        # Output counts only for the claim's own unfinished run, and only moves the newest evidence forward; the bound is unchanged.
+        progress = rows[-1].ts
+        if (
+            receipt is not None
+            and receipt.output_at is not None
+            and not receipt.final
+            and receipt.ended_at is None
+            and receipt.output_at >= claim.ts
+        ):
+            progress = max(progress, receipt.output_at)
+        silent = _minutes(now, progress)
+        if silent > window:
+            continue
         liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
         detail = "no process reading was supplied"
         if receipt is not None:
@@ -268,6 +281,16 @@ def build_lanes(
             if claim.text
             else ("", "unread")
         )
+        owned = tuple(
+            dict.fromkeys(
+                token.removeprefix(FLOOR_OWNS_PREFIX)
+                for r in rows
+                if r.kind in {"CLAIM", "STATUS"} and r.ts >= claim.ts
+                for token in r.owns
+                if token.startswith(FLOOR_OWNS_PREFIX)
+                and len(token) > len(FLOOR_OWNS_PREFIX)
+            )
+        )
         with_prs = [r for r in rows if r.prs and r.ts >= claim.ts]
         pr = pr_key(max(with_prs, key=_key).prs[0]) if with_prs else ""
         if not pr and receipt is not None and receipt.pr_heads:
@@ -311,6 +334,8 @@ def build_lanes(
                 claim_full=claim.text,
                 liveness=liveness,
                 liveness_detail=detail,
+                owns=owned,
+                parent_ticket=claim.parent_tickets[0] if claim.parent_tickets else "",
             )
         )
     ordered = sorted(

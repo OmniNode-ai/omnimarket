@@ -5,11 +5,19 @@
 #
 #   home             the overlay home clone: the variable holding its path, the overlays directory,
 #                    the overlay file name, and the pins file (<id> <revision> <module>:<class>)
-#   runtime          the runtime whose installed models judge the overlays: the variable holding its
-#                    interpreter's path, and how long it may take
+#   runtime          the runtime whose models judge the overlays: the variable holding its
+#                    interpreter's path, and how long it may take. With revision_source set the
+#                    models are omnimarket's source tree at the revision the runtime's build
+#                    provenance file names (read over ssh from its container, exported from the
+#                    clone the clone_env variable holds); without it, the interpreter's own
 #   ledger_append    the command in command_env appends rows; host_env holds the host name
 #   publish          the rows' lane and actor, how long a row stays fresh, how many failing overlays
 #                    a row names
+#   emission         optional: the floor piece and node of this read, and the variable naming the emission
+#                    journal; with it each run emits one chain under the command's correlation id
+#   upstream         optional (join J3): the ledger to read, the floor's piece event rule of the upstream piece (copied as it
+#                    stands in the floor overlay) and the row cell that names the upstream chain a run answers; with it a run
+#                    takes the newest successful upstream chain no earlier run named and writes its id in that cell
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
 #   schedule_hosts   hosts that install the daily systemd user timer
 #   unit_environment environment the installed unit carries
@@ -22,6 +30,15 @@ runtime:
   name: example-runtime
   python_env: EXAMPLE_RUNTIME_PYTHON
   timeout_seconds: 120
+  revision_source:
+    ssh_host_env: EXAMPLE_RUNTIME_SSH_HOST
+    compose_project: example-project
+    service: example-runtime-service
+    provenance_path: /app/build-provenance.json
+    ref_path: [per_repo_vcs_provenance, siblings, omnimarket, vcs_ref]
+    clone_env: EXAMPLE_OMNIMARKET_CLONE
+    read_timeout_seconds: 30
+    git_timeout_seconds: 60
 ledger_append:
   command_env: EXAMPLE_LEDGER_APPEND_COMMAND
   host_env: EXAMPLE_HOST_NAME
@@ -31,6 +48,34 @@ publish:
   actor: node:node_overlay_drift_effect
   publish_max_age_seconds: 129600
   max_named: 10
+emission:
+  piece: 4
+  node: example-node:read
+  journal_env: EXAMPLE_EMISSION_JOURNAL
+
+upstream:
+  ledger_read:
+    route: file
+    path_env: EXAMPLE_LEDGER_PATH
+    archive_subdir: archive
+    timeout_seconds: 60
+    row_limit: 5000
+  cid_cell: upstream_cid
+  rule:
+    piece: 3
+    node: "example-seam-node:read"
+    golden:
+      row_type: STATUS
+      lane: example-seam-deadline
+      cells: {src: example-seam-deadline, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: example-seam-deadline
+      cells: {src: example-seam-deadline, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_result_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7
 injected_fault: An overlay key the runtime rejects (the rung_order case)
 schedule_hosts:
 - name: host-a

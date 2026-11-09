@@ -1,0 +1,110 @@
+---
+name: projection_local_alerts
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.models.model_local_alert_transitioned.ModelLocalAlertTransitioned
+description: >
+  Folds each local alert transition (raised or cleared) into one row per
+  tenant, code and subject, and serves those rows to the dashboard's alerts
+  panel. A row is a function of the newest transition for its key: a replayed
+  transition (same derived id) or an older one writes nothing, so a repeated
+  condition updates one row and a replay changes none. An alert clears only
+  from a later transition that the environment writer derived from a report
+  meeting the clear condition; nothing the browser sends raises or clears one.
+  The tenant must be a canonical tenant uuid; anything else is refused to the
+  DLQ.
+runtime_profiles: [tenant-projection]
+
+handler:
+  module: omnimarket.nodes.node_projection_local_alerts.handlers.handler_projection_local_alerts
+  class: HandlerProjectionLocalAlerts
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: local_alerts_projection_writer
+      handler:
+        name: LocalAlertsProjectionWriter
+        module: omnimarket.nodes.node_projection_local_alerts.handlers.handler_local_alerts_writer
+      handler_module: omnimarket.nodes.node_projection_local_alerts.handlers.handler_local_alerts_writer
+terminal_event: onex.evt.omnimarket.projection-local-alerts-applied.v1
+golden_path:
+  - "Validate a transition whose id matches its tenant, code, subject, direction and time"
+  - "Lock the alert's key and read its stored row"
+  - "Plan the row from the newest transition; a replay or an older transition plans nothing"
+  - "Upsert the planned row under (tenant, code, subject)"
+  - "Publish the written row to the bus-backed projection API"
+  - "Emit onex.evt.omnimarket.projection-local-alerts-applied.v1"
+dod_evidence:
+  - test: tests/test_omn19991_local_alerts_writer.py::test_a_transition_whose_tenant_is_not_a_canonical_uuid_is_refused_and_nothing_is_written
+    description: "A slug or non-canonical tenant is refused and nothing is written or published"
+  - test: tests/test_omn19991_local_alerts_writer.py::test_replaying_every_transition_of_an_hour_changes_no_row
+    description: "Replaying the same transitions, in any order, leaves the same rows"
+  - test: tests/test_omn19991_local_alerts_writer.py::test_a_clear_updates_the_raised_row_in_place
+    description: "A repeated condition and its clear update one row per (tenant, code, subject)"
+  - test: tests/test_omn19991_local_alerts_writer.py::test_the_tenant_setting_lock_and_read_come_before_the_write
+    description: "The tenant setting, the key lock and the read precede every write"
+db_io:
+  db_tables:
+    - name: local_alerts
+      database_ref: application
+      schema: public
+      migration: "0000_create_local_alerts.sql"
+      access: read_write
+      role: local_alerts
+  dedupe_key: [tenant_id, code, subject]
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.local-alert-transitioned.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-local-alerts-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-local-alerts-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-local-alerts-applied.v1
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.local-alerts.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  key_grain: "mutable"
+  table: "local_alerts"
+  schema: "omnidash_analytics"
+  columns:
+    - tenant_id
+    - code
+    - subject
+    - mode
+    - service
+    - state
+    - severity
+    - raised_at
+    - cleared_at
+    - evidence
+    - last_transition_id
+    - last_transition_at
+    - updated_at
+    - projection_cursor
+  json_columns:
+    - evidence
+  order_by: "raised_at DESC, code ASC, subject ASC"
+  cursor_column: projection_cursor
+  freshness_column: updated_at
+  limit: 500
+  bus_backed: true
+  key_columns: [tenant_id, code, subject]
+  tenant_column: tenant_id
+  # Self-expiring opt-out (OMN-23159): exposure-reader-coverage fails a standing
+  # `consumers: none` once a reader exists, so the change that adds the reader
+  # deletes both keys. Both are required together; do not widen this to a
+  # second exposure.
+  consumers: none
+  consumers_reason: >-
+    No Omnidash component placed on a shipped dashboard layout, local page or
+    typed status-page backend reader reads this exposure yet: the omnidash
+    alert_banner component exists but no shipped layout declares this topic as
+    a dataSource. The change that adds that reader deletes this opt-out and the
+    exposure-reader-coverage gate then checks the reader.
+metadata:
+  transport_type: kafka

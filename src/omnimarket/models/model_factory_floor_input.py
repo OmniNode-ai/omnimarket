@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -151,6 +152,8 @@ class ModelFloorLedgerRow(BaseModel):
     kind: str = Field(min_length=1)
     lane: str = ""
     tickets: tuple[str, ...] = ()
+    # The parent_ticket= cell a child CLAIM carries: the ticket of the work this row's ticket was minted under.
+    parent_tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
     row_id: str = ""
     re: str = ""
@@ -168,6 +171,8 @@ class ModelFloorLedgerRow(BaseModel):
     actor: str = ""
     to: str = ""
     run_id: str = ""
+    # The owns= cell as written: a comma list of what the row's lane says it owns (``floor:<holdup id>`` for the floor).
+    owns: tuple[str, ...] = ()
 
     _utc = field_validator("ts")(_aware)
 
@@ -321,8 +326,16 @@ class ModelFloorReceipt(BaseModel):
     session_needs: str = ""
     # The receipt's pid belongs to its launching host, where the floor reader runs.
     runner_alive: bool | None = None
+    # When the runner's streamed output file (``.out`` beside the receipt) was last written; None when unread or absent.
+    # A remote lane writes no ledger row between CLAIM and TERMINAL, so this is its progress evidence (OMN-23081).
+    output_at: datetime | None = None
 
     _utc = field_validator("started_at")(_aware)
+
+    @field_validator("output_at")
+    @classmethod
+    def _output_utc(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _aware(value)
 
 
 class ModelFloorLaneProcess(BaseModel):
@@ -501,6 +514,44 @@ class ModelFloorHostStatusConfig(BaseModel):
     landing_worker_kind: str = Field(min_length=1)
 
 
+class ModelGoalTicketRoots(BaseModel):
+    """The ``goal_scope_ticket_rule`` overlay as the floor reads it: the tickets whose work the goal keeps.
+
+    The landing tick owns the overlay, so the keys the floor does not read are ignored here and checked there.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    ticket_roots: tuple[str, ...] = ()
+
+
+class ModelFloorStoppedConfig(BaseModel):
+    """What makes a lane that ended short a stopped line on the floor (OMN-22934); every value is the contract's."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # The TERMINAL outcomes that leave work behind; a lane whose newest TERMINAL has another outcome is never listed.
+    outcomes: tuple[str, ...] = Field(min_length=1)
+    # A stop older than this many minutes is no longer listed.
+    max_age_minutes: int = Field(gt=0)
+    # Tickets that many lanes share: they never tie two lanes to the same work.
+    umbrella_tickets: tuple[str, ...] = ()
+    # Regular expressions (first group, or the whole match) that read a branch name out of a row's text.
+    branch_patterns: tuple[str, ...] = Field(min_length=1)
+    # A regular expression that reads a commit head out of a row's text, after the word head.
+    head_pattern: str = Field(min_length=1)
+    # Words in the ending row that say the lane asked for something or left a next step (matched case-insensitively).
+    ask_markers: tuple[str, ...] = Field(min_length=1)
+    next_step_markers: tuple[str, ...] = Field(min_length=1)
+    # A lane name with this regular expression removed is its stem: a later lane of the same stem is its successor.
+    lane_stem_suffix: str = Field(min_length=1)
+    # How many of the lane's last rows the record carries, and each row cut at this many characters.
+    rows_kept: int = Field(ge=1)
+    row_chars: int = Field(ge=40)
+    # Where the lane's own report is, relative to the registry home; {lane} is the lane name.
+    report_path_template: str = Field(min_length=1)
+
+
 class ModelFactoryFloorConfig(BaseModel):
     """The vocabularies and limits the contract's ``config`` block declares; the handler holds none."""
 
@@ -577,6 +628,7 @@ class ModelFactoryFloorConfig(BaseModel):
     built_ahead_of_gate_label: str = Field(min_length=1)
     limits: ModelFloorLimitsConfig
     host_status: ModelFloorHostStatusConfig
+    stopped: ModelFloorStoppedConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -635,5 +687,11 @@ class ModelFactoryFloorRequest(BaseModel):
     # The host-drift fleet projection; None when it could not be read, with the reader's words in host_drift_cause.
     host_drift: ModelFloorHostDrift | None = None
     host_drift_cause: str = ""
+    # The landing goal's scope; None when it could not be read, and then no stopped lane is listed (an unread scope is
+    # never everything in scope).
+    goal_scope: ModelGoalScope | None = None
+    # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
+    # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
+    scope_ticket_roots: tuple[str, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)

@@ -148,23 +148,27 @@ class HandlerClaudeTokenPool:
                 alert = self._revoke(pool, request)
             elif request.operation == "reorder":
                 self._reorder(pool, request)
+            synced: tuple[str, ...] = ()
+            if request.operation == "sync_marks":
+                synced = self._sync_marks(pool, request)
             chosen, token = (None, None)
             if request.operation == "resolve":
                 chosen, token = self._resolve(pool)
-            if request.operation != "status":
+            if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
-            result = self._result(request.operation, pool, chosen, token, alert)
-            _write_private(
-                self._status_path,
-                {
-                    "host": self._host,
-                    "at": _stamp(self._now()),
-                    "tokens": [
-                        {"label": e.label, "until": e.until, "revoked": e.revoked}
-                        for e in result.tokens
-                    ],
-                },
-            )
+            result = self._result(request.operation, pool, chosen, token, alert, synced)
+            if not request.dry_run:
+                _write_private(
+                    self._status_path,
+                    {
+                        "host": self._host,
+                        "at": _stamp(self._now()),
+                        "tokens": [
+                            {"label": e.label, "until": e.until, "revoked": e.revoked}
+                            for e in result.tokens
+                        ],
+                    },
+                )
         return result
 
     @contextmanager
@@ -227,6 +231,7 @@ class HandlerClaudeTokenPool:
             "added_at": _stamp(self._now()),
             "until": None,
             "revoked_at": None,
+            "limited_at": None,
         }
         if known is not None:
             known.update(entry)
@@ -244,6 +249,7 @@ class HandlerClaudeTokenPool:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
         entry["until"] = max(until, entry.get("until") or "")
+        entry["limited_at"] = _stamp(self._now())
 
     def _reorder(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -259,6 +265,57 @@ class HandlerClaudeTokenPool:
             )
         rest = [t for t in pool["tokens"] if t["label"] not in set(wanted)]
         pool["tokens"] = [by_label[label] for label in wanted] + rest
+
+    def _sync_marks(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str, ...]:
+        """Make the marks of every named label equal the source's; return the labels that changed.
+
+        A local limit or revocation observed after the source wrote its snapshot (``marks_at``) is newer
+        than the snapshot and is kept, so a host that recorded a real limit the source has not seen yet
+        never loses it; a local mark older than the snapshot, or one with no recorded time, is cleared.
+        """
+        now = _stamp(self._now())
+        snapshot = _stamp(request.marks_at) if request.marks_at else None
+        observed = (
+            snapshot or now
+        )  # a mark taken from the source was observed when the source wrote it
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        changed: list[str] = []
+        for mark in request.marks:
+            entry = by_label.get(mark.label)
+            if entry is None:
+                continue
+            until = mark.until if mark.until and mark.until > now else None
+            was_until = entry.get("until") if (entry.get("until") or "") > now else None
+            was_revoked = bool(entry.get("revoked_at"))
+            local_limit_newer = (
+                snapshot is not None
+                and was_until is not None
+                and (entry.get("limited_at") or "") > snapshot
+            )
+            local_revoke_newer = (
+                snapshot is not None
+                and was_revoked
+                and (entry.get("revoked_at") or "") > snapshot
+            )
+            if local_limit_newer:
+                until = max(until or "", was_until or "") or None
+            revoked = mark.revoked or local_revoke_newer
+            if until != was_until or revoked != was_revoked:
+                changed.append(mark.label)
+            entry["until"] = until
+            if until is not None and until != was_until:
+                entry["limited_at"] = max(observed, entry.get("limited_at") or "")
+            entry["revoked_at"] = (
+                (entry.get("revoked_at") or observed) if revoked else None
+            )
+        return tuple(changed)
+
+    def secret(self, label: str) -> SecretStr | None:
+        """The stored token of ``label`` for the rotation tick to write to the host's login, never to a result."""
+        value = asyncio.run(self._store.get_secret(SECRET_REF_PREFIX + label))
+        return SecretStr(value) if value else None
 
     def _revoke(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -296,6 +353,7 @@ class HandlerClaudeTokenPool:
         chosen: str | None,
         token: SecretStr | None,
         alert: str | None = None,
+        synced: tuple[str, ...] = (),
     ) -> ModelClaudeTokenPoolResult:
         now = _stamp(self._now())
         entries = tuple(
@@ -317,6 +375,7 @@ class HandlerClaudeTokenPool:
             chosen=chosen,
             token=token,
             revoked=revoked,
+            synced=synced,
             alert=alert,
             **pool_summary(
                 self._host, [(e.label, e.until) for e in entries], now, revoked=revoked

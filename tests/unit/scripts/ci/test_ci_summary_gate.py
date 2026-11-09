@@ -2001,6 +2001,12 @@ class TestExternalDefaultDenySweep:
         assert gate.evaluate_external_sweep([], now=self.NOW)[0] == EXIT_SUCCESS
 
 
+# The check-run name of the automated reviewer app (OMN-22478): it posts a
+# ``neutral`` row on every pull request and the ruling of 2026-11-05T20:27:56Z
+# takes it out of what blocks a merge.
+AUTOMATED_REVIEWER = "Tessl Reviewer"
+
+
 class TestExternalSweepExclusions:
     """OMN-17427: every exception is bounded, validated and reported."""
 
@@ -2016,6 +2022,7 @@ class TestExternalSweepExclusions:
         assert set(gate.EXTERNAL_SWEEP_EXCLUSIONS) == {
             "AC1 exact revision row on PostgreSQL 16",
             "auto-tag",
+            AUTOMATED_REVIEWER,
         }
         assert gate.validate_sweep_exclusions(gate.EXTERNAL_SWEEP_EXCLUSIONS) == []
         active, expired = gate.active_sweep_exclusions(
@@ -2024,11 +2031,18 @@ class TestExternalSweepExclusions:
         assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
-        for entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.values():
-            assert entry.reason.strip()
-            assert entry.ticket == "OMN-17427"
-            assert entry.added == "2026-10-17"
-            assert entry.expires == "2026-12-20"
+        # OMN-23029: the shape of every entry is pinned, not the literal values of
+        # whichever entries happen to be shipped. Pinning ticket, added and expires
+        # to one tuple made the registry unextendable: a second owner's exception
+        # could not be added without editing an assertion that was never about it.
+        # What must hold of EVERY entry is that it is reasoned, carries a real
+        # ticket, is dated, and expires after it was added.
+        for name, entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.items():
+            assert entry.reason.strip(), name
+            assert gate._SWEEP_TICKET_RE.match(entry.ticket), (name, entry.ticket)
+            assert gate._SWEEP_DATE_RE.match(entry.added), (name, entry.added)
+            assert gate._SWEEP_DATE_RE.match(entry.expires), (name, entry.expires)
+            assert entry.expires > entry.added, (name, entry.added, entry.expires)
         with pytest.raises(FrozenInstanceError):
             self._entry().reason = "changed"
 
@@ -2158,6 +2172,58 @@ class TestExternalSweepExclusions:
         code, report = evaluate_external(rows, now=self.NOW)
         assert code == EXIT_FAILURE, report
         assert f"external-context failures: {name}" in report
+
+
+class TestAutomatedReviewerDoesNotBlockOmn22478:
+    """RULING 2026-11-05T20:27:56Z: the automated reviewer never blocks a merge.
+
+    The reviewer app posts a ``neutral`` check run named ``Tessl Reviewer`` on
+    every pull request. The default-deny sweep judges only ``success`` as good,
+    so without the exclusion it fails CI Summary with every gate green.
+    """
+
+    NOW = datetime(2026, 11, 7, 18, 8, tzinfo=UTC)
+
+    @pytest.mark.parametrize(
+        ("conclusion", "status"),
+        [
+            ("neutral", "completed"),
+            (None, "in_progress"),
+            ("failure", "completed"),
+            ("skipped", "completed"),
+        ],
+    )
+    def test_reviewer_row_in_any_state_does_not_fail_the_sweep(
+        self, conclusion: str | None, status: str
+    ) -> None:
+        row = _check_run(AUTOMATED_REVIEWER, conclusion=conclusion, status=status)
+        code, report = gate.evaluate_external_sweep([row], now=self.NOW)
+        assert code == EXIT_SUCCESS, report
+        assert f"exclusions applied: {AUTOMATED_REVIEWER}" in report
+        assert "external sweep failures" not in report
+
+    def test_control_the_same_neutral_row_under_another_name_still_fails(
+        self,
+    ) -> None:
+        row = _check_run("Another Reviewer", conclusion="neutral")
+        code, report = gate.evaluate_external_sweep([row], now=self.NOW)
+        assert code == EXIT_FAILURE, report
+        assert "Another Reviewer (neutral)" in report
+
+    def test_control_without_the_exclusion_the_reviewer_row_fails(self) -> None:
+        row = _check_run(AUTOMATED_REVIEWER, conclusion="neutral")
+        code, report = gate.evaluate_external_sweep(
+            [row], sweep_exclusions={}, now=self.NOW
+        )
+        assert code == EXIT_FAILURE, report
+        assert f"{AUTOMATED_REVIEWER} (neutral)" in report
+
+    def test_exclusion_is_unexpired_at_the_pinned_read_time(self) -> None:
+        active, expired = gate.active_sweep_exclusions(
+            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
+        )
+        assert AUTOMATED_REVIEWER in active
+        assert expired == ()
 
 
 class TestSweepIsWiredIntoProductionPoller:
@@ -2533,6 +2599,8 @@ def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
     for filename in (
         "scripts/ci/ci_summary_external_producers.json",
         "scripts/ci/ci_summary_sweep_non_pr_events.json",
+        "scripts/ci/ci_summary_sweep_exclusions.json",
+        "scripts/ci/ci_summary_rules.json",
     ):
         assert text.count(filename) >= 2, (
             f"{filename} must appear in both the head sparse-checkout "

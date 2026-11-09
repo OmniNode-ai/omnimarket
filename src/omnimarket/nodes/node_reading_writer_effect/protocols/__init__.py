@@ -4,12 +4,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.models.model_reading import (
+    ModelLandingRequirements,
+    ModelLandingSnapshot,
+    ModelLedgerEvidenceRow,
+)
 
 
 class ModelLedgerQuery(BaseModel):
@@ -42,10 +47,39 @@ class ModelAppendOutcome(BaseModel):
         return self.status in ("accepted", "duplicate")
 
 
+class ModelLandingRead(BaseModel):
+    """The landing snapshot, or the reason it could not be read. An error is never an empty queue."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    snapshot: ModelLandingSnapshot | None = None
+    error: str | None = None
+
+
+class ProtocolLandingSource(Protocol):
+    """Read the pull request watcher against the landing goal's scope, as of ``now``."""
+
+    def read(
+        self, requirements: ModelLandingRequirements, now: datetime
+    ) -> ModelLandingRead: ...
+
+
 class ProtocolLedgerRowSource(Protocol):
     """Read ledger rows through the route the deployment configures."""
 
     def read(self, query: ModelLedgerQuery) -> ModelLedgerRead: ...
+
+
+@runtime_checkable
+class ProtocolLedgerBatchRowSource(ProtocolLedgerRowSource, Protocol):
+    """A row source that answers many queries from one pass over the ledger (OMN-23081).
+
+    The answers come back in the order of the queries and each holds what ``read`` of that query alone would hold.
+    """
+
+    def read_many(
+        self, queries: Sequence[ModelLedgerQuery]
+    ) -> tuple[ModelLedgerRead, ...]: ...
 
 
 class ProtocolReadingAppender(Protocol):
@@ -56,8 +90,11 @@ class ProtocolReadingAppender(Protocol):
 
 __all__ = [
     "ModelAppendOutcome",
+    "ModelLandingRead",
     "ModelLedgerQuery",
     "ModelLedgerRead",
+    "ProtocolLandingSource",
+    "ProtocolLedgerBatchRowSource",
     "ProtocolLedgerRowSource",
     "ProtocolReadingAppender",
 ]

@@ -46,7 +46,11 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
     decode_cursor,
     encode_cursor,
+    hold_lines,
+    inbox_answer,
+    load_hold_stale_after,
     parse_claims_since,
+    partition_stale_holds,
     state_answer,
 )
 
@@ -69,6 +73,7 @@ class HandlerWorkLedgerQuery:
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
         self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
+        self._hold_stale_after = load_hold_stale_after(self._contract_path)
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
             reader
@@ -145,7 +150,7 @@ class HandlerWorkLedgerQuery:
         parsed = replay.parse_rows(records)
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
-        answer = self._answer(request, parsed, now)
+        answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
             update={
                 **answer,
@@ -207,7 +212,7 @@ class HandlerWorkLedgerQuery:
                 else None,
             )
             page = reader.read_state_page(query=query)
-            answer = state_answer(request, page, now)
+            answer = state_answer(request, page, now, self._hold_stale_after)
         except Exception as exc:  # the reader already redacts connection details
             with contextlib.suppress(Exception):
                 close = getattr(reader, "close", None)
@@ -230,6 +235,7 @@ class HandlerWorkLedgerQuery:
         request: ModelWorkLedgerQueryRequest,
         rows: list[replay.LedgerRow],
         now: datetime,
+        stale_after: timedelta,
     ) -> dict[str, object]:
         kind = request.query
         if kind in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}:
@@ -256,11 +262,16 @@ class HandlerWorkLedgerQuery:
                 surface=request.surface,
                 to=request.to,
             )
-            return {"matched": len(holds), "holds": tuple(holds), "hold_counts": counts}
+            live, stale = partition_stale_holds(holds, now, stale_after)
+            return {
+                "matched": len(live),
+                "holds": tuple(live),
+                "hold_counts": counts,
+                "lines": hold_lines(live, stale, counts, now, stale_after),
+            }
         if kind is EnumWorkLedgerQueryKind.INBOX:
             lanes = request.lanes or ((request.lane,) if request.lane else ())
-            boxes = tuple(replay.inbox(rows, lane) for lane in lanes)
-            return {"matched": sum(len(b.entries) for b in boxes), "inbox": boxes}
+            return inbox_answer(rows, lanes, now, stale_after)
         if kind is EnumWorkLedgerQueryKind.OPEN_CLAIMS:
             claims = replay.open_claims(
                 rows, lane=request.lane, claims_since=request.claims_since
