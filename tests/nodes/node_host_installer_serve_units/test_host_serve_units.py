@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -18,6 +20,7 @@ from omnimarket.nodes.node_host_installer_serve_units.handlers.handler_serve_uni
 from omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units import (
     ModelServeUnitsOverlay,
     ModelServeUnitsRequest,
+    ModelServeUnitsResult,
 )
 
 ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
@@ -81,7 +84,12 @@ class Host:
             "pool-a": ["$OMNI_HOME/plugin-overlays", "$OMNI_HOME/private-overlays"]
         }
 
-    def run(self, argv, cwd=None, unset=()):  # type: ignore[no-untyped-def]
+    def run(
+        self,
+        argv: Sequence[str],
+        cwd: Path | None = None,
+        unset: Sequence[str] = (),
+    ) -> subprocess.CompletedProcess[str]:
         argv = list(argv)
         self.commands.append(argv)
         if argv[:2] == [str(self.python), "-c"]:
@@ -110,16 +118,19 @@ class Host:
         }
         return ModelLabHostsTable.model_validate({"hosts": [row], "bus_lane": bus_lane})
 
-    def handler(self, **kw) -> HandlerServeUnits:  # type: ignore[no-untyped-def]
-        return HandlerServeUnits(
-            run=self.run,
-            hosts=kw.pop("hosts", self.table),
-            overlay=kw.pop("overlay", lambda: _overlay(self.roots)),
-            user=lambda: "lab",
-            **kw,
-        )
+    def handler(self, **kw: Any) -> HandlerServeUnits:
+        return HandlerServeUnits(**self.wiring(**kw))
 
-    def request(self, **kw) -> ModelServeUnitsRequest:  # type: ignore[no-untyped-def]
+    def wiring(self, **kw: Any) -> dict[str, Any]:
+        return {
+            "run": self.run,
+            "hosts": kw.pop("hosts", self.table),
+            "overlay": kw.pop("overlay", lambda: _overlay(self.roots)),
+            "user": lambda: "lab",
+            **kw,
+        }
+
+    def request(self, **kw: Any) -> ModelServeUnitsRequest:
         base = {
             "mode": "dry-run",
             "host_name": "pool-a",
@@ -235,7 +246,7 @@ def test_request_roots_replace_the_overlay_roots(tmp_path: Path) -> None:
 # --- error chain: each refusal names its reason and writes nothing ------------------------------------------------
 
 
-def _refused(result, reason: str, code: int, host: Host) -> None:  # type: ignore[no-untyped-def]
+def _refused(result: ModelServeUnitsResult, reason: str, code: int, host: Host) -> None:
     assert result.status == "refused", result.stderr
     assert (result.reason, result.exit_code) == (reason, code)
     assert not (host.home / ".config").exists()
@@ -309,7 +320,11 @@ def test_linger_off_is_refused_before_anything_is_written(tmp_path: Path) -> Non
 def test_host_command_failure_ends_the_run_with_its_status(tmp_path: Path) -> None:
     host = Host(tmp_path)
 
-    def failing(argv, cwd=None, unset=()):  # type: ignore[no-untyped-def]
+    def failing(
+        argv: Sequence[str],
+        cwd: Path | None = None,
+        unset: Sequence[str] = (),
+    ) -> subprocess.CompletedProcess[str]:
         if list(argv)[:3] == ["systemctl", "--user", "daemon-reload"]:
             return subprocess.CompletedProcess(argv, 5, "", "boom")
         return host.run(argv, cwd, unset)
