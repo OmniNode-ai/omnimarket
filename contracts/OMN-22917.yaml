@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-22917
+title: 'No file ledger: a census of executable readers and writers of the file''s name returns zero as a ratchet, and each of the seven readings of plan section 4.3 turns red on its planted break'
+summary: node_work_ledger_file_census_effect counts, per registered repository, the files holding an executable reader or writer of the ledger file's name or its path variable (a comment, a docstring, a document and a ruling's line citation count as none) against a shrink-only ratchet file; node_work_ledger_no_file_readings_effect runs the seven readings that prove no file ledger as one node, each with the break that must turn it red. Both take every setting from an overlay, have an in-memory default and a real backend, and emit one chain under the emission contract for piece 6.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22917-census-ratchet
+  statement: The census of executable readers and writers of the ledger file's name and path variable is held by a ratchet that only shrinks, and one seeded reader turns it red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a census over the registered repositories counts executable readers and writers of the ledger file''s name and path variable, a comment or a ruling''s line citation counting as none, and a ratchet file holds the count -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -q'
+  - id: AC2
+    statement: 'AC2: one seeded reader added to a fixture repository turns the ratchet red -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -q -k seeded_reader'
+- id: req-omn22917-seven-readings
+  statement: The seven readings of plan section 4.3 run as one node and each reads red on its planted break.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the seven readings run as one node with a planted break for each, and each break reads red -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py -q'
+evidence_requirements:
+- kind: tests
+  description: The census, its ratchet and its seeded-reader falsifier, with the golden and error chains of the census node.
+  command: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov
+- kind: tests
+  description: The seven readings with a planted break for each, and the golden and error chains of the readings node.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py tests/unit/nodes/node_work_ledger_no_file_readings_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22917-ac1
+  description: AC1 the census counts executable readers and writers and counts a comment, a docstring, a document and a ruling's line citation as none; the repository is at or under its ratchet row. At the merge base the census node does not exist, so these fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22917-ac2
+  description: AC2 one seeded reader turns the ratchet red while the same fixture without it is green. At the merge base the census node does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov --tb=line -k seeded_reader
+    cwd: .
+- id: dod-omn22917-ac3
+  description: AC3 the seven readings run as one node over a world with no file ledger (all seven WORKING), and each planted break turns exactly its own reading red. At the merge base the readings node does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22917-integration-proof
+  description: The pushed head runs the census CLI against the repository's own ratchet and the seven-reading and chain tests on a lab host over the bus and exits 0. This proves the nodes' chains and the ratchet on the lab; the seven readings' real probes are wired by the lab overlay and read by the install from this branch.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22917 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py tests/unit/nodes/node_work_ledger_no_file_readings_effect -q --no-cov
+    cwd: .

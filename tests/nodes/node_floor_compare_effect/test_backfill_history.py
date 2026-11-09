@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +36,9 @@ from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare impor
     ModelFloorCompareRequest,
     ModelFloorComparison,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    InMemoryLedger,
+)
 from tests.nodes.node_floor_compare_effect.support import (
     NOW,
     RT,
@@ -62,17 +66,47 @@ def row(at: datetime, kind: str, *cells: str) -> str:
     return " | ".join([stamp(at), kind, *cells]) + "\n"
 
 
-def ledger_file(tmp: Path, rows: list[str]) -> Path:
-    path = tmp / "ledger" / "ROLLING_WORK_LEDGER.md"
-    path.parent.mkdir(parents=True)
-    path.write_text("".join(rows), encoding="utf-8")
-    return path
+def ledger_source(rows: list[str]) -> InMemoryLedger:
+    """The in-memory bus read port over the planted rows."""
+    return InMemoryLedger(rows)
+
+
+# A stand-in for the bus read command: one typed rows query on stdin, one JSON answer on stdout, from the rows in argv[1].
+FAKE_READ = """
+import json, sys
+from datetime import datetime
+request = json.loads(sys.stdin.read())
+def when(text):
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+since, until = when(request["since"]), when(request["until"])
+shown = []
+for line in open(sys.argv[1], encoding="utf-8"):
+    cells = line.split(" | ")
+    if len(cells) < 2 or cells[1] not in request["kinds"]:
+        continue
+    if since <= when(cells[0]) < until:
+        shown.append({"raw_row": line.rstrip("\\n"), "projected_at": cells[0]})
+matched = len(shown)
+print(json.dumps({"status": "ok", "matched": matched, "rows": shown[: request["limit"]]}))
+"""
+
+
+def bus_environment(tmp: Path, rows: list[str], **extra: str) -> dict[str, str]:
+    """The environment that routes the ledger reads through a real read command over ``rows``."""
+    rows_path = tmp / "planted_rows.txt"
+    rows_path.write_text("".join(rows), encoding="utf-8")
+    script = tmp / "fake_read.py"
+    script.write_text(FAKE_READ, encoding="utf-8")
+    return {
+        HS.ledger_read_command_env: f"{sys.executable} {script} {rows_path}",
+        **extra,
+    }
 
 
 def heartbeat(start: datetime, hours: int) -> list[str]:
-    """STATUS rows every 15 minutes: the ledger was written to, so an empty count is a real zero."""
+    """Rows every 15 minutes of a kind no count reads: the ledger was written to, so an empty count is a real zero."""
     return [
-        row(start + timedelta(minutes=15 * n), "STATUS", "lane=tick")
+        row(start + timedelta(minutes=15 * n), "TERMINAL", "lane=tick", "outcome=tick")
         for n in range(hours * 4)
     ]
 
@@ -99,9 +133,14 @@ def test_a_planted_ledger_day_yields_the_right_point(tmp_path: Path) -> None:
     rows = heartbeat(day - timedelta(hours=12), 36) + planted_day(
         day, done=2, partial=1, claims=3
     )
-    path = ledger_file(tmp_path, rows)
     book = load_book(
-        HS, {"ONEX_LEDGER_PATH": str(path)}, tmp_path, NOW - 6 * DAY, ("ledger",)
+        HS,
+        {},
+        tmp_path,
+        NOW - 6 * DAY,
+        ("ledger",),
+        until=NOW,
+        ledger_source=ledger_source(rows),
     )
     ledger = [p for p in points(book, NOW) if p.source == "backfill:ledger"]
     held = next(p for p in ledger if p.at == datetime(2026, 11, 5, 18, tzinfo=UTC))
@@ -119,9 +158,14 @@ def test_failing_control_a_day_the_ledger_did_not_record_stays_unread_never_zero
     rows = heartbeat(quiet_from - 2 * DAY, 48) + planted_day(
         quiet_from - DAY, done=2, partial=0, claims=3
     )
-    path = ledger_file(tmp_path, rows)
     book = load_book(
-        HS, {"ONEX_LEDGER_PATH": str(path)}, tmp_path, NOW - 6 * DAY, ("ledger",)
+        HS,
+        {},
+        tmp_path,
+        NOW - 6 * DAY,
+        ("ledger",),
+        until=NOW,
+        ledger_source=ledger_source(rows),
     )
     ledger = [p for p in points(book, NOW) if p.source == "backfill:ledger"]
     stored = {p.at for p in ledger}
@@ -142,14 +186,14 @@ def test_the_cycle_backfills_the_ledger_and_the_one_day_view_shows_better_and_wo
     rows = heartbeat(NOW - 3 * DAY, 72)
     rows += planted_day(yesterday, done=2, partial=1, claims=3)
     rows += planted_day(today, done=5, partial=4, claims=3)
-    path = ledger_file(tmp_path, rows)
+    environment = bus_environment(tmp_path, rows)
     home = build_home(tmp_path)
     sink = InMemoryEmissionSink()
     request = ModelFloorCompareRequest(
         home=str(home), now=NOW, backfill_history=True, history_days=3
     )
     result = HandlerFloorCompare(sink=sink, clock=lambda: NOW).run(
-        request, environ={"ONEX_LEDGER_PATH": str(path), "OMNI_HOME": str(home)}
+        request, environ={**environment, "OMNI_HOME": str(home)}
     )
     assert result.ok
     assert result.history_written["backfill:ledger"] > 24
@@ -170,7 +214,7 @@ def test_the_cycle_backfills_the_ledger_and_the_one_day_view_shows_better_and_wo
     assert "Lower is better, so this is worse." in worse["lanes_ended:partial"].words
     assert doc.windows[0].counts["better"] >= 1
     again = HandlerFloorCompare(sink=InMemoryEmissionSink(), clock=lambda: NOW).run(
-        request, environ={"ONEX_LEDGER_PATH": str(path), "OMNI_HOME": str(home)}
+        request, environ={**environment, "OMNI_HOME": str(home)}
     )
     assert (
         again.history_written == {}
@@ -309,9 +353,14 @@ def test_friction_points_list_every_class_so_a_class_that_stopped_reads_zero_and
         )
         for n in range(2)
     ]
-    path = ledger_file(tmp_path, rows)
     book = load_book(
-        HS, {"ONEX_LEDGER_PATH": str(path)}, tmp_path, NOW - 5 * DAY, ("ledger",)
+        HS,
+        {},
+        tmp_path,
+        NOW - 5 * DAY,
+        ("ledger",),
+        until=NOW,
+        ledger_source=ledger_source(rows),
     )
     old_at = (NOW - timedelta(days=1, hours=2)).replace(
         minute=7, second=0, microsecond=0
@@ -398,3 +447,65 @@ def test_git_merges_are_counted_per_repository_from_the_clone_history(
     assert last.values["git_merges_total"] == 2.0
     assert "git_merges:stray" not in last.values
     assert any("stray" in note for note in book.notes)
+
+
+def test_failing_control_a_failed_bus_read_leaves_every_ledger_key_unread(
+    tmp_path: Path,
+) -> None:
+    source = ledger_source(heartbeat(NOW - 3 * DAY, 72))
+    source.read_error = "read-command-exit-1"
+    book = load_book(
+        HS, {}, tmp_path, NOW - 3 * DAY, ("ledger",), until=NOW, ledger_source=source
+    )
+    assert any("read-command-exit-1" in note for note in book.notes)
+    assert "ledger" not in book.alive
+    assert not book.keys_of
+    assert points(book, NOW) == []
+
+
+def test_failing_control_a_truncated_bus_answer_is_unread_never_a_short_count(
+    tmp_path: Path,
+) -> None:
+    rows = heartbeat(NOW - 3 * DAY, 72) + planted_day(
+        NOW - DAY, done=2, partial=0, claims=3
+    )
+    environment = bus_environment(tmp_path, rows)
+    narrow = HS.model_copy(update={"ledger_row_limit": 2})
+    book = load_book(
+        narrow, environment, tmp_path, NOW - 3 * DAY, ("ledger",), until=NOW
+    )
+    assert any("read-answer-truncated" in note for note in book.notes)
+    assert "ledger" not in book.alive
+
+
+def test_a_route_with_no_command_is_a_note_naming_the_variable(tmp_path: Path) -> None:
+    book = load_book(HS, {}, tmp_path, NOW - DAY, ("ledger",), until=NOW)
+    assert book.notes == [
+        f"{HS.ledger_read_command_env} is not set: the ledger counts are unread"
+    ]
+
+
+def test_the_bus_command_route_counts_the_same_planted_day_as_the_port(
+    tmp_path: Path,
+) -> None:
+    day = datetime(2026, 11, 5, 6, 0, tzinfo=UTC)
+    rows = heartbeat(day - timedelta(hours=12), 36) + planted_day(
+        day, done=2, partial=1, claims=3
+    )
+    book = load_book(
+        HS,
+        bus_environment(tmp_path, rows),
+        tmp_path,
+        NOW - 6 * DAY,
+        ("ledger",),
+        until=NOW,
+    )
+    held = next(
+        p
+        for p in points(book, NOW)
+        if p.source == "backfill:ledger"
+        and p.at == datetime(2026, 11, 5, 18, tzinfo=UTC)
+    )
+    assert held.values["lanes_started"] == 3.0
+    assert held.values["lanes_ended:done"] == 2.0
+    assert held.values["lanes_ended:partial"] == 1.0
