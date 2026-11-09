@@ -44,13 +44,13 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_no_lab_values_in_product_source_omn19184.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn19184-deploy
-  description: The route check handler reads its local model through the overlay reader, so the deployed code carries no lab model id. The deploy check reads the committed handler at the head.
+  description: The route check handler reads its local model through the overlay reader, so the deployed code carries no lab model id. The deploy check reads the committed handler at the head through the contents API.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: bash -o pipefail -c 'git show HEAD:src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/handler_delegation_route_check.py | grep -F "ROUTE_CHECK_LOCAL_MODEL_SETTING" > /dev/null'
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/handler_delegation_route_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ROUTE_CHECK_LOCAL_MODEL_SETTING" > /dev/null'
     cwd: .
 - id: dod-omn19184-integration-proof
   description: The pushed head runs the route check, the A/B compare orchestrator and the guard on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
