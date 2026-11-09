@@ -66,10 +66,15 @@ def test_golden_chain_the_tick_publishes_its_view_stamped_with_the_time_it_stood
 def test_error_chain_a_broker_that_refuses_raises_to_the_tick_which_reports_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    @contextlib.asynccontextmanager
-    async def refused(**_: Any) -> AsyncIterator[FakeBus]:
-        raise ConnectionError("broker refused")
-        yield FakeBus()  # pragma: no cover
+    class Refused:
+        async def __aenter__(self) -> FakeBus:
+            raise ConnectionError("broker refused")
+
+        async def __aexit__(self, *_: Any) -> None:
+            return None
+
+    def refused(**_: Any) -> Refused:
+        return Refused()
 
     monkeypatch.setattr(tick, "open_lane_bus", refused)
     with pytest.raises(ConnectionError):
@@ -78,18 +83,19 @@ def test_error_chain_a_broker_that_refuses_raises_to_the_tick_which_reports_it(
         )
 
 
-@pytest.mark.parametrize(
-    "overlay",
-    [
-        _overlay(fleet_projection_id=None),
-        _overlay(backend="in_memory", bus_lane=None),
-    ],
-    ids=["no projection id", "in-memory backend has no bus"],
-)
-def test_named_break_nothing_is_published_without_an_id_or_a_bus(
-    monkeypatch: pytest.MonkeyPatch, overlay: ModelOverlayStoreReadOverlay
+def test_named_break_nothing_is_published_without_an_id(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bus = FakeBus()
     _use(monkeypatch, bus)
+    overlay = _overlay(fleet_projection_id=None)
     asyncio.run(tick._publish_fleet_projection(overlay, {"HOST": "h1"}, FLEET, NOW))
     assert bus.published == []
+
+
+@pytest.mark.parametrize("backend", ["in_memory", "postgres"])
+def test_error_a_backend_with_no_bus_refuses_the_projection_id_at_load(
+    backend: str,
+) -> None:
+    with pytest.raises(ValueError, match="no bus to publish"):
+        _overlay(backend=backend, bus_lane=None, database_url_env="DB")
