@@ -39,10 +39,6 @@ from omnimarket.projection.protocol_database import (
     DatabaseAdapter,
     InmemoryDatabaseAdapter,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
-from omnimarket.projection.tenant_registry_resolution import (
-    TENANT_REGISTRY_MIRROR_TABLE,
-)
 from tests.unit.nodes.node_typed_decision_effect.test_handler_typed_decision import (
     _BACKEND,
     _BACKEND_ID,
@@ -78,16 +74,8 @@ def _handler(
 def _project(event: ModelTypedDecisionEvent) -> list[dict[str, object]]:
     """Fold one published terminal through the real projection; return its rows."""
     db: DatabaseAdapter = InmemoryDatabaseAdapter()
-    db.upsert(
-        TENANT_REGISTRY_MIRROR_TABLE,
-        "tenant_slug",
-        {
-            "tenant_slug": "omninode",
-            "tenant_uuid": str(HOUSE_TENANT_UUID),
-            "status": "active",
-            "source_event_id": "c0000000-0000-4000-8000-000000023334",
-        },
-    )
+    # The mirror is left empty, as on the lab evidence target: the declared tenant
+    # must resolve without a registry row.
     HandlerProjectionDelegation().handle(
         {**event.payload, "_event_type": event.topic, "_db": db}
     )

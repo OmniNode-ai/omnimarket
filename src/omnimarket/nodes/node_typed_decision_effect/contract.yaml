@@ -93,8 +93,10 @@ delegation_event:
   event_type: task.delegated
   task_type: typed_decision
   provider: typesafe
-  # The house tenant: typed decisions serve the operator's own work.
-  tenant_id: 820272f9-4aaf-5add-a2df-0af942852ab2
+  # The house tenant slug: typed decisions serve the operator's own work. The slug
+  # resolves through the closed legacy mapping; the house UUID would need a row in
+  # tenant_registry_mirror, which the lab evidence target does not hold.
+  tenant_id: omninode
 
 work_unit_scoping:
   # The decision backend is a third party. RULING 2026-10-13T18:34:53Z lifted
