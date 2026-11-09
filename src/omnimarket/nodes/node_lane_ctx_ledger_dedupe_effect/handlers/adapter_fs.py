@@ -50,6 +50,12 @@ class HostLaneCtxFs:
             return None
         return FileIdentity(st.st_dev, st.st_ino, st.st_size, st.st_nlink, st.st_mtime)
 
+    def device(self, path: str) -> int:
+        probe = os.path.abspath(path)
+        while not os.path.lexists(probe):
+            probe = os.path.dirname(probe)
+        return os.stat(probe).st_dev
+
     def same_bytes(self, left: str, right: str) -> bool:
         return filecmp.cmp(left, right, shallow=False)
 
@@ -87,6 +93,10 @@ class MemoryLaneCtxFs:
     dirs: set[str] = field(default_factory=set)
     _next: int = 1
     fail_link_new: set[str] = field(default_factory=set)
+    store_device: int = (
+        1  # the device store paths live on; every other path is on device 1
+    )
+    store_prefix: str = "/store"
 
     def add_roll(self, path: str, data: bytes, mtime: float) -> None:
         inode = _Inode(self._next, data, mtime, 1)
@@ -114,6 +124,9 @@ class MemoryLaneCtxFs:
         if inode is None:
             return None
         return FileIdentity(1, inode.number, len(inode.data), inode.links, inode.mtime)
+
+    def device(self, path: str) -> int:
+        return self.store_device if path.startswith(self.store_prefix) else 1
 
     def same_bytes(self, left: str, right: str) -> bool:
         return self.names[left].data == self.names[right].data

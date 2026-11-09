@@ -278,6 +278,23 @@ def test_ctx_ledger_dedupe_error_chain_cross_device_roll_is_refused_and_publishe
     assert done.errors == result.errors
 
 
+def test_ctx_ledger_dedupe_error_chain_store_on_another_device_is_one_refusal() -> None:
+    fs = MemoryLaneCtxFs(store_device=2)
+    for lane in ("a", "b", "c"):
+        fs.add_roll(f"/runs/{lane}.ctx/ledger/archive/{ROLL}", b"abc", NOW - 3600)
+    publisher = RecordingPublisher()
+
+    result = _handler(fs, publisher).handle(_command("/runs", "/store"))
+
+    assert result.exit_code == 1
+    assert (result.contexts, result.linked, result.stored) == (0, 0, 0)
+    assert result.errors == (
+        "/store: store_dir is on another device than runs_root: a hard link cannot cross it",
+    )
+    assert [t for t, _ in publisher.events] == [REFUSED, COMPLETED]
+    assert f"/store/{ROLL}" not in fs.names
+
+
 def test_ctx_ledger_dedupe_error_chain_unreadable_runs_root_is_refused(
     tmp_path: Path,
 ) -> None:

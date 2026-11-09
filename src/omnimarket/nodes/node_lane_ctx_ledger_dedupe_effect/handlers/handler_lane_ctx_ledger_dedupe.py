@@ -72,10 +72,17 @@ class HandlerLaneCtxLedgerDedupe:
                 ModelLaneCtxLedgerDedupeEvent(roll=roll, reason=reason),
             )
 
+        contexts: list[str] = []
         try:
-            contexts = fs.context_dirs(request.runs_root)
-            if request.execute:
-                fs.ensure_dir(request.store_dir)
+            if fs.device(request.store_dir) != fs.device(request.runs_root):
+                refuse(
+                    request.store_dir,
+                    "store_dir is on another device than runs_root: a hard link cannot cross it",
+                )
+            else:
+                contexts = fs.context_dirs(request.runs_root)
+                if request.execute:
+                    fs.ensure_dir(request.store_dir)
         except OSError as exc:
             refuse(request.runs_root, f"unreadable: {type(exc).__name__}")
             contexts = []
