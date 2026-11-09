@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_merged_history 
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillPortError
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
     LocalMergedWork,
+    LocalOwnerReader,
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_merged_history import (
     LocalMergedHistory,
@@ -104,13 +106,16 @@ def test_no_readable_clone_is_unread_never_clear(tmp_path: Path) -> None:
         LocalMergedHistory(SETTINGS, root=tmp_path).merged("OMN-22623")
 
 
-class _Watcher:
-    """The owner reader's watcher read, scripted."""
+class _Watcher(LocalOwnerReader):
+    """The owner reader with its watcher read scripted."""
 
-    def __init__(self, merged: dict[str, list[str]] | None = None, fail: bool = False):
+    def __init__(
+        self, merged: dict[str, list[str]] | None = None, fail: bool = False
+    ) -> None:
+        super().__init__()
         self._merged, self._fail = merged or {}, fail
 
-    def watcher_merged(self, state_path: str) -> dict[str, list[str]]:
+    def watcher_merged(self, state_path: str) -> Mapping[str, Sequence[str]]:
         if self._fail:
             raise LabFillPortError("unreadable-from-snapshot")
         return self._merged
@@ -118,7 +123,7 @@ class _Watcher:
 
 def _work(tmp_path: Path, watcher: _Watcher) -> LocalMergedWork:
     return LocalMergedWork(
-        reader=watcher,  # type: ignore[arg-type]
+        reader=watcher,
         history=LocalMergedHistory(SETTINGS, root=tmp_path),
     )
 
