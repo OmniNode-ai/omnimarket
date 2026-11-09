@@ -8,6 +8,12 @@
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep prs OMN-1 OMN-2 \\
         [--wait-s 60] [--deadline ISO8601] [--overlay overlay.yaml]
 
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep zero-flip \\
+        --summary RUN.json --stamp 2026-11-08T22:00:00Z [--rows-file ROWS.txt]
+
+``zero-flip`` prints the typed reading of a run that flipped nothing and writes its alarm row;
+it exits 0 for a zero-flip run (OMN-20718), 2 only for an unreadable summary.
+
 ``prs`` prints the PR row of each ticket ({id, merged, open, error}): merged PRs are read on
 each overlay repository's own default branch (every repository the overlay lists),
 open PRs from the PR watcher's state; an unread repository is named on stderr and an unread or
@@ -31,6 +37,10 @@ from omnimarket.handlers.closeout_boundary_reads import (
     read_text_file,
     registry_root_from_environment,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
+    zero_flip_reading,
+    zero_flip_row,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     GitCloneContractIndex,
 )
@@ -49,8 +59,10 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_close
     HandlerDodCloseoutSweep,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+    STAMP_PATTERN,
     EnumCloseoutDecisionKind,
     ModelDodCloseoutDecisionRequest,
+    ModelRunSummary,
 )
 
 
@@ -105,6 +117,32 @@ def run_prs(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_zero_flip(args: argparse.Namespace) -> int:
+    """The `zero-flip` command (OMN-20718): read the run summary, print the typed reading.
+
+    A run that flipped nothing is a working closer: this exits 0 and writes the reading's
+    alarm row to --rows-file (nothing when the run flipped a ticket or was a dry run). It exits
+    2 only when the summary cannot be read: an unreadable input is never a zero-flip.
+    """
+    try:
+        summary = ModelRunSummary.model_validate_json(read_text_file(args.summary))
+        reading = zero_flip_reading(summary, args.stamp)
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"closeout-zero-flip: REFUSED: {exc}\n")
+        return 2
+    if reading is None:
+        sys.stdout.write("null\n")
+        return 0
+    if args.rows_file is not None:
+        try:
+            args.rows_file.write_text(zero_flip_row(reading) + "\n", encoding="utf-8")
+        except OSError as exc:
+            sys.stderr.write(f"closeout-zero-flip: REFUSED: {exc}\n")
+            return 2
+    sys.stdout.write(reading.model_dump_json() + "\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -129,7 +167,20 @@ def main(argv: list[str] | None = None) -> int:
     prs.add_argument("--wait-s", type=int, default=60)
     prs.add_argument("--deadline", type=datetime.fromisoformat)
     prs.add_argument("--overlay", type=Path)
+    zero = sub.add_parser(
+        "zero-flip",
+        help="the typed reading and alarm row of a run that closed no ticket",
+    )
+    zero.add_argument("--summary", type=Path, required=True)
+    zero.add_argument(
+        "--stamp", required=True, help="ledger stamp YYYY-MM-DDTHH:MM:SSZ"
+    )
+    zero.add_argument("--rows-file", type=Path)
     args = parser.parse_args(argv)
+    if args.mode == "zero-flip":
+        if not STAMP_PATTERN.match(args.stamp):
+            parser.error("--stamp must be a zero-padded ledger stamp")
+        return run_zero_flip(args)
     if args.mode == "prs":
         if args.wait_s < 0:
             parser.error("--wait-s must not be negative")
