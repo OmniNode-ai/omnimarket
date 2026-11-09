@@ -45,6 +45,10 @@ class ModelLaneCloseoutSweepSettings(BaseModel):
         ge=1,
         description="Ended lane runs closed out in one sweep; the rest wait for the next tick.",
     )
+    tick_budget_seconds: int = Field(
+        ge=1,
+        description="Seconds after a sweep starts at which it stops starting new lane closeouts; the rest wait for the next tick. Set under the unit's run limit.",
+    )
     salvage_branch_prefix: str = Field(
         description="A dirty tree is committed to <prefix>/<tag> and pushed before it is removed."
     )

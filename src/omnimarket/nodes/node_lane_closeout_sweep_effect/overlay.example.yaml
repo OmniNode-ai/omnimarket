@@ -9,4 +9,5 @@ finished_markers: [run.rc, engine.json]
 grace_seconds: 900
 orphan_age_seconds: 86400
 max_lanes_per_sweep: 100
+tick_budget_seconds: 180
 salvage_branch_prefix: salvage

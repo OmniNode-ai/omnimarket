@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -114,9 +115,12 @@ class HandlerLaneCloseoutSweep:
     """Find the ended lanes of this host and close each one out."""
 
     def __init__(
-        self, live_cwds: Callable[[], list[str] | None] = process_cwds
+        self,
+        live_cwds: Callable[[], list[str] | None] = process_cwds,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._live_cwds = live_cwds
+        self._clock = clock
         self._inventory = HandlerLaneTreeInventory()
         self._closeout = HandlerLaneCloseout()
 
@@ -135,6 +139,7 @@ class HandlerLaneCloseoutSweep:
         worktrees = registry_root / settings.worktrees_dir
         records = state_dir / settings.records_dir
 
+        started = self._clock()
         ended, running = self._discover(request, runs_root, worktrees)
         pending = [e for e in ended if not self._complete(records, e.run)]
         live = self._live_cwds()
@@ -142,6 +147,8 @@ class HandlerLaneCloseoutSweep:
         skipped_live: list[str] = []
         if not request.read_only:
             for item in pending[: settings.max_lanes_per_sweep]:
+                if self._clock() - started >= settings.tick_budget_seconds:
+                    break  # the unit's run limit is near: the rest wait for the next tick
                 lane_dir = worktrees / item.lane
                 if live is None or _inside(live, lane_dir, item.context, item.workdir):
                     skipped_live.append(item.lane)

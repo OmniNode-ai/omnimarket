@@ -61,6 +61,7 @@ def settings(tmp_path: Path) -> ModelLaneCloseoutSweepSettings:
         grace_seconds=600,
         orphan_age_seconds=6 * HOUR,
         max_lanes_per_sweep=50,
+        tick_budget_seconds=180,
         salvage_branch_prefix="salvage",
     )
 
@@ -366,3 +367,21 @@ def test_the_tick_reads_exit_3_for_an_unrecorded_lane_and_0_once_swept(
     assert json.loads(capsys.readouterr().out)["closed_complete"] == 1
     assert tick.main([*argv, "--read"]) == tick.EXIT_OK
     assert (tmp_path / "state" / "last-run.json").is_file()
+
+
+def test_a_sweep_stops_starting_lanes_once_its_tick_budget_is_spent(
+    tmp_path: Path,
+) -> None:
+    """The injected clock reads 100 s later at every call; with a 180 s budget the first lane starts and the rest wait."""
+    host = Host(tmp_path)
+    trees = [host.lane(name) for name in ("lane-a", "lane-b", "lane-c")]
+    seconds = iter(range(0, 10_000, 100))
+    got = HandlerLaneCloseoutSweep(
+        live_cwds=lambda: [], clock=lambda: float(next(seconds))
+    ).handle(request(tmp_path))
+    assert len(got.closed) == 1
+    assert got.unrecorded == 2
+    assert sum(1 for tree in trees if tree.exists()) == 2
+    again = sweep(tmp_path)
+    assert again.unrecorded == 0
+    assert not any(tree.exists() for tree in trees)
