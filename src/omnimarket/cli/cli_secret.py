@@ -48,7 +48,6 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
-from omnimarket.cli.cli_models_overlay import write_model_overlay
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
@@ -83,6 +82,9 @@ from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_capture
 )
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command import (
+    write_model_overlay,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
