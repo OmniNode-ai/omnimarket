@@ -50,11 +50,9 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_harness_ledger_env.py -q --no-cov -k "builds_the_ledger_appender or without_a_ledger_variable"
     cwd: .
 - id: dod-omn23288-ac2-mac-run
-  description: After the unit is installed on the Mac from the pull request's branch, launchctl list for the unit shows last exit 0 and its stdout log has a run after the install. Only the Mac runs this unbound check, so only the local Done gate does.
+  description: After the unit is installed on the Mac from the pull request's branch, launchctl list for the unit shows last exit 0 and its stdout log has a run after the install. Only the Mac runs this check, so only the local Done gate does; it binds no criterion here because the hosted merge-base control cannot run a local-gate item, and the criterion is bound by the appender test above.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: sh -c "launchctl list ai.omninode.lab-test-harness"
