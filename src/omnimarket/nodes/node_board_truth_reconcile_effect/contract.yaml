@@ -83,7 +83,7 @@ golden_path:
   - step: "Emits onex.evt.omnimarket.board-truth-reconciled.v1; nothing is written to Linear"
 dod_evidence:
   - "tests/unit/nodes/node_board_truth_reconcile_effect/test_handler_board_truth_reconcile.py — ledger grammar and no-write-path asserted"
-  - "Ledger parser proven against verbatim row shapes from docs/tracking/ROLLING_WORK_LEDGER.md"
+  - "Ledger parser proven against verbatim row shapes from the rolling work ledger"
   - "Idempotence: rerunning over unchanged facts yields an identical report"
   - "ModelBoardReconcileInput rejects a dry_run flag (extra=forbid) — the dry-run cannot be inverted"
 metadata:
