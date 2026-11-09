@@ -444,6 +444,12 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_projection_pr_state::pr_state#0",
         # OMN-22020: declares `cursor_column: read_at`, a member column.
         "node_view_seam_reading_reducer::view_seam_readings#0",
+        # OMN-21970: decisions.v1 (delegation_events#2) now declares
+        # `projection_cursor`, the integer walk cursor of migration 0066, and
+        # leaves the never-declared baseline; the per-day view declares
+        # `latest_projection_updated_at` from its first commit.
+        "node_projection_delegation::delegation_events#2",
+        "node_projection_delegation::projection_delegation_daily#12",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -474,8 +480,12 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 81 as of OMN-19991: local_alerts declares its BIGSERIAL cursor in the same
 # change as the exposure, so the measured backlog is unmoved.
 # 82 as of OMN-22020: view_seam_readings declares its cursor in the same change.
-_AC3_TOTAL_EXPOSURES = 82
-_AC3_MEASURED_GAP = 55
+# 83 as of OMN-21970: the per-day delegation view declares its cursor in the
+# same change as the exposure, so the measured backlog is unmoved.
+# 54 as of OMN-21970: delegation_events#2 declared its cursor and left the
+# baseline, the first entry the backlog has lost.
+_AC3_TOTAL_EXPOSURES = 83
+_AC3_MEASURED_GAP = 54
 
 
 class TestAc3DeclarableExposuresAndMeasuredGap:

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay of node_lab_alarm: every setting of the broker lag condition.
+"""The overlay of node_lab_alarm: every setting of the broker lag and effects-held conditions.
 
 Found at ``<root>/node_lab_alarm/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``.
 The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic values). Nothing here has
@@ -121,6 +121,37 @@ class ModelLabAlarmSchedule(BaseModel):
         return next((host for host in self.hosts if host.name == name), None)
 
 
+class ModelEscalationSettings(BaseModel):
+    """The lane an alarm that names no owner starts: the dispatch command and what it is told."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: argv of the lane dispatcher; the brief file, lane name, model and ticket are appended.
+    command: tuple[str, ...] = Field(min_length=1)
+    model: str = Field(min_length=1)
+    ticket: str = Field(pattern=r"^OMN-\d+$")
+    #: A dispatcher still running after this many seconds has started its lane.
+    settle_seconds: float = Field(gt=0)
+    #: Where the briefs and dispatch logs are kept.
+    brief_dir: str = Field(min_length=1)
+
+
+class ModelEffectsHeldSettings(BaseModel):
+    """The effects-held condition (OMN-23106): which groups, how long a hold counts, who is told."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The consumer group embeds the node's contract version, so it is matched by prefix and suffix.
+    group_prefix: str = Field(min_length=1)
+    group_suffix: str = Field(min_length=1)
+    #: How long no group may hold a live member before this alarms.
+    held_after_seconds: float = Field(gt=0)
+    timeout_seconds: float = Field(gt=0)
+    #: Where the hold clock and the episode's lane are kept between ticks.
+    state_path: str = Field(min_length=1)
+    escalation: ModelEscalationSettings
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -130,6 +161,7 @@ class ModelLabAlarmOverlay(BaseModel):
     lag: ModelLagSettings
     schedule: ModelLabAlarmSchedule
     injected_fault: str = Field(min_length=1)
+    effects_held: ModelEffectsHeldSettings
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
@@ -147,6 +179,8 @@ __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
     "ModelDeclaredNode",
+    "ModelEffectsHeldSettings",
+    "ModelEscalationSettings",
     "ModelGroupDerivation",
     "ModelLabAlarmOverlay",
     "ModelLabAlarmSchedule",
