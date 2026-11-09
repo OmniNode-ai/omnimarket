@@ -223,6 +223,41 @@ def test_a_nested_repository_is_a_person_s_call_not_a_failure(tmp_path: Path) ->
     assert clone.exists()
 
 
+def test_a_tree_that_vanishes_mid_probe_defers_and_a_missing_file_in_a_live_tree_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """h053 tick 2026-11-09T01:45Z: three orphan directories a lane closed out during the scan
+    raised FileNotFoundError and made the tick exit 1."""
+    _, root, _ = git_fixture(tmp_path)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe._command = command(roots=(str(root),))
+    for vanishes, expected, klass in (
+        (True, (f"{PROBE_DEFERRED_PREFIX}path_vanished",), "deferred"),
+        (False, ("probe_failed:FileNotFoundError",), "failed"),
+    ):
+        task = root / ("gone" if vanishes else "present")
+        task.mkdir()
+        (task / "notes.txt").write_text("loose\n")
+
+        def walk(
+            path: Path,
+            *_args: object,
+            _task: Path = task,
+            _gone: bool = vanishes,
+            **_kw: object,
+        ) -> None:
+            if _gone:
+                (_task / "notes.txt").unlink()
+                _task.rmdir()
+            raise FileNotFoundError(str(path))
+
+        monkeypatch.setattr(adapter_facts.os, "walk", walk)
+        item = probe._probe(task, root, NOW)
+        assert item.probe_errors == expected
+        assert probe_class(item) == klass
+        monkeypatch.undo()
+
+
 def test_a_reader_with_no_evidence_source_is_needs_human_and_a_broken_one_is_a_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
