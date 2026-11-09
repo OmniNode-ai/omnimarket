@@ -75,9 +75,11 @@ from omnimarket.handlers.handler_capability_start import (
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.backend_placement import (
     apply_backend_placements,
+    lead_models,
+    lead_refs_in,
     load_bound_bifrost_placements,
+    pick_spread_member,
     spread_groups,
-    spread_pick,
     spread_weights,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
@@ -536,53 +538,49 @@ def _select_model_for_task(
             m.backend_ref, task_type, estimated_tokens
         )
     )
-    selected = _select_primary_model_for_task(
+    # OMN-23329: a lead rung is tried ahead of the class's model pin; a request it
+    # cannot take falls through to the tier's own rungs.
+    for models, pin in (
+        (lead_models(tier_models), None),
+        (tier_models, contract_model_ref),
+    ):
+        selected = (
+            _select_primary_model_for_task(
+                models,
+                task_type,
+                estimated_tokens,
+                bifrost_backends,
+                pin,
+                exclude_backend_refs,
+                contract_model_ref_is_explicit_override=(
+                    contract_model_ref_is_explicit_override
+                ),
+                require_credential=require_credential,
+                quota_state=quota_state,
+            )
+            if models
+            else None
+        )
+        if selected is not None:
+            break
+    if selected is None or spread_key is None or not spread_peers:
+        return selected
+    return pick_spread_member(
+        selected,
         tier_models,
         task_type,
         estimated_tokens,
-        bifrost_backends,
-        contract_model_ref,
         exclude_backend_refs,
-        contract_model_ref_is_explicit_override=(
-            contract_model_ref_is_explicit_override
+        spread_peers,
+        spread_member_weights or {},
+        spread_key,
+        lambda ref: (
+            (backend := bifrost_backends.get(ref)) is not None
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
         ),
-        require_credential=require_credential,
-        quota_state=quota_state,
     )
-    if selected is None or spread_key is None or not spread_peers:
-        return selected
-    peer_refs = spread_peers.get(selected.backend_ref, ())
-    group: list[ModelTierModel] = [selected]
-    for peer_ref in peer_refs:
-        if peer_ref in exclude_backend_refs:
-            continue
-        backend = bifrost_backends.get(peer_ref)
-        if backend is None or not _backend_routable(
-            backend, require_credential=require_credential, quota_state=quota_state
-        ):
-            continue
-        member = next(
-            (
-                model
-                for model in tier_models
-                if model.backend_ref == peer_ref
-                and task_type in model.use_for
-                and estimated_tokens <= model.max_context_tokens
-            ),
-            None,
-        )
-        if member is not None:
-            group.append(member)
-    if len(group) == 1:
-        return selected
-    member_weights = spread_member_weights or {}
-    return group[
-        spread_pick(
-            spread_key,
-            [1.0]
-            + [member_weights.get(member.backend_ref, 1.0) for member in group[1:]],
-        )
-    ]
 
 
 def _select_primary_model_for_task(
@@ -832,6 +830,11 @@ def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
+
+
+def lead_backend_refs() -> frozenset[str]:
+    """The lead-placed backends of the bound routing config (OMN-23329)."""
+    return lead_refs_in(_get_config())
 
 
 def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:

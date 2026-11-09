@@ -190,8 +190,14 @@ def test_shipped_rules_name_each_row(key: str, expected: str, text: str) -> None
 def test_control_rules_as_they_stood_leave_each_row_unclassified(
     key: str, expected: str, text: str
 ) -> None:
+    # The shard row also reads "run-view 404", which the job-log rule widened since; the shipped order-dependent rule sits above it.
+    stood_as = (
+        "ci-job-log-unreadable-from-the-mirror"
+        if key == "order-dependent-shard"
+        else "unclassified"
+    )
     assert roll(rules_as_they_stood(), (text,)) == {
-        "unclassified": {"occurrences": 1, "cost_minutes": 5.0}
+        stood_as: {"occurrences": 1, "cost_minutes": 5.0}
     }, key
 
 
