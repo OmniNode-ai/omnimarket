@@ -134,9 +134,7 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
-)
-from omnimarket.models.delegation.wire.model_quality_gate import (
-    refusal_reason as _refusal_reason,
+    refusal_reason,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voice_check import (
     check_operator_voice,
@@ -990,7 +988,7 @@ def _check_no_refusal(
     if _LEADING_ERROR_RE.search(first_200):
         detected.append("error:")
     if detected:
-        return _refusal_reason(detected)
+        return refusal_reason(detected)
 
     return None
 
@@ -3351,7 +3349,7 @@ def _run_legacy_checks(
         scores["no_refusal"] = 1.0
     else:
         scores["no_refusal"] = 0.0
-        failure_reasons.append(_refusal_reason(detected_phrases))
+        failure_reasons.append(refusal_reason(detected_phrases))
 
     expected_markers = gate_input.expected_markers or _TASK_MARKERS.get(task_type, ())
     if not expected_markers:
