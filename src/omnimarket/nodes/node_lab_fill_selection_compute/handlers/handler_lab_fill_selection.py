@@ -10,6 +10,9 @@ OMN-17427: a ticket skipped because its implementation merged is not finished wo
 work. The slots ordinary and pr-land work still leave idle take those tickets as DoD-verify lanes, one
 per ticket, so a merged implementation is checked against its acceptance criteria and closed instead of
 being skipped every tick while the lab idles.
+
+OMN-22347: a ticket whose earlier lane ended already-built or skipped-owned, with a merged PR known,
+is held until the ticket changes and is listed for the closer, never rebuilt as a fill brief.
 """
 
 from __future__ import annotations
@@ -66,6 +69,10 @@ def _heads(
 
 
 _UNCHANGED_OUTCOMES = frozenset({"blocked", "partial", "no-op", "noop"})
+# A lane found the work already on the default branch, or owned by a lane already running it (OMN-22347).
+_BUILT_OUTCOMES = frozenset({"already-built", "skipped-owned", "skipped"})
+# The fill's lane names: lab-fill-omn<n>-..., lab-fill-verify-omn<n>-... and fill-ticket-OMN-<n>-....
+_FILL_LANE = re.compile(r"^(?:lab-)?fill-(?:verify-|ticket-)?omn-?([0-9]+)-")
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +180,7 @@ def _replay(rows: list[_Row], landing_lane: str) -> _History:
                 (row.lane, pr, row.subjects) for pr in sorted(row.prs)
             )
             # A DoD-verify lane (lab-fill-verify-omn<n>-...) is an attempt on its ticket too.
-            lab_lane = re.match(r"^lab-fill-(?:verify-)?omn([0-9]+)-", row.lane)
+            lab_lane = _FILL_LANE.match(row.lane)
             if lab_lane and (ticket := "OMN-" + lab_lane[1]) in row.subjects:
                 attempt = _Attempt(row.lane, row.ts)
                 history.attempts.setdefault(ticket, []).append(attempt)
@@ -440,6 +447,9 @@ class HandlerLabFillSelection:
                 now,
                 {c.ticket: c.ticket_updated_at for c in request.candidates},
             ),
+            tuple(
+                d for d in decisions if d.reason is EnumLabFillSkipReason.ALREADY_BUILT
+            ),
         )
 
     @staticmethod
@@ -574,6 +584,27 @@ class HandlerLabFillSelection:
                     if _repo_of(p) not in deployment.companion_repositories
                 }
             )
+            attempts = history.attempts.get(candidate.ticket, [])
+            latest = attempts[-1] if attempts else None
+            if latest is not None and latest.terminal is not None:
+                # What the lane itself named as merged counts beside what the candidate read.
+                named = (
+                    latest.terminal.prs
+                    | _pr_ids(latest.terminal.values.get("merged", ""))
+                ) & history.merged
+                merged = sorted(set(merged) | named)
+                if (
+                    merged
+                    and latest.terminal.values.get("outcome", "").lower()
+                    in _BUILT_OUTCOMES
+                    and not _updated_after(candidate.ticket_updated_at, latest)
+                ):
+                    detail = ",".join(merged)
+                    return decision(
+                        EnumLabFillSkipReason.ALREADY_BUILT,
+                        "already-built:" + detail,
+                        detail,
+                    ), None
             if merged:
                 detail = ",".join(merged)
                 return decision(

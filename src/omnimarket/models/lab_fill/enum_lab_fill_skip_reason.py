@@ -18,6 +18,9 @@ class EnumLabFillSkipReason(StrEnum):
     DISPATCH_LIMIT = "dispatch-limit"
     OUT_OF_SCOPE = "out-of-repository-scope"
     IMPLEMENTATION_MERGED = "implementation-merged"
+    # OMN-22347: an earlier lane ended already-built or skipped-owned and a merged PR is known; the item
+    # waits for its ticket to change and is listed for the closer.
+    ALREADY_BUILT = "already-built"
     # OMN-20864: an in-force HOLD row names the PR or its repository.
     SKIP_HELD = "held"
     # OMN-20864: the PR's red, or its last landing lane's block, is a cause no lane can fix on it.
