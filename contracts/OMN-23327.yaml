@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23327
+title: Bind the merged capability_scores writer's evidence in its own contract so the closer can close OMN-20426
+summary: This pull request adds contracts/OMN-20426.yaml, which binds the three criteria of OMN-20426 to the chain test of the merged writer (omnimarket#3346) and to the dev-lane evidence recorded by lane d20426-1220. It changes no product code.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23327-bind-omn20426
+  statement: The contract of OMN-20426 exists on dev and binds each of its three acceptance criteria to a dod_evidence entry, so the ticket closer has a receipt to close the ticket on.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a contract-only PR adds contracts/OMN-20426.yaml binding the three criteria to the recorded evidence -- falsifier: dod-verify passes on that PR'
+  - id: AC2
+    statement: 'AC2: the closer closes OMN-20426 on its receipt -- falsifier: OMN-20426 reads Done with a closer receipt'
+evidence_requirements:
+- kind: tests
+  description: The contract reading tests for contracts/OMN-20426.yaml pass
+  command: uv run --frozen pytest tests/ci/test_omn20426_contract_binding.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23327-contract-added
+  description: Runs the contract reading tests for contracts/OMN-20426.yaml. The first requires the file to name ticket OMN-20426 and declare criteria AC1, AC2 and AC3; the others read the contract the way the closer does and require every criterion to be bound to a test_passes check naming an existing test file, with an injected unbinding and an injected missing test file each turning the reading red. The tests fail at the merge base, where the contract does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn20426_contract_binding.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23327-every-criterion-bound
+  description: Runs the reading that requires each of AC1, AC2 and AC3 of OMN-20426 to be bound by a dod_evidence entry, which is what the closer reads to close the ticket. It fails at the merge base, where the contract does not exist. The closing itself happens after the merge and is read on the ticket (Done with a closer receipt); hosted CI cannot read the closer.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn20426_contract_binding.py -q --no-cov -p no:randomly -k test_every_criterion_is_bound_to_an_existing_test
+    cwd: .

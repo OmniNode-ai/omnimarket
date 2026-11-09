@@ -51,7 +51,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23303-filler-deploy
-  description: Reads the unit declaration from the branch's installer contract; the exit status depends on the contract holding the ai.omninode.job-log-filler label with its 120 s interval, so it goes red on a branch without the unit. Runs on a hosted runner.
+  description: Runs the unit-declaration test, which reads the installer contract and fails on a branch without the ai.omninode.job-log-filler unit at its 120 s interval. Runs on a hosted runner.
   source: manual
   binds_ac:
   - AC2
