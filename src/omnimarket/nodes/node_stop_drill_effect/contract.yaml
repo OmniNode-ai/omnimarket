@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Stop Drill Effect (OMN-22943, rebuild plan 3.5 row 7 and join J6)
+#
+# The hourly stop drill. Each run builds a test admission instance (the gate store's in-memory twin behind
+# the J6 join), commits a stop on the overlay's drill piece, sends a lane above it and a control lane on
+# another piece, reads what the instance answered, and computes piece 7's reading with
+# node_process_spine_reading_compute. It then runs the same drill against an instance that accepts the drill's
+# lane (the fault injected on purpose); that reading must be NOT WORKING, or the drill itself is blind.
+# One STATUS row for the run and one for the planted fault go to the ledger; the floor reads them as piece 7's
+# golden and error events and the reading writer reads the run row. Every setting (pieces, limits, bounds,
+# lane, hosts, unit environment) is in the overlay node_stop_drill_effect; this contract holds none.
+#   handle(ModelStopDrillRequest) -> ModelStopDrillResult
+name: node_stop_drill_effect
+contract_name: node_stop_drill_effect
+node_name: node_stop_drill_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the stop drill on a test admission instance and on one that accepts the drill's lane, computes
+  piece 7's reading, and writes the run's and the planted fault's chain events as journal events and as
+  ledger rows. A send above a stop that is admitted reads NOT WORKING; a planted fault that does not read
+  NOT WORKING is a typed failure of the drill.
+
+handler:
+  module: omnimarket.nodes.node_stop_drill_effect.handlers.handler_stop_drill
+  class: HandlerStopDrill
+  input_model: omnimarket.nodes.node_stop_drill_effect.models.ModelStopDrillRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: stop_drill_run
+      handler:
+        name: HandlerStopDrill
+        module: omnimarket.nodes.node_stop_drill_effect.handlers.handler_stop_drill
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, event-journal]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelStopDrillRequest
+  module: omnimarket.nodes.node_stop_drill_effect.models
+  description: One run request, from the node's own timer or its CLI.
+output_model:
+  name: ModelStopDrillResult
+  module: omnimarket.nodes.node_stop_drill_effect.models
+  description: The run's reading, the planted fault's reading and what the ledger took.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.stop-drill-requested.v1"
+    operation: "stop_drill_run"
+
+terminal_event: onex.evt.omnimarket.stop-drill-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.stop-drill-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stop-drill-completed.v1
+
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.stop-drill-requested.v1
+    producer: "the node's own systemd user timer, which runs its CLI each hour (schedule install); not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.stop-drill-completed.v1
+
+# The node's own hourly timer, installed by `schedule install --host <name>` as a systemd user timer on each host
+# the overlay's schedule_hosts names, removed by `schedule uninstall`. The hosts and the unit environment are the
+# overlay's; this block holds when and how the unit is run.
+schedule:
+  unit_name: onex-stop-drill-hourly
+  state_directory: .onex_state/stop-drill
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:20:00"
+    randomized_delay: 30s
+    persistent: true
+    description: hourly, twenty minutes past
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+
+overlay:
+  node: node_stop_drill_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  transport_type: kafka
+  description: "Hourly stop drill on a test admission instance"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-09"
+  tags: [effect, stop-drill, process-spine]
+  related_tickets: ["OMN-22943"]
