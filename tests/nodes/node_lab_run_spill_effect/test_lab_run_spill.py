@@ -7,11 +7,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_lab_run_spill_effect.handlers.handler_lab_run_spill import (
     HandlerLabRunSpill,
@@ -20,6 +22,7 @@ from omnimarket.nodes.node_lab_run_spill_effect.handlers.handler_lab_run_spill i
 )
 from omnimarket.nodes.node_lab_run_spill_effect.models.model_lab_run_spill import (
     ModelLabRunSpillRequest,
+    SpillAction,
 )
 from omnimarket.nodes.node_lab_run_spill_effect.node import NodeLabRunSpillEffect
 from omnimarket.nodes.node_lab_run_spill_effect.runtime_lab_run_spill import main
@@ -54,14 +57,20 @@ def _sparse(path: Path, mib: int = SPARSE_MIB) -> None:
     assert path.stat().st_blocks * 512 < MIB, "the fixture itself must hold no data"
 
 
-def _request(tmp_path: Path, source: Path, **extra: object) -> ModelLabRunSpillRequest:
+def _request(
+    tmp_path: Path,
+    source: Path,
+    *,
+    action: SpillAction = "spill_state",
+    keep_days: int = 0,
+) -> ModelLabRunSpillRequest:
     return ModelLabRunSpillRequest(
-        action=str(extra.pop("action", "spill_state")),  # type: ignore[arg-type]
+        action=action,
         host_name="pool-a",
         source=str(source),
         spill_root=str(tmp_path / "spill"),
         overlay_file=str(tmp_path / "overlay.yaml"),
-        **extra,  # type: ignore[arg-type]
+        keep_days=keep_days,
     )
 
 
@@ -223,3 +232,44 @@ def test_error_chain_a_spill_past_the_cap_exits_with_the_capped_code(
     )
     assert code == 4
     assert json.loads(capsys.readouterr().out)["capped"] is True
+
+
+def _git(path: Path, *args: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@invalid",
+            "-C",
+            str(path),
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        env=scrub_git_location_env(os.environ),
+    )
+
+
+def test_preserve_worktree_leaves_a_patch_only_for_an_uncommitted_change(
+    tmp_path: Path,
+) -> None:
+    _overlay(tmp_path / "overlay.yaml")
+    dirty, clean = tmp_path / "runs" / "draft-1", tmp_path / "runs" / "clean-1"
+    for tree in (dirty, clean):
+        tree.mkdir(parents=True)
+        _git(tree, "init", "-q")
+    (dirty / "a.txt").write_text("one\n")
+    _git(dirty, "add", "a.txt")
+    _git(dirty, "commit", "-q", "-m", "base")
+    (dirty / "a.txt").write_text("two\n")
+    handler = HandlerLabRunSpill()
+    kept = handler.handle(_request(tmp_path, dirty, action="preserve_worktree"))
+    none = handler.handle(_request(tmp_path, clean, action="preserve_worktree"))
+    patch = (tmp_path / "spill" / "draft-1.dirty.patch").read_text()
+    assert kept.preserved is True
+    assert "-one" in patch
+    assert "+two" in patch
+    assert none.preserved is False
+    assert not (tmp_path / "spill" / "clean-1.dirty.patch").exists()
