@@ -30,6 +30,10 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     JournalScenarioEventSink,
     render_systemd,
 )
+from omnimarket.models.delegation.model_paid_rung_decision import (
+    ModelPaidRungDecision,
+    ModelPaidRungRequest,
+)
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     EnumScenarioTrigger,
@@ -145,6 +149,8 @@ def build(
         [ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult
     ]
     | None = None,
+    paid_rung_decider: Callable[[ModelPaidRungRequest], ModelPaidRungDecision]
+    | None = None,
 ) -> tuple[HandlerScenarioR3, Rows, InMemoryScenarioEventSink]:
     rows = Rows()
     events = sink or InMemoryScenarioEventSink()
@@ -160,6 +166,7 @@ def build(
         clock=lambda: NOW,
         inputs_path=inputs_path,
         paid_rung_effect=paid_rung_effect,
+        paid_rung_decider=paid_rung_decider,
     )
     return handler, rows, events
 
@@ -224,6 +231,8 @@ def test_golden_chain_inmemory_every_assertion_held(tmp_path: Path) -> None:
     assert "+leg_b_usage_measured" in result.assertions
     assert "+leg_b_cost_positive" in result.assertions
     assert "+every_down_returned_to_caller" in result.assertions
+    assert "+s_input_size_band" in result.assertions
+    assert "+s_input_paid_rung_skipped" in result.assertions
     assert len(rows.rows) == 1
     parsed = from_status_row(rows.rows[0])
     assert parsed is not None
@@ -420,6 +429,45 @@ def test_error_chain_a_small_input_that_is_not_in_the_large_band_turns_the_size_
     handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
     result = handler.run()
     assert "-leg_a_size_band" in result.assertions
+
+
+def test_error_chain_an_s_input_that_measures_large_turns_the_skip_control_red(
+    tmp_path: Path,
+) -> None:
+    large = load_inputs(INPUTS).prompt
+
+    def edit(raw: dict[str, object]) -> None:
+        raw["s_input"]["prompt"] = large  # type: ignore[index]
+
+    handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
+    result = handler.run()
+    assert "-s_input_size_band" in result.assertions
+    assert "-s_input_paid_rung_skipped" in result.assertions
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
+
+
+def test_error_chain_a_rule_that_lets_the_paid_rung_answer_the_s_input_turns_the_skip_red(
+    tmp_path: Path,
+) -> None:
+    handler, _, _ = build(
+        tmp_path,
+        paid_rung_decider=lambda _request: ModelPaidRungDecision(allowed=True),
+    )
+    result = handler.run()
+    assert "+s_input_size_band" in result.assertions
+    assert "-s_input_paid_rung_skipped" in result.assertions
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
+
+
+def test_error_chain_a_skip_with_the_wrong_cause_turns_the_skip_red(
+    tmp_path: Path,
+) -> None:
+    def edit(raw: dict[str, object]) -> None:
+        raw["s_input"]["expect_skip_cause"] = "model_unavailable"  # type: ignore[index]
+
+    handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
+    result = handler.run()
+    assert "-s_input_paid_rung_skipped" in result.assertions
 
 
 def test_error_chain_an_empty_probe_key_with_leg_b_enabled_is_red_never_skipped(

@@ -137,3 +137,10 @@ def test_r3_probe_key_is_named_never_valued_in_the_contract_or_the_inputs() -> N
         schedule.unit_environment
     )
     assert schedule.environment_file is not None
+
+
+def test_r3_s_input_is_a_small_prompt_expecting_the_size_band_skip_cause() -> None:
+    inputs = load_inputs(INPUTS)
+    assert inputs.s_input.expect_size_band.value == "S"
+    assert inputs.s_input.expect_skip_cause == "size_band_below_paid"
+    assert len(inputs.s_input.prompt) < len(inputs.prompt)

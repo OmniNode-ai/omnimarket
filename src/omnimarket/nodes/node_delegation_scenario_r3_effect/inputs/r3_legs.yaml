@@ -61,3 +61,11 @@ all_down_leg:
   rungs:
     - {backend_id: r3-down-free, model_id: stub-free, behaviour: status, status_code: 503, tier: local, timeout_ms: 5000}
     - {backend_id: r3-down-paid, model_id: stub-paid, behaviour: status, status_code: 503, tier: cheap_cloud, cost_class: paid, timeout_ms: 5000}
+#: Skip control (the plan's falsifying input, after K3): the paid rung that answers an L input is a declared skip for this S
+#: input, with the cause the contract's `paid_from_size_band` rule gives. The dispatch port leaves a probe ladder out of that rule
+#: (a probe ladder decides the rung itself), so the control reads the rule's decision and the input's measured band.
+s_input:
+  name: small_input_paid_rung_skipped
+  prompt: Say hello in one sentence.
+  expect_size_band: S
+  expect_skip_cause: size_band_below_paid

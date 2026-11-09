@@ -10,7 +10,11 @@ a. a free rung that answers 503 on every call, then a paid rung (a stub with a f
 b. the same ladder with the paid rung a real OpenRouter model on the probe key, capped at the contract's ``max_tokens``: the
    accepted attempt reports usage source ``measured`` and a cost above zero. Enabled with the key variable empty, the run is
    red, never skipped;
-c. control: both rungs 503 ends ``returned_to_caller`` with a reason from the closed list.
+c. control: both rungs 503 ends ``returned_to_caller`` with a reason from the closed list;
+d. control: the same paid rung met by an S (small) input is a skip with cause ``size_band_below_paid`` (OMN-23180's rule,
+   decided by the escalation decision node from the contract's ``paid_from_size_band``). The dispatch port does not apply
+   that rule to a probe ladder (a probe ladder decides the rung itself), so this control reads the rule's own decision for
+   the S input and its measured band, not a ladder run.
 
 Every assertion compares typed fields or bytes of the terminal; no model judges a pass. The result goes to the ledger first
 (one STATUS row, the row the green-days reading counts) and then to the bus. The probe key is read from the named variable at
@@ -27,6 +31,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.delegation_readiness_overlay import (
     DelegationEffect,
     ModelOpenRouterOverlay,
@@ -56,9 +61,22 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
 )
+from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.inference.task_class_authority import resolve_size_band_thresholds
+from omnimarket.models.delegation.model_paid_rung_decision import (
+    ModelPaidRungDecision,
+    ModelPaidRungRequest,
+)
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioTrigger,
     ModelScenarioResult,
+)
+from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
+    HandlerEscalationDecision,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    resolve_task_class_transitions,
 )
 
 NODE_DIR = Path(__file__).resolve().parents[1]
@@ -70,6 +88,7 @@ PROBE_SCENARIO_PROMPT_TASK = "research"
 MOVE_STAMP_PREFIX = "transition=move:"
 
 Clock = Callable[[], datetime]
+PaidRungDecider = Callable[[ModelPaidRungRequest], ModelPaidRungDecision]
 
 
 class ModelR3Runtime(ModelReadinessRuntime):
@@ -118,6 +137,18 @@ class ModelLegB(ModelPairLeg):
     real_backend_id: str = Field(min_length=1)
 
 
+class ModelSInput(BaseModel):
+    """The S (small) input of the skip control: a prompt that must measure below the contract's paid band."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    expect_size_band: EnumSizeBand
+    #: The cause the paid rung's skip must carry.
+    expect_skip_cause: str = Field(min_length=1)
+
+
 class ModelR3Inputs(BaseModel):
     """The committed ladder file of scenario R3."""
 
@@ -134,6 +165,7 @@ class ModelR3Inputs(BaseModel):
     leg_a: ModelPairLeg
     leg_b: ModelLegB
     all_down_leg: ModelPairLeg
+    s_input: ModelSInput
 
     def leg_spec(self, name: str, rungs: tuple[ModelRungScript, ...]) -> ModelLegSpec:
         return ModelLegSpec(
@@ -180,6 +212,7 @@ class HandlerScenarioR3(ReadinessScenarioBase):
         clock: Clock = lambda: datetime.now(UTC),
         inputs_path: Path | None = None,
         paid_rung_effect: DelegationEffect | None = None,
+        paid_rung_decider: PaidRungDecider | None = None,
     ) -> None:
         super().__init__(
             runtime,
@@ -196,6 +229,9 @@ class HandlerScenarioR3(ReadinessScenarioBase):
         self._r3 = runtime
         self._inputs_path = inputs_path or NODE_DIR / runtime.inputs_relpath
         self._paid_rung_effect = paid_rung_effect
+        self._paid_rung_decider: PaidRungDecider = (
+            paid_rung_decider or HandlerEscalationDecision().decide_paid_rung
+        )
 
     def handle(self, request: ModelScenarioR3RunCommand) -> ModelScenarioResult:
         return self.run()
@@ -289,7 +325,47 @@ class HandlerScenarioR3(ReadinessScenarioBase):
             and all(x.failure_class not in (None, "unknown") for x in ended.attempts),
             f"attempt classes {[x.failure_class for x in ended.attempts]}",
         )
+        self._check_s_input_skip(check, inputs)
         return "; ".join(problems) or "every assertion held"
+
+    def _check_s_input_skip(
+        self, check: Callable[[str, bool, str], None], inputs: ModelR3Inputs
+    ) -> None:
+        """The S input meets the paid rung as a declared skip, never an answer (the plan's falsifying input, after K3)."""
+        s = inputs.s_input
+        thresholds = resolve_size_band_thresholds(PROBE_SCENARIO_PROMPT_TASK)
+        measured: EnumSizeBand | None = None
+        if thresholds is not None:
+            measured = measure_size_band(
+                task_class=PROBE_SCENARIO_PROMPT_TASK,
+                prompt=s.prompt,
+                context_pack="",
+                sources=(),
+                acceptance_criteria=(),
+                thresholds=thresholds[0],
+                thresholds_reference=thresholds[1],
+            ).band
+        check(
+            "s_input_size_band",
+            measured == s.expect_size_band,
+            f"band {measured}, want {s.expect_size_band}",
+        )
+        decision = self._paid_rung_decider(
+            ModelPaidRungRequest(
+                rung_is_paid=True,
+                size_band=measured,
+                paid_from_size_band=resolve_paid_from_size_band(
+                    PROBE_SCENARIO_PROMPT_TASK
+                ),
+                transitions=resolve_task_class_transitions(PROBE_SCENARIO_PROMPT_TASK),
+            )
+        )
+        cause = decision.transition.cause.value if decision.transition else None
+        check(
+            "s_input_paid_rung_skipped",
+            not decision.allowed and cause == s.expect_skip_cause,
+            f"allowed {decision.allowed}, cause {cause}, want a skip with cause {s.expect_skip_cause}",
+        )
 
     @staticmethod
     def _check_forced_escalation(
