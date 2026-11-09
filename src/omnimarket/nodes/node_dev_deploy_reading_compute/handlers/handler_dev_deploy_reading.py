@@ -19,13 +19,13 @@ from __future__ import annotations
 import math
 from datetime import timedelta
 
-from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
+from omnimarket.models.model_dev_deploy_reading import (
     ModelDevDeployReading,
     ModelDevDeployReadingRequest,
     ModelLabPassReceiptFact,
     ModelRuntimeProbeFact,
 )
+from omnimarket.models.model_reading import EnumReadingVerdict
 
 _SHORT = 12
 
