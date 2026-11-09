@@ -31,6 +31,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_sched
     ModelFloorFillScheduleResult,
     load_floor_fill_schedule,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_store_settings import (
+    ModelFloorFillStoreSettings,
+)
 
 __all__: list[str] = [
     "EXIT_CODE_BY_STATUS",
@@ -47,6 +50,7 @@ __all__: list[str] = [
     "ModelFloorFillKeyResult",
     "ModelFloorFillSchedule",
     "ModelFloorFillScheduleResult",
+    "ModelFloorFillStoreSettings",
     "ModelFloorFillStoredAnswer",
     "load_floor_fill_config",
     "load_floor_fill_schedule",

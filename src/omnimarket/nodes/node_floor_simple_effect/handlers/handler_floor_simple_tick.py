@@ -115,6 +115,10 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent imp
     read_deploy_agent,
     record_deploy_agent,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.worklist_sources import (
+    projected_in_scope_prs,
+    read_worklist,
+)
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
     CanaryPublishError,
     GitCanaryPublisher,
@@ -172,6 +176,7 @@ class ModelSourcePaths(BaseModel):
     controller_state_dir_env: str
     controller_state_dir_fallback: str
     controller_admissions_name: str
+    controller_state_name: str
     controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
@@ -725,6 +730,11 @@ class HandlerFloorSimpleTick:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
         record_path = home / rt.sources.record_relpath
+        work_state = read_work_state(home / rt.sources.work_state_relpath)
+        controller_dir = Path(
+            env.get(rt.sources.controller_state_dir_env, "").strip()
+            or Path.home() / rt.sources.controller_state_dir_fallback
+        )
 
         def read_all() -> tuple[
             dict[str, Any] | None, list[ModelLabSourceRead], WatcherReading | None
@@ -736,10 +746,6 @@ class HandlerFloorSimpleTick:
                 record = None
             except FloorSourceError:
                 record = None
-            controller_dir = Path(
-                env.get(rt.sources.controller_state_dir_env, "").strip()
-                or Path.home() / rt.sources.controller_state_dir_fallback
-            )
             watcher = read_watcher(
                 home / rt.sources.watcher_relpath,
                 now,
@@ -752,6 +758,7 @@ class HandlerFloorSimpleTick:
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,
                 scope=goal_scope,
                 conflict_states=lab_ov.conflict_merge_states,
+                projected=projected_in_scope_prs(work_state),
             )
             lane_dir = Path(
                 env.get(rt.sources.remote_lane_dir_env, "").strip()
@@ -866,7 +873,16 @@ class HandlerFloorSimpleTick:
         record_read_at = (
             parse_time(record["generated_at"]) if record is not None else None
         )
-        work_state = read_work_state(home / rt.sources.work_state_relpath)
+        worklist = read_worklist(
+            watcher_path=home / rt.sources.watcher_relpath,
+            controller_state_path=controller_dir / rt.sources.controller_state_name,
+            projection=work_state,
+            scope=goal_scope,
+            overlay=floor_ov.worklist,
+            excluded_classes=floor_ov.numbers.excluded_pr_classes,
+            conflict_states=lab_ov.conflict_merge_states,
+            now=now,
+        )
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
@@ -909,7 +925,13 @@ class HandlerFloorSimpleTick:
                 "pull_request_watcher": watcher is not None,
                 "goal_scope": goal_scope is not None,
                 "ledger": ledger.facts is not None,
+                **(
+                    {"worklist": worklist is not None}
+                    if floor_ov.worklist is not None
+                    else {}
+                ),
             },
+            worklist=worklist,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
         )

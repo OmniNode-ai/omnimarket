@@ -156,6 +156,9 @@ runtime:
     controller_state_dir_env: LANDING_STATE_DIR
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
+    # The controller's state file (OMN-23184): its landing leases and the cause leases that hold shared reds. The board's work list
+    # names a pull request's owner from it; a state that cannot be read makes the list unread, never empty.
+    controller_state_name: state.json
     controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json

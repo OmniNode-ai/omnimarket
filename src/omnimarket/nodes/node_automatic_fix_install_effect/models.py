@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -119,3 +120,75 @@ class ModelFixProofState(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
     passes: dict[str, ModelFixProof]
     fails: dict[str, object] = Field(default_factory=dict)
+
+
+class EnumJoinJ9Outcome(StrEnum):
+    """What the J9 join reads for one merged head across the declared install targets."""
+
+    INSTALLED = "installed"
+    FAILED = "failed"
+    PENDING = "pending"
+
+
+class ModelJoinJ9Policy(BaseModel):
+    """The contract's ``join_j9`` section: the two piece numbers, the hour and the typed failure codes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    join_id: str = Field(pattern=r"^J\d{1,2}$")
+    from_piece: int = Field(ge=1, le=18)
+    to_piece: int = Field(ge=1, le=18)
+    emission_node: str = Field(min_length=1)
+    deadline_seconds: int = Field(ge=1)
+    late_failure_code: str = Field(min_length=1)
+    mismatch_failure_code: str = Field(min_length=1)
+    refused_failure_code: str = Field(min_length=1)
+
+
+class ModelJoinJ9Target(BaseModel):
+    """One declared install target the merged head must reach: the overlay target's key and its host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    key: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+
+
+class ModelJoinJ9Reading(BaseModel):
+    """One receipt the installer wrote, with the time it wrote it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    at: datetime
+    receipt: ModelFixInstallReceipt
+
+
+class ModelJoinJ9Request(BaseModel):
+    """A merged head, when it merged, the targets it must reach and the receipts read so far."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    correlation_id: str = Field(min_length=1)
+    merged_head: str = Field(pattern=r"^[0-9a-f]{40}$")
+    merged_at: datetime
+    judged_at: datetime
+    targets: tuple[ModelJoinJ9Target, ...] = Field(min_length=1)
+    readings: tuple[ModelJoinJ9Reading, ...] = ()
+
+
+class ModelJoinJ9Failure(BaseModel):
+    """A target that did not install the merged head inside the deadline, named with a typed code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    key: str
+    host: str
+    code: str
+    detail: str
+
+
+class ModelJoinJ9Result(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    outcome: EnumJoinJ9Outcome
+    correlation_id: str
+    merged_head: str
+    deadline_at: datetime
+    installed: tuple[str, ...] = ()
+    pending: tuple[str, ...] = ()
+    failures: tuple[ModelJoinJ9Failure, ...] = ()
+    failure_code: str | None = None

@@ -107,23 +107,22 @@ def test_the_writer_declares_four_records_in_flight() -> None:
 
 
 @pytest.mark.unit
-def test_each_runtime_message_gets_its_own_single_connection_adapter() -> None:
+def test_the_writer_keeps_one_contract_sized_pool_on_the_bound_dsn() -> None:
+    """OMN-23257: four messages in flight share ONE pool, sized by the contract."""
     writer = SessionContentProjectionWriter()
     bound = AsyncpgAdapter(dsn="postgresql://content_writer@db.invalid/omnidash")
     writer._db = bound
 
-    first = writer._message_db()
-    second = writer._message_db()
+    kept = writer._pool_host._adapter_factory()
+    declared = writer._pool_host.settings
 
-    assert isinstance(first, AsyncpgAdapter)
-    assert isinstance(second, AsyncpgAdapter)
-    assert first is not bound
-    assert second is not bound
-    assert first is not second
-    assert first.dsn == bound.dsn == second.dsn
-    assert (first._min_size, first._max_size) == (1, 1)
-    assert (second._min_size, second._max_size) == (1, 1)
+    assert isinstance(kept, AsyncpgAdapter)
+    assert kept is not bound
+    assert kept.dsn == bound.dsn
+    assert (kept._min_size, kept._max_size) == (declared.min_size, declared.max_size)
+    assert declared.max_size >= 4
     assert not bound.is_connected
+    assert not kept.is_connected
 
 
 @pytest.mark.unit
