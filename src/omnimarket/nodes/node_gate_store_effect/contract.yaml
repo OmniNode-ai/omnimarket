@@ -31,7 +31,19 @@ handler:
   input_model: omnimarket.models.model_gate_store.ModelGateStoreRequest
 
 # Not a runtime-dispatched handler: HandlerGateStore takes its backend as a constructor parameter
-# (the overlay selects it through build_store), so the bus edge is answer_command.
+# (the overlay selects it through build_store), so the bus edge is answer_command. The J6 join
+# handler (OMN-22936) takes the store, the audit sink and the projection as constructor parameters
+# in the same way. Both are bound here so the contract owns them; they run in process, not through
+# handler_routing, which would quarantine them at boot.
+cli_handlers:
+  - operation: gate_store_transact
+    handler:
+      name: HandlerGateStore
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store
+  - operation: join_j6_gate_store_stop_and_send
+    handler:
+      name: HandlerGateStoreJoinJ6
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6
 
 descriptor:
   node_archetype: effect
@@ -68,6 +80,22 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.gate-store-answered.v1
   - onex.evt.omnimarket.gate-store-failed.v1
+
+# OMN-22936, rebuild plan 4.1 join J6 (piece 6 to piece 7): a stop committed in the gate store lands as one durable audit
+# row and one projected audit row, and another send of that piece is refused; a stop whose commit gets no answer by the
+# deadline leaves the piece's send fence closed. Nothing of this is spelled in code.
+join_j6:
+  join_id: "J6"
+  from_piece: 6
+  to_piece: 7
+  commit_deadline_seconds: 5.0
+  audit_kinds:
+    committed: "stop_committed"
+    unanswered: "stop_unanswered"
+    refused: "stop_refused"
+  failure_codes:
+    audit_row_missing: "audit_row_missing"
+    projected_row_missing: "projected_row_missing"
 
 overlay:
   node: gate_store
