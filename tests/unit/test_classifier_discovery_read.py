@@ -30,7 +30,8 @@ RUN_READ_CELLS = ("host", "command", "observed", "read_at")
 
 
 def _load() -> dict[str, Any]:
-    return json.loads(READ_PATH.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    read: dict[str, Any] = json.loads(READ_PATH.read_text(encoding="utf-8"))
+    return read
 
 
 def _equivalents(read: dict[str, Any]) -> dict[str, dict[str, Any]]:
