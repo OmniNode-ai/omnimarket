@@ -397,6 +397,8 @@ class ModelFloorCauseIn(_Frozen):
     prs: tuple[str, ...] = ()
     needs_operator: bool = False
     last_seen: datetime | None = None
+    # When a STATUS row reported the stoppage resolved: a stoppage not seen since is not occurring, whatever the window.
+    resolved_at: datetime | None = None
     # The cost the reporter logged for a stoppage (the reporter's own figure, not a measurement).
     reported_cost_minutes: float | None = None
 
@@ -419,8 +421,10 @@ class ModelFloorCause(_Frozen):
     members: tuple[str, ...] = ()
     last_seen: datetime | None = None
     last_seen_age_s: int | None = None
-    # A stoppage: true when it was seen inside the overlay's window, false when not, ``None`` for a cause that is not one.
+    # A stoppage: true when it was seen inside the overlay's window, false when not or when a STATUS row reported it resolved
+    # after its last row, ``None`` for a cause that is not one.
     still_occurring: bool | None = None
+    resolved_at: datetime | None = None
 
 
 class ModelFloorJoinRow(_Frozen):

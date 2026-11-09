@@ -88,6 +88,15 @@ def live_lanes(
     )
 
 
+def _resolved_after_last_seen(cause: ModelFloorCauseIn) -> bool:
+    """True when a STATUS row reported the cause resolved at or after its newest row: it ended, on evidence."""
+    return (
+        cause.resolved_at is not None
+        and cause.last_seen is not None
+        and cause.resolved_at >= cause.last_seen
+    )
+
+
 def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
     """The id of every red cause (listed or not) that declares no owner, in the document's order.
 
@@ -575,6 +584,7 @@ class HandlerFloorSimple:
             owners: tuple[str, ...] = (),
             prs: tuple[str, ...] = (),
             last_seen: datetime | None = None,
+            resolved_at: datetime | None = None,
         ) -> None:
             declared = tuple(dict.fromkeys((*owners, *ov.owners.get(cid, ()))))
             out.append(
@@ -590,6 +600,7 @@ class HandlerFloorSimple:
                         "prs": prs,
                         "needs_operator": cid in ov.needs_operator,
                         "last_seen": last_seen,
+                        "resolved_at": resolved_at,
                     }
                 )
             )
@@ -617,6 +628,7 @@ class HandlerFloorSimple:
                 item.size_unit,
                 item.tickets,
                 last_seen=item.last_seen,
+                resolved_at=item.resolved_at,
             )
         for name, ok in sorted(r.sources_read.items()):
             if not ok:
@@ -693,7 +705,10 @@ class HandlerFloorSimple:
         if item.last_seen is not None:
             age = max(int((r.now - item.last_seen).total_seconds()), 0)
             seen = f"last seen {_ago(age)}"
-            if ov.still_occurring_within_s is not None:
+            if item.resolved_at is not None and _resolved_after_last_seen(item):
+                resolved_age = max(int((r.now - item.resolved_at).total_seconds()), 0)
+                seen += f", resolved {_ago(resolved_age)} by a STATUS row, no row since"
+            elif ov.still_occurring_within_s is not None:
                 seen += (
                     ", still occurring"
                     if age <= ov.still_occurring_within_s
@@ -727,6 +742,9 @@ class HandlerFloorSimple:
             occurring = (
                 age <= within if age is not None and within is not None else None
             )
+            # A STATUS row that reported the stoppage resolved after its newest row is the evidence it ended, whatever the window.
+            if _resolved_after_last_seen(c):
+                occurring = False
             # A stoppage that stopped and needs nobody is a fact about the past: listed with its age, not red.
             state = (
                 "quiet"
@@ -753,6 +771,7 @@ class HandlerFloorSimple:
                         "last_seen": c.last_seen,
                         "last_seen_age_s": age,
                         "still_occurring": occurring,
+                        "resolved_at": c.resolved_at,
                     }
                 )
             )

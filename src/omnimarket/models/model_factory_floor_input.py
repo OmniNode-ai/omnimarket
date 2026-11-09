@@ -199,6 +199,8 @@ class ModelFloorStoppage(BaseModel):
     recurring: bool = False
     tickets: tuple[str, ...] = ()
     last_seen: str = ""
+    # When a STATUS row reported the class resolved (the friction report's ``resolved_at``); empty when none did.
+    resolved_at: str = ""
 
 
 class ModelFloorSelection(BaseModel):

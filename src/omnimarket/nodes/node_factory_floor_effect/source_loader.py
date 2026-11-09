@@ -463,6 +463,7 @@ def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
                 recurring=value.get("recurring", False),
                 tickets=value.get("tickets", ()),
                 last_seen=value.get("last_seen", ""),
+                resolved_at=value.get("resolved_at", ""),
             )
             for value in data.get("classes", [])
             if "class" in value

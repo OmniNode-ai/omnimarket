@@ -225,6 +225,12 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
             last_seen: datetime | None = parse_time(item.get("last_seen"))
         except ValueError:
             last_seen = None
+        try:
+            resolved_at: datetime | None = (
+                parse_time(item["resolved_at"]) if item.get("resolved_at") else None
+            )
+        except ValueError:
+            resolved_at = None
         cost = item.get("cost_minutes")
         out.append(
             ModelFloorCauseIn(
@@ -235,6 +241,7 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
                 last_seen=last_seen,
+                resolved_at=resolved_at,
                 reported_cost_minutes=float(cost)
                 if isinstance(cost, int | float)
                 else None,

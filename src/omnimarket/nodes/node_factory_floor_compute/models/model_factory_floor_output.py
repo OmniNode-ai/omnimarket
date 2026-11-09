@@ -222,6 +222,7 @@ class ModelFloorStoppageOut(BaseModel):
     recurring: bool
     tickets: tuple[str, ...]
     last_seen: str
+    resolved_at: str = ""
 
 
 MachineState = Literal["read", "unread", "repair", "out"]
