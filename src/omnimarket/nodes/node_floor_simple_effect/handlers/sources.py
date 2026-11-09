@@ -29,6 +29,11 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelRunnerPlanRule,
 )
+from omnimarket.models.work_state_projection import (
+    EnumWorkItemKind,
+    EnumWorkItemState,
+    ModelWorkStateResult,
+)
 
 TICKET = re.compile(r"\bOMN-\d+\b")
 SIZE_UNITS = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
@@ -101,10 +106,113 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             pr=str(item.get("pr") or ""),
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
+            parent_ticket=str(item.get("parent_ticket") or ""),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
     )
+
+
+# A lane item's attributes are the aliases its CLAIM cells name; these are the prefixes a floor row can be named by.
+_CAUSE_PREFIX = "cause:"
+_OWNS_PREFIX = "pr:floor:"
+_TICKET_PREFIX = "ticket:"
+_PR_PREFIX = "pr:"
+_LIVENESS_OF_STATE = {
+    EnumWorkItemState.IN_PROGRESS: "unread",
+    EnumWorkItemState.STOPPED: "dead",
+    EnumWorkItemState.DONE: "finished",
+}
+
+
+def read_work_state(path: Path) -> ModelWorkStateResult | None:
+    """The work-state projection as the projection node wrote it, or None when it is absent or not a projection."""
+    try:
+        return ModelWorkStateResult.model_validate_json(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+
+
+def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, ...]:
+    """Each projected lane as the floor draws it, attributed to rows by the cells of its CLAIM alone.
+
+    A ``cause=<row id>`` cell and an ``owns=floor:<row id>`` cell name a floor row; the ``ticket`` and ``owns`` pull
+    request cells give the lane's ticket and pull request. No owner is read from any overlay.
+    """
+    lanes: list[ModelFloorLane] = []
+    for item in projection.items:
+        if item.kind is not EnumWorkItemKind.LANE:
+            continue
+        name = item.key.removeprefix("lane:")
+        attrs = item.attributes
+        owns = tuple(
+            dict.fromkeys(
+                [
+                    a.removeprefix(_CAUSE_PREFIX)
+                    for a in attrs
+                    if a.startswith(_CAUSE_PREFIX)
+                ]
+                + [
+                    a.removeprefix(_OWNS_PREFIX)
+                    for a in attrs
+                    if a.startswith(_OWNS_PREFIX)
+                ]
+            )
+        )
+        ticket = next(
+            (
+                a.removeprefix(_TICKET_PREFIX)
+                for a in attrs
+                if a.startswith(_TICKET_PREFIX)
+            ),
+            "",
+        )
+        pr = next(
+            (
+                a.removeprefix(_PR_PREFIX)
+                for a in attrs
+                if a.startswith(_PR_PREFIX)
+                and not a.startswith(_OWNS_PREFIX)
+                and "#" in a
+            ),
+            "",
+        )
+        lanes.append(
+            ModelFloorLane(
+                lane=name,
+                ticket=ticket,
+                stalled=False,
+                pr=pr,
+                liveness=_LIVENESS_OF_STATE[item.state],
+                owns=owns,
+            )
+        )
+    return tuple(lanes)
+
+
+def merge_lanes(
+    record: tuple[ModelFloorLane, ...], projected: tuple[ModelFloorLane, ...]
+) -> tuple[ModelFloorLane, ...]:
+    """The record's lanes keep their process reading; the projection adds what its CLAIM cells say, and any lane the
+    record does not list."""
+    by_name = {lane.lane: lane for lane in projected}
+    merged: list[ModelFloorLane] = []
+    for lane in record:
+        extra = by_name.pop(lane.lane, None)
+        if extra is None:
+            merged.append(lane)
+            continue
+        merged.append(
+            lane.model_copy(
+                update={
+                    "ticket": lane.ticket or extra.ticket,
+                    "pr": lane.pr or extra.pr,
+                    "owns": tuple(dict.fromkeys((*lane.owns, *extra.owns))),
+                }
+            )
+        )
+    merged.extend(by_name.values())
+    return tuple(merged)
 
 
 def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]:
@@ -695,12 +803,16 @@ def read_deploy_lag(
                 )
     lags.sort(key=lambda x: -x[1])
     limit = source.limit if source.limit is not None else 0.0
+    # A merge reads "not running" only for want of evidence; when the count could not read the running build, say so on
+    # the row, so a red that means "not placed" is not read as "not deployed".
+    unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
+    unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
     subjects = [
         ModelLabSubject(
             name=key,
             ok=lag <= limit,
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}",
+            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
         )
         for key, lag in lags[:3]
     ]
