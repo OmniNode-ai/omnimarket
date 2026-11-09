@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the in-memory overlay (the default way to run the node). The deployment's overlay lives at
+# <root>/node_lab_check_run_effect/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+settings:
+  check_name: "lab-tests / run"
+  wait_bound_seconds: 900
+  lab_repositories: ["example-org/example-private-repo"]
+  superseded_conclusion: cancelled
+  passing_conclusions: [success, neutral, skipped]
+  title_pending: "Lab job running for attempt {attempt}"
+  title_success: "Lab job passed for attempt {attempt}"
+  title_failure: "Lab job failed for attempt {attempt}"
+  title_superseded: "Superseded: attempt {attempt} is no longer the current attempt"
+source:
+  backend: inmemory
+  fixture: []
+emission:
+  node: node_lab_check_run_effect
+  piece: 8
+  backend: inmemory
