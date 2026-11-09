@@ -163,6 +163,7 @@ def test_install_refuses_to_leave_the_projection_host_unconfigured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("ONEX_RUNTIME_SSH_HOST", raising=False)
+    monkeypatch.setenv("ONEX_LEDGER_HOST_NAME", "declared-ledger")
     with pytest.raises(ValueError, match="ONEX_RUNTIME_SSH_HOST is unset"):
         rendered_timer(tmp_path, mode="install")
     monkeypatch.setenv("ONEX_RUNTIME_SSH_HOST", "declared-runtime")

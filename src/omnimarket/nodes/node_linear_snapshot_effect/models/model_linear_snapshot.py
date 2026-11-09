@@ -12,7 +12,7 @@ subject's open issues, so every issue's ``assignee`` is the ``operator``.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -25,6 +25,16 @@ from pydantic import (
 NonEmpty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 TicketId = Annotated[str, StringConstraints(pattern=r"^OMN-\d+$")]
 SNAPSHOT_SCHEMA = "omni.linear-snapshot/1"
+
+
+class ModelSnapshotAttachment(BaseModel):
+    """One attachment of an issue (a pull request link, for the merged-implementation rule), as Linear returns it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    source_type: str = Field(default="", alias="sourceType")
+    title: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelSnapshotIssue(BaseModel):
@@ -42,6 +52,11 @@ class ModelSnapshotIssue(BaseModel):
     updated_at: NonEmpty = Field(alias="updatedAt")
     description: str = ""
     priority: str | None = None
+    #: The issue's attachments and its child ids, as the read saw them. ``None`` means the part was not read (a file
+    #: written before the node held it, or a page with more than the read asked for), never "has none": a reader that
+    #: needs the part reads Linear for it. ``()`` means read and empty.
+    attachments: tuple[ModelSnapshotAttachment, ...] | None = None
+    children: tuple[str, ...] | None = None
 
 
 class ModelLinearSnapshot(BaseModel):
