@@ -79,3 +79,25 @@ dod_evidence:
     check_value: |-
       uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18339 --kind test -- uv run --frozen pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -q --no-cov -p no:randomly
     cwd: .
+- id: deploy-probe
+  description: Hosted-runner source-artifact readback requires the published scorer handler at the evaluated commit to match this checkout and to define the workflow request scorer, and the published routing-complexity rubric to map the workflow_request scorer. The base has neither file, so the readback fails there. This checks the source artifact; it does not claim the fix is installed on a host.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      readback_dir="$(mktemp -d)";
+      trap 'rm -rf "$readback_dir"' EXIT;
+      revision="$(git rev-parse HEAD)";
+      handler=src/omnimarket/handlers/workflow_request_score.py;
+      rubric=src/omnimarket/nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml;
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$handler" \
+        --output "$readback_dir/handler.py";
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$rubric" \
+        --output "$readback_dir/rubric.yaml";
+      cmp "$handler" "$readback_dir/handler.py";
+      grep -F 'def score_workflow_request(' "$readback_dir/handler.py";
+      grep -F '  workflow_request: exact_match' "$readback_dir/rubric.yaml";
+      printf 'workflow request scorer source readback matched %s\n' "$revision"
