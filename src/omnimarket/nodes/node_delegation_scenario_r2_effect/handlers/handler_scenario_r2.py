@@ -475,6 +475,7 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    command: HandlerSubprocessCommand | None = None,
 ) -> HandlerScenarioR2:
     """The production wiring: the registry home, the bus commands and the scenario's settings from the environment."""
     environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
@@ -490,7 +491,7 @@ def build_runner(
         runtime,
         home=home,
         environment=environment,
-        runner=HandlerSubprocessCommand(environment),
+        runner=command or HandlerSubprocessCommand(environment),
         appender=bus_appender(
             CommandLedgerAppender(
                 append_argv, runtime.lane, host, runtime.ledger_append_timeout_seconds
