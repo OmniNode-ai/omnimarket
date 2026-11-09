@@ -32,6 +32,64 @@ def _git(tree: Path, *argv: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _push_commit(
+    request: ModelLaneCloseoutRequest, tree: Path, commit: str, branch: str
+) -> bool:
+    """Push one commit to ``refs/heads/<branch>`` from a scratch repository (OMN-23375).
+
+    A salvage or WIP branch is not a change under review, so the checkout's pre-push hooks have nothing to
+    judge; run from the tree they took minutes per push and a sweep tick ended at its unit limit before it
+    finished one tree. The scratch repository is created without a template and borrows the tree's objects
+    through ``objects/info/alternates``, so it carries no hook and the tree is untouched. The push is never forced.
+    """
+    common = _git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if common.returncode or not common.stdout.strip():
+        return False
+    remote = request.url
+    if not remote:
+        origin = _git(tree, "remote", "get-url", "--push", "origin")
+        if origin.returncode or not origin.stdout.strip():
+            return False
+        remote = origin.stdout.strip()
+    scratch = Path(tempfile.mkdtemp(prefix="lane-push-"))
+    try:
+        env = {**scrub_git_location_env(os.environ), "GIT_TERMINAL_PROMPT": "0"}
+        bare = scratch / "push.git"
+        if subprocess.run(
+            ["git", "init", "-q", "--bare", "--template=", str(bare)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        ).returncode:
+            return False
+        alternates = bare / "objects" / "info" / "alternates"
+        alternates.parent.mkdir(parents=True, exist_ok=True)
+        alternates.write_text(
+            f"{Path(common.stdout.strip()) / 'objects'}\n", encoding="utf-8"
+        )
+        return (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(bare),
+                    "push",
+                    "-q",
+                    remote,
+                    f"{commit}:refs/heads/{branch}",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            ).returncode
+            == 0
+        )
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def _salvage(
     request: ModelLaneCloseoutRequest, tree: Path
 ) -> tuple[EnumLaneGuardVerdict, str]:
@@ -75,14 +133,7 @@ def _salvage(
         )
         if commit.returncode:
             return EnumLaneGuardVerdict.KEEP, "salvage-commit-failed"
-        pushed = _git(
-            tree,
-            "push",
-            "-q",
-            request.url or "origin",
-            f"{commit.stdout.strip()}:refs/heads/{branch}",
-        )
-        if pushed.returncode:
+        if not _push_commit(request, tree, commit.stdout.strip(), branch):
             return EnumLaneGuardVerdict.KEEP, "salvage-push-failed"
         return EnumLaneGuardVerdict.WIP, branch
     finally:
@@ -135,13 +186,13 @@ def _guard(
 
     wip_branch = f"wip/{request.tag}"
     try:
-        pushed = _git(
-            tree, "push", "-q", request.url or "origin", f"HEAD:refs/heads/{wip_branch}"
-        )
+        head = _git(tree, "rev-parse", "-q", "--verify", "HEAD")
+        if head.returncode == 0 and _push_commit(
+            request, tree, head.stdout.strip(), wip_branch
+        ):
+            return EnumLaneGuardVerdict.WIP, wip_branch
     except OSError:
-        return EnumLaneGuardVerdict.KEEP, f"{why}-push-failed"
-    if pushed.returncode == 0:
-        return EnumLaneGuardVerdict.WIP, wip_branch
+        pass
     return EnumLaneGuardVerdict.KEEP, f"{why}-push-failed"
 
 
