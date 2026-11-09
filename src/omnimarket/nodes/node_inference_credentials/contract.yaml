@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeInferenceCredentials
+#
+# POST, GET and DELETE /v1/tenants/me/inference-credentials, moved from the hosted
+# onex-api (routers/inference_credentials.py, OMN-16405) into the runtime. Every route
+# is behind a tenant credential: the caller identity resolver is bound by DI or, when
+# none is bound, built from this node's overlay (a bearer token verified against the
+# issuer's key set). The mount refuses every request before any read or write when it
+# resolves no tenant or no resolver is available. Writes call omnimarket's credential publisher; reads and the revoke
+# ownership check read the tenant_inference_credentials projection.
+name: "node_inference_credentials"
+contract_name: "node_inference_credentials"
+node_name: "node_inference_credentials"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+# Experimental until the onex-api cutover: the routes are served by the runtime mount
+# only and declare no bus topics, so the node-liveness gate needs the lifecycle stated.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+description: >
+  Serves the customer inference-credential routes from the runtime's HTTP port. Resolves the caller through the bound tenant identity resolver (401 when no tenant resolves, 503 when no resolver is bound) and only then acts. POST registers a key (201, ref and metadata only, never the value; 422 for a body, provider, plan or key the intake refuses; 503 when intake fails). GET lists the caller's own refs (an absent relation answers an empty list, an unconfigured database answers 503). DELETE revokes one of the caller's own refs: ownership is read first and a ref the caller does not own answers 404, never 403.
+input_model:
+  name: "ModelInferenceCredentialsRequest"
+  module: "omnimarket.nodes.node_inference_credentials.models"
+  description: "The operation, the request headers the identity resolver reads, the secret create body and the revoke ref."
+# Runtime-owned HTTP boundary. The mounted app sees the request path unchanged, so the
+# routes below carry the prefix.
+http_mount:
+  factory: "omnimarket.nodes.node_inference_credentials.handlers.http_app:create_app"
+  path_prefix: "/v1/tenants/me/inference-credentials"
+http_routes:
+  - operation: create
+    method: POST
+    path: "/v1/tenants/me/inference-credentials"
+    authorization: tenant
+  - operation: list
+    method: GET
+    path: "/v1/tenants/me/inference-credentials"
+    authorization: tenant
+  - operation: revoke
+    method: DELETE
+    path: "/v1/tenants/me/inference-credentials/{api_key_ref}"
+    authorization: tenant
+handler:
+  name: HandlerInferenceCredentials
+  module: omnimarket.nodes.node_inference_credentials.handlers.handler_inference_credentials
+  class: HandlerInferenceCredentials
+  input_model: omnimarket.nodes.node_inference_credentials.models.model_inference_credentials_http.ModelInferenceCredentialsRequest
+capabilities:
+  - name: "inference_credentials_http"
+    description: "Serve the tenant-gated BYOK submit, list and revoke routes on the runtime's port."
+metadata:
+  transport_type: database
+  description: "The tenant inference-credential routes from the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-09"
+  ticket: "OMN-23039"
+  tags:
+    - "effect"
+    - "http"
+    - "credentials"

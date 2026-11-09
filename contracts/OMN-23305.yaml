@@ -1,0 +1,68 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23305"
+title: "Bind an identity resolver at the runtime edge so the inference-credentials mount answers instead of 503"
+summary: >
+  The inference-credentials mount (node_inference_credentials, OMN-23039) answered 503
+  to every request because no ProtocolHttpTenantIdentity resolver was bound. The mount
+  now builds a bearer-token resolver from the node's deployment overlay
+  (node_inference_credentials/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS) when none is
+  bound explicitly: the token's signature, issuer, audience and expiry are verified
+  against the issuer's published key set and the tenant comes from the claims the
+  overlay names. No overlay, an invalid overlay or an unreadable key set still answers
+  503; a token that fails any check answers 401. The overlay entry for the dev runtime
+  lives in the overlays repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23305-edge-identity-resolver
+    statement: The runtime edge binds a caller-identity resolver from its overlay and the credentials mount answers an authenticated request.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the runtime binds a ProtocolHttpTenantIdentity resolver at its edge from an overlay, and the inference-credentials mount answers an authenticated request with 200 -- falsifier: uv run pytest tests -q -k inference_credentials_mount, failing with the binding removed'
+      - id: AC2
+        statement: 'AC2: the dev runtime overlay names the projection read binding and, after a dev deploy, the mount answers on the dev runtime -- falsifier: a request to the dev runtime''s inference-credentials route returns 200, read from a lab host'
+evidence_requirements:
+  - kind: tests
+    description: The mount answers 200 for a verified token, 401 for a token that fails, 503 with the binding removed.
+    command: uv run --frozen pytest tests/nodes/node_inference_credentials -q --no-cov -k inference_credentials_mount
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: edge-identity-resolver-from-overlay
+    description: >
+      A verified bearer token answers 200 through the mount built as the runtime builds it;
+      the same request with the overlay removed answers 503 and each failing token answers 401.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_inference_credentials -q --no-cov --refuse-skips -k inference_credentials_mount
+        cwd: .
+  - id: dev-runtime-route-answers-200
+    description: >
+      After a dev deploy, an authenticated list request to the dev runtime's
+      inference-credentials route returns 200, read from a lab host. The runtime URL and
+      a dev token come from the lab host's environment; hosted CI cannot reach the lab,
+      so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 --header "Authorization: Bearer ${DEV_EDGE_PROBE_TOKEN:?}" "${DEV_RUNTIME_URL:?}/v1/tenants/me/inference-credentials")" = 200
+        cwd: .
+  - id: edge-identity-integration-proof
+    description: >
+      The pushed head ran the node's tests on a lab host through the bus and exited 0.
+      Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane edgeident-0950 -- uv run --frozen pytest tests/nodes/node_inference_credentials -q --no-cov
+        cwd: .
