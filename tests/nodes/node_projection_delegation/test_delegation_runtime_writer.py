@@ -137,6 +137,7 @@ class TestOneRuntimeDeliveryWritesTheRow:
             "_connect_standalone_databases",
             connect_fixture_database,
         )
+        writer = DelegationProjectionWriter()
         try:
             correlation_id = str(uuid4())
             request: dict[str, Any] = {
@@ -149,9 +150,7 @@ class TestOneRuntimeDeliveryWritesTheRow:
             }
 
             # The runtime calls handle() synchronously; it owns its event loop.
-            result = await asyncio.to_thread(
-                DelegationProjectionWriter().handle, request
-            )
+            result = await asyncio.to_thread(writer.handle, request)
 
             assert result == {"projected": True}
             row = await admin_conn.fetchrow(
@@ -162,20 +161,25 @@ class TestOneRuntimeDeliveryWritesTheRow:
             assert row["tenant_id"] == UUID("91c74442-1233-4c97-b191-911a10346fdf")
             assert row["task_type"] == "code-review"
             assert row["quality_gate_passed"] is True
-            assert adapters, "the delivery opened its own pool"
-            assert all(adapter._pool is None for adapter in adapters), (
-                "no pool outlives the delivery that opened it"
+            assert len(adapters) == 1, "the delivery opened its own pool"
+            assert all(adapter._pool is not None for adapter in adapters), (
+                "OMN-23196: the pool outlives the delivery that opened it"
             )
 
-            # A redelivery of the same event keeps one row (UPSERT on correlation_id).
-            again = await asyncio.to_thread(
-                DelegationProjectionWriter().handle, request
-            )
+            # A redelivery of the same event keeps one row (UPSERT on correlation_id)
+            # and reuses the pool the first delivery opened.
+            again = await asyncio.to_thread(writer.handle, request)
             assert again == {"projected": True}
+            assert len(adapters) == 1, "the redelivery opened another pool"
             count = await admin_conn.fetchval(
                 "SELECT count(*) FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
             )
             assert count == 1
+            await asyncio.to_thread(writer.close)
+            assert all(adapter._pool is None for adapter in adapters), (
+                "closing the writer closes its pool"
+            )
         finally:
+            await asyncio.to_thread(writer.close)
             await provisioned.__aexit__(None, None, None)
