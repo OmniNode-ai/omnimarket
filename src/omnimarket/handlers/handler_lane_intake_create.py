@@ -66,9 +66,9 @@ class HandlerLaneIntakeCreate:
     def __init__(
         self,
         *,
-        caller: ProtocolTicketCommandCaller,
-        topics: ModelScmTopics,
-        settings: ModelLaneIntakeCreateSettings,
+        caller: ProtocolTicketCommandCaller | None = None,
+        topics: ModelScmTopics | None = None,
+        settings: ModelLaneIntakeCreateSettings | None = None,
     ) -> None:
         self._caller = caller
         self._topics = topics
@@ -77,6 +77,11 @@ class HandlerLaneIntakeCreate:
     async def handle(
         self, request: ModelLaneIntakeCreateRequest
     ) -> ModelLaneIntakeCreateResult:
+        if self._caller is None or self._topics is None or self._settings is None:
+            raise RuntimeError(
+                "HandlerLaneIntakeCreate needs its caller, topics and settings "
+                "before it can handle a request"
+            )
         correlation_id = uuid4()
         fields = {
             name: value
