@@ -52,6 +52,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q --no-cov --tb=line
     cwd: .
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/model_bindings.v1.yaml?ref=dev" --jq .content | base64 -d | { ! grep -q 'route_check_local_model'; }
+    cwd: .
 - id: dod-omn19184-integration-proof
   description: The pushed head runs the route check, the A/B compare orchestrator and the guard on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
