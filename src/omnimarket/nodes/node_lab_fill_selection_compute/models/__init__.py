@@ -21,6 +21,11 @@ from .model_lab_fill_selection_result import (
     ModelLabFillDecision,
     ModelLabFillSelectionResult,
 )
+from .model_lane_resend import (
+    ModelLaneResendCandidate,
+    ModelLaneResendRequest,
+    ModelLaneResendResult,
+)
 
 __all__ = [
     "EnumLabFillSkipReason",
@@ -36,4 +41,7 @@ __all__ = [
     "ModelLabFillSelectionRequest",
     "ModelLabFillSelectionResult",
     "ModelLandingControllerFacts",
+    "ModelLaneResendCandidate",
+    "ModelLaneResendRequest",
+    "ModelLaneResendResult",
 ]

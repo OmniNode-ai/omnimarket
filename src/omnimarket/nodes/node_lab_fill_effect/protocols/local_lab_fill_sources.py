@@ -6,9 +6,10 @@ Each tool is one child process with the seconds the handler gave it as its timeo
 plans-today answer is saved as a copy beside the candidate cache, so a later run younger
 than the request's bound reads the copy and never re-reads the ledger. Paths, priorities, action kinds and
 the tools' environment arrive from the caller's overlay. The Linear snapshot plans_today.py needs is
-written by an injected callable. The lane-resend and source-tickets readers need the lane-resend
-handler and the Linear and watcher reads that have not moved to this repository yet; this adapter
-refuses them by name until they do.
+written by an injected callable. The lane-resend reader runs the moved resend handler over ledger
+rows an injected callable reads; the source-tickets reader reads Linear through an injected query
+callable and the open PRs from the PR watcher's state file. A reader whose injected callable is
+absent refuses by name.
 """
 
 from __future__ import annotations
@@ -20,8 +21,18 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+
+from omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lane_resend import (
+    HandlerLaneResend,
+)
+from omnimarket.nodes.node_lab_fill_selection_compute.models.model_lane_resend import (
+    ModelLaneResendRequest,
+)
 
 from .protocol_lab_fill_effect import LabFillPortError
 from .protocol_lab_fill_sources import (
@@ -213,12 +224,180 @@ class LocalLabFillPlansCopy:
         return listed
 
 
-class LocalLabFillSourceReaders:
-    """ruling_mechanisms.py under the handler's budget; the other two readers wait for their move."""
+LinearQuery = Callable[[str, float], Mapping[str, object]]
+LedgerLines = Callable[[], Sequence[str]]
+OpenPrs = Callable[[], Mapping[str, tuple[str, ...]]]
 
-    def __init__(self, *, rulings_tool_path: str, tool_env: Mapping[str, str]) -> None:
+
+class LinearGraphqlClient:
+    """One Linear GraphQL POST under the seconds it is given; the key and endpoint arrive from the overlay."""
+
+    def __init__(self, *, endpoint: str, api_key: str) -> None:
+        self._endpoint = endpoint
+        self._key = api_key
+
+    def __call__(self, query: str, budget_s: float) -> Mapping[str, object]:
+        if not self._key:
+            raise LabFillPortError("Linear API key is missing")
+        request = urllib.request.Request(
+            self._endpoint,
+            data=json.dumps({"query": query, "variables": {}}).encode(),
+            headers={"Authorization": self._key, "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=budget_s) as response:
+                result = json.load(response)
+        except TimeoutError as exc:
+            raise LabFillSourceCutError(
+                f"Linear read timed out after {budget_s:g} s"
+            ) from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise LabFillSourceCutError(
+                    f"Linear read timed out after {budget_s:g} s"
+                ) from exc
+            raise LabFillPortError(f"Linear unreachable: {exc.reason}") from exc
+        except (OSError, ValueError) as exc:
+            raise LabFillPortError(f"Linear read failed: {type(exc).__name__}") from exc
+        if not isinstance(result, dict) or result.get("errors"):
+            raise LabFillPortError("Linear GraphQL errors")
+        data = result.get("data")
+        if not isinstance(data, dict):
+            raise LabFillPortError("Linear GraphQL printed no data")
+        return data
+
+
+class LedgerWindowReader:
+    """The ledger rows of the last ``window_hours``, from the live file and any archive files that reach back."""
+
+    def __init__(
+        self,
+        *,
+        paths: Sequence[Path],
+        window_hours: float,
+        now: Callable[[], float] = time.time,
+    ) -> None:
+        self._paths = tuple(paths)
+        self._window_h = window_hours
+        self._now = now
+
+    def __call__(self) -> tuple[str, ...]:
+        cutoff = datetime.fromtimestamp(
+            self._now() - self._window_h * 3600, UTC
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lines: list[str] = []
+        for path in self._paths:
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise LabFillPortError(
+                    f"ledger unreadable: {path.name}: {type(exc).__name__}"
+                ) from exc
+            # An ISO stamp in the first cell sorts as text; a line with no stamp is not a row.
+            lines.extend(
+                line
+                for line in text.splitlines()
+                if line[:4].isdigit() and line[:20] >= cutoff
+            )
+        return tuple(lines)
+
+
+def _stamp_age_min(value: object, now: float) -> float:
+    try:
+        at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise LabFillPortError("unreadable-from-snapshot: watcher stamp") from exc
+    if at.tzinfo is None:
+        raise LabFillPortError("unreadable-from-snapshot: watcher stamp has no zone")
+    return (now - at.timestamp()) / 60
+
+
+class WatcherOpenPrs:
+    """Open PR keys by ticket, from the PR watcher's state file only; a stale watcher cannot say, so it refuses."""
+
+    def __init__(
+        self,
+        *,
+        state_path: Path,
+        max_tick_age_min: float,
+        max_resync_age_min: float,
+        companion_repositories: Sequence[str],
+        companion_title_prefix: str,
+        now: Callable[[], float] = time.time,
+    ) -> None:
+        self._path = state_path
+        self._tick_max = max_tick_age_min
+        self._resync_max = max_resync_age_min
+        self._companions = frozenset(companion_repositories)
+        self._prefix = companion_title_prefix.lower()
+        self._now = now
+
+    def __call__(self) -> Mapping[str, tuple[str, ...]]:
+        try:
+            state = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise LabFillPortError(
+                f"watcher state unreadable: {type(exc).__name__}"
+            ) from exc
+        if (
+            not isinstance(state, dict)
+            or state.get("schema") != 1
+            or not state.get("operator")
+            or not state.get("repos")
+        ):
+            raise LabFillPortError("unreadable-from-snapshot: watcher freshness/schema")
+        now = self._now()
+        if not (
+            0 <= _stamp_age_min(state.get("last_tick"), now) <= self._tick_max
+            and 0
+            <= _stamp_age_min(state.get("last_full_resync"), now)
+            <= self._resync_max
+        ):
+            raise LabFillPortError("unreadable-from-snapshot: watcher freshness/schema")
+        open_prs: dict[str, list[str]] = {}
+        for pr_key, record in (state.get("prs") or {}).items():
+            facts = record.get("facts") or {}
+            title = str(facts.get("title", ""))
+            if facts.get("state") != "OPEN" or (
+                facts.get("repo") in self._companions
+                and title.lower().startswith(self._prefix)
+            ):
+                continue
+            for ticket in _TICKET.findall(title):
+                open_prs.setdefault(ticket, []).append(pr_key)
+        return {ticket: tuple(keys) for ticket, keys in open_prs.items()}
+
+
+class LocalLabFillSourceReaders:
+    """ruling_mechanisms.py under the handler's budget, the resend handler over ledger rows, and the Linear and
+    watcher reads of source-tickets. A reader whose injected callable is absent refuses by name."""
+
+    def __init__(
+        self,
+        *,
+        rulings_tool_path: str,
+        tool_env: Mapping[str, str],
+        ledger_lines: LedgerLines | None = None,
+        resend_parent_ticket: str = "",
+        resend_limit: int = 12,
+        resend_window_hours: int = 48,
+        linear_query: LinearQuery | None = None,
+        team_key: str = "",
+        ticket_batch_size: int = 100,
+        open_prs: OpenPrs | None = None,
+        now: Callable[[], float] = time.time,
+    ) -> None:
         self._rulings = rulings_tool_path
         self._env = dict(tool_env)
+        self._ledger_lines = ledger_lines
+        self._parent = resend_parent_ticket
+        self._resend_limit = resend_limit
+        self._resend_window_h = resend_window_hours
+        self._linear = linear_query
+        self._team = team_key
+        self._batch = ticket_batch_size
+        self._open_prs = open_prs
+        self._now = now
 
     def read_rulings(self, budget_s: float) -> LabFillListed:
         doc = _run_tool(
@@ -231,13 +410,75 @@ class LocalLabFillSourceReaders:
         return parse_rulings(doc)
 
     def read_resends(self, budget_s: float) -> LabFillListed:
-        raise LabFillPortError(
-            "lane-resend reader is not wired here: HandlerLaneResend has not moved to omnimarket yet"
+        if self._ledger_lines is None:
+            raise LabFillPortError(
+                "lane-resend reader is not wired: no ledger reader given"
+            )
+        began = time.monotonic()
+        lines = tuple(self._ledger_lines())
+        if time.monotonic() - began > budget_s:
+            raise LabFillSourceCutError(
+                f"lane-resend: ledger read took longer than {budget_s:g} s"
+            )
+        result = HandlerLaneResend().handle(
+            ModelLaneResendRequest(
+                now=datetime.fromtimestamp(self._now(), UTC).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                ledger_lines=lines,
+                parent_ticket=self._parent,
+                window_hours=self._resend_window_h,
+                limit=self._resend_limit,
+            )
+        )
+        return LabFillListed(
+            found=tuple((c.ticket, c.evidence) for c in result.candidates),
+            dropped=tuple(result.dropped),
         )
 
     def read_tickets(
         self, tickets: Sequence[str], budget_s: float
     ) -> Mapping[str, LabFillTicketNode]:
-        raise LabFillPortError(
-            "source-tickets reader is not wired here: the Linear and watcher reads have not moved to omnimarket yet"
+        if self._linear is None or self._open_prs is None:
+            raise LabFillPortError(
+                "source-tickets reader is not wired: no Linear query or watcher reader given"
+            )
+        began = time.monotonic()
+        numbers = sorted(
+            {int(t.split("-")[1]) for t in tickets if _TICKET.fullmatch(t)}
         )
+        nodes: dict[str, dict[str, object]] = {}
+        for offset in range(0, len(numbers), self._batch):
+            left = budget_s - (time.monotonic() - began)
+            if left <= 0:
+                raise LabFillSourceCutError(
+                    f"source-tickets: budget gone before batch {offset // self._batch + 1}"
+                )
+            batch = numbers[offset : offset + self._batch]
+            query = (
+                f'{{issues(first:{self._batch},filter:{{team:{{key:{{eq:"{self._team}"}}}},'
+                f"number:{{in:{json.dumps(batch)}}}}}){{nodes{{identifier title state{{type}} "
+                "children{nodes{id}}}}}}"
+            )
+            issues = self._linear(query, left).get("issues")
+            page = issues.get("nodes") if isinstance(issues, dict) else None
+            if not isinstance(page, list):
+                raise LabFillPortError("Linear printed no issues list")
+            for node in page:
+                if isinstance(node, dict) and isinstance(node.get("identifier"), str):
+                    nodes[node["identifier"]] = node
+        in_flight = self._open_prs()
+        out: dict[str, LabFillTicketNode] = {}
+        for ticket, node in nodes.items():
+            state = node.get("state")
+            children = node.get("children")
+            out[ticket] = LabFillTicketNode(
+                ticket=ticket,
+                title=str(node.get("title", "")),
+                state_type=str(state.get("type", ""))
+                if isinstance(state, dict)
+                else "",
+                has_children=bool(isinstance(children, dict) and children.get("nodes")),
+                open_prs=tuple(in_flight.get(ticket, ())),
+            )
+        return out
