@@ -19,6 +19,7 @@ import pytest
 
 from omnimarket.handlers.closeout_examined_memory import (
     read_examined_memory,
+    write_examined_memory,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_examined_rules import (
     state_key,
@@ -316,7 +317,9 @@ def test_closer_rank_last_examined_the_contract_integration_payload_holds_one_an
     )
     assert result.scope_bundle is not None
     assert result.scope_bundle["held"] == ["OMN-1"]
-    assert [c["id"] for c in result.scope_bundle["candidates"]] == ["OMN-2"]  # type: ignore[index,union-attr]
+    selected = result.scope_bundle["candidates"]
+    assert isinstance(selected, list)
+    assert [c["id"] for c in selected if isinstance(c, dict)] == ["OMN-2"]
     assert result.scope_examined_next is not None
     assert (
         result.scope_examined_next["OMN-2"]["examined_at"] == "2026-11-09T07:00:00.000Z"
@@ -324,3 +327,33 @@ def test_closer_rank_last_examined_the_contract_integration_payload_holds_one_an
     assert (
         result.scope_examined_next["OMN-1"]["examined_at"] == "2026-11-09T06:00:00.000Z"
     )
+
+
+def test_closer_rank_last_examined_a_memory_path_that_is_a_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ScopeInputUnreadableError, match=str(tmp_path)):
+        read_examined_memory(tmp_path)
+
+
+def test_closer_rank_last_examined_a_memory_that_cannot_be_written_is_refused(
+    tmp_path: Path,
+) -> None:
+    blocker = tmp_path / "blocker"
+    blocker.write_text(
+        "a file where the memory's directory should be", encoding="utf-8"
+    )
+    with pytest.raises(ScopeInputUnreadableError):
+        write_examined_memory(blocker / "memory.json", {"OMN-1": {"streak": 1}})
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_closer_rank_last_examined_a_written_memory_reads_back_whole(
+    tmp_path: Path,
+) -> None:
+    memory = {
+        "OMN-1": {"examined_at": "2026-11-09T06:00:00.000Z", "key": "k", "streak": 2}
+    }
+    write_examined_memory(tmp_path / "deep" / "memory.json", memory)
+    assert read_examined_memory(tmp_path / "deep" / "memory.json") == memory
+    assert read_examined_memory(tmp_path / "absent.json") == {}

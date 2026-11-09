@@ -16,7 +16,7 @@ requirements:
           DoD1: the closer's selection ranks candidates by when each was last examined, and a ticket whose rejection is unchanged and whose description has not changed since is held out of the next fire -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py (-k closer_rank_last_examined), whose rotation, never-examined and bundle-command cases fail with the old oldest-comment tie-break restored in rank_key
       - id: "DoD2"
         statement: |-
-          DoD2: the selection runs from omnimarket (the bundle command, with its memory read and written there) and the node's whole test directory passes -- falsifier: uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -k dod_closeout_sweep
+          DoD2: the selection runs from omnimarket: the bundle command reads and writes the examination memory and rotates through the scope, and an unreadable memory is refused by name -- falsifier: test_closer_rank_last_examined_bundle_command_records_and_rotates and test_closer_rank_last_examined_an_unreadable_memory_is_refused_by_name in tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py, which fail with the old oldest-comment tie-break or with no memory read
 evidence_requirements:
   - kind: "tests"
     description: "Golden-chain, error-chain and failing-control tests for the last-examined rank and the unchanged-rejection hold."
@@ -34,12 +34,15 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD1"]
-  - id: "dod-omn23282-node-suite"
-    description: "The node's whole test directory passes with the memory read and written by the bundle command."
+  - id: "dod-omn23282-bundle-command-memory"
+    description: "The bundle command records each selected ticket in the memory file and rotates through the scope on the next call; an unreadable memory file is refused with exit 2 naming the file."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -p no:randomly -k dod_closeout_sweep"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py::test_closer_rank_last_examined_bundle_command_records_and_rotates -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py::test_closer_rank_last_examined_an_unreadable_memory_is_refused_by_name -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD2"]
   - id: "dod-omn23282-integration-proof"

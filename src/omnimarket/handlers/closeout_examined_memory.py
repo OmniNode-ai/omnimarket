@@ -40,13 +40,18 @@ def read_examined_memory(path: Path) -> dict[str, dict[str, Any]]:
 
 def write_examined_memory(path: Path, memory: dict[str, dict[str, Any]]) -> None:
     """Replace the file whole: a reader sees the old memory or the new, never a part."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    temp: Path | None = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+        )
+        temp = Path(name)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(memory, handle, separators=(",", ":"), sort_keys=True)
             handle.write("\n")
         os.replace(temp, path)
     except OSError as exc:
-        Path(temp).unlink(missing_ok=True)
+        if temp is not None:
+            temp.unlink(missing_ok=True)
         raise ScopeInputUnreadableError(f"{path}: not written: {exc}") from exc
