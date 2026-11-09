@@ -59,6 +59,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 pytestmark = pytest.mark.integration
 
@@ -130,6 +131,8 @@ _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
         "0055_model_routing_local_call_share.sql",
         "0060_model_routing_tier_models.sql",
         "0062_delegation_token_usage_unpriced_calls.sql",
+        # OMN-21970: 0067's per-day view groups ON tenant_id too.
+        "0067_delegation_daily_view.sql",
         "0065_quality_gate_failure_categories_bounded.sql",
     }
 )
@@ -149,6 +152,8 @@ def _live_migration_files(*, exclude: frozenset[str] | None = None) -> list[Path
 def _test_schema_safe_sql(raw_sql: str) -> str:
     """See test_omn15909's identical helper: strip CONCURRENTLY, which
     refuses to run inside asyncpg's implicit multi-statement transaction."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
