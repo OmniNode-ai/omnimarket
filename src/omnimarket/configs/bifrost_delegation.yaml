@@ -288,6 +288,15 @@ backends:
   # A GLM rung may return later on a general-API (pay-as-you-go) key if the
   # operator chooses; it is not added here. Enforced by
   # tests/unit/delegation/test_omn20173_no_coding_plan_rung.py.
+  #
+  # OMN-19127: the 401 the dev lane's endpoint prober read on this rung came
+  # from a direct call to the Coding Plan (a probe carrying the plan's key),
+  # not from a bad key: a completion call returned 200 (OMN-19129). It is not
+  # fixed by restoring the rung; the prober now never requests the Coding Plan
+  # (omnibase_infra ServiceLlmEndpointHealth). The model spelling here
+  # ("glm-5.3-flash") differs from node_model_names.v1.yaml's thread-reply
+  # alias "glm-4.5" on purpose: that key only names this backend for
+  # thread-reply and is never sent to the plan; the ladder reads this one.
   - backend_id: cloud-glm
     provider: glm
     endpoint_url_env: BIFROST_CLOUD_GLM_ENDPOINT_URL
