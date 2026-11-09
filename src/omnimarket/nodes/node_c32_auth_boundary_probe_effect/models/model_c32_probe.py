@@ -15,6 +15,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+#: The dashboard snapshot topic whose rows the probe reads; the node does not own it.
+DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

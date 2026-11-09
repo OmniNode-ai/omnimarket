@@ -115,6 +115,9 @@ from omnimarket.nodes.node_c32_auth_boundary_probe_effect.handlers.probe_base im
     seed_fixture_delegation,
     started_dashboard,
 )
+from omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe import (
+    DECISIONS_TOPIC,
+)
 
 CRITERION = "C32"
 
@@ -133,7 +136,6 @@ SECRET_CLAUSE = (
     "and every page response"
 )
 
-DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
 CATALOGUE_PATH = "/projections"
 #: What a token refusal is. Anything else -- no answer, 404, 5xx -- is not one.
 REFUSAL_STATUSES = frozenset({401, 403})
@@ -629,7 +631,8 @@ def plant_credential(
     """
     dead = _free_port()
     penv = {k: v for k, v in env.items() if k.lower() != "no_proxy"}
-    penv.update(dict.fromkeys(_PROXY_VARS, f"http://127.0.0.1:{dead}"))
+    dead_proxy = f"http://127.0.0.1:{dead}"  # url-authority-ok: closed local port, model lookup fails offline
+    penv.update(dict.fromkeys(_PROXY_VARS, dead_proxy))
     rc, out, err = run_input(
         ["onex", "secret", "set", PLANT_REF, "--model", PLANT_MODEL],
         value,
