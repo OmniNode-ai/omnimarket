@@ -22,21 +22,16 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn23295-ac1-duplicate-guard
-  description: The duplicate-guard tests ask the open-PR source injected in memory. The new test does not exist at the merge base, so the control fails there. The named break is the guard returning an empty open-PR state when the source cannot read; the two tests then fail.
+- id: dod-omn23295-ac1-ac2-splits-fix
+  description: The duplicate-guard tests ask the open-PR source injected in memory, and the ledger stamp shape pattern refuses 2026-11-06T24:00:00Z while still matching 23:59:59. The duplicate-guard change is test-side only, so no test of it can fail at the merge base on a runner without a bus; the stamp test does fail there (the old shape pattern matches hour 24), and that failure is the control for this item. Both checks must pass at the head.
   source: manual
   binds_ac:
   - AC1
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -k stale_watcher_asks_the_injected_gateway
     cwd: .
-- id: dod-omn23295-ac2-stamp-fast-path
-  description: The ledger stamp shape pattern refuses 2026-11-06T24:00:00Z and still matches 23:59:59, on every Python. The named break is the old shape pattern, which matches hour 24 and fails this test at the merge base.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov -k stamp_shape_pattern_excludes_hour_24
     cwd: .
