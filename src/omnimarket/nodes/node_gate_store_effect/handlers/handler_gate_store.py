@@ -3,8 +3,8 @@
 """The gate store effect: ``handle(ModelGateStoreRequest) -> ModelGateStoreResult``.
 
 The backend is injected; the in-memory twin is the default and the ``gate_store`` overlay
-selects it. The Postgres backend is not built yet: the overlay naming it is refused with a
-typed error, never answered by the twin. ``answer_command`` is the bus edge: one command in,
+selects it. The Postgres backend is built on a DSN the caller supplies: the overlay naming it
+with no DSN is refused with a typed error, never answered by the twin. ``answer_command`` is the bus edge: one command in,
 the typed event it produces out.
 """
 
@@ -26,6 +26,9 @@ from omnimarket.models.model_gate_store import (
 from omnimarket.nodes.node_gate_store_effect.handlers.store_in_memory import (
     InMemoryGateStore,
 )
+from omnimarket.nodes.node_gate_store_effect.handlers.store_postgres import (
+    PostgresGateStore,
+)
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 
 CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
@@ -41,12 +44,22 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
     return dict(contract["topics"])
 
 
-def build_store(policy: ModelGateStorePolicy) -> ProtocolGateStore:
-    """The backend the overlay names; refuses one that is not built."""
+def build_store(
+    policy: ModelGateStorePolicy,
+    *,
+    dsn: str | None = None,
+    schema: str | None = None,
+) -> ProtocolGateStore:
+    """The backend the overlay names; the Postgres backend needs the caller's DSN.
+
+    A Postgres overlay with no DSN is refused with a typed error, never answered by the twin.
+    """
     if policy.backend is EnumGateStoreBackend.IN_MEMORY:
         return InMemoryGateStore(policy)
+    if policy.backend is EnumGateStoreBackend.POSTGRES and dsn is not None:
+        return PostgresGateStore(policy, dsn, schema)
     raise GateStoreBackendNotBuiltError(
-        f"gate store backend {policy.backend.value} is not built"
+        f"gate store backend {policy.backend.value} has no connection to build on"
     )
 
 

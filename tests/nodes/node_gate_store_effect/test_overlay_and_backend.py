@@ -9,10 +9,16 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.models.model_gate_store import EnumGateStoreBackend
+from omnimarket.models.model_gate_store import (
+    EnumGateStoreBackend,
+    ModelGateStorePolicy,
+)
 from omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store import (
     GateStoreBackendNotBuiltError,
     build_store,
+)
+from omnimarket.nodes.node_gate_store_effect.handlers.store_postgres import (
+    PostgresGateStore,
 )
 from omnimarket.nodes.node_gate_store_effect.overlay import load_gate_store_policy
 from tests.node_overlay_support import install_node_overlay
@@ -73,3 +79,23 @@ def test_unbuilt_postgres_backend_is_refused_not_answered_by_the_twin(
     )
     with pytest.raises(GateStoreBackendNotBuiltError):
         build_store(load_gate_store_policy())
+
+
+def test_postgres_backend_is_built_on_a_supplied_dsn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_node_overlay(
+        monkeypatch, tmp_path, "gate_store", {**FIELDS, "backend": "postgres"}
+    )
+    store = build_store(
+        load_gate_store_policy(), dsn="host=/nonexistent dbname=x", schema="gs_test"
+    )
+    assert isinstance(store, PostgresGateStore)
+
+
+def test_postgres_schema_name_must_be_a_plain_identifier() -> None:
+    policy = ModelGateStorePolicy.model_validate(
+        {**FIELDS, "backend": "postgres", "order": ("alpha", "beta")}
+    )
+    with pytest.raises(ValueError, match="plain identifier"):
+        PostgresGateStore(policy, "host=/nonexistent", schema="x; drop table y")
