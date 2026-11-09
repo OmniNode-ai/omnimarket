@@ -15,11 +15,11 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_venv_atomic_install_effect.handlers import (
     handler_venv_atomic_install as handler_module,
 )
+from omnimarket.nodes.node_venv_atomic_install_effect.handlers.cli_venv_atomic_install import (
+    main as cli_main,
+)
 from omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install import (
     HandlerVenvAtomicInstall,
-)
-from omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install_cli import (
-    main as cli_main,
 )
 from omnimarket.nodes.node_venv_atomic_install_effect.handlers.venv_exchange import (
     exchange_paths,
