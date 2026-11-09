@@ -41,3 +41,20 @@ def test_two_joins_over_the_same_upstream_answer_a_failure_once(
     ).handle(ModelJoinRefusalCommand(write=True))
     refusals = [e for e in sink.events if e.piece == 3]
     assert len(refusals) == 1
+
+
+_NODE = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_join_refusal_effect"
+)
+
+
+def test_the_contract_states_the_journal_window_of_its_once_only_answer() -> None:
+    """The floor reads the same journal window, so an answer older than it is given again while the upstream failure is
+    still inside its lookback (the aging test); the contract must say so rather than promise an unqualified once."""
+    contract = yaml.safe_load((_NODE / "contract.yaml").read_text(encoding="utf-8"))
+    description = " ".join(contract["description"].split())
+    assert "emission.window_hours" in description
+    assert "answered again" in description
+    metadata = yaml.safe_load((_NODE / "metadata.yaml").read_text(encoding="utf-8"))
+    assert "emission.window_hours" in " ".join(metadata["description"].split())

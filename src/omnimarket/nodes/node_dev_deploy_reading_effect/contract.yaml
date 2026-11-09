@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Deploy Reading Effect (OMN-22958, piece 11 of the base-first rebuild)
+#
+# Gathers the dev branch's runtime-affecting merges, the lane's lab pass receipt and a functional probe of the
+# running runtime, reads them through node_dev_deploy_reading_compute and appends one piece 11 reading row
+# through the configured append command. It writes reading rows and nothing else: a reading is never a gate,
+# a stop or an admission.
+name: node_dev_deploy_reading_effect
+contract_name: node_dev_deploy_reading_effect
+node_name: node_dev_deploy_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Piece 11's reading run. WORKING only when every runtime-affecting merge past its receipt deadline has a PASS
+  lab pass receipt for its exact sha and the runtime's functional probe is fresh, passing and saw the sha it
+  was asked for. NOT WORKING when one of those fails; UNKNOWN when a source could not be read and nothing
+  readable already fails. The in-memory fact source carries the facts, so a dropped receipt is the failing control.
+
+handler:
+  module: omnimarket.nodes.node_dev_deploy_reading_effect.handlers.handler_dev_deploy_reading_run
+  class: HandlerDevDeployReadingRun
+  input_model: omnimarket.nodes.node_dev_deploy_reading_effect.models.model_dev_deploy_reading_run.ModelDevDeployReadingCommand
+
+# HandlerDevDeployReadingRun takes the overlay, fact source, appender, clock and host as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, git-read, http-read, ssh-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevDeployReadingCommand
+  module: omnimarket.nodes.node_dev_deploy_reading_effect.models.model_dev_deploy_reading_run
+  description: Whether to write the row.
+output_model:
+  name: ModelDevDeployReadingResult
+  module: omnimarket.nodes.node_dev_deploy_reading_effect.models.model_dev_deploy_reading_run
+  description: The verdict, its reasons, the merges checked and receipted, the row key and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.dev-deploy-reading-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  dev_deploy_reading_requested: onex.cmd.omnimarket.dev-deploy-reading-requested.v1
+  dev_deploy_check_passed: onex.evt.omnimarket.dev-deploy-check-passed.v1
+  dev_deploy_check_failed: onex.evt.omnimarket.dev-deploy-check-failed.v1
+  dev_deploy_reading_run_completed: onex.evt.omnimarket.dev-deploy-reading-run-completed.v1
+  dev_deploy_reading_run_failed: onex.evt.omnimarket.dev-deploy-reading-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-deploy-check-passed.v1
+  - onex.evt.omnimarket.dev-deploy-check-failed.v1
+  - onex.evt.omnimarket.dev-deploy-reading-run-completed.v1
+  - onex.evt.omnimarket.dev-deploy-reading-run-failed.v1
+
+# The node's own schedule (the unit names are the overlay's), installed by `schedule install --host <name>` as a systemd user timer on each
+# host the overlay's schedule_hosts names, removed by `schedule uninstall`.
+schedule:
+  state_directory: .onex_state/dev-deploy-reading
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:07:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly at :07, eight minutes before the reading writer's hourly tick (at :15) reads the row
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+  drill:
+    cadence:
+      on_calendar: "*-*-* 06:25:00"
+      randomized_delay: 60s
+      persistent: true
+      description: daily at 06:25 UTC, a read with an injected unreceipted merge, so the error event stays inside a 24-hour window
+
+overlay:
+  node: node_dev_deploy_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22958
+  transport_type: inmemory
