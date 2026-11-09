@@ -77,7 +77,7 @@ def pr_scope(
     return where
 
 
-class ControllerOwners:
+class LaneOwners:
     """Who the landing controller says holds a pull request: a landing lease on it, or the lease of a cause that holds it."""
 
     def __init__(
@@ -92,7 +92,7 @@ class ControllerOwners:
         return self.landing.get(pr, ""), self.cause.get(pr) or self.parked.get(pr, "")
 
 
-def read_controller_owners(path: Path) -> ControllerOwners | None:
+def read_controller_owners(path: Path) -> LaneOwners | None:
     """The controller's state file (``leases`` and ``causes``), or ``None`` when it is absent or not a state."""
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
@@ -119,7 +119,7 @@ def read_controller_owners(path: Path) -> ControllerOwners | None:
                     parked[member] = f"parked {key} until {rec['parked_until']}"
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
-    return ControllerOwners(landing, cause, parked)
+    return LaneOwners(landing, cause, parked)
 
 
 def _age(now: datetime, stamp: Any) -> int | None:
@@ -163,7 +163,7 @@ def _open_scoped(
 
 def pr_items(
     open_scoped: list[tuple[str, Mapping[str, Any]]],
-    owners: ControllerOwners,
+    owners: LaneOwners,
     now: datetime,
     conflict_states: tuple[str, ...],
 ) -> tuple[ModelWorklistItemIn, ...]:
@@ -204,7 +204,7 @@ def pr_items(
 
 def shared_red_items(
     open_scoped: list[tuple[str, Mapping[str, Any]]],
-    owners: ControllerOwners,
+    owners: LaneOwners,
     now: datetime,
     after_s: int,
 ) -> tuple[ModelWorklistItemIn, ...]:
