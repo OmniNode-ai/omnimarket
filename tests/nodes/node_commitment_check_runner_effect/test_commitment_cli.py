@@ -42,7 +42,7 @@ print(json.dumps({"status": "accepted", "message": "synthetic"}))
 
 
 def _backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, check: str) -> Path:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "commitment-ledger-source.md"
     opened = (
         HandlerCommitmentLedger()
         .handle(
@@ -73,7 +73,7 @@ def _backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, check: str) -> Pat
         "ONEX_COMMITMENT_OVERLAY",
         str(NODES / "node_commitment_ledger_compute/overlay.example.yaml"),
     )
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    monkeypatch.setenv("ONEX_COMMITMENT_LEDGER_SOURCE", str(ledger))
     monkeypatch.setenv(
         "ONEX_LEDGER_APPEND_COMMAND", f"{sys.executable} {script} {ledger}"
     )

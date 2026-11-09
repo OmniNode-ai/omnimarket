@@ -36,6 +36,8 @@ from omnimarket.handlers.execution_budget_overlay import largest_execution_budge
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     dispatch_stage,
 )
@@ -140,7 +142,17 @@ class RuntimeDelegationDispatchPort:
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
+        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
     ) -> dict[str, object]:
+        # OMN-23162: a probe ladder is admitted and run only by the in-process
+        # port, whose provider calls it can name or fault. Refused rather than
+        # dropped, so a probe is never run as an ordinary delegation.
+        if probe_ladder is not None:
+            raise ValueError(
+                "a probe ladder is not carried by this dispatch port's delegation "
+                "request; a synthetic probe runs it through the in-process path "
+                "(onex delegate --bus inmemory)"
+            )
         # OMN-21077: tests run where the workspace is, and a deployed lane has no
         # access to the caller's workspace. Refused rather than dropped, so a
         # caller who named tests is told where they run instead of reading an
