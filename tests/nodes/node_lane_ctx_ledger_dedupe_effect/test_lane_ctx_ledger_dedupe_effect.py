@@ -33,6 +33,9 @@ from omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.models.model_lane_ctx_l
     ModelLaneCtxLedgerDedupeEvent,
     ModelLaneCtxLedgerDedupeResult,
 )
+from omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.protocols import (
+    ProtocolLaneCtxFs,
+)
 
 ROLL = "ROLLING_WORK_LEDGER_2026-08-29-split.md"
 OTHER = "ROLLING_WORK_LEDGER_2026-08-31-split.md"
@@ -41,10 +44,10 @@ REFUSED, COMPLETED, _ = contract_topics()
 
 
 def _handler(
-    fs: object, publisher: RecordingPublisher, now: float = NOW
+    fs: ProtocolLaneCtxFs, publisher: RecordingPublisher, now: float = NOW
 ) -> HandlerLaneCtxLedgerDedupe:
     return HandlerLaneCtxLedgerDedupe(
-        fs=fs,  # type: ignore[arg-type]
+        fs=fs,
         publisher=publisher,
         refused_topic=REFUSED,
         completed_topic=COMPLETED,
