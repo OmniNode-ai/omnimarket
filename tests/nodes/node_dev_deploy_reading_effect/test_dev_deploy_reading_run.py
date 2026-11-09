@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Sequence
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -204,17 +205,23 @@ def _git_out(*commits: tuple[str, str, list[str]]) -> bytes:
     ).encode()
 
 
-def _run(stdout: bytes, code: int = 0) -> Any:
-    seen: list[list[str]] = []
+class _Run:
+    """A subprocess runner that records every argv and answers one fixed output."""
 
-    def run(
-        argv: Sequence[str], stdin: bytes | None, timeout: int
+    def __init__(self, stdout: bytes, code: int = 0) -> None:
+        self.seen: list[list[str]] = []
+        self._stdout = stdout
+        self._code = code
+
+    def __call__(
+        self, argv: Sequence[str], stdin: bytes | None, timeout: int
     ) -> subprocess.CompletedProcess[bytes]:
-        seen.append(list(argv))
-        return subprocess.CompletedProcess(list(argv), code, stdout, b"")
+        self.seen.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), self._code, self._stdout, b"")
 
-    run.seen = seen  # type: ignore[attr-defined]
-    return run
+
+def _run(stdout: bytes, code: int = 0) -> _Run:
+    return _Run(stdout, code)
 
 
 def test_glob_regex_crosses_directories_only_with_double_star() -> None:
@@ -238,7 +245,7 @@ def test_git_source_marks_a_commit_runtime_affecting_by_its_changed_files() -> N
         (SHA_A, True),
         (SHA_B, False),
     ]
-    assert merges[1].merged_at.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+    assert merges[1].merged_at.utcoffset() == timedelta(0)
     assert "-m" in run.seen[0]
     assert "--first-parent" in run.seen[0]
 
