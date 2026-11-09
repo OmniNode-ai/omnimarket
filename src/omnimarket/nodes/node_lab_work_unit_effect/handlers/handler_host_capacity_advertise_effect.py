@@ -44,9 +44,19 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     ModelHostCapacityProbeRequest,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
+    DISK_WATERMARK_PAGE_TOOL,
     LocalHostReader,
     ProtocolHostReader,
 )
+
+
+def _watermark_level(host_name: str) -> str | None:
+    """The level in this host's disk watermark reading file (OMN-23390); None when no watermark is deployed for it."""
+    from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark import (
+        read_level,
+    )
+
+    return read_level(host_name)
 
 
 class HandlerHostCapacityAdvertiseEffect:
@@ -56,9 +66,11 @@ class HandlerHostCapacityAdvertiseEffect:
         self,
         reader: ProtocolHostReader | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        watermark: Callable[[str], str | None] | None = None,
     ) -> None:
         self._reader = reader or LocalHostReader()
         self._now = now
+        self._watermark = watermark or _watermark_level
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -72,12 +84,15 @@ class HandlerHostCapacityAdvertiseEffect:
         self, request: ModelHostCapacityProbeRequest
     ) -> ModelHostCapacityAdvertisement:
         reading = self._reader.read(list(request.tools))
+        tools = set(reading.tools)
+        if self._watermark(request.host_name) == "page":
+            tools.add(DISK_WATERMARK_PAGE_TOOL)
         return ModelHostCapacityAdvertisement(
             host_name=request.host_name,
             cores=reading.cores,
             load1=reading.load1,
             mem_available_bytes=reading.mem_available_bytes,
-            tools=list(reading.tools),
+            tools=sorted(tools),
             running_units=request.running_units,
             max_units=request.max_units,
             rank_penalty=request.rank_penalty,
