@@ -109,7 +109,7 @@ class_rules:
     pattern: '(?:NO_CLONE|holds no such branch|clone holds no|paths are absent on h\d+)'
   - name: lab-host-lacks-node-toolchain
     owner: "the owner of the lab host toolchain (node, pnpm and corepack for web lanes) and of the placement of web lanes"
-    pattern: '(?:no node, pnpm or corepack|host with no node|h\d+ has no node|no pool host has node|node not installed on any pool host|Chromium can.t load its shared libraries)'
+    pattern: '(?:no node, pnpm or corepack|host with no node|h\d+ has no node|no pool host has node|node not installed on any pool host|Chromium can.t load its shared libraries|`?node`? is absent on h\d+|Chromium on h\d+ is missing .{0,4}lib[\w.-]+)'
   - name: brief-holds-window-misses-older-hold
     owner: "the owner of the lane brief holds reader: it reads a 24 h window, so a HOLD older than that and still in force is not shown"
     pattern: 'holds section reads a 24 h window'
@@ -146,13 +146,13 @@ class_rules:
     pattern: '(?:JOB-LOG-CACHE-MISS|run-view 404|log (?:is|was) not in the (?:read )?(?:mirror|cache))'
   - name: lab-run-placement-refused-no-host-admits-the-run
     owner: "the owner of lab-run placement and of the lab host pool (every host was over the load bar, out of the pool or without a unit slot, so the run was refused with exit 75 and the lane could not run the test it was sent to run)"
-    pattern: '(?:placement refused|exit 75|no lab host admitted|NO-UNIT-SLOT)'
+    pattern: '(?:placement refused|exit 75|no lab host admitted|NO-UNIT-SLOT|no valid proof host|no free pool host)'
   - name: criterion-needs-a-host-or-runtime-the-lane-cannot-reach
     owner: "the owner of the lab fill plan (a ticket whose remaining criterion is a deploy or a live read on a host or runtime the lane is not placed on goes to the deploy agent or to a lane placed there, and not to a code lane that ends partial)"
-    pattern: '(?:AC\d+ needs an? (?:container roll|live read)|this lane is on a different host)'
+    pattern: '(?:AC\d+ needs an? (?:container roll|live read|lab broker read)|this lane is on a different host|out of scope for this lane|puts? [^.]{0,40}out of scope|must run on h\d+|which this h\d+ lane can.t reach|which I can.t verify from this host|update-plugin. is fenced)'
   - name: fill-ticket-already-merged-or-superseded-criteria-not-reconciled
     owner: "the owner of the lab fill plan and of the ticket's criteria (the work is merged or superseded elsewhere but the ticket stays open with falsifiers that name a copy that no longer holds it, so each fill sends a lane that ends blocked; the ticket is closed as superseded or its criteria are rebound)"
-    pattern: "(?:falsifiers target a stale|is superseded by OMN-\\d+)"
+    pattern: "(?:falsifiers target a stale|is superseded by OMN-\\d+|already merged in \\w+#\\d+)"
 # The 12 rows of 2026-11-08T08:11Z to 17:37Z that the 41 rules above did not name (OMN-22879), grouped by cause and named from their
 # own text. Three of them are named by widening the pattern of a class that already owned the cause (the file-shape ratchet and the
 # bus state reads, above); the rest are new classes.
@@ -194,6 +194,18 @@ class_rules:
   - name: pre-commit-stash-in-registry-clone-opens-ledger-path-window
     owner: "the owner of the registry clone commit guard: a commit attempted in the clone makes pre-commit stash and restore its unstaged files, so the live ledger path is a regular file for seconds"
     pattern: 'pre-commit stashed'
+# The 19 rows of 2026-11-09T11:06Z to 12:31Z that carry a bare class=other (OMN-23319), named from their own text. Four more causes
+# are named by widening the pattern of a class that owned them (above): a criterion the lane cannot reach, a ticket merged elsewhere,
+# a lab host with no node or browser library, a placement with no proof host.
+  - name: change-waits-on-an-upstream-pr-that-is-red-or-unmerged
+    owner: "the owners of the upstream pull requests and the landing controller's order of landing (a change whose base pull request is red, a draft or unmerged cannot go green or be proven, so the dependent lane ends partial or blocked until that pull request merges)"
+    pattern: '(?:cannot go green until #\d+|need #\d+ and #\d+ merged|is red on `[^`]+` at [0-9a-f]{7,}|are red with causes unread|is an OPEN, paused draft with red CI)'
+  - name: blocker-needs-an-operator-owned-input
+    owner: "the operator ask list kept by the orchestrator (a credential consent, a grant, a variable or a collaborator's details that only the operator holds: the lane ends blocked and the ticket waits for one plain ask)"
+    pattern: '(?:\(operator-owned\)|OPERATOR-CONSENT row|from the operator\b)'
+  - name: fill-ticket-start-when-line-unmet
+    owner: "the owner of the lab fill plan (a ticket whose Start-when line names a piece that does not yet read WORKING is filled anyway and ends blocked; the fill skips it until the reading flips)"
+    pattern: 'Start-when line .{0,60}is false'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
