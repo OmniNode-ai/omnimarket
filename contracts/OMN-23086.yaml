@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23086
+title: Join J5 runs, piece 6 answers each piece 5 reading with a ledger append under the store-resolved identity, so the floor can read J5 passed
+summary: Join J5 (piece 5 secrets to piece 6 ledger and state) read broken on the served floor because the J5 join handler of OMN-22914 was called by nothing. Piece 5's readings are chains of the floor's own (the secret reading rows of the ledger), and piece 6 never answered one. The new runner reads those rows through the join refusal overlay's piece 5 rule, and for each golden reading piece 6 has not answered it appends one row under the identity the secret store resolves, reads the row back from the projection and writes piece 6's chain to the emission journal under the reading's correlation id. The publish cycle runs it as the join_j5 step. A receipt authenticated as anyone but the store identity, a store that resolves nothing, a projection that never hears the row and a receipt naming a ledger line that is not there each leave the join unpassed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23086-j5-run
+  statement: Every golden piece 5 reading is answered once by a piece 6 chain under its own correlation id, a rerun appends nothing, and each injected break leaves the join not passed on the floor's own receipt fold.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the golden chain (a golden piece 5 reading is answered once and join J5 reads golden_only, passed with the refusal node answering the failure), the error chains (a drill, a failed reading and an unreadable ledger are not answered by the runner) and the failing controls (no runner leaves the join broken; a deaf projection, a store without the key, a foreign principal on the receipt and a missing ledger line leave it unpassed) all hold -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The J5 runner tests with the failing controls.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23086-j5-ac1
+  description: The J5 runner tests pass, with the golden chain, the error chains and the failing controls.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect -q --no-cov
+- id: dod-omn23086-publisher-env-and-bound
+  description: The publisher unit declares the ledger environment of its J5 step, and the J5 reading judges chains by the overlay's bound, with failing controls.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_publisher_ledger_environment.py tests/nodes/node_floor_emission_compute/test_join_judged_since.py -q --no-cov
+- id: dod-omn23086-projection-read-correlation
+  description: The J5 projection read sends the join run's correlation id the read command's request requires, shown failing (projected_row_missing) without it against a reader that validates the request with the node's own model.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py -q --no-cov
+- id: dod-omn23086-integration-proof
+  description: The J5 runner tests run on a lab host at the pushed head, and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23086 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect -q --no-cov
+    cwd: .

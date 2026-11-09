@@ -94,6 +94,7 @@ def request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "plans_path": str(tmp_path / "plans"),
         "marketplace_root": str(tmp_path / "market"),
         "runtime_ssh_host": "lab-runtime",
+        "ledger_host_name": "lab-ledger-host",
     }
     fields.update(kw)
     return ModelRegistryUnitsRequest(**fields)
