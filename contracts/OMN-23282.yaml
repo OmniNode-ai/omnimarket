@@ -54,4 +54,4 @@ dod_evidence:
         check_value: |-
           onex run-node node_dod_closeout_sweep_compute --input '{"kind":"scope_bundle","date":"2026-11-09","scope_candidates":[{"id":"OMN-1","state":"In Review","sources":["started"]},{"id":"OMN-2","state":"In Review","sources":["started"]}],"scope_pr_state":[{"id":"OMN-1","merged":["omnimarket#1"],"open":[],"error":""},{"id":"OMN-2","merged":["omnimarket#1"],"open":[],"error":""}],"scope_text_state":[{"id":"OMN-1","text_sha":"0123456789abcdef","last_closeout_comment_at":"2026-11-08T05:45:00.000Z"},{"id":"OMN-2","text_sha":"0123456789abcdef","last_closeout_comment_at":"2026-11-08T05:45:00.000Z"}],"scope_examined":{"OMN-1":{"examined_at":"2026-11-09T06:00:00.000Z","key":"0123456789abcdef|2026-11-08T05:45:00.000Z|True","streak":1}},"scope_now":"2026-11-09T07:00:00.000Z","max_candidates":2}' | grep -q '"held":\["OMN-1"\]'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["DoD1"]
+    binds_ac: []
