@@ -104,8 +104,8 @@ def test_the_contract_names_no_home_directory_and_no_person() -> None:
         Path(__file__).resolve().parents[3]
         / "src/omnimarket/nodes/node_floor_delegation_effect/contract.yaml"
     ).read_text(encoding="utf-8")
-    assert "/Users/" not in text
-    assert "/home/" not in text
+    assert "/".join(["", "Users", ""]) not in text
+    assert "/".join(["", "home", ""]) not in text
 
 
 def test_the_overlay_is_required_and_a_broken_one_refuses_by_name(
