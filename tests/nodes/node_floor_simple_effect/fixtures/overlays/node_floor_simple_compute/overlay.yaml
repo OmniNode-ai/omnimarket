@@ -30,7 +30,9 @@ joins:
   - {id: J2, from_piece: 2, to_piece: 3, label: "hosts to bus"}
   - {id: J3, from_piece: 3, to_piece: 4, label: "bus to overlays"}
   - {id: J4, from_piece: 4, to_piece: 5, label: "overlays to secrets"}
-  - {id: J5, from_piece: 5, to_piece: 6, label: "secrets to ledger"}
+  # OMN-23086: the instant of the join's first real landing (ledger STATUS row 3329, 2026-11-08T07:10:33Z). A piece 5 failure older
+  # than this is not judged, because piece 6 could not have answered it under the join; a failure at or after it is judged as ever.
+  - {id: J5, from_piece: 5, to_piece: 6, label: "secrets to ledger", judged_since: "2026-11-08T07:10:33Z"}
   - {id: J6, from_piece: 6, to_piece: 7, label: "ledger to process spine"}
   - {id: J7, from_piece: 7, to_piece: 8, label: "process spine to CI"}
   - {id: J8, from_piece: 8, to_piece: 9, label: "CI to landing"}
@@ -125,6 +127,23 @@ ledger_readings:
 # A piece's shadow results (OMN-22902): the code graph's pull request check logs what it would refuse and holds no merge. The
 # floor shows the newest row under piece 1 with its age against the max age the row declares, and never draws the piece red from it.
 ledger_shadows:
+  # The delegation completion rate (OMN-23108): the compute node of piece 15 carries R_all, R_dep and failed_rate as one STATUS row;
+  # the floor shows the newest one with its age against the max age the row declares, and its own verdict word.
+  - piece: 15
+    label: Delegation completion rate
+    row_type: STATUS
+    lane: delegation-rate
+    cells: {src: delegation-rate, drill: "no"}
+    published_at_cell: published_at
+    max_age_cell: max_age
+    fields:
+      - {cell: verdict, label: verdict}
+      - {cell: r_all, label: completions an hour}
+      - {cell: r_dep, label: by the deployed lane}
+      - {cell: failed_rate, label: failed share}
+    outcome_cell: outcome
+    outcome_ok: read
+    lookback_days: 3
   - piece: 1
     label: Pull request check in shadow
     row_type: STATUS

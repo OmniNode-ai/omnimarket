@@ -15,16 +15,16 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.overlay_keys.model_overlay_documents import ModelLabHostsTable
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-    contributor_lane_refusal,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     CODEX_ENGINE,
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
+    contributor_lane_refusal,
 )
 
 HOUSE = "house"

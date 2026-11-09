@@ -66,7 +66,7 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .verdict.better{color:var(--green)}.verdict.worse{color:var(--red)}.verdict.unread{color:var(--mute)}
 @media(max-width:480px){.tiles{grid-template-columns:repeat(2,1fr)}}
 </style></head><body><main>
-<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" id="tab-compare" href="compare.html" aria-selected="true">Better or worse</a></div>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" id="tab-compare" href="compare.html" aria-selected="true">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
 <div id="app"><div class="frozen">Reading the comparison...</div></div>
 </main>
 <script>
@@ -77,11 +77,16 @@ const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.
 let doc = null, failure = "";
 const DAYS = () => (doc ? doc.windows.map(w => String(w.days)) : ["1", "7", "30"]);
 const pick = () => { const h = String(location.hash || "").replace(/^#/, ""); return DAYS().includes(h) ? h : "1"; };
+// A refresh replaces the document only when draw can render it; otherwise the last usable one stays and the failure is shown.
+const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.windows) && d.windows.length > 0
+  && d.windows.every(w => !!w && !!w.counts && Array.isArray(w.worse) && Array.isArray(w.better) && Array.isArray(w.unread));
 async function load(){
   try {
     const r = await fetch(DATA, {cache: "no-store"});
     if (!r.ok) throw new Error("HTTP " + r.status);
-    doc = await r.json(); failure = "";
+    const next = await r.json();
+    if (!renderable(next)) throw new Error("the comparison has no renderable shape or no valid generated_at");
+    doc = next; failure = "";
   } catch (e) { failure = String(e.message || e); }
   draw();
 }

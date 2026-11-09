@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import singledispatch
 from pathlib import Path
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
@@ -31,6 +32,7 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelAppendOutcome,
     ModelLedgerQuery,
     ModelLedgerRead,
+    ProtocolLedgerBatchRowSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
 )
@@ -45,10 +47,17 @@ def _parse_time(text: str) -> datetime:
 
 
 def evidence_row_from_text(
-    text: str, ingested_at: datetime | None = None
+    text: str,
+    ingested_at: datetime | None = None,
+    *,
+    types: frozenset[str] | None = None,
 ) -> ModelLedgerEvidenceRow | None:
-    """One ledger row line as evidence, or None when the line is not a row."""
-    row = grammar.parse_row(text)
+    """One ledger row line as evidence, or None when the line is not a row.
+
+    With ``types``, a row of any other type is None before its cells are split and its fields indexed (OMN-23081): a
+    reader that wants a few row types of a ledger of hundreds of thousands of lines pays for those rows alone.
+    """
+    row = grammar.parse_row(text, types=types)
     if row is None:
         return None
     cells = {
@@ -128,17 +137,71 @@ class FileLedgerRowSource:
         return files
 
     def read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
-        rows: list[ModelLedgerEvidenceRow] = []
+        return self.read_many((query,))[0]
+
+    def read_many(
+        self, queries: Sequence[ModelLedgerQuery]
+    ) -> tuple[ModelLedgerRead, ...]:
+        """Answer every query from one pass over the files (OMN-23081).
+
+        Each file is opened once whatever the number of queries, only the lines of a wanted row type are parsed, and a
+        parsed row is offered to each query of its type. Each answer holds what a read of that query alone would hold,
+        in the same order. A file that cannot be read fails every query, with the reason a single read gives.
+        """
+        if not queries:
+            return ()
+        wanted: dict[str, list[int]] = {}
+        for index, query in enumerate(queries):
+            wanted.setdefault(query.row_type, []).append(index)
+        types = frozenset(wanted)
+        # A row answers a query of a lane only if the lane's text is in its line: lines naming none of the wanted lanes
+        # are passed over before the row grammar runs. A query with no lane wants every line of its type.
+        lanes = {query.lane for query in queries}
+        needles = (
+            tuple(sorted(x for x in lanes if x))
+            if None not in lanes and any(lanes)
+            else ()
+        )
+        found: list[list[ModelLedgerEvidenceRow]] = [[] for _ in queries]
         try:
-            for path in self._files(query.since):
+            for path in self._files(min(query.since for query in queries)):
                 with path.open(encoding="utf-8", errors="replace") as handle:
                     for line in handle:
-                        row = evidence_row_from_text(line)
-                        if row is not None and _matches(row, query):
-                            rows.append(row)
+                        if needles and not any(needle in line for needle in needles):
+                            continue
+                        row = evidence_row_from_text(line, types=types)
+                        if row is None:
+                            continue
+                        for index in wanted[row.row_type]:
+                            if _matches(row, queries[index]):
+                                found[index].append(row)
         except OSError as exc:
-            return ModelLedgerRead(error=f"ledger-file-unreadable:{type(exc).__name__}")
-        return ModelLedgerRead(rows=tuple(rows))
+            failed = ModelLedgerRead(
+                error=f"ledger-file-unreadable:{type(exc).__name__}"
+            )
+            return tuple(failed for _ in queries)
+        return tuple(ModelLedgerRead(rows=tuple(rows)) for rows in found)
+
+
+def read_queries(
+    source: ProtocolLedgerRowSource, queries: Sequence[ModelLedgerQuery]
+) -> tuple[ModelLedgerRead, ...]:
+    """Every query's answer, from one pass when the source has a single-pass read, else one read per query."""
+    if isinstance(source, ProtocolLedgerBatchRowSource):
+        return source.read_many(queries)
+    return tuple(source.read(query) for query in queries)
+
+
+def wire_correlation_id(correlation_id: str) -> str:
+    """The form a run's correlation id takes on the read command's wire: the reader's request type is a UUID.
+
+    An id that already reads as a UUID (dashed or 32 hex digits) is the same id, written dashed. Any other id is mapped to a
+    UUID by a fixed rule (version 5), so the same run id is the same wire id every time and can be traced back by the rule.
+    """
+    try:
+        return str(UUID(correlation_id))
+    except ValueError:
+        return str(uuid5(NAMESPACE_URL, f"onex:correlation:{correlation_id}"))
 
 
 class CommandLedgerRowSource:
@@ -163,6 +226,8 @@ class CommandLedgerRowSource:
             request["lane"] = query.lane
         if query.term is not None:
             request["term"] = query.term
+        if query.correlation_id is not None:
+            request["correlation_id"] = wire_correlation_id(query.correlation_id)
         try:
             done = subprocess.run(
                 self._argv,

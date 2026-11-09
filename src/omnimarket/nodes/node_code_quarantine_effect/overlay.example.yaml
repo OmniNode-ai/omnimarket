@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values only, on the in-memory backend. The real overlay is deployment data kept outside this repository
+# and found under ONEX_SKILL_OVERLAY_ROOTS (or at the file ONEX_CODE_QUARANTINE_OVERLAY names); it sets
+# `backend: files` and carries a `files:` block in place of `in_memory:`.
+backend: in-memory
+policy:
+  quarantine_days: 7
+  min_observation_days: 7
+in_memory:
+  files:
+    example_repo:
+      - src/example/unused_module.py
+      - tests/test_unused_module.py
+  tags:
+    example_repo:
+      removal-batch-1: 0123456789abcdef0123456789abcdef01234567
+  clean_build_green: true
+  lab_runtime_start_green: true
+  reading_present: true
+report:
+  append_argv: [onex-ledger, --append]
+  lane: code-quarantine
+  actor: node:node_code_quarantine_effect
+  timeout_seconds: 60
+  environment:
+    LEDGER_STORE_DIR: /srv/ledger

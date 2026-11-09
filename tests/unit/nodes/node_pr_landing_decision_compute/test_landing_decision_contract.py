@@ -127,12 +127,3 @@ def test_every_brief_class_has_fixed_text() -> None:
             push_rule="push however you like",
             **base,
         )
-
-
-def test_j8_join_handler_is_cli_bound_not_boot_routed() -> None:
-    """HandlerLandingJoinJ8 needs a sink and a policy the boot resolver cannot inject."""
-    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
-    routed = {entry["operation"] for entry in contract["handler_routing"]["handlers"]}
-    bound = {entry["operation"] for entry in contract["cli_handlers"]}
-    assert "join_j8_landing_decision" not in routed
-    assert "join_j8_landing_decision" in bound

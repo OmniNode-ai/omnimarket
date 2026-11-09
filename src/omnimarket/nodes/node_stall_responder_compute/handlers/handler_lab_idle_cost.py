@@ -12,6 +12,7 @@ unreadable, never as zero.
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.nodes.node_stall_responder_compute.models import (
@@ -21,6 +22,7 @@ from omnimarket.nodes.node_stall_responder_compute.models import (
 
 STAMP = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 COST = re.compile(r"^est (?P<amount>\d+(?:\.\d+)?) lane-(?P<unit>minutes|hours)\b")
+STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 ORCHESTRATOR_LANE = re.compile(r"^orchestrator(-[\w.]+)?$")
 
 
@@ -47,6 +49,16 @@ def sum_start(rows: tuple[str, ...]) -> str | None:
     )
 
 
+def _calendar_moment(stamp: str) -> datetime | None:
+    """The stamp as a UTC moment, or None when it is not a real date and time."""
+    if not STAMP.match(stamp):
+        return None
+    try:
+        return datetime.strptime(stamp, STAMP_FORMAT).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
 def _lane_minutes(cost: str | None) -> float | None:
     match = COST.match(cost or "")
     if match is None:
@@ -63,14 +75,22 @@ class HandlerLabIdleCost:
     """Pure: ledger rows and a start in, the lane-minutes of lab-idle FRICTION since then out."""
 
     def handle(self, request: ModelLabIdleCostRequest) -> ModelLabIdleCostResult:
-        if not STAMP.match(request.since):
+        since = _calendar_moment(request.since)
+        if since is None:
             raise ValueError(
                 f"since must be a UTC stamp like 2026-11-07T00:35:28Z, got {request.since!r}"
             )
-        if request.until and not STAMP.match(request.until):
-            raise ValueError(
-                f"until must be a UTC stamp like 2026-11-07T10:36:26Z, got {request.until!r}"
-            )
+        if request.until:
+            until = _calendar_moment(request.until)
+            if until is None:
+                raise ValueError(
+                    f"until must be a UTC stamp like 2026-11-07T10:36:26Z, got {request.until!r}"
+                )
+            if until < since:
+                raise ValueError(
+                    f"until must not be earlier than since, got since={request.since!r} "
+                    f"until={request.until!r}"
+                )
         total = 0.0
         counted = unreadable = 0
         for line in dict.fromkeys(

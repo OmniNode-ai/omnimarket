@@ -12,6 +12,7 @@ double except the in-memory bus.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import EllipsisType
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -25,6 +26,7 @@ from omnimarket.models.model_reading import (
     ModelLedgerEvidenceRow,
     ModelPieceReadingSpec,
     ModelReadingComputeRequest,
+    ModelReadingComputeResult,
     ModelReadingSource,
     ModelReadingSourceRows,
 )
@@ -86,7 +88,10 @@ SPEC = ModelPieceReadingSpec(
 
 
 async def run_synthetic_task(
-    *, drop_result: bool = False, answer: str = "pong"
+    *,
+    drop_result: bool = False,
+    answer: str = "pong",
+    terminal_cost: float | None = None,
 ) -> tuple[UUID, tuple[b.ChainEvent, ...]]:
     """Drive the synthetic task through the real orchestrator to its terminal events."""
 
@@ -125,15 +130,22 @@ async def run_synthetic_task(
     payload = terminal.payload
     assert isinstance(payload.content, str)
     content = "" if drop_result else payload.content
+    update: dict[str, Any] = {"content": content}
+    if terminal_cost is not None:
+        update["cumulative_attempt_cost"] = terminal_cost
     observed = terminal.__class__(
         topic=terminal.topic,
         event_type=terminal.event_type,
         correlation_id=terminal.correlation_id,
         causation_id=terminal.causation_id,
-        payload=payload.model_copy(update={"content": content}),
+        payload=payload.model_copy(update=update),
     )
     events = tuple(observed if e is terminal else e for e in run.events)
     return cid, events
+
+
+# The in-memory terminal carries no timestamps: the observation time is simulated, not measured.
+SIMULATED_ELAPSED = timedelta(seconds=12)
 
 
 def judge(
@@ -141,13 +153,19 @@ def judge(
     events: tuple[b.ChainEvent, ...],
     *,
     issued_at: datetime,
-    elapsed: timedelta = timedelta(seconds=12),
-    cost: float | None = 0.0012,
+    elapsed: timedelta = SIMULATED_ELAPSED,
+    cost: float | None | EllipsisType = ...,
     probe: HandlerDelegationSyntheticProbe = PROBE,
 ) -> ModelSyntheticProbeResult:
     terminal = next(
         (e for e in events if type(e.payload).__name__ == "ModelDelegationCompleted"),
         None,
+    )
+    # The cost is the terminal's own; only an explicit override (including None) replaces it.
+    judged_cost = (
+        (None if terminal is None else terminal.payload.cumulative_attempt_cost)
+        if cost is ...
+        else cost
     )
     return probe.handle(
         ModelSyntheticProbeRequest(
@@ -157,7 +175,7 @@ def judge(
             observed_at=None if terminal is None else issued_at + elapsed,
             terminal_event_type=None if terminal is None else terminal.event_type,
             result_text=None if terminal is None else terminal.payload.content,
-            cost_usd=cost,
+            cost_usd=judged_cost,
         )
     )
 
@@ -175,6 +193,12 @@ def as_row(result: ModelSyntheticProbeResult) -> ModelLedgerEvidenceRow:
 def read_window(
     rows: list[ModelLedgerEvidenceRow], end: datetime
 ) -> EnumReadingVerdict:
+    return read_window_result(rows, end).verdict
+
+
+def read_window_result(
+    rows: list[ModelLedgerEvidenceRow], end: datetime
+) -> ModelReadingComputeResult:
     return READING.handle(
         ModelReadingComputeRequest(
             spec=SPEC,
@@ -188,7 +212,20 @@ def read_window(
                 ModelReadingSourceRows(source_id="synthetic-task", rows=tuple(rows)),
             ),
         )
-    ).verdict
+    )
+
+
+def assert_flipped_at_the_task_bound(
+    row: ModelLedgerEvidenceRow, issued_at: datetime
+) -> None:
+    """The window that closes at the task's bound holds the failing row and reads NOT WORKING."""
+    deadline = issued_at + timedelta(seconds=RULES.bound_seconds)
+    result = read_window_result([row], deadline)
+    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    # The row itself failed the source: the window was not merely empty.
+    assert result.reasons == (
+        f"below-minimum:synthetic-task:0-of-{SPEC.sources[0].min_rows}",
+    )
 
 
 async def test_the_synthetic_task_returns_a_result_and_a_cost() -> None:
@@ -196,10 +233,11 @@ async def test_the_synthetic_task_returns_a_result_and_a_cost() -> None:
     result = judge(cid, events, issued_at=T0 + timedelta(minutes=5))
     assert result.verdict is EnumSyntheticProbeVerdict.PASS
     assert result.reason is EnumSyntheticProbeReason.OK
-    assert result.cost_usd is not None
+    terminal = next(e for e in events if e.event_type == "ModelDelegationCompleted")
+    assert result.cost_usd == terminal.payload.cumulative_attempt_cost
     assert result.row_cells["result"] == "present"
-    assert result.row_cells["cost_usd"] == "0.001200"
-    assert result.row_cells["elapsed_s"] == "12"
+    assert result.row_cells["cost_usd"] == f"{result.cost_usd:.6f}"
+    assert result.row_cells["elapsed_s"] == str(int(SIMULATED_ELAPSED.total_seconds()))
     assert [e.event_type for e in events][-2:] == [
         "ModelDelegationCompleted",
         "ModelDelegationTerminalCompletedV2",
@@ -236,6 +274,17 @@ async def test_drop_result_flips_the_reading_within_one_tick_of_its_bound() -> N
     assert read_window(rows, T0 + 2 * HOUR) is EnumReadingVerdict.NOT_WORKING
     # The window before the drop is untouched: the reading flipped because of the drop.
     assert read_window(rows, T0 + HOUR) is EnumReadingVerdict.WORKING
+    # And it flips by the task's own bound, not only at the next hourly window.
+    assert_flipped_at_the_task_bound(rows[-1], T0 + HOUR + timedelta(minutes=5))
+
+
+async def test_a_passing_task_reads_working_at_the_same_task_bound() -> None:
+    """Control: the deadline window is not NOT WORKING for every row, only for a failing one."""
+    cid, events = await run_synthetic_task()
+    issued_at = T0 + HOUR + timedelta(minutes=5)
+    row = as_row(judge(cid, events, issued_at=issued_at))
+    deadline = issued_at + timedelta(seconds=RULES.bound_seconds)
+    assert read_window([row], deadline) is EnumReadingVerdict.WORKING
 
 
 async def test_drop_result_flips_the_reading_when_no_terminal_comes_back() -> None:
@@ -244,6 +293,8 @@ async def test_drop_result_flips_the_reading_when_no_terminal_comes_back() -> No
     result = judge(cid, no_terminal, issued_at=T0 + timedelta(minutes=5))
     assert result.reason is EnumSyntheticProbeReason.NO_TERMINAL
     assert read_window([as_row(result)], T0 + HOUR) is EnumReadingVerdict.NOT_WORKING
+    # With no terminal the row is stamped at issue, so the bound is the deadline here too.
+    assert_flipped_at_the_task_bound(as_row(result), T0 + timedelta(minutes=5))
 
 
 async def test_drop_result_flips_the_reading_when_the_probe_row_is_never_written() -> (
@@ -298,6 +349,26 @@ async def test_drop_result_flips_control_a_probe_that_ignores_the_result_does_no
     assert read_window([as_row(result)], T0 + HOUR) is EnumReadingVerdict.WORKING
 
 
+async def test_flip_control_a_probe_that_stamps_its_row_at_the_next_tick_misses_the_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failing control: a late row stamp leaves the bound window without the failing row."""
+    handle = HandlerDelegationSyntheticProbe.handle
+
+    def stamp_at_next_tick(
+        self: HandlerDelegationSyntheticProbe, request: ModelSyntheticProbeRequest
+    ) -> ModelSyntheticProbeResult:
+        result = handle(self, request)
+        return result.model_copy(update={"row_stamp": request.issued_at + HOUR})
+
+    monkeypatch.setattr(HandlerDelegationSyntheticProbe, "handle", stamp_at_next_tick)
+    issued_at = T0 + HOUR + timedelta(minutes=5)
+    cid, events = await run_synthetic_task(drop_result=True)
+    row = as_row(judge(cid, events, issued_at=issued_at))
+    with pytest.raises(AssertionError):
+        assert_flipped_at_the_task_bound(row, issued_at)
+
+
 async def test_the_whole_flow_request_to_result_cost_row_and_reading() -> None:
     """One whole-flow run: request, routing, inference, gate, terminal, probe row, reading."""
     cid, events = await run_synthetic_task()
@@ -312,3 +383,25 @@ async def test_the_whole_flow_request_to_result_cost_row_and_reading() -> None:
     result = judge(cid, events, issued_at=T0 + timedelta(minutes=5))
     assert result.verdict is EnumSyntheticProbeVerdict.PASS
     assert read_window([as_row(result)], T0 + HOUR) is EnumReadingVerdict.WORKING
+
+
+@pytest.mark.parametrize("terminal_cost", [0.0731, 0.0])
+async def test_the_judged_cost_is_the_cost_the_terminal_carried(
+    terminal_cost: float,
+) -> None:
+    cid, events = await run_synthetic_task(terminal_cost=terminal_cost)
+    terminal = next(e for e in events if e.event_type == "ModelDelegationCompleted")
+    assert terminal.payload.cumulative_attempt_cost == terminal_cost
+    result = judge(cid, events, issued_at=T0)
+    assert result.verdict is EnumSyntheticProbeVerdict.PASS
+    assert result.cost_usd == terminal_cost
+    assert result.row_cells["cost_usd"] == f"{terminal_cost:.6f}"
+
+
+async def test_the_cost_of_the_run_the_orchestrator_produced_is_judged_unchanged() -> (
+    None
+):
+    cid, events = await run_synthetic_task()
+    terminal = next(e for e in events if e.event_type == "ModelDelegationCompleted")
+    result = judge(cid, events, issued_at=T0)
+    assert result.cost_usd == terminal.payload.cumulative_attempt_cost

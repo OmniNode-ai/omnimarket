@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_lab_alarm/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The runtime backend swaps the two fixtures
+# for the lane's served manifest and its broker.
+bus:
+  backend: inmemory
+  lane: example-lane
+manifest:
+  url: http://example-host:8085/v1/introspection/manifest
+  timeout_seconds: 10
+  # Optional. Absent: one attempt, no fallback. Present: retry a manifest that does not answer, then take the
+  # group names from the last good manifest while it is no older than max_stale_seconds, naming its age.
+  resilience:
+    attempts: 3
+    retry_delay_seconds: 5
+    max_stale_seconds: 3600
+    cache_path: .onex_state/lab-alarm/manifest-last-good.json
+groups:
+  env: local
+  instance: runtime-main
+  nodes:
+    - {package: examplepkg, node: projection_example}
+lag:
+  timeout_seconds: 30
+  state_path: .onex_state/lab-alarm/broker-lag-sample.json
+  record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl
+  record_condition: consumer_group_lag
+schedule:
+  unit_name: example-lab-alarm
+  launchd_label: example.lab-alarm
+  state_directory: .onex_state/lab-alarm
+  interval_seconds: 300
+  timeout_seconds: 120
+  hosts:
+    - name: example-mac
+      scheduler: launchd
+      venv: examplepkg/.venv
+      environment:
+        EXAMPLE_SETTING: $OMNI_HOME/example
+    - name: example-linux
+      scheduler: systemd-user
+      venv: examplepkg/.venv
+      environment: {}
+injected_fault: A watched group's lag grows between two samples
+# The effects-held condition (OMN-23106). Needed by the effects-held verbs only; the broker lag verbs run without it. The bound is the alarm script's
+# own 60 seconds, held here as data.
+effects_held:
+  group_prefix: local.examplepkg.node_example_consumer.consume.
+  group_suffix: .__i.runtime-effects.__t.onex.cmd.example.work-requested.v1
+  held_after_seconds: 60
+  timeout_seconds: 30
+  state_path: .onex_state/lab-alarm/effects-held-state.json
+  escalation:
+    command: [example-lane-dispatch]
+    model: example-model
+    ticket: OMN-1
+    settle_seconds: 20
+    brief_dir: .onex_state/lab-alarm/escalation-briefs

@@ -673,6 +673,10 @@ def test_cli_input_json(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units.SystemdUnitRootReader.read",
+        lambda _self: UnitRoots(),
+    )
     command_file = tmp_path / "command.json"
     command_file.write_text(
         command(roots=(str(root),), execute=False).model_dump_json()

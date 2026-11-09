@@ -29,17 +29,17 @@ description: >-
   could not read is one UNKNOWN line and nothing else is printed.
 input_model:
   name: "ModelFloorFillLinesRequest"
-  module: "omnimarket.nodes.node_floor_fill_lines_compute.models"
+  module: "omnimarket.models.floor_fill"
   description: "What the pass read (unread sources, T1's line verdicts, the state entries), did (start results, free slots) and the hold."
 output_model:
   name: "ModelFloorFillLinesResult"
-  module: "omnimarket.nodes.node_floor_fill_lines_compute.models"
+  module: "omnimarket.models.floor_fill"
   description: "The findings of the pass in print order, each as (level, loop, why, fix)."
 handler:
   module: "omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines"
   class: "HandlerFloorFillLines"
-  input_model: "omnimarket.nodes.node_floor_fill_lines_compute.models.ModelFloorFillLinesRequest"
-  output_model: "omnimarket.nodes.node_floor_fill_lines_compute.models.ModelFloorFillLinesResult"
+  input_model: "omnimarket.models.floor_fill.ModelFloorFillLinesRequest"
+  output_model: "omnimarket.models.floor_fill.ModelFloorFillLinesResult"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines:HandlerFloorFillLines"

@@ -64,6 +64,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -141,7 +142,9 @@ async def _provisioned_runner() -> AsyncIterator[
         await admin_conn.execute(f"CREATE SCHEMA {schema}")
         await admin_conn.execute(f"SET search_path TO {schema}, public")
         for migration in (*_MIGRATIONS, *_OVERLAY_MIGRATIONS):
-            await admin_conn.execute(migration.read_text(encoding="utf-8"))
+            await admin_conn.execute(
+                for_isolated_schema(migration.read_text(encoding="utf-8"))
+            )
 
         pool = await asyncpg.create_pool(
             _base_dsn(),

@@ -15,6 +15,9 @@
 #                    a row names
 #   emission         optional: the floor piece and node of this read, and the variable naming the emission
 #                    journal; with it each run emits one chain under the command's correlation id
+#   upstream         optional (join J3): the ledger to read, the floor's piece event rule of the upstream piece (copied as it
+#                    stands in the floor overlay) and the row cell that names the upstream chain a run answers; with it a run
+#                    takes the newest successful upstream chain no earlier run named and writes its id in that cell
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
 #   schedule_hosts   hosts that install the daily systemd user timer
 #   unit_environment environment the installed unit carries
@@ -49,6 +52,30 @@ emission:
   piece: 4
   node: example-node:read
   journal_env: EXAMPLE_EMISSION_JOURNAL
+
+upstream:
+  ledger_read:
+    route: file
+    path_env: EXAMPLE_LEDGER_PATH
+    archive_subdir: archive
+    timeout_seconds: 60
+    row_limit: 5000
+  cid_cell: upstream_cid
+  rule:
+    piece: 3
+    node: "example-seam-node:read"
+    golden:
+      row_type: STATUS
+      lane: example-seam-deadline
+      cells: {src: example-seam-deadline, drill: "no", verdict: WORKING, outcome: read}
+    error:
+      row_type: STATUS
+      lane: example-seam-deadline
+      cells: {src: example-seam-deadline, verdict: NOT_WORKING}
+    failure_code_cell: reason
+    failure_default: no_result_by_deadline
+    error_drill_cell: drill
+    lookback_days: 7
 injected_fault: An overlay key the runtime rejects (the rung_order case)
 schedule_hosts:
 - name: host-a

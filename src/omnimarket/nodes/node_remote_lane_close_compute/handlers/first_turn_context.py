@@ -8,10 +8,12 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
-from ..models.model_remote_lane_first_turn_context import (
+from omnimarket.models.remote_lane_close.model_remote_lane_first_turn_context import (
     ModelRemoteLaneFirstTurnContext,
 )
-from ..models.model_remote_lane_receipt_usage import UsageCount
+from omnimarket.models.remote_lane_close.model_remote_lane_receipt_usage import (
+    UsageCount,
+)
 
 COLUMNS = tuple(ModelRemoteLaneFirstTurnContext.model_fields)
 
