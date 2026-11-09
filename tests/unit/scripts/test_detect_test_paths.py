@@ -794,6 +794,27 @@ def test_split_count_by_duration_node_change_follows_committed_durations() -> No
     assert sel.matrix == list(range(1, sel.split_count + 1))
 
 
+def test_split_count_by_duration_node_change_shards_fit_target() -> None:
+    from omnimarket.models.test_shard_count import (
+        TARGET_SHARD_SECONDS,
+        estimated_seconds,
+    )
+
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_host_reading_effect/handlers/join_j2.py",
+            "tests/unit/nodes/node_host_reading_effect/test_join_j2.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+    )
+    durations = ADJACENCY_PATH.parents[2] / "config" / "test_file_durations.json"
+    total = estimated_seconds(sel.selected_paths, durations)
+    assert total > 0
+    # The old two-shard split put about 2000 s on each shard and timed out.
+    assert total / sel.split_count <= TARGET_SHARD_SECONDS * 1.5
+
+
 def test_split_count_by_duration_scales_and_caps(tmp_path: Path) -> None:
     from omnimarket.models.test_shard_count import (
         FULL_SUITE_SPLIT_COUNT,

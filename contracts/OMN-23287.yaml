@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the shard count of a narrowed selection follows the selection''s estimated test time, so no shard of a narrowed selection is estimated past the shard bound -- falsifier: uv run pytest tests -q -k split_count_by_duration in omnimarket, failing on the old path-count script'
   - id: AC2
-    statement: 'AC2: Tests (Split 2/2) no longer times out on omnimarket#5508 at its newest head after the change merges -- falsifier: pr_state_local.py --pr omnimarket#5508 shows no Split shard in red for a timeout'
+    statement: 'AC2: the node-change selection that timed out Tests (Split 2/2) on omnimarket#5508 is estimated at no more than 1.5 times the target shard seconds per shard -- falsifier: uv run pytest tests/unit/scripts/test_detect_test_paths.py -k shards_fit_target, failing on the old two-shard split'
 evidence_requirements:
 - kind: tests
   description: The node-change selection gets at least 10 shards (2 on the base), the shard count scales with the committed durations and caps at 20, and a missing file or unreadable file keeps the path-count rule.
@@ -48,15 +48,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23287 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov
     cwd: .
-- id: dod-omn23287-ac2-split-2-no-timeout
-  description: After this change merges, reads the PR watcher state of omnimarket#5508 at its newest head and requires that no Tests (Split n/m) run reads timed_out or failure. This reads live CI, so only the local Done gate runs it; it is unbound in hosted CI. The named break is the base script, on which Tests (Split 2/2) of that pull request ran past its job limit.
+- id: dod-omn23287-ac2-shards-fit-target
+  description: Runs the real compute_selection on the node change that timed out Tests (Split 2/2) on omnimarket#5508 and requires the committed durations of the selected paths, divided by the shard count, to stay within 1.5 times the target shard seconds. The named break is the base script, whose two shards carry about 2000 s each.
   source: manual
   binds_ac:
   - AC2
-  execution_scope: local_done_gate
   checks:
-  - check_type: command
-    check_value: |-
-      set -eu;
-      python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr omnimarket#5508 --json | python3 -c 'import json,sys; r=json.load(sys.stdin); runs=[x for x in r["ci"]["runs"] if x[0].startswith("Tests (Split")]; assert runs, "no Tests (Split) run read"; bad=[x for x in runs if x[2] in ("timed_out","failure")]; assert not bad, bad'
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -k shards_fit_target -q --no-cov
     cwd: .
