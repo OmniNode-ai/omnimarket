@@ -1771,13 +1771,13 @@ relation_evidence:
     schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
-    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
     readers:
       - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
       - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
     writers: []
     authoritative_sources:
-      - src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
     classification_evidence: >-
       tenant read view over delegation_events with one row per tenant whose days
       list holds every UTC day's runs, verdict counts and token totals, so the

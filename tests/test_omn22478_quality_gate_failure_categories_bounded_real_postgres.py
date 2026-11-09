@@ -24,6 +24,8 @@ from typing import Any
 
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src"
@@ -55,7 +57,7 @@ def _dsn() -> str:
 
 
 def _schema_safe(sql: str) -> str:
-    return sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+    return for_isolated_schema(sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX"))
 
 
 @pytest.fixture
