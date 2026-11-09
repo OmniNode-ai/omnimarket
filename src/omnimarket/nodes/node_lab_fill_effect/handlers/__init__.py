@@ -7,6 +7,7 @@ from .handler_lab_fill_launch import HandlerLabFillLaunch
 from .handler_lab_fill_owner_facts import HandlerLabFillOwnerFacts
 from .handler_lab_fill_probe import HandlerLabFillProbe
 from .handler_lab_fill_receipts import HandlerLabFillReceipts
+from .handler_lab_fill_sources import HandlerLabFillSources
 from .handler_lab_fill_status import HandlerLabFillStatus
 from .handler_lab_fill_tick import HandlerLabFillTick
 
@@ -16,6 +17,7 @@ __all__ = [
     "HandlerLabFillOwnerFacts",
     "HandlerLabFillProbe",
     "HandlerLabFillReceipts",
+    "HandlerLabFillSources",
     "HandlerLabFillStatus",
     "HandlerLabFillTick",
 ]

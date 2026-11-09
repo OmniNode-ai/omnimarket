@@ -50,6 +50,7 @@ OPERATIONS = (
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",
     "write_lab_fill_status",
+    "enumerate_lab_fill_sources",
     "run_lab_fill_tick",
 )
 POOL = [
