@@ -363,6 +363,11 @@ units:
         runtime_ssh_host: {field: runtime_ssh_host, env: ONEX_RUNTIME_SSH_HOST}
         appender_root: {field: appender_root, env: ONEX_ALARM_APPENDER_ROOT}
         host_table_path: {field: host_table_path, env: ONEX_ALARM_HOST_TABLE}
+        remote_lane_runner: {field: remote_lane_runner, env: ONEX_ALARM_REMOTE_LANE_RUNNER}
+      # A key listed here is left out of the document when its placeholders have no value, so a reinstall that was
+      # never given the input keeps the configuration it had (the alarm then sends no lane and says so).
+      optional_keys:
+        - dispatch_command
       document:
         registry_root: "{registry_root}"
         ledger: "{ledger_path}"
@@ -370,6 +375,13 @@ units:
         # (appender_root), because launchd's PATH has none.
         ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
         python: "{appender_root}/.venv/bin/python"
+        # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
+        # --ticket. remote_lane_runner is the path of the remote-lane runner script of the installed omni plugin; unset,
+        # no lane is sent. The command runs under the appender's interpreter.
+        dispatch_command:
+          - "{appender_root}/.venv/bin/python"
+          - "{remote_lane_runner}"
+          - run
         # Prints <hostname>|<newest hook event UTC stamp> for each host that sent one in the last day.
         hook_events_command:
           - ssh

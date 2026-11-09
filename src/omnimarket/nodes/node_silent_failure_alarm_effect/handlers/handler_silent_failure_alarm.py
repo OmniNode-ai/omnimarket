@@ -1036,7 +1036,18 @@ class HandlerSilentFailureAlarm:
             if options.dispatch_command is None:
                 return (
                     False,
-                    "dispatch unconfigured (ONEX_ALARM_DISPATCH_COMMAND unset)",
+                    "dispatch unconfigured (dispatch_command unset in the alarm configuration "
+                    "named by ONEX_SILENT_FAILURE_ALARM_CONFIG)",
+                )
+            absent = [
+                part
+                for part in options.dispatch_command
+                if part.startswith("/") and not Path(part).exists()
+            ]
+            if absent:
+                return (
+                    False,
+                    f"dispatch command names a path that is absent: {absent[0]}",
                 )
             short = re.sub(r"[^a-z0-9-]", "-", episode.episode[-24:].lower())
             log = options.brief_dir / f"{episode.episode}-dispatch.log"
