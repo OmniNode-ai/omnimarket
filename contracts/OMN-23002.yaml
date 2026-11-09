@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23002
+title: 'node_floor_fill_orchestrator: a table-backed conditional state store bound to floor_fill_state'
+summary: 'PostgresFloorStateStore implements ProtocolFloorStateStore over the floor_fill_state table of omnibase_infra: an insert-if-absent or an update that lands only on the version the writer read, and an unreachable or unreadable store raises FloorFillUnreadableError instead of answering no row.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23002-table-backed-store
+  statement: 'The orchestrator''s state seam can be bound to the floor_fill_state table: one writer wins a race on one key, and a store that cannot be reached is told apart from a missing row.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the omnibase_infra migration creates the floor_fill_state table with a sequence column and a conditional insert-or-update, applies and rolls back cleanly on a fresh database, and is idempotent on a second apply -- falsifier: uv run pytest of the migration test over a real database that applies, rolls back and re-applies, which fails on dev today because no such migration exists'
+  - id: AC2
+    statement: 'AC2: two writers racing one key against the real table end with exactly one winner and one stale-sequence refusal, with a failing control that drops the sequence condition -- falsifier: uv run pytest -k one_writer_two_instances against the real table, whose control must fail with the condition removed'
+  - id: AC3
+    statement: 'AC3: the orchestrator''s store seam reads and writes through the table and a store that cannot be reached answers unreadable and not empty -- falsifier: uv run pytest -k absent_row_vs_unreadable_store against the table-backed store'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the table-backed store.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_postgres_store.py -q --no-cov --tb=line -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23002-ac1
+  description: AC1 rides omnibase_infra migration 113; here the table-backed store runs over the same column shape (scope key, version sequence) and a row is written and read back.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_postgres_store.py -q --no-cov --tb=line -n 0 -p no:randomly -k "absent_row_vs_unreadable_store_table"
+    cwd: .
+- id: dod-omn23002-ac2
+  description: AC2 two instances racing one key on the real table end with one winner and one refusal; the control without the sequence condition shows two winners.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_postgres_store.py -q --no-cov --tb=line -n 0 -p no:randomly -k "one_writer_two_instances"
+    cwd: .
+- id: dod-omn23002-ac3
+  description: AC3 the table-backed store answers an absent row as no row and an unreachable store as unreadable; the swallowing control answers it as no row.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_postgres_store.py -q --no-cov --tb=line -n 0 -p no:randomly -k "absent_row_vs_unreadable_store"
+    cwd: .
+- id: dod-omn23002-integration-proof
+  description: Run this pull request's own focused store tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the real-table cases run where INTEGRATION_POSTGRES_* is supplied.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23002 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_postgres_store.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
