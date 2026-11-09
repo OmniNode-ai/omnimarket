@@ -711,15 +711,10 @@ def r3b() -> list[dict[str, object]]:
     catalogue = _fixture("workflow_catalogue.txt")
     tasks: list[dict[str, object]] = []
     for task_id, title, situation, workflow, held in _R3B_SPECS:
-        config: dict[str, object] = {"expected_workflow": workflow}
-        config["expected_parameters"] = held
+        config = {"expected_workflow": workflow, "expected_parameters": held}
         if workflow == "apply_patch_and_test":
             # The diff must apply to the file it names (OMN-18339).
-            config["patch_check"] = {
-                "target_file": "src/omnimarket/cost/usage_normalizer.py",
-                "subject_file": "r3b_04_usage_normalizer.txt",
-                "timeout_s": 30,
-            }
+            config["patch_check"] = json.loads(_fixture("r3b_patch_check.json"))
         tasks.append(
             {
                 "task_id": task_id,
