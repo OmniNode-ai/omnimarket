@@ -17,6 +17,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
+from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 from omnibase_core.models.contracts.subcontracts.model_validator_subcontract import (
     ModelValidatorSubcontract,
 )
@@ -38,7 +39,6 @@ __all__ = ["CORE_GUARD_ID", "CoreTicketGuard", "core_lane_intake_policy"]
 #: The ``guard_path`` a decision of this guard carries: the validator, not a file.
 CORE_GUARD_ID = "omnibase_core.validation.checker_ticket_creation"
 
-_LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
 _CONTRACT_FILE = "ticket_creation.validation.yaml"
 
 
@@ -68,7 +68,7 @@ class CoreTicketGuard:
     ) -> None:
         self.lane = lane
         if ledger_path is None:
-            named = os.environ.get(_LEDGER_PATH_ENV, "").strip()
+            named = os.environ.get(MD_LEDGER_PATH_ENV, "").strip()
             ledger_path = Path(named) if named else None
         self.ledger_path = ledger_path
 
