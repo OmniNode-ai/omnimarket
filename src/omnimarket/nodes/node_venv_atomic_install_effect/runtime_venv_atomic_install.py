@@ -12,11 +12,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from ..models.model_venv_atomic_install import (
+from .handlers.handler_venv_atomic_install import HandlerVenvAtomicInstall
+from .models.model_venv_atomic_install import (
     EnumVenvInstallStatus,
     ModelVenvAtomicInstallRequest,
 )
-from .handler_venv_atomic_install import HandlerVenvAtomicInstall
 
 REFUSED = "VENV-ATOMIC-INSTALL-REFUSED"
 

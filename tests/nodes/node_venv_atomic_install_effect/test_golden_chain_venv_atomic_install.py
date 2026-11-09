@@ -15,9 +15,6 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_venv_atomic_install_effect.handlers import (
     handler_venv_atomic_install as handler_module,
 )
-from omnimarket.nodes.node_venv_atomic_install_effect.handlers.cli_venv_atomic_install import (
-    main as cli_main,
-)
 from omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install import (
     HandlerVenvAtomicInstall,
 )
@@ -32,6 +29,9 @@ from omnimarket.nodes.node_venv_atomic_install_effect.models.model_venv_atomic_i
     ModelLockedPackage,
     ModelVenvAtomicInstallRequest,
     ModelVenvAtomicInstallResult,
+)
+from omnimarket.nodes.node_venv_atomic_install_effect.runtime_venv_atomic_install import (
+    main as cli_main,
 )
 
 pytestmark = pytest.mark.unit
