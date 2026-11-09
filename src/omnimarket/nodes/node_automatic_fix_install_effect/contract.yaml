@@ -67,3 +67,23 @@ host_service:
   installer: Deployment supplies a service overlay to the existing host installer.
 metadata:
   transport_type: inmemory
+# Rebuild plan 4.1 join J9 (piece 9 to piece 10): a merged fix is installed on every declared target within an hour and
+# the read-back equals the merged head. The join handler answers piece 10's chain on the floor's emission contract: a
+# start then a success once every target reads back the merged head inside the deadline, a start then a typed failure
+# naming each target that did not, and nothing while the deadline has not passed.
+join_j9:
+  join_id: "J9"
+  from_piece: 9
+  to_piece: 10
+  emission_node: "node_automatic_fix_install_effect"
+  deadline_seconds: 3600
+  late_failure_code: "fix_install_not_within_deadline"
+  mismatch_failure_code: "fix_install_readback_mismatch"
+  refused_failure_code: "fix_install_refused"
+# The in-process join handler, bound here and not in handler_routing: it takes an emission sink and a policy through its
+# constructor, which the auto-wiring cannot supply.
+in_process_handlers:
+  join_j9:
+    handler:
+      module: "omnimarket.nodes.node_automatic_fix_install_effect.handlers.handler_fix_install_join_j9"
+      class: "HandlerFixInstallJoinJ9"
