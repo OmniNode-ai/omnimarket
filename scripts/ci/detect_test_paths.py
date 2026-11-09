@@ -204,14 +204,13 @@ def compute_selection(
     )
     if decision.split_count is None:
         return _full_suite(EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY)
-    split_count = decision.split_count
 
     return ModelTestSelection(
         selected_paths=selected,
-        split_count=split_count,
+        split_count=decision.split_count,
         is_full_suite=False,
         full_suite_reason=None,
-        matrix=list(range(1, split_count + 1)),
+        matrix=list(range(1, decision.split_count + 1)),
     )
 
 
