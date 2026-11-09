@@ -98,6 +98,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_disk_hygiene_effect",
+    # OMN-23297: the lane context ledger dedupe links files on the host's own
+    # filesystem, so the lab daemon sync's host tick runs it with python -m; it
+    # publishes events but subscribes to no topic and has no onex.nodes entry point.
+    "node_lane_ctx_ledger_dedupe_effect",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.

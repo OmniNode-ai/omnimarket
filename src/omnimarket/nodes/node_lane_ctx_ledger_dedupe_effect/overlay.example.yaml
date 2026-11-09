@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shape of <overlay root>/node_lane_ctx_ledger_dedupe_effect/overlay.yaml. The values live in the
+# overlay home; these are placeholders. store_dir must sit on the same filesystem as runs_root.
+runs_root: /path/to/lab-run/runs
+store_dir: /path/to/lab-run/ledger-archive-store
+settle_seconds: "300"
