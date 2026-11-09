@@ -146,6 +146,18 @@ def test_credential_route_plan_mounts_the_ram_disk_at_the_declared_mount_point()
     assert "/tmp/walk-cred" in plan.steps[-1].argv[-1]
 
 
+def test_credential_route_detach_force_unmounts_before_it_ejects_the_ram_disk() -> None:
+    # Measured on h101 (OMN-23204): `hdiutil detach -force` alone returned 16 (resource busy) with the
+    # volume mounted; `umount -f` first, then the detach, returned 0.
+    plan = HandlerCredentialRoutePlan().handle(
+        ModelCredentialPlanRequest(vm_name="walk-1", settings=_settings())
+    )
+
+    detach = plan.steps[-1].argv[-1]
+    assert "/sbin/umount -f /tmp/walk-cred" in detach
+    assert detach.index("umount -f") < detach.index("hdiutil detach")
+
+
 def test_credential_route_settings_come_from_the_overlay_with_no_packaged_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

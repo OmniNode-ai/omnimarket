@@ -121,6 +121,7 @@ class HandlerCredentialRoutePlan:
                     "-c",
                     (
                         f"dev=$(/sbin/mount | /usr/bin/awk 'index($3, \"{mount}\") {{print $1}}') "
+                        f"&& sudo -n /sbin/umount -f {mount} "
                         '&& sudo -n /usr/bin/hdiutil detach "$dev" -force'
                     ),
                 ),
