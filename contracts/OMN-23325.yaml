@@ -32,15 +32,22 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omn23325_producer_closed_terminal_publish.py -k producer_closed_terminal -q --no-cov
     cwd: .
 - id: dod-omn23325-ac2-dev-runtime-log
-  description: 'The AC2 measurement itself: the omninode-runtime container log on h201 for the hour after the deploy agent installed this change, read for ProducerClosed lines from node_projection_delegation; the count must be 0. Fails until that file exists; the hosted gate cannot reach h201, so only the local Done gate runs it.'
+  description: 'The AC2 measurement itself: the omninode-runtime container log on h201 for the hour after the deploy agent installed this change, read for ProducerClosed lines from node_projection_delegation; the count must be 0. Fails until that file exists; the hosted gate cannot reach h201, so only the local Done gate runs it, and it binds no criterion (the hosted deploy check below binds AC2).'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: >-
       test -s "$OMNI_HOME/.claude_scratch/reports/producer3-1300/ac2-runtime-log-count.txt" && test "$(cat "$OMNI_HOME/.claude_scratch/reports/producer3-1300/ac2-runtime-log-count.txt")" = "0"
+    cwd: .
+- id: dod-omn23325-runner-deploy
+  description: Reads the runner source on the branch; the exit status depends on get_publish_fn resolving the producer through _ensure_producer inside the returned callable and no longer caching the closure in self._publish_fn, so it goes red on the pre-fix runner. Runs on a hosted runner, which cannot reach h201; the dev runtime log read stays in the local Done gate check above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'grep -q "live := await self._ensure_producer()" src/omnimarket/projection/runner.py && ! grep -q "self._publish_fn = _publish" src/omnimarket/projection/runner.py'
     cwd: .
 - id: dod-omn23325-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
