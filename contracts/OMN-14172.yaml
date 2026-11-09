@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-14172
+title: The release-asset download outlasts the edge's cached gateway failure so the integration silent-skip guard job stops failing on a 504
+summary: The Integration Silent-Skip Guard job failed on sixteen omnimarket pull requests from about 08:41Z on 2026-11-08 because two integration proofs of the dashboard bundle release got HTTP 504 from the release host after three attempts spaced 0.5 s and 1 s. The edge replays a cold 504 for more than eighty seconds, so every attempt landed inside it. The retry statuses and delays now live in a config file and add up to 180 s, and a fake-clock control built from the recorded behaviour fails on the old schedule.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn14172-edge-cached-504
+  statement: A release download recovers when the release host answers a cold request with a 504 and replays it for up to ninety seconds, and still ends in the gateway error when the refusal never lapses.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the fake-clock control built from the recorded 504 behaviour fails on the retry schedule of origin/dev (three attempts, 0.5 s and 1 s) and passes on the branch -- falsifier: uv run pytest tests/test_github_release_asset_edge_cached_504.py on the base and on the branch'
+  - id: AC2
+    statement: 'AC2: the two integration tests that failed on the sixteen pull requests pass from the branch against the live release host -- falsifier: uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -m integration -k "carries_the_bundle or pinned_asset_verifies"'
+evidence_requirements:
+- kind: tests
+  description: The release download tests, including the edge-cached 504 control.
+  command: uv run pytest tests/test_github_release_asset_edge_cached_504.py tests/test_github_release_asset_retry.py tests/test_release_asset_download.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn14172-ac1
+  description: The two control cases and the existing retry cases pass on the branch. On origin/dev the recovery control fails with HTTP Error 504 after three attempts.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_github_release_asset_edge_cached_504.py tests/test_github_release_asset_retry.py tests/test_release_asset_download.py -q
+- id: dod-omn14172-ac2
+  description: Both integration tests pass from the branch against the live release host (lab host h053, 107 s while the host answered 504 to cold requests).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_github_release_asset_edge_cached_504.py -q
+- id: dod-omn14172-integration-proof
+  description: Run the two live release-host integration tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-14172 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -m integration -k "carries_the_bundle or pinned_asset_verifies" -q --no-cov
