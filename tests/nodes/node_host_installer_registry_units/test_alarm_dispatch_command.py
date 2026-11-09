@@ -13,6 +13,7 @@ import copy
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -168,3 +169,58 @@ def test_a_command_naming_an_absent_runner_is_not_reported_dispatched(
     )
     assert "dispatch command names a path that is absent" in text
     assert "dispatched=no" in text
+
+
+def _recorder(tmp_path: Path) -> tuple[Path, Path]:
+    """A stand-in remote-lane runner: it appends one line per call to a file, so a run counts the requests sent."""
+    calls = tmp_path / "calls.log"
+    script = tmp_path / "recorder.py"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + '\\n')\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script, calls
+
+
+def _calls(calls: Path) -> list[str]:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if calls.exists() and calls.read_text(encoding="utf-8").strip():
+            time.sleep(0.5)
+            return calls.read_text(encoding="utf-8").splitlines()
+        time.sleep(0.1)
+    return []
+
+
+def test_an_exit_1_streak_with_a_dispatch_command_sends_exactly_one_fix_lane_request(
+    tmp_path: Path,
+) -> None:
+    """The declared unit renders the command, and the alarm built from that document sends one request."""
+    runner, calls = _recorder(tmp_path)
+    interpreter = tmp_path / "appender/.venv/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.symlink_to(sys.executable)
+    rendered = _handler().handle(_request(tmp_path, remote_lane_runner=str(runner)))
+    assert rendered.exit_code == 0, rendered.stderr
+    command = ModelSilentFailureAlarmOptions.model_validate(
+        json.loads(rendered.config)
+    ).dispatch_command
+    assert command == (str(interpreter), str(runner), "run")
+    rows = _alarm_rows(tmp_path, command)
+    assert any("lane job-exit-fix dispatched for episode" in row for row in rows), rows
+    sent = _calls(calls)
+    assert len(sent) == 1, sent
+    assert sent[0].startswith("run --brief ")
+    assert "--lane job-exit-fix-" in sent[0]
+
+
+def test_control_an_exit_1_streak_with_no_dispatch_command_sends_no_fix_lane_request(
+    tmp_path: Path,
+) -> None:
+    _runner, calls = _recorder(tmp_path)
+    rows = _alarm_rows(tmp_path, None)
+    assert not any("dispatched for episode" in row for row in rows), rows
+    assert _calls(calls) == []
