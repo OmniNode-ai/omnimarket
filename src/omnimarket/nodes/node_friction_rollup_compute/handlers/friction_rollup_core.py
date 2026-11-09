@@ -71,13 +71,15 @@ _GENERIC_CLASSES = frozenset({"refusal", "process", "tooling", "ci", "other"})
 # Rows with no class= are counted and costed, but they are not one class, so
 # they are never flagged as a recurring class.
 UNCLASSIFIED = "unclassified"
+# A writer's class cell that says no more than "no class fits": the class rules may name such a row from its text.
+_BARE_OTHER = "other"
 
 _GROUP_REFERENCE = re.compile(r"\{(\d+)\}")
 
 
 @dataclass(frozen=True)
 class ClassRule:
-    """A caller-supplied rule that names the class of a FRICTION row written with no ``class=`` cell (OMN-22563).
+    """A caller-supplied rule that names the class of a FRICTION row written with no ``class=`` cell or with a bare ``class=other`` (OMN-22563, OMN-22879).
 
     ``name`` may carry ``{1}``-style references to the groups of ``pattern``, so one rule names a family
     (``lab-alarm:{1}`` gives ``lab-alarm:consumer_group_lag``). ``owner`` is who ends the class. The pattern is
@@ -214,7 +216,7 @@ class FrictionObservation:
     related: frozenset[str]
     guards: frozenset[str]
     ruled_by: str = (
-        ""  # the rule that named this row's class when it carried no class= cell
+        ""  # the rule that named a row with no class= cell or a bare class=other
     )
     owner: str = ""  # who ends the class, from that rule
 
@@ -231,6 +233,7 @@ class ClassAccumulator:
     unparseable_cost_rows: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    resolved_at: datetime | None = None
     lanes: set[str] = field(default_factory=set)
     source_lanes: set[str] = field(default_factory=set)
     tickets: set[str] = field(default_factory=set)
@@ -461,7 +464,11 @@ def _observation(
 ) -> FrictionObservation:
     raw_value = row.first("class").strip()
     ruled_by, owner = "", ""
-    if not raw_value:
+    # A bare ``class=other`` names no class (a ``reason`` cell is a class of its own below), so the rules read it as they read a row
+    # with no class cell; a row no rule names stays ``other``, counted and costed as before (OMN-22879).
+    if not raw_value or (
+        _normalise_class(raw_value) == _BARE_OTHER and not row.first("reason").strip()
+    ):
         for rule in rules:
             named = rule.classify(row)
             if named is not None:
@@ -553,6 +560,29 @@ def _canonical_classes(observations: Sequence[FrictionObservation]) -> dict[str,
     return canonical
 
 
+def _resolutions(
+    rows: Sequence[LedgerRow], aliases: dict[str, str]
+) -> dict[str, datetime]:
+    """The newest time each class was reported resolved, from the STATUS rows that say ``resolved=<class>``.
+
+    An alarm writes that row only when its own reading of the condition is healthy again, so it is evidence the class
+    ended: a class whose newest FRICTION row is not later than this time is not occurring. A resolved cell may list
+    several classes, separated by commas; ``none`` names no class.
+    """
+    newest: dict[str, datetime] = {}
+    for row in rows:
+        if row.row_type != "STATUS":
+            continue
+        for value in row.first("resolved").split(","):
+            base = _normalise_class(value)
+            if not base or base == "none":
+                continue
+            name = aliases.get(base, base)
+            if name not in newest or row.ts > newest[name]:
+                newest[name] = row.ts
+    return newest
+
+
 def _row_ref(observation: FrictionObservation) -> dict[str, object]:
     return {
         "ts": _stamp(observation.row.ts),
@@ -585,6 +615,11 @@ def _class_json(accumulator: ClassAccumulator) -> dict[str, object]:
         "unparseable_cost_rows": accumulator.unparseable_cost_rows,
         "first_seen": _stamp(accumulator.first_seen),
         "last_seen": _stamp(accumulator.last_seen),
+        **(
+            {"resolved_at": _stamp(accumulator.resolved_at)}
+            if accumulator.resolved_at is not None
+            else {}
+        ),
         "lanes": sorted(accumulator.lanes),
         "source_lanes": sorted(accumulator.source_lanes),
         "tickets": sorted(accumulator.tickets),
@@ -910,6 +945,14 @@ def build_report(
         if accumulator.first_seen is None:
             accumulator.first_seen = observation.row.ts
             accumulator.last_seen = observation.row.ts
+    for resolved_name, resolved_at in _resolutions(rows, aliases).items():
+        resolved_class = canonical.get(resolved_name, resolved_name)
+        resolved_accumulator = accumulators.get(resolved_class)
+        if resolved_accumulator is not None and (
+            resolved_accumulator.resolved_at is None
+            or resolved_at > resolved_accumulator.resolved_at
+        ):
+            resolved_accumulator.resolved_at = resolved_at
     classes = [_class_json(accumulator) for accumulator in accumulators.values()]
     classes.sort(key=_class_sort_key)
     recurring_without_ticket = sorted(

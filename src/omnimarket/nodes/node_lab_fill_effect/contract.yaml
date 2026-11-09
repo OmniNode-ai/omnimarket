@@ -6,9 +6,12 @@
 # dispatch plan, ownership verdicts, lane briefs, placement, fallbacks, STATUS
 # cells) are node_lab_fill_plan_compute's; this node reads and acts, one operation
 # per step of the cycle: probe the pool, read the owners, launch a lane, read the
-# receipts, pick a fallback host, write the STATUS row. Enumerating candidates is
-# not an operation here yet: it needs the ledger claim store and triage readers
-# promoted from omnibase_internal first.
+# receipts, pick a fallback host, write the STATUS row. Enumerating the list sources
+# is the enumerate_lab_fill_sources operation (OMN-23250): the list sources
+# plan-stalled, ruling-pending and lane-resend and the source-tickets stage, each under
+# its own budget floor. The sprint-ticket and approved-work reads of the old enumerate
+# are not operations here yet: they need the ledger claim store and triage readers
+# promoted from the frozen repository first.
 #
 # WHO HOSTS THIS NODE. A serve process on the host that holds the rolling ledger
 # copy, the PR watcher's state, the remote-lane runner and its receipts (the host the
@@ -106,6 +109,14 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_status"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteResult"
+    # OMN-23250: the enumerate read of the list sources, one budget floor per stage, a cut
+    # stage marks only itself stale, plans-today served from a young copy.
+    - operation: "enumerate_lab_fill_sources"
+      handler:
+        name: "HandlerLabFillSources"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_sources"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_sources.ModelLabFillSourcesRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_sources.ModelLabFillSourcesResult"
     # OMN-17427: the whole fill as one operation with no model in the loop. Headroom
     # slots and the approved-work list in; ownership read once, each lane launched
     # through launch_lab_fill_lane's handler (which re-reads the Linear assignee and
@@ -162,3 +173,4 @@ metadata:
   related_tickets:
     - "OMN-20668"
     - "OMN-17427"
+    - "OMN-23250"
