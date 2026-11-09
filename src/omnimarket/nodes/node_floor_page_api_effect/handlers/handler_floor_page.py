@@ -35,16 +35,24 @@ def _contract() -> dict[str, object]:
 
 
 def contract_routes() -> tuple[ModelFloorRoute, ...]:
-    return tuple(ModelFloorRoute.model_validate(r) for r in _contract()["floor_routes"])  # type: ignore[attr-defined]
+    routes = _contract()["floor_routes"]
+    if not isinstance(routes, list):
+        raise ValueError(f"{_CONTRACT} floor_routes must be a list")
+    return tuple(ModelFloorRoute.model_validate(r) for r in routes)
 
 
 def contract_mount_prefix() -> str:
     mount = _contract()["http_mount"]
-    return str(mount["path_prefix"])  # type: ignore[index]
+    if not isinstance(mount, dict):
+        raise ValueError(f"{_CONTRACT} http_mount must be a mapping")
+    return str(mount["path_prefix"])
 
 
 def contract_refusal(name: str) -> ModelFloorRefusal:
-    return ModelFloorRefusal.model_validate(_contract()["refusals"][name])  # type: ignore[index]
+    refusals = _contract()["refusals"]
+    if not isinstance(refusals, dict):
+        raise ValueError(f"{_CONTRACT} refusals must be a mapping")
+    return ModelFloorRefusal.model_validate(refusals[name])
 
 
 def _refusal_response(name: str) -> ModelFloorPageResponse:
