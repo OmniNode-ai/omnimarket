@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -154,7 +155,7 @@ def test_no_producer_topic_list_row_is_appended_once_and_carries_the_age() -> No
     assert stored.probed_at - READ_AT == timedelta(seconds=listed.age_seconds)
 
 
-def _committed() -> dict[str, object]:
+def _committed() -> dict[str, Any]:
     loaded = yaml.safe_load(LIST_FILE.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
@@ -178,7 +179,7 @@ def test_no_producer_topic_list_committed_consumers_in_this_repo_still_subscribe
     None
 ):
     checked = 0
-    for entry in _committed()["topics"]:  # type: ignore[attr-defined]
+    for entry in _committed()["topics"]:
         for consumer in entry["consumers"]:
             prefix = "omnimarket/"
             if not consumer.startswith(prefix):

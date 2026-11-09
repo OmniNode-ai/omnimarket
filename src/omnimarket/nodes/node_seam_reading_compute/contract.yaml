@@ -112,7 +112,7 @@ topics:
   no_producer_join_started: onex.evt.omnimarket.no-producer-join-started.v1
   no_producer_join_refused: onex.evt.omnimarket.no-producer-join-refused.v1
   # The join tests run a probe chain on a bus under this prefix plus a run id, never on a topic of the system.
-  no_producer_join_probe_prefix: onex.evt.omnimarket.no-producer-join-probe
+  no_producer_join_probe_topic: onex.evt.omnimarket.no-producer-join-probe.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.seam-reading-rendered.v1

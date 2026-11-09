@@ -54,7 +54,7 @@ CONSUMER_JOIN_S = 3.0
 FAILURE_CODE = "no_producer_reachable"
 PROBE_PREFIX = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))[
     "topics"
-]["no_producer_join_probe_prefix"]
+]["no_producer_join_probe_topic"].removesuffix(".v1")
 ENTRIES: list[dict[str, Any]] = yaml.safe_load(
     (NODE_DIR / "no_producer_topics.yaml").read_text(encoding="utf-8")
 )["topics"]
