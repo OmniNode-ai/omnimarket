@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23381
+title: The served floor shows delegations per hour by route and the local share
+summary: node_floor_delegation_effect gains a routes stage that reads delegation_events per hour (local, GLM, other) from the lab database over ssh in a read only transaction, and the delegation tracker the floor serves carries a routes block with the per-hour rows, the last hour, the local share, the read time, the declared maximum age and a state of fresh, stale or unread. This contract binds the evidence for the routes reading (AC3).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23381-floor-routes
+  statement: The tracker the floor serves shows, per hour, delegations by route (local, GLM, other) and the local share; a routes reading that is missing, unparsable, failed or older than its declared maximum age has state unread or stale and no number and no share.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the served floor shows, per hour, delegations by route (local, GLM, other) and the local share -- falsifier: the floor JSON has no such reading or it is older than its declared max age'
+evidence_requirements:
+- kind: tests
+  description: The routes stage and routes block tests of node_floor_delegation_effect
+  command: uv run --frozen python -m pytest tests/nodes/node_floor_delegation_effect/test_delegation_routes.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23381-routes-block
+  description: Runs the routes tests. The golden test reads hourly rows in and gets the shares out (the last hour local 5, GLM 128, other 0 is 5/133 local); the error chain tests make a failing command, an unparsable answer, counts that do not add up, an unset ssh variable, a missing or broken file and a read older than the declared 90 min each end in state unread or stale with no share; the failing control takes the routes block out of the tracker and the check fails. The tests are absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python -m pytest tests/nodes/node_floor_delegation_effect/test_delegation_routes.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23381-integration-proof-routes
+  description: The first check runs the routes tests at the pushed head on a lab host through the lab work runner. The second, after the node and the overlays pull request are installed, reads the served tracker beside the served floor and requires a routes block that is fresh, with an hour row and a local share, or else a state of stale or unread with no share. Hosted CI cannot reach the lab runner or the served floor, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23381 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m pytest tests/nodes/node_floor_delegation_effect/test_delegation_routes.py -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: 'sh -c ''curl -fsS "${ONEX_FLOOR_SIMPLE_URL%/*}/delegation-tracker.json" | python3 -c "import json,sys; r=json.load(sys.stdin)[\"routes\"]; assert r[\"state\"] in (\"fresh\",\"stale\",\"unread\") and r[\"max_age_min\"]==90, r; assert r[\"state\"]!=\"fresh\" or (r[\"hours\"] and r[\"last_hour\"] is not None), r; assert r[\"state\"]==\"fresh\" or r[\"local_share\"] is None, r"'''
+    cwd: .

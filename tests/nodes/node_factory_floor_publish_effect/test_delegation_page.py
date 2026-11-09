@@ -20,6 +20,10 @@ import pytest
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
     build_tracker,
 )
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRouteHour,
+    ModelRoutesBlock,
+)
 from tests.nodes.node_factory_floor_publish_effect.test_compare_page import (
     NODE_DIR,
     _publish_and_read,
@@ -129,7 +133,7 @@ HARNESS = textwrap.dedent(
         panels[key] = {title: els["dlg-title"].textContent, kick: els["dlg-kick"].textContent, body: els["dlg-body"].innerHTML};
       }
       const out = {};
-      for (const id of ["alert", "ship", "cards", "scn", "tk", "pg", "src", "dsum", "ssum", "tsum"]) out[id] = els[id] ? (els[id].innerHTML || els[id].textContent) : "";
+      for (const id of ["alert", "ship", "cards", "routes", "rsum", "scn", "tk", "pg", "src", "dsum", "ssum", "tsum"]) out[id] = els[id] ? (els[id].innerHTML || els[id].textContent) : "";
       process.stdout.write(JSON.stringify({els: out, title: document.title, panels}));
     })();
     """
@@ -244,3 +248,55 @@ def test_a_source_that_could_not_be_read_is_named_on_the_page() -> None:
     drawn = _render(doc.model_dump_json().encode())
     assert "Pull request watcher could not be read fresh" in drawn["els"]["alert"]
     assert "not readable" in drawn["els"]["cards"]
+
+
+def _with_routes(block: ModelRoutesBlock) -> bytes:
+    base = inputs(reads=all_reads("success"))
+    return (
+        build_tracker(RT, base.model_copy(update={"routes": block}), NOW)
+        .model_dump_json()
+        .encode()
+    )
+
+
+def test_a_fresh_routes_block_is_drawn_per_hour_with_the_local_share() -> None:
+    """OMN-23381 AC3: the hour table shows local, GLM, other and the local share of the last hour (5 of 133)."""
+    last = ModelRouteHour(
+        hour="2026-11-08T20:00:00Z",
+        local=5,
+        glm=128,
+        other=0,
+        total=133,
+        local_share=5 / 133,
+    )
+    block = ModelRoutesBlock(
+        state="fresh",
+        read_at="2026-11-08T20:00:00Z",
+        age_minutes=0,
+        max_age_min=90,
+        window_hours=6,
+        hours=(last,),
+        last_hour=last,
+        local_share=last.local_share,
+    )
+    drawn = _render(_with_routes(block))
+    assert "fresh" in drawn["els"]["rsum"]
+    table = drawn["els"]["routes"]
+    for words in ("<td>5</td>", "<td>128</td>", "<td>133</td>", "3.8 %", "Local share"):
+        assert words in table, words
+
+
+def test_failing_control_routes_that_are_not_fresh_are_drawn_with_no_number_and_no_share() -> (
+    None
+):
+    for state in ("stale", "unread"):
+        block = ModelRoutesBlock(
+            state=state,  # type: ignore[arg-type]
+            reason="the read is old or missing",
+            read_at="2026-11-08T10:00:00Z",
+            max_age_min=90,
+        )
+        drawn = _render(_with_routes(block))
+        assert state in drawn["els"]["rsum"]
+        assert "No number is drawn, and no share" in drawn["els"]["routes"]
+        assert "<td>" not in drawn["els"]["routes"]

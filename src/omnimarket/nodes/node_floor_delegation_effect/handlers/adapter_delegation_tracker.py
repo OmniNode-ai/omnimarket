@@ -12,6 +12,9 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRoutesBlock,
+)
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
     ModelDelegationCounts,
     ModelDelegationInputs,
@@ -484,4 +487,10 @@ def build_tracker(
         tickets=tuple(tickets),
         sources=inputs.sources,
         details_page_size=rt.details_page_size,
+        routes=inputs.routes
+        or ModelRoutesBlock(
+            state="unread",
+            reason="the routes were not read",
+            max_age_min=rt.routes_max_age_min,
+        ),
     )

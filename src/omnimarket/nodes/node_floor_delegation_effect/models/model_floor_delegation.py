@@ -13,6 +13,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRoutesBlock,
+    ModelRoutesSource,
+)
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -80,6 +85,12 @@ class ModelDelegationContractRuntime(_Frozen):
     record_max_age_seconds: int = Field(gt=0)
     details_page_size: int = Field(gt=0)
     live_lane_dead_states: tuple[str, ...]
+    # The routes reading (OMN-23381): the file the routes stage writes, how old it may be before it is drawn stale, and the table.
+    route_reads_relpath: str = Field(min_length=1)
+    routes_max_age_min: int = Field(gt=0)
+    routes_read_timeout_seconds: int = Field(gt=0)
+    routes_table: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
+    routes_data_source: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
 
 
 class ModelDelegationOverlay(_Frozen):
@@ -96,6 +107,8 @@ class ModelDelegationOverlay(_Frozen):
     plan_ticket_last: int = Field(gt=0)
     scenarios: tuple[ModelScenarioDecl, ...] = Field(min_length=1)
     operator_answers: tuple[ModelOperatorAnswer, ...] = ()
+    # Where the delegation events are read for the routes block. Without it the block is unread, with the reason named.
+    routes: ModelRoutesSource | None = None
 
 
 class ModelDelegationRuntime(ModelDelegationContractRuntime, ModelDelegationOverlay):
@@ -181,6 +194,7 @@ class ModelDelegationInputs(_Frozen):
     prs: tuple[ModelWatcherPr, ...]
     lanes: tuple[ModelDelegationLane, ...]
     sources: tuple[ModelSourceReading, ...]
+    routes: ModelRoutesBlock | None = None
 
 
 # ---- the tracker document ------------------------------------------------------------------------------------------------
@@ -281,18 +295,19 @@ class ModelDelegationTracker(_Frozen):
     tickets: tuple[ModelTicketResult, ...]
     sources: tuple[ModelSourceReading, ...]
     details_page_size: int
+    routes: ModelRoutesBlock
 
 
 class ModelFloorDelegationRequest(_Frozen):
     """The flags of one run: which stage, and where the registry home is."""
 
-    stage: Literal["scenarios", "build", "run"]
+    stage: Literal["scenarios", "routes", "build", "run"]
     home: str | None = None
 
 
 class ModelFloorDelegationResult(_Frozen):
     ok: bool
-    stage: Literal["scenarios", "build", "run"]
+    stage: Literal["scenarios", "routes", "build", "run"]
     wrote: str = ""
     detail: str = ""
     shippable: bool | None = None

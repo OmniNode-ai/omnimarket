@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The delegation tracker's two stages, run as steps of the factory floor publish (OMN-23081).
+"""The delegation tracker's three stages, run as steps of the factory floor publish (OMN-23081, OMN-23381).
 
 ``scenarios`` reads the latest scheduled runs of every delegation scenario's workflow and writes them to the node's state
-file; it needs no other record, so it runs with the publish's other input steps. ``build`` reads the ticket mirror, the pull
-request watcher, the factory floor record and that state file, and writes delegation-tracker.json for the page.
+file; it needs no other record, so it runs with the publish's other input steps. ``routes`` reads the delegations per hour by
+route from the lab's database and writes them to its own state file. ``build`` reads the ticket mirror, the pull request watcher,
+the factory floor record and those state files, and writes delegation-tracker.json for the page.
 """
 
 from __future__ import annotations
@@ -17,6 +18,11 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_routes import (
+    load_route_reads,
+    read_routes,
+    routes_block,
+)
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_sources import (
     CommandRunner,
     load_scenario_reads,
@@ -79,9 +85,11 @@ class HandlerFloorDelegation:
         runtime: ModelDelegationRuntime | None = None,
         run: CommandRunner = run_command,
         clock: Callable[[], datetime] | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
         self._rt = runtime or load_runtime()
         self._run = run
+        self._environ = os.environ if environ is None else environ
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(
@@ -97,7 +105,12 @@ class HandlerFloorDelegation:
             )
         home = Path(home_text)
         now = self._clock()
+        if request.stage == "routes":
+            return self._routes(rt, home, now)
         if request.stage in ("scenarios", "run"):
+            routes_done = (
+                self._routes(rt, home, now) if request.stage == "run" else None
+            )
             reads = read_scenarios(rt, home, now, self._run, self._clock)
             target = home / rt.scenario_reads_relpath
             write_atomic(target, reads.model_dump_json(indent=1).encode())
@@ -111,14 +124,33 @@ class HandlerFloorDelegation:
             if request.stage == "scenarios":
                 return scenarios_done
             built = self._build(rt, home, self._clock())
+            routes_text = f"{routes_done.detail}; " if routes_done else ""
             return ModelFloorDelegationResult(
                 ok=built.ok,
                 stage="run",
                 wrote=built.wrote,
-                detail=f"{scenarios_done.detail}; {built.detail}",
+                detail=f"{routes_text}{scenarios_done.detail}; {built.detail}",
                 shippable=built.shippable,
             )
         return self._build(rt, home, now)
+
+    def _routes(
+        self, rt: ModelDelegationRuntime, home: Path, now: datetime
+    ) -> ModelFloorDelegationResult:
+        """Read the delegations per hour by route and write them; a failed read is written with its reason, never as empty rows."""
+        reads = read_routes(rt, now, self._run, self._environ)
+        target = home / rt.route_reads_relpath
+        write_atomic(target, reads.model_dump_json(indent=1).encode())
+        return ModelFloorDelegationResult(
+            ok=True,
+            stage="routes",
+            wrote=str(target),
+            detail=(
+                f"routes: {len(reads.hours)} hours read"
+                if reads.ok
+                else f"routes unread: {reads.reason}"
+            ),
+        )
 
     def _build(
         self, rt: ModelDelegationRuntime, home: Path, now: datetime
@@ -138,6 +170,7 @@ class HandlerFloorDelegation:
             home / rt.record_relpath, rt.record_max_age_seconds, now
         )
         reads, reads_source = load_scenario_reads(home / rt.scenario_reads_relpath, now)
+        route_reads, route_problem = load_route_reads(home / rt.route_reads_relpath)
         tracker = build_tracker(
             rt,
             ModelDelegationInputs(
@@ -146,6 +179,7 @@ class HandlerFloorDelegation:
                 prs=prs,
                 lanes=lanes,
                 sources=(reads_source, mirror_source, watcher_source, record_source),
+                routes=routes_block(rt, route_reads, route_problem, now),
             ),
             now,
         )
