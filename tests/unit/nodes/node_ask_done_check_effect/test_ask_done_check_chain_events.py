@@ -170,11 +170,11 @@ def test_named_break_query_node_timeout_emits_the_error_event_not_the_golden_one
     reported done by its lane, stays unverified."""
     seen: list[float] = []
 
-    def _timeout(argv: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        seen.append(float(kwargs["timeout"]))  # type: ignore[arg-type]
-        raise subprocess.TimeoutExpired(
-            cmd="query-node", timeout=float(kwargs["timeout"])
-        )  # type: ignore[arg-type]
+    def _timeout(
+        argv: object, *, timeout: float, **_: object
+    ) -> subprocess.CompletedProcess[str]:
+        seen.append(timeout)
+        raise subprocess.TimeoutExpired(cmd="query-node", timeout=timeout)
 
     monkeypatch.setattr(subprocess, "run", _timeout)
     source = CommandLedgerRowSource(["query-node"], timeout_seconds=1, row_limit=50)
