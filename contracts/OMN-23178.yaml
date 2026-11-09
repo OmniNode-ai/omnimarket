@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23178
+title: Every lab-fill eval declares which readiness scenario it feeds
+summary: The lab fill's eval catalog moves into the omnimarket node node_lab_fill_eval_catalog_compute. Its overlay declares the seven evals, each with a feeds value in {R1 .. R9, experiment} (delegation readiness suite plan, task A12a), and its handler judges a catalog, naming every eval whose feeds is missing, outside the set or duplicated, and failing an empty catalog. The traffic-class half of the ticket is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23178-eval-feeds
+  statement: Every eval of the catalog declares the readiness scenario it feeds, and a check that fails for a missing or unknown value runs over the catalog.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every entry of evals has a feeds value in {R1..R9, experiment} -- falsifier: the node check over the overlay exits 1 when any entry lacks feeds or holds another value, and the tests inject the catalog without feeds and the value R10'
+evidence_requirements:
+- kind: tests
+  description: Golden chain, error chain and CLI exit-code tests over the node, including the injected break where the catalog carries no feeds (all seven evals reported).
+  command: uv run --frozen pytest tests/nodes/node_lab_fill_eval_catalog_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23178-ac1-eval-feeds
+  description: 'Runs the node''s tests: the packaged overlay passes with all seven feeds values as declared, the catalog without feeds and the value R10 fail by eval id, and the CLI exits 0 on the overlay and 1 on a catalog with a missing value.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_eval_catalog_compute -q --no-cov
+    cwd: .
+- id: dod-omn23178-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23178 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_fill_eval_catalog_compute -q --no-cov
+    cwd: .
