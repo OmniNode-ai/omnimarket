@@ -39,6 +39,7 @@ from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot i
     ModelLinearSnapshotRequest,
     ModelLinearSnapshotResult,
     ModelLinearSnapshotState,
+    ModelSnapshotAncestor,
     ModelSnapshotIssue,
 )
 
@@ -51,68 +52,84 @@ CLOSED_STATE_TYPES = frozenset({"completed", "canceled"})
 BACKOFF_BASE_S = 30.0
 BACKOFF_CAP_S = 300.0
 
-QUERY = """
-query SnapshotIssues($first: Int!, $after: String) {
-  viewer { id }
-  issues(
-    first: $first
-    after: $after
-    filter: {
-      team: { key: { eq: "OMN" } }
-      assignee: { isMe: { eq: true } }
-      state: { type: { nin: ["completed", "canceled"] } }
-    }
-  ) {
-    pageInfo { hasNextPage endCursor }
-    nodes {
+#: Levels of ancestors the query selects when the request names none; the request model's ``ancestor_depth`` is the bound.
+DEFAULT_ANCESTOR_DEPTH = 6
+
+
+def _parent_selection(depth: int) -> str:
+    """The ``parent`` selection nested ``depth`` levels: each level names the ancestor's identifier and project, and the
+    deepest names its own parent's identifier too, so every ancestor row carries its ``parentId``. Depth 0 asks the issue's
+    own parent identifier only."""
+    inner = "parent { identifier }"
+    for _ in range(depth):
+        inner = f"parent {{ identifier project {{ id name }} {inner} }}"
+    return inner
+
+
+_ISSUE_FIELDS = """
       identifier
       title
       description
-      updatedAt
+      updatedAt{archived}
       priority
       priorityLabel
-      state { name type }
-      assignee { id }
-      labels { nodes { name } }
-      project { id name }
-      parent { identifier }
-    }
-  }
-}
+      state {{ name type }}
+      assignee {{ id }}
+      labels {{ nodes {{ name }} }}
+      project {{ id name }}
+      {parent}
 """
 
-#: The issues of the team updated after ``$since``, archived ones included, whoever they are assigned to and
-#: whatever their state: the read of what changed, which also names what left the subject's open list.
-QUERY_CHANGES = """
-query SnapshotChanges($first: Int!, $after: String, $since: DateTimeOrDuration!) {
-  viewer { id }
+
+def build_query(depth: int = DEFAULT_ANCESTOR_DEPTH) -> str:
+    """The open-issues query with each issue's ancestors selected ``depth`` levels up."""
+    fields = _ISSUE_FIELDS.format(archived="", parent=_parent_selection(depth))
+    return f"""
+query SnapshotIssues($first: Int!, $after: String) {{
+  viewer {{ id }}
+  issues(
+    first: $first
+    after: $after
+    filter: {{
+      team: {{ key: {{ eq: "OMN" }} }}
+      assignee: {{ isMe: {{ eq: true }} }}
+      state: {{ type: {{ nin: ["completed", "canceled"] }} }}
+    }}
+  ) {{
+    pageInfo {{ hasNextPage endCursor }}
+    nodes {{{fields}    }}
+  }}
+}}
+"""
+
+
+def build_changes_query(depth: int = DEFAULT_ANCESTOR_DEPTH) -> str:
+    """The issues of the team updated after ``$since``, archived ones included, whoever they are assigned to and
+    whatever their state: the read of what changed, which also names what left the subject's open list."""
+    fields = _ISSUE_FIELDS.format(
+        archived="\n      archivedAt", parent=_parent_selection(depth)
+    )
+    return f"""
+query SnapshotChanges($first: Int!, $after: String, $since: DateTimeOrDuration!) {{
+  viewer {{ id }}
   issues(
     first: $first
     after: $after
     includeArchived: true
-    filter: {
-      team: { key: { eq: "OMN" } }
-      updatedAt: { gt: $since }
-    }
-  ) {
-    pageInfo { hasNextPage endCursor }
-    nodes {
-      identifier
-      title
-      description
-      updatedAt
-      archivedAt
-      priority
-      priorityLabel
-      state { name type }
-      assignee { id }
-      labels { nodes { name } }
-      project { id name }
-      parent { identifier }
-    }
-  }
-}
+    filter: {{
+      team: {{ key: {{ eq: "OMN" }} }}
+      updatedAt: {{ gt: $since }}
+    }}
+  ) {{
+    pageInfo {{ hasNextPage endCursor }}
+    nodes {{{fields}    }}
+  }}
+}}
 """
+
+
+QUERY = build_query()
+QUERY_CHANGES = build_changes_query()
 
 #: ``post(query, variables)`` returns the GraphQL ``data`` object; it raises on any transport or GraphQL error.
 Post = Callable[[str, dict[str, Any]], dict[str, Any]]
@@ -211,21 +228,83 @@ def _issue(node: dict[str, Any], viewer: str) -> ModelSnapshotIssue:
     )
 
 
-def read_snapshot(post: Post, page_size: int, max_pages: int) -> ModelLinearSnapshot:
-    """All pages of the subject's open issues; a list the page limit would cut short is an error."""
+def _ancestor_row(
+    node: dict[str, Any], parent: dict[str, Any] | None
+) -> ModelSnapshotAncestor:
+    project = node.get("project") or {}
+    return ModelSnapshotAncestor(
+        id=node.get("identifier") or "",
+        parent_id=(parent or {}).get("identifier") or None,
+        project=project.get("name") or "",
+        project_id=project.get("id") or "",
+    )
+
+
+def _ancestor_rows(node: dict[str, Any]) -> list[ModelSnapshotAncestor]:
+    """The ancestors the node's nested ``parent`` selection names, nearest first. A level that was selected without its
+    project (the one past the depth, which only names the level below it) is no row: its project is unknown."""
+    rows: list[ModelSnapshotAncestor] = []
+    current = node.get("parent")
+    while isinstance(current, dict) and current.get("identifier"):
+        above = current.get("parent")
+        if "project" in current:
+            rows.append(
+                _ancestor_row(current, above if isinstance(above, dict) else None)
+            )
+        current = above
+    return rows
+
+
+def reachable_ancestors(
+    issues: tuple[ModelSnapshotIssue, ...],
+    known: dict[str, ModelSnapshotAncestor],
+) -> tuple[ModelSnapshotAncestor, ...]:
+    """The known ancestor rows that an issue's parent chain reaches and that are not issues themselves, once each, by id.
+
+    An issue ends the walk: its own parent is already a start of the walk. A row no issue reaches is dropped, so an
+    ancestor that a re-parenting or a close left behind does not linger.
+    """
+    open_ids = {issue.id for issue in issues}
+    kept: dict[str, ModelSnapshotAncestor] = {}
+    for issue in issues:
+        ident = issue.parent_id
+        while ident and ident not in open_ids and ident not in kept:
+            row = known.get(ident)
+            if row is None:
+                break
+            kept[ident] = row
+            ident = row.parent_id
+    return tuple(sorted(kept.values(), key=lambda a: a.id))
+
+
+def read_snapshot(
+    post: Post,
+    page_size: int,
+    max_pages: int,
+    ancestor_depth: int = DEFAULT_ANCESTOR_DEPTH,
+) -> ModelLinearSnapshot:
+    """All pages of the subject's open issues and their ancestors; a list the page limit would cut short is an error."""
     viewer = ""
     issues: list[ModelSnapshotIssue] = []
+    known: dict[str, ModelSnapshotAncestor] = {}
     cursor: str | None = None
+    query = build_query(ancestor_depth)
     for _ in range(max_pages):
-        data = post(QUERY, {"first": page_size, "after": cursor})
+        data = post(query, {"first": page_size, "after": cursor})
         viewer = str((data.get("viewer") or {}).get("id") or "")
         if not viewer:
             raise SnapshotReadError("Linear named no signed-in user")
         page = data.get("issues") or {}
-        issues.extend(_issue(n, viewer) for n in page.get("nodes") or [])
+        for n in page.get("nodes") or []:
+            issues.append(_issue(n, viewer))
+            known.update({a.id: a for a in _ancestor_rows(n)})
         info = page.get("pageInfo") or {}
         if not info.get("hasNextPage"):
-            return ModelLinearSnapshot(operator=viewer, issues=tuple(issues))
+            return ModelLinearSnapshot(
+                operator=viewer,
+                issues=tuple(issues),
+                ancestors=reachable_ancestors(tuple(issues), known),
+            )
         cursor = info.get("endCursor")
     raise SnapshotReadError(
         f"the read still had a next page after {max_pages} pages of {page_size}"
@@ -266,16 +345,19 @@ def with_backoff(post: Post, budget_s: float, sleep: Callable[[float], None]) ->
 
 
 def read_changes(
-    post: Post, since: str, page_size: int, max_pages: int
+    post: Post,
+    since: str,
+    page_size: int,
+    max_pages: int,
+    ancestor_depth: int = DEFAULT_ANCESTOR_DEPTH,
 ) -> tuple[str, list[dict[str, Any]]]:
     """The signed-in user's id and every team issue updated after ``since``, all pages."""
     viewer = ""
     nodes: list[dict[str, Any]] = []
     cursor: str | None = None
+    query = build_changes_query(ancestor_depth)
     for _ in range(max_pages):
-        data = post(
-            QUERY_CHANGES, {"first": page_size, "after": cursor, "since": since}
-        )
+        data = post(query, {"first": page_size, "after": cursor, "since": since})
         viewer = str((data.get("viewer") or {}).get("id") or "")
         if not viewer:
             raise SnapshotReadError("Linear named no signed-in user")
@@ -301,16 +383,31 @@ def _still_open_and_mine(node: dict[str, Any], viewer: str) -> bool:
 def merge_changes(
     base: ModelLinearSnapshot, viewer: str, nodes: list[dict[str, Any]]
 ) -> ModelLinearSnapshot:
-    """The base list with each changed issue replaced, or dropped when it left the subject's open list."""
+    """The base list with each changed issue replaced, or dropped when it left the subject's open list.
+
+    The ancestors are the base's plus every ancestor the changed nodes name, and a changed node that left the list is an
+    ancestor row of its own (its children still name it); a changed node's own row replaces the base's. The result keeps
+    only the rows the merged issues reach and that are not issues, so the ancestors stay consistent with the list."""
     by_id = {issue.id: issue for issue in base.issues}
+    known = {a.id: a for a in base.ancestors}
     for node in nodes:
         ident = node.get("identifier") or ""
+        known.update({a.id: a for a in _ancestor_rows(node)})
         if _still_open_and_mine(node, viewer):
             by_id[ident] = _issue(node, viewer)
+            known.pop(ident, None)
         else:
             by_id.pop(ident, None)
+            parent = node.get("parent")
+            known[ident] = _ancestor_row(
+                node, parent if isinstance(parent, dict) else None
+            )
     ordered = sorted(by_id.values(), key=lambda i: (i.updated_at, i.id), reverse=True)
-    return ModelLinearSnapshot(operator=viewer, issues=tuple(ordered))
+    return ModelLinearSnapshot(
+        operator=viewer,
+        issues=tuple(ordered),
+        ancestors=reachable_ancestors(tuple(ordered), known),
+    )
 
 
 def render(snapshot: ModelLinearSnapshot) -> str:
@@ -345,6 +442,15 @@ def _load_state(out_dir: Path) -> ModelLinearSnapshotState | None:
         )
     except (OSError, ValidationError):
         return None
+
+
+def _has_ancestors(path: Path) -> bool:
+    """Whether the snapshot file carries the `ancestors` key (a file written before the key existed does not)."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and "ancestors" in doc
 
 
 def _load_base(out_dir: Path, date: str) -> tuple[Path, ModelLinearSnapshot] | None:
@@ -433,7 +539,8 @@ class HandlerLinearSnapshot:
         mode = "full"
         try:
             snapshot: ModelLinearSnapshot | None = None
-            if base is not None and state is not None:
+            # A base file from before the `ancestors` key has none to carry: it is read in full, once.
+            if base is not None and state is not None and _has_ancestors(base[0]):
                 full_age = (
                     started - _parse_iso(state.last_full_read_at)
                 ).total_seconds()
@@ -442,13 +549,22 @@ class HandlerLinearSnapshot:
                         seconds=request.overlap_s
                     )
                     viewer, nodes = read_changes(
-                        post, _iso(since), request.page_size, request.max_pages
+                        post,
+                        _iso(since),
+                        request.page_size,
+                        request.max_pages,
+                        request.ancestor_depth,
                     )
                     if viewer == base[1].operator:
                         snapshot = merge_changes(base[1], viewer, nodes)
                         mode = "incremental"
             if snapshot is None:
-                snapshot = read_snapshot(post, request.page_size, request.max_pages)
+                snapshot = read_snapshot(
+                    post,
+                    request.page_size,
+                    request.max_pages,
+                    request.ancestor_depth,
+                )
             _write_atomic(path, render(snapshot))
         except SnapshotRateLimitedError as refused:
             return self._keep_last_good(

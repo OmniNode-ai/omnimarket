@@ -5,8 +5,8 @@
 The sources are the ledger (through the reading writer's ledger row port), the PR watcher state, every plan file the
 contract's plan globs match under the plans root, the newest Linear snapshot, the lane receipts, the reading rows and the operator asks recorded as ledger commitments. The
 floor record and the floor page's data file are never read. Every path is the contract's `runtime:` block, relative to the
-registry home; the rules are the node's overlay and the scope is the goal's own declaration (goal_scope and
-goal_scope_ticket_rule overlays). Each source is read under its own overlay budget and timeout (OMN-23014): a source over its budget serves its last
+registry home; the rules are the node's overlay and the scope is the goal's own declaration (goal_scope,
+goal_scope_ticket_rule and ticket_scope overlays). Each source is read under its own overlay budget and timeout (OMN-23014): a source over its budget serves its last
 snapshot marked stale with its age, and the other sources still read. A source with no usable snapshot is named in the
 projection's `unread`, never drawn empty.
 """
@@ -41,13 +41,14 @@ from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
     EnumWorkStateSource,
+    ModelAncestorSource,
     ModelCommitmentSource,
     ModelLaneReceiptSource,
+    ModelLinearRow,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelReadingSource,
     ModelSourceStatus,
-    ModelTicketSource,
     ModelWorkStateRequest,
     ModelWorkStateResult,
     ModelWorkStateRules,
@@ -72,11 +73,11 @@ from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_sou
     read_sources_budgeted,
 )
 from omnimarket.nodes.node_work_state_projection_compute.handlers.work_state_source_mapping import (
+    linear_rows_from_snapshot,
     plan_tasks_from_text,
     pull_requests_from_watcher,
     receipts_from_documents,
     scope_from_declaration,
-    tickets_from_linear_snapshot,
 )
 
 # The projection overlay belongs to the compute node; this effect reads the sources and calls it.
@@ -182,7 +183,7 @@ def source_readers(
         try:
             return SourceRead(
                 items=tuple(
-                    tickets_from_linear_snapshot(
+                    linear_rows_from_snapshot(
                         json.loads(snapshots[-1].read_text(encoding="utf-8")), rules
                     )
                 )
@@ -275,7 +276,7 @@ def source_readers(
             EnumWorkStateSource.PR_WATCHER, read_watcher, ModelPullRequestSource
         ),
         SourceSpec(EnumWorkStateSource.PLANS, read_plans, ModelPlanTaskSource),
-        SourceSpec(EnumWorkStateSource.LINEAR, read_linear, ModelTicketSource),
+        SourceSpec(EnumWorkStateSource.LINEAR, read_linear, ModelLinearRow),
         SourceSpec(EnumWorkStateSource.RECEIPTS, read_receipts, ModelLaneReceiptSource),
         SourceSpec(EnumWorkStateSource.READINGS, read_readings, ModelReadingSource),
         SourceSpec(
@@ -306,7 +307,9 @@ def build_request(
     if declaration is None:
         unread.append(f"scope:{goal_cfg['overlay_id']} overlay absent")
     ticket_rule = _read_yaml_overlay(rule_cfg["overlay_id"], rule_cfg["file_env"], env)
-    scope = scope_from_declaration(declaration or {}, ticket_rule)
+    ts_cfg = rt["ticket_scope_overlay"]
+    ticket_scope = _read_yaml_overlay(ts_cfg["overlay_id"], ts_cfg["file_env"], env)
+    scope = scope_from_declaration(declaration or {}, ticket_rule, ticket_scope)
 
     specs = tuple(
         replace(spec, read=reader_overrides[spec.source])
@@ -328,11 +331,17 @@ def build_request(
     def rows(source: EnumWorkStateSource) -> tuple[Any, ...]:
         return reads[source][0].items
 
+    linear_rows: tuple[ModelLinearRow, ...] = rows(EnumWorkStateSource.LINEAR)
+    ancestors: tuple[ModelAncestorSource, ...] = tuple(
+        r.ancestor for r in linear_rows if r.ancestor is not None
+    )
+
     return ModelWorkStateRequest(
         now=now,
         rules=rules,
         scope=scope,
-        tickets=rows(EnumWorkStateSource.LINEAR),
+        tickets=tuple(r.ticket for r in linear_rows if r.ticket is not None),
+        ancestors=ancestors,
         plan_tasks=rows(EnumWorkStateSource.PLANS),
         pull_requests=rows(EnumWorkStateSource.PR_WATCHER),
         ledger_rows=rows(EnumWorkStateSource.LEDGER),

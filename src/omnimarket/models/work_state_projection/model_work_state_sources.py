@@ -24,6 +24,27 @@ class ModelTicketSource(BaseModel):
     requires: tuple[str, ...] = ()
 
 
+class ModelAncestorSource(BaseModel):
+    """One ancestor the Linear snapshot names but does not list as an open issue: only its parent and project, for the
+    scope walk to read. It is never a work item."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str
+    parent: str | None = None
+    project: str = ""
+    project_id: str = ""
+
+
+class ModelLinearRow(BaseModel):
+    """One row of the Linear source: an open issue, or an ancestor that only the scope walk reads. Exactly one is set."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket: ModelTicketSource | None = None
+    ancestor: ModelAncestorSource | None = None
+
+
 class ModelPlanTaskSource(BaseModel):
     """One task of a plan file."""
 
@@ -99,8 +120,10 @@ class ModelCommitmentSource(BaseModel):
 
 
 __all__ = [
+    "ModelAncestorSource",
     "ModelCommitmentSource",
     "ModelLaneReceiptSource",
+    "ModelLinearRow",
     "ModelPlanTaskSource",
     "ModelPullRequestSource",
     "ModelReadingSource",

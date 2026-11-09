@@ -38,6 +38,7 @@ from omnimarket.models.work_state_projection import (
     EnumScopeStatus,
     EnumWorkItemKind,
     EnumWorkItemState,
+    ModelAncestorSource,
     ModelCommitmentSource,
     ModelCriterionPart,
     ModelLaneReceiptSource,
@@ -222,11 +223,13 @@ def ticket_in_scope(
     scope: ModelWorkScope,
     tickets: Mapping[str, ModelTicketSource],
     max_hops: int,
+    ancestors: Mapping[str, ModelAncestorSource] | None = None,
 ) -> bool:
     """Whether a ticket is in the goal's scope: it, or an ancestor up to `max_hops` parents above it, is a goal root
     or sits in a project the goal lists (by name or by id). The walk goes upward and the first ticket that decides
     ends it: a paused ticket on the way up wins over the root or project above it. A ticket the sources do not name
-    has no project and no parent, so the chain ends there."""
+    has no project and no parent, so the chain ends there. A ticket the open list does not hold is looked up in
+    `ancestors` (the snapshot's unassigned or closed ancestors); a ticket row wins over an ancestor row."""
     seen: set[str] = set()
     hops = 0
     while ticket and ticket not in seen and hops <= max_hops:
@@ -234,7 +237,7 @@ def ticket_in_scope(
             return False
         if ticket in scope.in_scope_tickets:
             return True
-        source = tickets.get(ticket)
+        source = tickets.get(ticket) or (ancestors or {}).get(ticket)
         if source is not None and any(
             name and name in scope.in_scope_projects
             for name in (source.project, source.project_id)
@@ -253,6 +256,7 @@ class HandlerWorkStateProjection:
         rules = request.rules
         scope = request.scope
         by_id = {t.ticket_id: t for t in request.tickets}
+        by_ancestor = {a.ticket_id: a for a in request.ancestors}
         done_tickets = {
             t.ticket_id
             for t in request.tickets
@@ -277,14 +281,14 @@ class HandlerWorkStateProjection:
                 done_reason=f"ticket state type {t.state_type}",
                 requires=tuple(normalize_ref(r, rules) for r in t.requires),
                 scope=EnumScopeStatus.IN_SCOPE
-                if ticket_in_scope(t.ticket_id, scope, by_id, max_hops)
+                if ticket_in_scope(t.ticket_id, scope, by_id, max_hops, by_ancestor)
                 else EnumScopeStatus.PAUSED,
             )
         for p in request.plan_tasks:
             key = f"plan:{p.plan}#{p.task_id}"
             ticket_done = p.ticket is not None and p.ticket in done_tickets
             in_scope = p.plan in scope.in_scope_plans or ticket_in_scope(
-                p.ticket, scope, by_id, max_hops
+                p.ticket, scope, by_id, max_hops, by_ancestor
             )
             drafts[key] = _Draft(
                 key=key,
@@ -307,7 +311,7 @@ class HandlerWorkStateProjection:
             in_scope = short not in scope.paused_prs and (
                 short in scope.in_scope_prs
                 or pr.repo in scope.in_scope_repos
-                or ticket_in_scope(pr.ticket, scope, by_id, max_hops)
+                or ticket_in_scope(pr.ticket, scope, by_id, max_hops, by_ancestor)
             )
             scope_status = (
                 EnumScopeStatus.IN_SCOPE if in_scope else EnumScopeStatus.PAUSED

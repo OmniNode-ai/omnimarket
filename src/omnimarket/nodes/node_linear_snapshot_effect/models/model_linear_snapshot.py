@@ -50,13 +50,27 @@ class ModelSnapshotIssue(BaseModel):
     priority: str | None = None
 
 
+class ModelSnapshotAncestor(BaseModel):
+    """One ancestor of an issue that is not itself in ``issues`` (unassigned to the operator, or closed): the parent and
+    project the work list's scope walk reads. It is not an open issue and never a work item."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    id: NonEmpty
+    parent_id: str | None = Field(default=None, alias="parentId")
+    project: str = ""
+    project_id: str = Field(default="", alias="projectId")
+
+
 class ModelLinearSnapshot(BaseModel):
-    """The file: who it was read as, and that subject's open issues."""
+    """The file: who it was read as, that subject's open issues and the ancestors those issues name."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     operator: NonEmpty
     issues: tuple[ModelSnapshotIssue, ...]
+    # Every ancestor of an issue that is not itself an issue, once; absent in a file written before the key existed.
+    ancestors: tuple[ModelSnapshotAncestor, ...] = ()
 
     @model_validator(mode="after")
     def _read_as_a_resolved_subject(self) -> ModelLinearSnapshot:
@@ -91,6 +105,8 @@ class ModelLinearSnapshotRequest(BaseModel):
     full_read_every_s: int = Field(default=86400, ge=1)
     #: Each incremental read starts this far before the last good read, so an update racing it is read twice, never missed.
     overlap_s: int = Field(default=600, ge=0)
+    #: How many levels of ``parent`` each issue's query selects, so a chain through an unassigned or closed ancestor reads.
+    ancestor_depth: int = Field(default=6, ge=0, le=8)
 
 
 class ModelLinearSnapshotResult(BaseModel):

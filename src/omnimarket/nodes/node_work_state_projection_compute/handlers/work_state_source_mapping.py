@@ -15,7 +15,9 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from omnimarket.models.work_state_projection import (
+    ModelAncestorSource,
     ModelLaneReceiptSource,
+    ModelLinearRow,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelTicketSource,
@@ -120,6 +122,40 @@ def tickets_from_linear_snapshot(
     return out
 
 
+def ancestors_from_linear_snapshot(
+    snapshot: Mapping[str, Any],
+) -> list[ModelAncestorSource]:
+    """The snapshot's `ancestors` rows (a ticket the open list does not hold, with its parent and project): lookup rows
+    for the scope walk, never work items. A file from before the key has none."""
+    out: list[ModelAncestorSource] = []
+    for row in snapshot.get("ancestors") or ():
+        ident = str(row.get("id") or "")
+        if not ident:
+            continue
+        out.append(
+            ModelAncestorSource(
+                ticket_id=ident,
+                parent=row.get("parentId") or None,
+                project=str(row.get("project") or ""),
+                project_id=str(row.get("projectId") or ""),
+            )
+        )
+    return out
+
+
+def linear_rows_from_snapshot(
+    snapshot: Mapping[str, Any], rules: ModelWorkStateRules
+) -> list[ModelLinearRow]:
+    """The Linear source's rows: each open issue, then each ancestor."""
+    return [
+        *(
+            ModelLinearRow(ticket=t)
+            for t in tickets_from_linear_snapshot(snapshot, rules)
+        ),
+        *(ModelLinearRow(ancestor=a) for a in ancestors_from_linear_snapshot(snapshot)),
+    ]
+
+
 def _required_contexts(
     state: Mapping[str, Any], repo: str, base: str
 ) -> set[str] | None:
@@ -206,14 +242,28 @@ _SCOPE_KEYS = (
 )
 # The goal's ticket rule names its roots under this key: a root and every child of it is in scope.
 _TICKET_ROOTS_KEY = "ticket_roots"
+# The shared ticket_scope overlay names the goal's projects under these keys (ids, then names); its other keys are the
+# Linear reader's own.
+_TICKET_SCOPE_PROJECT_KEYS = ("project_ids", "project_names")
 
 
 def scope_from_declaration(
-    declaration: Mapping[str, Any], ticket_rule: Mapping[str, Any] | None = None
+    declaration: Mapping[str, Any],
+    ticket_rule: Mapping[str, Any] | None = None,
+    ticket_scope: Mapping[str, Any] | None = None,
 ) -> ModelWorkScope:
-    """The goal's scope declaration (the goal_scope overlay, and the goal_scope_ticket_rule overlay's roots) as the
-    projection's scope. Keys the projection does not read belong to other readers and are left alone."""
+    """The goal's scope declaration (the goal_scope overlay, the goal_scope_ticket_rule overlay's roots and the shared
+    ticket_scope overlay's projects) as the projection's scope. Keys the projection does not read belong to other
+    readers and are left alone; an absent ticket_scope overlay changes nothing."""
     fields = {k: tuple(str(v) for v in (declaration.get(k) or ())) for k in _SCOPE_KEYS}
+    ticket_scope_projects = tuple(
+        str(v)
+        for key in _TICKET_SCOPE_PROJECT_KEYS
+        for v in ((ticket_scope or {}).get(key) or ())
+    )
+    fields["in_scope_projects"] = tuple(
+        dict.fromkeys((*fields["in_scope_projects"], *ticket_scope_projects))
+    )
     roots = tuple(str(v) for v in ((ticket_rule or {}).get(_TICKET_ROOTS_KEY) or ()))
     fields["in_scope_tickets"] = tuple(
         dict.fromkeys((*fields["in_scope_tickets"], *roots))
@@ -222,6 +272,8 @@ def scope_from_declaration(
 
 
 __all__ = [
+    "ancestors_from_linear_snapshot",
+    "linear_rows_from_snapshot",
     "plan_tasks_from_text",
     "pull_requests_from_watcher",
     "receipts_from_documents",
