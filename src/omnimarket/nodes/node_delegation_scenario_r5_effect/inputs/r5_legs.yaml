@@ -4,11 +4,11 @@
 # list; one faults-mode probe file that makes model A answer 429. `key_listed_models` is the model list the scripted in-memory
 # key offers; the real backend reads the key's own list from the provider.
 provider: openrouter
-model_a: openai/gpt-oss-20b:free
+model_a: google/gemma-4-31b-it:free
 model_b: qwen/qwen3-coder:free
 unlisted_model: example/not-listed-for-this-key
 key_listed_models:
-  - openai/gpt-oss-20b:free
+  - google/gemma-4-31b-it:free
   - qwen/qwen3-coder:free
 task_type: summarization
 prompt: Summarize in at most three sentences why a delegation tries the models of one key in the order they were added.

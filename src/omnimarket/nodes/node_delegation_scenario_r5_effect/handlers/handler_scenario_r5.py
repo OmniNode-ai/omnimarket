@@ -100,7 +100,7 @@ class ModelPinRefusedError(Exception):
 class ModelR5Runtime(ModelReadinessRuntime):
     """The contract's ``runtime`` block: the shared keys, the leg backend of this scenario and the probe key's variable."""
 
-    leg_backend: Literal["real", "inmemory"]  # type: ignore[assignment]
+    model_backend: Literal["real", "inmemory"]
     #: The variable that carries the paid OpenRouter probe key; its value is read at run time only.
     openrouter_probe_key_env: str = Field(min_length=1)
 
@@ -248,7 +248,7 @@ def wire_pin_refusal(inputs: ModelR5Inputs, model: str) -> None:
         ) from None
 
 
-class ScriptedModelRegistry:
+class ScriptedModelList:
     """The in-memory registry: the key lists ``key_listed_models``; an add stores the ordered list or refuses an unlisted id."""
 
     def __init__(self, key_listed_models: tuple[str, ...]) -> None:
@@ -275,7 +275,7 @@ class ScriptedDelegator:
 
     def __init__(
         self,
-        registry: ScriptedModelRegistry,
+        registry: ScriptedModelList,
         inputs: ModelR5Inputs,
         *,
         admit: Callable[[ModelR5Inputs, str], None] = wire_pin_refusal,
@@ -323,15 +323,15 @@ class ScriptedDelegator:
 @contextmanager
 def home_scope(home: Path) -> Iterator[None]:
     """Point HOME at the scenario's fresh home for one call and put the host's value back after."""
-    before = os.environ.get("HOME")
-    os.environ["HOME"] = str(home)
+    before = os.environ.get("HOME")  # ONEX_FLAG_EXEMPT
+    os.environ["HOME"] = str(home)  # ONEX_FLAG_EXEMPT
     try:
         yield
     finally:
         if before is None:
-            os.environ.pop("HOME", None)
+            os.environ.pop("HOME", None)  # ONEX_FLAG_EXEMPT
         else:
-            os.environ["HOME"] = before
+            os.environ["HOME"] = before  # ONEX_FLAG_EXEMPT
 
 
 AddKey = Callable[..., object]
@@ -459,7 +459,7 @@ class RealDelegator:
 
 
 def scripted_backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-    registry = ScriptedModelRegistry(inputs.key_listed_models)
+    registry = ScriptedModelList(inputs.key_listed_models)
     return ModelR5Backend(
         registry=registry, delegator=ScriptedDelegator(registry, inputs)
     )
@@ -524,7 +524,7 @@ class HandlerScenarioR5(ReadinessScenarioBase):
             return f"inputs unreadable: {type(exc).__name__}"
         assertions.append("+inputs_readable")
 
-        if self._r5.leg_backend == "real":
+        if self._r5.model_backend == "real":
             key_set = bool(
                 self._environment.get(self._r5.openrouter_probe_key_env, "").strip()
             )
@@ -661,7 +661,7 @@ def build_runner(
 ) -> HandlerScenarioR5:
     """The production wiring: the registry home, the bus commands and the contract's backend profile."""
     runtime = load_runtime()
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     home = Path(environment[runtime.home_env])
     work_dir = home / runtime.work_relpath
     fresh_home = work_dir / FRESH_HOME_DIRNAME
@@ -679,7 +679,7 @@ def build_runner(
         )
 
     factory: BackendFactory = (
-        real_backend if runtime.leg_backend == "real" else scripted_backend
+        real_backend if runtime.model_backend == "real" else scripted_backend
     )
     built = build_scenario(
         lambda rt, **kwargs: HandlerScenarioR5(

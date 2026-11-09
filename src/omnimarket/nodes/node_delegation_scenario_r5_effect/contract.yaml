@@ -80,9 +80,11 @@ runtime:
   actor: script:node_delegation_scenario_r5_effect
   # The real backend runs in a fresh home each time: this directory under the registry home is wiped first.
   work_relpath: .onex_state/delegation-scenario-r5/work
+  # Scenario R5 runs no loopback transport; the shared key stays at its in-memory value.
+  leg_backend: inmemory
   # inmemory: scripted registry and delegator, no network (the default profile). real: the model registry's own add and list
   # handlers and the delegation skill handler against OpenRouter, on the paid probe key read from `openrouter_probe_key_env`.
-  leg_backend: inmemory
+  model_backend: inmemory
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r5_legs.yaml

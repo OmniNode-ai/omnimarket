@@ -58,7 +58,7 @@ def test_r5_the_two_models_are_free_distinct_and_listed_for_the_key() -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("model_b", "openai/gpt-oss-20b:free", "different"),
+        ("model_b", "google/gemma-4-31b-it:free", "different"),
         ("unlisted_model", "qwen/qwen3-coder:free", "must not be in"),
         ("model_a", "example/missing:free", "not in the key's listed"),
     ],
@@ -88,6 +88,7 @@ def test_r5_contract_runtime_block_is_typed_and_names_the_inputs_file_and_key_va
     assert runtime.scenario_id == "R5"
     assert runtime.cadence.value == "hourly"
     assert runtime.leg_backend == "inmemory"
+    assert runtime.model_backend == "inmemory"
     assert runtime.openrouter_probe_key_env.isupper()
     assert (NODE_DIR / runtime.inputs_relpath) == INPUTS
 

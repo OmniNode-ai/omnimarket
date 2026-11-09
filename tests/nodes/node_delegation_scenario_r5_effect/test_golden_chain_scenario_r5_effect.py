@@ -47,10 +47,11 @@ from omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenar
     ModelScenarioR5RunCommand,
     RealDelegator,
     ScriptedDelegator,
-    ScriptedModelRegistry,
+    ScriptedModelList,
     load_inputs,
     load_runtime,
     load_schedule,
+    wire_pin_refusal,
 )
 
 pytestmark = pytest.mark.unit
@@ -82,7 +83,7 @@ def admit_every_model(inputs: ModelR5Inputs, model: str) -> None:
 
 
 def admitting_backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-    registry = ScriptedModelRegistry(inputs.key_listed_models)
+    registry = ScriptedModelList(inputs.key_listed_models)
     return ModelR5Backend(
         registry=registry,
         delegator=ScriptedDelegator(registry, inputs, admit=admit_every_model),
@@ -237,7 +238,7 @@ def test_golden_chain_the_forced_history_is_a_rate_limited_then_b_accepted(
 # -- error chains: one named injected break each ---------------------------------------------------------------------------
 
 
-class AcceptsAnyId(ScriptedModelRegistry):
+class AcceptsAnyId(ScriptedModelList):
     """Break: the add no longer checks the key's list."""
 
     def add(self, provider: str, models: tuple[str, ...]) -> None:
@@ -263,14 +264,20 @@ def test_error_chain_an_add_that_takes_an_id_the_key_does_not_list(
 class IgnoresReorder(ScriptedDelegator):
     """Break: the run always walks the order of the first add, whatever the registry lists now."""
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        registry: ScriptedModelList,
+        inputs: ModelR5Inputs,
+        *,
+        admit: Callable[[ModelR5Inputs, str], None] = wire_pin_refusal,
+    ) -> None:
+        super().__init__(registry, inputs, admit=admit)
         self._first: tuple[str, ...] | None = None
 
     def forced(self, faults: ModelProbeFaults) -> ModelR5Receipt:
         listing = self._registry.listing(self._inputs.provider)
         self._first = self._first or listing
-        frozen = ScriptedModelRegistry(self._inputs.key_listed_models)
+        frozen = ScriptedModelList(self._inputs.key_listed_models)
         frozen.add(self._inputs.provider, self._first)
         return ScriptedDelegator(frozen, self._inputs).forced(faults)
 
@@ -279,7 +286,7 @@ def test_error_chain_a_run_that_ignores_the_reorder_still_attempts_a(
     tmp_path: Path,
 ) -> None:
     def backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-        registry = ScriptedModelRegistry(inputs.key_listed_models)
+        registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
             delegator=IgnoresReorder(registry, inputs, admit=admit_every_model),
@@ -291,7 +298,7 @@ def test_error_chain_a_run_that_ignores_the_reorder_still_attempts_a(
     assert "+forced_first_attempt_a_rate_limited" in result.assertions
 
 
-class StoresReversed(ScriptedModelRegistry):
+class StoresReversed(ScriptedModelList):
     """Break: the registry stores the first add in reverse order."""
 
     def add(self, provider: str, models: tuple[str, ...]) -> None:
@@ -325,7 +332,7 @@ class IgnoresFaults(ScriptedDelegator):
 
 def test_error_chain_a_faults_file_that_is_not_applied(tmp_path: Path) -> None:
     def backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-        registry = ScriptedModelRegistry(inputs.key_listed_models)
+        registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
             delegator=IgnoresFaults(registry, inputs, admit=admit_every_model),
@@ -356,7 +363,7 @@ class PinnedAnswersOnA(ScriptedDelegator):
 
 def test_error_chain_a_pinned_receipt_that_names_another_model(tmp_path: Path) -> None:
     def backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-        registry = ScriptedModelRegistry(inputs.key_listed_models)
+        registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
             delegator=PinnedAnswersOnA(registry, inputs, admit=admit_every_model),
@@ -381,7 +388,7 @@ def test_error_chain_a_wrong_answer_is_caught_by_the_byte_comparison(
     tmp_path: Path,
 ) -> None:
     def backend(inputs: ModelR5Inputs) -> ModelR5Backend:
-        registry = ScriptedModelRegistry(inputs.key_listed_models)
+        registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
             delegator=WrongBytes(registry, inputs, admit=admit_every_model),
@@ -392,7 +399,7 @@ def test_error_chain_a_wrong_answer_is_caught_by_the_byte_comparison(
 
 
 def test_error_chain_an_add_the_registry_refuses_is_a_red_run(tmp_path: Path) -> None:
-    class RefusesAll(ScriptedModelRegistry):
+    class RefusesAll(ScriptedModelList):
         def add(self, provider: str, models: tuple[str, ...]) -> None:
             raise ModelRegistryRefusedError("refused")
 
@@ -457,7 +464,7 @@ def test_error_chain_a_bus_emit_that_fails_raises_after_the_row_is_written(
 # -- the real-backend profile: the paid probe key --------------------------------------------------------------------------
 
 
-REAL = RUNTIME.model_copy(update={"leg_backend": "real"})
+REAL = RUNTIME.model_copy(update={"model_backend": "real"})
 
 
 def test_error_chain_an_empty_probe_key_in_the_real_backend_is_red_never_skipped(
