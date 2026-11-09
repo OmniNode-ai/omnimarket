@@ -17,16 +17,19 @@ import pytest
 
 from omnimarket.handlers.rules_stop_gate import load_andon_stop_contract, stop_gate
 from omnimarket.models.stop_gate import (
+    EnumFloorVerdict,
     EnumReadingOrigin,
     EnumReadingVerdict,
     EnumStopEventKind,
     EnumStopGateOutcome,
     EnumStopMode,
+    ModelGoAndSeeRow,
     ModelStopEvent,
     ModelStopGateRequest,
     ModelStopPolicy,
     ModelStopReading,
     ModelStopScope,
+    ModelWorkingReading,
 )
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
@@ -54,6 +57,28 @@ PASS = ModelStopReading(
     origin=EnumReadingOrigin.EXECUTED,
     covers_scope=True,
 )
+
+
+def release_facts(minutes: int) -> dict[str, Any]:
+    """The fields of a readback that can release a stop: a WORKING reading and a go-and-see row."""
+    return {
+        "reading": PASS.model_copy(
+            update={
+                "working": ModelWorkingReading(
+                    verdict=EnumFloorVerdict.WORKING,
+                    read_at=T0 + timedelta(minutes=minutes),
+                )
+            }
+        ),
+        "go_and_see": ModelGoAndSeeRow(
+            row_id=f"gas-{minutes}",
+            lane_id="swarm-lane-1",
+            seen_at=T0 + timedelta(minutes=minutes),
+            observed="went to the stopped scope and saw it work",
+        ),
+    }
+
+
 ROLE_OF = {
     EnumStopEventKind.LEASE_GRANTED: "swarm_lane",
     EnumStopEventKind.LEASE_EXPIRED: "detector",
@@ -263,14 +288,16 @@ def test_ac1_the_gate_refuses_through_the_queue_until_the_stop_clears(
     assert gate(tmp_path).swarm_lane == "swarm-lane-1"
     send(tmp_path, stop_event(opened.id, EnumStopEventKind.COUNTERMEASURE_MERGED, 2))
     first = send(
-        tmp_path, stop_event(opened.id, EnumStopEventKind.READBACK, 3, reading=PASS)
+        tmp_path,
+        stop_event(opened.id, EnumStopEventKind.READBACK, 3, **release_facts(3)),
     )
     assert first.status == "applied"
     assert first.stop is not None
     assert first.stop.state == FIXED
     assert gate(tmp_path).outcome is EnumStopGateOutcome.REFUSE
     last = send(
-        tmp_path, stop_event(opened.id, EnumStopEventKind.READBACK, 4, reading=PASS)
+        tmp_path,
+        stop_event(opened.id, EnumStopEventKind.READBACK, 4, **release_facts(4)),
     )
     assert last.stop is not None
     assert last.stop.state == CLEARED
@@ -429,8 +456,8 @@ CODES = ("LED", "STO", "CHG", "HST", "CLK")
 SCENARIO: list[tuple[EnumStopEventKind, int, dict[str, Any]]] = [
     (EnumStopEventKind.LEASE_GRANTED, 1, {"lane_id": "lane-0"}),
     (EnumStopEventKind.COUNTERMEASURE_MERGED, 2, {}),
-    (EnumStopEventKind.READBACK, 3, {"reading": PASS}),
-    (EnumStopEventKind.READBACK, 4, {"reading": PASS}),
+    (EnumStopEventKind.READBACK, 3, release_facts(3)),
+    (EnumStopEventKind.READBACK, 4, release_facts(4)),
 ]
 Facts = list[tuple[EnumStopEventKind, int, dict[str, Any]]]
 
