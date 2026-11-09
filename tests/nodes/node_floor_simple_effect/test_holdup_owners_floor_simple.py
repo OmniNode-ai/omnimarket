@@ -167,7 +167,7 @@ def test_golden_a_live_lane_owns_a_holdup_by_its_claim_or_a_status_row() -> None
     assert cause(doc, "stoppage:job-exit") == ("amber", ("owner-status",))
     # The comma list gives the lane both holdups, and a holdup a lane owns keeps its pull request reading too.
     assert cause(doc, "prs:red") == ("amber", ("owner-status",))
-    assert check_red_rule(doc, lanes).state == "WORKING"
+    assert check_red_rule(doc, lanes).violations == ()
 
 
 def test_error_a_lane_that_ended_went_silent_or_names_no_holdup_is_not_on_one() -> None:
