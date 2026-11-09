@@ -23,29 +23,30 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (  # noqa: E402
-    HandlerFloorSimple,
-)
-from tests.nodes.node_floor_simple_compute.test_golden_and_error_chain_floor_simple_compute import (  # noqa: E402
-    NOW,
-)
-from tests.nodes.node_floor_simple_compute.test_piece_panel_cells_floor_simple_compute import (  # noqa: E402
-    chain,
-    with_receipts,
-)
-
 ORIGIN = "http://floor.test"
 SIZES = (("desktop", 1440, 900), ("phone", 390, 844))
 PIECE = 2
 
 
-def record() -> tuple[str, str]:
+def record() -> tuple[str, str, float]:
+    from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (
+        HandlerFloorSimple,
+    )
+    from tests.nodes.node_floor_simple_compute.test_golden_and_error_chain_floor_simple_compute import (
+        NOW,
+    )
+    from tests.nodes.node_floor_simple_compute.test_piece_panel_cells_floor_simple_compute import (
+        chain,
+        with_receipts,
+    )
+
     doc = HandlerFloorSimple().handle(
         with_receipts(
             (
@@ -56,7 +57,7 @@ def record() -> tuple[str, str]:
         )
     )
     name = next(p.name for p in doc.pieces if p.piece == PIECE)
-    return doc.model_dump_json(), name
+    return doc.model_dump_json(), name, NOW.timestamp()
 
 
 def layout(page: Page) -> dict[str, object]:
@@ -84,7 +85,7 @@ def main() -> int:
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     html = args.page.read_text(encoding="utf-8")
-    data, name = record()
+    data, name, record_time = record()
     observations: dict[str, object] = {
         "page": str(args.page),
         "expect": args.expect,
@@ -93,8 +94,10 @@ def main() -> int:
         "sizes": {},
     }
     failures: list[str] = []
+    sizes: dict[str, dict[str, Any]] = {}
+    observations["sizes"] = sizes
 
-    def served(route) -> None:  # type: ignore[no-untyped-def]
+    def served(route: Any) -> None:
         path = route.request.url.removeprefix(ORIGIN).split("?")[0]
         if path in ("/", "/index.html"):
             route.fulfill(content_type="text/html", body=html)
@@ -112,16 +115,16 @@ def main() -> int:
             page = context.new_page()
             errors: list[str] = []
             page.on("pageerror", lambda e, captured=errors: captured.append(str(e)))
-            # the synthetic record is stamped NOW: read it a minute later, so the page shows a fresh record, not an expired one
-            page.clock.set_fixed_time(NOW.timestamp() + 60)
+            # the synthetic record is stamped at record_time: read it a minute later, so the page shows a fresh record, not an expired one
+            page.clock.set_fixed_time(record_time + 60)
             page.route("**/*", served)
             page.goto(f"{ORIGIN}/index.html")
             page.wait_for_selector(".strip", timeout=15000)
-            seen: dict[str, object] = {
+            seen: dict[str, Any] = {
                 "panel_element": page.locator("#ppanel").count() > 0,
                 "strip_links": page.locator(".strip a[data-piece]").count(),
             }
-            observations["sizes"][label] = seen  # type: ignore[index]
+            sizes[label] = seen
             if args.expect == "absent":
                 if seen["panel_element"] or seen["strip_links"]:
                     failures.append(f"{label}: the page already has a panel")
@@ -178,9 +181,9 @@ def main() -> int:
                     failures.append(f"{label}: {key} {seen[key]!r} lacks {name!r}")
             for key in ("layout_open", "layout_closed"):
                 for cell in ("scrollWidth", "scrollHeight", "bodyWidth", "strip"):
-                    if seen[key][cell] != before[cell]:  # type: ignore[index]
+                    if seen[key][cell] != before[cell]:
                         failures.append(
-                            f"{label}: {key}.{cell} {seen[key][cell]!r} != {before[cell]!r}"  # type: ignore[index]
+                            f"{label}: {key}.{cell} {seen[key][cell]!r} != {before[cell]!r}"
                         )
             if errors:
                 failures.append(f"{label}: page errors {errors}")
