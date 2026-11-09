@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23333
+title: Contract and evidence for node_dev_deploy_reading_effect, the piece 11 reading run
+summary: node_dev_deploy_reading_effect gathers the dev branch's runtime-affecting merges, the dev lane's pass receipt and one functional probe of the running runtime, judges them with node_dev_deploy_reading_compute, and appends one STATUS row for rebuild piece 11. This contract binds the node's evidence so dod-verify can judge the pull request that adds it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23333-dev-deploy-reading-run
+  statement: The reading run writes a WORKING row only when a PASS lab receipt exists for the sha the running runtime is expected to have and a fresh probe reads that sha; a dropped receipt, a probe that saw another sha, a stale or missing probe each write NOT_WORKING with the rule named, and an unreadable source writes UNKNOWN, never a pass.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the reading node writes WORKING only when a PASS lab receipt exists for the running runtime''s sha and a fresh probe reads that sha -- falsifier: uv run pytest tests -q -k dev_deploy_reading in omnimarket, failing with the receipt check removed'
+  - id: AC2
+    statement: 'AC2: dod-verify passes on omnimarket#5596 and piece 11 shows a reading on the served floor after install -- falsifier: curl of the served floor shows piece 11 with a reading state other than not_started'
+evidence_requirements:
+- kind: tests
+  description: The reading run tests, the schedule tests and the golden and error chain event tests of node_dev_deploy_reading_effect
+  command: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect -q --no-cov -p no:randomly -k dev_deploy_reading
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23333-receipt-and-probe
+  description: Runs the reading run's tests. Good facts read WORKING and write one row; a dropped PASS receipt reads NOT_WORKING with the merge named (the failing control for the receipt check); a probe that saw another sha, and a stale probe, read NOT_WORKING; an unreadable receipt source reads UNKNOWN with outcome source-unreadable and never hides a readable failure. Hosted CI runs this file; at the merge base the node is absent, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_reading_run.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23333-chain-events
+  description: Runs the golden chain and error chain event tests on the in-memory bus. The golden chain ends in one WORKING row (the row cells the floor's piece 11 golden rule reads); each error chain (dropped receipt, probe that saw another sha, missing probe, unreadable source, append that does not land, bad payload) ends in a typed failure event and the row the floor's error rule reads; four named breaks (dropped receipt, dropped terminal event, success in place of failure, wrong rule named) each turn a chain assertion red. Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_reading_chain_events.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23333-schedule
+  description: Runs the schedule tests (install check, status, run-now and drill verbs; a unit that runs from a worktree is refused). A regression check for the node's timer, not proof of a criterion, so it binds none.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_reading_schedule.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23333-integration-proof-floor
+  description: The first check runs the node's tests at the pushed head on a lab host through the lab work runner. The second, after the node and the overlays pull request are installed, reads the served floor and requires piece 11 in scope with a reading state other than not_started. Hosted CI cannot reach the lab runner or the served floor, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23333 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect -q --no-cov -p no:randomly -k dev_deploy_reading'
+    cwd: .
+  - check_type: command
+    check_value: 'sh -c ''curl -fsS "$ONEX_FLOOR_SIMPLE_URL" | python3 -c "import json,sys; p=[x for x in json.load(sys.stdin)[\"pieces\"] if x[\"piece\"]==11][0]; assert p[\"status\"]!=\"not_started\" and p[\"in_scope\"] is True, p"'''
+    cwd: .
