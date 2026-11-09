@@ -188,7 +188,8 @@ async def test_an_edited_criterion_blocks_the_merge() -> None:
     result = await _check(github, _tracker_for(criteria_body(edited)))
     assert result.verdict is EnumDodCriteriaVerdict.DRIFT
     assert result.merge_blocked is True
-    assert result.reason.startswith(f"{_TICKET}: CRITERIA_DRIFT")
+    assert result.reason.startswith(f"{_TICKET}: writer=")
+    assert "CRITERIA_DRIFT" in result.reason
     assert "AC1 edited" in result.reason
     assert result.tickets[0].amendment is not None
 

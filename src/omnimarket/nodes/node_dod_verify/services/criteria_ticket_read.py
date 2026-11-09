@@ -18,18 +18,24 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
+from omnimarket.models.model_criteria_drift_writer import (
+    ModelDescriptionEdit,
+    ModelDescriptionEditsRead,
+)
 from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
     ModelTicketCriteriaRead,
 )
 
 __all__ = [
+    "ProtocolCriteriaHistoryTracker",
     "ProtocolCriteriaIssue",
     "ProtocolCriteriaTracker",
     "TrackerCriteriaReader",
+    "read_description_edits",
     "read_ticket_through_tracker",
 ]
 
@@ -50,6 +56,42 @@ class ProtocolCriteriaTracker(Protocol):
     async def get_issue(self, issue_id: str) -> ProtocolCriteriaIssue: ...
 
     async def close(self) -> None: ...
+
+
+class ProtocolCriteriaHistoryTracker(ProtocolCriteriaTracker, Protocol):
+    """A criteria tracker that also reads the history entries that rewrote a description.
+
+    The Linear tracker answers from ``issue.history`` nodes where ``updatedDescription`` is true,
+    with each node's actor and ``createdAt``.
+    """
+
+    async def description_edits(
+        self, issue_id: str
+    ) -> Sequence[ModelDescriptionEdit]: ...
+
+
+async def read_description_edits(
+    tracker: ProtocolCriteriaTracker, ticket_id: str
+) -> ModelDescriptionEditsRead:
+    """The description edits in the ticket's history, or the reason they could not be read.
+
+    A tracker with no history read, or a read that fails, is unavailable, never an empty
+    history: no edit found and no read made must not look alike.
+    """
+    reader = getattr(tracker, "description_edits", None)
+    if reader is None:
+        return ModelDescriptionEditsRead(
+            ticket_id=ticket_id,
+            unavailable_reason="the tracker has no history read",
+        )
+    try:
+        edits = await reader(ticket_id)
+    except Exception as error:
+        return ModelDescriptionEditsRead(
+            ticket_id=ticket_id,
+            unavailable_reason=f"the history read failed ({type(error).__name__})",
+        )
+    return ModelDescriptionEditsRead(ticket_id=ticket_id, edits=tuple(edits))
 
 
 async def read_ticket_through_tracker(

@@ -35,6 +35,7 @@ import contextlib
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -77,12 +78,16 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     evaluate_criteria,
     extract_criteria_pins,
 )
+from omnimarket.nodes.node_dod_verify.services.criteria_drift_writer import (
+    attribute_drift_writer,
+)
 from omnimarket.nodes.node_dod_verify.services.criteria_ticket_read import (
     ProtocolCriteriaTracker,
+    read_description_edits,
     read_ticket_through_tracker,
 )
 from omnimarket.nodes.node_dod_verify.services.linear_criteria_tracker import (
-    linear_project_tracker,
+    linear_criteria_tracker,
 )
 
 _log = logging.getLogger(__name__)
@@ -207,6 +212,20 @@ class HandlerDodCriteriaCheck:
                         )
                     )
                 elif check.refused:
+                    check = check.model_copy(
+                        update={
+                            "writer": attribute_drift_writer(
+                                contract_path=path,
+                                head_sha=request.head_sha,
+                                written_at=await self._contract_written_at(
+                                    transport, request, path
+                                ),
+                                history=await read_description_edits(
+                                    tracker, ticket_id
+                                ),
+                            )
+                        }
+                    )
                     verdicts.append(
                         ModelDodCriteriaTicketVerdict(
                             ticket_id=ticket_id,
@@ -300,6 +319,40 @@ class HandlerDodCriteriaCheck:
         except (binascii.Error, UnicodeDecodeError) as error:
             raise _UnreadableError(f"{path} is not readable text") from error
 
+    async def _contract_written_at(
+        self,
+        transport: ProtocolCriteriaGithubTransport,
+        request: ModelDodCriteriaCheckRequest,
+        path: str,
+    ) -> datetime | None:
+        """When the contract version at the head was committed; None when it cannot be read.
+
+        A drift is attributed to a ticket edit only when the edit came after this time, so an
+        unread time is an unmeasured writer, never a guess.
+        """
+        owner, name = split_repository(request.repo)
+        try:
+            response = await transport.send(
+                ModelGithubHttpRequest(
+                    method="GET",
+                    path=(
+                        f"/repos/{owner}/{name}/commits?sha={request.head_sha}"
+                        f"&path={quote(path)}&per_page=1"
+                    ),
+                )
+            )
+            body = response.body
+            commits = body.get("value") if body is not None else None
+            if response.status != _OK or not isinstance(commits, list) or not commits:
+                return None
+            commit = commits[0].get("commit") if isinstance(commits[0], dict) else None
+            committer = commit.get("committer") if isinstance(commit, dict) else None
+            stamp = committer.get("date") if isinstance(committer, dict) else None
+            return datetime.fromisoformat(stamp) if isinstance(stamp, str) else None
+        except Exception:  # a drift stays a drift whatever the writer read does
+            _log.warning("criteria check %s: contract write time unread", path)
+            return None
+
     @staticmethod
     def _result(
         request: ModelDodCriteriaCheckRequest,
@@ -379,7 +432,7 @@ async def _live_transport() -> UrllibGithubLandingTransport:
 
 
 async def _linear_tracker() -> ProtocolCriteriaTracker:
-    return await linear_project_tracker(_CONTRACT_PATH)
+    return await linear_criteria_tracker(_CONTRACT_PATH)
 
 
 __all__ = ["HandlerDodCriteriaCheck"]

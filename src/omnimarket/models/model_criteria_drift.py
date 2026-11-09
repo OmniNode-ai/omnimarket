@@ -8,6 +8,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_criteria_drift_kind import EnumCriteriaDriftKind
+from omnimarket.models.model_criteria_drift_writer import ModelCriteriaDriftWriter
 
 
 class ModelCriterionDrift(BaseModel):
@@ -136,6 +137,14 @@ class ModelCriteriaCheck(BaseModel):
         ),
     )
 
+    writer: ModelCriteriaDriftWriter | None = Field(
+        default=None,
+        description=(
+            "Who wrote the disagreement, when a check measured it. A "
+            "message starts with it."
+        ),
+    )
+
     @property
     def refused(self) -> bool:
         """True when the live criteria do not match what the contract accepted."""
@@ -149,7 +158,10 @@ class ModelCriteriaCheck(BaseModel):
         return frozenset(d.label for d in self.drift)
 
     def message(self, ticket_id: str) -> str:
-        """The ``CRITERIA_DRIFT`` refusal text, naming every criterion."""
+        """The ``CRITERIA_DRIFT`` refusal text, naming every criterion.
+
+        It starts with the writer of the drift when the check measured one.
+        """
         clauses = [d.summary() for d in self.drift]
         if self.changed_during_verification:
             clauses.append(
@@ -157,8 +169,9 @@ class ModelCriteriaCheck(BaseModel):
                 f"(revision {(self.criteria_revision or '')[:12]} -> "
                 f"{(self.revision_after or '')[:12]})"
             )
+        writer = f"{self.writer.label()} " if self.writer is not None else ""
         return (
-            f"CRITERIA_DRIFT: the live criteria of {ticket_id} are not the ones its "
+            f"{writer}CRITERIA_DRIFT: the live criteria of {ticket_id} are not the ones its "
             f"contract was accepted against: {'; '.join(clauses)}. A changed, "
             "deleted, added or ambiguous criterion leaves its binding unproven and "
             "its earlier PASS evidence no longer counts until a second lane "
