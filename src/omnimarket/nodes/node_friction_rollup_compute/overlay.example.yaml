@@ -150,7 +150,7 @@ class_rules:
     pattern: '(?:requires verified signatures|lab-host lane has no signing identity)'
   - name: prrp-snapshot-stale-on-lab-host
     owner: "the host installer for the private-repo-runner-placement snapshot (onex-prrp-snapshot-publish must refresh it on every lab host inside the hook's 24 hour limit)"
-    pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run)'
+    pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run|no PRRP snapshot|cannot read repository visibility)'
 # The 1 row of 2026-11-08T18:51Z that the 48 rules above did not name (OMN-23234), named from its own text.
   - name: bulk-copy-on-host-array-starves-host-install
     owner: "the owner of the host bring-up graph and the host-ram-filesystem installer (OMN-22993): a copy of a spill directory (millions of small files) must be bandwidth-limited from the start, and the installer must not run while a bulk copy reads the same array"
@@ -161,6 +161,27 @@ class_rules:
   - name: harness-delegate-fixed-call-budget-kills-long-run
     owner: "the owner of the harness-delegate task class budgets (a class's fixed call budget cannot be raised, and a harness that writes its answer only at the end loses a run that reaches it)"
     pattern: "fixed \\d+ s call budget"
+# The 9 rows written after 2026-11-08T19:46Z that the 49 rules above did not name, grouped by real cause (OMN-22879). Three rows
+# name the prrp-snapshot-stale-on-lab-host class above (its pattern now also reads "no PRRP snapshot" and "cannot read repository
+# visibility"); each other cause below has its own rule, named from the row's own text.
+  - name: prrp-hook-cannot-fetch-called-workflow-pinned-by-ref
+    owner: "the owner of the private-repo-runner-placement hook's read of a called reusable workflow (a workflow pinned by a ref and not a full sha cannot be read from a registry clone, and a lane with a spent raw GitHub read budget ends THE GATE DID NOT RUN)"
+    pattern: 'cannot fetch the called workflow'
+  - name: lane-env-pytest-debug-temproot-outside-system-temp
+    owner: "the owner of the remote-lane launcher environment (it sets PYTEST_DEBUG_TEMPROOT under the lane's context directory, so the ledger write guard reads tmp_path ledgers as canonical and ledger hook tests fail on every commit)"
+    pattern: 'PYTEST_DEBUG_TEMPROOT'
+  - name: delegation-event-spooled-relay-no-runtime-effects-container
+    owner: "the owner of the dev-lane delegation event relay (the relay answers rc=70 with no runtime-effects container in omnibase-infra, so a harness-delegate event is spooled and missing from delegation_events until a container binds)"
+    pattern: 'no runtime-effects container in omnibase-infra'
+  - name: order-dependent-test-shard-base-red
+    owner: "the owner of the omnimarket test shard whose delegation and projection tests pass alone and under xdist but fail in a serial run (an order-dependent base red that no pull request of its own causes)"
+    pattern: 'order-dependent base red'
+  - name: commit-hooks-hang-on-merge-commit-of-python-branch
+    owner: "the owner of the install-record merge commits of the installed Mac plugin (a merge commit of a branch with Python changes runs the repository's whole commit hook set and hung for minutes, where a contract-only merge passed in seconds)"
+    pattern: 'hung in the repository.s commit hooks'
+  - name: ticket-create-without-team-fails
+    owner: "the owner of the create-ticket skill (its section 9 command passes no --team, and onex ticket create without --team ends operation_failed after the guard passed)"
+    pattern: 'onex ticket create without --team failed'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
