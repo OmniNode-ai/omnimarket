@@ -370,7 +370,7 @@ def test_golden_production_admin_wrapper_maps_the_confluent_answers(
             return _Future(types.SimpleNamespace(valid=valid, errors=[]))
 
     fake_module = types.ModuleType("confluent_kafka.admin")
-    fake_module.AdminClient = _AdminClient  # type: ignore[attr-defined]
+    vars(fake_module)["AdminClient"] = _AdminClient
     monkeypatch.setitem(sys.modules, "confluent_kafka.admin", fake_module)
     admin = ConfluentBrokerAdmin({"bootstrap.servers": "broker.example.test:9092"})
     assert admin.visible_topics(1.0) == ("a.topic", "b.topic")
@@ -392,8 +392,23 @@ def test_error_chain_production_admin_wrapper_refuses_an_incomplete_group_listin
             return _Future()
 
     fake_module = types.ModuleType("confluent_kafka.admin")
-    fake_module.AdminClient = _AdminClient  # type: ignore[attr-defined]
+    vars(fake_module)["AdminClient"] = _AdminClient
     monkeypatch.setitem(sys.modules, "confluent_kafka.admin", fake_module)
     admin = ConfluentBrokerAdmin({})
     with pytest.raises(RuntimeError, match="incomplete"):
         admin.visible_groups(1.0)
+
+
+def test_contract_declares_the_probe_topics_on_the_canonical_namespaces() -> None:
+    topics = load_topics()
+    assert (
+        topics["probe_requested"]
+        == "onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1"
+    )
+    assert (
+        topics["probe_completed"] == "onex.evt.omnimarket.bus-login-exposure-probed.v1"
+    )
+    assert (
+        topics["probe_failed"]
+        == "onex.evt.omnimarket.bus-login-exposure-probe-failed.v1"
+    )
