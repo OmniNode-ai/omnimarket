@@ -49,6 +49,9 @@ dod_evidence:
   - check_type: command
     check_value: 'grep -q "live := await self._ensure_producer()" src/omnimarket/projection/runner.py && ! grep -q "self._publish_fn = _publish" src/omnimarket/projection/runner.py'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn12810_projection_publisher_injection.py -q --no-cov
+    cwd: .
 - id: dod-omn23325-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
