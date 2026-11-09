@@ -14,7 +14,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   Reads the delegation scenarios' latest scheduled runs and the delegation readiness plan's ticket states, and writes the
@@ -24,6 +24,7 @@ handler:
   module: omnimarket.nodes.node_floor_delegation_effect.handlers.handler_floor_delegation
   class: HandlerFloorDelegation
   input_model: omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation.ModelFloorDelegationRequest
+  output_model: omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation.ModelFloorDelegationResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -38,6 +39,7 @@ handler_routing:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 60000
   side_effects:
@@ -93,3 +95,6 @@ runtime:
   details_page_size: 25
   # A floor lane in one of these states does not count as running a ticket.
   live_lane_dead_states: [dead, finished]
+
+metadata:
+  transport_type: local

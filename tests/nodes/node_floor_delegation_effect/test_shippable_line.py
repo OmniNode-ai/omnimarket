@@ -9,11 +9,15 @@ import pytest
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
     build_tracker,
 )
+from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
+    ModelDelegationTracker,
+    ModelScenarioRead,
+)
 
 from .support import NOW, RT, all_reads, inputs, read, run
 
 
-def _build(reads):  # type: ignore[no-untyped-def]
+def _build(reads: tuple[ModelScenarioRead, ...]) -> ModelDelegationTracker:
     return build_tracker(RT, inputs(reads=reads), NOW)
 
 

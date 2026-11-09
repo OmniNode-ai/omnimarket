@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
     build_tracker,
     evaluate_start,
@@ -11,11 +13,17 @@ from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_t
     referenced_tickets,
     start_text,
 )
+from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
+    ModelDelegationTracker,
+    ModelTicketResult,
+)
 
 from .support import NOW, RT, inputs, lane, mirror, pr
 
 
-def _tickets(**kwargs):  # type: ignore[no-untyped-def]
+def _tickets(
+    **kwargs: Any,
+) -> tuple[dict[str, ModelTicketResult], ModelDelegationTracker]:
     doc = build_tracker(RT, inputs(**kwargs), NOW)
     return {t.id: t for t in doc.tickets}, doc
 

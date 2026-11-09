@@ -5,8 +5,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
+from typing import Literal
+
+import pytest
 
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_sources import (
     read_lanes,
@@ -20,6 +24,9 @@ from omnimarket.nodes.node_floor_delegation_effect.handlers.handler_floor_delega
 )
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
     ModelFloorDelegationRequest,
+    ModelFloorDelegationResult,
+    ModelMirrorTicket,
+    ModelSourceReading,
 )
 
 from .support import (
@@ -35,9 +42,13 @@ from .support import (
 URL = "https://github.com/OmniNode-ai"
 
 
-def _stage(home: Path, stage: str, runner: FakeRunner | None = None):  # type: ignore[no-untyped-def]
+def _stage(
+    home: Path,
+    stage: Literal["scenarios", "build", "run"],
+    runner: FakeRunner | None = None,
+) -> ModelFloorDelegationResult:
     handler = HandlerFloorDelegation(RT, runner or FakeRunner({}), clock=lambda: NOW)
-    return handler.handle(ModelFloorDelegationRequest(stage=stage, home=str(home)))  # type: ignore[arg-type]
+    return handler.handle(ModelFloorDelegationRequest(stage=stage, home=str(home)))
 
 
 def _all_green() -> FakeRunner:
@@ -63,7 +74,9 @@ def test_the_mirror_gives_the_title_the_plan_task_and_the_start_condition(
     assert "23 of 23" in source.detail
 
 
-def read_mirror_with_refs(home: Path):  # type: ignore[no-untyped-def]
+def read_mirror_with_refs(
+    home: Path,
+) -> tuple[tuple[ModelMirrorTicket, ...], ModelSourceReading]:
     from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_sources import (
         read_mirror_with_references,
     )
@@ -191,7 +204,7 @@ def test_scenario_read_parses_runs_and_maps_a_404_to_not_built() -> None:
 def test_scenario_read_passes_the_event_and_limit_from_the_contract() -> None:
     seen: list[list[str]] = []
 
-    def capture(argv, timeout):  # type: ignore[no-untyped-def]
+    def capture(argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
         seen.append(list(argv))
         return 0, runs_answer(), ""
 
@@ -288,7 +301,9 @@ def test_a_stale_watcher_makes_the_tickets_unread_in_the_served_document(
     assert doc["counts"]["groups"][-1]["count"] == 23
 
 
-def test_the_stage_without_a_home_refuses_by_name(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_the_stage_without_a_home_refuses_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv(RT.home_env, raising=False)
     result = HandlerFloorDelegation(RT, FakeRunner({}), clock=lambda: NOW).handle(
         ModelFloorDelegationRequest(stage="build")

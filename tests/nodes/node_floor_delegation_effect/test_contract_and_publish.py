@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -23,7 +24,7 @@ PUBLISH_CONTRACT = NODE_DIR / "contract.yaml"
 PAGES = NODE_DIR / "page"
 
 
-def _publish():  # type: ignore[no-untyped-def]
+def _publish() -> Any:
     raw = yaml.safe_load(PUBLISH_CONTRACT.read_text(encoding="utf-8"))
     return ModelFactoryFloorPublishContract.model_validate(raw).runtime
 

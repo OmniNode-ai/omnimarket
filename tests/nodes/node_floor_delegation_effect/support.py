@@ -25,6 +25,9 @@ from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation
     ModelScenarioRun,
     ModelSourceReading,
     ModelWatcherPr,
+    PrCi,
+    PrState,
+    ScenarioReadKind,
 )
 
 NOW = datetime(2026, 11, 8, 20, 0, tzinfo=UTC)
@@ -57,13 +60,13 @@ def run(
 def read(
     scenario: str,
     *runs: ModelScenarioRun,
-    kind: str = "read",
+    kind: ScenarioReadKind = "read",
     read_minutes_ago: int = 1,
     reason: str = "",
 ) -> ModelScenarioRead:
     return ModelScenarioRead(
         scenario=scenario,
-        read=kind,  # type: ignore[arg-type]
+        read=kind,
         read_at=iso(NOW - timedelta(minutes=read_minutes_ago)),
         runs=runs,
         reason=reason,
@@ -94,8 +97,8 @@ def mirror(
 
 def pr(
     ticket: int,
-    state: str = "open",
-    ci: str = "green",
+    state: PrState = "open",
+    ci: PrCi = "green",
     repo: str = "omnimarket",
     number: int = 100,
 ) -> ModelWatcherPr:
@@ -105,8 +108,8 @@ def pr(
         number=number,
         ticket=f"OMN-{ticket}",
         title=f"feat(OMN-{ticket}): a change",
-        state=state,  # type: ignore[arg-type]
-        ci=ci,  # type: ignore[arg-type]
+        state=state,
+        ci=ci,
         ci_note="red: CI Summary" if ci == "red" else "",
         url=f"https://github.com/example/{repo}/pull/{number}",
     )
