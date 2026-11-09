@@ -293,6 +293,8 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
+      # The gateway reads the lane declaration table (config/lab/ci_bus_lanes.yaml) under this root; without it every read fails.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/job-log-filler/last-run.json
     state_directory: .onex_state/job-log-filler
   # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
