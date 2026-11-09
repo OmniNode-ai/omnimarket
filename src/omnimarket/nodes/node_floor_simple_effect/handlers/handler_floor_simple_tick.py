@@ -97,6 +97,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     parse_time,
     read_admissions,
     read_broker_lag,
+    read_delegation_tickets,
     read_deploy_lag,
     read_disk,
     read_hosts,
@@ -701,8 +702,9 @@ class HandlerFloorSimpleTick:
         piece = floor_ov.rebuild.lab_state_piece
         ledger = self._read_ledger(rt, floor_ov, env, now)
         go = ledger.facts.go_given_through if ledger.facts is not None else None
+        go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events)
+        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -710,7 +712,9 @@ class HandlerFloorSimpleTick:
             or (row.error_age_s > floor_ov.error_drill_after_s)
         ):
             self._drill(step)
-            pre = self._receipts(sink, floor_ov, self._clock(), rt, go, ledger_events)
+            pre = self._receipts(
+                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
+            )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
@@ -845,7 +849,9 @@ class HandlerFloorSimpleTick:
         )
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
-            lambda: self._receipts(sink, floor_ov, now, rt, go, ledger_events),
+            lambda: self._receipts(
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces
+            ),
             lambda out: {
                 "chains": len(out.chains),
                 "findings": len(out.findings),
@@ -867,6 +873,12 @@ class HandlerFloorSimpleTick:
             excluded_classes=floor_ov.numbers.excluded_pr_classes,
             conflict_states=lab_ov.conflict_merge_states,
             now=now,
+        )
+        delegation_spec = floor_ov.causes.delegation_idle
+        delegation_tickets = (
+            read_delegation_tickets(work_state, delegation_spec)
+            if delegation_spec is not None
+            else None
         )
         floor_input = ModelFloorSimpleInput(
             now=now,
@@ -904,6 +916,7 @@ class HandlerFloorSimpleTick:
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
+            go_pieces=go_pieces,
             sources_read={
                 "floor_record": record is not None,
                 "work_state_projection": work_state is not None,
@@ -915,8 +928,14 @@ class HandlerFloorSimpleTick:
                     if floor_ov.worklist is not None
                     else {}
                 ),
+                **(
+                    {"delegation_tickets": delegation_tickets is not None}
+                    if delegation_spec is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
         )
@@ -1125,6 +1144,7 @@ class HandlerFloorSimpleTick:
         rt: ModelFloorSimpleRuntime,
         go: int | None,
         ledger_events: tuple[ModelNodeEmission, ...],
+        go_pieces: tuple[int, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
@@ -1145,6 +1165,7 @@ class HandlerFloorSimpleTick:
                     p.piece
                     for p in ov.pieces
                     if (go is not None and p.piece <= go)
+                    or p.piece in go_pieces
                     or p.piece in ov.rebuild.step0_pieces
                 }
                 | {e.piece for e in emissions}
