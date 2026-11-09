@@ -156,7 +156,6 @@ def test_a_run_that_ended_on_its_own_ladder_is_still_decided_by_the_gate() -> No
         terminal.terminal_failure_cause
         is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
     )
-    assert (
-        terminal.terminal_failure_reason
-        == EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED.value
-    )
+    # OMN-23165: the gate refused an answer and none was accepted, so the
+    # closed-list reason is quality_veto; the throttled rung keeps its own record.
+    assert terminal.terminal_failure_reason == "quality_veto"

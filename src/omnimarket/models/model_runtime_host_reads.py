@@ -33,5 +33,9 @@ class ModelRuntimeHostReadOverlay(BaseModel):
     fleet_service: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     provenance_service: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     provenance_path: str = Field(pattern=r"^/[A-Za-z0-9_./-]+$")
+    # The registry home on the runtime host. A build can run a commit the reader's own clone never fetched (a branch
+    # install, a declared rollback); the history of that commit is then read from the clone the runtime host has, at
+    # this home plus the repository's ``clone_relpath``. Unset: only the reader's own clone answers.
+    runtime_clone_home: str | None = Field(default=None, pattern=r"^/[A-Za-z0-9_./-]+$")
     repo_refs: tuple[ModelRuntimeRepoRef, ...] = Field(min_length=1)
     timeout_seconds: int = Field(default=30, gt=0)

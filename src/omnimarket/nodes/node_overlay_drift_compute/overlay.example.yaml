@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_overlay_drift_compute/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default, and an
+# overlay that cannot be found refuses the run.
+#
+#   units           unit name to its factor into one common base unit; a number with a unit name after it
+#                   ("3072MiB", "5GiB") uses that unit, a bare number uses the source's own `unit`
+#   base_unit       what the base unit is called in a row
+#   consumers       one entry per consumer of an overlay key: a name, where the overlay's value is, where the
+#                   consumer's value is (a shell default, a config key), and an optional environment
+#                   variable that, when set, is the consumer's effective value (`null` for none).
+#                   A source is a path (may start with $NAME or ${NAME}), a kind (yaml_key: dotted key path;
+#                   regex: the group named `value` of the first match) and a locator.
+#   park_list_scans files outside every overlay and the pattern that would define a park list in them;
+#                   any match is reported. The key is required; [] declares none.
+#   ledger_append   the command in command_env appends rows; host_env holds the host name
+#   publish         the rows' lane and actor, how long a row stays fresh, how many findings a row names,
+#                   and how many characters of a value a row shows
+#   injected_fault  the fault injected on purpose that must turn the reading NOT WORKING
+units:
+  B: 1
+  KiB: 1024
+  MiB: 1048576
+  GiB: 1073741824
+base_unit: B
+consumers:
+- name: example-min-free
+  overlay_value:
+    path: $EXAMPLE_OVERLAY_FILE
+    kind: yaml_key
+    locator: work_mount.min_free_mib
+    unit: MiB
+  consumer_value:
+    path: $EXAMPLE_HOOK_FILE
+    kind: regex
+    locator: '\$\{EXAMPLE_MIN_FREE:-(?P<value>[0-9A-Za-z.]+)\}'
+    unit: GiB
+  env_override: EXAMPLE_MIN_FREE
+park_list_scans:
+- name: example-hook-park-list
+  path: $EXAMPLE_HOOK_FILE
+  pattern: '^\s*PARK_LIST=.*$'
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: overlay-consumer-join
+  actor: node:node_overlay_drift_compute
+  publish_max_age_seconds: 129600
+  max_named: 12
+  value_chars: 24
+injected_fault: A shell default of 5 GiB against an overlay value of 3072 MiB

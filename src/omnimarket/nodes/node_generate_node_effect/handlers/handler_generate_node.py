@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from omnimarket.models.model_generate_node import (
     EnumNodeType,
     ModelGenerateNodeCommand,
     ModelGenerateNodeResult,
+)
+from omnimarket.models.model_scenario_test_generation import (
+    ModelScenarioTestGenerationRequest,
+)
+from omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_scenario_test_generator import (
+    HandlerScenarioTestGenerator,
 )
 
 
@@ -50,6 +58,7 @@ def _render_files(command: ModelGenerateNodeCommand) -> list[tuple[str, str]]:
         if command.contract_yaml is not None
         else _contract_yaml(command, handler_class, request_model, result_model)
     )
+    scenario_tests = _scenario_test_files(command.node_name, contract)
     return [
         ("contract.yaml", contract),
         ("metadata.yaml", _metadata_yaml(command)),
@@ -67,7 +76,26 @@ def _render_files(command: ModelGenerateNodeCommand) -> list[tuple[str, str]]:
             "tests/test_golden_chain.py",
             _test_py(command.node_name, handler_class, request_model),
         ),
+        *scenario_tests,
     ]
+
+
+def _scenario_test_files(node_name: str, contract: str) -> list[tuple[str, str]]:
+    """The generated golden and error chain test of a contract that declares scenarios.
+
+    A scenario the validator would refuse yields no test: the generator raises
+    ChainScenarioDeclarationError and the scaffold writes nothing, instead of a node whose
+    chain test cannot fail (OMN-19998, OMN-22892).
+    """
+    document = yaml.safe_load(contract)
+    if not isinstance(document, dict) or "chain_scenarios" not in document:
+        return []
+    result = HandlerScenarioTestGenerator().handle(
+        ModelScenarioTestGenerationRequest(
+            node_name=node_name, contract_document=document
+        )
+    )
+    return [("tests/test_chain_scenarios.py", result.test_source)]
 
 
 def _pascal(stem: str) -> str:
@@ -126,6 +154,25 @@ event_bus:
 metadata:
   transport_type: kafka
   generated_by: node_generate_node_effect
+
+# The golden chain test is generated from this block. Add the node's real cases and its
+# named failures with their error cases before enabling production traffic.
+chain_scenarios:
+  schema_version: 1
+  success_topic: onex.evt.omnimarket.{topic}-completed.v1
+  cases:
+    - case_name: golden_generated_handler_reports_ok
+      kind: GOLDEN
+      input:
+        topic: onex.cmd.omnimarket.{topic}-start.v1
+        payload: {{}}
+      expected_events:
+        - topic: onex.evt.omnimarket.{topic}-completed.v1
+          fields: {{status: ok}}
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: The generated skeleton handler reports status ok for an empty request.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
 """
 
 
