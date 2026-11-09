@@ -64,7 +64,7 @@ from tests.nodes.node_floor_simple_effect.mvp_support import (
 
 pytestmark = pytest.mark.unit
 NODE = "node_c32_auth_boundary_probe_effect"
-TOPIC = "onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1"
+TOPIC = "onex.evt.omnimarket.local-auth-boundary-probe-completed.v1"
 RAN_AT = datetime(2026, 11, 8, 12, 0, 20, tzinfo=UTC)
 NODE_DIR = Path(hcp.__file__).parent.parent
 # The version the launch candidate fixture (tests.nodes.node_floor_simple_effect.mvp_support) names for the graded package.

@@ -1093,7 +1093,7 @@ events:
   c32.auth_boundary_probe.completed:
     node_owned: true
     fan_out:
-      - topic: "onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1"
+      - topic: "onex.evt.omnimarket.local-auth-boundary-probe-completed.v1"
         tier: telemetry
         description: "C32 auth-boundary probe run: verdict, conclusion, clauses and graded versions; no credential value"
     partition_key_field: criterion

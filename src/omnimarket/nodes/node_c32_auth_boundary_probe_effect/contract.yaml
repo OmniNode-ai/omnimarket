@@ -51,11 +51,11 @@ descriptor:
 event_bus:
   subscribe_topics: []
   publish_topics:
-    - onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
-terminal_event: onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+    - onex.evt.omnimarket.local-auth-boundary-probe-completed.v1
+terminal_event: onex.evt.omnimarket.local-auth-boundary-probe-completed.v1
 externally_produced_topics: []
 externally_consumed_topics:
-  - topic: onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+  - topic: onex.evt.omnimarket.local-auth-boundary-probe-completed.v1
     consumer: "the MVP launch block (node_floor_simple_effect, M1) reads C32 from the newest scheduled run"
 overlay:
   id: node_c32_auth_boundary_probe_effect

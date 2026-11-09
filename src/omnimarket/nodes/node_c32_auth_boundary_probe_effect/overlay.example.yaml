@@ -5,7 +5,7 @@
 default_profile: inmemory
 history_file: c32-runs.jsonl
 history_keep: 60
-result_topic: onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+result_topic: onex.evt.omnimarket.local-auth-boundary-probe-completed.v1
 profiles:
   inmemory:
     kind: inmemory
