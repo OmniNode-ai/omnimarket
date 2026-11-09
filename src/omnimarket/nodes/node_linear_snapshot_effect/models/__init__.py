@@ -6,6 +6,7 @@ from .model_linear_snapshot import (
     ModelLinearSnapshot,
     ModelLinearSnapshotRequest,
     ModelLinearSnapshotResult,
+    ModelLinearSnapshotState,
     ModelSnapshotIssue,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "ModelLinearSnapshot",
     "ModelLinearSnapshotRequest",
     "ModelLinearSnapshotResult",
+    "ModelLinearSnapshotState",
     "ModelSnapshotIssue",
 ]
