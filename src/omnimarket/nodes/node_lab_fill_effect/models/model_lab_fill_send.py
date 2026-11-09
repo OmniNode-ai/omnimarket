@@ -9,12 +9,9 @@ reads one shape whether the lane was sent, refused by the brief check, or stoppe
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_render import (
-    ModelLabFillLaneRenderRequest,
-)
 
 from .model_lab_fill_send_gate import CLOSER_EXEMPT_KINDS, DEFAULT_FACT_HOSTS
 
@@ -26,7 +23,8 @@ class ModelLabFillSendRequest(BaseModel):
 
     model_config = _FROZEN
 
-    render: ModelLabFillLaneRenderRequest
+    # A ModelLabFillLaneRenderRequest (owned by node_lab_fill_plan_compute) or its dict form; the send handler validates it.
+    render: BaseModel | dict[str, Any]
     brief_dir: str
     ledger_path: str
     approved_work_path: str = ""

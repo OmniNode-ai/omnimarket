@@ -188,7 +188,7 @@ def test_h200_bound_brief_is_not_sent_to_a_host_that_cannot_reach_h200(
     result = _sender(runner).handle(
         _request(tmp_path, title="read the h200 drainer reading", host="h053")
     )
-    assert (result.detached, result.skipped) == (False, "h200-unreachable")
+    assert (result.detached, result.skipped) == (False, "fact-host-unreachable")
     assert "h053 does not reach it" in result.detail
     assert runner.calls == []
 
@@ -240,7 +240,7 @@ def test_h200_bound_brief_without_a_reading_of_reach_is_refused_everywhere() -> 
             host_reach={},
         )
     )
-    assert gate.verdict is EnumLabFillSendVerdict.H200_UNREACHABLE
+    assert gate.verdict is EnumLabFillSendVerdict.FACT_HOST_UNREACHABLE
 
 
 def test_h200_bound_brief_naming_h2000_or_a_longer_name_is_not_h200() -> None:

@@ -60,7 +60,7 @@ class HandlerLabFillSendGate:
                     verdict=EnumLabFillSendVerdict.SEND, needs_hosts=needed
                 )
             return ModelLabFillSendGateResult(
-                verdict=EnumLabFillSendVerdict.H200_UNREACHABLE,
+                verdict=EnumLabFillSendVerdict.FACT_HOST_UNREACHABLE,
                 detail=f"brief facts need {','.join(needed)}; {request.host} does not reach it",
                 needs_hosts=needed,
             )
@@ -69,7 +69,7 @@ class HandlerLabFillSendGate:
         chosen = next((h for h in candidates if _reaches(h, needed, reach)), None)
         if chosen is None:
             return ModelLabFillSendGateResult(
-                verdict=EnumLabFillSendVerdict.H200_UNREACHABLE,
+                verdict=EnumLabFillSendVerdict.FACT_HOST_UNREACHABLE,
                 detail=f"brief facts need {','.join(needed)}; no host reaches it",
                 needs_hosts=needed,
             )

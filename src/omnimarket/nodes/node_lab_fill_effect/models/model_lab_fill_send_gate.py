@@ -4,14 +4,16 @@
 
 Two defects of the old lab-fill.js send step are closed here. It sent a lane for a ticket whose implementation
 pull request had merged (about 45 fill lanes on 2026-11-09 found the work merged and ended done or skipped-owned),
-and it sent a brief whose facts live on h200 to a host that cannot reach h200.
+and it sent a brief whose facts live on a fact host to a host that cannot reach it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
+from importlib import resources
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -26,8 +28,20 @@ CLOSER_EXEMPT_KINDS: tuple[str, ...] = (
     "dod-verify",
     "diagnose",
 )
-# The hosts whose facts a brief may cite and that only some lab hosts reach.
-DEFAULT_FACT_HOSTS: tuple[str, ...] = ("h200",)
+
+
+def _load_fact_hosts() -> tuple[str, ...]:
+    """The hosts whose facts a brief may cite and that only some lab hosts reach, read from ``send_gate`` in contract.yaml."""
+    text = (
+        resources.files("omnimarket.nodes.node_lab_fill_effect")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    block = (yaml.safe_load(text) or {}).get("send_gate") or {}
+    return tuple(str(h) for h in block.get("fact_hosts", ()))
+
+
+DEFAULT_FACT_HOSTS: tuple[str, ...] = _load_fact_hosts()
 CLOSER_NODE = "node_dod_closeout_sweep_compute"
 
 
@@ -36,7 +50,7 @@ class EnumLabFillSendVerdict(StrEnum):
 
     SEND = "send"
     IMPLEMENTATION_MERGED = "implementation-merged"
-    H200_UNREACHABLE = "h200-unreachable"
+    FACT_HOST_UNREACHABLE = "fact-host-unreachable"
 
 
 class ModelLabFillSendGateRequest(BaseModel):
@@ -68,7 +82,7 @@ class ModelLabFillSendGateResult(BaseModel):
 
     verdict: EnumLabFillSendVerdict
     detail: str = ""
-    # The host the lane must be sent to when the gate chose one for an unpinned h200-bound brief.
+    # The host the lane must be sent to when the gate chose one for an unpinned fact-host-bound brief.
     host: str | None = None
     # The node that owns a merged ticket's close-out; set only for implementation-merged.
     routed_to: str = ""

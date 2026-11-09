@@ -4,8 +4,11 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_lane_render import (
     HandlerLabFillLaneRender,
+    ModelLabFillLaneRenderRequest,
 )
 
 from ..models import ModelLabFillLaunchRequest, ModelLabFillLaunchResult
@@ -20,11 +23,16 @@ class HandlerLabFillSend:
         self._launch = launch if launch is not None else HandlerLabFillLaunch()
 
     def handle(self, request: ModelLabFillSendRequest) -> ModelLabFillLaunchResult:
-        rendered = HandlerLabFillLaneRender().handle(request.render)
+        render = ModelLabFillLaneRenderRequest.model_validate(
+            request.render.model_dump()
+            if isinstance(request.render, BaseModel)
+            else request.render
+        )
+        rendered = HandlerLabFillLaneRender().handle(render)
         return self._launch.handle(
             ModelLabFillLaunchRequest(
                 launch=rendered.launch,
-                kind=request.render.item.kind,
+                kind=render.item.kind,
                 brief=rendered.brief,
                 brief_dir=request.brief_dir,
                 ledger_path=request.ledger_path,

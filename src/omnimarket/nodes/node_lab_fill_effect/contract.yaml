@@ -120,6 +120,10 @@ handler_routing:
 # --placement auto for a row whose lane_kind is one of the overlay's cloud.lane_kinds,
 # when this node's route action does not refuse it, and reads the cloud credit left
 # through its credit action. The lane kinds come from the overlay, never this node.
+# Hosts whose facts a brief may cite and that only some lab hosts reach (read by the send gate).
+send_gate:
+  fact_hosts: [h200]
+
 dependencies:
   - name: omnimarket.nodes.node_cloud_session_placement_effect
     dependency_type: internal
