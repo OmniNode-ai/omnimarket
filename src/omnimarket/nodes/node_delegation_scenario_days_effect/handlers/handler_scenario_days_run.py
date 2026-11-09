@@ -38,6 +38,7 @@ from omnimarket.models.model_delegation_scenario import (
     ModelScenarioResult,
     from_status_row,
 )
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_delegation_scenario_days_compute.handlers.handler_scenario_green_days import (
     HandlerScenarioGreenDays,
 )
@@ -47,7 +48,6 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
     CommandPointRead,
 )
-from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
     ProtocolLedgerPointRead,
 )
