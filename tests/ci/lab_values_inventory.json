@@ -14,6 +14,7 @@
     "nodes/node_host_capability_compute/lane_reader_inputs.yaml",
     "nodes/node_host_capability_compute/lane_toolchain.yaml",
     "nodes/node_host_installer_registry_units/contract.yaml",
+    "nodes/node_lab_fill_effect/contract.yaml",
     "nodes/node_linear_ticket_write_effect/runtime_lab_proof.py",
     "nodes/node_memory_pilot_effect/pilot/stage1/bar.json",
     "nodes/node_reading_writer_effect/adapters/two_backend.py",
