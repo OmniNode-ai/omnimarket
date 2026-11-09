@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
+from omnimarket.models.model_criteria_drift import ModelTicketDescriptionEdit
 from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
     ModelTicketCriteriaRead,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "ProtocolCriteriaIssue",
     "ProtocolCriteriaTracker",
     "TrackerCriteriaReader",
+    "read_description_edits",
     "read_ticket_through_tracker",
 ]
 
@@ -48,6 +50,12 @@ class ProtocolCriteriaTracker(Protocol):
     """The slice of ``ProtocolProjectTracker`` a ticket-body read uses."""
 
     async def get_issue(self, issue_id: str) -> ProtocolCriteriaIssue: ...
+
+    async def description_edits(
+        self, issue_id: str
+    ) -> Sequence[ModelTicketDescriptionEdit]:
+        """The ticket's Linear history nodes where ``updatedDescription`` is true (OMN-23184)."""
+        ...
 
     async def close(self) -> None: ...
 
@@ -71,6 +79,22 @@ async def read_ticket_through_tracker(
         ticket_id=ticket_id,
         description=description if isinstance(description, str) else "",
     )
+
+
+async def read_description_edits(
+    tracker: ProtocolCriteriaTracker, ticket_id: str
+) -> tuple[tuple[ModelTicketDescriptionEdit, ...], str | None]:
+    """The ticket's description edits, or the reason the history could not be read.
+
+    A failed read is a reason, never an empty history: an empty history means nobody
+    edited the description, and an unreadable one means nothing is known (OMN-23184).
+    The reason names the failure class only, as the body read does.
+    """
+    try:
+        edits = await tracker.description_edits(ticket_id)
+        return tuple(ModelTicketDescriptionEdit.model_validate(e) for e in edits), None
+    except Exception as error:
+        return (), f"the ticket history read failed ({type(error).__name__})"
 
 
 def _unavailable(ticket_id: str, reason: str) -> ModelTicketCriteriaRead:

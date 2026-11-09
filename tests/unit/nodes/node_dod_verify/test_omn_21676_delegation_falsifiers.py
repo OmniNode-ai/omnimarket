@@ -113,7 +113,8 @@ async def test_delegated_criteria_drift_still_refuses(
     # The delegated hosted verdict above was VERIFIED; the trusted point refuses regardless.
     assert result.verdict is EnumDodCriteriaVerdict.DRIFT
     assert result.merge_blocked is True
-    assert result.reason.startswith(f"{_TICKET}: CRITERIA_DRIFT")
+    assert result.reason.startswith(f"{_TICKET}: writer=")
+    assert "; CRITERIA_DRIFT" in result.reason
     assert "AC1 edited" in result.reason
     # It compared against the live ticket it read itself, before and after, not a hosted answer.
     assert tracker.reads == 2

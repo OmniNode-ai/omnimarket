@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
+    ModelCriteriaWriter,
     ModelCriterionDrift,
 )
 from omnimarket.nodes.node_dod_criteria_check_effect.models.enum_dod_criteria_verdict import (
@@ -47,6 +48,10 @@ class ModelDodCriteriaTicketVerdict(BaseModel):
     criteria_revision: str | None = None
     drift: tuple[ModelCriterionDrift, ...] = ()
     amendment: ModelCriteriaAmendment | None = None
+    writer: ModelCriteriaWriter | None = Field(
+        default=None,
+        description="Who wrote a DRIFT: a ticket edit, the contract, or unmeasured.",
+    )
 
 
 class ModelDodCriteriaCheckResult(BaseModel):

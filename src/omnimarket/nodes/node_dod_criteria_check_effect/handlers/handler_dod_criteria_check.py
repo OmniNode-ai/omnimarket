@@ -35,11 +35,13 @@ import contextlib
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
 import yaml
 
+from omnimarket.enums.enum_criteria_drift_writer import EnumCriteriaDriftWriter
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -56,6 +58,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpResponse,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.models.model_criteria_drift import (
+    ModelCriteriaWriter,
+)
 from omnimarket.models.model_criteria_pins import (
     ModelCriteriaPins,
 )
@@ -79,6 +84,7 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
 )
 from omnimarket.nodes.node_dod_verify.services.criteria_ticket_read import (
     ProtocolCriteriaTracker,
+    read_description_edits,
     read_ticket_through_tracker,
 )
 from omnimarket.nodes.node_dod_verify.services.linear_criteria_tracker import (
@@ -207,6 +213,10 @@ class HandlerDodCriteriaCheck:
                         )
                     )
                 elif check.refused:
+                    writer = await _drift_writer(
+                        tracker, ticket_id, path, request.head_sha, _accepted_at(text)
+                    )
+                    check = check.model_copy(update={"writer": writer})
                     verdicts.append(
                         ModelDodCriteriaTicketVerdict(
                             ticket_id=ticket_id,
@@ -216,6 +226,7 @@ class HandlerDodCriteriaCheck:
                             criteria_revision=check.criteria_revision,
                             drift=check.drift,
                             amendment=check.amendment,
+                            writer=writer,
                         )
                     )
                 else:
@@ -355,6 +366,74 @@ def _pins(text: str) -> ModelCriteriaPins | str | None:
         return "the contract is not a mapping"
     items = raw.get("dod_evidence")
     return extract_criteria_pins(raw, items if isinstance(items, list) else [])
+
+
+def _accepted_at(text: str) -> datetime | None:
+    """The latest ``accepted_at`` among the contract's accepted bindings, or None.
+
+    None means the contract records no acceptance time, so every description edit on
+    the ticket counts as one made after it.
+    """
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    items = raw.get("dod_evidence") if isinstance(raw, dict) else None
+    latest: datetime | None = None
+    for item in items if isinstance(items, list) else ():
+        records = item.get("ac_bindings") if isinstance(item, dict) else None
+        for record in records if isinstance(records, list) else ():
+            if not isinstance(record, dict) or not record.get("accepted_by"):
+                continue
+            value = record.get("accepted_at")
+            try:
+                moment = (
+                    value
+                    if isinstance(value, datetime)
+                    else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                )
+            except ValueError:
+                continue
+            moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+            latest = moment if latest is None or moment > latest else latest
+    return latest
+
+
+async def _drift_writer(
+    tracker: ProtocolCriteriaTracker,
+    ticket_id: str,
+    contract_path: str,
+    head_sha: str,
+    accepted_at: datetime | None,
+) -> ModelCriteriaWriter:
+    """Who wrote a drift: the latest description edit after acceptance, else the contract.
+
+    A history that cannot be read is ``unmeasured``; it is never read as no edit (OMN-23184).
+    """
+    edits, failure = await read_description_edits(tracker, ticket_id)
+    if failure is not None:
+        return ModelCriteriaWriter(
+            kind=EnumCriteriaDriftWriter.UNMEASURED, reason=failure
+        )
+    after = [
+        e
+        for e in edits
+        if accepted_at is None
+        or (e.created_at if e.created_at.tzinfo else e.created_at.replace(tzinfo=UTC))
+        > accepted_at
+    ]
+    if after:
+        last = max(after, key=lambda e: e.created_at)
+        return ModelCriteriaWriter(
+            kind=EnumCriteriaDriftWriter.TICKET_EDIT,
+            actor=last.actor,
+            at=last.created_at,
+        )
+    return ModelCriteriaWriter(
+        kind=EnumCriteriaDriftWriter.CONTRACT,
+        contract_path=contract_path,
+        head_sha=head_sha,
+    )
 
 
 async def _send(

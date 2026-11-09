@@ -5,9 +5,45 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_criteria_drift_kind import EnumCriteriaDriftKind
+from omnimarket.enums.enum_criteria_drift_writer import EnumCriteriaDriftWriter
+
+
+class ModelTicketDescriptionEdit(BaseModel):
+    """One description edit in a ticket's Linear history (``updatedDescription`` true)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    actor: str = Field(..., min_length=1, description="Who made the edit.")
+    created_at: datetime = Field(..., description="When the edit was made.")
+
+
+class ModelCriteriaWriter(BaseModel):
+    """Who wrote the drift, and the evidence the verdict rests on (OMN-23184)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: EnumCriteriaDriftWriter = Field(...)
+    actor: str | None = Field(default=None, description="The editor, for ticket-edit.")
+    at: datetime | None = Field(
+        default=None, description="The edit time, for ticket-edit."
+    )
+    contract_path: str | None = Field(default=None, description="For contract.")
+    head_sha: str | None = Field(default=None, description="The PR head, for contract.")
+    reason: str | None = Field(default=None, description="Why unmeasured.")
+
+    def label(self) -> str:
+        """The ``writer=...`` text a verdict starts with."""
+        if self.kind is EnumCriteriaDriftWriter.TICKET_EDIT:
+            at = self.at.isoformat() if self.at else "unknown-time"
+            return f"writer=ticket-edit {self.actor} {at}"
+        if self.kind is EnumCriteriaDriftWriter.CONTRACT:
+            return f"writer=contract {self.contract_path} at {self.head_sha}"
+        return f"writer=unmeasured {self.reason or 'the ticket history was not read'}"
 
 
 class ModelCriterionDrift(BaseModel):
@@ -126,6 +162,13 @@ class ModelCriteriaCheck(BaseModel):
             "Items that claim only retired criteria; their results do not count."
         ),
     )
+    writer: ModelCriteriaWriter | None = Field(
+        default=None,
+        description=(
+            "Who wrote the drift (OMN-23184). Set by a caller that reads the ticket "
+            "history; the refusal text then starts with it."
+        ),
+    )
     delegated: bool = Field(
         default=False,
         description=(
@@ -157,8 +200,9 @@ class ModelCriteriaCheck(BaseModel):
                 f"(revision {(self.criteria_revision or '')[:12]} -> "
                 f"{(self.revision_after or '')[:12]})"
             )
+        prefix = f"{self.writer.label()}; " if self.writer else ""
         return (
-            f"CRITERIA_DRIFT: the live criteria of {ticket_id} are not the ones its "
+            f"{prefix}CRITERIA_DRIFT: the live criteria of {ticket_id} are not the ones its "
             f"contract was accepted against: {'; '.join(clauses)}. A changed, "
             "deleted, added or ambiguous criterion leaves its binding unproven and "
             "its earlier PASS evidence no longer counts until a second lane "
@@ -170,5 +214,7 @@ __all__ = [
     "ModelCriteriaAmendment",
     "ModelCriteriaAmendmentEntry",
     "ModelCriteriaCheck",
+    "ModelCriteriaWriter",
     "ModelCriterionDrift",
+    "ModelTicketDescriptionEdit",
 ]
