@@ -31,7 +31,9 @@ class WorkLedgerGuardReplay:
         self._judge = judge
 
     def handle(self, request: ModelGuardReplayRequest) -> ModelGuardReplayResult:
-        accepted: list[str] = []
+        accepted: list[str] = (
+            [request.preceding_ledger.rstrip("\n")] if request.preceding_ledger else []
+        )
         differences: list[ModelReplayDifference] = []
         for position, entry in enumerate(request.entries, start=1):
             replayed = self._judge(entry.row, "\n".join(accepted), request.ledger_name)
