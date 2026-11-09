@@ -5,11 +5,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Protocol
 
 
 class ManifestUnreadableError(Exception):
     """The runtime's served manifest could not be read; the message names the cause."""
+
+
+class ManifestUnreachableError(ManifestUnreadableError):
+    """The manifest endpoint did not answer (refused, reset, timed out); no body was read.
+
+    Distinct from a body that arrived and was refused: an unreachable endpoint says nothing about lag,
+    and during a dev redeploy it is expected for the minutes the runtime takes to come up.
+    """
 
 
 class GroupNeverCommittedError(Exception):
@@ -28,6 +37,14 @@ class ProtocolManifestSource(Protocol):
     def read(self) -> Mapping[str, Any]:
         """The running image's auto-wiring manifest, or raise ManifestUnreadableError."""
         ...
+
+
+class ProtocolManifestCache(Protocol):
+    def load(self) -> tuple[Mapping[str, Any], datetime] | None:
+        """The last good manifest (the contracts the declared nodes need) and when it was fetched, or None."""
+        ...
+
+    def save(self, manifest: Mapping[str, Any], fetched_at: datetime) -> None: ...
 
 
 class ProtocolGroupLagReader(Protocol):
@@ -53,8 +70,10 @@ class ProtocolRunRecordStore(Protocol):
 __all__ = [
     "GroupNeverCommittedError",
     "GroupUnreadableError",
+    "ManifestUnreachableError",
     "ManifestUnreadableError",
     "ProtocolGroupLagReader",
+    "ProtocolManifestCache",
     "ProtocolManifestSource",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
