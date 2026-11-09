@@ -240,6 +240,17 @@ inputs:
     description: >
       OMN-19437. Span of the command within trace_id, stamped by the producer
       and copied onto the terminal the same way.
+  probe_ladder:
+    type: object
+    required: false
+    description: >
+      OMN-23162. A synthetic probe's per-run ladder, in one of two modes. In
+      rungs mode it names the rungs the run walks instead of the routing
+      contract's; in faults mode the production ladder is resolved as usual and
+      it only names transport faults keyed by model id. The local dispatch port
+      refuses it, before any provider call, unless the provenance is synthetic
+      with source_surface doctor_escalation_check or readiness_probe. Omit for
+      an ordinary delegation.
   metadata:
     type: object
     required: false

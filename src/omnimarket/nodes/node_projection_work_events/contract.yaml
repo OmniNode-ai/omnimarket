@@ -10,7 +10,7 @@ description: >
   work-ledger surface of the OMN-16176 L0 -> L1 -> L2 ladder. One event
   produces one content-addressed row, so replay is idempotent without any
   cross-dispatch reducer state. The authoritative L0 record remains
-  docs/tracking/ROLLING_WORK_LEDGER.md; L0 and L1 dual-write during the
+  the rolling work ledger file under docs/tracking; L0 and L1 dual-write during the
   transition (retiring L0 is OMN-16183/C7). Claims arbitration is NOT here --
   OMN-16179 (C3) puts it on a compacted Kafka view, deliberately not in
   Postgres, so a reducer outage degrades rendering only and never the ability
