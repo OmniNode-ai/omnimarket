@@ -27,7 +27,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -58,6 +58,7 @@ from omnimarket.nodes.node_silent_failure_alarm_compute import (
     host_id,
 )
 
+from ..host_table import read_unavailable_hosts
 from ..models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
@@ -112,6 +113,11 @@ def _parse_stamp(text: str) -> datetime | None:
         return datetime.strptime(text, STAMP_FORMAT).replace(tzinfo=UTC)
     except ValueError:
         return None
+
+
+def _skip_none() -> tuple[frozenset[str], str]:
+    """No host is skipped: the options did not ask for the lab host table."""
+    return frozenset(), ""
 
 
 def _stamp(value: datetime) -> str:
@@ -201,9 +207,19 @@ class HandlerSilentFailureAlarm:
         *,
         drainer_watch: ProtocolDrainerWatch | None = None,
         host_watches: Mapping[str, ProtocolDrainerWatch] | None = None,
+        unavailable_hosts: Callable[[], tuple[frozenset[str], str]] | None = None,
     ) -> None:
         options = options or ModelSilentFailureAlarmOptions.from_environment()
         self._options = options
+        # The hosts the lab host table declares unavailable take no lane, so the quiet-host reading skips
+        # them when the options ask (OMN-22778). Injected so a test supplies the table; the default reads
+        # the deployment's.
+        self._unavailable_hosts: Callable[[], tuple[frozenset[str], str]] = (
+            unavailable_hosts
+            or (
+                read_unavailable_hosts if options.skip_unavailable_hosts else _skip_none
+            )
+        )
         self._drainer = HandlerDrainerAlarm()
         self._watch = drainer_watch or (
             DrainerWatchProbe(options.drainer) if options.drainer is not None else None
@@ -305,6 +321,12 @@ class HandlerSilentFailureAlarm:
             warnings.append(
                 f"silent_failure_alarm: delivery state could not be read: {delivery_problem}"
             )
+        unavailable, table_problem = self._unavailable_hosts()
+        if table_problem:
+            warnings.append(
+                f"silent_failure_alarm: lab host table could not be read, no host is skipped as "
+                f"unavailable: {table_problem}"
+            )
         events, event_problem = self._read_hook_events()
         if event_problem:
             warnings.append(
@@ -319,6 +341,7 @@ class HandlerSilentFailureAlarm:
                         host=host, lane_stamps=stamps, last_event_at=events.get(host)
                     )
                     for host, stamps in sorted(host_stamps.items())
+                    if host not in unavailable
                 ),
             ),
             apply=request.apply,
@@ -542,6 +565,7 @@ class HandlerSilentFailureAlarm:
                 finding_exits=options.job_finding_exits,
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
+                dispatch_configured=options.dispatch_command is not None,
             )
         )
         job_streaks = {item.label: item for item in jobs.streaks}
