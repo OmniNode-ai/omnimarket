@@ -392,3 +392,66 @@ def test_the_installer_declares_a_unit_that_runs_the_tick_every_two_minutes(
     assert environment["ONEX_SKILL_OVERLAY_ROOTS"].endswith(
         "plugins/onex-overlays/overlays"
     )
+
+
+def test_the_rendered_unit_carries_the_workspace_config_root_the_host_gives(
+    tmp_path: Path,
+) -> None:
+    """Without it every read fails: the gateway cannot find the lane declaration table (OMN-23303)."""
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    result = HandlerRegistryUnits(real_run).handle(
+        request(
+            tmp_path,
+            unit="job-log-filler",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    environment = plist_of(result.rendered)["EnvironmentVariables"]
+    assert environment["ONEX_WORKSPACE_CONFIG_ROOT"] == str(tmp_path / "ws")
+
+
+def test_the_unit_declares_the_workspace_config_root_as_a_host_placeholder() -> None:
+    declared = load_units()["job-log-filler"]["environment"]
+    assert declared["ONEX_WORKSPACE_CONFIG_ROOT"] == "{workspace_config_root}"
+
+
+def test_control_the_workspace_config_root_follows_the_host_value(
+    tmp_path: Path,
+) -> None:
+    """A second host root renders a second value, so the line is read from the request and is no constant."""
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    other = tmp_path / "other-ws"
+    result = HandlerRegistryUnits(real_run).handle(
+        request(
+            tmp_path,
+            unit="job-log-filler",
+            project_path=str(branch),
+            expected_revision=revision,
+            workspace_config_root=str(other),
+        )
+    )
+    assert result.status == "success", result.stderr
+    environment = plist_of(result.rendered)["EnvironmentVariables"]
+    assert environment["ONEX_WORKSPACE_CONFIG_ROOT"] == str(other)
+
+
+def test_a_job_log_filler_unit_with_no_host_workspace_config_root_is_refused(
+    tmp_path: Path,
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    result = HandlerRegistryUnits(real_run).handle(
+        request(
+            tmp_path,
+            unit="job-log-filler",
+            project_path=str(branch),
+            expected_revision=revision,
+            workspace_config_root="",
+        )
+    )
+    assert result.status == "failure"
+    assert "workspace_config_root" in result.stderr
