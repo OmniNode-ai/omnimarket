@@ -38,6 +38,7 @@ from .fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -94,6 +95,7 @@ def _tick(
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     clock = FakeClock()
     launch = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=checks,
         approved=approved,
         blocks=FakeBlocks(),

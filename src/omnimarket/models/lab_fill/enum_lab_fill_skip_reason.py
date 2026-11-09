@@ -22,3 +22,5 @@ class EnumLabFillSkipReason(StrEnum):
     SKIP_HELD = "held"
     # OMN-20864: the PR's red, or its last landing lane's block, is a cause no lane can fix on it.
     SKIP_BLOCKED_UNFIXABLE = "blocked-unfixable"
+    # OMN-23312: a delegation ticket whose assignee is not one of the deployment's delegation owners.
+    OTHER_OWNER = "other-owner"
