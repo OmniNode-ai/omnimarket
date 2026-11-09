@@ -78,6 +78,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -149,6 +150,8 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     """``CONCURRENTLY`` refuses to run inside the implicit transaction
     asyncpg's multi-statement ``execute()`` opens, and exists only to avoid
     locking a live table -- which a disposable schema does not have."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX").replace(
         "CREATE UNIQUE INDEX CONCURRENTLY", "CREATE UNIQUE INDEX"
     )
