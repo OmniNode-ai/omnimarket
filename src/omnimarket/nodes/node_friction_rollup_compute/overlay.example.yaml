@@ -103,13 +103,13 @@ class_rules:
     pattern: '(?:No tool reads|bus live read failed|pull_merge_state can resolve a PR number to a commit for a different|--source bus live read of .{0,120}failed after \d+s)'
   - name: pr-handoff-install-first-unprovable
     owner: "the owner of pr-handoff's install-first check (it demands an installed=<host>:<revision> for a head that no declared installer can install before merge)"
-    pattern: '(?:no installed=<host>:<revision>|installed= proof)'
+    pattern: '(?:no installed=<host>:<revision>|installed= proof|pr-handoff.{0,3} refuses without (?:it|installed=<host>:<rev))'
   - name: brief-names-clone-or-path-absent-on-lab-host
     owner: "the owner of the lab host clone set (the canonical clone sync must carry every repository and branch a brief names) and of lane placement"
     pattern: '(?:NO_CLONE|holds no such branch|clone holds no|paths are absent on h\d+)'
   - name: lab-host-lacks-node-toolchain
     owner: "the owner of the lab host toolchain (node, pnpm and corepack for web lanes) and of the placement of web lanes"
-    pattern: '(?:no node, pnpm or corepack|host with no node|h\d+ has no node)'
+    pattern: '(?:no node, pnpm or corepack|host with no node|h\d+ has no node|no pool host has node|node not installed on any pool host|Chromium can.t load its shared libraries)'
   - name: brief-holds-window-misses-older-hold
     owner: "the owner of the lane brief holds reader: it reads a 24 h window, so a HOLD older than that and still in force is not shown"
     pattern: 'holds section reads a 24 h window'
@@ -135,6 +135,24 @@ class_rules:
   - name: commit-gates-conflict-local-paths-vs-file-shape-ratchet
     owner: "the owners of the check-local-paths-compute hook in omnibase_core and of the canonical-file-shape ratchet: the hook's only escape marker counts as suppression growth in the ratchet, so a file the hook flags cannot be changed"
     pattern: 'check-local-paths-compute hook'
+# The 11 FRICTION rows of 2026-11-09T09:52Z to 10:50Z that carry a bare class=other (OMN-22879). The rollup now reads such a row through
+# these rules as it reads a row with no class cell; a row no rule names stays other. Grouped by real cause, named from the row's own text.
+# A row that says no ssh key goes before the placement rule, which names a refusal of the run.
+  - name: lab-host-not-installed-no-ssh-key-outside-lab-run-pool
+    owner: "the host installer for the lab hosts (a host with no ssh key from the host a lane runs on and no place in the lab-run pool cannot be reached from that host: the lane's child lane is refused and the host's work stays undone)"
+    pattern: 'no ssh key'
+  - name: ci-job-log-unreadable-from-the-mirror
+    owner: "the owner of the read-only mirror's job-log reads (a failing job's log is not in the mirror cache or its run view answers 404, so the cause of a red cannot be read and a lane may not rerun to find it)"
+    pattern: '(?:JOB-LOG-CACHE-MISS|run-view 404|log (?:is|was) not in the (?:read )?(?:mirror|cache))'
+  - name: lab-run-placement-refused-no-host-admits-the-run
+    owner: "the owner of lab-run placement and of the lab host pool (every host was over the load bar, out of the pool or without a unit slot, so the run was refused with exit 75 and the lane could not run the test it was sent to run)"
+    pattern: '(?:placement refused|exit 75|no lab host admitted|NO-UNIT-SLOT)'
+  - name: criterion-needs-a-host-or-runtime-the-lane-cannot-reach
+    owner: "the owner of the lab fill plan (a ticket whose remaining criterion is a deploy or a live read on a host or runtime the lane is not placed on goes to the deploy agent or to a lane placed there, and not to a code lane that ends partial)"
+    pattern: '(?:AC\d+ needs an? (?:container roll|live read)|this lane is on a different host)'
+  - name: fill-ticket-already-merged-or-superseded-criteria-not-reconciled
+    owner: "the owner of the lab fill plan and of the ticket's criteria (the work is merged or superseded elsewhere but the ticket stays open with falsifiers that name a copy that no longer holds it, so each fill sends a lane that ends blocked; the ticket is closed as superseded or its criteria are rebound)"
+    pattern: "(?:falsifiers target a stale|is superseded by OMN-\\d+)"
 # The 12 rows of 2026-11-08T08:11Z to 17:37Z that the 41 rules above did not name (OMN-22879), grouped by cause and named from their
 # own text. Three of them are named by widening the pattern of a class that already owned the cause (the file-shape ratchet and the
 # bus state reads, above); the rest are new classes.
