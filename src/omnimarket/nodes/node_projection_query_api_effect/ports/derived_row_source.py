@@ -10,7 +10,7 @@ per-key skip scan :class:`TableRowSource` reads a mutable-grain exposure with
 names the relation three times (an anchor, a recursive step that finds nothing,
 and the per-key lookup), so a single HTTP read evaluated the whole aggregate
 three times: 1.6 to 17 s measured on the dev lane at 2026-11-09 13:52Z, against
-the dashboard's 5 s read timeout (OMN-19986).
+the dashboard's 5 s read timeout (OMN-23347).
 
 :class:`DerivedReadRowSource` is a :class:`TableRowSource` that reads such a
 relation once, with one ``DISTINCT ON`` pass, and holds the served window in a

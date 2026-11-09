@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19986: the overview's aggregate reads answer well inside the dashboard's 5 s.
+"""OMN-23347: the overview's aggregate reads answer well inside the dashboard's 5 s.
 
 The local dashboard gives up on a read after 5 s. Seven overview exposures are
 views over ``delegation_events`` (about 100k rows on the dev lane), and a read
