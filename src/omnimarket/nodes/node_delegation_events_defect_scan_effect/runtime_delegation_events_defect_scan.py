@@ -90,13 +90,16 @@ def _schedule(action: str) -> int:
     if action == "uninstall":
         return schedule_module.uninstall(schedule, home=home)
     overlay = load_overlay()
+    environ = os.environ  # ONEX_FLAG_EXEMPT: variable names are declared by the overlay
+    registry_root = environ[
+        "OMNI_HOME"
+    ]  # ONEX_FLAG_EXEMPT: the registry root the unit runs from
     return schedule_module.install(
         schedule,
-        omni_root=Path(
-            os.environ["OMNI_HOME"]
-        ),  # ONEX_FLAG_EXEMPT: the registry root the unit runs from
+        omni_root=Path(registry_root),
         home=home,
         python=Path(sys.executable),
+        environment=environ,
         extra_environment_names=overlay.carried_environment_names(),
     )
 

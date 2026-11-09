@@ -52,6 +52,9 @@ def run_golden_chain() -> None:
     assert declared["handler_routing"]["handlers"][0]["operation"] == (
         "delegation_events_defect_scan"
     )
+    assert declared["terminal_event"] == (
+        "onex.evt.omnimarket.delegation-events-defect-scan-read.v1"
+    )
     assert declared["terminal_event"] in declared["event_bus"]["publish_topics"]
     scan = resolve_handler()().handle(request())
     assert scan.verdict is V.WORKING

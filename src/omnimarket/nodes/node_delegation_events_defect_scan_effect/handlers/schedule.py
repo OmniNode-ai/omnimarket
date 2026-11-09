@@ -10,7 +10,6 @@ it stops the timer and removes the two unit files.
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -152,7 +151,7 @@ def install(
     home: Path,
     python: Path,
     runner: Runner = run_command,
-    environment: Mapping[str, str] | None = None,
+    environment: Mapping[str, str],
     extra_environment_names: Sequence[str] = (),
 ) -> int:
     """Write the two units, reload the user manager and enable the timer. Returns the first non-zero exit, else 0."""
@@ -161,7 +160,7 @@ def install(
         omni_root=omni_root,
         home=home,
         python=python,
-        environment=os.environ if environment is None else environment,
+        environment=environment,
         extra_environment_names=extra_environment_names,
     )
     service_path, timer_path = unit_paths(schedule, home)
