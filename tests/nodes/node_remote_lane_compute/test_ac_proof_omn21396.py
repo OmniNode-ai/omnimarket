@@ -19,12 +19,12 @@ from omnimarket.models.model_engine_experiment import (
     format_experiment_line,
     parse_experiment_rows,
 )
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
 )
 from omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision import (
     HandlerThroughputTickDecision,

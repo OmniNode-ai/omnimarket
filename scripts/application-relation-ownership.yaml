@@ -185,6 +185,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
       access: write
       role: alert_channel_liveness
+    # Context-integrity audit events, written by node_projection_context_audit in
+    # place of the omnibase_infra context-audit consumer. Rows carry a
+    # deterministic event_key; the table's natural id is a BIGSERIAL.
+    - name: context_audit_events
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_context_audit/migrations/0000_add_context_audit_event_key.sql
+      access: write
+      role: context_audit_events
     # OMN-19977: replaceable metering snapshots, one row per (tenant, window,
     # baseline model). Declared HERE because the OMN-15361 SQL gate resolves a
     # created application object against this manifest.

@@ -120,6 +120,9 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # OMN-21015: 0060 re-creates that view again, with the same dependence.
 # OMN-20717: 0062 re-creates projection_delegation_token_usage, which groups
 # ON tenant_id, so it depends on the column and is withheld with 0039.
+# OMN-22573: 0065 re-creates projection_delegation_quality_gate, which reads
+# 0045's operational_outcome column and groups ON tenant_id, so it is withheld
+# with 0045.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
     {
         "0039_delegation_aggregate_views_per_tenant.sql",
@@ -130,6 +133,7 @@ _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
         "0062_delegation_token_usage_unpriced_calls.sql",
         # OMN-21970: 0067's per-day view groups ON tenant_id too.
         "0067_delegation_daily_view.sql",
+        "0065_quality_gate_failure_categories_bounded.sql",
     }
 )
 

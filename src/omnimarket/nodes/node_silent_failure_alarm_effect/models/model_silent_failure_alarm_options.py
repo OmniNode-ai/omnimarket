@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..host_table import HostTableError, read_host_aliases
+from .model_closer_liveness_options import ModelCloserLivenessOptions
 from .model_drainer_watch_options import ModelDrainerWatchOptions
 from .model_quiet_host_repair import ModelHostDrainerCommand
 
@@ -46,6 +47,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # --min-merges-per-hour) and lanes placed on a pool host per hour. Zero turns a measure off.
     min_merges_per_hour: int = Field(default=5, ge=0)
     min_lanes_placed_per_hour: int = Field(default=1, ge=0)
+    # How long a lane the lab fill handed to a detached send job may read ``pending`` with no CLAIM
+    # row before the placement alarm counts it unplaced: the fill's own send cap (sendCapS 900 s).
+    lane_send_cap_minutes: int = Field(default=15, ge=1)
     controller_state_dir: Path = Field(
         default_factory=lambda: Path.home() / ".local/state/omni/landing"
     )
@@ -72,6 +76,11 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # Why ``host_table`` could not be read ('' when it was, or none is named); set by the
     # validator below. Hook events are then unattributable, which the tick reports as UNKNOWN.
     host_table_error: str = ""
+    # True reads the lab host table (the one lab host list, however the deployment names it) and leaves
+    # out of the quiet-host reading each host it declares unavailable: such a host takes no lane, so a
+    # ledger row that names it is not lane work that lost its hook events (OMN-22778). False, the default,
+    # skips no host. A table that cannot be read is reported and skips nothing.
+    skip_unavailable_hosts: bool = False
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (
@@ -114,6 +123,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # Exit codes a job declares as its own finding, by label (OMN-19998): a floor job exiting 1 for
     # floors under is working, so its episode briefs a lane to act on the finding, not the job.
     job_finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
+    # The ticket closer's staleness check (OMN-20718). None means this caller configured none,
+    # which the tick reports as UNCONFIGURED and never treats as a pass.
+    closer: ModelCloserLivenessOptions | None = None
     bash: str = "bash"
     python: str = Field(default_factory=lambda: sys.executable)
 

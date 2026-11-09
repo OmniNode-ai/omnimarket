@@ -138,6 +138,11 @@ _POST_CONVERSION_TIER_MODELS_VIEW = "0060_model_routing_tier_models.sql"
 # withheld with 0039.
 _POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.sql"
 
+# OMN-22573: 0065 re-creates projection_delegation_quality_gate, which reads
+# 0045's operational_outcome column and groups ON tenant_id, so it depends on
+# 0045 and is withheld with it.
+_POST_CONVERSION_QUALITY_GATE_VIEW = "0065_quality_gate_failure_categories_bounded.sql"
+
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # The registry rows, pinned as literals from the live cross-check against
@@ -290,6 +295,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_TIER_MODELS_VIEW,
             _POST_CONVERSION_TOKEN_USAGE_VIEW,
             _POST_CONVERSION_DAILY_VIEW,
+            _POST_CONVERSION_QUALITY_GATE_VIEW,
         }
     ]
 

@@ -27,12 +27,13 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.models.silent_failure_alarm import (
+    ModelCloserStalenessRequest,
     ModelDrainerRepair,
     ModelDrainerRequest,
     ModelDrainerResult,
@@ -48,7 +49,11 @@ from omnimarket.models.silent_failure_alarm import (
     ModelThroughputResultsRequest,
     ModelTickLivenessRequest,
 )
+from omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm import (
+    ModelCloserStalenessResult,
+)
 from omnimarket.nodes.node_silent_failure_alarm_compute import (
+    HandlerCloserStalenessAlarm,
     HandlerDrainerAlarm,
     HandlerJobExitAlarm,
     HandlerPlacementShareAlarm,
@@ -58,6 +63,7 @@ from omnimarket.nodes.node_silent_failure_alarm_compute import (
     host_id,
 )
 
+from ..host_table import read_unavailable_hosts
 from ..models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
@@ -65,8 +71,14 @@ from ..models import (
 )
 from ..protocols import ProtocolDrainerWatch
 from .alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
+from .closer_record_reader import (
+    declared_interval,
+    ledger_record_at,
+    receipt_record_at,
+)
 from .command_drainer_watch import CommandDrainerWatchProbe
 from .drainer_watch import DrainerWatchProbe
+from .lab_fill_lane_reading import LabFillRunRow, parse_lanes, settle_run
 from .quiet_host_repair import QuietHostRepairPlanner
 
 LANE = "silent-failure-alarm"
@@ -89,6 +101,7 @@ RESULTS = "throughput-results"
 HOUR = timedelta(hours=1)
 DRAINER = "drainer-dead"
 JOB_EXIT = "job-exit"
+CLOSER = "closer-staleness"
 _EPISODE = re.compile(r"ep-\d{8}T\d{4}Z-[a-z0-9.-]+")
 _JOB_RUNS = re.compile(r"^\s*runs\s*=\s*(\d+)\s*$", re.MULTILINE)
 _JOB_EXIT = re.compile(r"^\s*last exit code\s*=\s*(-?\d+)\s*$", re.MULTILINE)
@@ -111,6 +124,11 @@ def _parse_stamp(text: str) -> datetime | None:
         return datetime.strptime(text, STAMP_FORMAT).replace(tzinfo=UTC)
     except ValueError:
         return None
+
+
+def _skip_none() -> tuple[frozenset[str], str]:
+    """No host is skipped: the options did not ask for the lab host table."""
+    return frozenset(), ""
 
 
 def _stamp(value: datetime) -> str:
@@ -200,15 +218,26 @@ class HandlerSilentFailureAlarm:
         *,
         drainer_watch: ProtocolDrainerWatch | None = None,
         host_watches: Mapping[str, ProtocolDrainerWatch] | None = None,
+        unavailable_hosts: Callable[[], tuple[frozenset[str], str]] | None = None,
     ) -> None:
         options = options or ModelSilentFailureAlarmOptions.from_environment()
         self._options = options
+        # The hosts the lab host table declares unavailable take no lane, so the quiet-host reading skips
+        # them when the options ask (OMN-22778). Injected so a test supplies the table; the default reads
+        # the deployment's.
+        self._unavailable_hosts: Callable[[], tuple[frozenset[str], str]] = (
+            unavailable_hosts
+            or (
+                read_unavailable_hosts if options.skip_unavailable_hosts else _skip_none
+            )
+        )
         self._drainer = HandlerDrainerAlarm()
         self._watch = drainer_watch or (
             DrainerWatchProbe(options.drainer) if options.drainer is not None else None
         )
         self._placement = HandlerPlacementShareAlarm()
         self._liveness = HandlerTickLivenessAlarm()
+        self._closer = HandlerCloserStalenessAlarm()
         self._quiet = HandlerQuietHostAlarm()
         self._results = HandlerThroughputResultsAlarm()
         self._job_exit = HandlerJobExitAlarm()
@@ -252,9 +281,14 @@ class HandlerSilentFailureAlarm:
                 summary="",
                 warnings=(f"silent_failure_alarm: ledger could not be read: {detail}",),
             )
-        runs, refusals, raised, raised_hosts, newest_row_hosts = self._read_ledger(
-            text, now
-        )
+        (
+            runs,
+            refusals,
+            raised,
+            raised_hosts,
+            newest_row_hosts,
+            resolved_episodes,
+        ) = self._read_ledger(text, now)
         pending, delivered_log, opened, delivery_problem = self._read_deliveries()
         host_stamps = self._read_host_lane_stamps(text, now)
         host_claims = self._read_host_lane_stamps(text, now, kinds=("CLAIM",))
@@ -304,6 +338,12 @@ class HandlerSilentFailureAlarm:
             warnings.append(
                 f"silent_failure_alarm: delivery state could not be read: {delivery_problem}"
             )
+        unavailable, table_problem = self._unavailable_hosts()
+        if table_problem:
+            warnings.append(
+                f"silent_failure_alarm: lab host table could not be read, no host is skipped as "
+                f"unavailable: {table_problem}"
+            )
         events, event_problem = self._read_hook_events()
         if event_problem:
             warnings.append(
@@ -318,6 +358,7 @@ class HandlerSilentFailureAlarm:
                         host=host, lane_stamps=stamps, last_event_at=events.get(host)
                     )
                     for host, stamps in sorted(host_stamps.items())
+                    if host not in unavailable
                 ),
             ),
             apply=request.apply,
@@ -333,6 +374,13 @@ class HandlerSilentFailureAlarm:
             warnings,
         )
 
+        readings, readable, unconfigured, job_problem = self._read_jobs()
+        closer = self._decide_closer(
+            now,
+            text,
+            tuple(r.label for r in readings) if readable and not unconfigured else None,
+        )
+
         alarms: list[str] = []
         rows: list[str] = []
         friction = "not-needed"
@@ -342,6 +390,7 @@ class HandlerSilentFailureAlarm:
             QUIET: quiet_state,
             RESULTS: results.state,
             DRAINER: drainer_state,
+            CLOSER: closer.state,
         }
         raising = (
             (
@@ -373,6 +422,13 @@ class HandlerSilentFailureAlarm:
                 drainer_decision.alert_text,
                 "drainer_dead",
             ),
+            (
+                CLOSER,
+                closer.alarm,
+                closer.friction_cells,
+                closer.alert_text,
+                "closer_staleness",
+            ),
         )
         alarm_hosts = {QUIET: set(quiet.quiet_hosts), DRAINER: {self._drainer_host()}}
         # A condition that ended is resolved only when its own decision reads it healthy; an
@@ -383,6 +439,7 @@ class HandlerSilentFailureAlarm:
             QUIET: quiet_state == "LIVE",
             RESULTS: results.state == "PRODUCING",
             DRAINER: drainer_state == "LIVE",
+            CLOSER: closer.state == "LIVE",
         }
         open_notes: list[str] = []
         resolved: list[str] = []
@@ -396,10 +453,17 @@ class HandlerSilentFailureAlarm:
                 if not healthy[name]:
                     open_notes.append(f"{name}(open {minutes}m,unread)")
                     continue
+                episode_id = _episode_id(name, current)
+                if episode_id in resolved_episodes:
+                    # The ledger already holds this episode's resolved row: one episode, one row
+                    # (OMN-22868). Only the stale open entry is dropped.
+                    if request.apply:
+                        del opened[name]
+                    continue
                 resolved.append(name)
                 row = (
                     f"{_stamp(now)} | STATUS | lane=silent-failure-alarm | ticket=OMN-19998 | "
-                    f"actor=launchd:silent-failure-alarm | episode={_episode_id(name, current)} | "
+                    f"actor=launchd:silent-failure-alarm | episode={episode_id} | "
                     f"resolved={name} | open_minutes={minutes} | "
                     f"{name} alarm resolved after {minutes} minutes open"
                 )
@@ -458,6 +522,7 @@ class HandlerSilentFailureAlarm:
                 QUIET: "QUIET",
                 RESULTS: results.state,
                 DRAINER: "DEAD",
+                CLOSER: "STALE",
             }[name]
             row = f"{_stamp(now)} | {cells}"
             alarms.append(name)
@@ -511,7 +576,6 @@ class HandlerSilentFailureAlarm:
             else ()
         )
 
-        readings, readable, unconfigured, job_problem = self._read_jobs()
         if job_problem:
             warnings.append(
                 f"silent_failure_alarm: job table could not be read: {job_problem}"
@@ -541,6 +605,7 @@ class HandlerSilentFailureAlarm:
                 finding_exits=options.job_finding_exits,
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
+                dispatch_configured=options.dispatch_command is not None,
             )
         )
         job_streaks = {item.label: item for item in jobs.streaks}
@@ -622,6 +687,7 @@ class HandlerSilentFailureAlarm:
             f"quiet_host={verdicts[QUIET]} results={verdicts[RESULTS]} "
             f"merges_1h={'unread' if merges is None else merges} placed_1h={placed} "
             f"drainer={verdicts[DRAINER]} drainer_repair={drainer_repair} "
+            f"closer_staleness={verdicts[CLOSER]} closer_age={closer.age_seconds if closer.age_seconds is not None else 'none'} "
             f"trend_age={_minutes(now, trend_at)} "
             f"job_exit={job_state} failing={','.join(jobs.failing) or 'none'} "
             f"episodes_opened={len(jobs.opened)} pushed={len(jobs.push)} "
@@ -685,6 +751,43 @@ class HandlerSilentFailureAlarm:
             summary="host drainer observation",
             observation=before,
             repair=repair,
+        )
+
+    def _decide_closer(
+        self, now: datetime, ledger_text: str, loaded_labels: tuple[str, ...] | None
+    ) -> ModelCloserStalenessResult:
+        """The closer's staleness from its declared interval and newest run record."""
+        closer = self._options.closer
+        if closer is None:
+            return self._closer.handle(
+                ModelCloserStalenessRequest(
+                    now=now, lane="unconfigured", unit_label="unconfigured"
+                )
+            )
+        newest = ledger_record_at(ledger_text, closer.lane)
+        readable = True
+        if closer.fire_receipts is not None:
+            fired, readable = receipt_record_at(
+                closer.fire_receipts, closer.lane, closer.run_phases
+            )
+            if fired is not None and (newest is None or fired > newest):
+                newest = fired
+        return self._closer.handle(
+            ModelCloserStalenessRequest(
+                now=now,
+                lane=closer.lane,
+                unit_label=closer.unit_label,
+                interval_seconds=declared_interval(
+                    closer.liveness_overlay, closer.process_id
+                ),
+                stale_multiple=closer.stale_multiple,
+                last_record_at=newest,
+                # A ledger TERMINAL is a record even when the receipts file is unreadable.
+                records_readable=readable or newest is not None,
+                unit_loaded=None
+                if loaded_labels is None
+                else closer.unit_label in loaded_labels,
+            )
         )
 
     def _read_jobs(self) -> tuple[tuple[ModelJobExitReading, ...], bool, bool, str]:
@@ -970,17 +1073,25 @@ class HandlerSilentFailureAlarm:
         dict[str, datetime],
         dict[str, set[str]],
         dict[str, set[str]],
+        set[str],
     ]:
         """The lab-fill runs, the lane refusals, the alarms already raised, the hosts the
-        host-keyed alarms inside the dedupe window named, and the hosts each host-keyed alarm's
-        newest row named (whatever its age), as of ``now``."""
+        host-keyed alarms inside the dedupe window named, the hosts each host-keyed alarm's
+        newest row named (whatever its age), and the episodes a resolved row already closed, as of
+        ``now``.
+
+        A raise a later resolved row closed is not a raise: the next shortfall is a new episode
+        with its own row, and is never adopted as the open alarm of the closed one (OMN-22868)."""
         floor = _stamp(now - LOOKBACK)
         ceiling = _stamp(now)
-        runs: list[ModelPlacementRun] = []
+        fill_rows: list[LabFillRunRow] = []
         refusals: list[ModelLaneRefusal] = []
+        claimed: dict[str, datetime] = {}
         raised: dict[str, datetime] = {}
         raised_hosts: dict[str, set[str]] = {}
         newest_row: dict[str, tuple[datetime, set[str]]] = {}
+        resolved_at: dict[str, datetime] = {}
+        resolved_episodes: set[str] = set()
         for line in text.splitlines():
             head = line[:20]
             if head > ceiling or ("lab-fill" not in line and LANE not in line):
@@ -1001,29 +1112,45 @@ class HandlerSilentFailureAlarm:
                     and dispatched.isdecimal()
                     and placed.isdecimal()
                 ):
-                    runs.append(
-                        ModelPlacementRun(
+                    fill_rows.append(
+                        LabFillRunRow(
                             run_key="".join(run.groups()),
                             stamp=stamp,
                             dispatched=int(dispatched),
                             placed=int(placed),
+                            lanes=parse_lanes(row.value("lanes")),
                         )
                     )
-            elif row.row_type == "MSG":
-                lane = _LANE_RUN_KEY.match(row.token("from") or "")
+            elif (
+                row.row_type == "STATUS"
+                and row.token("lane") == LANE
+                and row.token("resolved")
+            ):
+                family = row.token("resolved") or ""
+                resolved_at[family] = max(resolved_at.get(family, stamp), stamp)
+                resolved_episodes.add(row.token("episode") or "")
+            elif row.row_type == "CLAIM":
+                lane_name = row.token("lane") or ""
+                if _LANE_RUN_KEY.match(lane_name):
+                    claimed.setdefault(lane_name, stamp)
+            elif row.row_type in ("MSG", "STATUS"):
+                # The runner's lane-end report was a MSG from the lane; since OMN-21822 it is a STATUS
+                # row of the lane. Both name the status the lane ended on and its exit code.
+                name = row.token("from" if row.row_type == "MSG" else "lane") or ""
+                lane = _LANE_RUN_KEY.match(name)
                 status = row.token("status") or ""
                 if lane and _STATUS.match(status) and row.token("exit") != "0":
                     refusals.append(
-                        ModelLaneRefusal(
-                            run_key=lane[1], lane=row.token("from") or "", status=status
-                        )
+                        ModelLaneRefusal(run_key=lane[1], lane=name, status=status)
                     )
             elif row.row_type == "FRICTION" and row.token("lane") == LANE:
                 kind = row.token("class")
                 if kind == JOB_EXIT:
                     continue
                 family = (
-                    kind if kind in (LIVENESS, QUIET, RESULTS, DRAINER) else PLACEMENT
+                    kind
+                    if kind in (LIVENESS, QUIET, RESULTS, DRAINER, CLOSER)
+                    else PLACEMENT
                 )
                 raised[family] = max(raised.get(family, stamp), stamp)
                 if family in (QUIET, DRAINER) and stamp > now - DEDUPE:
@@ -1037,12 +1164,24 @@ class HandlerSilentFailureAlarm:
                         stamp,
                         {h for h in (row.token("hosts") or "").split(",") if h},
                     )
+        for family, closed_at in resolved_at.items():
+            if family in raised and closed_at >= raised[family]:
+                del raised[family]
+                raised_hosts.pop(family, None)
+        # The fill writes its row while its send jobs build: a pending lane is judged by its own CLAIM row.
+        send_cap = timedelta(minutes=self._options.lane_send_cap_minutes)
+        runs: list[ModelPlacementRun] = []
+        for fill_row in fill_rows:
+            settled, unplaced = settle_run(fill_row, claimed, now, send_cap)
+            runs.append(settled)
+            refusals.extend(unplaced)
         return (
             tuple(runs),
             tuple(refusals),
             raised,
             raised_hosts,
             {family: named for family, (_, named) in newest_row.items()},
+            resolved_episodes,
         )
 
     def _drainer_host(self) -> str:
@@ -1099,10 +1238,14 @@ class HandlerSilentFailureAlarm:
         """The stamps of the rows of ``kinds`` naming a pool host, by host id.
 
         A row written by a host timer (``actor=timer:``) names its host without a lane having run
-        there, so it is not read as one (OMN-22778).
+        there, so it is not read as one (OMN-22778). Neither is a lane's own row naming a host its
+        CLAIM never put the lane on: the ``host=`` cell of a STATUS that reports an install on h051,
+        written by a lane running on h053, describes h051 and sends no hook event for it (OMN-23023).
+        A lane with no CLAIM host in the window is counted as before.
         """
         floor, ceiling = _stamp(now - LOOKBACK), _stamp(now + timedelta(minutes=5))
-        found: dict[str, list[datetime]] = {}
+        rows = []
+        ran_on: dict[str, set[str]] = {}
         for line in text.splitlines():
             head = line[:20]
             if head < floor or head > ceiling or " | host=h" not in line:
@@ -1115,9 +1258,18 @@ class HandlerSilentFailureAlarm:
                 or stamp is None
                 or host is None
                 or not _HOST_CELL.match(host)
-                or row.row_type not in kinds
                 or (row.token("actor") or "").startswith(_TIMER_ACTOR_PREFIX)
             ):
+                continue
+            lane = row.token("lane")
+            if row.row_type == "CLAIM" and lane is not None:
+                ran_on.setdefault(lane, set()).add(host)
+            if row.row_type in kinds:
+                rows.append((stamp, host, lane))
+        found: dict[str, list[datetime]] = {}
+        for stamp, host, lane in rows:
+            claimed = ran_on.get(lane or "")
+            if claimed and host not in claimed:
                 continue
             found.setdefault(host, []).append(stamp)
         return {host: tuple(sorted(stamps)) for host, stamps in found.items()}
