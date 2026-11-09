@@ -285,3 +285,21 @@ def test_error_chain_the_plan_request_refuses_a_malformed_closer_fact(
 ) -> None:
     with pytest.raises(ValidationError):
         _plan([_ticket("OMN-1")], **bad)
+
+
+def test_the_brief_tells_a_lane_the_shape_the_fill_reads_and_a_report_in_it_routes() -> (
+    None
+):
+    """The cells the brief names are the cells the ledger reader takes, so a lane that follows the brief reaches the closer."""
+    from omnimarket.models.lab_fill import ALREADY_BUILT_LINE
+
+    assert "outcome=skipped-already-built" in ALREADY_BUILT_LINE
+    assert "falsifiers=pass" in ALREADY_BUILT_LINE
+    assert "evidence=" in ALREADY_BUILT_LINE
+    row = (
+        "2026-11-09T19:00:00Z | TERMINAL | lane=lab-fill-omn7-1900 | ticket=OMN-7 | outcome=skipped-already-built"
+        " | falsifiers=pass | evidence=pytest -k ac1 exit 0"
+    )
+    plan = _plan([_ticket("OMN-7")], built_reports=built_reports_from_ledger([row]))
+    assert plan.dispatch == ()
+    assert [r.lane for r in plan.closer] == ["lab-fill-omn7-1900"]

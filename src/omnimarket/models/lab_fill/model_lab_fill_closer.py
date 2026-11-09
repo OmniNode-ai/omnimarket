@@ -16,6 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
+# The paragraph every lab-fill brief for a ticket carries, so a lane that finds the work already built reports it in the shape the fill reads
+# (``BUILT_OUTCOMES`` and the ``falsifiers=`` cell of rules_lab_fill_closer). A passing report is the closer's evidence.
+ALREADY_BUILT_LINE = (
+    "ALREADY BUILT: if the ticket's work is already on origin, run each acceptance falsifier as the ticket states it, then write your "
+    "TERMINAL with outcome=skipped-already-built, the cell falsifiers=pass (every falsifier passed) or falsifiers=fail, and the cell "
+    "evidence=<each command you ran and its result>. The fill hands a passing report to the closer and sends no lane for that ticket again."
+)
+
 
 class EnumLabFillCloserReason(StrEnum):
     """Why a ticket goes to the closer instead of a lane."""
