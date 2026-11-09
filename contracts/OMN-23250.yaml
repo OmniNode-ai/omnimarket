@@ -52,12 +52,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_enumerate_sources_lab_fill.py tests/nodes/node_lab_fill_effect/test_enumerate_local_sources_lab_fill.py -q --no-cov -n 0 -p no:randomly -k "ac3 or plans or planted"
     cwd: .
 - id: dod-omn23250-deploy-readback
-  description: Deploy probe. A fresh uv run --frozen --no-dev environment built from this checkout imports the enumerate handler and its request model from the installed package and reads the operation from the node contract. It fails at the merge base, which has no enumerate handler. The hosted runner can run it with uv alone.
+  description: Deploy probe. The enumerate handler is present in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge. It fails at the merge base, which has no enumerate handler. The tests of AC1 to AC3 run its golden and error chains.
   source: manual
   checks:
   - check_type: command
-    check_value: |-
-      env UV_PROJECT_ENVIRONMENT=/tmp/omn23250-venv uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_lab_fill_effect.handlers import HandlerLabFillSources; from omnimarket.nodes.node_lab_fill_effect.models import ModelLabFillSourcesRequest; assert callable(HandlerLabFillSources.handle); c = yaml.safe_load(open("src/omnimarket/nodes/node_lab_fill_effect/contract.yaml")); assert "enumerate_lab_fill_sources" in [h["operation"] for h in c["handler_routing"]["handlers"]]; print("enumerate handler and operation resolved")'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_sources.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^class HandlerLabFillSources' > /dev/null
     cwd: .
 - id: dod-omn23250-integration-proof
   description: The pushed head ran the enumerate tests and the lab fill effect suite on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

@@ -39,16 +39,20 @@ RULINGS = LabFillListed(found=(("OMN-3", "RULING x"),))
 RESENDS = LabFillListed(found=(("OMN-4", "resend"),), dropped=(("live-lane", 2),))
 
 
-def _node(ticket: str, **kw: object) -> LabFillTicketNode:
-    base: dict[str, object] = {
-        "ticket": ticket,
-        "title": f"title {ticket}",
-        "state_type": "started",
-        "has_children": False,
-        "open_prs": (),
-    }
-    base.update(kw)
-    return LabFillTicketNode(**base)  # type: ignore[arg-type]
+def _node(
+    ticket: str,
+    *,
+    state_type: str = "started",
+    has_children: bool = False,
+    open_prs: tuple[str, ...] = (),
+) -> LabFillTicketNode:
+    return LabFillTicketNode(
+        ticket=ticket,
+        title=f"title {ticket}",
+        state_type=state_type,
+        has_children=has_children,
+        open_prs=open_prs,
+    )
 
 
 @dataclass
@@ -120,7 +124,7 @@ def _request(**kw: object) -> ModelLabFillSourcesRequest:
         "sources": ("plan-stalled", "ruling-pending", "lane-resend"),
     }
     base.update(kw)
-    return ModelLabFillSourcesRequest(**base)  # type: ignore[arg-type]
+    return ModelLabFillSourcesRequest.model_validate(base)
 
 
 def _run(world: World, request: ModelLabFillSourcesRequest | None = None):
@@ -129,8 +133,21 @@ def _run(world: World, request: ModelLabFillSourcesRequest | None = None):
     )
 
 
-def _world(**kw: object) -> World:
-    return World(clock=FakeClock(), nodes=_nodes(), **kw)  # type: ignore[arg-type]
+def _world(
+    *,
+    copy_age: float | None = None,
+    plans_cost: float = PLANS_COST_S,
+    tickets_cost: float = TICKETS_COST_S,
+    rulings_error: str = "",
+) -> World:
+    return World(
+        clock=FakeClock(),
+        nodes=_nodes(),
+        copy_age=copy_age,
+        plans_cost=plans_cost,
+        tickets_cost=tickets_cost,
+        rulings_error=rulings_error,
+    )
 
 
 # ---- golden chain
