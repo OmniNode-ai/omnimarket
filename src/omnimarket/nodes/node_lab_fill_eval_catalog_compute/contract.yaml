@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# The lab fill's eval catalog check: each eval declares which readiness scenario it feeds (OMN-23178).
+name: node_lab_fill_eval_catalog_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Judge the lab fill's eval catalog. Every eval must carry a feeds value in {R1 .. R9, experiment}
+  (delegation readiness suite plan, section 2.3). An eval with no feeds, a value outside the set,
+  a duplicate id, or a catalog with no eval is a defect named by its id. Pure: reads no files and has
+  no clock. The catalog is the node's overlay (overlay.example.yaml holds the seven declared evals);
+  run on a host with python -m omnimarket.nodes.node_lab_fill_eval_catalog_compute < overlay.yaml,
+  exit 0 when the catalog passes, 1 when a defect is found.
+input_model:
+  name: ModelEvalCatalogRequest
+  module: omnimarket.nodes.node_lab_fill_eval_catalog_compute.models.model_lab_fill_eval_catalog
+output_model:
+  name: ModelEvalCatalogResult
+  module: omnimarket.nodes.node_lab_fill_eval_catalog_compute.models.model_lab_fill_eval_catalog
+handler:
+  module: omnimarket.nodes.node_lab_fill_eval_catalog_compute.handlers.handler_lab_fill_eval_catalog
+  class: HandlerLabFillEvalCatalog
+  input_model: omnimarket.nodes.node_lab_fill_eval_catalog_compute.models.model_lab_fill_eval_catalog.ModelEvalCatalogRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_eval_catalog
+      handler:
+        name: HandlerLabFillEvalCatalog
+        module: omnimarket.nodes.node_lab_fill_eval_catalog_compute.handlers.handler_lab_fill_eval_catalog
+      input_model: omnimarket.nodes.node_lab_fill_eval_catalog_compute.models.model_lab_fill_eval_catalog.ModelEvalCatalogRequest
+      output_model: omnimarket.nodes.node_lab_fill_eval_catalog_compute.models.model_lab_fill_eval_catalog.ModelEvalCatalogResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+terminal_event: onex.evt.omnimarket.lab-fill-eval-catalog-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-fill-eval-catalog-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-fill-eval-catalog-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-fill-eval-catalog-checked.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-fill-eval-catalog-checked.v1
+metadata:
+  transport_type: inmemory
+  description: Lab-fill eval catalog feeds check
+  author: OmniNode Team
+  created: "2026-11-09"
+  related_tickets: [OMN-23178]
