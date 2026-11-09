@@ -1004,7 +1004,8 @@ facts_first_prompt:
 #   retry_on: another attempt on the same rung, within the rung's retry budget.
 #   move_on: the run continues on a different rung.
 #   skip_on: a rung not attempted, with its typed reason.
-#   terminate_on: the run ends with no later provider call.
+#   terminate_on: the run ends with no later provider call. policy_refusal
+#     (OMN-23216) is a local rung's refusal of a secret or exfiltration request.
 # quality_gate_refused is a retry because a free rung re-drafts up to its tier's
 # max_retries before the run moves (OMN-14234); a paid rung's budget is zero, so
 # a refusal there moves at once. A customer route's budget is its declared
@@ -1042,6 +1043,7 @@ transitions_default: &transitions_default
   terminate_on:
     - pinned_backend_failed
     - quality_veto
+    - policy_refusal
     - escalation_limit
     - ladder_exhausted
     - non_retryable_failure
