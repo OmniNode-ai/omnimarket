@@ -9,11 +9,13 @@ from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_
 )
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite import (
     HandlerTicketContractPrerequisite,
+    default_head,
 )
 
 __all__ = [
     "create_handler_integration_proof",
     "create_handler_ticket_contract_prerequisite",
+    "default_head",
 ]
 
 
