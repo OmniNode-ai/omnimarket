@@ -123,9 +123,8 @@ class HandlerSubprocessCommand:
     """The real backend: the command in an environment that holds only the scenario's home and the search path."""
 
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
-        self._path = (os.environ if environment is None else environment).get(
-            "PATH", ""
-        )
+        source = os.environ if environment is None else environment  # ONEX_FLAG_EXEMPT
+        self._path = source.get("PATH", "")
 
     def run(
         self,
@@ -476,9 +475,10 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    command: HandlerSubprocessCommand | None = None,
 ) -> HandlerScenarioR2:
     """The production wiring: the registry home, the bus commands and the scenario's settings from the environment."""
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     runtime = load_runtime()
     append_argv = shlex.split(environment.get(runtime.ledger_append_command_env, ""))
     if not append_argv:
@@ -491,7 +491,7 @@ def build_runner(
         runtime,
         home=home,
         environment=environment,
-        runner=HandlerSubprocessCommand(environment),
+        runner=command or HandlerSubprocessCommand(environment),
         appender=bus_appender(
             CommandLedgerAppender(
                 append_argv, runtime.lane, host, runtime.ledger_append_timeout_seconds

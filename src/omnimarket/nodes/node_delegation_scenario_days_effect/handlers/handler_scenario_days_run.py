@@ -46,8 +46,8 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
     CommandPointRead,
 )
-from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ModelPointQuery,
     ProtocolLedgerPointRead,
 )
 
@@ -211,7 +211,7 @@ class HandlerScenarioDaysRun:
 
 def build_runner(env: Mapping[str, str] | None = None) -> HandlerScenarioDaysRun:
     """The production wiring: the registry home and the bus commands from the environment, the rest from the contract."""
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     runtime = load_runtime()
     home = Path(environment[runtime.home_env])
     read_argv = shlex.split(environment.get(runtime.ledger_read_command_env, ""))

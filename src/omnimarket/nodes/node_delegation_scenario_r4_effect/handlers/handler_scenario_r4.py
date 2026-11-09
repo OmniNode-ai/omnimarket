@@ -273,7 +273,7 @@ def build_runner(
         HandlerScenarioR4,
         runtime,
         contract_path=CONTRACT_PATH,
-        env=os.environ if env is None else env,
+        env=os.environ if env is None else env,  # ONEX_FLAG_EXEMPT
         trigger=trigger,
     )
     assert isinstance(built, HandlerScenarioR4)
