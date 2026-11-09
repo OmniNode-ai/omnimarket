@@ -18,8 +18,8 @@ identities:
   - {method: GET, path: /v1/projections/hook-events/by-correlation, state: served, named_in: src/omnimarket/nodes/node_hook_events_by_correlation_read_effect/contract.yaml}
   - {method: GET, path: /health, state: runtime_health, named_in: plan T18c group 2}
   - {method: GET, path: /, state: retired, named_in: plan T18c group 2}
-  - {method: GET, path: /v1/plans, state: pending, named_in: T18a inventory}
-  - {method: GET, path: /v1/usage/privileges, state: pending, named_in: T18a inventory}
+  - {method: GET, path: /v1/plans, state: served, named_in: src/omnimarket/nodes/node_plan_list/contract.yaml}
+  - {method: GET, path: /v1/usage/privileges, state: served, named_in: src/omnimarket/nodes/node_usage_privileges/contract.yaml}
   - {method: POST, path: /envelopes/example, state: served, named_in: src/omnimarket/nodes/node_envelope_example_post_effect/contract.yaml}
   - {method: GET, path: /v1/workflows/contracts, state: pending, named_in: src/omnimarket/cloud/transport_cloud_delegation.py}
   - {method: GET, path: /v1/tenants/me/savings, state: pending, named_in: tests/test_omn15583_savings_writer_binds_envelope_tenant.py}
