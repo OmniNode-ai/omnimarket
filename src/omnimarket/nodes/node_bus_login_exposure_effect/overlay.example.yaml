@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the in-memory overlay (the default way to run the probe). The deployment's
+# overlay lives at <root>/node_bus_login_exposure_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+settings:
+  allowed_topics: [example.evt.ci.completed.v1]
+  allowed_topic_prefixes: [example.cmd.ci.]
+  allowed_groups: []
+  allowed_group_prefixes: [example.ci.consume.]
+  max_age_seconds: 3600
+source:
+  backend: inmemory
+  fixture:
+    read_age_seconds: 60
+    topics: [example.evt.ci.completed.v1, example.cmd.ci.start.v1]
+    groups: [example.ci.consume.worker]

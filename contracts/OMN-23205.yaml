@@ -24,6 +24,17 @@ requirements:
       or composite_both_green"'
   - id: AC6
     statement: 'AC6: golden and error chain tests for the block run required in CI, and a named injected break turns the golden chain test red -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_floor_simple.py -q --no-cov'
+- id: req-omn23205-launch-reading-path
+  statement: The deployed launch reading path feeds the mvp_launch block; the publish reads each producer's scheduled runs through the source-control node into a record, the floor's command route answers from it, and a reading the path cannot read says why.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the publish step reads each producer workflow the overlay names once and keeps the runs or the reason per workflow, within its stage deadline -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k "scheduled_read_feeds_the_floor or publish_step_reads or refresh_interval or stage_deadline"'
+  - id: AC8
+    statement: 'AC8: the command route answers from the record and names the reason when it cannot (an unlisted workflow, a stale read, no record, no candidate manifest, an unreadable overlay) -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k "test_error"'
+  - id: AC9
+    statement: 'AC9: the publish contract runs the read step in the concurrent input group before the simple floor, and the node refuses the step with no overlay -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_mvp_launch_reads_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov'
+  - id: AC10
+    statement: 'AC10: a named injected break (the read drops the conclusion) turns the golden reading wrong -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k injected_break'
 evidence_requirements:
 - kind: tests
   description: The block's unit tests and the floor cycle's golden and error chain tests
@@ -96,4 +107,40 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23205 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_product_floor_verdict_compute tests/nodes/node_floor_simple_effect
       -q --no-cov
+    cwd: .
+- id: dod-omn23205-ac7
+  description: The publish step reads each producer workflow once and keeps the runs or the reason -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k "scheduled_read_feeds_the_floor or publish_step_reads or refresh_interval or stage_deadline"
+    cwd: .
+- id: dod-omn23205-ac8
+  description: The command route answers from the record and names the reason when it cannot -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k "test_error"
+    cwd: .
+- id: dod-omn23205-ac9
+  description: The publish runs the read step and the node refuses it with no overlay -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_mvp_launch_reads_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+    cwd: .
+- id: dod-omn23205-ac10
+  description: A named injected break turns the golden reading wrong -- proven by the named test.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py -q --no-cov -k injected_break
     cwd: .

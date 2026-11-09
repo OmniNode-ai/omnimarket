@@ -342,6 +342,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
+    lead_backend_refs,
     measure_grounding_input_tokens,
     next_eligible_tier,
     quota_blocked_backend_refs,
@@ -3838,6 +3839,9 @@ class LocalDelegationDispatchPort:
                 and is_free_tier(current_tier)
                 and redrafts < tier_max_retries(current_tier)
                 and redraft_leaves_reserve()
+                # OMN-23329: a lead rung's miss is not redrafted on itself; the
+                # exclusion below moves the tier on to its next rung.
+                and backend.backend_id not in lead_backend_refs()
                 else 0
             )
             quality_transition = self._decide_transition(
