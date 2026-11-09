@@ -265,3 +265,53 @@ def test_golden_board_read_the_lane_list_fills_from_the_projection_with_no_work_
     )
     assert doc.sources_read["work_state_projection"] is True
     assert "source:work_state_projection" not in {c.id for c in doc.causes}
+
+
+STARTED = "lab-started-lane"
+
+
+def tick_lane_names(home: Path, cause_id: str) -> tuple[str, ...]:
+    """Run one floor tick over ``home`` and return the lanes the board holds on the row ``cause_id``."""
+    result = HandlerFloorSimpleTick(sink=InMemoryEmissionSink(), clock=lambda: NOW).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    doc = ModelFloorSimple.model_validate_json(
+        (home / ".claude_scratch/factory-floor/floor-simple.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return next(c for c in doc.causes if c.id == cause_id).lanes
+
+
+def test_golden_a_lane_started_on_a_lab_host_shows_on_the_floor_with_the_next_publish_and_no_mac_record(
+    tmp_path: Path,
+) -> None:
+    """OMN-23403 AC1: the record on the Mac does not list the lane, the work-state file is absent, one publish carries it."""
+    home = build_home(tmp_path)
+    before = project(*ROWS)
+    put_projection(
+        home,
+        "work_state",
+        before.model_dump(mode="json"),
+        as_of=NOW - timedelta(minutes=5),
+    )
+    assert STARTED not in tick_lane_names(home, "stoppage:lab-idle")
+    after = project(*ROWS, claim(STARTED, 1, " | host=h201 | cause=stoppage:lab-idle"))
+    put_projection(home, "work_state", after.model_dump(mode="json"))
+    assert not (home / ".onex_state/work-state/work-state.json").exists()
+    assert STARTED in tick_lane_names(home, "stoppage:lab-idle")
+
+
+def test_error_a_lane_started_on_a_lab_host_is_not_drawn_from_the_work_state_file_alone(
+    tmp_path: Path,
+) -> None:
+    """The control: the lane list lives only in the Mac's work-state file, nothing was published, so the board draws no such lane."""
+    home = build_home(tmp_path)
+    started = project(
+        *ROWS, claim(STARTED, 1, " | host=h201 | cause=stoppage:lab-idle")
+    )
+    path = home / ".onex_state/work-state/work-state.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(started.model_dump_json(), encoding="utf-8")
+    assert STARTED not in tick_lane_names(home, "stoppage:lab-idle")
