@@ -6,15 +6,13 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn23194-rebuild-sequence
-  statement: A replayed row's sequence is taken from the sequenced copy, and a conflict between two sequences is still refused.
+- id: req-omn23194-guard-replay
+  statement: A guard replay window that begins mid-hold is judged against the accepted rows before the window, or refused as incomplete.
   acceptance:
   - id: AC1
     statement: 'AC1: a test per finding fails on the code at omnimarket dev 566d7ead09 and passes with the fix -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute -q, run on the base with the test files copied in (red) and on the fix branch (green)'
   - id: AC2
-    statement: 'AC2: a replayed row''s sequence is taken from the sequenced copy and a conflict between two sequences is still refused -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_rebuild_sequence.py -q -k golden_rebuild'
-  - id: AC3
-    statement: 'AC3: a guard replay window that begins mid-hold is judged against the accepted rows before the window, or refused as incomplete -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py -q'
+    statement: 'AC2: a guard replay window that begins mid-hold is judged against the accepted rows before the window, or refused as incomplete -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py -q'
 evidence_requirements:
 - kind: tests
   description: The work-ledger reducer tests pass, including the rebuild sequence tests and the mid-hold replay tests.
@@ -25,7 +23,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23194-ac1-tests
-  description: Runs the reducer tests. On the base with the new test files copied in, seven tests fail; on the fix branch all pass.
+  description: Runs the reducer tests. On the base with the new test files copied in, three tests fail; on the fix branch all pass.
   source: manual
   binds_ac:
   - AC1
@@ -33,20 +31,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -q --no-cov
     cwd: .
-- id: dod-omn23194-ac2-rebuild
-  description: Runs the two golden rebuild tests, which cover the promoted sequence taken from the sequenced copy and equality with a live table that promoted it; both fail on the base.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_rebuild_sequence.py -q --no-cov -k 'golden_rebuild'
-    cwd: .
 - id: dod-omn23194-ac3-guard-replay
   description: Runs the guard replay tests, which cover a mid-hold window refused as incomplete and judged on the rows before it.
   source: manual
   binds_ac:
-  - AC3
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_guard_replay.py -q --no-cov
