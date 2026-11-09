@@ -33,11 +33,13 @@ class HandlerTestSelectionSelector:
 
     def __init__(
         self,
-        source: ProtocolDurationsSource | None,
-        policy: ModelSelectorPolicy,
+        source: ProtocolDurationsSource | None = None,
+        policy: ModelSelectorPolicy | None = None,
     ) -> None:
+        from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+
         self._source = source or SourceDurationsFile()
-        self._policy = policy
+        self._policy = policy or load_policy()
 
     def handle(self, request: ModelSelectorRequest) -> ModelSelectorDecision:
         durations = self._source.read(request.repo_root, self._policy.durations_path)
