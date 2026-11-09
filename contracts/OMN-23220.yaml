@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23220
+title: The friction rollup reads the local-hooks stoppage from rows that say hooks failed one at a time, and reads an inline cost as lane time
+summary: The floor row stoppage:local-hooks-fail-one-per-attempt read 8 rows and 214 lane-minutes, but the class rule of node_friction_rollup_compute matched any FRICTION row that names the pre-commit or pre-push stage, so the 8 rows were 8 different causes. The broad rule now keeps only the text that says hooks failed one at a time over several attempts, five rules name the causes the broad rule had filed, and the rollup reads an inline cost as the first duration written as lane time or with a tilde, falling back to the first duration of any kind only when none is marked. No verdict, bound or check of the rollup changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23220-hooks-class-rule
+  statement: The hooks class holds only the rows that name a hook round, commit attempts or failing hooks, each other recorded row of the day reads as its own cause, and an age or a limit in a row's text is not its cost.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the 8 recorded rows of 2026-11-07T21:01Z to 2026-11-08T15:21Z read as their own causes with one row staying in the hooks class, and the rule as it stood files all 8 in it -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_hooks_fail_class_2026_11_08.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: an age or a limit in a row text is not read as its cost and a row with only bare durations still reads its first, with every earlier class rule test unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The friction rollup node tests at the pushed head, including the recorded-day controls.
+  command: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23220-ac1
+  description: The recorded-day tests pass, including the controls that run the 8 rows through the rule as it stood and read the first duration of any kind.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_hooks_fail_class_2026_11_08.py -q --no-cov
+    cwd: .
+- id: dod-omn23220-ac2
+  description: The whole friction rollup node suite passes at the pushed head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov
+    cwd: .
+- id: dod-omn23220-integration-proof
+  description: The pushed head ran the friction rollup node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23220 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov'
+    cwd: .
