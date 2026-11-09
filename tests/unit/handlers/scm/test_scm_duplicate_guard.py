@@ -264,6 +264,19 @@ def test_a_watcher_that_stopped_ticking_checks_nothing(
     assert gateway.asked == [TARGET]
 
 
+def test_a_stale_watcher_asks_the_injected_gateway_source_once(
+    world: World, gateway: UnreadableGateway
+) -> None:
+    """The guard falls through to the gateway source it was given, never to a bus the host happens to have (OMN-23295)."""
+    world.lane_branch("src/metrics.py", 15)
+    world.write_state(datetime.now(UTC) - timedelta(hours=2))
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
+    assert gateway.asked == [TARGET]
+
+
 def test_an_unset_ledger_path_checks_nothing(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:

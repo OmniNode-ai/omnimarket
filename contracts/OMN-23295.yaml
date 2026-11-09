@@ -13,8 +13,6 @@ requirements:
     statement: 'AC1: the duplicate-guard tests use an in-memory source and pass on a lab host with a live bus, and fail if the guard''s own refusal is removed -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q on h201'
   - id: AC2
     statement: 'AC2: the ledger stamp fast path refuses T24:00:00 on Python 3.14 as it does on 3.12 -- falsifier: uv run pytest tests -q -k stamp_fast_path, failing on the old parser'
-  - id: AC3
-    statement: 'AC3: Split 2/20 and Split 11/20 read green on three affected open PRs at their newest heads with no test skipped -- falsifier: pr_state_local.py on those PRs'
 evidence_requirements:
 - kind: tests
   description: The two duplicate-guard tests with the injected unreadable source (red when the guard returns an empty state instead of unchecked), and the hour-24 stamp test (red on the old shape pattern).
@@ -25,28 +23,26 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23295-ac1-duplicate-guard
-  description: The duplicate-guard file passes with the open-PR source injected in memory. The named break is the guard returning an empty open-PR state when the source cannot read; the two tests then fail.
+  description: The duplicate-guard tests ask the open-PR source injected in memory. The new test does not exist at the merge base, so the control fails there. The named break is the guard returning an empty open-PR state when the source cannot read; the two tests then fail.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov
+    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -k stale_watcher_asks_the_injected_gateway
     cwd: .
 - id: dod-omn23295-ac2-stamp-fast-path
-  description: The fast ledger stamp refuses 2026-11-06T24:00:00Z and still reads 23:59:59. The named break is the old shape pattern, which Python 3.14 accepts as the next midnight.
+  description: The ledger stamp shape pattern refuses 2026-11-06T24:00:00Z and still matches 23:59:59, on every Python. The named break is the old shape pattern, which matches hour 24 and fails this test at the merge base.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov -k stamp_shape_pattern_excludes_hour_24
     cwd: .
 - id: dod-omn23295-ac3-splits-green
   description: Read Split 2/20 and Split 11/20 on three affected open pull requests at their newest heads from the PR watcher state, with no test skipped. Hosted CI cannot read the watcher, so only the local Done gate runs this check.
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command

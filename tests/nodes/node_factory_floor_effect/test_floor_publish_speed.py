@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+    _TS_SHAPE,
     TS_FMT,
     _ledger_ts,
     load_receipts,
@@ -116,6 +117,12 @@ def test_error_stamp_fast_path_refuses_hour_24_on_every_python() -> None:
     assert _ledger_ts("2026-11-06T23:59:59Z") == datetime(
         2026, 11, 6, 23, 59, 59, tzinfo=UTC
     )
+
+
+def test_error_stamp_shape_pattern_excludes_hour_24() -> None:
+    """The shape gate itself refuses hour 24, whatever the interpreter's fromisoformat does (OMN-23295)."""
+    assert _TS_SHAPE.fullmatch("2026-11-06T24:00:00Z") is None
+    assert _TS_SHAPE.fullmatch("2026-11-06T23:59:59Z") is not None
 
 
 def test_error_the_import_of_the_effect_does_not_pull_in_the_infrastructure_package() -> (
