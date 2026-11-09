@@ -16,6 +16,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: a cause is attempted at most its budget, then parked with one operator MSG per park episode, and a fixer HOLD row stops every dispatch and revokes the live leases in its scope -- falsifier: TLC on tla/landing_controller with P11, P12, P14 and their mutant configs, and uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -k "budget or fixer_hold"'
+  - id: req-dev-inventory-and-contract-binding-green
+    statement: The market node inventory test and the repo contract binding test pass at the dev head, with the serve units node registered and the spill and watermark nodes named as host-timer nodes without an entry point.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the node inventory has no node directory without an entry point beyond the declared set, and every repo contract binds each criterion to an existing test file -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov fails at dev tip 2d971a050'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -52,3 +57,11 @@ dod_evidence:
       - check_type: command
         check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
         cwd: .
+  - id: dod-omn20413-ac4-dev-inventory-green
+    description: The node inventory and repo contract binding tests pass.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_market_node_runtime_dogfood.py tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov
+    binds_ac:
+      - AC4
