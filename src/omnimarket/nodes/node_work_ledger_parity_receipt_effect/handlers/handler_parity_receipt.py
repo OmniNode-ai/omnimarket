@@ -28,9 +28,9 @@ from omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity
     ModelParityReceiptResult,
     ModelParityReceiptSettings,
 )
-from omnimarket.nodes.node_work_ledger_parity_receipt_effect.protocols.protocol_parity_runner import (
-    ProtocolParityRunner,
-    SubprocessParityRunner,
+from omnimarket.nodes.node_work_ledger_parity_receipt_effect.protocols.protocol_parity_check import (
+    ProtocolParityCheck,
+    SubprocessParityCheck,
 )
 
 NODE_DIR = Path(__file__).resolve().parent.parent
@@ -73,15 +73,15 @@ class HandlerParityReceipt:
 
     def __init__(
         self,
-        runner: ProtocolParityRunner | None = None,
+        runner: ProtocolParityCheck | None = None,
         appender: ProtocolLedgerAppender | None = None,
         settings: ModelParityReceiptSettings | None = None,
     ) -> None:
         self._settings = (
             settings if settings is not None else load_settings(DEFAULT_OVERLAY)
         )
-        self._runner: ProtocolParityRunner = (
-            runner if runner is not None else SubprocessParityRunner()
+        self._runner: ProtocolParityCheck = (
+            runner if runner is not None else SubprocessParityCheck()
         )
         self._appender: ProtocolLedgerAppender = (
             appender

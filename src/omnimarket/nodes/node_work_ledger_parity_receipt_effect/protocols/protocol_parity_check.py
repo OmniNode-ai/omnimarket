@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The runner of the parity check: a protocol, the real subprocess and an in-memory fake."""
+"""The parity check as a dependency: a protocol, the real subprocess and an in-memory fake."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class ModelRunOutcome(BaseModel):
     stderr: str = ""
 
 
-class ProtocolParityRunner(Protocol):
+class ProtocolParityCheck(Protocol):
     def run(
         self,
         command: Sequence[str],
@@ -29,7 +29,7 @@ class ProtocolParityRunner(Protocol):
         """Run the parity check; raise OSError or TimeoutError when it did not run."""
 
 
-class SubprocessParityRunner:
+class SubprocessParityCheck:
     """Runs the command with the extra variables added to this process's environment."""
 
     def run(
@@ -56,7 +56,7 @@ class SubprocessParityRunner:
         )
 
 
-class InMemoryParityRunner:
+class InMemoryParityCheck:
     """Answers every call with one canned outcome and records the commands and variables it was given."""
 
     def __init__(

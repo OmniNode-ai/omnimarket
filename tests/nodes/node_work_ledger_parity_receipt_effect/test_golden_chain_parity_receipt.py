@@ -34,8 +34,8 @@ from omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity
     ModelParityReceiptResult,
     ModelParityReceiptSettings,
 )
-from omnimarket.nodes.node_work_ledger_parity_receipt_effect.protocols.protocol_parity_runner import (
-    InMemoryParityRunner,
+from omnimarket.nodes.node_work_ledger_parity_receipt_effect.protocols.protocol_parity_check import (
+    InMemoryParityCheck,
     ModelRunOutcome,
 )
 from omnimarket.nodes.node_work_ledger_parity_receipt_effect.runtime_parity_receipt import (
@@ -56,14 +56,15 @@ from tests.runtime_local_compat import RuntimeLocal
 pytestmark = pytest.mark.unit
 NODE_DIR = Path(node_package.__file__).parent
 LANE = "work-ledger-parity"
+TERMINAL_TOPIC = "onex.evt.omnimarket.work-ledger-parity-receipt-completed.v1"
 
 
 def _handler(
-    runner: InMemoryParityRunner | None = None,
+    runner: InMemoryParityCheck | None = None,
 ) -> tuple[HandlerParityReceipt, InMemoryLedgerAppender]:
     appender = InMemoryLedgerAppender()
     return HandlerParityReceipt(
-        runner=runner or InMemoryParityRunner(), appender=appender
+        runner=runner or InMemoryParityCheck(), appender=appender
     ), appender
 
 
@@ -276,15 +277,19 @@ def test_the_handler_appends_for_a_missing_receipt_and_writes_nothing_for_a_clea
     tmp_path: Path,
 ) -> None:
     ledger, fields = write_world(tmp_path, [UNHEALTHY])
-    runner = InMemoryParityRunner(ModelRunOutcome(returncode=1, stdout=FRESH + "\n"))
+    runner = InMemoryParityCheck(ModelRunOutcome(returncode=1, stdout=FRESH + "\n"))
     handler, appender = _handler(runner)
     result = handler.handle(request_for(tmp_path, ledger, fields))
     assert result.state == "APPENDED"
+    assert result.receipt_row == FRESH
+    assert (
+        result.log_line == f"parity receipt: APPENDED day={DAY} reason=newest-unhealthy"
+    )
     assert appender.rows == [(ledger, FRESH)]
 
     clean_ledger = tmp_path / "clean.md"
     clean_ledger.write_text(f"{CLEAN}\n", encoding="utf-8")
-    runner2 = InMemoryParityRunner()
+    runner2 = InMemoryParityCheck()
     handler2, appender2 = _handler(runner2)
     skipped = handler2.handle(request_for(tmp_path, clean_ledger, fields))
     assert skipped.state == "PRESENT"
@@ -294,7 +299,7 @@ def test_the_handler_appends_for_a_missing_receipt_and_writes_nothing_for_a_clea
 
 def test_dry_run_reports_what_is_owed_and_runs_nothing(tmp_path: Path) -> None:
     ledger, fields = write_world(tmp_path, [UNHEALTHY])
-    runner = InMemoryParityRunner()
+    runner = InMemoryParityCheck()
     handler, appender = _handler(runner)
     result = handler.handle(request_for(tmp_path, ledger, fields, dry_run=True))
     assert (result.state, result.reason, result.day) == (
@@ -352,7 +357,7 @@ def test_a_receipt_the_real_parity_writer_prints_is_read_back_by_the_skip_rule()
 
 def test_before_0015z_nothing_is_run(tmp_path: Path) -> None:
     ledger, fields = write_world(tmp_path, [])
-    runner = InMemoryParityRunner()
+    runner = InMemoryParityCheck()
     handler, _ = _handler(runner)
     result = handler.handle(
         request_for(tmp_path, ledger, fields, now="2026-10-05T00:10:00Z")
@@ -375,7 +380,7 @@ def test_a_bad_parity_answer_is_never_appended(
 ) -> None:
     ledger, fields = write_world(tmp_path, [])
     handler, appender = _handler(
-        InMemoryParityRunner(ModelRunOutcome(returncode=rc, stdout=out))
+        InMemoryParityCheck(ModelRunOutcome(returncode=rc, stdout=out))
     )
     result = handler.handle(request_for(tmp_path, ledger, fields))
     assert (result.state, result.exit_code) == ("FAILED", 1)
@@ -387,7 +392,7 @@ def test_an_inexact_day_is_appended_as_the_parity_check_printed_it(
 ) -> None:
     ledger, fields = write_world(tmp_path, [])
     handler, appender = _handler(
-        InMemoryParityRunner(ModelRunOutcome(returncode=1, stdout=UNHEALTHY + "\n"))
+        InMemoryParityCheck(ModelRunOutcome(returncode=1, stdout=UNHEALTHY + "\n"))
     )
     assert handler.handle(request_for(tmp_path, ledger, fields)).state == "APPENDED"
     assert appender.rows[-1][1] == UNHEALTHY
@@ -395,7 +400,7 @@ def test_an_inexact_day_is_appended_as_the_parity_check_printed_it(
 
 def test_a_parity_check_that_cannot_run_is_a_failure_naming_it(tmp_path: Path) -> None:
     ledger, fields = write_world(tmp_path, [])
-    handler, appender = _handler(InMemoryParityRunner(fail="no such interpreter"))
+    handler, appender = _handler(InMemoryParityCheck(fail="no such interpreter"))
     result = handler.handle(request_for(tmp_path, ledger, fields))
     assert result.state == "FAILED"
     assert "parity check did not run" in result.error_message
@@ -501,7 +506,8 @@ def test_the_contract_declares_the_command_and_terminal_topics_and_the_handler()
     assert contract["event_bus"]["subscribe_topics"] == [
         contract["runtime_dispatch"]["command_topic"]
     ]
-    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
+    assert contract["event_bus"]["publish_topics"] == [TERMINAL_TOPIC]
+    assert contract["terminal_event"] == TERMINAL_TOPIC
     assert contract["handler"]["class"] == "HandlerParityReceipt"
 
 
