@@ -87,5 +87,19 @@ externally_consumed_topics:
 projection_api:
   expose: false
 
+# OMN-21933 (one-runtime plan T12, under OMN-21288): the retired consumer module
+# reads under the literal consumer group `skill-lifecycle-postgres`
+# (ConfigSkillLifecycleConsumer.kafka_group_id default; the catalog service and
+# the dev compose files set no override). from_group_id names a group the derived
+# {env}.{service}.{node}.consume.{version} form cannot express (OMN-21932), so
+# omnibase_infra's HandlerContractSubscribePreflight copies that group's
+# committed offsets into the runtime's group before it first joins. Without it the
+# runtime group starts at `latest` and the events published while the consumer
+# container is retired are never written. A partition the retired group never
+# committed is read from the earliest offset, as the retired module read it.
+consumer_group_handover:
+  from_group_id: skill-lifecycle-postgres
+  from_auto_offset_reset: earliest
+
 metadata:
   transport_type: kafka

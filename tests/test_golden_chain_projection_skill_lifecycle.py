@@ -23,6 +23,12 @@ from uuid import UUID, uuid4
 
 import pytest
 import yaml
+from omnibase_infra.handlers.handler_contract_subscribe_preflight import (
+    load_consumer_group_handover,
+)
+from omnibase_infra.services.observability.skill_lifecycle.config import (
+    ConfigSkillLifecycleConsumer,
+)
 
 from omnimarket.nodes.node_projection_skill_lifecycle.handlers import (
     HandlerProjectionSkillLifecycle,
@@ -301,3 +307,30 @@ def test_the_contract_declares_the_topics_and_the_table_the_writer_uses() -> Non
         _STARTED_TOPIC,
         _COMPLETED_TOPIC,
     ]
+
+
+def test_handover_names_the_literal_group_the_retired_module_commits_under() -> None:
+    # The retired module commits under the literal group `skill-lifecycle-postgres`
+    # (ConfigSkillLifecycleConsumer.kafka_group_id), which the derived
+    # {env}.{service}.{node}.consume.{version} form cannot name. from_group_id
+    # names it, so the runtime group resumes from the retired group's committed
+    # offsets and the events published while the container is retired are written.
+    old_fields = ConfigSkillLifecycleConsumer.model_fields
+
+    assert old_fields["kafka_group_id"].default == "skill-lifecycle-postgres"
+    assert _CONTRACT["consumer_group_handover"] == {
+        "from_group_id": old_fields["kafka_group_id"].default,
+        "from_auto_offset_reset": old_fields["auto_offset_reset"].default,
+    }
+
+
+@pytest.mark.parametrize("environment", ["local", "dev", "prod"])
+def test_runtime_preflight_reads_the_handover_from_the_contract(
+    environment: str,
+) -> None:
+    handover = load_consumer_group_handover(_NODE / "contract.yaml")
+
+    assert handover is not None, "the preflight finds no handover in the contract"
+    assert handover.source_group(environment) == "skill-lifecycle-postgres"
+    assert handover.from_auto_offset_reset == "earliest"
+    assert handover.handover_rule == "copy_if_uncommitted"
