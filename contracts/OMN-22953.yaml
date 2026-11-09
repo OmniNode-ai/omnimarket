@@ -51,8 +51,6 @@ dod_evidence:
 - id: dod-omn22953-deploy-readback
   description: Deploy probe. A fresh uv run --frozen --no-dev environment built from this checkout imports the J9 join handler and its request and result models from the installed package and reads the one hour deadline from the node contract. It fails at the merge base, which has no J9 handler. The hosted runner can run it with uv alone; no container pull and no lab route is required. The running wiring on the dev bus is not part of this change.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
