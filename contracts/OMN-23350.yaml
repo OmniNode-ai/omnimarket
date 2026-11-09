@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23350
+title: The lab alarm contract binds its optional-block check to a test, so every omnimarket contract binds every criterion again
+summary: contracts/OMN-23304.yaml bound AC2 through a command check the contract test refuses; AC2 is now bound through the overlay test that loads an overlay with no effects_held block.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23350-rebind-optional-block
+  statement: Every criterion of contracts/OMN-23304.yaml is bound through a test_passes check naming an existing repo test file, so the repo contract test accepts every contract.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contracts/OMN-23304.yaml binds each criterion through a check the contract test accepts, and the test passes on dev -- falsifier: uv run pytest -q -k test_every_repo_contract_binds_every_criterion in omnimarket'
+  - id: AC2
+    statement: 'AC2: omnimarket dev''s push run reads the contract test split green after the merge -- falsifier: the required check runs on omnimarket dev''s head through the mirror'
+evidence_requirements:
+- kind: tests
+  description: The repo contract test and the lab alarm overlay test pass
+  command: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23350-contract-test-accepts-bindings
+  description: Runs the repo contract test over every contracts/OMN-*.yaml. It is red on dev at its merge base, where contracts/OMN-23304.yaml binds AC2 through a command check, and green on this branch where that criterion is bound through a test_passes check.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly -k test_every_repo_contract_binds_every_criterion
+    cwd: .
+- id: dod-omn23350-dev-push-split
+  description: The contract test split on dev's push run is the same test file; this item runs it as the split does. The merged push run on dev's head is read through the mirror after the merge.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly
+    cwd: .
