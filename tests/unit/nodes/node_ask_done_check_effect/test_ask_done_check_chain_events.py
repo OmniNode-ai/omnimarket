@@ -10,6 +10,7 @@ control: the lane's report alone leaves the ask unverified.
 
 from __future__ import annotations
 
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -43,6 +44,7 @@ from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
     HandlerAskState,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerRowSource,
     InMemoryLedger,
 )
 
@@ -158,6 +160,34 @@ def test_named_break_a_row_read_that_fails_is_unknown_never_false_or_true() -> N
     [verdict] = _handler(ledger).handle(_request(ROW_CHECK, write=False)).verdicts
     assert verdict.verdict is EnumCheckVerdict.UNKNOWN
     assert verdict.written == "no"
+
+
+def test_named_break_query_node_timeout_emits_the_error_event_not_the_golden_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-22729 AC3: the query node's command times out; the done check emits its error event
+    (an UNKNOWN verdict row) and never the golden event (a TRUE verdict row), and the ask,
+    reported done by its lane, stays unverified."""
+    seen: list[float] = []
+
+    def _timeout(
+        argv: object, *, timeout: float, **_: object
+    ) -> subprocess.CompletedProcess[str]:
+        seen.append(timeout)
+        raise subprocess.TimeoutExpired(cmd="query-node", timeout=timeout)
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+    source = CommandLedgerRowSource(["query-node"], timeout_seconds=1, row_limit=50)
+    ledger = InMemoryLedger([CLAIM, REPORT])
+    handler = HandlerAskDoneCheck(OVERLAY, _floor(), source, ledger, clock=lambda: NOW)
+    [verdict] = handler.handle(_request(ROW_CHECK)).verdicts
+    assert seen == [1.0], "the injected timeout was raised by the query node's command"
+    assert verdict.verdict is EnumCheckVerdict.UNKNOWN
+    assert verdict.reason == "row-read-failed-read-command-failed:TimeoutExpired"
+    assert verdict.written == "yes"
+    assert "verdict=UNKNOWN" in ledger.lines[-1]
+    assert "verdict=TRUE" not in ledger.lines[-1]
+    assert _ask_state(ledger.lines) is EnumAskState.UNVERIFIED
 
 
 def test_a_row_stamped_before_the_ask_does_not_satisfy_it() -> None:

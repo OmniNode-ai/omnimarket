@@ -99,7 +99,7 @@ def test_golden_a_healthy_lab_is_drawn_from_its_readings_with_all_18_rows(
         line.state == "WORKING" and line.draw == "green" for line in doc.lab_state
     )
     assert all(line.reading_age_s is not None for line in doc.lab_state)
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
     assert doc.red_rule.red_with_work_under_way == 0
     assert doc.details_href == "detail.html"
 
@@ -180,7 +180,7 @@ def test_golden_a_planted_source_taken_offline_draws_red_and_raises_an_alarm(
     assert "ssh host unset" in line.text
     assert [a.source_id for a in doc.alarms] == ["runner_groups"]
     assert doc.level == "red"
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
 
 
 def test_golden_a_red_source_with_a_lane_on_it_draws_amber_not_red(
