@@ -33,6 +33,11 @@ class EnumFullSuiteReason(StrEnum):
     # a full-suite run and takes the full-suite shard matrix; it must never be
     # a single unsplit job.
     NO_NARROWABLE_SELECTION = "no_narrowable_selection"
+    # OMN-22868: the narrowed paths add up to more recorded seconds than the
+    # configured bound (tests/nodes/ with tests/unit/ is about 4,100 seconds), so
+    # the two to five unplanned shards would each run several times a planned
+    # shard. Takes the full-suite shard matrix.
+    NARROWED_SELECTION_TOO_HEAVY = "narrowed_selection_too_heavy"
 
 
 # OMN-17232: a directory under tests/ (trailing slash) or one test file that

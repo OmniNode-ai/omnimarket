@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -21,6 +22,8 @@ SRC_PREFIX = "src/omnimarket/"
 TEST_PREFIX = "tests/"
 
 FULL_SUITE_BRANCHES = {"main"}
+
+DURATIONS_RELATIVE_PATH = "config/test_file_durations.json"
 
 
 def resolve_test_paths(
@@ -191,6 +194,9 @@ def compute_selection(
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
         selected = sorted(set(selected) | set(config.always_selected_paths))
+    bound = config.thresholds.narrowed_seconds_for_full_suite
+    if bound is not None and _selected_seconds(selected, root) > bound:
+        return _full_suite(EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY)
     split_count = _split_count_for(selected)
 
     return ModelTestSelection(
@@ -199,6 +205,29 @@ def compute_selection(
         is_full_suite=False,
         full_suite_reason=None,
         matrix=list(range(1, split_count + 1)),
+    )
+
+
+def _selected_seconds(selected_paths: list[str], repo_root: Path) -> float:
+    """Recorded serial seconds of the test files the selected paths cover.
+
+    Fails closed: with no readable durations file the weight is infinite, so a
+    bounded selection takes the full-suite matrix rather than running unplanned.
+    """
+    durations_path = repo_root / DURATIONS_RELATIVE_PATH
+    try:
+        durations = json.loads(durations_path.read_text())
+    except (OSError, ValueError):
+        return float("inf")
+    if not isinstance(durations, dict):
+        return float("inf")
+    return sum(
+        float(seconds)
+        for test_file, seconds in durations.items()
+        if any(
+            test_file == path or (path.endswith("/") and test_file.startswith(path))
+            for path in selected_paths
+        )
     )
 
 

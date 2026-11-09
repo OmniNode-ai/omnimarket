@@ -25,6 +25,13 @@ shared_modules:
 # Per-repo full-suite escalation threshold.
 thresholds:
   modules_changed_for_full_suite: 6
+  # OMN-22868: a narrowed selection heavier than this many recorded serial
+  # seconds takes the planned 20-shard full-suite matrix. tests/nodes/ with
+  # tests/unit/ (about 4,100 of the suite's 7,157 recorded seconds) ran as two
+  # unplanned shards of about 24,000 tests each, 45 to 77 minutes each, and was
+  # red on 13 open pull requests as Tests (Split 2/2). tests/nodes/ alone is
+  # about 970 seconds and stays narrowed.
+  narrowed_seconds_for_full_suite: 1800
 
 # OMN-15639: repo-wide gate directories, unioned into EVERY narrowed
 # selection. These assert invariants over files the adjacency map above

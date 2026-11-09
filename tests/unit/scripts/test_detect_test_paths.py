@@ -660,18 +660,24 @@ def test_existing_full_suite_checks_precede_protected_and_unmapped_checks(
     assert sel.full_suite_reason == reason
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "tests/unit/delegation/test_something.py",
-        "tests/delegation_golden/test_something.py",
-    ],
-)
-def test_delegation_test_directory_change_still_narrows(path: str) -> None:
+def test_delegation_test_directory_change_still_narrows() -> None:
+    path = "tests/delegation_golden/test_something.py"
     sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
     assert path.startswith(tuple(sel.selected_paths))
+
+
+def test_delegation_unit_test_change_is_not_a_protected_surface() -> None:
+    # tests/unit/ is too heavy to narrow (OMN-22868), so this change takes the
+    # full-suite matrix for its weight, not as a protected surface.
+    sel = compute_selection(
+        ["tests/unit/delegation/test_something.py"],
+        ADJACENCY_PATH,
+        ref_name="jonah/feature",
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
 
 
 def _assert_globs_match_tracked_paths(globs: list[str], paths: list[str]) -> None:
@@ -767,3 +773,71 @@ def test_workflow_only_diff_cli_emits_twenty_splits(tmp_path: Path) -> None:
     assert data["is_full_suite"] is True
     assert data["split_count"] == 20
     assert len(data["matrix"]) == 20
+
+
+_HEAVY_CHANGE = [
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml",
+    "tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py",
+]
+_LIGHT_CHANGE = [
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml",
+]
+
+
+def test_narrowed_selection_with_the_unit_tree_takes_the_full_suite_matrix() -> None:
+    selection = compute_selection(
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is True
+    assert (
+        selection.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
+    )
+    assert selection.split_count == 20
+    assert selection.selected_paths == ["tests/"]
+
+
+def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
+    selection = compute_selection(
+        _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert "tests/unit/" not in selection.selected_paths
+    assert selection.split_count == 2
+
+
+def test_without_the_bound_the_heavy_selection_is_two_unplanned_shards(
+    tmp_path: Path,
+) -> None:
+    text = ADJACENCY_PATH.read_text()
+    assert "narrowed_seconds_for_full_suite" in text
+    unbounded = tmp_path / "adjacency.yaml"
+    unbounded.write_text(
+        "\n".join(
+            line
+            for line in text.splitlines()
+            if "narrowed_seconds_for_full_suite" not in line
+        )
+    )
+    selection = compute_selection(
+        _HEAVY_CHANGE, unbounded, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert selection.split_count == 2
+    assert "tests/unit/" in selection.selected_paths
+
+
+def test_a_bounded_selection_with_no_durations_file_fails_closed(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "tests" / "nodes").mkdir(parents=True)
+    selection = compute_selection(
+        _LIGHT_CHANGE,
+        ADJACENCY_PATH,
+        ref_name="omn-22868-x",
+        event_name="pull_request",
+        repo_root=tmp_path,
+    )
+    assert selection.is_full_suite is True
+    assert (
+        selection.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
+    )
