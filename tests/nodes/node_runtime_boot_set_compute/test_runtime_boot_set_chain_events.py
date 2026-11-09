@@ -17,6 +17,10 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.model_runtime_boot_set import (
+    ModelRuntimeBootSetRequest,
+    ModelRuntimeBootSetVerdict,
+)
 from omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set import (
     HandlerRuntimeBootSet,
     answer_command,
@@ -136,7 +140,7 @@ def test_error_chain_bad_payload_is_answered_with_a_typed_failure() -> None:
 class _IgnoresExcess(HandlerRuntimeBootSet):
     """Break: the judgment stops counting contracts loaded outside the declared set."""
 
-    def handle(self, request):  # type: ignore[no-untyped-def]
+    def handle(self, request: ModelRuntimeBootSetRequest) -> ModelRuntimeBootSetVerdict:
         verdict = super().handle(request)
         return verdict.model_copy(
             update={"status": "PASS", "rules": (), "contracts_over_declared": 0}
