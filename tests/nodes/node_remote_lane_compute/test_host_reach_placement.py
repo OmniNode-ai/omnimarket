@@ -13,13 +13,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
-    HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
+from omnimarket.models.remote_lane_placement import (
     EnumRemoteLaneOutcome,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
+)
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
 )
 
 ROUTES = ("route:h201", "route:broker-admin:dev")
