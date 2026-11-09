@@ -15,3 +15,4 @@ class EnumWorkItemKind(StrEnum):
     PULL_REQUEST = "pull_request"
     RED_CHECK = "red_check"
     LANE = "lane"
+    COMMITMENT = "commitment"

@@ -26,12 +26,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from omnimarket.handlers.install_file_list import file_list_comparison, resolve
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.handlers.runtime_paths import runtime_path
-from omnimarket.nodes.node_install_superset_guard_effect.handlers.handler_install_superset import (
-    file_list_comparison,
-    resolve,
-)
 
 CANARY_RECORD = "$ONEX_REGISTRY_ROOT/.claude_scratch/adoption/canary.json"
 CANARY_RECORD_REL = ".claude_scratch/adoption/canary.json"
