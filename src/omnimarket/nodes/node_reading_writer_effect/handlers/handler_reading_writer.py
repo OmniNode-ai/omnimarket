@@ -48,6 +48,7 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOver
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLandingRead,
     ModelLedgerQuery,
+    ModelLedgerRead,
     ProtocolLandingSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
@@ -174,10 +175,13 @@ class HandlerReadingWriter:
         self._clock = clock
         self._compute = compute or HandlerReadingCompute()
         self._revision = revision or load_revision()
+        # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
+        self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
+        self._cycle_reads = {}
         now = self._clock().astimezone(UTC)
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
@@ -241,12 +245,29 @@ class HandlerReadingWriter:
             return _UNREAD
         return str(read.report.not_on_both_count)
 
+    def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """One read per distinct query in a cycle (OMN-23119).
+
+        The replay check asks the same question, the reading rows of this window, once for every
+        computed piece. Through the command route each ask is a process and a bus round trip of
+        its own, about 9 s when the lab is quiet and the 60 s bus timeout when the read node is
+        stalled, and the one that stalls turns its piece UNKNOWN for the hour. An answer is kept
+        only when it was read: an error is never kept, so the next ask reads again.
+        """
+        kept = self._cycle_reads.get(query)
+        if kept is not None:
+            return kept
+        read = self._source.read(query)
+        if read.error is None:
+            self._cycle_reads[query] = read
+        return read
+
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
         for source in spec.all_sources:
-            read = self._source.read(
+            read = self._read(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
                     until=end,
@@ -275,7 +296,7 @@ class HandlerReadingWriter:
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
     ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         publish = self._overlay.publish
-        read = self._source.read(
+        read = self._read(
             ModelLedgerQuery(
                 since=window_end,
                 until=now + timedelta(seconds=1),
