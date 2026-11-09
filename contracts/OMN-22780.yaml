@@ -7,14 +7,10 @@ interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn22780-tabs-not-nav
-  statement: "The floor main page has its Process and Machines tab bar and no nav element, and the links-area test passes on it."
+  statement: "The floor main page script runs under node with its tab bar: it declares no top-level name twice. The tab bar as a div with no nav element (ticket AC1 and AC3) was already on dev when this pull request was merged up, so the links-area test passes at the merge base and is regression evidence here, not a must-fail control."
   acceptance:
-  - id: AC1
-    statement: 'AC1: simple.html has no nav element and still carries the tablist with its Process and Machines anchors, #process and #machines -- falsifier: uv run --frozen pytest tests/test_omnidash_host_effect.py -k omnidash_host_floor -q --no-cov'
   - id: AC2
     statement: 'AC2: the tab tests of the page that run the page script under node still pass, so the tab bar works the same -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_simple_page_machines.py -q --no-cov'
-  - id: AC3
-    statement: 'AC3: on dev before the change the links-area test fails on simple.html, so the test fails without the change -- falsifier: uv run --frozen pytest tests/test_omnidash_host_effect.py -k omnidash_host_floor -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: "The floor main page's tab bar is a div and the links-area test passes"
@@ -25,12 +21,8 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22780-tests
-  description: "The floor main page has its Process and Machines tab bar and no nav element, and the links-area test passes on it."
+  description: "Regression evidence (unbound: dev already draws the tab bar as a div, so the links-area test passes at the merge base too and is not a must-fail control): the floor main page has its Process and Machines tab bar and no nav element, and the links-area test passes on it."
   source: manual
-  binds_ac:
-  - AC1
-  - AC2
-  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omnidash_host_effect.py -k omnidash_host_floor -q --no-cov
