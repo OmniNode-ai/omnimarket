@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# RULING 2026-10-10T18:17:36Z: lanes do not read GitHub; gh is for writes. 92 of the 101 gh-read
+# refusals counted in the 24 hours to 2026-11-09T06:46Z came from subagents following a prompt that
+# names gh. The omniclaude PreToolUse Agent/Workflow entrypoint (pre_tool_use_agent_model_guard.sh)
+# hands this node the dispatch payload when it names gh or the GitHub API; the node refuses a prompt
+# that tells a subagent to read GitHub through gh, naming the onex scm verb that answers it, and admits
+# a prompt that names the mirror. The hook stays a thin shim: the decision lives here.
+name: node_agent_prompt_gh_read_guard_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Refuse an Agent or Workflow dispatch whose prompt or script tells a subagent to run a
+  GitHub read (or a gh write that has an onex scm verb) through gh, naming the mirror verb; admit a
+  prompt that uses the mirror verb or names gh only to forbid it. Reads the dispatch payload and, for a
+  Workflow, the script file it names; writes nothing.
+input_model:
+  name: ModelAgentPromptGhReadRequest
+  module: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.models
+output_model:
+  name: ModelAgentPromptGhReadDecision
+  module: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.models
+handler:
+  module: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.handlers.handler_agent_prompt_gh_read_guard
+  class: HandlerAgentPromptGhReadGuard
+  input_model: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.models.ModelAgentPromptGhReadRequest
+  output_model: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.models.ModelAgentPromptGhReadDecision
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.handlers.handler_agent_prompt_gh_read_guard:HandlerAgentPromptGhReadGuard
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerAgentPromptGhReadGuard
+      module: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.handlers.handler_agent_prompt_gh_read_guard
+    topic: onex.cmd.omnimarket.agent-prompt-gh-read-guard-requested.v1
+  - operation: load_policy
+    handler:
+      name: ContractGuardPolicySource
+      module: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect.handlers.handler_contract_policy_source
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.agent-prompt-gh-read-guard-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.agent-prompt-gh-read-guard-completed.v1
+  - onex.evt.omnimarket.agent-prompt-gh-read-guard-failed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-prompt-gh-read-guard-requested.v1
+  external_trigger: Direct Python invocation by the omniclaude PreToolUse Agent/Workflow entrypoint (python -m the runtime_agent_prompt_gh_read module).
+terminal_event: onex.evt.omnimarket.agent-prompt-gh-read-guard-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.agent-prompt-gh-read-guard-completed.v1
+- onex.evt.omnimarket.agent-prompt-gh-read-guard-failed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - main
+  idempotent: true
+  timeout_ms: 5000
+guard_policy:
+  # The tool_input fields whose text a subagent follows, per dispatching tool.
+  judged_fields:
+    Agent:
+    - prompt
+    - description
+    Workflow:
+    - script
+  # Fields that hold code, where a comment line is not an instruction.
+  code_fields:
+  - script
+  # A tool whose script is read from the file its tool_input names when it carries no inline text.
+  path_fields:
+    Workflow: scriptPath
+  # The class the refusal is recorded under in the hook-refusal floor row.
+  refusal_class: agent-prompt-gh-read

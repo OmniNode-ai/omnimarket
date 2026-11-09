@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23307
+title: The agent-prompt gh-read refusal runs as a node that pre_tool_use_agent_model_guard.sh calls
+summary: node_agent_prompt_gh_read_guard_effect judges an Agent or Workflow dispatch with the lane-text gh-read scan and refuses a prompt that tells a subagent to read GitHub through gh, naming the onex scm verb that answers it; a prompt using the mirror verb is admitted. The omniclaude PreToolUse agent model guard hook calls it through its process entry and stays a thin shim.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23307-agent-prompt-gh-read
+  statement: An agent prompt that calls gh or the GitHub API for a read the mirror serves is refused by a node, and the same prompt using the mirror verb is admitted.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a node refuses an agent prompt that calls gh or the GitHub API for a read the mirror serves and admits the same prompt using the mirror verb, and pre_tool_use_agent_model_guard.sh calls it -- falsifier: uv run pytest tests -q -k agent_prompt_gh_read, failing with the node call removed from the hook'
+evidence_requirements:
+- kind: tests
+  description: The guard's refusal and admission tests, its golden chain and error chain event tests with their named breaks, and the process entry's exit codes pass.
+  command: uv run --frozen pytest tests/nodes/node_agent_prompt_gh_read_guard_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23307-ac1
+  description: The node refuses an agent prompt naming a gh read with the onex scm verb, admits the mirror form, and its process entry exits 2 and 0 accordingly -- proven by the named tests. The hook-side call is proven by the omniclaude tests of the same name.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_agent_prompt_gh_read_guard_effect -q --no-cov -k agent_prompt_gh_read
+    cwd: .
+- id: dod-omn23307-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23307 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_agent_prompt_gh_read_guard_effect -q --no-cov
+    cwd: .
