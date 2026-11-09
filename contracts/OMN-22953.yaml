@@ -52,6 +52,9 @@ dod_evidence:
   description: Deploy probe. A fresh uv run --frozen --no-dev environment built from this checkout imports the J9 join handler and its request and result models from the installed package and reads the one hour deadline from the node contract. It fails at the merge base, which has no J9 handler. The hosted runner can run it with uv alone; no container pull and no lab route is required. The running wiring on the dev bus is not part of this change.
   source: manual
   checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j9.py -q --no-cov -n 0 -p no:randomly -k golden
+    cwd: .
   - check_type: command
     check_value: |-
       env UV_PROJECT_ENVIRONMENT=/tmp/omn22953-venv uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_automatic_fix_install_effect.handlers.handler_fix_install_join_j9 import HandlerFixInstallJoinJ9; from omnimarket.nodes.node_automatic_fix_install_effect.models import ModelJoinJ9Request, ModelJoinJ9Result; assert callable(HandlerFixInstallJoinJ9.handle); c = yaml.safe_load(open("src/omnimarket/nodes/node_automatic_fix_install_effect/contract.yaml")); assert c["join_j9"]["deadline_seconds"] == 3600, c["join_j9"]; print("J9 join handler and one hour deadline resolved")'
