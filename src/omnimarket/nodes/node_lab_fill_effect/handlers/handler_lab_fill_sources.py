@@ -52,15 +52,35 @@ class HandlerLabFillSources:
 
     def __init__(
         self,
-        plans: ProtocolLabFillPlansCopy,
-        readers: ProtocolLabFillSourceReaders,
+        plans: ProtocolLabFillPlansCopy | None = None,
+        readers: ProtocolLabFillSourceReaders | None = None,
         clock: ProtocolLabFillClock | None = None,
     ) -> None:
-        self._plans = plans
-        self._readers = readers
+        # The runtime builds this handler at boot from injectable parameters only, so the
+        # two ports default to None and the operation refuses by name until a host that
+        # holds the ledger copy and the tool paths injects them (the local adapters).
+        self._plans_port = plans
+        self._readers_port = readers
         self._clock = default_clock(clock)
 
+    @property
+    def _plans(self) -> ProtocolLabFillPlansCopy:
+        if self._plans_port is None:
+            raise LabFillPortError(
+                "enumerate_lab_fill_sources: the plans port is not injected on this host"
+            )
+        return self._plans_port
+
+    @property
+    def _readers(self) -> ProtocolLabFillSourceReaders:
+        if self._readers_port is None:
+            raise LabFillPortError(
+                "enumerate_lab_fill_sources: the readers port is not injected on this host"
+            )
+        return self._readers_port
+
     def handle(self, request: ModelLabFillSourcesRequest) -> ModelLabFillSourcesResult:
+        _ = (self._plans, self._readers)  # refuse by name before any read starts
         start = self._clock.now_epoch_s()
         stages = [s for s in STAGES if s == TICKETS_STAGE or s in request.sources]
         reads: list[ModelLabFillSourceRead] = []

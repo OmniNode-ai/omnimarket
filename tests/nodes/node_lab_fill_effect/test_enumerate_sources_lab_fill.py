@@ -312,3 +312,12 @@ def test_error_no_listed_ticket_skips_the_ticket_read() -> None:
     assert world.ticket_asks == []
     assert result.reads[-1].state == "empty"
     assert result.candidates == ()
+
+
+# ---- the runtime builds the handler at boot from injectable parameters only
+
+
+def test_boot_construction_without_ports_then_refuses_by_name() -> None:
+    handler = HandlerLabFillSources()
+    with pytest.raises(LabFillPortError, match="plans port is not injected"):
+        handler.handle(_request())
