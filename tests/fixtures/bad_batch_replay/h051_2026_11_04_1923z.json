@@ -4,6 +4,7 @@
   "quoted_text": "Replay the 14 Codex lanes that died of a full disk between 19:23Z and 19:26Z on 11-04 [M]",
   "rebuild_plan_row": "section 3.5 row 13: a bad-batch replay set (the 14 full-disk deaths are quoted from the base-first plan, source unread; verifying the set is the piece's first task)",
   "quoted_count": 14,
+  "terminal_outcome": "failed",
   "host": "h051",
   "window_start": "2026-11-04T19:23:00Z",
   "window_end": "2026-11-04T19:26:59Z"
