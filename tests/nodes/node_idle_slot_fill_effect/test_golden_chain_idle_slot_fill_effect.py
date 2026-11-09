@@ -51,11 +51,13 @@ def test_contract_golden_chain() -> None:
     assert operations == {
         "fill": "HandlerIdleSlotFill",
         "turn-guard": "HandlerIdleTurnGuard",
+        "refresh-backlog": "HandlerPillarBacklogRefresh",
     }
     assert "event_bus" not in contract
     assert [row["topic"] for row in contract["handler_routing"]["handlers"]] == [
         "onex.cmd.omnimarket.idle-slot-fill-requested.v1",
         "onex.cmd.omnimarket.idle-turn-guard-requested.v1",
+        "onex.cmd.omnimarket.pillar-backlog-refresh-requested.v1",
     ]
     assert contract["runtime_dispatch"]["command_topic"] == (
         "onex.cmd.omnimarket.idle-slot-fill-requested.v1"

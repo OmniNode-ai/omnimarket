@@ -571,6 +571,13 @@ def test_a_quiet_turn_passes():
 
 OPERATOR = "user-operator"
 FILL_NOW = "2026-10-19T16:00:00Z"
+EMPTY_WATCHER = {
+    "schema": 1,
+    "last_tick": FILL_NOW,
+    "last_full_resync": FILL_NOW,
+    "prs": {},
+    "repos": {},
+}
 FREE3 = "MISSING lab-headroom:host-a | placed units 0 of cap 3, free Claude slots 3 | FIX: dispatch"
 POOL3 = {
     "lab_headroom": {
@@ -716,7 +723,9 @@ def lab_fill(
 ):
     if not (tmp / "backlog.json").exists():
         (tmp / "backlog.json").write_text(json.dumps({"standing_tickets": STANDING}))
-    request = {**POOL3, **({"watcher_state": watcher} if watcher is not None else {})}
+    # The tick rebuilds stored work from a fresh watcher snapshot (OMN-22147).
+    live = watcher if watcher is not None else EMPTY_WATCHER
+    request = {**POOL3, "watcher_state": live}
     found = (
         handler.HandlerLabFill()
         .handle(
@@ -1294,37 +1303,37 @@ def test_an_experiment_with_a_completed_receipt_in_24_hours_is_not_resent(
     [
         (
             "done-after-fact",
-            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            "fill-m4-nemotron-ultra-rejects-20261019T0617Z",
             {"outcome": "done", "ended_at": "2026-10-19T06:26:05Z"},
             True,
         ),
         (
             "handed-off-after-fact",
-            "fill-defect-nemotron-ultra-rejects-20261019T0919Z",
+            "fill-m4-nemotron-ultra-rejects-20261019T0919Z",
             {"outcome": "handed-off", "ended_at": "2026-10-19T09:43:54Z"},
             True,
         ),
         (
             "done-before-fact",
-            "fill-defect-nemotron-ultra-rejects-20261019T0100Z",
+            "fill-m4-nemotron-ultra-rejects-20261019T0100Z",
             {"outcome": "done", "ended_at": "2026-10-19T02:00:00Z"},
             False,
         ),
         (
             "blocked-after-fact",
-            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            "fill-m4-nemotron-ultra-rejects-20261019T0617Z",
             {"outcome": "blocked", "ended_at": "2026-10-19T06:26:05Z"},
             False,
         ),
         (
             "running",
-            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            "fill-m4-nemotron-ultra-rejects-20261019T0617Z",
             {"final": False, "ended_at": "2026-10-19T06:26:05Z"},
             False,
         ),
         (
             "other-key-sharing-the-prefix",
-            "fill-defect-nemotron-ultra-rejects-extra-20261019T0617Z",
+            "fill-m4-nemotron-ultra-rejects-extra-20261019T0617Z",
             {"outcome": "done", "ended_at": "2026-10-19T06:26:05Z"},
             False,
         ),
@@ -1341,7 +1350,7 @@ def test_a_stored_item_a_fill_lane_answered_after_its_fact_is_not_resent(
             {
                 "items": [
                     {
-                        "kind": "defect",
+                        "kind": "m4-board-red",
                         "key": "deleg:nemotron-ultra-rejects",
                         "repo": "omnimarket",
                         "ticket": "OMN-9101",
@@ -1367,7 +1376,7 @@ def test_a_stored_item_a_fill_lane_answered_after_its_fact_is_not_resent(
             "deleg:nemotron-ultra-rejects"
         ]["why"].startswith(answer)
     else:
-        assert sent == ["fill-defect-nemotron-ultra-rejects-20261019T1600Z"]
+        assert sent == ["fill-m4-nemotron-ultra-rejects-20261019T1600Z"]
 
 
 def test_the_generator_calls_the_omnimarket_ticket_rule_with_the_facts(tmp_path: Path):

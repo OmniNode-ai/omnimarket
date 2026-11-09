@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Portable policy; state_dir and source paths are injected by the tick request.
+sources: [process-fix, defect, readback]
+fact_max_age_seconds: 172800
+watcher_max_age_seconds: 480
+watcher_resync_max_age_seconds: 5400
+ticket_max_age_seconds: 172800
+stalled_seconds: 14400
+claim_heartbeat_seconds: 1800
+claim_max_age_seconds: 7200
+stalled_classes: [pending, queue-stuck]
+defect_labels: [bug, defect]
+ticket_team_key: OMN
+ticket_page_size: 100
+ticket_max_pages: 20
+backlog_file: pillar-backlog.json
+dropped_file: lab-fill.dropped.json

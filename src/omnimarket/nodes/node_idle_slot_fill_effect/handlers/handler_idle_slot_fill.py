@@ -40,8 +40,12 @@ closed or gone from the PR watcher state, or whose fact is older than 48 hours, 
 completed receipt in the last 24 hours are dropped, each with its reason on ``NOTE lab-fill-dropped`` and in
 lab-fill.dropped.json.
 
-``HandlerLabFill`` is the tick's effect around that decision: it reads the backlog file (pillar-backlog.json in the
-lab fill's one state directory, ``lab_fill_state_dir()``) and the keys already sent (lab-fill.sent.json there), sends
+``HandlerLabFill`` is the tick's effect around that decision: before selection, ``HandlerPillarBacklogRefresh``
+rebuilds the stored process-fix, defect and readback items from the tick's live PR, ticket and ownership sources,
+then atomically replaces the backlog under lab-fill.lock. The node's backlog_refresh.yaml or an injected
+idle_slot_fill overlay supplies source kinds, freshness and file names; the request supplies the state directory.
+An unread source offers no stored work and leaves the previous file intact. Read-only ticks project without writes.
+The effect reads the keys already sent (lab-fill.sent.json there), sends
 each chosen lane through the remote-lane runner
 detached, and returns the tick's findings: one ``NOTE lab-fill | sent=<n> ... idle_after=<k>: ...`` line naming what
 it sent, ``MISSING lab-fill-backlog`` when slots stay free with the backlog spent, and ``UNKNOWN
@@ -1248,7 +1252,7 @@ def fill_lock(state: Path) -> Iterator[bool]:
         state.mkdir(parents=True, exist_ok=True)
         handle = (state / LOCK_FILE).open("a")
     except OSError:
-        yield True
+        yield False
         return
     with handle:
         deadline = time.monotonic() + LOCK_WAIT_S
@@ -1944,6 +1948,11 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
     """Use the session snapshot, landing carriers, installed scope, ledger and designs (OMN-17427)."""
     if env.get("OMNI_LAB_FILL_GENERATE") == "off":
         return None
+    return live_sources(now, env)
+
+
+def live_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources:
+    """The existing source bindings, also used by the refresh when generation is off."""
     plugin_root = next(
         (Path(env[name]) for name in PLUGIN_ROOT_ENVS if env.get(name)), None
     )
@@ -1988,6 +1997,7 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
         experiments=lambda: overlay.experiment_designs(env),
         ledger_tickets=tickets,
         ticket_rule=omnimarket_ticket_rule(),
+        ticket_post=linear_post,
     )
 
 
@@ -2155,13 +2165,59 @@ class HandlerLabFill:
         )
 
     def _fill(self, request: ModelLabFillRequest) -> ModelLabFillResult:
-        state = request.state_dir
-        backlog_path = (
-            Path(request.backlog).expanduser()
-            if request.backlog
-            else state / BACKLOG_FILE
+        from ..models.model_pillar_backlog_refresh import (
+            ModelPillarBacklogRefreshRequest,
         )
-        backlog, standing, unread = read_backlog(backlog_path)
+        from .handler_pillar_backlog_refresh import HandlerPillarBacklogRefresh
+
+        state = request.state_dir
+        backlog_path = Path(request.backlog).expanduser() if request.backlog else None
+        sources = request.sources or default_sources(request.now, os.environ)
+        refresh_sources = request.sources or live_sources(request.now, os.environ)
+        refresh = HandlerPillarBacklogRefresh().refresh_locked(
+            ModelPillarBacklogRefreshRequest(
+                now=request.now,
+                state_dir=state,
+                backlog_path=backlog_path,
+                watcher_state=request.request.get("watcher_state"),
+                sources=refresh_sources,
+                read_only=request.read_only,
+            )
+        )
+        backlog, standing, unread = (
+            refresh.items,
+            refresh.standing_tickets,
+            refresh.error or None,
+        )
+        refresh_findings: list[tuple[str, str, str, str]] = [
+            (
+                "unknown" if refresh.error else "note",
+                "lab-fill-stored",
+                f"lab-fill-stored | stored={len(backlog)} dropped={len(refresh.dropped)} "
+                f"written={str(refresh.written).lower()}"
+                + (f" unread={refresh.error}" if refresh.error else ""),
+                "restore the declared live sources; no stored work is offered while unread"
+                if refresh.error
+                else "",
+            )
+        ]
+        if (
+            request.record is not None
+            and not request.read_only
+            and (
+                why := request.record(
+                    "lab-fill-backlog-refresh", "stored-tier", refresh_findings[0][2]
+                )
+            )
+        ):
+            refresh_findings.append(
+                (
+                    "unknown",
+                    "lab-fill-stored-status",
+                    f"stored-tier STATUS row unread: {why}",
+                    "restore the declared tick row recorder",
+                )
+            )
         sent_path = state / SENT_FILE
         sent = read_sent(sent_path)
         sent_error = ""
@@ -2186,6 +2242,7 @@ class HandlerLabFill:
             return ModelLabFillResult(
                 [
                     *recovery.found,
+                    *refresh_findings,
                     (
                         "unknown",
                         "lab-fill-sent",
@@ -2208,7 +2265,7 @@ class HandlerLabFill:
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
         holds, holds_unread = read_fixer_holds(request.now, os.environ)
-        wip_sources = request.sources or default_sources(request.now, os.environ)
+        wip_sources = sources
         wip_refusal, wip_finding = fill_wip_gate(
             ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,
             watcher_state=watcher,
@@ -2241,7 +2298,7 @@ class HandlerLabFill:
                 wip_refusal=wip_refusal,
             )
         )
-        found: list[tuple[str, str, str, str]] = list(recovery.found)
+        found: list[tuple[str, str, str, str]] = [*recovery.found, *refresh_findings]
         if wip_finding:
             found.append(wip_finding)
         if holds_unread:
@@ -2258,8 +2315,8 @@ class HandlerLabFill:
                 (
                     "unknown",
                     "lab-fill-backlog",
-                    f"the pillar backlog is unreadable: {unread}",
-                    'fix the file\'s JSON: {"items": [{kind, key, repo, title}]}',
+                    f"the pillar backlog refresh is unreadable: {unread}",
+                    "restore the node's declared live sources and overlay",
                 )
             )
         if scope_unread:
@@ -2272,9 +2329,6 @@ class HandlerLabFill:
                     'fix merge-sweep/sweep_scope.json ({"out_of_scope": {repo: ruling}})',
                 )
             )
-        sources = request.sources
-        if decision.idle_after > 0 and sources is None:
-            sources = default_sources(request.now, os.environ)
         if decision.idle_after > 0 and sources is not None:
             generated, line = read_generated(sources, watcher, sent, request.now)
             found.append(("note", "lab-fill-generator", line, ""))
@@ -2309,8 +2363,8 @@ class HandlerLabFill:
                         wip_refusal=wip_refusal,
                     )
                 )
-        if decision.dropped:
-            drops = decision.dropped
+        if decision.dropped or refresh.dropped:
+            drops = [*refresh.dropped, *decision.dropped]
             detail = "; ".join(f"{d['key']} {d['why']}" for d in drops[:6])
             if len(drops) > 6:
                 detail += f"; and {len(drops) - 6} more"
@@ -2323,7 +2377,7 @@ class HandlerLabFill:
                 )
             )
             if not request.read_only:
-                path = state / DROPPED_FILE
+                path = refresh.dropped_path or state / DROPPED_FILE
                 try:
                     recorded = _json(path) if path.is_file() else {}
                     recorded = recorded if isinstance(recorded, dict) else {}
@@ -2454,9 +2508,9 @@ class HandlerLabFill:
                         f"{' (already sent: ' + done + ')' if done else ''}"
                     ),
                     (
-                        f'add work to {backlog_path} (M4 board reds, experiment designs: {{"items": [{{kind, key, repo, title}}]}}) '
+                        "restore live source coverage for the stored-backlog refresh "
                         + (
-                            'declare standing_tickets in the backlog file ({kind: "OMN-<child>"}) for classes without their own ticket; '
+                            "supply standing_tickets through the node's live source declaration for classes without their own ticket; "
                             if any(
                                 s["why"].startswith("no child ticket")
                                 for s in decision.skipped
