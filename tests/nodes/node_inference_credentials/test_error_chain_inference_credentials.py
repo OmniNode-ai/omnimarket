@@ -24,6 +24,9 @@ from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
 )
+from omnimarket.protocols.protocol_http_tenant_identity import (
+    ProtocolHttpTenantIdentity,
+)
 from tests.nodes.node_inference_credentials.fakes import (
     CREATE_BODY,
     KEY_A,
@@ -57,14 +60,14 @@ def _client(app: FastAPI) -> httpx.AsyncClient:
 def _app(
     intake: FakeIntake | None = None,
     read_model: FakeReadModel | None = None,
-    identity: object | None = None,
+    identity: ProtocolHttpTenantIdentity | None = None,
 ) -> tuple[FastAPI, FakeIntake, FakeReadModel]:
     intake = intake or FakeIntake()
     read_model = read_model or FakeReadModel()
     app = create_app(
         intake=intake,
         read_model=read_model,
-        identity=identity or SeededTenantIdentity(),  # type: ignore[arg-type]
+        identity=identity or SeededTenantIdentity(),
     )
     return app, intake, read_model
 
