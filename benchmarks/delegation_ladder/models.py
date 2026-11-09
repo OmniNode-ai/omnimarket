@@ -60,6 +60,7 @@ class EnumScorerKind(StrEnum):
     PATCH_APPLY_AND_TEST = "patch_apply_and_test"
     MULTI_FILE_EDIT_AND_TEST = "multi_file_edit_and_test"
     LITERAL_EQUALS = "literal_equals"
+    WORKFLOW_REQUEST = "workflow_request"
 
 
 class EnumOutcome(StrEnum):

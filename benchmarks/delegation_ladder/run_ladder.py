@@ -91,6 +91,7 @@ from benchmarks.delegation_ladder.scorers import (  # noqa: E402
     score_multi_file_edit_and_test,
     score_patch_apply_and_test,
     score_unit_test_execution,
+    score_workflow_request,
     sha256_of,
     split_answer,
 )
@@ -1739,6 +1740,8 @@ def score(
             return score_multi_file_edit_and_test(response, config)
         case EnumScorerKind.LITERAL_EQUALS:
             return score_literal_equals(response, config)
+        case EnumScorerKind.WORKFLOW_REQUEST:
+            return score_workflow_request(response, config, FIXTURES)
 
 
 def run_one(

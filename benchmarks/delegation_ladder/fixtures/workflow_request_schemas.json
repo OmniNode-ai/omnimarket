@@ -1,0 +1,61 @@
+{
+  "comment": "Request schemas for the workflow catalogue in workflow_catalogue.txt (OMN-18339). One JSON Schema per workflow, written from that file's Parameters lines. A parameter the catalogue types 'or null' is optional and nullable; every other parameter is required. Extra keys are refused: a request that names a parameter the catalogue does not define is not a valid request.",
+  "workflows": {
+    "run_focused_tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "path"],
+      "properties": {
+        "repo": {"type": "string", "enum": ["omnibase_core", "omnibase_infra", "omnimarket", "omniclaude"]},
+        "path": {"type": "string", "minLength": 1},
+        "k_expr": {"type": ["string", "null"]}
+      }
+    },
+    "reproduce_failing_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "repo"],
+      "properties": {
+        "run_id": {"type": "integer"},
+        "repo": {"type": "string", "minLength": 1}
+      }
+    },
+    "apply_patch_and_test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "patch", "test_path"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "patch": {"type": "string", "minLength": 1},
+        "test_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "read_and_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "question", "repo"],
+      "properties": {
+        "paths": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+        "question": {"type": "string", "minLength": 1},
+        "repo": {"type": "string", "minLength": 1}
+      }
+    },
+    "verify_ticket_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ticket"],
+      "properties": {
+        "ticket": {"type": "string", "pattern": "^OMN-[0-9]+$"}
+      }
+    },
+    "select_impacted_tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "changed_paths"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "changed_paths": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+      }
+    }
+  }
+}
