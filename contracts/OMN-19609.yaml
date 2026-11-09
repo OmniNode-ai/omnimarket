@@ -46,7 +46,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "curl --fail --silent --show-error --location --max-time 30 \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_query_reader.py\" | python3 -c 'import sys; src = sys.stdin.read(); assert \"def read_rows_matching\" in src; assert \"row_type = ANY(%s)\" in src; assert \"strpos(raw_row, %s) > 0\" in src; print(\"OMN-19609 deploy source readback: store-side narrowing PASS\")'"
         cwd: "."
-    binds_ac: ["AC1"]
   - id: "dod-omn19609-deployed-parity-read"
     description: "The piece 6 parity read, as the reading writer sends it through the read command, answers on the dev bus in under 60 seconds and returns the parity rows of the 36 hour window. A query node that reads the whole window, or one that is not deployed, fails the read or the bound. Only the local Done gate runs it, because hosted CI cannot reach the lab bus."
     source: "manual"
