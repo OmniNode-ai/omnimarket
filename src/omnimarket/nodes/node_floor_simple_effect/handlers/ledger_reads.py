@@ -51,6 +51,8 @@ class ModelLedgerFacts(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     go_given_through: int
+    # The pieces opened by name (RULING rows by subject), beyond the in-order go.
+    go_pieces: tuple[int, ...] = ()
     go_rows: tuple[str, ...] = ()
     events: tuple[ModelNodeEmission, ...] = ()
     # The newest reading row of each piece the reading writer wrote, and how many matching rows could not be read as one.
@@ -116,6 +118,65 @@ def go_given_through(rows: list[ModelLedgerEvidenceRow], rule: ModelGoRule) -> i
     while granted.get(through + 1, False):
         through += 1
     return through
+
+
+_PIECE_NUMBER = re.compile(r"\d+|\bto\b", re.IGNORECASE)
+_PARENTHETICAL = re.compile(r"\([^)]*\)")
+
+
+def pieces_named(text: str) -> tuple[int, ...]:
+    """The piece numbers a subject lists: ``7 (name) and piece 11`` is 7 and 11, ``2 to 6`` is 2 to 6.
+
+    Words in brackets are labels and carry no number. A ``to`` between two numbers makes the range; a range that runs
+    backwards names nothing.
+    """
+    out: list[int] = []
+    previous: int | None = None
+    ranged = False
+    for token in _PIECE_NUMBER.finditer(_PARENTHETICAL.sub(" ", text)):
+        if token.group(0).lower() == "to":
+            ranged = previous is not None
+            continue
+        number = int(token.group(0))
+        if ranged and previous is not None:
+            if number > previous:
+                out.extend(range(previous + 1, number + 1))
+        else:
+            out.append(number)
+        previous = number
+        ranged = False
+    return tuple(out)
+
+
+def opened_pieces(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelGoRule
+) -> tuple[int, ...]:
+    """The pieces rulings opened by name, from the rulings in ``rows``, whatever their place in the order.
+
+    A RULING row of the rule's lane, on one of its ``open_tickets`` (the rule's own ticket is read in order by the go), whose question matches
+    ``open_pattern`` names the pieces it opens in its ``list`` group. The newest ruling that names a piece decides it, so a
+    later answer that is not affirmative takes the piece back. A rule that declares no open pattern opens nothing.
+    """
+    if rule.open_pattern is None or rule.open_affirmative_pattern is None:
+        return ()
+    opening = re.compile(rule.open_pattern)
+    affirmative = re.compile(rule.open_affirmative_pattern)
+    tickets = set(rule.open_tickets)
+    opened: dict[int, bool] = {}
+    for row in sorted(rows, key=lambda r: r.stamp):
+        if (
+            row.row_type != RULING_ROW_TYPE
+            or row.lane != rule.lane
+            or row.cells.get("ticket") not in tickets
+        ):
+            continue
+        matched = opening.search(row.cells.get("question", ""))
+        if matched is None:
+            continue
+        said_yes = affirmative.search(verbatim_answer(row)) is not None
+        for piece in pieces_named(matched.group("list")):
+            opened[piece] = said_yes
+    return tuple(sorted(p for p, yes in opened.items() if yes))
 
 
 def _row_matches(row: ModelLedgerEvidenceRow, match: ModelRowMatch) -> bool:
@@ -356,11 +417,20 @@ def read_ledger_facts(
     return ModelLedgerFloorRead(
         facts=ModelLedgerFacts(
             go_given_through=go,
+            go_pieces=opened_pieces(rows, go_rule),
             go_rows=tuple(
                 r.stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
                 for r in sorted(rows, key=lambda r: r.stamp)
-                if r.cells.get("ticket") == go_rule.ticket
-                and re.search(go_rule.question_pattern, r.cells.get("question", ""))
+                if (
+                    r.cells.get("ticket") == go_rule.ticket
+                    and re.search(go_rule.question_pattern, r.cells.get("question", ""))
+                )
+                or (
+                    go_rule.open_pattern is not None
+                    and r.row_type == RULING_ROW_TYPE
+                    and r.cells.get("ticket") in go_rule.open_tickets
+                    and re.search(go_rule.open_pattern, r.cells.get("question", ""))
+                )
             ),
             events=piece_events(list(event_rows.values()), overlay.piece_events),
             readings=readings,
