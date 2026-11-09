@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -170,7 +170,7 @@ def test_a_refused_hosts_free_slots_are_zero_in_the_lab_fill_plan() -> None:
         readings=(refused, open_),
         max_lanes=8,
     )
-    HandlerLabFillFirePlan(headroom=_Headroom()).handle(request)  # type: ignore[arg-type]
+    HandlerLabFillFirePlan(headroom=cast(Any, _Headroom())).handle(request)
     slots = {p.name: p.runner_slots for p in seen[0].probes}
     assert slots["h202"] == 0
     assert slots["h201"] > 0

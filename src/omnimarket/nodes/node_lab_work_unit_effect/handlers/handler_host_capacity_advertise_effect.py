@@ -123,7 +123,7 @@ class HandlerHostCapacityAdvertiseEffect:
             limits = self._limits()
         except (
             NodeOverlayError
-        ) as exc:  # fallback-ok: the advertisement says the cap was not computed
+        ) as exc:  # the advertisement says the cap was not computed
             logger.warning("host_capacity overlay unavailable: %s", exc)
             return (
                 request.max_units,
