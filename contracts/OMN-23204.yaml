@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23204
+title: 'A lab Mac is admitted as the clean-VM walk Tart host: the call recorder and lifecycle controls, the guest credential route and the admission receipt'
+summary: Two pure nodes. node_walk_lifecycle_controls_compute carries the call recorder (dylib source and control programs) and grades the recorder streams against the Endpoint Security observer per execution identity, with the capture evidence, reading lifecycle_controls passed or failed with a named reason. node_tart_host_admission_compute plans the guest credential route (a RAM disk filled over stdin, named by an overlay and holding no value), grades its evidence (reachable from the guest, absent from the stopped VM disk image with a positive control) and writes the admission receipt that admits a host only when every result is present and admitting and dated after the go.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23204-ac1
+  statement: 'The recorder streams, observer stream and capture measured on h101 grade lifecycle_controls passed, and each named injected break flips it to failed with its own reason -- falsifier: uv run pytest tests/nodes/node_walk_lifecycle_controls_compute -q -k lifecycle_controls'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the recorder streams, observer stream and capture measured on h101 grade lifecycle_controls passed, and each named injected break flips it to failed with its own reason -- falsifier: uv run pytest tests/nodes/node_walk_lifecycle_controls_compute -q -k lifecycle_controls'
+- id: req-omn23204-ac2
+  statement: 'The guest credential route is an overlay of names and secret references with no value, its evidence grades reachable_not_in_image only when each credential is read from the guest, sits on the RAM disk and is absent from the disk image the positive control can be found in -- falsifier: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k credential_route'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the guest credential route is an overlay of names and secret references with no value, its evidence grades reachable_not_in_image only when each credential is read from the guest, sits on the RAM disk and is absent from the disk image the positive control can be found in -- falsifier: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k credential_route'
+- id: req-omn23204-ac3
+  statement: 'The admission receipt admits a host only when the tart version, image digest and all five probe answers and the deletion are present and admitting and the probe is dated after the go -- falsifier: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k host_admission'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the admission receipt admits a host only when the tart version, image digest and all five probe answers and the deletion are present and admitting and the probe is dated after the go -- falsifier: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k host_admission'
+evidence_requirements:
+- kind: tests
+  description: Both nodes' tests run on a lab host at the pushed head.
+  command: uv run pytest tests/nodes/node_walk_lifecycle_controls_compute tests/nodes/node_tart_host_admission_compute -v -rs
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23204-ac1
+  description: AC1 is proven by the lifecycle controls tests over the streams measured on h101 and their named injected-break controls.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_walk_lifecycle_controls_compute -q -k lifecycle_controls --no-cov --tb=line
+    cwd: .
+- id: dod-omn23204-ac2
+  description: AC2 is proven by the credential route plan, overlay and grade tests and their injected breaks.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k credential_route --no-cov --tb=line
+    cwd: .
+- id: dod-omn23204-ac3
+  description: AC3 is proven by the admission receipt tests, including the golden and error chains through the canonical runtime.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tart_host_admission_compute -q -k host_admission --no-cov --tb=line
+    cwd: .
+- id: dod-omn23204-integration-proof
+  description: The pushed head ran both nodes' tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane mvp-m0-0015 -- uv run --frozen pytest tests/nodes/node_walk_lifecycle_controls_compute tests/nodes/node_tart_host_admission_compute -v -rs
+    cwd: .
