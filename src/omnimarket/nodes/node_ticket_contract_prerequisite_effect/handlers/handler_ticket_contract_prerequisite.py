@@ -147,7 +147,29 @@ def _changed_paths(sha: str, base: str | None) -> tuple[str, ...]:
         # An unreadable diff cannot show that nothing runs, so it counts as a
         # change that runs (unknown fails closed as runtime).
         return ("src/<unreadable diff>",)
-    return tuple(dict.fromkeys(path for path in listing.split("\0") if path))
+    paths = tuple(dict.fromkeys(path for path in listing.split("\0") if path))
+    return _not_already_on_base(sha, base_sha, paths)
+
+
+def _not_already_on_base(
+    sha: str, base_sha: str, paths: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The paths whose content at the head differs from the base tip.
+
+    A caller that runs the hook before the commit exists hands it the staged tree with the
+    branch head as its only parent, so a clean merge of dev reads as one commit carrying every
+    dev change since the fork (OMN-23283). A path that holds the same bytes on the base tip as on
+    the head is the base's, never this push's: it adds nothing to it. A path the pull request
+    itself adds or changes differs from the tip, so it stays.
+    """
+    differing = {
+        path
+        for path in _git(
+            "diff", "--name-only", "--no-renames", "-z", base_sha, sha
+        ).split("\0")
+        if path
+    }
+    return tuple(path for path in paths if path in differing)
 
 
 def umbrella_ticket_set() -> tuple[str, ...]:
@@ -161,17 +183,22 @@ def umbrella_ticket_set() -> tuple[str, ...]:
     return tuple(str(ticket) for ticket in listed)
 
 
-def _entry_ids(text: str) -> set[str]:
+def _entries(text: str) -> dict[str, str]:
+    """Each contract entry's id with a canonical form of its content."""
     loaded = yaml.safe_load(text) if text else None
-    ids: set[str] = set()
+    entries: dict[str, str] = {}
     if not isinstance(loaded, dict):
-        return ids
+        return entries
     for section in _ENTRY_SECTIONS:
-        entries = loaded.get(section)
-        for entry in entries if isinstance(entries, list) else ():
+        listed = loaded.get(section)
+        for entry in listed if isinstance(listed, list) else ():
             if isinstance(entry, dict) and isinstance(entry.get("id"), str):
-                ids.add(entry["id"])
-    return ids
+                entries[entry["id"]] = yaml.safe_dump(entry, sort_keys=True)
+    return entries
+
+
+def _entry_ids(text: str) -> set[str]:
+    return set(_entries(text))
 
 
 def _blob(sha: str, path: str) -> str:
@@ -208,7 +235,17 @@ def umbrella_appends(sha: str, base: str | None, body: str | None) -> tuple[str,
     failures = []
     for ticket in umbrella_ticket_set():
         path = f"contracts/{ticket}.yaml"
-        added = sorted(_entry_ids(_blob(sha, path)) - _entry_ids(_blob(fork, path)))
+        head_entries = _entries(_blob(sha, path))
+        fork_ids = _entry_ids(_blob(fork, path))
+        base_entries = _entries(_blob(base_sha, path))
+        # An entry the base tip already holds, with these bytes, came from the base: a staged
+        # merge of dev is one commit on the old head, so the merge base is the old fork and
+        # dev's entries would read as the push's own (OMN-23283).
+        added = sorted(
+            entry_id
+            for entry_id, content in head_entries.items()
+            if entry_id not in fork_ids and base_entries.get(entry_id) != content
+        )
         if added and umbrella_evidence(text) is None:
             failures.append(
                 f"{path}: this head adds {len(added)} entries ({', '.join(added[:3])}) to an "
