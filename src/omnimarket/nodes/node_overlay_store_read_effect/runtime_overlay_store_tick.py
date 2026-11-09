@@ -47,6 +47,29 @@ def _write_atomically(path: Path, text: str) -> None:
     held.replace(path)
 
 
+def _held_readings(held: Path) -> dict[str, dict[str, Any]]:
+    """The readings the last tick wrote; none when the record is absent or cannot be parsed."""
+    try:
+        readings = json.loads(held.read_text(encoding="utf-8"))["readings"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    return dict(readings) if isinstance(readings, dict) else {}
+
+
+def _newer(
+    held: dict[str, dict[str, Any]], read: Mapping[str, Mapping[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """The held readings with each read one laid over it when it is not older."""
+    merged = dict(held)
+    for key, reading in read.items():
+        kept = merged.get(key)
+        if kept is None or str(kept.get("read_at", "")) <= str(
+            reading.get("read_at", "")
+        ):
+            merged[key] = dict(reading)
+    return merged
+
+
 def _fleet_record(
     overlay: ModelOverlayStoreReadOverlay,
     env: Mapping[str, str],
@@ -55,19 +78,19 @@ def _fleet_record(
 ) -> dict[str, Any]:
     """The newest reading of each host on the bus, with this host's own over it.
 
-    A broker that is down can carry no reading, so this host's own says so and the others stay as last read."""
+    The bus is read under this host's own consumer group, so each tick takes up where the last one stopped and
+    the readings it finds are laid over the record the last tick wrote. A broker that is down can carry no
+    reading, so this host's own says so and the others stay as last read."""
+    readings = _held_readings(held)
+    host = env.get(overlay.host_name_env, "").strip()
     try:
-        answer: dict[str, Any] = asyncio.run(fleet(overlay, env, None))
+        answer: dict[str, Any] = asyncio.run(fleet(overlay, env, None, host))
+        readings = _newer(readings, answer["readings"])
     except Exception as exc:  # the store down is the case this record exists to show
         sys.stderr.write(f"{NODE}: fleet not read: {type(exc).__name__}: {exc}\n")
-        answer = (
-            json.loads(held.read_text(encoding="utf-8"))
-            if held.exists()
-            else {"readings": {}}
-        )
     for reading in own:
-        answer["readings"][f"{reading['host']}:{reading['overlay_id']}"] = reading
-    return answer
+        readings[f"{reading['host']}:{reading['overlay_id']}"] = reading
+    return {"readings": readings}
 
 
 def main(argv: list[str] | None = None) -> int:
