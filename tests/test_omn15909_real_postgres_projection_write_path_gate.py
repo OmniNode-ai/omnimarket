@@ -48,6 +48,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 from urllib.parse import quote, quote_plus
 from uuid import UUID, uuid4
@@ -1286,9 +1287,10 @@ class TestRuntimeDeliveryCoalescesTheAggregateRepublish:
                 published.append((topic, key, value))
 
         async with _provisioned_runner() as (runner, admin_conn, _schema):
-            runner._connect_standalone_databases = _noop_async  # type: ignore[method-assign]
-            runner._close_standalone_databases = _noop_async  # type: ignore[method-assign]
-            runner._producer = _CapturingProducer()  # type: ignore[assignment]
+            seam: Any = runner
+            seam._connect_standalone_databases = _noop_async
+            seam._close_standalone_databases = _noop_async
+            seam._producer = _CapturingProducer()
             runner._coalescer.window_s = 30.0
             correlation_id = str(uuid4())
             data = _real_delegation_completed_payload(
