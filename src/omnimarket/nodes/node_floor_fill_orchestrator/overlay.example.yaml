@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_floor_fill_orchestrator/overlay.yaml. All values here are synthetic; supply your
+# deployment's facts. Every key is required and none has a default: a missing key refuses naming it.
+floor_fill:
+  # The one key the fill is serialized under (the state row, and `<scope>:answer` for the stored answer).
+  scope: example-floor-fill
+  # The one designated fill host: an available row of the lab host table. Any other value is refused.
+  host_id: host-a
+  # The published floor record.
+  url: https://floor.example.invalid/factory-floor.json
+  # Where the plan texts the floor's lines name are read.
+  plans_root: /srv/example/plans
+  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} are filled per start. It must not
+  # name the script runner.
+  runner_command: [example-node-entry, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}"]
+  # Above the start node's placement and start timeouts; the entry's own deadline is below it.
+  reserved_timeout_seconds: 600
+  # How long a started key is held (read from the idle_slot_fill window, not a second value).
+  sent_window_minutes: 120
+  # How long the entry waits for its own command; must be below reserved_timeout_seconds.
+  command_timeout_seconds: 60
+  # How often the tick unit runs; must be below max_age_minutes in seconds (a sanity bound only).
+  tick_interval_seconds: 300
+  # Runs a command of this entry on the fill host from another host; {argv} stands for the command name and
+  # its arguments as separate elements. It must not name the script runner.
+  remote_argv: [example-remote, host-a, example-node-entry, "{argv}"]
+  process_environment:
+    EXAMPLE_VARIABLE: example
+  process_working_directory: /srv/example/work
+  # A floor record older than this is FLOOR-UNREAD; a stored answer older than this prints the stale line.
+  max_age_minutes: 15
+  # The most lanes the fill holds on one line.
+  max_fill_lanes_per_line: 2
+  # The most continuation lanes of stopped lanes that run at once.
+  stopped_max_lanes: 2
+  # How much of a stopped lane's last report a continuation brief carries, in characters.
+  stopped_report_chars: 2000
+  # The rule a continuation brief ends with.
+  stopped_continue_rule: "Continue the predecessor's work; do not repeat what its report says is done."

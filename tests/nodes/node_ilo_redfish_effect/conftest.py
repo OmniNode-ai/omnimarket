@@ -7,18 +7,18 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Literal
 
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+    ModelIloOverlay,
+)
+from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
+    ModelIloApproval,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish import (
     HandlerIloRedfish,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ProtocolRedfishTransport,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
-    ModelIloOverlay,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result import (
-    ModelIloApproval,
 )
 from tests.nodes.node_ilo_redfish_effect.ilo_fakes import (
     GEN8_SERIAL,

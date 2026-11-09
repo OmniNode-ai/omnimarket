@@ -27,7 +27,10 @@ from omnimarket.models.model_join_j1 import (
     ModelJoinJ1Result,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
-from omnimarket.nodes.node_host_reading_effect.overlay import ModelJoinJ1Settings
+from omnimarket.nodes.node_host_reading_effect.overlay import (
+    ModelJoinJ1Node,
+    ModelJoinJ1Settings,
+)
 from omnimarket.nodes.node_host_reading_effect.protocols import (
     ProtocolGraphVerdictSource,
 )
@@ -35,6 +38,7 @@ from omnimarket.nodes.node_host_reading_effect.protocols import (
 UPSTREAM_PREFIX = "upstream_"
 GRAPH_RUN_FAILED = "graph_run_failed"
 VERDICT_MISSING = "verdict_missing"
+CONTROL_NOT_BROKEN = "join-j1-control-did-not-break"
 _DETAIL_LIMIT = 300
 
 
@@ -154,6 +158,19 @@ def reading_of(result: ModelJoinJ1Result) -> ModelProbeReading:
     )
 
 
+def with_control(settings: ModelJoinJ1Settings) -> ModelJoinJ1Settings:
+    """The same join with its failing control added as a node the graph run must carry a verdict for.
+
+    The control is a node the graph cannot hold, so no graph run carries its verdict and the join must fail on it.
+    """
+    assert settings.control_node is not None
+    first = settings.nodes[0]
+    control = ModelJoinJ1Node(
+        name=settings.control_node, repo=first.repo, package_dir=first.package_dir
+    )
+    return settings.model_copy(update={"nodes": (*settings.nodes, control)})
+
+
 def read_join_j1(
     settings: ModelJoinJ1Settings,
     source: ProtocolGraphVerdictSource,
@@ -161,11 +178,21 @@ def read_join_j1(
     *,
     correlation_id: str,
     clock: Callable[[], datetime],
+    control_correlation_id: str | None = None,
 ) -> tuple[ModelJoinJ1Result, ModelProbeReading]:
-    """Read one graph run, judge the join, publish its chains when a sink is given, and return both forms of the result."""
+    """Read one graph run, judge the join, publish its chains when a sink is given, and return both forms of the result.
+
+    With ``control_correlation_id`` and a ``control_node`` in the settings, the same graph run is judged once more
+    against the failing control under that id and its chains are published too: the join's error side, a real typed
+    failure from a real graph run. A control that does not break the join turns the reading red, because a join whose
+    control cannot fail has no error side to read.
+    """
     run = source.read(correlation_id)
     result = judge_join_j1(settings, run)
-    if sink is not None:
+    reading = reading_of(result)
+    publish = sink is not None
+    if publish:
+        assert sink is not None
         emit_join_chains(
             settings,
             result,
@@ -173,4 +200,30 @@ def read_join_j1(
             backend=source.backend,
             clock=lambda: clock().astimezone(UTC),
         )
-    return result, reading_of(result)
+    if (
+        control_correlation_id is not None
+        and settings.control_node is not None
+        and result.state == "passed"
+    ):
+        control = judge_join_j1(
+            with_control(settings),
+            run.model_copy(update={"correlation_id": control_correlation_id}),
+        )
+        if control.state == "passed":
+            return result, ModelProbeReading(
+                probe=EnumHostProbe.JOIN_J1,
+                verdict=EnumReadingVerdict.NOT_WORKING,
+                outcome=EnumReadingOutcome.READ,
+                reasons=(CONTROL_NOT_BROKEN,),
+                cells=reading.cells,
+            )
+        if publish:
+            assert sink is not None
+            emit_join_chains(
+                settings,
+                control,
+                sink,
+                backend=source.backend,
+                clock=lambda: clock().astimezone(UTC),
+            )
+    return result, reading

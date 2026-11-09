@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-22851
+title: 'node_lane_process_effect and ProtocolLaneProcessRunner: the node starts the runner and forwards a command to the fill host'
+summary: A new effect node starts the lane runner detached in a session of its own, or runs one bounded command in the foreground and ends its child at the deadline, through ProtocolLaneProcessRunner (declared in omnibase_spi, a posix adapter and a scripted adapter here); it refuses a spec whose argv names the script runner.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22851-lane-process-effect
+  statement: The stopped-line fill has no node that starts the lane runner or forwards a command to the fill host through an injected process runner.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The posix adapter starts the argv with the spec''s environment and working directory in a new session, returns before the runner ends, and writes the runner''s output to the log file -- falsifier: `-k start_detached_returns_early`, `-k working_directory_applied` and `-k runner_in_own_session` (pid == its session id), on macOS and Linux.'
+  - id: AC2
+    statement: 'AC2: A missing executable and a missing working directory return `failed` with the cause and start nothing -- falsifier: `-k start_failures_typed`.'
+  - id: AC3
+    statement: 'AC3: The effect refuses a spec whose argv names `onex_remote_lane`, for either operation -- falsifier: `-k refuses_script_runner`.'
+  - id: AC6
+    statement: 'AC6 (the ticket''s AC3b, relabelled because a binds_ac label takes digits only): `run_bounded` returns the child''s exit code and standard output, returns `timed_out` and leaves no child running when the timeout passes, and returns `failed` with the cause for a missing executable -- falsifier: `-k run_bounded_exit`, `-k run_bounded_timeout_kills_child` and `-k run_bounded_failure_typed`, on macOS and Linux.'
+  - id: AC4
+    statement: 'AC4: G-NODE holds (the parity legs bind the scripted adapter) and the protocol has a conformance test both adapters pass -- falsifier: `-k protocol_conformance` and `-m floor_fill_parity -k lane_process` with the Redpanda receipt in the PR body.'
+evidence_requirements:
+- kind: tests
+  description: The node's focused suite.
+  command: uv run pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22851-ac1
+  description: AC1 the posix adapter starts the runner in its own session with the spec's environment and working directory, returns before it ends, and its output is in the log.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov --tb=line -m 'not kafka' -k 'start_detached_returns_early or working_directory_applied or runner_in_own_session or environment_applied'
+    cwd: .
+- id: dod-omn22851-ac2
+  description: AC2 a missing executable and a missing working directory are failed with the cause and create no log.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov --tb=line -m 'not kafka' -k 'start_failures_typed'
+    cwd: .
+- id: dod-omn22851-ac3
+  description: AC3 the script runner is refused for both operations and the runner is never called.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov --tb=line -m 'not kafka' -k 'refuses_script_runner'
+    cwd: .
+- id: dod-omn22851-ac6
+  description: AC6 (the ticket's AC3b) run_bounded exits with code and output, times out with no child left, and fails typed.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov --tb=line -m 'not kafka' -k 'run_bounded_exit or run_bounded_timeout_kills_child or run_bounded_failure_typed'
+    cwd: .
+  binds_ac:
+  - AC6
+- id: dod-omn22851-ac4
+  description: 'AC4 G-NODE: contract load, seams in spi, config variation, missing key refused, protocol conformance for both adapters and the in-memory parity leg.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_lane_process_effect tests/nodes/node_lane_process_effect -q --no-cov --tb=line -m 'not kafka' -k 'protocol_conformance or contract_loads or seams_in_spi or config_variation or missing_key_refused or lane_process_parity'
+    cwd: .
+- id: dod-omn22851-deploy-probe
+  description: 'Deploy probe: the contract GitHub serves at the checked-out commit names the node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_process_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_lane_process_effect" > /dev/null'''
+    cwd: .
+- id: dod-omn22851-integration-proof
+  description: The pushed head ran the node's tests on a lab host through the bus and exited 0. Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floorfill-t2-0815 -- uv run --frozen pytest src/omnimarket/nodes/node_lane_process_effect -q --no-cov
+    cwd: .
