@@ -23,7 +23,6 @@ call time only and is never printed, logged, emitted or stored.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -435,7 +434,7 @@ def build_runner(
         HandlerScenarioR3,
         runtime,
         contract_path=CONTRACT_PATH,
-        env=os.environ if env is None else env,
+        env=env,
         trigger=trigger,
     )
     assert isinstance(built, HandlerScenarioR3)
