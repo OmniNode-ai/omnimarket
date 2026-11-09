@@ -47,7 +47,7 @@ def _client(intake: FakeIntake, read_model: FakeReadModel) -> httpx.AsyncClient:
 
 def test_contract_declares_the_mount_the_routes_and_a_resolvable_handler() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
-    handler = contract["http_handler"]
+    handler = contract["handler"]
     module = importlib.import_module(handler["module"])
     assert getattr(module, handler["name"]) is not None
     factory_module, _, factory = contract["http_mount"]["factory"].partition(":")
