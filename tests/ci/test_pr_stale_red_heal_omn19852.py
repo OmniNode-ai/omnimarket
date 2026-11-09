@@ -856,6 +856,30 @@ def test_a_read_retries_a_gateway_error_then_succeeds(
     assert len(slept) == 2
 
 
+def test_a_read_retries_a_truncated_response_body_then_succeeds(
+    slept: list[float],
+) -> None:
+    # Recorded 2026-11-07T18:46Z: gh exited 1 with this stderr and no HTTP
+    # status, so the 502/503/504 pattern alone never retried it.
+    truncated = "unexpected end of JSON input"
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", truncated), (0, "[]", "")], calls)
+    assert client.open_pull_requests(repo=MARKET) == ()
+    assert len(calls) == 2
+    assert len(slept) == 1
+
+
+def test_a_write_is_not_retried_on_a_truncated_response_body(
+    slept: list[float],
+) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", "unexpected end of JSON input")] * 5, calls)
+    with pytest.raises(RuntimeError, match="unexpected end of JSON input"):
+        client.rerun_run(repo=MARKET, run_id=7)
+    assert len(calls) == 1
+    assert slept == []
+
+
 def test_a_read_gives_up_after_the_bounded_attempts_and_names_the_error(
     slept: list[float],
 ) -> None:
