@@ -32,10 +32,8 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k stale_baseline_entry
     cwd: .
 - id: dod-omn23335-check-clean
-  description: Runs the unimported-handler check on the tree; it exits 0 only when no stale entry and no unbaselined dead handler exists.
+  description: Runs the unimported-handler check on the tree; it exits 0 only when no stale entry and no unbaselined dead handler exists. It also exits 0 at the merge base, where the check cannot see a stale entry, so it is a regression check and binds no criterion.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
