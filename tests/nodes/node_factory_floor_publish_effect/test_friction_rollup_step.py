@@ -15,6 +15,7 @@ and leaves the previous report in place; a row naming no recorded cause stays un
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -37,7 +38,29 @@ pytestmark = pytest.mark.unit
 NOW = datetime(2026, 11, 7, 1, 0, tzinfo=UTC)
 OVERLAY = Path(rollup_package.__file__).parent / "overlay.example.yaml"
 OVERLAY_ENV = "ONEX_FRICTION_CLASS_OVERLAY"
-LEDGER_ENV = "ONEX_LEDGER_PATH"
+READ_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
+
+# A stand-in for the bus read command: one typed rows query on stdin, one JSON answer on stdout, from the rows in argv[1].
+# ``TRUNCATE`` in argv[2] answers with a cursor, as a bus read does when more rows matched than it returned.
+FAKE_READ = """
+import json, sys
+from datetime import datetime
+request = json.loads(sys.stdin.read())
+def when(text):
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+since, until = when(request["since"]), when(request["until"])
+shown = []
+for line in open(sys.argv[1], encoding="utf-8"):
+    cells = line.split(" | ")
+    if len(cells) < 2 or cells[1] not in request["kinds"]:
+        continue
+    if since <= when(cells[0]) < until:
+        shown.append({"raw_row": line.rstrip("\\n"), "projected_at": cells[0]})
+answer = {"status": "ok", "matched": len(shown), "rows": shown[: request["limit"]]}
+if len(sys.argv) > 2 and sys.argv[2] == "TRUNCATE":
+    answer["next_cursor"] = "more"
+print(json.dumps(answer))
+"""
 
 # One phrase of each measured row's own text, and the class the shipped rules must give the row that carries it.
 MEASURED = {
@@ -86,11 +109,16 @@ def ledger_text() -> str:
     return "\n".join(rows) + "\n"
 
 
-def environ(tmp_path: Path, overlay: Path | None = OVERLAY) -> dict[str, str]:
-    ledger = tmp_path / "ledger" / "ROLLING_WORK_LEDGER.md"
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.write_text(ledger_text(), encoding="utf-8")
-    env = {LEDGER_ENV: str(ledger)}
+def environ(
+    tmp_path: Path, overlay: Path | None = OVERLAY, *, read_tail: str = ""
+) -> dict[str, str]:
+    """The environment that routes the ledger reads through a real read command over the planted rows."""
+    rows = tmp_path / "bus" / "planted_rows.txt"
+    rows.parent.mkdir(parents=True, exist_ok=True)
+    rows.write_text(ledger_text(), encoding="utf-8")
+    script = rows.parent / "fake_read.py"
+    script.write_text(FAKE_READ, encoding="utf-8")
+    env = {READ_ENV: f"{sys.executable} {script} {rows} {read_tail}".strip()}
     if overlay is not None:
         env[OVERLAY_ENV] = str(overlay)
     return env
@@ -122,7 +150,11 @@ def run_step(
         env,
     )
     assert step.output_relpath is not None
-    return result.status, result.detail, home / step.output_relpath
+    return (
+        result.status,
+        f"{result.detail} {result.diagnostic}".strip(),
+        home / step.output_relpath,
+    )
 
 
 def classes_of(report_path: Path) -> dict[str, int]:
@@ -200,12 +232,37 @@ def test_error_a_missing_overlay_fails_the_step_and_keeps_the_previous_report(
     assert previous.read_text(encoding="utf-8") == '{"classes": []}'
 
 
-def test_error_an_unset_ledger_path_refuses_with_no_default(tmp_path: Path) -> None:
+def test_error_an_unset_read_command_refuses_with_no_default(tmp_path: Path) -> None:
     env = environ(tmp_path)
-    del env[LEDGER_ENV]
+    del env[READ_ENV]
     status, detail, _ = run_step(tmp_path, env)
     assert status == "failed"
-    assert LEDGER_ENV in detail or "PublishRefusedError" in detail
+    assert READ_ENV in detail
+    assert "PublishRefusedError" in detail
+
+
+def test_error_a_failed_bus_read_refuses_and_keeps_the_previous_report(
+    tmp_path: Path,
+) -> None:
+    env = environ(tmp_path)
+    env[READ_ENV] = f"{sys.executable} -c 'import sys; sys.exit(7)'"
+    step = friction_step()
+    assert step.output_relpath is not None
+    previous = tmp_path / "home" / step.output_relpath
+    previous.parent.mkdir(parents=True)
+    previous.write_text('{"classes": ["previous"]}', encoding="utf-8")
+    status, detail, _ = run_step(tmp_path, env)
+    assert status == "failed"
+    assert "read-command-exit-7" in detail
+    assert previous.read_text(encoding="utf-8") == '{"classes": ["previous"]}'
+
+
+def test_error_a_truncated_bus_read_is_refused_never_rolled_short(
+    tmp_path: Path,
+) -> None:
+    status, detail, _ = run_step(tmp_path, environ(tmp_path, read_tail="TRUNCATE"))
+    assert status == "failed"
+    assert "read-answer-truncated" in detail
 
 
 def test_error_an_overlay_with_a_pattern_that_does_not_compile_fails_the_step(
