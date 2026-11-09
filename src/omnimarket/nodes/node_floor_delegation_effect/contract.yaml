@@ -86,6 +86,11 @@ runtime:
   # read within scenario_refresh_seconds is not read again, so a run refreshes about half of them and none waits longer than two runs.
   scenario_stage_deadline_seconds: 70
   scenario_refresh_seconds: 420
+  # OMN-23176: a workflow the repository does not have yet (its builder has not merged) answers the same 404 on every read, and a
+  # read can take longer than scenario_read_timeout_seconds under load (R5 drew Unread at the 25 s bound). Its cached "not built"
+  # read is therefore asked again only after this many seconds, which is below scenario_reads_max_age_seconds so the cached
+  # answer never goes unread between two asks. The 25 s bound is unchanged.
+  scenario_missing_refresh_seconds: 1500
   # A scenario read older than this is drawn unread instead of reading old state as current.
   scenario_reads_max_age_seconds: 1800
   # The tracker runs in the publish's first input group, before the factory floor record of this cycle is written, so the lanes

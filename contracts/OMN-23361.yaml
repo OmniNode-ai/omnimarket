@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-23361
+title: The delegation board reads scenario R5 from the cached run list, and the customer-key route waits between rate-limited re-issues
+summary: >-
+  node_floor_delegation_effect keeps the previous good scenario read when a new read fails or times out and the previous read is younger
+  than 1800 s, and re-asks a workflow read as missing only after scenario_missing_refresh_seconds (1500); the 25 s read bound is unchanged.
+  ModelByokProviderBackend gains retry_wait_seconds (the openrouter row declares 20), and the local delegation dispatch port waits that
+  long before each same-route re-issue after a rate-limited attempt, issuing no re-issue whose wait the run budget cannot hold with another attempt.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23361-r5-r1
+  statement: The R5 tracker read answers from the cached run list inside its 25 s bound, and the customer-key route waits between re-issues after HTTP 429.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the R5 tracker read answers from the cached run list inside its 25 s bound, and the customer-key route waits before re-issuing after a 429, with a test for each that fails on the old code -- falsifier: uv run pytest -q -k "r5_cached_run_list or r1_throttle_retry" in omnimarket'
+  - id: AC2
+    statement: 'AC2: the served delegation tracker reads R5''s state (not unread) on the next publish after the merge -- falsifier: the delegation-tracker.json R5 row on the served floor'
+evidence_requirements:
+- kind: tests
+  description: The R5 cached-run-list tests (a timed-out read keeps a young cached list, an old or absent one is unread, a missing workflow is not re-asked inside the refresh, the control re-asks after it) and the R1 throttle-retry tests (the row declares a wait, each re-issue waits it, the no-wait control goes back to back, a wait the budget cannot hold issues no re-issue).
+  command: uv run --frozen pytest -q --no-cov -k "r5_cached_run_list or r1_throttle_retry" tests/nodes/node_floor_delegation_effect/test_cached_scenario_reads.py tests/unit/nodes/node_delegate_skill_orchestrator/test_customer_retry_wait_omn23176.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23361-ac1-r5-cached
+  description: >-
+    The R5 tests feed the floor adapter a scenario read that times out while the cached run list is younger than 1800 s: the board row
+    keeps the cached state; older than the max age or with nothing cached it is unread. The named control asks the missing workflow again
+    once the missing refresh has passed. On the dev pre-image of the adapter these fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -k r5_cached_run_list tests/nodes/node_floor_delegation_effect/test_cached_scenario_reads.py
+    cwd: .
+- id: dod-omn23361-ac1-r1-retry
+  description: >-
+    The R1 tests drive a throttled customer route through the local dispatch port with an injected sleep: each re-issue waits the declared
+    seconds. The named break is the accessor returning 0, which gives no waits and back-to-back calls (the control test). On the dev
+    pre-image of the port the tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -k r1_throttle_retry tests/unit/nodes/node_delegate_skill_orchestrator/test_customer_retry_wait_omn23176.py
+    cwd: .
+- id: dod-omn23361-ac2-served-floor
+  description: >-
+    The delegation-tracker.json R5 row on the served floor is read after the next publish following the merge and the floor publisher
+    install; it is recorded in the pull request thread. Pending until that publish.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: test -f contracts/OMN-23361.yaml
+    cwd: .
+- id: dod-omn23361-integration-proof
+  description: The R5 cached-run-list tests and the R1 throttle-retry tests run on a lab host at the pushed head through the lab-work node.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23361 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -q --no-cov -k "r5_cached_run_list or r1_throttle_retry" tests/nodes/node_floor_delegation_effect/test_cached_scenario_reads.py tests/unit/nodes/node_delegate_skill_orchestrator/test_customer_retry_wait_omn23176.py
+    cwd: .

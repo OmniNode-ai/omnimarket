@@ -75,6 +75,7 @@ class ModelDelegationContractRuntime(_Frozen):
     scenario_read_timeout_seconds: int = Field(gt=0)
     scenario_stage_deadline_seconds: int = Field(gt=0)
     scenario_refresh_seconds: int = Field(gt=0)
+    scenario_missing_refresh_seconds: int = Field(gt=0)
     scenario_reads_max_age_seconds: int = Field(gt=0)
     watcher_max_age_seconds: int = Field(gt=0)
     record_max_age_seconds: int = Field(gt=0)
