@@ -181,8 +181,7 @@ class HandlerInferenceCredentials:
             owned = await self._read_model.owned_by_tenant(api_key_ref, tenant_id)
         except Exception:
             logger.exception(
-                "Failed to look up inference credential %s for tenant %s",
-                api_key_ref,
+                "Failed to look up inference credential for tenant %s",
                 tenant_id,
             )
             return _answer(500, {"detail": "failed to look up inference credential"})
@@ -192,8 +191,7 @@ class HandlerInferenceCredentials:
             revoked = await self._intake.revoke(api_key_ref, tenant_id=tenant_id)
         except Exception:
             logger.exception(
-                "Failed to revoke inference credential %s for tenant %s",
-                api_key_ref,
+                "Failed to revoke inference credential for tenant %s",
                 tenant_id,
             )
             return _answer(503, {"detail": "failed to revoke inference credential"})
