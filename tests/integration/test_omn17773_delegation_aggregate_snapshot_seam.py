@@ -81,12 +81,15 @@ SUMMARY_TOPIC = "onex.snapshot.projection.delegation.summary.v1"
 QUALITY_GATE_TOPIC = "onex.snapshot.projection.delegation.quality-gate.v1"
 TOKEN_USAGE_TOPIC = "onex.snapshot.projection.delegation.token-usage.v1"
 MODEL_ROUTING_TOPIC = "onex.snapshot.projection.delegation.model-routing.v1"
+# OMN-21970: the per-day view is a fifth singleton aggregate, republished whole.
+DAILY_TOPIC = "onex.snapshot.projection.delegation.daily.v1"
 
 AGGREGATE_TOPICS = (
     SUMMARY_TOPIC,
     QUALITY_GATE_TOPIC,
     TOKEN_USAGE_TOPIC,
     MODEL_ROUTING_TOPIC,
+    DAILY_TOPIC,
 )
 
 _CORRELATION_ID = "3f1c0d9a-77b2-4a6e-9d1f-0c5b8e2a4417"
@@ -147,6 +150,14 @@ _AGGREGATE_ROWS: dict[str, dict[str, Any]] = {
         "by_model": [],
         "by_tier": [],
         "provisioned": True,
+        "latest_projection_updated_at": _LIVE_SUMMARY_ROW[
+            "latest_projection_updated_at"
+        ],
+    },
+    # OMN-21970: the per-day view's row shape, one row per tenant.
+    "projection_delegation_daily": {
+        "days": [{"day": "2026-09-03", "runs": 182, "tokensIn": 0, "tokensOut": 0}],
+        "total_runs": 182,
         "latest_projection_updated_at": _LIVE_SUMMARY_ROW[
             "latest_projection_updated_at"
         ],
