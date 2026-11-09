@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23282"
+title: "The closer ranks by last examined and holds an unchanged rejection until the ticket's description changes"
+summary: "node_dod_closeout_sweep_compute's scope_bundle ranks the tickets the closer may examine by when each was last examined (a ticket never examined first) and holds a ticket whose description, newest closer comment and contract state read the same as at its last selection. The bundle command records each ticket it selects in a memory file whose path and hold threshold are overlay data."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-closer-rank-last-examined"
+    statement: |-
+      The closer's selection ranks candidates by when each was last examined and holds a ticket whose rejection and description are unchanged.
+    acceptance:
+      - id: "DoD1"
+        statement: |-
+          DoD1: the closer's selection ranks candidates by when each was last examined, and a ticket whose rejection is unchanged and whose description has not changed since is held out of the next fire -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py (-k closer_rank_last_examined), whose rotation, never-examined and bundle-command cases fail with the old oldest-comment tie-break restored in rank_key
+      - id: "DoD2"
+        statement: |-
+          DoD2: the selection runs from omnimarket (the bundle command, with its memory read and written there) and the node's whole test directory passes -- falsifier: uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -k dod_closeout_sweep
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden-chain, error-chain and failing-control tests for the last-examined rank and the unchanged-rejection hold."
+    command: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23282-rank-last-examined"
+    description: "The selection rotates through unchanged tickets by last examined, ranks a never-examined ticket first, holds an unchanged rejection, releases the hold on a changed description, comment or contract state, and refuses an unreadable memory by name."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn23282-node-suite"
+    description: "The node's whole test directory passes with the memory read and written by the bundle command."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -p no:randomly -k dod_closeout_sweep"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD2"]
+  - id: "dod-omn23282-integration-proof"
+    description: "On the lab runtime that carries this node, scope_bundle dispatched over the bus with a memory that records OMN-1 as examined at its current state returns OMN-1 held and OMN-2 selected."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: |-
+          onex run-node node_dod_closeout_sweep_compute --input '{"kind":"scope_bundle","date":"2026-11-09","scope_candidates":[{"id":"OMN-1","state":"In Review","sources":["started"]},{"id":"OMN-2","state":"In Review","sources":["started"]}],"scope_pr_state":[{"id":"OMN-1","merged":["omnimarket#1"],"open":[],"error":""},{"id":"OMN-2","merged":["omnimarket#1"],"open":[],"error":""}],"scope_text_state":[{"id":"OMN-1","text_sha":"0123456789abcdef","last_closeout_comment_at":"2026-11-08T05:45:00.000Z"},{"id":"OMN-2","text_sha":"0123456789abcdef","last_closeout_comment_at":"2026-11-08T05:45:00.000Z"}],"scope_examined":{"OMN-1":{"examined_at":"2026-11-09T06:00:00.000Z","key":"0123456789abcdef|2026-11-08T05:45:00.000Z|True","streak":1}},"scope_now":"2026-11-09T07:00:00.000Z","max_candidates":2}' | grep -q '"held":\["OMN-1"\]'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
