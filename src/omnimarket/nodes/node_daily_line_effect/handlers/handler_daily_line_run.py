@@ -3,8 +3,8 @@
 """One scheduled run of the daily line: read the three sources, compute the line, publish it, write one STATUS row.
 
 The sources are the floor record (piece 1's reading and the J1 join row) and the rolling ledger (claims with no
-TERMINAL, counted by the claim index replay). A source that cannot be read becomes ``None`` for the compute handler,
-which renders ``UNKNOWN`` for its part. The line is published as ``daily-line.json`` beside the floor record, where the
+TERMINAL, counted by one open-claims point query over the bus). A source that cannot be read becomes ``None`` for the
+compute handler, which renders ``UNKNOWN`` for its part. The line is published as ``daily-line.json`` beside the floor record, where the
 floor and the morning brief read it, and then one ledger STATUS row carries the same sentence.
 """
 
@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-from collections.abc import Callable, Sequence
+import shlex
+import socket
+import uuid
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.claim_index import build_index_from_sources, window_sources
 from omnimarket.models.model_daily_line import (
     ModelDailyLinePiece,
     ModelDailyLinePublication,
@@ -30,6 +31,19 @@ from omnimarket.models.model_daily_line import (
 )
 from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
     HandlerDailyLine,
+)
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerAppender,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolReadingAppender,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
+    CommandPointRead,
+    open_claims_query,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -46,16 +60,18 @@ class ModelDailyLineRuntime(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     home_env: str = Field(min_length=1)
-    ledger_env: str = Field(min_length=1)
-    ledger_relpath: str = Field(min_length=1)
+    #: The variables that hold the bus read and append commands, and the host name; each command is deployment data.
+    ledger_read_command_env: str = Field(min_length=1)
+    ledger_read_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_append_command_env: str = Field(min_length=1)
+    ledger_append_timeout_seconds: int = Field(ge=1)
+    host_env: str = Field(min_length=1)
     floor_record_relpath: str = Field(min_length=1)
     floor_record_max_age_seconds: int = Field(ge=1)
     published_relpath: str = Field(min_length=1)
     piece: int = Field(ge=1)
     ticket: str = Field(pattern=r"^OMN-\d+$")
     lane: str = Field(min_length=1)
-    #: The append command; ``{ledger}`` and ``{row}`` are filled in, one argument each, never through a shell.
-    append_command: tuple[str, ...] = Field(min_length=1)
 
 
 def load_runtime(path: Path = CONTRACT_PATH) -> ModelDailyLineRuntime:
@@ -114,33 +130,26 @@ def read_floor_record(
     )
 
 
-def count_open_claims(ledger: Path, *, now: datetime) -> int | None:
-    """The tickets the claim index holds with no TERMINAL or RELEASE, or ``None`` when the ledger cannot be replayed."""
-    try:
-        sources = window_sources(ledger, ledger.name, now=now)
-        index = build_index_from_sources(sources, now=now)
-    except (OSError, RuntimeError, ValueError):
+def count_open_claims(read: ProtocolLedgerPointRead | None) -> int | None:
+    """The open claims the bus-fed query node counts, or ``None`` when it did not answer (never zero for a failed read)."""
+    if read is None:
         return None
-    return len(index["tickets"])
+    answer = read.read(open_claims_query())
+    return None if answer.error else answer.matched
 
 
-def command_appender(
-    command: Sequence[str],
-    ledger: Path,
+def bus_appender(
+    appender: ProtocolReadingAppender,
     *,
-    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
 ) -> LedgerAppender:
-    """Append a row by running the configured command, with no shell. A non-zero exit raises."""
+    """Append a row over the bus. Anything but an accepted or duplicate receipt raises."""
 
     def append(row: str) -> None:
-        argv = [
-            part.replace("{ledger}", str(ledger)).replace("{row}", row)
-            for part in command
-        ]
-        done = run(argv, capture_output=True, text=True, check=False)
-        if done.returncode != 0:
+        outcome = appender.append(row, new_id())
+        if not outcome.ok:
             raise RuntimeError(
-                f"the ledger append exited {done.returncode}: {done.stderr.strip()[:300]}"
+                f"the ledger append was {outcome.status}: {outcome.message[:300]}"
             )
 
     return append
@@ -172,7 +181,7 @@ class HandlerDailyLineRun:
         runtime: ModelDailyLineRuntime,
         *,
         home: Path,
-        ledger: Path,
+        ledger: ProtocolLedgerPointRead | None,
         appender: LedgerAppender,
         clock: Clock = lambda: datetime.now(UTC),
         compute: HandlerDailyLine | None = None,
@@ -203,7 +212,7 @@ class HandlerDailyLineRun:
             ModelDailyLineRequest(
                 piece1=piece1,
                 j1_state=j1_state,
-                open_claims=count_open_claims(self._ledger, now=now),
+                open_claims=count_open_claims(self._ledger),
             )
         )
         publication = ModelDailyLinePublication(
@@ -217,17 +226,35 @@ class HandlerDailyLineRun:
         return publication
 
 
-def build_runner(env: dict[str, str] | None = None) -> HandlerDailyLineRun:
-    """The production wiring: the registry home and the ledger from the environment, the rest from the contract."""
+def build_runner(env: Mapping[str, str] | None = None) -> HandlerDailyLineRun:
+    """The production wiring: the registry home and the two bus commands from the environment, the rest from the contract."""
     environment = dict(os.environ if env is None else env)
     runtime = load_runtime()
     home = Path(environment[runtime.home_env])
-    ledger = Path(environment.get(runtime.ledger_env) or home / runtime.ledger_relpath)
+    read_argv = shlex.split(environment.get(runtime.ledger_read_command_env, ""))
+    append_argv = shlex.split(environment.get(runtime.ledger_append_command_env, ""))
+    if not append_argv:
+        raise RuntimeError(
+            f"{runtime.ledger_append_command_env} is not set; the status row has no bus route"
+        )
+    reader = (
+        CommandPointRead(read_argv, runtime.ledger_read_timeout_seconds)
+        if read_argv
+        else None
+    )
+    host = environment.get(runtime.host_env, "").strip() or socket.gethostname()
     return HandlerDailyLineRun(
         runtime,
         home=home,
-        ledger=ledger,
-        appender=command_appender(runtime.append_command, ledger),
+        ledger=reader,
+        appender=bus_appender(
+            CommandLedgerAppender(
+                append_argv,
+                runtime.lane,
+                host,
+                runtime.ledger_append_timeout_seconds,
+            )
+        ),
     )
 
 
