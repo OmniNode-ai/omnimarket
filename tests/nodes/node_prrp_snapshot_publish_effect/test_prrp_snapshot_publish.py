@@ -32,6 +32,8 @@ from omnimarket.nodes.node_prrp_snapshot_publish_effect.models import (
 )
 
 HandlerPrrpSnapshotPublish = publish.HandlerPrrpSnapshotPublish
+lane_hosts = publish.lane_hosts
+merge_hosts = publish.merge_hosts
 main = publish_cli.main
 
 pytestmark = pytest.mark.unit
@@ -444,9 +446,6 @@ def test_prrp_snapshot_hosts_only_rows_that_take_lanes_are_added(
     from omnimarket.models.overlay_keys.model_overlay_documents import (
         ModelLabHostsTable,
     )
-    from omnimarket.nodes.node_prrp_snapshot_publish_effect.handlers.handler_prrp_snapshot_hosts import (
-        lane_hosts,
-    )
 
     table = ModelLabHostsTable.model_validate(
         {
@@ -494,9 +493,6 @@ def test_prrp_snapshot_hosts_an_unavailable_table_row_is_reported_skipped_not_wr
 def test_prrp_snapshot_hosts_a_host_the_caller_names_keeps_the_callers_row(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_prrp_snapshot_publish_effect.handlers.handler_prrp_snapshot_hosts import (
-        merge_hosts,
-    )
 
     named = ModelPrrpSnapshotHost(name="a", target="user@a", local=True)
     same_name = ModelPrrpSnapshotHost(name="a", target="other", available=False)
@@ -521,18 +517,42 @@ def test_prrp_snapshot_hosts_an_unreadable_table_fails_the_run_and_the_named_hos
     assert "lab host table" in (request.state_dir / "failure.json").read_text()
 
 
-def test_prrp_snapshot_hosts_the_table_alone_names_the_hosts_when_no_file_is_given(
+def test_prrp_snapshot_hosts_a_handler_with_no_table_reader_publishes_to_the_named_hosts_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(tmp_path, monkeypatch)
-    table = [_table_row("only-from-table", cap=1)]
-    monkeypatch.setenv(
-        LAB_TABLE_ENV, str(_write_table(tmp_path / "lab-table.yaml", table))
+    result = HandlerPrrpSnapshotPublish().handle(request)
+    assert {outcome.host for outcome in result.hosts} == {
+        "host-a",
+        "host-b",
+        "host-c",
+        "host-d",
+    }
+
+
+def test_prrp_snapshot_hosts_an_injected_table_adds_its_lane_hosts_and_an_injected_break_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.models.overlay_keys.model_overlay_documents import (
+        ModelLabHostsTable,
     )
-    argv = [
-        a
-        for a in _cli_arguments(request, tmp_path / "x")
-        if a not in ("--hosts-file", str(tmp_path / "x"))
-    ]
-    assert main(argv) == 0
-    assert _remote(tmp_path, "user@only-from-table.example.invalid").is_file()
+
+    request = _request(tmp_path, monkeypatch)
+    table = ModelLabHostsTable.model_validate(
+        {"hosts": [_table_row("host-b"), _table_row("extra", cap=3)]}
+    )
+    result = HandlerPrrpSnapshotPublish(read_lab_table=lambda: table).handle(request)
+    assert result.exit_code == 0, result.failures
+    assert [outcome.host for outcome in result.hosts][-1] == "extra"
+    assert _remote(tmp_path, "user@extra.example.invalid").is_file()
+
+    def broken() -> ModelLabHostsTable:
+        raise OSError("the overlay store is down")
+
+    (request.state_dir / "heartbeat.json").unlink()
+    result = HandlerPrrpSnapshotPublish(read_lab_table=broken).handle(request)
+    assert result.exit_code == 1
+    assert "overlay store is down" in result.failures[0]
+    assert _remote(tmp_path, "user@host-c.example.invalid").is_file()
+    assert not (request.state_dir / "heartbeat.json").exists()
+    assert (request.state_dir / "failure.json").is_file()

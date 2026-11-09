@@ -16,6 +16,14 @@ repository). A host that could not be reached, or whose copy did not read back b
 the run, but the other hosts still get the file. The heartbeat is written only when every available
 host holds the file, so its age is the age of the last complete run; every failure writes
 ``failure.json`` and is returned for the CLI to print as an ALARM.
+
+Every host that takes lanes receives the file (OMN-23219). A handler built with a lab host table
+reader adds each row of that table that takes lanes (not a contributor's machine, not a launcher,
+``cap`` not 0) to the hosts the request names; a host the request names keeps the request's row. An
+unavailable row is reported ``skipped`` with the table's reason. A table that cannot be read fails the
+run after the named hosts still receive the file: a publisher that fell back to its short list without
+saying so left h053 and h051 without a snapshot, and the runner-placement hook refused every private
+workflow commit a lane made there (hook-preflight exit 3).
 """
 
 from __future__ import annotations
@@ -26,11 +34,17 @@ import re
 import shlex
 import subprocess
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from omnimarket.models.overlay_keys.model_overlay_documents import (
+    ModelLabHostRow,
+    ModelLabHostsTable,
+)
 
 from ..models import (
     ModelPrrpSnapshotHost,
@@ -169,10 +183,66 @@ def _send(
     return ""
 
 
+def takes_lanes(row: ModelLabHostRow) -> bool:
+    """Whether the lab host table places lanes on this row, by the table's own columns."""
+    return not row.contributor and "launcher" not in (row.roles or ()) and row.cap != 0
+
+
+def lane_hosts(table: ModelLabHostsTable) -> tuple[ModelPrrpSnapshotHost, ...]:
+    """One publisher host per table row that takes lanes, in table order."""
+    return tuple(
+        ModelPrrpSnapshotHost(
+            name=row.name,
+            target=row.target,
+            local=row.local,
+            available=row.available,
+            unavailable_reason=row.unavailable_reason or "",
+        )
+        for row in table.hosts
+        if takes_lanes(row)
+    )
+
+
+def merge_hosts(
+    declared: tuple[ModelPrrpSnapshotHost, ...],
+    from_table: tuple[ModelPrrpSnapshotHost, ...],
+) -> tuple[ModelPrrpSnapshotHost, ...]:
+    """The declared hosts as given, then each table host whose name and target the caller did not name."""
+    names = {host.name for host in declared}
+    targets = {host.target for host in declared}
+    extra = tuple(
+        host
+        for host in from_table
+        if host.name not in names and host.target not in targets
+    )
+    return (*declared, *extra)
+
+
 class HandlerPrrpSnapshotPublish:
+    """Publish the merged snapshot; ``read_lab_table`` None publishes to the request's hosts only."""
+
+    def __init__(
+        self, read_lab_table: Callable[[], ModelLabHostsTable] | None = None
+    ) -> None:
+        self._read_lab_table = read_lab_table
+
+    def _hosts(
+        self, request: ModelPrrpSnapshotPublishRequest
+    ) -> tuple[tuple[ModelPrrpSnapshotHost, ...], list[str]]:
+        if self._read_lab_table is None:
+            return request.hosts, []
+        try:
+            table = self._read_lab_table()
+        except Exception as error:  # the overlay reader raises its own typed errors; none may end the run
+            return request.hosts, [
+                f"the lab host table could not be read, so only the named hosts are covered ({error})"
+            ]
+        return merge_hosts(request.hosts, lane_hosts(table)), []
+
     def handle(
         self, request: ModelPrrpSnapshotPublishRequest
     ) -> ModelPrrpSnapshotPublishResult:
+        hosts, host_problems = self._hosts(request)
         failures: list[str] = []
         outcomes: list[ModelPrrpSnapshotHostOutcome] = []
         captured_at: str | None = None
@@ -193,7 +263,7 @@ class HandlerPrrpSnapshotPublish:
                 merged = merge_snapshots(pieces)
                 captured_at, repos = merged["captured_at"], len(slugs)
                 data = (json.dumps(merged, indent=2, sort_keys=True) + "\n").encode()
-                for host in request.hosts:
+                for host in hosts:
                     if not host.available:
                         outcomes.append(
                             ModelPrrpSnapshotHostOutcome(
@@ -221,8 +291,8 @@ class HandlerPrrpSnapshotPublish:
                         )
                     )
         failures[:0] = (
-            request.host_problems
-        )  # a host list that could not be chosen fails the run too
+            host_problems  # a host list that could not be chosen fails the run too
+        )
         now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         request.state_dir.mkdir(parents=True, exist_ok=True)
         if failures:

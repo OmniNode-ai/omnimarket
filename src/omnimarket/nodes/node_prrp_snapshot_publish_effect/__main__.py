@@ -12,10 +12,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
-
 from .container import container_prrp_snapshot_publish_effect
-from .handlers.handler_prrp_snapshot_hosts import resolve_hosts
 from .models import ModelPrrpSnapshotHost, ModelPrrpSnapshotPublishRequest
 
 
@@ -40,27 +37,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="onex-prrp-snapshot-publish")
     parser.add_argument("--gate-script", type=Path, required=True)
     parser.add_argument("--repos-file", type=Path, required=True)
-    # The hosts the caller names. Every host the lab host table says takes lanes is added to them (OMN-23219).
-    parser.add_argument("--hosts-file", type=Path)
+    parser.add_argument("--hosts-file", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--home", type=Path, required=True)
     parser.add_argument("--destination", required=True)
     parser.add_argument("--ssh-program", default="ssh")
     args = parser.parse_args(argv)
-    declared: tuple[ModelPrrpSnapshotHost, ...] = ()
-    if args.hosts_file is not None:
-        try:
-            declared = _load_hosts(args.hosts_file)
-        except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
-            sys.stderr.write(f"ERROR: invalid hosts file {args.hosts_file}: {error}\n")
-            return 2
-    hosts, host_problems = resolve_hosts(declared, resolve_lab_hosts_table)
+    try:
+        hosts = _load_hosts(args.hosts_file)
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
+        sys.stderr.write(f"ERROR: invalid hosts file {args.hosts_file}: {error}\n")
+        return 2
     result = container_prrp_snapshot_publish_effect.build_handler_prrp_snapshot_publish().handle(
         ModelPrrpSnapshotPublishRequest(
             gate_script=args.gate_script,
             repos_file=args.repos_file,
             hosts=hosts,
-            host_problems=host_problems,
             state_dir=args.state_dir,
             home=args.home,
             destination=args.destination,
