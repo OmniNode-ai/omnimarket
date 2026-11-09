@@ -66,8 +66,9 @@ def live_lanes(
     """The lanes that are really on a cause: not stalled, and not dead or finished by the process reading.
 
     A lane is on a cause when its CLAIM or a STATUS row says ``owns=floor:<cause id>``, or it works on one of the
-    cause's pull requests, or its ticket is one the overlay or a lab source declares as owning the cause. A ticket that merely appears among the places a problem was seen is not
-    ownership: many unrelated lanes share an umbrella ticket, so matching on it names lanes that are not on the cause.
+    cause's pull requests, or its ticket, or the ``parent_ticket=`` its CLAIM names, is one the overlay or a lab source
+    declares as owning the cause (a lane on a child ticket is on its parent's work). A ticket that merely appears among
+    the places a problem was seen is not ownership: many unrelated lanes share an umbrella ticket, so matching on it names lanes that are not on the cause.
     """
     wanted_owners = set(owners)
     wanted_prs = set(prs)
@@ -79,6 +80,7 @@ def live_lanes(
             and lane.liveness not in {"dead", "finished"}
             and (
                 (lane.ticket and lane.ticket in wanted_owners)
+                or (lane.parent_ticket and lane.parent_ticket in wanted_owners)
                 or (lane.pr and lane.pr in wanted_prs)
                 or (cause_id and cause_id in lane.owns)
             )
