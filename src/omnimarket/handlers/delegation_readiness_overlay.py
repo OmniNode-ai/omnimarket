@@ -103,7 +103,9 @@ class OpenRouterOverlayTransport:
         return route
 
     def virtual_elapsed_ms(self) -> int:
-        return self._inner.virtual_elapsed_ms()
+        # Not every transport keeps a virtual clock; the real rung adds none to the run's elapsed time.
+        elapsed = getattr(self._inner, "virtual_elapsed_ms", None)
+        return int(elapsed()) if callable(elapsed) else 0
 
     def close(self) -> None:
         self._inner.close()
