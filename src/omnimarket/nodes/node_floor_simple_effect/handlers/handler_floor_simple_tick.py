@@ -28,7 +28,11 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
-from omnimarket.handlers.floor_projection import load_bundle, projection_payload
+from omnimarket.handlers.floor_projection import (
+    load_bundle,
+    owners_from_payload,
+    projection_payload,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -179,7 +183,7 @@ class ModelSourcePaths(BaseModel):
     controller_state_dir_env: str
     controller_state_dir_fallback: str
     controller_admissions_name: str
-    controller_state_name: str
+    owner_map_projection: str
     controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
@@ -722,6 +726,7 @@ class HandlerFloorSimpleTick:
 
         record_path = home / rt.sources.record_relpath
         work_state = read_work_state(home / rt.sources.work_state_relpath)
+        projections = load_bundle(home / rt.sources.projection_reads_relpath)
         controller_dir = Path(
             env.get(rt.sources.controller_state_dir_env, "").strip()
             or Path.home() / rt.sources.controller_state_dir_fallback
@@ -773,9 +778,7 @@ class HandlerFloorSimpleTick:
             if any(s.kind == "overlay_store" for s in lab_ov.sources):
                 overlay_store = read_overlay_store(
                     projection_payload(
-                        load_bundle(home / rt.sources.projection_reads_relpath),
-                        rt.sources.overlay_store_projection,
-                        now,
+                        projections, rt.sources.overlay_store_projection, now
                     ),
                     lab_ov,
                     now,
@@ -874,7 +877,11 @@ class HandlerFloorSimpleTick:
         )
         worklist = read_worklist(
             watcher_path=home / rt.sources.watcher_relpath,
-            controller_state_path=controller_dir / rt.sources.controller_state_name,
+            owners=owners_from_payload(
+                projection_payload(
+                    projections, rt.sources.owner_map_projection, now
+                ).payload
+            ),
             projection=work_state,
             scope=goal_scope,
             overlay=floor_ov.worklist,

@@ -99,3 +99,35 @@ class ModelFloorProjectionTickResult(_Frozen):
     output_path: str
     read: int
     unread: int
+
+
+class ModelFloorProjectionPublishOverlay(_Frozen):
+    """Overlay of a producer that publishes one floor projection: the bus it publishes on and the id it publishes under."""
+
+    bus: Literal["kafka", "inmemory"]
+    bus_lane: str | None = None
+    # A broker named directly, when this deployment's bus is not on a declared lane; it wins over bus_lane.
+    kafka_bootstrap: str | None = None
+    projection_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+
+    @model_validator(mode="after")
+    def _kafka_names_its_broker(self) -> ModelFloorProjectionPublishOverlay:
+        if self.bus == "kafka" and not (self.bus_lane or self.kafka_bootstrap):
+            raise ValueError("the kafka bus needs a bus_lane or a kafka_bootstrap")
+        return self
+
+
+class ModelFloorProjectionPublishRequest(_Frozen):
+    """One publication pass of a producer: the directory its source lives in."""
+
+    source_dir: str = Field(min_length=1)
+
+
+class ModelFloorProjectionPublishResult(_Frozen):
+    """What one publication pass did."""
+
+    published: bool
+    projection_id: str
+    as_of: datetime | None = None
+    entries: int = 0
+    reason: str = ""
