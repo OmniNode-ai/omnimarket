@@ -30,7 +30,9 @@ joins:
   - {id: J2, from_piece: 2, to_piece: 3, label: "hosts to bus"}
   - {id: J3, from_piece: 3, to_piece: 4, label: "bus to overlays"}
   - {id: J4, from_piece: 4, to_piece: 5, label: "overlays to secrets"}
-  - {id: J5, from_piece: 5, to_piece: 6, label: "secrets to ledger"}
+  # OMN-23086: the instant of the join's first real landing (ledger STATUS row 3329, 2026-11-08T07:10:33Z). A piece 5 failure older
+  # than this is not judged, because piece 6 could not have answered it under the join; a failure at or after it is judged as ever.
+  - {id: J5, from_piece: 5, to_piece: 6, label: "secrets to ledger", judged_since: "2026-11-08T07:10:33Z"}
   - {id: J6, from_piece: 6, to_piece: 7, label: "ledger to process spine"}
   - {id: J7, from_piece: 7, to_piece: 8, label: "process spine to CI"}
   - {id: J8, from_piece: 8, to_piece: 9, label: "CI to landing"}

@@ -381,6 +381,12 @@ class HandlerFloorReceipt:
             a = by_cid[(cid, jdef.from_piece)]
             if a.drill:
                 continue
+            # The overlay's judging bound (OMN-23086): a chain whose newest event is older than it is out of this join's reach.
+            if (
+                jdef.judged_since is not None
+                and a.events[-1].emitted_at < jdef.judged_since
+            ):
+                continue
             b = by_cid.get((cid, jdef.to_piece))
             a_wins = [e for e in a.events if e.phase == "success"]
             a_fails = [e for e in a.events if e.phase == "failure"]

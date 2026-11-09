@@ -122,6 +122,13 @@ join_j5:
   identity_unresolved_failure_code: "upstream_identity_unresolved"
   append_not_accepted_failure_code: "ledger_append_not_accepted"
   projected_row_missing_failure_code: "projected_row_missing"
+# OMN-23086: the J5 runner is bound here so the contract owns it; it runs through runtime_join_j5 (the publish cycle's
+# join_j5 step), not handler_routing, because its collaborators are chosen by the overlay.
+cli_handlers:
+  - operation: join_j5_run
+    handler:
+      name: HandlerWorkLedgerJoinJ5Run
+      module: omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5_run
 relay_requires:
   resource: omnimarket.nodes.node_onex_ledger_admission_compute/relay_requires.yaml
   evaluator: omnimarket.protocols.protocol_relay_admission.ProtocolRelayAdmission
