@@ -1,0 +1,50 @@
+name: node_projection_goal_trace
+version: "1.0.0"
+description: >
+  Folds one content-free trace per goal, from its contract to its verdict:
+  revisions, hook events joined through the goal-stamped binding, attempts,
+  the close and a checksum over the canonically ordered event set.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_goal_trace: "omnimarket.nodes.node_projection_goal_trace"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - goal-contract
+  - reducer
+ownership:
+  goal_trace_events:
+    ddl_owner: omnimarket.nodes.node_projection_goal_trace
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_goal_trace_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+      - omniclaude
+    rationale: >
+      The trace is a fold of events other repositories produce; this omnimarket
+      projection owns the materialized read model, like every other
+      node_projection_* table.
+  goal_traces:
+    ddl_owner: omnimarket.nodes.node_projection_goal_trace
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_goal_trace_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+      - omniclaude
+    rationale: >
+      The per-goal row is a fold of the same events and has no other writer.
+pack: "data"
+display_name: "Projection: Goal Trace"
+node_role: "effect"
