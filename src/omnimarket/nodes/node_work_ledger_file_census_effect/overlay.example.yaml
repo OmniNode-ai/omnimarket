@@ -1,0 +1,24 @@
+# The overlay CI runs: the repository's own row. The deployment overlay (every registered repository,
+# its own ratchet file) lives at <root>/node_work_ledger_file_census_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS, or at the file ONEX_LEDGER_CENSUS_OVERLAY names.
+registry_root_env: ONEX_LEDGER_CENSUS_ROOT
+repositories:
+  - {name: omnimarket, own_line: false}
+names: [ROLLING_WORK_LEDGER]
+path_variables: [ONEX_LEDGER_PATH]
+# A ruling's line citation: the name, an optional extension, then :<line>.
+citation_suffix: '(?:\.md)?:\d+'
+document_suffixes: [.md, .rst, .txt, .adoc]
+code_suffixes: [.py, .sh, .bash, .zsh, .yaml, .yml, .json, .toml, .plist, .service, .timer, .cfg, .ini, .js, .ts, .mjs, .cjs, .tmpl, .j2, .env]
+code_names: [Makefile, Dockerfile, Justfile]
+skip_dirs: [.git, node_modules, .venv, venv, __pycache__, .mypy_cache, .ruff_cache, .pytest_cache, .tox]
+max_file_bytes: 1000000
+hash_comment_suffixes: [.sh, .bash, .zsh, .yaml, .yml, .toml, .cfg, .ini, .env, .tmpl, .j2]
+slash_comment_suffixes: [.js, .ts, .mjs, .cjs]
+writer_markers:
+  - '(?:^|\s|\d)>>?\s*["''$\{(]*\S*(ROLLING_WORK_LEDGER|ONEX_LEDGER_PATH)'
+  - 'write_text|write_bytes|\.write\('
+  - 'open\([^)]*["''][wax]\+?b?["'']'
+  - '--append|\btee\b|\bappend\b'
+journal_env: ONEX_LEDGER_CENSUS_JOURNAL
+ratchet_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml

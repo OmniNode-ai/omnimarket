@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay of node_lab_alarm: every setting of the broker lag condition.
+"""The overlay of node_lab_alarm: every setting of the broker lag and effects-held conditions.
 
 Found at ``<root>/node_lab_alarm/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``.
 The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic values). Nothing here has
-a default: an absent key refuses the load and names it.
+a default: an absent key refuses the load and names it, with one exception: ``effects_held`` is the
+block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
+(the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23304).
 """
 
 from __future__ import annotations
@@ -46,11 +48,31 @@ class ModelGroupDerivation(BaseModel):
     nodes: tuple[ModelDeclaredNode, ...] = Field(min_length=1)
 
 
+class ModelManifestResilience(BaseModel):
+    """How the alarm treats a manifest endpoint that does not answer (it is down while dev redeploys).
+
+    Retries and the last-good fallback never touch the lag rule or any lag bound: the broker is still
+    read for every group, the fallback only supplies the group names, and its age is named in the result.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Fetch attempts per run, the first included.
+    attempts: int = Field(ge=1)
+    retry_delay_seconds: float = Field(ge=0)
+    #: The oldest last-good manifest the run may take its group names from; older reads INDETERMINATE.
+    max_stale_seconds: int = Field(ge=1)
+    #: Where the last good manifest (only the declared nodes' contracts) is kept.
+    cache_path: str = Field(min_length=1)
+
+
 class ModelManifestSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     url: str = Field(min_length=1)
     timeout_seconds: float = Field(gt=0)
+    #: Absent means one attempt and no fallback (the behaviour before OMN-22874); declare it to turn both on.
+    resilience: ModelManifestResilience | None = None
 
 
 class ModelLagSettings(BaseModel):
@@ -101,6 +123,37 @@ class ModelLabAlarmSchedule(BaseModel):
         return next((host for host in self.hosts if host.name == name), None)
 
 
+class ModelEscalationSettings(BaseModel):
+    """The lane an alarm that names no owner starts: the dispatch command and what it is told."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: argv of the lane dispatcher; the brief file, lane name, model and ticket are appended.
+    command: tuple[str, ...] = Field(min_length=1)
+    model: str = Field(min_length=1)
+    ticket: str = Field(pattern=r"^OMN-\d+$")
+    #: A dispatcher still running after this many seconds has started its lane.
+    settle_seconds: float = Field(gt=0)
+    #: Where the briefs and dispatch logs are kept.
+    brief_dir: str = Field(min_length=1)
+
+
+class ModelEffectsHeldSettings(BaseModel):
+    """The effects-held condition (OMN-23106): which groups, how long a hold counts, who is told."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The consumer group embeds the node's contract version, so it is matched by prefix and suffix.
+    group_prefix: str = Field(min_length=1)
+    group_suffix: str = Field(min_length=1)
+    #: How long no group may hold a live member before this alarms.
+    held_after_seconds: float = Field(gt=0)
+    timeout_seconds: float = Field(gt=0)
+    #: Where the hold clock and the episode's lane are kept between ticks.
+    state_path: str = Field(min_length=1)
+    escalation: ModelEscalationSettings
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -110,6 +163,9 @@ class ModelLabAlarmOverlay(BaseModel):
     lag: ModelLagSettings
     schedule: ModelLabAlarmSchedule
     injected_fault: str = Field(min_length=1)
+    #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
+    #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
+    effects_held: ModelEffectsHeldSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
@@ -127,11 +183,14 @@ __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
     "ModelDeclaredNode",
+    "ModelEffectsHeldSettings",
+    "ModelEscalationSettings",
     "ModelGroupDerivation",
     "ModelLabAlarmOverlay",
     "ModelLabAlarmSchedule",
     "ModelLabAlarmScheduleHost",
     "ModelLagSettings",
+    "ModelManifestResilience",
     "ModelManifestSettings",
     "load_overlay",
 ]

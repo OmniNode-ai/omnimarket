@@ -59,6 +59,7 @@ from omnimarket.models.model_github_gateway_io import (
     ModelCiChecksResult,
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
+    ModelJobLogFillResult,
     ModelJobLogTailResult,
     ModelJobStep,
     ModelMergeCommitShaResult,
@@ -396,14 +397,22 @@ def read_run_jobs(
     )
 
 
-def read_job_log_tail(
+def _job_log_read(
+    transport: GitHubReadTransportProtocol,
+    request: ModelGithubGatewayRequest,
+    answer: type[ModelJobLogTailResult] | type[ModelJobLogFillResult],
+) -> ModelJobLogTailResult | ModelJobLogFillResult:
+    tail = _read_job_log_tail(transport, request)
+    if answer is ModelJobLogTailResult:
+        return tail
+    return ModelJobLogFillResult.model_validate(
+        {**tail.model_dump(), "operation": "job_log_fill"}
+    )
+
+
+def _read_job_log_tail(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelJobLogTailResult:
-    """The last ``tail_bytes`` of one job's log, or a window of it (OMN-17427).
-
-    With ``offset_bytes`` or ``step`` set the read keeps ``length_bytes`` from
-    that offset of the whole log, or of the named step's region.
-    """
     job_id = _require(request.job_id, "job_id")
     if request.offset_bytes is not None or request.step is not None:
         return _read_job_log_window(transport, request, job_id)
@@ -420,6 +429,32 @@ def read_job_log_tail(
         text=response.content.decode("utf-8", errors="replace"),
         start_offset=response.total_bytes - len(response.content),
     )
+
+
+def read_job_log_tail(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelJobLogTailResult:
+    """The last ``tail_bytes`` of one job's log, or a window of it (OMN-17427).
+
+    With ``offset_bytes`` or ``step`` set the read keeps ``length_bytes`` from
+    that offset of the whole log, or of the named step's region.
+    """
+    result = _job_log_read(transport, request, ModelJobLogTailResult)
+    assert isinstance(result, ModelJobLogTailResult)
+    return result
+
+
+def read_job_log_fill(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelJobLogFillResult:
+    """The same tail or window of one named job's log, for a job the cache may not hold.
+
+    The gateway handler hands this read the host-shared cache as its transport: a hit is
+    answered from the cache, and a miss downloads that one job's log into it (OMN-23308).
+    """
+    result = _job_log_read(transport, request, ModelJobLogFillResult)
+    assert isinstance(result, ModelJobLogFillResult)
+    return result
 
 
 # An unknown step's refusal lists at most this many step names, each cut.
@@ -993,6 +1028,7 @@ __all__: list[str] = [
     "read_branch_protection",
     "read_ci_checks",
     "read_commit_check_runs",
+    "read_job_log_fill",
     "read_job_log_tail",
     "read_merge_commit_sha",
     "read_merged_pr",

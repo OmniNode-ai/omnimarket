@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Start Admission Effect (OMN-22939, step 0 row 4)
+#
+# Admission at each start path's last step before an engine, session or provisioning call (rebuild plan
+# sections 4.1, 7.1 and W28). It reserves in the gate store, consumes the reservation once at the epoch it was
+# decided at, and answers whether the start proceeds. A path runs in observe mode (log what would be refused,
+# start anyway) until the drill passes on it, then in enforce mode. Nothing calls it from a start path yet:
+# wiring each path is a separate change per path, behind its own drill.
+name: node_start_admission_effect
+contract_name: node_start_admission_effect
+node_name: node_start_admission_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers one start request: reserve the piece in the gate store, consume the reservation once, release it
+  and re-decide when the epoch advanced before the consume. A refusal is logged and, in observe mode, the start
+  proceeds; in enforce mode it is refused. A store that gives no answer by the deadline lets a start proceed logged
+  as unadmitted and does not let an outward action proceed.
+
+handler:
+  module: omnimarket.nodes.node_start_admission_effect.handlers.handler_start_admission
+  class: HandlerStartAdmission
+  input_model: omnimarket.models.model_start_admission.ModelStartAdmissionRequest
+
+# Not a runtime-dispatched handler: HandlerStartAdmission takes the gate store and the log as constructor
+# parameters, so the bus edge is answer_command (the same shape as node_gate_store_effect).
+cli_handlers:
+  - operation: start_admission_decide
+    handler:
+      name: HandlerStartAdmission
+      module: omnimarket.nodes.node_start_admission_effect.handlers.handler_start_admission
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [gate-store-write, admission-log-write]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelStartAdmissionRequest
+  module: omnimarket.models.model_start_admission
+  description: One start path asking to start, its step key and the reservation it uses.
+output_model:
+  name: ModelStartAdmissionResult
+  module: omnimarket.models.model_start_admission
+  description: The typed outcome, whether the start proceeds, and the mode it was decided in.
+
+terminal_event: onex.evt.omnimarket.start-admission-answered.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  start_admission_requested: onex.cmd.omnimarket.start-admission-requested.v1
+  start_admission_answered: onex.evt.omnimarket.start-admission-answered.v1
+  start_admission_failed: onex.evt.omnimarket.start-admission-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.start-admission-answered.v1
+  - onex.evt.omnimarket.start-admission-failed.v1
+
+overlay:
+  node: start_admission
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22939
+  transport_type: inmemory

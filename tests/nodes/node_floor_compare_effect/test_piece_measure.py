@@ -43,6 +43,9 @@ from omnimarket.nodes.node_floor_compare_effect.models.model_piece_measure impor
     ModelPieceMeasuresOverlay,
     ModelPieceVerdictRecord,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    InMemoryLedger,
+)
 from tests.nodes.node_floor_compare_effect.support import RT, build_home, served_floor
 
 pytestmark = pytest.mark.unit
@@ -265,14 +268,14 @@ def test_ledger_patterns_count_capacity_refusals_and_parity_failures(
     rows.append(
         "2026-11-07T12:06:00Z | CLAIM | lane=c | ticket=OMN-1 | parity failure noted in a claim is not counted"
     )
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
     book = Book()
     load_ledger(
         book,
         RT.history,
-        {RT.history.ledger_env: str(ledger)},
+        {},
         base - timedelta(hours=1),
+        base + timedelta(hours=24),
+        InMemoryLedger(rows),
     )
     book.finish()
     got = counts_at(book, RT.history, base + timedelta(hours=23), "ledger")

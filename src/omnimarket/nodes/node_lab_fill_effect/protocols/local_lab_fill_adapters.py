@@ -431,6 +431,16 @@ class LocalLiveChecks:
         return "pr-state-unreadable", f"{pr} not in the watcher state"
 
 
+class LocalMergedWork:
+    """Merged pull requests per ticket from the PR watcher's snapshot, the read the owner facts use (OMN-23277)."""
+
+    def __init__(self, reader: LocalOwnerReader | None = None) -> None:
+        self._reader = reader if reader is not None else LocalOwnerReader()
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]:
+        return tuple(self._reader.watcher_merged(state_path).get(ticket, ()))
+
+
 class LocalBriefBlocks:
     """The committed standing rules, then lane-brief's delegation and lab blocks."""
 

@@ -210,6 +210,14 @@ class InMemoryGateStore:
             return self._answer(
                 state, request, EnumGateStoreOutcome.REFUSED_STOP, piece=res.piece
             )
+        if request.expected_epoch is not None and request.expected_epoch != state.epoch:
+            return self._answer(
+                state,
+                request,
+                EnumGateStoreOutcome.REFUSED_FENCE,
+                "the epoch advanced since the reservation was decided",
+                res.piece,
+            )
         res.consumed = True
         return self._write(state, request, res.piece)
 
