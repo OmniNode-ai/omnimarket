@@ -21,6 +21,9 @@ description: >
   The ticket closer's last TERMINAL or run record older than twice its declared interval
   (OMN-20718), whether it ran and failed or its unit is gone. A host whose omni plugin, dispatch venv, installed controller or installed launchd lib has
   differed from merged main for over an hour is read from the host-drift fleet fold.
+  A fold file that does not exist is a declaration question (OMN-23275): given the fold-absence fact the
+  caller read, the finding names the hosts the manifest gives the host-drift unit and whether the
+  reading host is one of them.
   Each verdict carries the FRICTION cells and the alert text.
 handler:
   module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_placement_share_alarm

@@ -41,6 +41,7 @@ from ..models import (
     ModelRunningVsMergedRequest,
     ModelRunningVsMergedResult,
 )
+from .handler_host_drift_fold_absence import describe as describe_fold_absence
 
 LOOP = "running-vs-merged"
 # The installed files of a launchd lib differ from the canonical checkout; anything else on a
@@ -152,6 +153,16 @@ class HandlerRunningVsMergedAlarm:
         self, request: ModelRunningVsMergedRequest
     ) -> ModelRunningVsMergedResult:
         """Return OK, MISSING with one finding per surface, or UNKNOWN."""
+        if not request.fleet_readable and request.fleet_absence is not None:
+            why, fix = describe_fold_absence(request.fleet_absence)
+            return ModelRunningVsMergedResult(
+                state="UNKNOWN",
+                findings=(
+                    ModelRunningVsMergedFinding(
+                        level="unknown", loop=LOOP, why=why, fix=fix
+                    ),
+                ),
+            )
         if not request.fleet_readable:
             return self._unknown(
                 f"host-drift fleet fold unreadable: {request.unreadable_why or 'no reason given'}"

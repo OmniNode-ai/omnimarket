@@ -27,6 +27,7 @@ from .model_quiet_host_alarm import (
     ModelQuietHostResult,
 )
 from .model_running_vs_merged_alarm import (
+    ModelFleetFoldAbsence,
     ModelRunningSurface,
     ModelRunningVsMergedFinding,
     ModelRunningVsMergedRequest,
@@ -43,6 +44,7 @@ __all__ = [
     "ModelDrainerRepair",
     "ModelDrainerRequest",
     "ModelDrainerResult",
+    "ModelFleetFoldAbsence",
     "ModelHostActivity",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
