@@ -301,6 +301,14 @@ def _class_rank(name: str, cfg: ModelLabFillPlanConfig) -> int:
     return classes.index(name) if name in classes else -1
 
 
+def _machinery_segment(
+    candidate: dict[str, object], priority: Mapping[str, int]
+) -> int:
+    """0 ranks before machinery by tier, 1 with it (machinery included), 2 after it."""
+    delta = priority[str(candidate["kind"])] - priority[MACHINERY]
+    return 0 if delta < 0 else 1 if delta == 0 else 2
+
+
 def _compare(
     x: dict[str, object],
     y: dict[str, object],
@@ -312,19 +320,23 @@ def _compare(
     by_gate = int(truthy(x.get("gated"))) - int(truthy(y.get("gated")))
     if by_gate:
         return by_gate
-    # Machinery is ranked against every kind by the contract's tier order alone (OMN-22413), so the
-    # class and landing ranks judge only the pairs that hold no machinery lane.
-    if MACHINERY not in (x["kind"], y["kind"]):
-        by_class = _class_rank(lane_class(x, cfg), cfg) - _class_rank(
-            lane_class(y, cfg), cfg
-        )
-        if by_class:
-            return by_class
-        by_landing = int(not truthy(x.get("landing"))) - int(
-            not truthy(y.get("landing"))
-        )
-        if by_landing:
-            return by_landing
+    # Machinery is ranked against every kind by the contract's tier order alone (OMN-22413). Each lane
+    # sits before, with, or after machinery's own rank, and that segment is the next sort key, so the
+    # class and landing ranks only order lanes inside one segment and the order stays transitive under
+    # any tier_order. Machinery leads the lanes that share its rank.
+    by_segment = _machinery_segment(x, priority) - _machinery_segment(y, priority)
+    if by_segment:
+        return by_segment
+    if MACHINERY in (x["kind"], y["kind"]):
+        return int(y["kind"] == MACHINERY) - int(x["kind"] == MACHINERY)
+    by_class = _class_rank(lane_class(x, cfg), cfg) - _class_rank(
+        lane_class(y, cfg), cfg
+    )
+    if by_class:
+        return by_class
+    by_landing = int(not truthy(x.get("landing"))) - int(not truthy(y.get("landing")))
+    if by_landing:
+        return by_landing
     by_kind = priority[str(x["kind"])] - priority[str(y["kind"])]
     if by_kind:
         return by_kind

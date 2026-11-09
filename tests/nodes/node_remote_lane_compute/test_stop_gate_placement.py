@@ -14,6 +14,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.remote_lane_placement import (
+    EnumRemoteLaneOutcome,
+    ModelRemoteLaneAttempt,
+    ModelRemoteLaneHostReading,
+    ModelRemoteLaneLadder,
+    ModelRemoteLanePlacementRequest,
+    ModelRemoteLanePlacementResult,
+)
 from omnimarket.models.stop_gate import (
     EnumStopExemptionKind,
     EnumStopGateReason,
@@ -22,14 +30,6 @@ from omnimarket.models.stop_gate import (
 )
 from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
     HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
-    EnumRemoteLaneOutcome,
-    ModelRemoteLaneAttempt,
-    ModelRemoteLaneHostReading,
-    ModelRemoteLaneLadder,
-    ModelRemoteLanePlacementRequest,
-    ModelRemoteLanePlacementResult,
 )
 from tests.nodes.node_andon_stop_reducer.stop_gate_facts import (
     CLASS,

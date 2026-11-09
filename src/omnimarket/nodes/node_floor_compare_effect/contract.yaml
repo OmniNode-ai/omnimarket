@@ -132,6 +132,9 @@ runtime:
   piece_rank: {green: 0, grey: 1, amber: 2, red: 3}
   # The stoppage cost the simple floor prints in a cause's detail ("144 lane-minutes logged").
   stoppage_cost_pattern: '(\d+(?:\.\d+)?) lane-minutes'
+  # Stoppages whose logged cost is the reporter's estimate of idle capacity: the live floor leaves the figure out, so a dated copy's
+  # figure is not kept as lane-minutes lost either (the same ids as the floor overlay's estimated_cost_stoppages).
+  estimated_cost_stoppages: ["stoppage:lab-idle", "stoppage:lab-source-unreadable"]
   # Dated copies read once into the history at the first cycle that finds them. Nothing here is a guess about a host: a glob
   # that matches nothing backfills nothing, and the result says how many snapshots it added.
   backfill:
@@ -152,8 +155,13 @@ runtime:
     min_alive: {ledger: 100, landing-decisions: 100, lab-alarm: 12}
     min_tick_samples: 12
     level_max_age_minutes: 90
-    ledger_env: ONEX_LEDGER_PATH
-    ledger_archive_dirname: archive
+    # The ledger is on the bus: counts come from typed row reads of the kinds below, one window of ledger_chunk_hours at a time,
+    # through the command the variable holds. A failed or truncated read leaves the ledger keys unread; nothing reads a file.
+    ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    ledger_read_timeout_seconds: 120
+    ledger_row_limit: 5000
+    ledger_row_kinds: [CLAIM, TERMINAL, FRICTION, STATUS]
+    ledger_chunk_hours: 24
     ledger_lane_outcomes: [done, handed-off, partial, blocked, failed, skipped-owned]
     friction_umbrella_ticket: OMN-17427
     friction_rules_node: node_friction_rollup_compute
@@ -178,6 +186,9 @@ runtime:
       - key: parity_failures
         row_types: [FRICTION, STATUS, TERMINAL]
         pattern: '(?i)parity[^|]{0,40}(?:fail|mismatch|not working|under 100)'
+  # The cycle ends itself with a typed failure when it has not finished in this time (OMN-22864). It stays below the publish
+  # node's own 15 s limit for the floor_compare step, whose kill cannot be answered and leaves a start with no terminal.
+  cycle_deadline_seconds: 12
   emission_journal_relpath: .onex_state/floor-simple/emissions.jsonl
   emission_node: "node_floor_compare_effect:run_floor_compare_cycle"
   emission_piece: 17

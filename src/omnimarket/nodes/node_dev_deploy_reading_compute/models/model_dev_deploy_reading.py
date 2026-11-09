@@ -17,11 +17,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from omnimarket.models.model_reading import EnumReadingVerdict
 
-_SHA = re.compile(r"^[0-9a-f]{40}$")
+_SHA = re.compile(r"[0-9a-f]{40}")
 
 
 def _exact_sha(value: str) -> str:
-    if not _SHA.match(value):
+    if not _SHA.fullmatch(value):
         raise ValueError(f"not an exact sha (40 lowercase hex): {value!r}")
     return value
 

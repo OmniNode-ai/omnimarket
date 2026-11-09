@@ -7,17 +7,17 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.remote_lane_close import (
+    ModelRemoteLaneResultRequest,
+)
+from omnimarket.models.remote_lane_placement import (
+    ModelRemoteLanePlacementRequest,
+)
 from omnimarket.nodes.node_remote_lane_close_compute.handlers import (
     HandlerRemoteLaneResult,
 )
-from omnimarket.nodes.node_remote_lane_close_compute.models import (
-    ModelRemoteLaneResultRequest,
-)
 from omnimarket.nodes.node_remote_lane_compute.handlers import (
     HandlerRemoteLanePlacement,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
-    ModelRemoteLanePlacementRequest,
 )
 
 

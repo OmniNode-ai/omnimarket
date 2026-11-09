@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Frozen(BaseModel):
@@ -85,8 +85,22 @@ class ModelHistorySources(_Frozen):
         ge=1,
         description="The throughput tick log needs this many samples in the window for a per-tick mean to count.",
     )
-    ledger_env: str
-    ledger_archive_dirname: str
+    ledger_read_command_env: str = Field(
+        description="The variable that holds the bus read command; the ledger is read through the bus, never from a file."
+    )
+    ledger_read_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_row_limit: int = Field(
+        ge=1,
+        description="Rows one bus read may return; an answer longer than this is refused as truncated, never counted short.",
+    )
+    ledger_row_kinds: tuple[str, ...] = Field(
+        min_length=1,
+        description="The row kinds the counts read; a record of any of them marks the ledger as having recorded.",
+    )
+    ledger_chunk_hours: int = Field(
+        ge=1,
+        description="Each bus read covers this many hours, so no answer outgrows its limit.",
+    )
     ledger_lane_outcomes: tuple[str, ...]
     friction_umbrella_ticket: str
     friction_rules_node: str
@@ -126,8 +140,16 @@ class ModelFloorCompareRuntime(_Frozen):
     families: tuple[ModelMetricFamily, ...] = Field(min_length=1)
     piece_rank: dict[str, int]
     stoppage_cost_pattern: str
+    estimated_cost_stoppages: tuple[str, ...] = Field(
+        default=(),
+        description="Stoppage ids whose logged cost is an estimate of idle capacity, not lost work anything measured; the floor leaves it out, so the history does too.",
+    )
     backfill: tuple[ModelBackfillSource, ...] = ()
     history: ModelHistorySources
+    cycle_deadline_seconds: int = Field(
+        gt=0,
+        description="The cycle ends itself with a typed failure after this many seconds; below the publish step's own limit.",
+    )
     emission_journal_relpath: str
     emission_node: str
     emission_piece: int = Field(ge=1, le=18)
@@ -147,6 +169,13 @@ class ModelSnapshot(_Frozen):
             "read as absent from the source, which is zero. Under any other prefix a missing key is unread."
         ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_has_a_timezone(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("a snapshot's time must carry a timezone")
+        return value
 
 
 class ModelReading(_Frozen):
@@ -200,6 +229,13 @@ class ModelFloorCompareRequest(_Frozen):
     backfill_only: bool = False
     backfill_history: bool = False
     history_days: int | None = None
+
+    @field_validator("now")
+    @classmethod
+    def _now_has_a_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("now must carry a timezone")
+        return value
 
 
 class ModelFloorCompareResult(_Frozen):
