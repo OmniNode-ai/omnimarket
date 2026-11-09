@@ -8,7 +8,7 @@ node_version: "1.0.0"
 description: >-
   One friction rollup tick (OMN-22987), the scheduled unit that moved here from the timer of OMN-19715:
   reads the ledger and the sorted archive files, runs the compute node's rollup for each window with the class rules
-  the compute node ships, writes the dated and latest json and markdown reports atomically, prunes old reports and
+  of the overlay home, writes the dated and latest json and markdown reports atomically, prunes old reports and
   appends one STATUS row through an injected appender. Exit codes: 0 done, 1 append refused, 2 usage or unreadable
   input, 3 done with class rules unapplied. Every setting is in overlay.example.yaml.
 input_model:
@@ -72,4 +72,4 @@ metadata:
   description: Scheduled friction rollup tick
   author: OmniNode Team
   created: "2026-11-07"
-  related_tickets: [OMN-22987, OMN-19715]
+  related_tickets: [OMN-22987, OMN-19715, OMN-22814]

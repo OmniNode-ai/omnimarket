@@ -575,6 +575,61 @@ def _hermetic_venv_path(project_root: Path) -> Path:
     return _hermetic_venv_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
 
 
+_HERMETIC_VENV_RETENTION_ENV = "DOD_VERIFY_HERMETIC_VENV_RETENTION_S"
+_DEFAULT_HERMETIC_VENV_RETENTION_S = 6 * 3600
+
+
+def _hermetic_venv_retention_s() -> float:
+    """Seconds an unused ephemeral environment survives (OMN-22993).
+
+    Malformed or non-positive falls back to the default rather than turning
+    pruning off or deleting everything.
+    """
+    raw = os.environ.get(_HERMETIC_VENV_RETENTION_ENV, "").strip()
+    try:
+        value = float(raw) if raw else float(_DEFAULT_HERMETIC_VENV_RETENTION_S)
+    except ValueError:
+        value = 0.0
+    if value <= 0:
+        return float(_DEFAULT_HERMETIC_VENV_RETENTION_S)
+    return value
+
+
+def _prune_stale_hermetic_envs(keep: Path) -> list[Path]:
+    """Remove environments beside ``keep`` unused for the retention period.
+
+    The path is keyed by project root + lock bytes, so every lane worktree
+    makes its own ~0.5 GB environment and, before OMN-22993, none was ever
+    removed (39 of them, 20 GB, took a lab host under its disk floor).
+    ``keep`` is marked used first; a sibling is removed only when its mtime is
+    older than the retention, which a build or reuse refreshes. Failures are
+    logged and never fail the build.
+    """
+    root = _hermetic_venv_root()
+    removed: list[Path] = []
+    try:
+        os.utime(keep, None)
+        cutoff = time.time() - _hermetic_venv_retention_s()
+        for entry in root.iterdir():
+            if entry == keep or not entry.is_dir() or entry.is_symlink():
+                continue
+            if not (entry / "bin" / "python").exists():
+                continue  # not one of ours; never delete a foreign directory
+            if entry.stat().st_mtime >= cutoff:
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(entry)
+    except OSError as exc:
+        logger.warning("OMN-22993: could not prune %s: %s", root, exc)
+    if removed:
+        logger.info(
+            "OMN-22993: pruned %d stale hermetic environment(s) under %s",
+            len(removed),
+            root,
+        )
+    return removed
+
+
 # ---------------------------------------------------------------------------
 # OMN-17863: the same mechanism for a JS project
 # ---------------------------------------------------------------------------
@@ -5892,6 +5947,7 @@ class EvidenceCollector:
             self._hermetic_uv_envs[project_root] = result
             return result
 
+        _prune_stale_hermetic_envs(env_path)
         result = (env_path, None)
         self._hermetic_uv_envs[project_root] = result
         return result

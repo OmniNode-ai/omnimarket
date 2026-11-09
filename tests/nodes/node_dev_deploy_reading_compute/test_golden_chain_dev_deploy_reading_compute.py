@@ -14,13 +14,13 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.model_dev_deploy_reading import (
+    ModelDevDeployReading,
+    ModelDevDeployReadingRequest,
+)
 from omnimarket.models.model_reading import EnumReadingVerdict as V
 from omnimarket.nodes.node_dev_deploy_reading_compute.handlers import (
     handler_dev_deploy_reading as module,
-)
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
-    ModelDevDeployReading,
-    ModelDevDeployReadingRequest,
 )
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     SHA_A,
