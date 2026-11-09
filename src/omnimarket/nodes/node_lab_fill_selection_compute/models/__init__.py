@@ -11,6 +11,7 @@ from .model_approved_work_freshness import (
     ModelApprovedWorkVerdict,
 )
 from .model_lab_fill_deployment import ModelLabFillDeployment
+from .model_lab_fill_selection_overlay import ModelLabFillSelectionOverlay
 from .model_lab_fill_selection_request import (
     ModelLabFillCandidateInput,
     ModelLabFillInputBaseline,
@@ -33,6 +34,7 @@ __all__ = [
     "ModelLabFillDecision",
     "ModelLabFillDeployment",
     "ModelLabFillInputBaseline",
+    "ModelLabFillSelectionOverlay",
     "ModelLabFillSelectionRequest",
     "ModelLabFillSelectionResult",
     "ModelLandingControllerFacts",
