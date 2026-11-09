@@ -191,11 +191,13 @@ def test_lab_fill_checks_before_writing_or_launching(
         FakeBlocks,
         FakeChecks,
         FakeClock,
+        FakeMerged,
         FakeRunner,
     )
 
     runner = FakeRunner()
     result = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=FakeApproved(),
         blocks=FakeBlocks(),
