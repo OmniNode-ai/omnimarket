@@ -75,6 +75,11 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # Why ``host_table`` could not be read ('' when it was, or none is named); set by the
     # validator below. Hook events are then unattributable, which the tick reports as UNKNOWN.
     host_table_error: str = ""
+    # True reads the lab host table (the one lab host list, however the deployment names it) and leaves
+    # out of the quiet-host reading each host it declares unavailable: such a host takes no lane, so a
+    # ledger row that names it is not lane work that lost its hook events (OMN-22778). False, the default,
+    # skips no host. A table that cannot be read is reported and skips nothing.
+    skip_unavailable_hosts: bool = False
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (

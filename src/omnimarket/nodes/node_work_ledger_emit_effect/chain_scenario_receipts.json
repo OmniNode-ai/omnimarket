@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "node": "node_work_ledger_emit_effect",
+  "receipts": [
+    {
+      "case_name": "golden_claim_row_is_taken_in",
+      "case_hash": "6326125091004bec04fdfc7788ebcf87bdced42a057abfb4df251831ce3c9d9e",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "golden_claim_row_is_taken_in",
+      "case_hash": "6326125091004bec04fdfc7788ebcf87bdced42a057abfb4df251831ce3c9d9e",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    },
+    {
+      "case_name": "error_row_with_no_stamp_is_refused",
+      "case_hash": "d55bdf4a2ec2687c32b41e1f77d3c45150dac4a5cb4b2d1794d8472086dbb87c",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "error_row_with_no_stamp_is_refused",
+      "case_hash": "d55bdf4a2ec2687c32b41e1f77d3c45150dac4a5cb4b2d1794d8472086dbb87c",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    },
+    {
+      "case_name": "error_spool_is_down",
+      "case_hash": "173bf35150f45ae2a5b2343a23be4269ba9002a7cbe09ea57a63ad689817133e",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "error_spool_is_down",
+      "case_hash": "173bf35150f45ae2a5b2343a23be4269ba9002a7cbe09ea57a63ad689817133e",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    }
+  ]
+}
