@@ -15,11 +15,11 @@ from omnimarket.nodes.node_model_overlay_write_effect.handlers import (
 from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write import (
     HandlerModelOverlayWrite,
 )
-from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_overlay_file_store import (
-    InMemoryOverlayFileStore,
-)
 from omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request import (
     ModelModelOverlayWriteRequest,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.protocols.protocol_overlay_file_store_backends import (
+    InMemoryOverlayFileStore,
 )
 
 pytestmark = pytest.mark.unit

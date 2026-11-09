@@ -86,11 +86,11 @@ from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_se
 from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write import (
     HandlerModelOverlayWrite,
 )
-from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_overlay_file_store import (
-    FilesystemOverlayFileStore,
-)
 from omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request import (
     ModelModelOverlayWriteRequest,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.protocols.protocol_overlay_file_store_backends import (
+    FilesystemOverlayFileStore,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
