@@ -16,8 +16,10 @@ runtime_profiles: [effects]
 
 description: >
   Answers an upstream piece's real typed failure with the downstream piece's typed upstream_ refusal. A drill failure is not
-  answered (a drill is not evidence for a join), a failure is answered once, and a ledger that cannot be read is reported as
-  unread and writes nothing.
+  answered (a drill is not evidence for a join), a failure is answered once within the journal window the overlay sets
+  (emission.window_hours), and a ledger that cannot be read is reported as unread and writes nothing. An answer older than that
+  window is not seen by this node, so a failure still inside its upstream lookback is answered again after the window; the
+  window is the scope of the once-only promise.
 
 handler:
   module: omnimarket.nodes.node_join_refusal_effect.handlers.handler_join_refusal
