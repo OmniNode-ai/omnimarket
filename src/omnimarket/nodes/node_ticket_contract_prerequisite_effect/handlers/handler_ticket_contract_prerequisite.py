@@ -45,6 +45,26 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def default_head() -> str:
+    """The hook-run ref when this repository holds it, else HEAD.
+
+    A lab pre-check exports ``PRE_COMMIT_TO_REF`` naming a commit of its own worktree to every
+    hook it runs; in another repository that ref does not resolve and the lookup exits 128
+    (OMN-23283).
+    """
+    ref = os.environ.get("PRE_COMMIT_TO_REF")
+    if ref:
+        found = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+        if found.returncode == 0:
+            return ref
+    return "HEAD"
+
+
 def _resolve_base(base: str) -> str | None:
     """Pin the base, fetching only an absent configured remote-tracking branch.
 
