@@ -73,7 +73,7 @@ async def test_matching_synthetic_pair_replays_clean(
 ) -> None:
     _write_corpus(tmp_path, PLANS_BODY, rules=[])
     monkeypatch.setenv(CORPUS_ENV, str(tmp_path))
-    await plans_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+    await plans_replay.replay_recorded_pairs()
 
 
 async def test_unmasked_difference_fails_and_a_named_mask_absorbs_it(
@@ -85,13 +85,13 @@ async def test_unmasked_difference_fails_and_a_named_mask_absorbs_it(
     _write_corpus(tmp_path, drifted, rules=[])
     monkeypatch.setenv(CORPUS_ENV, str(tmp_path))
     with pytest.raises(AssertionError, match="outside the masking rules"):
-        await plans_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+        await plans_replay.replay_recorded_pairs()
     _write_corpus(
         tmp_path,
         drifted,
         rules=[{"name": "created-at-format", "path": "response.body.*.created_at"}],
     )
-    await plans_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+    await plans_replay.replay_recorded_pairs()
 
 
 async def test_tampered_response_file_fails_its_sha256(
@@ -101,4 +101,4 @@ async def test_tampered_response_file_fails_its_sha256(
     (tmp_path / "resp.json").write_text('{"status": 200, "body": []}')
     monkeypatch.setenv(CORPUS_ENV, str(tmp_path))
     with pytest.raises(AssertionError, match="sha256"):
-        await plans_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+        await plans_replay.replay_recorded_pairs()

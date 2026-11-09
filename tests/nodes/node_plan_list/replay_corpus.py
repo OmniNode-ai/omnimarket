@@ -79,6 +79,12 @@ def corpus_dir() -> Path | None:
     return Path(value) if value else None
 
 
+def corpus_present() -> bool:
+    """True when the corpus location names a directory; tests are defined only then."""
+    corpus = corpus_dir()
+    return corpus is not None and corpus.is_dir()
+
+
 def load_pairs(
     identities: frozenset[str],
 ) -> tuple[list[ReplayPair], list[dict[str, Any]]]:

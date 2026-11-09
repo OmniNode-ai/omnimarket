@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """AC3: replay the T18b corpus pairs for GET /v1/usage/privileges against the mounted app.
 
-Skipped only while the corpus location is unset or holds no pair for this identity
-(T18b, OMN-22158); when pairs are present it runs and never passes vacuously. Each
+Defined only while the corpus location names a directory (T18b, OMN-22158), because a
+test that is collected and then skipped counts against the skip-count ratchet; when
+pairs are present it runs and never passes vacuously. Each
 pair's setup is rebuilt with fresh state (a new seeded catalog, a new resolver and a
 new app) from the recorded response, the request is replayed, and status, content type
 and body must equal the recording outside the corpus's named masking rules.
@@ -27,7 +28,11 @@ from omnimarket.nodes.node_usage_privileges.handlers.identity_binding import (
 from omnimarket.nodes.node_usage_privileges.models.model_usage_privilege import (
     ModelUsagePrivilege,
 )
-from tests.nodes.node_plan_list.replay_corpus import apply_masking, load_pairs
+from tests.nodes.node_plan_list.replay_corpus import (
+    apply_masking,
+    corpus_present,
+    load_pairs,
+)
 from tests.nodes.node_usage_privileges.fakes import (
     SEEDED_TENANT,
     FakeUsagePrivilegeRepository,
@@ -95,7 +100,7 @@ def privileges_from_recording(body: Any) -> list[ModelUsagePrivilege]:
     ]
 
 
-async def test_recorded_pairs_replay_with_no_unmasked_difference() -> None:
+async def replay_recorded_pairs() -> None:
     pairs, rules = load_pairs(IDENTITIES)
     assert pairs, "a replay that selected no pair must have skipped"
     for pair in pairs:
@@ -138,3 +143,9 @@ async def test_recorded_pairs_replay_with_no_unmasked_difference() -> None:
         ), (
             f"{pair.identity}: replay differs from the recording outside the masking rules"
         )
+
+
+if corpus_present():
+
+    async def test_recorded_pairs_replay_with_no_unmasked_difference() -> None:
+        await replay_recorded_pairs()

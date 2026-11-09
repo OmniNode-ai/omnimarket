@@ -74,7 +74,7 @@ async def test_matching_synthetic_pair_replays_clean(
 ) -> None:
     _write_corpus(tmp_path, BODY)
     monkeypatch.setenv(CORPUS_ENV, str(tmp_path))
-    await privileges_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+    await privileges_replay.replay_recorded_pairs()
 
 
 async def test_refusal_pair_replays_clean_and_a_wrong_status_fails(
@@ -85,8 +85,8 @@ async def test_refusal_pair_replays_clean_and_a_wrong_status_fails(
     _write_corpus(
         tmp_path, {"detail": "Unauthorized", "code": "auth.credential.invalid"}, 401
     )
-    await privileges_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+    await privileges_replay.replay_recorded_pairs()
     # A recorded 404 is a status the mount never answers: an unmasked difference.
     _write_corpus(tmp_path, {"detail": "Not Found"}, 404)
     with pytest.raises(AssertionError, match="outside the masking rules"):
-        await privileges_replay.test_recorded_pairs_replay_with_no_unmasked_difference()
+        await privileges_replay.replay_recorded_pairs()
