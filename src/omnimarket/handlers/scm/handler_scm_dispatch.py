@@ -114,12 +114,8 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="job_log_tail",
         replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
-    # OMN-23308: the miss a lane meets before the filler reaches the job.
     ModelScmVerb(
-        verb="job-log-fill",
-        node=_G,
-        operation="job_log_fill",
-        replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs (a job the cache does not hold)",
+        verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
     ),
     ModelScmVerb(
         verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
@@ -245,10 +241,7 @@ SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
 
 def verb(name: str) -> ModelScmVerb:
     """The served verb named ``name``."""
-    for spec in SCM_VERBS:
-        if spec.verb == name:
-            return spec
-    raise KeyError(name)
+    return {spec.verb: spec for spec in SCM_VERBS}[name]
 
 
 def load_contract(node: EnumScmNode) -> dict[str, JsonValue]:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import cast
 
 import pytest
 from click.testing import CliRunner
@@ -21,6 +22,7 @@ from omnimarket.handlers.scm.scm_cli import scm_group
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
+    ModelGithubGatewayResponse,
     ModelJobLogFillResult,
     ModelJobLogTailResult,
 )
@@ -79,7 +81,7 @@ def _handle(
     request: ModelGithubGatewayRequest,
 ) -> ModelJobLogTailResult | ModelJobLogFillResult:
     output = asyncio.run(gateway.HandlerGithubRepoGatewayEffect().handle(request))
-    result = output.events[0].result  # type: ignore[union-attr]
+    result = cast(ModelGithubGatewayResponse, output.events[0]).result
     assert isinstance(result, ModelJobLogTailResult | ModelJobLogFillResult)
     assert result.operation == request.operation.value
     return result
