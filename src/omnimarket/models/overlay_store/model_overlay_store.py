@@ -181,4 +181,12 @@ class ModelOverlayStoreReadOverlay(_Frozen):
             raise ValueError(
                 f"the {self.backend} backend needs the broker or database it reads"
             )
+        # Only a host that reads the broker has a bus to publish its view of the fleet on (OMN-23391).
+        no_bus = {"in_memory": True, "postgres": True, "bus_snapshot": False}[
+            self.backend
+        ]
+        if self.fleet_projection_id is not None and no_bus:
+            raise ValueError(
+                f"the {self.backend} backend has no bus to publish the fleet projection on"
+            )
         return self
