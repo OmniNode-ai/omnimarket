@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the GitHub overlay. The token itself is never written here: the named variable holds an App
+# installation token, supplied by the host's environment file.
+settings:
+  check_name: "lab-tests / run"
+  wait_bound_seconds: 900
+  lab_repositories: ["example-org/example-private-repo"]
+  superseded_conclusion: cancelled
+  passing_conclusions: [success, neutral, skipped]
+  title_pending: "Lab job running for attempt {attempt}"
+  title_success: "Lab job passed for attempt {attempt}"
+  title_failure: "Lab job failed for attempt {attempt}"
+  title_superseded: "Superseded: attempt {attempt} is no longer the current attempt"
+source:
+  backend: github
+  api_base: https://api.github.com
+  api_version: "2022-11-28"
+  token_env: EXAMPLE_LAB_CHECK_APP_TOKEN
+  max_calls: 12
+  page_size: 100
+  timeout_seconds: 20
+emission:
+  node: node_lab_check_run_effect
+  piece: 8
+  backend: journal
+  journal_path: /var/lib/example/lab-check-run-emissions.jsonl
