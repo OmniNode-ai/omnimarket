@@ -47,12 +47,12 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23313-row
     description: >-
-      Deploy assessment: the change adds a cause row to the floor compute node, an assignee and a parent field to the work-state projection and an optional overlay block. It adds no Kafka topic, migration or prod mutation; it reaches the floor publisher by install from the branch. The check reads the pushed handler and fails when the row builder is missing.
+      Deploy assessment: the change adds a cause row to the floor compute node, an assignee and a parent field to the work-state projection and an optional overlay block. It adds no Kafka topic, migration or prod mutation; it reaches the floor publisher by install from the branch. The check reads the handler from GitHub at the pull request branch and fails when the row builder is missing.
     source: manual
     checks:
       - check_type: command
-        check_value: grep -q 'delegation:idle' src/omnimarket/nodes/node_floor_simple_compute/handlers/handler_floor_simple.py
-        cwd: .
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_simple_compute/handlers/handler_floor_simple.py?ref=omn-23313-floor-delegation-idle-dev')\" && case \"$body\" in *_delegation_idle*) exit 0;; *) exit 1;; esac"
+        cwd: "."
   - id: dod-omn23313-integration-proof
     description: >-
       The pushed head ran the three focused test files of the row on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
