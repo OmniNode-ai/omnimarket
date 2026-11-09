@@ -6,4 +6,9 @@ CI collects only ``tests/`` (OMN-14338), so the tests live in ``tests/nodes/node
 this module re-exports them so ``pytest src/omnimarket/nodes/node_install_reading_compute`` runs the same ones.
 """
 
-from tests.nodes.node_install_reading_compute.test_golden_chain_install_reading import *  # noqa: F403
+import importlib
+
+_source = importlib.import_module(
+    "tests.nodes.node_install_reading_compute.test_golden_chain_install_reading"
+)
+globals().update({k: v for k, v in vars(_source).items() if not k.startswith("__")})
