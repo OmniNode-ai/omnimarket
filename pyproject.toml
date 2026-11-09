@@ -568,6 +568,7 @@ node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_rou
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
+node_delegation_scenario_r8_effect = "omnimarket.nodes.node_delegation_scenario_r8_effect"
 node_delegation_seam_measure_compute = "omnimarket.nodes.node_delegation_seam_measure_compute"
 node_delegation_seam_orchestrator = "omnimarket.nodes.node_delegation_seam_orchestrator"
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
