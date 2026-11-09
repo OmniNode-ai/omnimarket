@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioDaysRun is built by the node CLI factory (build_runner) with the contract runtime block, not routed by handler_routing or imported by name
 """One scheduled read of the delegation scenarios' green days (OMN-23171).
 
 Reads each scenario's STATUS rows for the window from the ledger over the bus read command, one page at a time. A page
