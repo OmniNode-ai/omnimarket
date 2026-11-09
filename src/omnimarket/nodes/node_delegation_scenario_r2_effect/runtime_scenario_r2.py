@@ -49,7 +49,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return runtime_parts.install_schedule(
         schedule,
         node_module=NODE_MODULE,
-        omni_root=Path(os.environ["OMNI_HOME"]),
+        omni_root=Path(os.environ["OMNI_HOME"]),  # ONEX_FLAG_EXEMPT
         home=home,
         python=Path(args.python),
     )
