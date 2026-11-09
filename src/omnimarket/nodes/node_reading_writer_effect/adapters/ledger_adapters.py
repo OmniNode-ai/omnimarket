@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import singledispatch
 from pathlib import Path
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
@@ -191,6 +192,18 @@ def read_queries(
     return tuple(source.read(query) for query in queries)
 
 
+def wire_correlation_id(correlation_id: str) -> str:
+    """The form a run's correlation id takes on the read command's wire: the reader's request type is a UUID.
+
+    An id that already reads as a UUID (dashed or 32 hex digits) is the same id, written dashed. Any other id is mapped to a
+    UUID by a fixed rule (version 5), so the same run id is the same wire id every time and can be traced back by the rule.
+    """
+    try:
+        return str(UUID(correlation_id))
+    except ValueError:
+        return str(uuid5(NAMESPACE_URL, f"onex:correlation:{correlation_id}"))
+
+
 class CommandLedgerRowSource:
     """Reads through the configured read command: one typed query JSON in, one answer out."""
 
@@ -213,6 +226,8 @@ class CommandLedgerRowSource:
             request["lane"] = query.lane
         if query.term is not None:
             request["term"] = query.term
+        if query.correlation_id is not None:
+            request["correlation_id"] = wire_correlation_id(query.correlation_id)
         try:
             done = subprocess.run(
                 self._argv,
