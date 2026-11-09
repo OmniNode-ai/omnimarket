@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Frozen(BaseModel):
@@ -26,6 +27,26 @@ class ModelLaneCtxLedgerDedupeCommand(_Frozen):
     store_dir: str = Field(min_length=1)
     settle_seconds: int = Field(ge=0)
     execute: bool = True
+
+
+class ModelLaneCtxLedgerDedupeOverlay(_Frozen):
+    """The node's overlay document (``node_lane_ctx_ledger_dedupe_effect/overlay.yaml``): the three settings.
+
+    A path may name ``$HOME`` or ``~`` so one document serves every lab host and names no home directory;
+    it is expanded when the overlay loads, and a path still holding a ``$`` after expansion is refused.
+    """
+
+    runs_root: str = Field(min_length=1)
+    store_dir: str = Field(min_length=1)
+    settle_seconds: int = Field(ge=0)
+
+    @field_validator("runs_root", "store_dir")
+    @classmethod
+    def _expanded(cls, value: str) -> str:
+        expanded = os.path.expandvars(os.path.expanduser(value))
+        if "$" in expanded or not os.path.isabs(expanded):
+            raise ValueError("a path must be absolute once $HOME and ~ are expanded")
+        return expanded
 
 
 class ModelLaneCtxLedgerDedupeEvent(_Frozen):

@@ -213,6 +213,40 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
+  # Lane context ledger archive dedupe (OMN-23297, node_lane_ctx_ledger_dedupe_effect): every lab host links the ledger archive
+  # rolls of its lane context directories to one shared copy, so the rolls stop filling the runs mount. The runs root, the
+  # store directory and the settle window are the node's overlay in the overlays repository; this unit holds none of them. A
+  # host reads that overlay from the root its ONEX_SKILL_OVERLAY_ROOTS names, so an install names the overlays directory
+  # (path_overrides) the way the other overlay-driven units do.
+  lane-ctx-ledger-dedupe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-ctx-ledger-dedupe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 1800
+      # Equal to the node contract's timeout_ms; under the 1800 s interval, so a hung pass ends before the next tick is due.
+      run_timeout_s: 1500
+      run_at_load: true
+      description: every 1800 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.runtime_lane_ctx_ledger_dedupe_tick
+    entry_file: src/omnimarket/nodes/node_lane_ctx_ledger_dedupe_effect/runtime_lane_ctx_ledger_dedupe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+    evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
+    state_directory: .onex_state/lane-ctx-ledger-dedupe
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.

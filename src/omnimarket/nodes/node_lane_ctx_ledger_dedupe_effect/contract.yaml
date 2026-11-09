@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 ---
 # Host-timer effect, like node_lab_daemon_sync_effect: no subscription and no onex.nodes
-# entry point, invoked by `python -m` on each lab host by the daemon sync's chore. It
+# entry point, invoked by `python -m` on each lab host by the lane-ctx-ledger-dedupe timer unit. It
 # links files on the host's own filesystem, so a runtime container must never dispatch it.
 name: node_lane_ctx_ledger_dedupe_effect
 lifecycle: experimental
@@ -32,7 +32,7 @@ descriptor:
   node_archetype: effect
   purity: side_effect
   idempotent: true
-  timeout_ms: 600000
+  timeout_ms: 1500000
   runtime_profiles:
   - effects
 terminal_event: onex.evt.omnimarket.lane-ctx-ledger-dedupe-completed.v1
