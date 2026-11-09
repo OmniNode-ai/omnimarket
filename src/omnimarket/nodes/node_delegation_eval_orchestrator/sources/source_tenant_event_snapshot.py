@@ -12,22 +12,16 @@ from __future__ import annotations
 
 import json
 
-from omnimarket.handlers.delegation_eval_read_binding import build_tenant_row_fetch
+from omnimarket.handlers.delegation_eval_read_binding import build_tenant_row_query
 from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
     ModelDelegationEventSnapshot,
 )
 from omnimarket.nodes.node_delegation_eval_orchestrator.protocols import (
     ProtocolDelegationEventSnapshot,
 )
-from omnimarket.protocols.protocol_tenant_row_fetch import ProtocolTenantRowFetch
+from omnimarket.protocols.protocol_tenant_row_query import ProtocolTenantRowQuery
 
 _TABLE = "delegation_events"
-_SNAPSHOT_SQL = """
-    SELECT correlation_id, prompt_text, response_text, task_type,
-           quality_gate_passed, quality_gate_detail, quality_gates_failed_jsonb
-    FROM public.delegation_events
-    WHERE tenant_id = %s::uuid AND correlation_id = %s
-"""
 
 
 class SnapshotNotFoundError(LookupError):
@@ -46,16 +40,20 @@ def _deciding_check(row: dict[str, object]) -> str:
 class TenantEventSnapshot:
     """Event snapshots of the tenant this source was built for, and of no other."""
 
-    def __init__(self, tenant_id: str, reader: ProtocolTenantRowFetch) -> None:
+    def __init__(self, tenant_id: str, reader: ProtocolTenantRowQuery) -> None:
         self._tenant_id = tenant_id
         self._reader = reader
 
     def get_snapshot(
         self, correlation_id: str, attempt_index: int
     ) -> ModelDelegationEventSnapshot:
-        rows = self._reader.fetch(
-            _TABLE, _SNAPSHOT_SQL, (self._tenant_id, correlation_id)
-        )
+        try:
+            rows = self._reader.query(
+                _TABLE,
+                {"tenant_id": self._tenant_id, "correlation_id": correlation_id},
+            )
+        finally:
+            self._reader.close()
         if not rows:
             raise SnapshotNotFoundError(
                 f"no delegation_events row for correlation id {correlation_id}"
@@ -72,4 +70,4 @@ class TenantEventSnapshot:
 
 def snapshots_for_tenant(tenant_id: str) -> ProtocolDelegationEventSnapshot:
     """The runtime's source for one command: the overlay-bound reader of ``tenant_id``."""
-    return TenantEventSnapshot(tenant_id, build_tenant_row_fetch(tenant_id))
+    return TenantEventSnapshot(tenant_id, build_tenant_row_query(tenant_id))

@@ -20,17 +20,17 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     resolve_setting,
 )
-from omnimarket.handlers.tenant_scoped_row_reader import TenantScopedRowReader
-from omnimarket.protocols.protocol_tenant_row_fetch import ProtocolTenantRowFetch
+from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
+from omnimarket.protocols.protocol_tenant_row_query import ProtocolTenantRowQuery
 
 OVERLAY_ID = "delegation_eval_sources"
 READ_DSN_ENV_FIELD = "read_dsn_env"
 
 
-def build_tenant_row_fetch(
+def build_tenant_row_query(
     tenant_id: str, environ: Mapping[str, str] | None = None
-) -> ProtocolTenantRowFetch:
-    """Return a reader bound to ``tenant_id`` over the DSN the overlay names."""
+) -> ProtocolTenantRowQuery:
+    """Return a read-only reader bound to ``tenant_id`` over the DSN the overlay names."""
     env = os.environ if environ is None else environ
     dsn_env = resolve_setting(
         OVERLAY_ID,
@@ -43,4 +43,4 @@ def build_tenant_row_fetch(
         raise NodeOverlayError(
             f"{OVERLAY_ID}: the variable named by {READ_DSN_ENV_FIELD} is not set in the runtime environment"
         )
-    return TenantScopedRowReader(dsn, tenant_id)
+    return PostgresReadDatabaseAdapter(dsn, tenant_id=tenant_id)

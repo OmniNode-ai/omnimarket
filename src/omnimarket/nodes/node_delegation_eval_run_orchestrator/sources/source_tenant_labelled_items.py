@@ -4,11 +4,14 @@
 
 Implements ``ProtocolDelegationEvalLabelledItems`` over ``delegation_eval_items``. The
 reader it is built on is bound to one tenant and sets ``app.tenant_id`` before the
-statement, so the relation's RLS policy limits the read to that tenant; the statement
-repeats the tenant as an explicit filter so a policy gap cannot widen it.
+statement, so the relation's RLS policy limits the read to that tenant; the read also
+filters on the tenant explicitly so a policy gap cannot widen it. An item belongs to the
+manifest when its ``computed_facts.manifest_id`` names it.
 """
 
 from __future__ import annotations
+
+import json
 
 from omnimarket.events.delegation_gate_eval.enum_gate_eval_label import (
     EnumGateEvalLabel,
@@ -17,39 +20,45 @@ from omnimarket.events.delegation_gate_eval.enum_gate_verdict import EnumGateVer
 from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
     ModelGateEvalItem,
 )
-from omnimarket.handlers.delegation_eval_read_binding import build_tenant_row_fetch
+from omnimarket.handlers.delegation_eval_read_binding import build_tenant_row_query
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.protocols.protocol_delegation_eval_labelled_items import (
     ProtocolDelegationEvalLabelledItems,
 )
-from omnimarket.protocols.protocol_tenant_row_fetch import ProtocolTenantRowFetch
+from omnimarket.protocols.protocol_tenant_row_query import ProtocolTenantRowQuery
 
 _TABLE = "delegation_eval_items"
-_LABELLED_ITEMS_SQL = """
-    SELECT item_key, task_class, stratum, label, prompt_snapshot,
-           response_snapshot, gate_verdict, deciding_check
-    FROM public.delegation_eval_items
-    WHERE tenant_id = %s::uuid AND rater_role = %s AND rubric_version = %s
-      AND computed_facts ->> 'manifest_id' = %s
-    ORDER BY item_key
-"""
 _VERDICTS = {"accepted": EnumGateVerdict.ACCEPTED, "refused": EnumGateVerdict.REFUSED}
+
+
+def _manifest_of(row: dict[str, object]) -> object:
+    facts = row.get("computed_facts")
+    if isinstance(facts, str):
+        facts = json.loads(facts)
+    return facts.get("manifest_id") if isinstance(facts, dict) else None
 
 
 class TenantLabelledItems:
     """Labelled items of the tenant this source was built for, and of no other."""
 
-    def __init__(self, tenant_id: str, reader: ProtocolTenantRowFetch) -> None:
+    def __init__(self, tenant_id: str, reader: ProtocolTenantRowQuery) -> None:
         self._tenant_id = tenant_id
         self._reader = reader
 
     def get_labelled_items(
         self, manifest_id: str, rater_role: str, rubric_version: str
     ) -> tuple[ModelGateEvalItem, ...]:
-        rows = self._reader.fetch(
-            _TABLE,
-            _LABELLED_ITEMS_SQL,
-            (self._tenant_id, rater_role, rubric_version, manifest_id),
-        )
+        try:
+            rows = self._reader.query(
+                _TABLE,
+                {
+                    "tenant_id": self._tenant_id,
+                    "rater_role": rater_role,
+                    "rubric_version": rubric_version,
+                },
+                order_by="item_key",
+            )
+        finally:
+            self._reader.close()
         return tuple(
             ModelGateEvalItem(
                 item_id=str(row["item_key"]),
@@ -68,9 +77,10 @@ class TenantLabelledItems:
                 ),
             )
             for row in rows
+            if _manifest_of(row) == manifest_id
         )
 
 
 def labelled_items_for_tenant(tenant_id: str) -> ProtocolDelegationEvalLabelledItems:
     """The runtime's source for one command: the overlay-bound reader of ``tenant_id``."""
-    return TenantLabelledItems(tenant_id, build_tenant_row_fetch(tenant_id))
+    return TenantLabelledItems(tenant_id, build_tenant_row_query(tenant_id))

@@ -16,6 +16,9 @@ from omnimarket.nodes.node_delegation_eval_orchestrator.protocols import (
     ProtocolDelegationEventSnapshot,
 )
 from omnimarket.nodes.node_delegation_eval_orchestrator.scrubber import scrub_snapshot
+from omnimarket.nodes.node_delegation_eval_orchestrator.sources.source_tenant_event_snapshot import (
+    snapshots_for_tenant,
+)
 
 
 class HandlerDelegationEvalOrchestrator:
@@ -29,15 +32,13 @@ class HandlerDelegationEvalOrchestrator:
         | None = None,
     ) -> None:
         self._snapshot_source = snapshot_source
-        self._snapshot_source_factory = snapshot_source_factory
+        self._snapshot_source_factory = snapshot_source_factory or snapshots_for_tenant
 
     def handle(self, request: ModelLabelRecordRequest) -> ModelLabelRecordResult:
         source = self._snapshot_source
-        if source is None and self._snapshot_source_factory is not None:
+        if source is None:
             # One source per command, bound to the command's tenant (OMN-20577).
             source = self._snapshot_source_factory(str(request.tenant_id))
-        if source is None:
-            raise RuntimeError("tenant-scoped snapshot source is required for dispatch")
         snapshot = source.get_snapshot(request.correlation_id, request.attempt_index)
         # Redact BOTH texts before constructing any outbound payload.
         prompt = scrub_snapshot(snapshot.prompt)

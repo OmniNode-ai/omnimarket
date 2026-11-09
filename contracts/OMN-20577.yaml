@@ -32,14 +32,14 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn20577-ac2-rls-seam
-  description: 'AC2: the RLS read-seam gate is clean over the tree, and the reader sets app.tenant_id before its statement in a read-only session and reads nothing of another tenant.'
+  description: 'AC2: the RLS read-seam gate is clean over the tree, and the binding builds the existing RLS-seamed read adapter for the calling tenant (it sets app.tenant_id before its statement) and a command reads nothing of another tenant.'
   source: manual
   checks:
   - check_type: command
     check_value: uv run python scripts/ci/check_rls_read_tenant_seam.py
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
-    check_value: uv run pytest tests/test_delegation_eval_runtime_binding.py -k "guc or another_tenants" -q --no-cov
+    check_value: uv run pytest tests/test_delegation_eval_runtime_binding.py -k "another_tenants or rls_seamed" -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2

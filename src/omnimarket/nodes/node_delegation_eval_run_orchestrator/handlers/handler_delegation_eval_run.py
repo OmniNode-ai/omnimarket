@@ -60,6 +60,9 @@ from omnimarket.nodes.node_delegation_eval_run_orchestrator.models.model_eval_ru
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.protocols.protocol_delegation_eval_labelled_items import (
     ProtocolDelegationEvalLabelledItems,
 )
+from omnimarket.nodes.node_delegation_eval_run_orchestrator.sources.source_tenant_labelled_items import (
+    labelled_items_for_tenant,
+)
 from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
     HandlerDelegationGateEval,
 )
@@ -196,7 +199,7 @@ class HandlerDelegationEvalRun:
         rubric_verdict: Callable[..., ModelAttemptRubricVerdict] | None = None,
     ) -> None:
         self._items_source = items_source
-        self._items_source_factory = items_source_factory
+        self._items_source_factory = items_source_factory or labelled_items_for_tenant
         self._gate_eval = gate_eval or HandlerDelegationGateEval()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._class_rubrics = (
@@ -208,28 +211,23 @@ class HandlerDelegationEvalRun:
 
     def handle(self, request: ModelDelegationEvalRunRequest) -> ModelEvalRunResult:
         source = self._items_source
-        if source is None and self._items_source_factory is None:
-            raise RuntimeError("tenant-scoped labelled-item source is required")
         source_failure: str | None = None
         items: tuple[ModelGateEvalItem, ...] = ()
         try:
-            if source is None and self._items_source_factory is not None:
+            if source is None:
                 # One source per command, bound to the command's tenant (OMN-20577).
                 source = self._items_source_factory(str(request.tenant_id))
-            if source is not None:
-                items = tuple(
-                    sorted(
-                        source.get_labelled_items(
-                            request.manifest_id,
-                            request.rater_role,
-                            request.rubric_version,
-                        ),
-                        key=lambda item: item.item_id,
-                    )
+            items = tuple(
+                sorted(
+                    source.get_labelled_items(
+                        request.manifest_id,
+                        request.rater_role,
+                        request.rubric_version,
+                    ),
+                    key=lambda item: item.item_id,
                 )
+            )
         except Exception as exc:
-            if self._items_source_factory is None:
-                raise
             # A bound source that cannot be built or read is a failed terminal the
             # sender can see, never an exception nothing reports (OMN-20577).
             source_failure = f"labelled-item source unavailable: {type(exc).__name__}"

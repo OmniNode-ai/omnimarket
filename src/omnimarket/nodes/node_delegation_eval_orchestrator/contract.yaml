@@ -16,24 +16,24 @@ description: >
   node_delegation_eval_run_orchestrator, so each command has one terminal.
   Committed lab command for both: python -m omnimarket.nodes.node_delegation_eval_orchestrator.lab_run.
 handler:
-  module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator_runtime
-  class: HandlerDelegationEvalOrchestratorRuntime
+  module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator
+  class: HandlerDelegationEvalOrchestrator
 handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: label-record
       handler:
-        name: HandlerDelegationEvalOrchestratorRuntime
-        module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator_runtime
-      handler_module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator_runtime
+        name: HandlerDelegationEvalOrchestrator
+        module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator
+      handler_module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.delegation-eval-label-record.v1
   publish_topics:
     - onex.evt.omnimarket.delegation-eval-item-labelled.v1
 terminal_event: onex.evt.omnimarket.delegation-eval-item-labelled.v1
-# OMN-20577: the routed handler binds one tenant-scoped snapshot reader per command,
-# from the node overlay delegation_eval_sources (field read_dsn_env).
+# OMN-20577: the handler binds one tenant-scoped snapshot reader per command, from the
+# node overlay delegation_eval_sources (field read_dsn_env), unless a source is injected.
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-eval-label-record.v1
   terminal_events:

@@ -25,17 +25,17 @@ handler_routing:
   handlers:
     - operation: delegation-eval-run
       handler:
-        name: HandlerDelegationEvalRunRuntime
-        module: omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run_runtime
-      handler_module: omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run_runtime
+        name: HandlerDelegationEvalRun
+        module: omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run
+      handler_module: omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.delegation-eval-run.v1
   publish_topics:
     - onex.evt.omnimarket.delegation-eval-run-completed.v1
 terminal_event: onex.evt.omnimarket.delegation-eval-run-completed.v1
-# OMN-20577: the routed handler binds one tenant-scoped labelled-item reader per command,
-# from the node overlay delegation_eval_sources (field read_dsn_env).
+# OMN-20577: the handler binds one tenant-scoped labelled-item reader per command, from the
+# node overlay delegation_eval_sources (field read_dsn_env), unless a source is injected.
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-eval-run.v1
   terminal_events:
