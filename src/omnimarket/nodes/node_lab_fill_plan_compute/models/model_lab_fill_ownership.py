@@ -46,6 +46,8 @@ class ModelLabFillOwnershipRequest(BaseModel):
     staleness_hours: float = Field(ge=0, allow_inf_nan=False)
     pr_claims: dict[str, str] | str
     watcher_merged: dict[str, tuple[str, ...]] | str
+    # Ticket -> the live lanes the work-state projection attributes to it; None adds no reading, a string is unreadable.
+    work_state_owners: dict[str, tuple[str, ...]] | str | None = None
     # A partial reader response must leave missing lanes ownership-unread.
     verdict_lanes: tuple[str, ...] | None = None
     returned: tuple[dict[str, object], ...] = ()

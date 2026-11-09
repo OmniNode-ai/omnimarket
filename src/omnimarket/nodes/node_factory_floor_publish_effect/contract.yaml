@@ -92,7 +92,7 @@ descriptor:
   timeout_ms: 900000
   side_effects:
   - runs the lab host reading, the pool read of the machines (which writes its own receipt), the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
-  - reads the factory floor JSON and the packaged pages (the tab page, the compare page and the factory floor page)
+  - reads the factory floor JSON and the packaged pages (the tab page, the compare page, the delegation tracker page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
   - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
@@ -139,6 +139,11 @@ runtime:
   # OMN-23018: the running comparison against 1, 7 and 30 days ago (page/compare.html, published as compare.html).
   compare_page_relpath: page/compare.html
   compare_data_relpath: .claude_scratch/factory-floor/floor-compare.json
+  # OMN-23081: the delegation tracker (page/delegation.html, published as delegation.html) and what node_floor_delegation_effect
+  # writes (relative to the registry home). The name delegation.json is the lab projection windows' (names.delegation), so the
+  # tracker's data is delegation-tracker.json.
+  delegation_tracker_page_relpath: page/delegation.html
+  delegation_tracker_data_relpath: .claude_scratch/factory-floor/delegation-tracker.json
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
@@ -245,8 +250,14 @@ runtime:
     timeout_seconds: 90
     output_relpath: .claude_scratch/friction/friction-report.json
     rollup:
-      ledger_path_env: ONEX_LEDGER_PATH
-      archive_subdir: archive
+      # The ledger is on the bus: the window's rows come from typed reads of the kinds below, one chunk of
+      # ledger_chunk_hours at a time, through the command the variable holds. A failed or truncated read refuses the step
+      # and the previous report stays; nothing here reads a file.
+      ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+      ledger_read_timeout_seconds: 60
+      ledger_row_limit: 5000
+      ledger_row_kinds: [FRICTION, CORRECTION, STATUS, TERMINAL, CLAIM, MSG]
+      ledger_chunk_hours: 24
       window_hours: 24
       bucket_hours: 2
       umbrella_tickets: [OMN-17427]
@@ -278,6 +289,19 @@ runtime:
     timeout_seconds: 30
     module: omnimarket.nodes.node_join_j16_effect
     args: ["run"]
+  # OMN-23081: the delegation tracker. It reads the latest scheduled run of each delegation scenario's workflow through the
+  # source-control node, one at a time (parallel reads queue behind each other) and stops starting reads at its own 70 s deadline,
+  # then reads the ticket mirror, the pull request watcher and the factory floor record and writes delegation-tracker.json.
+  # It runs with the other input steps, so it adds nothing past the group's 90 s; the lanes it shows come from the record of the
+  # cycle before (the record is written after this group), which it refuses past 15 minutes. Not required: when it fails the
+  # previous file stays and the Delegation tab draws its own age, red past 15 minutes.
+  - name: delegation_tracker
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_floor_delegation_effect
+    args: ["run", "--home", "{home}"]
   - name: factory_floor
     kind: module
     required: true
@@ -315,6 +339,8 @@ runtime:
     simple_reads: floor-simple-reads.json
     compare_page: compare.html
     compare_data: floor-compare.json
+    delegation_tracker_page: delegation.html
+    delegation_tracker_data: delegation-tracker.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json

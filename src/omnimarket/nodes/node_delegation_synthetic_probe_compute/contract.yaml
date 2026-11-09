@@ -9,8 +9,9 @@ description: >-
   Rebuild piece 15's hourly synthetic delegated task, judged. Takes what the task came back with
   (the terminal event type, its result text and cost, when it was issued and observed) and returns
   PASS or FAIL with a reason and the ledger row the piece 15 reading selects. A task passes when a
-  terminal came back inside the bound with the expected answer and a cost; no terminal, a terminal
-  over the bound, a dropped result, a wrong answer and a missing cost each FAIL with their own reason
+  success terminal came back inside the bound with the expected answer and a cost; no terminal, a
+  terminal that is not the success terminal, a terminal over the bound, a dropped result, a wrong
+  answer and a missing cost each FAIL with their own reason
   and still write a row. The prompt, expected answer, bound, cadence and row cells are the
   probe_rules below. No I/O other than loading this contract, no clock and no randomness.
 input_model:
@@ -49,7 +50,7 @@ outputs:
   correlation_id: {type: str}
   task_id: {type: str}
   verdict: {type: str, enum: [PASS, FAIL]}
-  reason: {type: str, enum: [ok, no_terminal, over_bound, result_dropped, wrong_answer, cost_missing]}
+  reason: {type: str, enum: [ok, no_terminal, not_success_terminal, over_bound, result_dropped, wrong_answer, cost_missing]}
   failure_reason: {type: str, required: false, description: The reason code when the task failed.}
   elapsed_seconds: {type: int}
   cost_usd: {type: float}
@@ -77,6 +78,8 @@ probe_rules:
   task_class: document
   prompt: "Reply with exactly the word: pong"
   expected_substring: pong
+  # Only this terminal is a successful delegation outcome; a failed terminal can carry the answer text.
+  success_terminal_event_type: ModelDelegationCompleted
   # No result and cost within this bound is a FAIL (the piece 15 table's "bound").
   bound_seconds: 600
   # One synthetic task per hour; the reading's source max_age is this plus one tick of the writer.

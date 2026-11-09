@@ -690,11 +690,44 @@ def test_failing_control_an_ask_closed_on_a_report_alone_stays_open() -> None:
     )
     report = _run((_prompt(30, "Make the floor read piece 6"),), rows)
     entry = _entry(report, 30)
-    assert entry.state is EnumAskState.UNVERIFIED
+    assert entry.state is EnumAskState.FAILED
     assert entry.check_verdict == "FALSE"
     assert entry.done_check == "floor:piece=6"
     assert entry.owner_lane is None
-    assert "UNVERIFIED (1)" in report.text
+    assert report.counts.failed == 1
+    assert "FAILED (1)" in report.text
+
+
+def _reported_done(n: int) -> tuple[str, str]:
+    return (
+        claim("lane-d", "2026-10-31T08:05:00Z", ask_id(n)),
+        terminal("lane-d", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "done"),
+    )
+
+
+def test_three_states_of_a_reported_done_ask_follow_the_newest_verdict_row() -> None:
+    """OMN-22729 AC1: unverified with no verdict row, done when the newest reads TRUE, failed
+    when the newest reads FALSE; UNKNOWN (the check could not read) never closes or fails it."""
+    prompt = (_prompt(40, "Make the floor read piece 6"),)
+    base = _reported_done(40)
+    true_row = check(ask_id(40), "2026-10-31T09:10:00Z", "TRUE")
+    false_row = check(ask_id(40), "2026-10-31T09:20:00Z", "FALSE")
+    unknown_row = check(ask_id(40), "2026-10-31T09:30:00Z", "UNKNOWN")
+    assert _state(_run(prompt, base), 40) is EnumAskState.UNVERIFIED
+    assert _state(_run(prompt, (*base, true_row)), 40) is EnumAskState.DONE
+    assert _state(_run(prompt, (*base, false_row)), 40) is EnumAskState.FAILED
+    assert _state(_run(prompt, (*base, unknown_row)), 40) is EnumAskState.UNVERIFIED
+    # The newest row rules, by its stamp.
+    later_true = check(ask_id(40), "2026-10-31T09:40:00Z", "TRUE")
+    later_false = check(ask_id(40), "2026-10-31T09:40:00Z", "FALSE")
+    assert _state(_run(prompt, (*base, false_row, later_true)), 40) is EnumAskState.DONE
+    assert (
+        _state(_run(prompt, (*base, true_row, later_false)), 40) is EnumAskState.FAILED
+    )
+    assert (
+        _state(_run(prompt, (*base, true_row, unknown_row)), 40)
+        is EnumAskState.UNVERIFIED
+    )
 
 
 def test_a_passing_check_closes_an_ask_and_a_check_for_another_ask_does_not() -> None:

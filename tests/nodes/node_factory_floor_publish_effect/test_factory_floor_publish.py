@@ -190,6 +190,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert sorted(p.name for p in site.iterdir()) == [
         "apple-touch-icon.png",
         "compare.html",
+        "delegation.html",
         "detail.html",
         "factory-floor.json",
         "favicon-32.png",
@@ -230,6 +231,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "detail.html",
         "index.html",
         "compare.html",
+        "delegation.html",
         "publish-status.json",
         "factory-floor.json",
     )
@@ -238,6 +240,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert [
         c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
     ] == [
+        False,
         False,
         False,
         False,
@@ -336,6 +339,7 @@ class Scripted(LocalSsh):
 FACTORY = "omnimarket.nodes.node_factory_floor_effect"
 FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
 FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
+FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
@@ -378,7 +382,15 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
     assert calls[-1] == FLOOR_COMPARE
     calls = calls[:-1]
     assert sorted(calls[:-2]) == sorted(
-        ["hosts", "pool", HEALTH_MODULE, JOIN_REFUSAL, JOIN_J2, JOIN_J16]
+        [
+            "hosts",
+            "pool",
+            HEALTH_MODULE,
+            JOIN_REFUSAL,
+            JOIN_J2,
+            JOIN_J16,
+            FLOOR_DELEGATION,
+        ]
     )
     assert calls[-2] == FACTORY
     # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
@@ -415,6 +427,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "friction_classed",
         "join_refusal",
         "join_j16",
+        "delegation_tracker",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -435,6 +448,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and FACTORY not in argv
                 and FLOOR_SIMPLE not in argv
                 and FLOOR_COMPARE not in argv
+                and FLOOR_DELEGATION not in argv
                 and JOIN_REFUSAL not in argv
                 and JOIN_J16 not in argv
                 and JOIN_J2 not in argv
@@ -596,6 +610,7 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
         "detail.html",
         "index.html",
         "compare.html",
+        "delegation.html",
         "publish-status.json",
         "process-health.json",
         "factory-floor.json",
