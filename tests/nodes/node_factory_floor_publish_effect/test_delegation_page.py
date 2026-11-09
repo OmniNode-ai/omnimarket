@@ -291,7 +291,7 @@ def test_failing_control_routes_that_are_not_fresh_are_drawn_with_no_number_and_
 ):
     for state in ("stale", "unread"):
         block = ModelRoutesBlock(
-            state=state,  # type: ignore[arg-type]
+            state=state,
             reason="the read is old or missing",
             read_at="2026-11-08T10:00:00Z",
             max_age_min=90,

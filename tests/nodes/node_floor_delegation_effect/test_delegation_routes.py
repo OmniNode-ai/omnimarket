@@ -77,9 +77,7 @@ def _handler(
 
 
 def _stage(handler: HandlerFloorDelegation, home: Path, stage: str) -> Any:
-    return handler.handle(
-        ModelFloorDelegationRequest(stage=stage, home=str(home))  # type: ignore[arg-type]
-    )
+    return handler.handle(ModelFloorDelegationRequest(stage=stage, home=str(home)))
 
 
 def _tracker(home: Path) -> dict[str, Any]:
@@ -100,7 +98,7 @@ def check_routes_block(doc: dict[str, Any]) -> dict[str, Any]:
     assert block["state"] in ("fresh", "stale", "unread")
     assert block["max_age_min"] == RT.routes_max_age_min
     assert isinstance(block["hours"], list)
-    return block  # type: ignore[no-any-return]
+    return block
 
 
 def test_golden_hourly_rows_in_the_floor_shares_out(tmp_path: Path) -> None:
@@ -168,7 +166,7 @@ def test_the_read_is_one_read_only_command_built_from_the_overlay(
 def test_the_prefixes_and_the_window_are_not_literals_of_the_code(
     tmp_path: Path,
 ) -> None:
-    other = RT.routes.model_copy(  # type: ignore[union-attr]
+    other = RT.routes.model_copy(
         update={"local_prefix": "edge-", "glm_prefix": "other:glm", "window_hours": 3}
     )
     runner = RoutesRunner()
@@ -180,7 +178,7 @@ def test_the_prefixes_and_the_window_are_not_literals_of_the_code(
     assert "edge-" in script
     assert "other:glm" in script
     assert "interval '2 hours'" in script
-    assert RT.routes.local_prefix not in script  # type: ignore[union-attr]
+    assert RT.routes.local_prefix not in script
 
 
 @pytest.mark.parametrize(
