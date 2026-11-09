@@ -299,6 +299,16 @@ runtime:
     timeout_seconds: 90
     module: omnimarket.nodes.node_floor_delegation_effect
     args: ["run", "--home", "{home}"]
+  # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
+  # rows, writes beta-board.json and copies beta.html and beta-board.json to every host its overlay lists (the same web servers that
+  # serve the floor). Not required: when it fails the previous page stays on each host and its Computed line shows its age.
+  - name: beta_board
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 85
+    module: omnimarket.nodes.node_beta_board_effect
+    args: ["run", "--home", "{home}"]
   - name: factory_floor
     kind: module
     required: true
