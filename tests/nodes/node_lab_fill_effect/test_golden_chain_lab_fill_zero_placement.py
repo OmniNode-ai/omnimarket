@@ -35,6 +35,7 @@ from .fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -118,6 +119,7 @@ def _handler(
 ) -> HandlerLabFillTick:
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     launch = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=approved,
         blocks=FakeBlocks(),
