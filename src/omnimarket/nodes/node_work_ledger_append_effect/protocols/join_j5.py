@@ -17,6 +17,10 @@ from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES
 from omnimarket.handlers.work_ledger_fold import WorkLedgerFoldError, fold_row
 from omnimarket.models.model_work_ledger_fold_request import ModelWorkLedgerFoldRequest
 from omnimarket.models.model_work_ledger_fold_result import ModelWorkLedgerRowRecord
+from omnimarket.models.work_ledger_append import (
+    ModelWorkLedgerAppendReceipt,
+    ModelWorkLedgerAppendRequest,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
     ModelAppendCommandResult,
 )
@@ -37,12 +41,32 @@ class ProtocolStoreIdentities(Protocol):
         ...
 
 
+class ProtocolJoinAppend(Protocol):
+    """Piece 6's append, as the join calls it: the principal the store resolved goes in, the receipt comes out."""
+
+    def handle(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        *,
+        writer_principal: str | None = None,
+    ) -> ModelWorkLedgerAppendReceipt: ...
+
+
 class ProtocolProjectedRows(Protocol):
     """Piece 6's projection, read by position."""
 
     def read_row(
-        self, *, ledger_id: str, ledger_seq: int
-    ) -> ModelWorkLedgerRowRecord | None: ...
+        self,
+        *,
+        ledger_id: str,
+        ledger_seq: int,
+        raw_row: str | None = None,
+        correlation_id: str | None = None,
+    ) -> ModelWorkLedgerRowRecord | None:
+        """The projected row at the position. ``raw_row`` is the durable row the caller expects there; a backend that
+        cannot be asked by position (a read command over rows by text) finds the row by it. ``correlation_id`` is the join
+        run's: a backend that reads over a command sends it, because the reader's request requires one."""
+        ...
 
 
 class InMemoryStoreIdentities:
@@ -79,7 +103,12 @@ class InMemoryProjectedRows:
         self._rows[(ledger_id, ledger_seq)] = result.row
 
     def read_row(
-        self, *, ledger_id: str, ledger_seq: int
+        self,
+        *,
+        ledger_id: str,
+        ledger_seq: int,
+        raw_row: str | None = None,
+        correlation_id: str | None = None,
     ) -> ModelWorkLedgerRowRecord | None:
         return self._rows.get((ledger_id, ledger_seq))
 
@@ -202,6 +231,7 @@ __all__ = [
     "InMemoryJoinLedger",
     "InMemoryProjectedRows",
     "InMemoryStoreIdentities",
+    "ProtocolJoinAppend",
     "ProtocolProjectedRows",
     "ProtocolStoreIdentities",
     "ScratchFileJoinLedger",

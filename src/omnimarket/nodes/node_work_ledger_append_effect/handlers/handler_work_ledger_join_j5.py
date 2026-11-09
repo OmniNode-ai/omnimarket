@@ -32,13 +32,13 @@ from omnimarket.models.work_ledger_append import (
     ModelJoinJ5Result,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
-    HandlerWorkLedgerAppendEffect,
     _request_lines,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerReader,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    ProtocolJoinAppend,
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
     StoreIdentityUnresolvedError,
@@ -76,7 +76,7 @@ class HandlerWorkLedgerJoinJ5:
     def __init__(
         self,
         *,
-        append: HandlerWorkLedgerAppendEffect | None = None,
+        append: ProtocolJoinAppend | None = None,
         ledger: ProtocolLedgerReader | None = None,
         identities: ProtocolStoreIdentities | None = None,
         projection: ProtocolProjectedRows | None = None,
@@ -105,7 +105,7 @@ class HandlerWorkLedgerJoinJ5:
     def _wired(
         self,
     ) -> tuple[
-        HandlerWorkLedgerAppendEffect,
+        ProtocolJoinAppend,
         ProtocolLedgerReader,
         ProtocolStoreIdentities,
         ProtocolProjectedRows,
@@ -180,8 +180,27 @@ class HandlerWorkLedgerJoinJ5:
         first_projected_id: str | None = None
         for seq in receipt.ledger_lines:
             durable = durable_row(text, seq)
+            # The receipt's position counts the ledger host's file. A copy that is short, stale or another file holds some
+            # other row there, and a projection that holds that row would read as a landing: the durable row must be this
+            # request's.
+            if f"req={request.append.request_id}" not in durable:
+                code = policy.append_not_accepted_failure_code
+                detail = f"the ledger line at position {seq} is not the row of request {request.append.request_id}"
+                if not replay:
+                    chain.failure(code, detail)
+                return ModelJoinJ5Result(
+                    outcome=EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED,
+                    correlation_id=request.correlation_id,
+                    failure_code=code,
+                    detail=detail,
+                    receipt=receipt,
+                    ledger_seq=ledger_seq,
+                )
             projected = projection.read_row(
-                ledger_id=request.append.ledger_id, ledger_seq=seq
+                ledger_id=request.append.ledger_id,
+                ledger_seq=seq,
+                raw_row=durable,
+                correlation_id=request.correlation_id,
             )
             if projected is None or projected.raw_row != durable:
                 code = policy.projected_row_missing_failure_code
