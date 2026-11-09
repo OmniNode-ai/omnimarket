@@ -433,12 +433,8 @@ _PRODUCTION_ANSWER = (
     "The sky is blue because Rayleigh scattering by air molecules scatters "
     "short blue wavelengths of sunlight far more strongly than red ones."
 )
-_LOCAL_CODER = (
-    "http://127.0.0.1:18742/v1/chat/completions"  # url-authority-ok: test loopback
-)
-_LOCAL_HEAVY = (
-    "http://127.0.0.1:18743/v1/chat/completions"  # url-authority-ok: test loopback
-)
+_LOCAL_CODER = "http://127.0.0.1:18742/v1/chat/completions"
+_LOCAL_HEAVY = "http://127.0.0.1:18743/v1/chat/completions"
 
 
 def test_probe_faults_mode_models_are_typed() -> None:
