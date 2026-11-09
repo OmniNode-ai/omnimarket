@@ -48,10 +48,8 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/routing/test_backend_placement_omn19215.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23329-integration-proof
-  description: After install, a delegated task of a served class reaches the lead rung and its acceptance result is recorded. The first check runs the lead-rung tests at the pushed head on a lab host through the lab work runner; the second reads the run receipts the delegate command writes and goes red on a host whose overlay does not carry the lead rung. Hosted CI has no delegation receipts, so only the local Done gate runs this.
+  description: After install, a delegated task of a served class reaches the lead rung and its acceptance result is recorded. The first check runs the lead-rung tests at the pushed head on a lab host through the lab work runner; the second reads the run receipts the delegate command writes and goes red on a host whose overlay does not carry the lead rung. Hosted CI has no delegation receipts, so only the local Done gate runs this; it binds no criterion because the hosted must-fail control cannot run a local_done_gate item.
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
