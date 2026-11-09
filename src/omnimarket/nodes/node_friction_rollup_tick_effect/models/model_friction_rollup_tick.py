@@ -8,6 +8,11 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.friction_rollup import (
+    ModelFrictionClassOwner,
+    ModelFrictionClassRule,
+)
+
 
 class ModelFrictionRollupTickRequest(BaseModel):
     """What a launchd plist passes as a small JSON input: where the registry and the ledger are."""
@@ -32,6 +37,15 @@ class ModelFrictionRollupTickRequest(BaseModel):
         default=None,
         description="Where the *-split.md files are; default beside the ledger.",
     )
+
+
+class ModelFrictionClassOverlay(BaseModel):
+    """The overlay home's class rules and class owners, the shape of the rollup node's ``overlay.example.yaml``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    class_rules: tuple[ModelFrictionClassRule, ...]
+    class_owners: tuple[ModelFrictionClassOwner, ...] = ()
 
 
 class ModelTickWindow(BaseModel):
@@ -66,7 +80,8 @@ class ModelFrictionRollupTickSettings(BaseModel):
     needs_ticket_budget_chars: int = Field(ge=1)
     appender_command: tuple[str, ...] = Field(min_length=1)
     appender_timeout_seconds: int = Field(ge=1)
-    class_rules_path: str = Field(min_length=1)
+    class_overlay_id: str = Field(min_length=1)
+    class_overlay_file_env: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_windows(self) -> Self:

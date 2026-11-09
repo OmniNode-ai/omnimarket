@@ -24,6 +24,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
     ModelMrcConfig,
+    ModelMrcEvidenceRead,
 )
 from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
@@ -140,6 +141,20 @@ class MergedRunningCountReader:
             ModelMergedRunningCountRunRequest(now=now)
         )
         return run.count
+
+    def read_evidence(
+        self, now: datetime, *, hosts_table: Path | None = None
+    ) -> ModelMrcEvidenceRead:
+        """The evidence the count is computed from (``ProtocolMergedRunningEvidenceReader``): adoption rows and deploy receipts."""
+        try:
+            sources = build_sources(now, hosts_table=hosts_table)
+        except SystemExit as exc:
+            raise RuntimeError(str(exc)) from exc
+        deployed = sources.read_deployed_evidence()
+        return ModelMrcEvidenceRead(
+            evidence=(*sources.read_evidence(), *deployed.evidence),
+            unread_cause=deployed.unread_cause,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

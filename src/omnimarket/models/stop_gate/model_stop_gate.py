@@ -86,6 +86,27 @@ class EnumReadingOrigin(StrEnum):
     INFERRED = "inferred"
 
 
+class EnumFloorVerdict(StrEnum):
+    """What the floor's own reading of a piece or scope says; only ``WORKING`` can release a stop."""
+
+    WORKING = "WORKING"
+    BROKEN = "BROKEN"
+    UNKNOWN = "UNKNOWN"
+
+
+class EnumReleaseReason(StrEnum):
+    """Why the release predicate holds a stop open ('met' when it does not)."""
+
+    MET = "met"
+    GO_AND_SEE_MISSING = "go_and_see_missing"
+    GO_AND_SEE_EMPTY = "go_and_see_empty"
+    GO_AND_SEE_BEFORE_STOP = "go_and_see_before_stop"
+    WORKING_READING_MISSING = "working_reading_missing"
+    WORKING_READING_NOT_WORKING = "working_reading_not_working"
+    WORKING_READING_BEFORE_STOP = "working_reading_before_stop"
+    WORKING_READING_BEFORE_LEASE = "working_reading_before_lease"
+
+
 class EnumFoldStatus(StrEnum):
     APPLIED = "applied"
     REFUSED = "refused"
@@ -167,6 +188,25 @@ class ModelStopRecord(_Frozen):
     fixed_at: datetime | None = None
     fixed_readings_seen: int = 0
     cleared_at: datetime | None = None
+    last_lease_at: datetime | None = (
+        None  # when the newest lease (a grant or a replacement) began
+    )
+
+
+class ModelWorkingReading(_Frozen):
+    """The floor's reading of the stopped scope that came with a readback: its verdict and when it was probed."""
+
+    verdict: EnumFloorVerdict
+    read_at: datetime
+
+
+class ModelGoAndSeeRow(_Frozen):
+    """The row a lane writes after it went and looked at the stopped scope itself: what it saw, where and when."""
+
+    row_id: str = Field(min_length=1)
+    lane_id: str = Field(min_length=1)
+    seen_at: datetime
+    observed: str
 
 
 class ModelStopReading(_Frozen):
@@ -176,6 +216,7 @@ class ModelStopReading(_Frozen):
     proof_eligible: bool = False
     origin: EnumReadingOrigin = EnumReadingOrigin.INFERRED
     covers_scope: bool = False
+    working: ModelWorkingReading | None = None
 
 
 class ModelHandFixEvidence(_Frozen):
@@ -197,6 +238,25 @@ class ModelStopEvent(_Frozen):
     reading: ModelStopReading | None = None
     hand_fix: ModelHandFixEvidence | None = None
     extension: int = 0
+    go_and_see: ModelGoAndSeeRow | None = None
+
+
+class ModelStopReleaseVerdict(_Frozen):
+    """The release predicate's answer for one readback: met or not, and the one reason it is not."""
+
+    met: bool
+    reason: EnumReleaseReason
+
+
+class ModelStopReleaseRecord(_Frozen):
+    """The typed record of a release: the go-and-see row and the WORKING reading a stop was cleared on."""
+
+    stop_id: str
+    go_and_see_row_id: str
+    go_and_see_lane_id: str
+    go_and_see_seen_at: datetime
+    working_read_at: datetime
+    released_at: datetime
 
 
 class ModelStopFoldResult(_Frozen):
@@ -209,6 +269,8 @@ class ModelStopFoldResult(_Frozen):
     transition: str = ""
     actions: tuple[str, ...] = ()
     line: str = ""
+    release: ModelStopReleaseRecord | None = None
+    release_reason: EnumReleaseReason | None = None
 
 
 class ModelStopFoldRequest(_Frozen):
