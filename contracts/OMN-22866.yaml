@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: each rendered dispatch kind, the tick ticket brief and the diagnose brief hold no opening sentence the check would refuse, and the ticket brief with the push sentence removed is refused naming open one PR -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov'
+- id: req-omn22866-render-replaces-workflow-copy
+  statement: The lane brief the running lab-fill workflow sends is the omnimarket render, not a copy of its text in the workflow script, and the render answers the recorded workflow briefs plus the push sentence.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: for each of 39 recorded workflow briefs (every fill kind, pinned and unpinned, both fallback shapes) the render answers the recorded text plus the one push sentence, the lane-brief child-id check refuses the recorded briefs that open a pull request and admits every render, and the render runs as a command (python -m omnimarket.nodes.node_lab_fill_plan_compute) that rejects an invalid request -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_render_replays_lab_fill_js.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The brief-check tests with their failing control, and the lab fill plan and effect suites.
@@ -28,6 +33,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov
+- id: dod-omn22866-render-replays-workflow
+  description: The render matches the 39 recorded workflow briefs plus the push sentence, the recorded old briefs that open a pull request are refused by the check copy, and the render command writes the handler's brief.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_render_replays_lab_fill_js.py -q --no-cov
 - id: dod-omn22866-lab-fill-suites
   description: The lab fill plan and effect suites still pass.
   source: manual
