@@ -45,6 +45,7 @@ def test_the_contract_names_a_pure_node_with_declared_topics() -> None:
     topics = contract["event_bus"]
     assert topics["subscribe_topics"] == [contract["runtime_dispatch"]["command_topic"]]
     assert topics["publish_topics"] == [contract["terminal_event"]]
+    assert contract["terminal_event"] == "onex.evt.omnimarket.lab-idle-cost-computed.v1"
     entry = contract["handler_routing"]["handlers"][0]
     assert entry["event_model"]["name"] == contract["input_model"].rpartition(".")[2]
     assert callable(
