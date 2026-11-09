@@ -33,6 +33,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.ticket_guard_locator import locate_ticket_guard
+
 _LANE_ENV_KEYS = ("ONEX_LANE", "ONEX_REMOTE_LANE")
 #: Set in the environment of a session another session started (a workflow subagent).
 _SUBAGENT_ENV_KEY = "CLAUDE_CODE_CHILD_SESSION"
@@ -185,7 +187,7 @@ class LaneIntakeGate:
     """The lane-intake rules for a node whose create bypasses the full guard.
 
     ``guard_path`` is the installed ticket-creation guard; ``None`` locates the
-    enabled onex plugin the way ``node_create_ticket`` does. A seam for tests:
+    enabled onex plugin through ``ticket_guard_locator``. A seam for tests:
     both methods are what a fake replaces.
     """
 
@@ -194,10 +196,6 @@ class LaneIntakeGate:
 
     def _guard(self) -> Path:
         if self._guard_path is None:
-            from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
-                locate_ticket_guard,
-            )
-
             self._guard_path = locate_ticket_guard()
         return self._guard_path
 

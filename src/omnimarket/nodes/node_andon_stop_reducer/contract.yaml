@@ -5,7 +5,7 @@
 # Node: NodeAndonStopReducer
 #
 # The lifecycle of one andon stop: a detector opens it, one swarm lane holds its lease,
-# the readback clears it, an operator can declare it false. The transitions are the
+# the readback with its go-and-see row and WORKING reading clears it, an operator can declare it false. The transitions are the
 # state_machine below (the fragment of section 5.8 of the factory design plan), run by
 # core's execute_transition through omnimarket.handlers.rules_stop_gate, the one rule
 # the queue, the fill, the placement decision and the worker-engine choice also call in
@@ -32,7 +32,9 @@ node_version:
   patch: 0
 description: >
   Pure reducer folding one event into one andon stop. A stop never clears without
-  consecutive complete fixed readings; a reading that cannot be read holds it; an
+  consecutive complete fixed readings and the release predicate (rules_stop_gate.release_predicate):
+  a go-and-see row and a WORKING reading, both dated after the stop, the reading also dated after
+  the newest lease; fixed readings alone leave it open. A reading that cannot be read holds it; an
   expired lease is replaced up to the configured count and then one decision row is
   written; a stale stop never clears itself; only an operator declares a stop false.
 input_model:
@@ -114,7 +116,7 @@ state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: andon_stop_fsm
   state_machine_version: {major: 1, minor: 0, patch: 0}
-  description: 'Lifecycle of one stop: opened by a detector, worked by one swarm lane under a lease, cleared only by consecutive complete fixed readbacks.'
+  description: 'Lifecycle of one stop: opened by a detector, worked by one swarm lane under a lease, cleared only by consecutive complete fixed readbacks that come with a go-and-see row and a WORKING reading.'
   initial_state: open
   terminal_states: [cleared, declared_false]
   error_states: []
@@ -139,7 +141,7 @@ state_machine:
   - version: {major: 1, minor: 0, patch: 0}
     state_name: cleared
     state_type: terminal
-    description: The readback read fixed on the required consecutive readings; dispatch resumes.
+    description: The readback read fixed on the required consecutive readings and the release predicate held; dispatch resumes.
     is_terminal: true
     is_recoverable: false
   - version: {major: 1, minor: 0, patch: 0}
@@ -251,6 +253,7 @@ state_machine:
     conditions:
     - {condition_name: readback_complete, condition_type: expression, expression: readback_complete == True}
     - {condition_name: no_fixed_readings_missing, condition_type: expression, expression: fixed_readings_missing == 0}
+    - {condition_name: release_predicate_met, condition_type: expression, expression: release_predicate_met == True}
     actions:
     - action_name: emit_clear_record
       action_type: intent_emission
@@ -261,6 +264,15 @@ state_machine:
     trigger: readback_fixed
     conditions:
     - {condition_name: fixed_readings_missing, condition_type: expression, expression: fixed_readings_missing != 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_fixed_on_readback_fixed_release_open
+    from_state: fixed
+    to_state: fixed
+    trigger: readback_fixed
+    priority: 2
+    conditions:
+    - {condition_name: no_fixed_readings_missing, condition_type: expression, expression: fixed_readings_missing == 0}
+    - {condition_name: release_predicate_unmet, condition_type: expression, expression: release_predicate_met == False}
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: fixed_to_fixed_on_readback_unknown
     from_state: fixed

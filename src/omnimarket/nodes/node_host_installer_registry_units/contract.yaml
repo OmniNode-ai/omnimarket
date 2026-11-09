@@ -238,6 +238,46 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
+  # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
+  # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
+  # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
+  # is the host's proven onex-ledger command line), none is a secret.
+  work-ledger-parity-receipt:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.work-ledger-parity-receipt
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    # The node's own timeout_ms is 1020000 (its contract); the unit ends a hung run at 1020 s and exits 124, before the next tick.
+    run_timeout_s: 1020
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.runtime_parity_receipt
+    entry_file: src/omnimarket/nodes/node_work_ledger_parity_receipt_effect/runtime_parity_receipt.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_LEDGER_COMMAND
+      - ONEX_LEDGER_PARITY_PYTHON
+      - ONEX_LEDGER_PARITY_OVERLAY
+      - ONEX_LEDGER_PARITY_ENV_FILE
+    environment:
+      ONEX_LEDGER_PARITY_FILE: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      ONEX_LEDGER_PARITY_PYTHON: "{registry_root}/.onex-dispatch-venv/bin/python"
+      ONEX_LEDGER_PARITY_OVERLAY: "{marketplace_root}/plugins/onex-overlays/overlays/delegation_health/overlay.yaml"
+      ONEX_LEDGER_PARITY_ENV_FILE: "{home}/.omnibase/.env"
+      ONEX_LEDGER_PARITY_PG_PORT: "5436"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/work-ledger-parity-receipt/last-run.json
+    state_directory: .onex_state/work-ledger-parity-receipt
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
