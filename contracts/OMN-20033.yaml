@@ -51,6 +51,50 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_goal_verification_orchestrator -q --no-cov --tb=line -k "unverified_close_listed or control_a_run_dropped or retried_up_to_the_bound or late_verdict"
         cwd: .
+  - id: dod-omn20033-deploy-local-runtime
+    description: The hosted runner dispatches the packaged goal closure orchestrator through the ONEX local runtime with the in-memory backend. A result event that closes a goal returns one decision for that goal and revision; with no goal contract reader wired the close is listed as pending (contract_unread), not lost. No broker or Docker daemon is required.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv run --frozen python -c '
+          import json
+          import sys
+          from datetime import UTC, datetime
+          from pathlib import Path
+          from uuid import UUID
+          from omnibase_core.enums.enum_work_outcome import EnumWorkOutcome
+          from omnibase_core.models.events.work import ModelSessionActor
+          from omnibase_core.models.events.work.model_work_result_recorded import ModelWorkResultRecorded
+          event = ModelWorkResultRecorded(
+              event_id=UUID("00000000-0000-4000-8000-000000000001"),
+              emitted_at=datetime(2026, 11, 9, 12, 0, tzinfo=UTC),
+              actor=ModelSessionActor(session_handle="deploy-smoke", agent_kind="build-lane"),
+              summary="closed the goal",
+              outcome=EnumWorkOutcome.TERMINAL,
+              closes_claims=frozenset({UUID("747a3ba5-2ae9-4fa3-8c98-4d7475ce30c5")}),
+              contract_revision=UUID("00000000-0000-4000-8000-0000000000a1"),
+              friction_none=True,
+          )
+          Path(sys.argv[1], "close.json").write_text(event.model_dump_json())
+          ' "$probe_dir"
+          onex node node_goal_verification_orchestrator --input "$probe_dir/close.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json"
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1], "receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          [decision] = receipt["result"]["decisions"]
+          assert decision["action"] == "contract_unread" and decision["goal_id"] == "747a3ba5-2ae9-4fa3-8c98-4d7475ce30c5", decision
+          print(json.dumps({"run_id": receipt["run_id"], "decision": decision}, sort_keys=True))
+          ' "$probe_dir"
+        cwd: .
   - id: dod-omn20033-integration-proof
     description: The pushed head ran the node's suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual

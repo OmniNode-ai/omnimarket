@@ -36,7 +36,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event im
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
 )
-from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification_store_inmemory import (
+from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (
     StoreGoalVerificationInMemory,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (
@@ -92,7 +92,7 @@ def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-class GoalVerificationEngine:
+class HandlerGoalVerification:
     """The orchestrator's state machine over injected store, contract reader and publisher."""
 
     def __init__(
@@ -308,8 +308,8 @@ class GoalVerificationEngine:
 class HandlerGoalClosureResult:
     """A result event naming goals in closes_claims starts one run per goal and revision."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(self, request: ModelWorkResultRecorded) -> ModelGoalVerificationOutcome:
         if request.contract_revision is None or not request.closes_claims:
@@ -344,8 +344,8 @@ class HandlerGoalClosureResult:
 class HandlerGoalClosureDelegationTerminal:
     """A delegation terminal for a call goal starts its run."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(
         self, request: ModelDelegationTerminalCompletedV2
@@ -384,8 +384,8 @@ class HandlerGoalClosureDelegationTerminal:
 class HandlerGoalDisposition:
     """A disposition is recorded and starts nothing."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(
         self, request: ModelGoalDispositionRecorded
@@ -398,8 +398,8 @@ class HandlerGoalDisposition:
 class HandlerGoalVerdictObserved:
     """A verifier completion event binds the verdict to the run."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(
         self, request: ModelDodVerifyCompletedEvent
@@ -410,8 +410,8 @@ class HandlerGoalVerdictObserved:
 class HandlerGoalVerificationSweep:
     """Retry quiet runs up to the bound, then write the obligation."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(
         self, request: ModelGoalVerificationSweepCommand
@@ -422,8 +422,8 @@ class HandlerGoalVerificationSweep:
 class HandlerUnverifiedCloses:
     """List every delivered close that has no verdict."""
 
-    def __init__(self, engine: GoalVerificationEngine | None = None) -> None:
-        self.engine = engine if engine is not None else GoalVerificationEngine()
+    def __init__(self, engine: HandlerGoalVerification | None = None) -> None:
+        self.engine = engine if engine is not None else HandlerGoalVerification()
 
     def handle(self, request: ModelUnverifiedClosesQuery) -> ModelUnverifiedClosesList:
         return self.engine.unverified(request.goal_id)
@@ -431,11 +431,11 @@ class HandlerUnverifiedCloses:
 
 __all__: list[str] = [
     "CONTRACT_PATH",
-    "GoalVerificationEngine",
     "HandlerGoalClosureDelegationTerminal",
     "HandlerGoalClosureResult",
     "HandlerGoalDisposition",
     "HandlerGoalVerdictObserved",
+    "HandlerGoalVerification",
     "HandlerGoalVerificationSweep",
     "HandlerUnverifiedCloses",
     "load_rules",

@@ -44,9 +44,10 @@ def test_the_contract_declares_its_topics_and_the_verifier_start_publish() -> No
     assert "onex.evt.omniclaude.work-result-recorded.v1" in bus["subscribe_topics"]
     assert "onex.evt.omnibase-infra.delegation-completed.v2" in bus["subscribe_topics"]
     assert "onex.evt.omnimarket.goal-disposition-recorded.v1" in bus["subscribe_topics"]
-    assert bus["publish_topics"] == [
-        contract["verification_rules"]["start_command_topic"]
-    ]
+    assert bus["publish_topics"] == ["onex.cmd.omnimarket.dod-verify-start.v1"]
+    assert (
+        contract["verification_rules"]["start_command_topic"] in bus["publish_topics"]
+    )
     routed = {entry["topic"] for entry in contract["handler_routing"]["handlers"]}
     assert routed == set(bus["subscribe_topics"])
 

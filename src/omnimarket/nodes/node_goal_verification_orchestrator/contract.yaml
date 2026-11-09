@@ -95,6 +95,17 @@ event_bus:
     - onex.cmd.omnimarket.goal-unverified-closes-query.v1
   publish_topics:
     - onex.cmd.omnimarket.dod-verify-start.v1
+# The four subscribe topics no contract publishes. Each names its producer; the result-recorded
+# and goal-disposition producers are not built yet (follow-ups named on OMN-20033).
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.work-result-recorded.v1
+    producer: "the work-event emitters that record a result (the result-recorded work event kind); no emitter publishes this kind on the topic yet"
+  - topic: onex.evt.omnimarket.goal-disposition-recorded.v1
+    producer: "the goal disposition emitter named by GC.2; not built yet"
+  - topic: onex.cmd.omnimarket.goal-verification-sweep.v1
+    producer: "a scheduled sweep tick, to be wired as an overlay of the lab scheduler"
+  - topic: onex.cmd.omnimarket.goal-unverified-closes-query.v1
+    producer: "the floor and the operator's listing of unverified closes"
 metadata:
   transport_type: kafka
   description: Goal closure orchestrator

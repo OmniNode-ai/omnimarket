@@ -4,14 +4,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 import pytest
-from omnibase_core.enums.enum_work_outcome import EnumWorkOutcome  # noqa: F401
-from omnibase_core.models.events.work.model_work_result_recorded import (
-    ModelWorkResultRecorded,
-)
 
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
     ModelDelegationTerminalCompletedV2,
@@ -27,6 +23,9 @@ from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_
     HandlerGoalVerificationSweep,
     HandlerUnverifiedCloses,
 )
+from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (
+    StoreGoalVerificationInMemory,
+)
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (
     EnumGoalVerificationAction as Action,
 )
@@ -35,6 +34,7 @@ from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_veri
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (
     ModelGoalDispositionRecorded,
+    ModelGoalVerificationRun,
     ModelGoalVerificationSweepCommand,
     ModelUnverifiedClosesQuery,
 )
@@ -116,14 +116,19 @@ def test_duplicate_close_one_run_redelivery_after_publish_crash_starts_the_same_
 ):
     # Publish first, record second: the attempt record is lost to a crash, the close is
     # redelivered, the command is published again under the same verifier run key.
-    engine, store, publisher, _ = build_engine()
-    real_mark = store.mark_attempt
+    class CrashesOnceBeforeRecording(StoreGoalVerificationInMemory):
+        crashed = False
 
-    def crash(*args: object, **kwargs: object) -> object:
-        store.mark_attempt = real_mark  # type: ignore[method-assign]
-        raise RuntimeError("orchestrator crashed between publish and record")
+        def mark_attempt(
+            self, goal_id: UUID, contract_revision: UUID, at: datetime
+        ) -> ModelGoalVerificationRun:
+            if not self.crashed:
+                self.crashed = True
+                raise RuntimeError("orchestrator crashed between publish and record")
+            return super().mark_attempt(goal_id, contract_revision, at)
 
-    store.mark_attempt = crash  # type: ignore[method-assign,assignment]
+    store = CrashesOnceBeforeRecording()
+    engine, _, publisher, _ = build_engine(store=store)
     handler = HandlerGoalClosureResult(engine)
     with pytest.raises(RuntimeError):
         handler.handle(result_event(1))
@@ -356,16 +361,13 @@ def test_the_listing_filters_on_a_goal() -> None:
 
 def test_a_node_wired_without_a_publisher_cannot_drop_a_close() -> None:
     from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification import (
-        GoalVerificationEngine,
+        HandlerGoalVerification,
     )
 
     reader = DictContractReader()
     reader.add(goal_contract())
-    engine = GoalVerificationEngine(contract_reader=reader)
+    engine = HandlerGoalVerification(contract_reader=reader)
     with pytest.raises(RuntimeError, match="no verifier start publisher"):
         HandlerGoalClosureResult(engine).handle(result_event(1))
     [run] = engine.unverified().runs
     assert run.state is State.PENDING
-
-
-_ = (datetime, UTC, ModelWorkResultRecorded)

@@ -22,10 +22,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
     ModelDodVerifyStartCommand,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification import (
-    GoalVerificationEngine,
+    HandlerGoalVerification,
     load_rules,
 )
-from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification_store_inmemory import (
+from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (
     StoreGoalVerificationInMemory,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (
@@ -136,10 +136,14 @@ def build_engine(
     *,
     reader: DictContractReader | None = None,
     rules_override: dict[str, object] | None = None,
+    store: StoreGoalVerificationInMemory | None = None,
 ) -> tuple[
-    GoalVerificationEngine, StoreGoalVerificationInMemory, RecordingPublisher, FakeClock
+    HandlerGoalVerification,
+    StoreGoalVerificationInMemory,
+    RecordingPublisher,
+    FakeClock,
 ]:
-    store = StoreGoalVerificationInMemory()
+    store = store if store is not None else StoreGoalVerificationInMemory()
     publisher = RecordingPublisher()
     clock = FakeClock()
     contracts = reader if reader is not None else DictContractReader()
@@ -148,7 +152,7 @@ def build_engine(
     rules = load_rules()
     if rules_override:
         rules = rules.model_copy(update=rules_override)
-    engine = GoalVerificationEngine(
+    engine = HandlerGoalVerification(
         rules=rules,
         store=store,
         contract_reader=contracts,

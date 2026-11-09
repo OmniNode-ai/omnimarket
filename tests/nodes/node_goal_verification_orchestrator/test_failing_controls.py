@@ -4,24 +4,31 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification import (
-    GoalVerificationEngine,
     HandlerGoalClosureResult,
     HandlerGoalDisposition,
+    HandlerGoalVerification,
     HandlerGoalVerificationSweep,
+)
+from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (
+    StoreGoalVerificationInMemory,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (
     ModelGoalClosure,
     ModelGoalDispositionRecorded,
     ModelGoalVerificationDecision,
+    ModelGoalVerificationRun,
     ModelGoalVerificationSweepCommand,
 )
 from tests.nodes.node_goal_verification_orchestrator.support import (
     GOAL,
     REV1,
     T0,
+    RecordingPublisher,
     build_engine,
     event_id,
     result_event,
@@ -30,12 +37,14 @@ from tests.nodes.node_goal_verification_orchestrator.support import (
 pytestmark = pytest.mark.unit
 
 
-def _duplicate_close_reading(engine: GoalVerificationEngine, publisher: object) -> int:
+def _duplicate_close_reading(
+    engine: HandlerGoalVerification, publisher: RecordingPublisher
+) -> int:
     """The reading: published start commands after two distinct closes of one revision."""
     handler = HandlerGoalClosureResult(engine)
     handler.handle(result_event(1))
     handler.handle(result_event(2))
-    return len(publisher.published)  # type: ignore[attr-defined]
+    return len(publisher.published)
 
 
 def test_reading_passes_on_the_real_orchestrator() -> None:
@@ -46,7 +55,7 @@ def test_reading_passes_on_the_real_orchestrator() -> None:
 def test_control_a_close_that_ignores_the_recorded_run_starts_two() -> None:
     """Break `no_dedupe`: every close starts; the reading must see two."""
 
-    class NoDedupe(GoalVerificationEngine):
+    class NoDedupe(HandlerGoalVerification):
         def close(self, closure: ModelGoalClosure) -> ModelGoalVerificationDecision:
             self.store.record_close(closure)
             return self._start(closure.goal_id, closure.contract_revision, created=True)
@@ -65,7 +74,7 @@ def test_control_a_close_that_ignores_the_recorded_run_starts_two() -> None:
 def test_control_a_disposition_that_starts_a_run_is_seen() -> None:
     """Break `late_disposition_starts`: the reading counts publications, not a marker."""
 
-    class DispositionStarts(GoalVerificationEngine):
+    class DispositionStarts(HandlerGoalVerification):
         def disposition(
             self, event: ModelGoalDispositionRecorded
         ) -> ModelGoalVerificationDecision:
@@ -98,8 +107,8 @@ def test_control_a_disposition_that_starts_a_run_is_seen() -> None:
 def test_control_an_unbounded_retry_exceeds_the_contract_bound() -> None:
     """Break `unbounded_retry`: the sweep never writes the obligation, attempts pass the bound."""
 
-    class Unbounded(GoalVerificationEngine):
-        def sweep(self, now):  # type: ignore[no-untyped-def]
+    class Unbounded(HandlerGoalVerification):
+        def sweep(self, now: datetime) -> tuple[ModelGoalVerificationDecision, ...]:
             return tuple(
                 self._start(run.goal_id, run.contract_revision, created=False)
                 for run in self.store.list_unverified()
@@ -127,7 +136,15 @@ def test_control_an_unbounded_retry_exceeds_the_contract_bound() -> None:
 
 def test_control_a_run_dropped_instead_of_listed_is_seen() -> None:
     """Break `drop_obligation`: an exhausted run vanishes from the listing."""
-    engine, store, _, clock = build_engine(rules_override={"retry_bound": 1})
+
+    class HidesOpenRuns(StoreGoalVerificationInMemory):
+        hide = False
+
+        def list_unverified(self) -> tuple[ModelGoalVerificationRun, ...]:
+            return () if self.hide else super().list_unverified()
+
+    store = HidesOpenRuns()
+    engine, _, _, clock = build_engine(rules_override={"retry_bound": 1}, store=store)
     HandlerGoalClosureResult(engine).handle(result_event(1))
     HandlerGoalVerificationSweep(engine).handle(
         ModelGoalVerificationSweepCommand(
@@ -135,5 +152,5 @@ def test_control_a_run_dropped_instead_of_listed_is_seen() -> None:
         )
     )
     assert len(engine.unverified().runs) == 1
-    store.list_unverified = lambda: ()  # type: ignore[method-assign]
+    store.hide = True
     assert engine.unverified().runs == ()
