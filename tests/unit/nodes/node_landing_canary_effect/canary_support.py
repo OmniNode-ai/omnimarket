@@ -37,6 +37,14 @@ def overlay() -> ModelLandingCanaryOverlay:
     )
 
 
+def operational_overlay() -> ModelLandingCanaryOverlay:
+    """The example overlay on the ``scm`` backend: the only backend whose rows may count as operational."""
+    base = overlay()
+    return base.model_copy(
+        update={"target": base.target.model_copy(update={"backend": "scm"})}
+    )
+
+
 class FakeClock:
     """A clock only the wait moves: a sleep advances it by exactly what was asked."""
 
@@ -94,4 +102,11 @@ class World:
         )
 
 
-__all__ = ["HOST", "RUN_AT", "FakeClock", "World", "overlay"]
+__all__ = [
+    "HOST",
+    "RUN_AT",
+    "FakeClock",
+    "World",
+    "operational_overlay",
+    "overlay",
+]

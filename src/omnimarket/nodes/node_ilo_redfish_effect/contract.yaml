@@ -24,14 +24,14 @@ description: >
   come from the lab secret store at use; TLS verification is never disabled; every returned field is
   redacted. Design: reference/ilo4-redfish-management-design.md in the shared knowledge base.
 
-input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
-output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
+input_model: omnimarket.models.ilo_redfish.model_ilo_redfish_request.ModelIloRedfishRequest
+output_model: omnimarket.models.ilo_redfish.model_ilo_redfish_result.ModelIloRedfishResult
 
 handler:
   module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope
   class: HandlerIloRedfishEnvelope
-  input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
-  output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
+  input_model: omnimarket.models.ilo_redfish.model_ilo_redfish_request.ModelIloRedfishRequest
+  output_model: omnimarket.models.ilo_redfish.model_ilo_redfish_result.ModelIloRedfishResult
 
 # handler_routing binds both handlers to the node (the canonical-file-shape ratchet reads it). There is
 # empty event_bus topics: the node is called in process by the operator's lab tooling, not by a bus
@@ -52,7 +52,7 @@ handler_routing:
         module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_envelope
       event_model:
         name: ModelIloRedfishRequest
-        module: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request
+        module: omnimarket.models.ilo_redfish.model_ilo_redfish_request
     - operation: ilo_setup
       handler:
         name: HandlerIloSetupEnvelope

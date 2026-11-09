@@ -1,0 +1,62 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23051
+title: The landing controller's staged copy has a node that lists its reads of private clones and overlays
+summary: >-
+  Rebuild piece 9 task P9-T9, day one: the node node_landing_private_reads_effect lists each read the staged landing
+  controller copy makes of a private clone or overlay, by file, root and line, with the destination the read moves
+  to. The private roots, the words that name them and the declared reads come from the overlay. The reading is
+  WORKING when files were scanned and every read is declared, and NOT_WORKING (undeclared_private_read or
+  no_sources) otherwise. It publishes one event per run on the topic its contract declares.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23051-private-reads-listing
+    statement: The staged controller copy's reads of private clones and overlays are listed by a node whose reading fails for an undeclared overlay and for a planted private read.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: node_landing_private_reads_effect reads NOT_WORKING with an undeclared overlay and WORKING with the declared overlay, and a planted private read reads NOT_WORKING -- falsifier: uv run pytest of the node''s tests with the undeclared-overlay control and the planted-read control'
+evidence_requirements:
+  - kind: tests
+    description: The node's listing tests and its golden and error chain event tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_landing_private_reads_effect -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23051-declared-overlay-working
+    description: The declared overlay reads WORKING for the synthetic copy and the golden chain event carries WORKING; the same tests fail when the node's source is reverted to the merge base, where the node does not exist.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_private_reads_effect/test_private_reads_listing.py tests/unit/nodes/node_landing_private_reads_effect/test_private_reads_chain_events.py -q -n 0 --no-cov -k 'every_read_declared or golden_chain_event'
+        cwd: .
+  - id: dod-omn23051-undeclared-overlay-not-working
+    description: An overlay that declares no reads reads NOT_WORKING with failure code undeclared_private_read and names the file and root.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_private_reads_effect/test_private_reads_listing.py -q -n 0 --no-cov -k overlay_with_no_declared_reads
+        cwd: .
+  - id: dod-omn23051-planted-read-not-working
+    description: A planted private read in the copy reads NOT_WORKING and is named; the named break reads_hidden turns that error chain WORKING, which shows the reading can fail for real.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_landing_private_reads_effect -q -n 0 --no-cov -k 'undeclared_read_reads_not_working or error_chain_event or named_break'
+        cwd: .
+  - id: dod-omn23051-integration-proof
+    description: The pushed head ran the node's listing and chain event tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the node run over the staged controller copy on h051 is in the pull request's Lab line.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23051 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_landing_private_reads_effect -q -n 0 --no-cov'
+        cwd: .
