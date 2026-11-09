@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Review findings on the friction rollup tick: deployment overlay, report references, rule collections, trend keys."""
+"""Review findings on the friction rollup tick: report references and trend keys."""
 
 from __future__ import annotations
 
@@ -14,9 +14,6 @@ import yaml
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
     compute_trend,
     status_row,
-)
-from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_io import (
-    load_class_rules,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick import (
     DEFAULT_OVERLAY,
@@ -36,51 +33,12 @@ from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
 
 pytestmark = pytest.mark.unit
 NOW = "2026-09-26T12:00:00Z"
-NODE_NAME = "node_friction_rollup_tick_effect"
 
 
 def _settings(**changes: object) -> ModelFrictionRollupTickSettings:
     document = yaml.safe_load(DEFAULT_OVERLAY.read_text(encoding="utf-8"))
     document.update(changes)
     return ModelFrictionRollupTickSettings.model_validate(document)
-
-
-# --- the deployment overlay governs a default-constructed handler ----------------------------------------------
-
-
-def test_default_construction_reads_the_deployment_overlay(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "overlays"
-    node_dir = root / NODE_NAME
-    node_dir.mkdir(parents=True)
-    document = yaml.safe_load(DEFAULT_OVERLAY.read_text(encoding="utf-8"))
-    document["keep_days"] = 30
-    document["class_rules_path"] = "deployed-rules.yaml"
-    (node_dir / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
-    (node_dir / "deployed-rules.yaml").write_text(
-        "class_rules:\n  - {name: never-seen, owner: nobody, pattern: 'zzz-never-matches'}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
-    state = tmp_path / "state"
-    state.mkdir()
-    (state / "20260906T000000Z.json").write_text("x")  # 20 days old
-    handler = HandlerFrictionRollupTick(appender=InMemoryLedgerAppender())
-    assert handler.settings.keep_days == 30
-    result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
-    assert result.pruned == ()
-    assert (state / "20260906T000000Z.json").is_file()
-    # The relative rules path is read from the directory of the selected overlay.
-    assert (result.exit_code, result.class_rules) == (0, "applied")
-
-
-def test_default_construction_without_a_deployment_overlay_uses_the_packaged_profile(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "empty"))
-    handler = HandlerFrictionRollupTick(appender=InMemoryLedgerAppender())
-    assert handler.settings.keep_days == 7
 
 
 # --- the STATUS references name the effective report location --------------------------------------------------
@@ -119,47 +77,6 @@ def test_status_references_keep_the_relative_form_for_the_default_location(
     assert _row(tmp_path, None).endswith(expected)
     default = tmp_path / "registry" / ".onex_state" / "friction-rollup"
     assert _row(tmp_path, default).endswith(expected)
-
-
-# --- falsey malformed rule collections are not an applied rule set ---------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "class_rules: false\n",
-        "class_rules: 0\n",
-        "class_rules: {}\n",
-        "class_rules: ''\n",
-        "class_owners: false\n",
-        "class_owners: 0\n",
-        "class_owners: {}\n",
-    ],
-)
-def test_falsey_malformed_collection_is_not_applied(tmp_path: Path, text: str) -> None:
-    rules = tmp_path / "rules.yaml"
-    rules.write_text(text, encoding="utf-8")
-    with pytest.raises(ValueError, match="list"):
-        load_class_rules(rules)
-    result = HandlerFrictionRollupTick(
-        appender=InMemoryLedgerAppender(),
-        settings=_settings(class_rules_path=str(rules)),
-        settings_dir=tmp_path,
-    ).handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
-    assert result.exit_code == 3
-    assert result.class_rules == "unapplied:ValueError"
-
-
-@pytest.mark.parametrize(
-    "text",
-    ["class_rules: []\nclass_owners: []\n", "class_rules:\nclass_owners:\n", "{}\n"],
-)
-def test_absent_null_or_empty_list_collections_are_applied_empty(
-    tmp_path: Path, text: str
-) -> None:
-    rules = tmp_path / "rules.yaml"
-    rules.write_text(text, encoding="utf-8")
-    assert load_class_rules(rules) == ([], [])
 
 
 # --- the JSON trend keys carry the configured window names -----------------------------------------------------

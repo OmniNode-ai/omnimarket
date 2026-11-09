@@ -229,8 +229,6 @@ not_routing_resolution_sites:
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
-  - site: "src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/handler_friction_rollup_tick.py:find_node_overlay(NODE_NAME)"
-    reason: finds the overlay file of the friction rollup tick, whose settings are the report windows, row character budgets, retention days, state and archive subdirectories and the ledger appender command; it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
@@ -268,6 +266,8 @@ not_routing_configs:
     reason: model ids that code binds for a fixed purpose, read through model_binding_reader; no choice among routes
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
     reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
+  - path: src/omnimarket/configs/release_asset_retry.v1.yaml
+    reason: statuses and waits of the release asset download retry; it selects no route
   - path: src/omnimarket/configs/runtime_paths.yaml
     reason: filesystem locations nodes fall back to when no setting names one; it selects no route
   - path: src/omnimarket/configs/seams.v1.yaml

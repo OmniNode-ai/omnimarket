@@ -6,7 +6,7 @@
 ``probe``       the same read, keeping nothing.
 ``schedule``    install | uninstall | status | run-now, for a host in the overlay's schedule hosts.
 
-``--fault`` injects a drill fault; a drill never keeps its sample.
+``--fault`` injects a drill fault (planted-lag, unknown-node, manifest-down); a drill never keeps its sample.
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
 1 the command was refused (a schedule verb exits with its own result's code), 4 the run record the floor reads could not be written.
@@ -29,6 +29,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemorySamples,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
+    FileManifestCache,
     FileRunRecords,
     FileSamples,
     HttpManifest,
@@ -74,9 +75,18 @@ def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
 
 
 def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+    resilience = overlay.manifest.resilience
     return HandlerBrokerLag(
         overlay=overlay,
-        manifest=HttpManifest(overlay.manifest.url, overlay.manifest.timeout_seconds),
+        manifest=HttpManifest(
+            overlay.manifest.url,
+            overlay.manifest.timeout_seconds,
+            attempts=resilience.attempts if resilience else 1,
+            retry_delay_seconds=resilience.retry_delay_seconds if resilience else 0.0,
+        ),
+        manifest_cache=(
+            FileManifestCache(Path(resilience.cache_path)) if resilience else None
+        ),
         lag=KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds),
         samples=FileSamples(Path(overlay.lag.state_path)),
         records=FileRunRecords(Path(overlay.lag.record_path)),

@@ -31,13 +31,11 @@ from omnimarket.models.work_ledger_append import (
     ModelJoinJ5Request,
     ModelJoinJ5Result,
 )
-from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
-    HandlerWorkLedgerAppendEffect,
-)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerReader,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    ProtocolJoinAppend,
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
     StoreIdentityUnresolvedError,
@@ -101,7 +99,7 @@ class HandlerWorkLedgerJoinJ5:
     def __init__(
         self,
         *,
-        append: HandlerWorkLedgerAppendEffect | None = None,
+        append: ProtocolJoinAppend | None = None,
         ledger: ProtocolLedgerReader | None = None,
         identities: ProtocolStoreIdentities | None = None,
         projection: ProtocolProjectedRows | None = None,
@@ -130,7 +128,7 @@ class HandlerWorkLedgerJoinJ5:
     def _wired(
         self,
     ) -> tuple[
-        HandlerWorkLedgerAppendEffect,
+        ProtocolJoinAppend,
         ProtocolLedgerReader,
         ProtocolStoreIdentities,
         ProtocolProjectedRows,
@@ -240,7 +238,10 @@ class HandlerWorkLedgerJoinJ5:
                     ledger_seq=ledger_seq,
                 )
             projected = projection.read_row(
-                ledger_id=request.append.ledger_id, ledger_seq=ledger_seq
+                ledger_id=request.append.ledger_id,
+                ledger_seq=ledger_seq,
+                raw_row=durable,
+                correlation_id=request.correlation_id,
             )
             if projected is None or projected.raw_row != durable:
                 code = policy.projected_row_missing_failure_code
