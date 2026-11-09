@@ -7,12 +7,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from omnimarket.models.lane_closeout.enum_lane_guard_verdict import EnumLaneGuardVerdict
 from omnimarket.models.lane_closeout.model_lane_closeout_sweep_request import (
     ModelLaneCloseoutSweepRequest,
+)
+from omnimarket.models.lane_closeout.model_lane_closeout_sweep_result import (
+    ModelLaneCloseoutSweepResult,
 )
 from omnimarket.models.lane_closeout.model_lane_closeout_sweep_settings import (
     ModelLaneCloseoutSweepSettings,
@@ -118,7 +122,7 @@ class Host:
                 os.utime(path, (when, when))
         return tree
 
-    def record(self, name: str) -> dict[str, object]:
+    def record(self, name: str) -> dict[str, Any]:
         path = self.tmp_path / "state" / "records" / f"{name}.json"
         return json.loads(path.read_text(encoding="utf-8"))
 
@@ -136,7 +140,7 @@ class Host:
         return out.splitlines()
 
 
-def sweep(tmp_path: Path, **over: object):  # type: ignore[no-untyped-def]
+def sweep(tmp_path: Path, **over: object) -> ModelLaneCloseoutSweepResult:
     return HandlerLaneCloseoutSweep(live_cwds=lambda: []).handle(
         request(tmp_path, **over)
     )
@@ -172,7 +176,7 @@ def test_the_sweep_removes_a_clean_fill_lane_and_its_run_directory_and_records_i
         True,
     )
     assert record["ended_by"] == "run.rc"
-    assert record["trees"][0]["cell"] == f"worktree=removed:{tree}"  # type: ignore[index]
+    assert record["trees"][0]["cell"] == f"worktree=removed:{tree}"
 
 
 def test_a_dirty_tree_is_pushed_to_a_salvage_branch_then_removed(
@@ -206,7 +210,7 @@ def test_a_dirty_tree_whose_push_fails_is_kept_with_its_reason_and_retried_next_
     assert first.unrecorded == 0  # kept with a recorded reason is a record
     record = host.record(f"rlane-{FILL_LANE}-abc123")
     assert record["complete"] is False
-    assert "salvage-push-failed" in record["trees"][0]["cell"]  # type: ignore[index]
+    assert "salvage-push-failed" in record["trees"][0]["cell"]
     assert (
         host.runs / f"rlane-{FILL_LANE}-abc123.ctx"
     ).exists()  # the end marker stays for the retry
