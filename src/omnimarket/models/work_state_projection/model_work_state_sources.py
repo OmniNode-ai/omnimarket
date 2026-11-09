@@ -19,6 +19,8 @@ class ModelTicketSource(BaseModel):
     state_type: str
     project: str = ""
     parent: str | None = None
+    # The tracker assignee as the snapshot spells it (id or name); ``None`` when the snapshot does not carry one.
+    assignee: str | None = None
     requires: tuple[str, ...] = ()
 
 
