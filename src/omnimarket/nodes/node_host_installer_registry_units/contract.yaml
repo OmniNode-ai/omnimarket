@@ -233,6 +233,40 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
+  # The live J8 run (OMN-23087): every 900 s, one real head the landing decision merges and one the lab-bound check holds,
+  # piece 8's chain and piece 9's answer written to the floor's emission journal under one correlation id each, so the
+  # floor's receipt fold reads join J8. The overlay (node_pr_landing_join_j8: the watcher state, the lab-bound check and
+  # repositories, the journal) is found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of it.
+  landing-join-j8:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-join-j8
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 900
+      run_at_load: true
+      description: every 900 s and at load
+    registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    # A tick reads one file and judges at most two heads: it ends in seconds, so 300 s is a hung run.
+    run_timeout_s: 300
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_decision_compute.runtime_join_j8
+    entry_file: src/omnimarket/nodes/node_pr_landing_decision_compute/runtime_join_j8.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-join-j8/last-run.json
+    state_directory: .onex_state/landing-join-j8
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
