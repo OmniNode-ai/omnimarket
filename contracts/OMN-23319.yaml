@@ -30,6 +30,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_friction_rollup_compute/test_friction_other_class_rules_2026_11_09b.py -q
+- id: dod-omn23319-ac2-rollup
+  description: The rollup the floor is built from names the bare class=other rows of 2026-11-09 by cause, so the served floor lists stoppage:other only for rows no rule classifies. With the rollup code as origin/dev holds it, 3 of these tests fail (the 11 first-batch rows stay other).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_friction_rollup_compute/test_class_rules_bare_other_2026_11_09.py -q
 - id: dod-omn23319-ac2
   description: After the overlay is installed on the host that publishes the floor, the served floor read shows causes[] without a stoppage:other row for the classified rows. Hosted CI cannot reach the served floor, so only the local Done gate runs this unbound check.
   source: manual
