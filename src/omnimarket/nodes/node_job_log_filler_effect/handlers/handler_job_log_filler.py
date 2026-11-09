@@ -19,6 +19,7 @@ import asyncio
 import json
 import math
 import os
+import threading
 import time
 from collections.abc import Callable, Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
@@ -29,7 +30,6 @@ from uuid import uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
 from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
     cache_policy,
 )
@@ -238,24 +238,19 @@ class HandlerJobLogFiller:
         cap = min(
             overlay.max_reads_per_pass, request.max_reads or overlay.max_reads_per_pass
         )
-        # Runs whose log is cached cost one probe; only the missing ones count against the cap,
-        # so the cap bounds GitHub reads. Over the bus a probe is a round trip (measured
-        # 2026-11-09: 841 sequential probes took about four minutes), so the probes run on the
-        # overlay's reader concurrency; the order of ``runs`` (newest failure first) is kept.
+        # One worker takes one run at a time, newest failure first: it probes the cache, and on a miss reads the
+        # log at once, so the newest failures are filled before any older run is probed. Two bounds end the work:
+        # the read cap (GitHub reads) and the pass budget (wall clock; a probe over the bus is a round trip the
+        # gateway answers one at a time, measured 2026-11-09 on h051 at a median 2.4 s with six readers, so
+        # probing 886 runs before the first fill never ended inside the unit's limit). A run the pass did not
+        # reach is deferred and is the next pass's first work, because the held memo skips what this one confirmed.
         items: list[ModelJobLogFillItem] = []
+        lock = threading.Lock()
         live_reads = 0
         deferred = 0
-        todo: list[ModelMergeRelevantRun] = []
-
-        def probe(
-            run: ModelMergeRelevantRun,
-        ) -> ModelJobLogTailResult | Exception:
-            try:
-                return reader.read(run.repo, run.job_id, cache_only=True)
-            except Exception as exc:
-                return exc
-
         now = self._clock()
+        deadline = now + overlay.pass_budget_seconds
+        budget_exhausted = False
         memo = self._held
         remembered = [
             r
@@ -268,39 +263,42 @@ class HandlerJobLogFiller:
             ModelJobLogFillItem(run=r, outcome=EnumJobLogFillOutcome.ALREADY_CACHED)
             for r in remembered
         )
-        with ThreadPoolExecutor(max_workers=overlay.reader_concurrency) as pool:
-            probed = list(pool.map(probe, to_probe))
-        for run, outcome in zip(to_probe, probed, strict=True):
-            if isinstance(outcome, JobLogCacheMissError):
+
+        def work(run: ModelMergeRelevantRun) -> ModelJobLogFillItem | None:
+            nonlocal live_reads, deferred, budget_exhausted
+            with lock:
+                if self._clock() >= deadline:
+                    budget_exhausted = True
+                    deferred += 1
+                    return None
+            try:
+                tail = reader.read(run.repo, run.job_id, cache_only=True)
+                return ModelJobLogFillItem(
+                    run=run,
+                    outcome=EnumJobLogFillOutcome.ALREADY_CACHED,
+                    total_bytes=tail.total_bytes,
+                )
+            except JobLogCacheMissError:
+                pass
+            except Exception as exc:
+                return self._failed(run, exc)
+            with lock:
                 if live_reads >= cap:
                     deferred += 1
-                    continue
+                    return None
                 live_reads += 1
-                todo.append(run)
-            elif isinstance(outcome, Exception):
-                items.append(self._failed(run, outcome))
-            else:
-                items.append(
-                    ModelJobLogFillItem(
-                        run=run,
-                        outcome=EnumJobLogFillOutcome.ALREADY_CACHED,
-                        total_bytes=outcome.total_bytes,
-                    )
-                )
-
-        def one(run: ModelMergeRelevantRun) -> ModelJobLogFillItem:
             try:
-                result = reader.read(run.repo, run.job_id, cache_only=False)
+                filled = reader.read(run.repo, run.job_id, cache_only=False)
             except Exception as exc:
                 return self._failed(run, exc)
             return ModelJobLogFillItem(
                 run=run,
                 outcome=EnumJobLogFillOutcome.FILLED,
-                total_bytes=result.total_bytes,
+                total_bytes=filled.total_bytes,
             )
 
         with ThreadPoolExecutor(max_workers=overlay.reader_concurrency) as pool:
-            items.extend(pool.map(one, todo))
+            items.extend(i for i in pool.map(work, to_probe) if i is not None)
         # What this pass confirmed held is remembered, what it did not is forgotten, and a job no longer
         # in play is dropped, so the memo never outgrows the open pull requests.
         confirmed = {
@@ -334,6 +332,7 @@ class HandlerJobLogFiller:
             already_cached=cached,
             failed=failed,
             deferred=deferred,
+            budget_exhausted=budget_exhausted,
             stale_skipped=stale,
             items=tuple(items),
         )
