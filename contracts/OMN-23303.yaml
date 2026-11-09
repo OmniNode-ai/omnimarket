@@ -13,6 +13,11 @@ requirements:
     statement: 'AC1: the filler''s timer evidence is bound in this ticket''s contract and dod-verify passes on omnimarket#5575 -- falsifier: pr_state_local.py --pr omnimarket#5575 shows no repo-evidence red, and uv run pytest tests -q -k job_log_filler passes'
   - id: AC2
     statement: 'AC2: after install on the Mac, a failed required job on an open in-scope PR has its log in the mirror within 15 minutes -- falsifier: a lane read of that job''s log through the mirror returns the log, not JOB-LOG-CACHE-MISS'
+- id: req-omn23303-pass-budget
+  statement: A filler pass ends inside a wall-clock budget set in the overlay (below the unit's 360 s run limit, which is unchanged), fills the newest failures first, and the next pass resumes after the runs this one confirmed.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a filler pass over a backlog ends inside its pass budget with the runs it did not reach counted as deferred, serves the newest failures first, and the next pass skips what the last confirmed -- falsifier: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_pass_budget.py -q --no-cov -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: The filler tick tests (selection order with its failing control, the probe memo, the golden and error ticks, the unit declaration) and the filler's own and chain tests pass
@@ -52,6 +57,9 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_tick.py -q --no-cov -p no:randomly -k the_installer_declares_a_unit_that_runs_the_tick_every_two_minutes
+    cwd: .
+  - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
     cwd: .
   - check_type: command
@@ -79,4 +87,13 @@ dod_evidence:
     cwd: .
   - check_type: command
     check_value: 'awk "/^  job-log-filler:/{f=1;next} f&&/^  [a-z]/{f=0} f" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml | grep -q "ONEX_WORKSPACE_CONFIG_ROOT: \"{workspace_config_root}\""'
+    cwd: .
+- id: dod-omn23303-pass-budget
+  description: Runs the focused pass-budget tests with a fake clock and a reader that spends time. A pass over forty runs stops starting reads at its budget and counts what it left, the newest failures are filled first, the next pass does not probe again what the last confirmed, and a backlog drains in bounded passes. Measured on h051 before the change, one pass over 886 merge-relevant runs did not end in 560 s (227 probes in 142 s, none reaching a fill) and after it ended at 274 s with 30 logs filled.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_pass_budget.py -q --no-cov -p no:randomly
     cwd: .
