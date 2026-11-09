@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +41,14 @@ from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.execution_budget_overlay import EXECUTION_BUDGET_OVERLAY_ID
+from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_FILE_NAME,
+    OVERLAY_ROOTS_ENV,
+)
+from omnimarket.models.delegation.model_execution_budget_overlay import (
+    ModelExecutionBudgetOverlay,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -90,6 +100,12 @@ class ModelLegSpec(BaseModel):
     prompt: str = Field(min_length=1)
     answer: str = Field(min_length=1)
     rungs: tuple[ModelRungScript, ...] = Field(min_length=1)
+    #: The request's own timeout in seconds, as ``onex delegate --timeout`` sets it; ``None`` leaves the class ceiling.
+    requested_timeout_seconds: int | None = Field(default=None, ge=1)
+    #: ``True`` runs the leg under an overlay root of its own: the overlay below when it is set, no overlay when it is not.
+    #: The host's own overlay roots are then not read, so the leg says the same on every host.
+    isolate_overlay_root: bool = False
+    budget_overlay: ModelExecutionBudgetOverlay | None = None
 
 
 class ModelAttemptFact(BaseModel):
@@ -113,6 +129,12 @@ class ModelLegOutcome(BaseModel):
     cost_savings_usd: float | None
     final_answer: str
     attempts: tuple[ModelAttemptFact, ...]
+    #: Budget evidence of the terminal: where the ceiling came from, the ceiling the run was held to, what was asked and, on a
+    #: refusal before dispatch, the refusal's reason.
+    budget_source: str | None = None
+    budget_ceiling_seconds: int | None = None
+    budget_requested_seconds: int | None = None
+    budget_refusal_reason: str | None = None
 
     @property
     def walked(self) -> tuple[str, ...]:
@@ -130,6 +152,10 @@ class ProtocolLegTransport(Protocol):
         self,
     ) -> Callable[[ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult] | None:
         """The effect handler to inject, or ``None`` for the real delegation effect."""
+        ...
+
+    def virtual_elapsed_ms(self) -> int:
+        """Milliseconds a rung is scripted to have taken without a clock running (0 for a real backend)."""
         ...
 
     def close(self) -> None: ...
@@ -162,6 +188,7 @@ class ScriptedLegTransport:
         self._host = host
         self._scripts: dict[str, ModelRungScript] = {}
         self._answers: dict[str, str] = {}
+        self._virtual_elapsed_ms = 0
         self.calls: list[str] = []
 
     def endpoints(self, leg: ModelLegSpec) -> dict[str, str]:
@@ -181,7 +208,9 @@ class ScriptedLegTransport:
         ) -> ModelLlmDelegationCallResult:
             self.calls.append(request.endpoint_ref)
             rung = self._scripts[request.endpoint_ref]
-            if rung.behaviour == "answer":
+            answers_late = rung.behaviour == "slow" and rung.delay_ms < rung.timeout_ms
+            if rung.behaviour == "answer" or answers_late:
+                self._virtual_elapsed_ms += rung.delay_ms if answers_late else 0
                 return _result(request, content=self._answers[request.endpoint_ref])
             failure = (
                 _STATUS_CLASS[rung.status_code or 503]
@@ -191,6 +220,9 @@ class ScriptedLegTransport:
             return _result(request, failure=failure, status=rung.status_code)
 
         return call
+
+    def virtual_elapsed_ms(self) -> int:
+        return self._virtual_elapsed_ms
 
     def close(self) -> None:
         return None
@@ -247,6 +279,9 @@ class LoopbackStubServers:
 
     def effect(self) -> None:
         return None
+
+    def virtual_elapsed_ms(self) -> int:
+        return 0
 
     def close(self) -> None:
         for server in self._servers:
@@ -381,11 +416,15 @@ def run_leg(
             source_surface=source_surface,
         ),
         probe_ladder=ladder,
+        requested_timeout_seconds=leg.requested_timeout_seconds,
     )
     handler = HandlerDelegateSkill(dispatch_port=port)
-    response = asyncio.run(handler.handle(request))
+    with _overlay_scope(leg, work_dir):
+        response = asyncio.run(handler.handle(request))
     if response is None:
         raise RuntimeError(f"leg {leg.name} produced no terminal")
+    evidence = response.budget_evidence
+    refusal = response.budget_refusal
     return ModelLegOutcome(
         leg=leg.name,
         status=response.status,
@@ -395,7 +434,8 @@ def run_leg(
             else None
         ),
         terminal_failure_reason=response.terminal_failure_reason,
-        execution_duration_ms=response.execution_duration_ms or 0,
+        execution_duration_ms=(response.execution_duration_ms or 0)
+        + transport.virtual_elapsed_ms(),
         cost_savings_usd=response.metrics.cost_savings_usd,
         final_answer=response.response,
         attempts=tuple(
@@ -406,7 +446,49 @@ def run_leg(
             )
             for attempt in response.attempts
         ),
+        budget_source=response.budget_source,
+        budget_ceiling_seconds=(
+            evidence.task_class_timeout_ceiling_seconds
+            if evidence is not None
+            else refusal.task_class_timeout_ceiling_seconds
+            if refusal is not None
+            else None
+        ),
+        budget_requested_seconds=(
+            evidence.requested_timeout_seconds
+            if evidence is not None
+            else refusal.requested_timeout_seconds
+            if refusal is not None
+            else None
+        ),
+        budget_refusal_reason=(refusal.reason.value if refusal is not None else None),
     )
+
+
+@contextmanager
+def _overlay_scope(leg: ModelLegSpec, work_dir: Path) -> Iterator[None]:
+    """Point the overlay roots at a directory of the leg's own for the run, and put the host's value back after."""
+    if not leg.isolate_overlay_root:
+        yield
+        return
+    root = work_dir / f"{leg.name}-overlay-root"
+    overlay_file = root / EXECUTION_BUDGET_OVERLAY_ID / OVERLAY_FILE_NAME
+    if leg.budget_overlay is not None:
+        overlay_file.parent.mkdir(parents=True, exist_ok=True)
+        overlay_file.write_text(
+            leg.budget_overlay.model_dump_json(exclude_none=True), encoding="utf-8"
+        )
+    else:
+        root.mkdir(parents=True, exist_ok=True)
+    before = os.environ.get(OVERLAY_ROOTS_ENV)
+    os.environ[OVERLAY_ROOTS_ENV] = str(root)
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop(OVERLAY_ROOTS_ENV, None)
+        else:
+            os.environ[OVERLAY_ROOTS_ENV] = before
 
 
 class LegTransportScope:
