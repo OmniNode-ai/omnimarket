@@ -159,6 +159,7 @@ def reduce_delegation_attempts(
     error_message: str = "",
     attempts: Iterable[ModelDelegateSkillAttemptRecord] = (),
     declared_failure_cause: EnumDelegationTerminalFailureCause | None = None,
+    declared_failed_acceptance: bool = False,
 ) -> ModelDelegationAttemptReduction:
     """Reduce a delegation terminal's attempt ladder to a typed outcome.
 
@@ -181,6 +182,13 @@ def reduce_delegation_attempts(
        per-attempt detail) does the declared status decide ``terminal_ok``;
        a quota signal in ``error_message`` can still type the cause.
 
+    OMN-21607. ``declared_failed_acceptance`` is the terminal's own record that
+    its answer failed acceptance (``quality_gate_passed`` false beside a failed
+    criterion, a failed gate or a score below the bar). Such a terminal is a
+    failed outcome even when it says ``completed`` and carries no cause: it
+    projects ``terminal_ok=False`` with ``QUALITY_GATE_REFUSED``, so the row
+    reads failed and names why.
+
     Pure: no I/O, no clock, no network.
     """
     ladder = tuple(attempts)
@@ -199,10 +207,18 @@ def reduce_delegation_attempts(
     if ladder:
         # 1. Ladder-authoritative branch.
         if any_success:
+            ok = (
+                declared_status == "completed"
+                and declared_quality_gate_passed
+                and not declared_failed_acceptance
+            )
             return ModelDelegationAttemptReduction(
-                terminal_ok=declared_status == "completed"
-                and declared_quality_gate_passed,
-                terminal_failure_cause=None,
+                terminal_ok=ok,
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+                    if declared_failed_acceptance
+                    else None
+                ),
                 attempt_history=ladder,
                 quota_refusal_count=len(quota_refusals),
             )
@@ -219,9 +235,15 @@ def reduce_delegation_attempts(
         )
 
     # 2. Ladder-less branch — declared status decides ok; text can type cause.
-    declared_ok = declared_status == "completed" and declared_quality_gate_passed
+    declared_ok = (
+        declared_status == "completed"
+        and declared_quality_gate_passed
+        and not declared_failed_acceptance
+    )
     cause = (
-        EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+        if declared_failed_acceptance
+        else EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
         if not declared_ok and _QUOTA_TEXT_PATTERN.search(error_message or "")
         else None
     )
