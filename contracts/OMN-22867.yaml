@@ -17,10 +17,10 @@ requirements:
         statement: "AC4: tests/unit/test_ci_shard_plan_record_freshness_omn17427.py passes with fewer than 50 test files unrecorded and fails on dev without the change -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py in omnimarket"
   - id: req-omn22867-split12-lab-alarm-boot-resolvable
     statement: >-
-      On omnimarket dev tests/test_handler_routing_boot_resolvable.py passes: node_lab_alarm declares its two CLI-run handlers under cli_handlers, not handler_routing, so Tests (Split 12/20) no longer reads red on every pull request cut from dev.
+      node_lab_alarm keeps its two CLI-run handlers under cli_handlers, never handler_routing, so tests/test_handler_routing_boot_resolvable.py and Tests (Split 12/20) cannot read red on it again. Dev's own contract change (omnimarket#5580) moved them; this adds the node-local control.
     acceptance:
       - id: AC5
-        statement: "AC5: tests/test_handler_routing_boot_resolvable.py and tests/nodes/node_lab_alarm/test_lab_alarm_cli_binding.py pass with node_lab_alarm bound under cli_handlers and fail on dev without the change -- falsifier: uv run pytest tests/test_handler_routing_boot_resolvable.py tests/nodes/node_lab_alarm in omnimarket"
+        statement: "AC5: tests/nodes/node_lab_alarm/test_lab_alarm_cli_binding.py passes with node_lab_alarm bound under cli_handlers and fails when either operation is listed under handler_routing again -- falsifier: uv run pytest tests/test_handler_routing_boot_resolvable.py tests/nodes/node_lab_alarm in omnimarket"
 evidence_requirements:
   - kind: tests
     description: >-
@@ -72,7 +72,7 @@ dod_evidence:
         cwd: .
   - id: dod-omn22867-ac5-lab-alarm-cli-bound
     description: >-
-      The boot-resolvable guard and the lab alarm binding test pass on this branch. On dev (9297e49ad) both fail: the guard names node_lab_alarm ops broker_lag (HandlerBrokerLag) and effects_held (HandlerEffectsHeld) as unresolvable at boot.
+      The boot-resolvable guard and the lab alarm binding test pass on this branch. With node_lab_alarm's contract as it stood on dev 9297e49ad (both operations under handler_routing) both fail: the guard names ops broker_lag (HandlerBrokerLag) and effects_held (HandlerEffectsHeld) as unresolvable at boot.
     source: manual
     binds_ac:
       - AC5

@@ -39,11 +39,6 @@ handler:
   class: HandlerBrokerLag
   input_model: omnimarket.nodes.node_lab_alarm.models.model_lab_alarm.ModelBrokerLagCommand
 
-# Not runtime-dispatched handlers: HandlerBrokerLag takes the overlay, the manifest source, the lag reader and
-# the sample store as constructor parameters, and HandlerEffectsHeld takes its overlay settings, group reader,
-# state store, lane dispatcher and clock the same way. The boot resolver can inject none of them, so a
-# handler_routing entry would quarantine the handler at boot; the node runs through its own CLI and the
-# operations are bound here (the same shape as node_start_admission_effect).
 cli_handlers:
   - operation: broker_lag
     handler:
@@ -53,6 +48,11 @@ cli_handlers:
     handler:
       name: HandlerEffectsHeld
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
+
+# HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
+# ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
+# the same way. HandlerBrokerLag takes the overlay, the manifest source, the lag reader and the sample store as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
 
 descriptor:
   node_archetype: effect
