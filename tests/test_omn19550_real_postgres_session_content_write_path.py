@@ -12,6 +12,8 @@ when no server is reachable.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -157,6 +159,51 @@ async def test_a_replay_is_one_row() -> None:
             f"SELECT count(*) FROM {schema}.session_content"
         )
         assert count == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_writer_pool_real_postgres_one_pool_writes_100_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-23257: 100 records through the real kept pool open one pool and land 100 rows."""
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+    opened: list[object] = []
+    real_create_pool = asyncpg.create_pool
+
+    async def counting_create_pool(*args: Any, **kwargs: Any) -> Any:
+        pool = await real_create_pool(*args, **kwargs)
+        opened.append(pool)
+        return pool
+
+    async with _migrated_writer() as (writer, connection, schema):
+        monkeypatch.setattr(asyncpg, "create_pool", counting_create_pool)
+        writer._db = AsyncpgAdapter(dsn=_dsn())
+        try:
+            for index in range(100):
+                content = f"pool record {index}"
+                result = await asyncio.to_thread(
+                    writer.handle,
+                    {
+                        **_record(
+                            content=content,
+                            content_sha256=hashlib.sha256(
+                                content.encode("utf-8")
+                            ).hexdigest(),
+                            original_chars=len(content),
+                        ),
+                        "_topic": TOPIC,
+                    },
+                )
+                assert result["rows_upserted"] == 1
+        finally:
+            await asyncio.to_thread(writer.close_pool)
+        assert len(opened) == 1
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.session_content"
+        )
+        assert count == 100
 
 
 @pytest.mark.integration
