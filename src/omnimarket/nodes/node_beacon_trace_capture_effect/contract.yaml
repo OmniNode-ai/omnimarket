@@ -89,3 +89,12 @@ outputs:
 timeouts:
   readback_poll_interval_seconds: 5  # Bounds the wait between projection readback polls.
   readback_deadline_seconds: 60  # Bounds the whole projection readback.
+
+# OMN-23257: the one pool the projection readback keeps for the whole capture. The
+# readback reads one batch's rows one statement at a time, so one connection is
+# all it holds, and every poll reuses it.
+writer_pool:
+  min_size: 1
+  max_size: 1
+  acquire_timeout_seconds: 30
+  command_timeout_seconds: 30
