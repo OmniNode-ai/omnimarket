@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import importlib
+import importlib.util
 import os
-import re
 import socket
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from scripts.hooks.prepush_override_grant import (
     GrantError,
@@ -28,62 +30,58 @@ from scripts.hooks.prepush_override_grant import (
     resolve_repo_root,
 )
 
+_NODE_PACKAGE = "omnimarket.nodes.node_pytest_full_suite_host_guard"
+_SRC = str(Path(__file__).resolve().parents[2] / "src")
+_RESOLVER = Path(__file__).with_name("prepush_dispatch.sh")
+
+
+def _load(module: str) -> Any:
+    """A module of the host guard node (OMN-23367), loaded on first use.
+
+    The shell hook runs this file with no project env, so the file finds the node through this
+    checkout's own src and, when pydantic is missing, runs itself again under uv with it."""
+    if importlib.util.find_spec("pydantic") is None and __name__ == "__main__":
+        again = ["uv", "run", "--no-project", "--with", "pydantic", "python", "-m"]
+        os.execvp(
+            "uv", [*again, "scripts.hooks.pytest_full_suite_host_guard", *sys.argv[1:]]
+        )
+    if _SRC not in sys.path:
+        sys.path.insert(0, _SRC)
+    return importlib.import_module(f"{_NODE_PACKAGE}.{module}")
+
+
+def _node() -> Any:
+    return _load("handlers.handler_pytest_full_suite_host_guard")
+
+
+def _io() -> Any:
+    return _load("adapters.host_table_reader")
+
+
 HOST_TABLE_REL = "scripts/hooks/prepush_hosts.tsv"
 # OMN-20939: the deployment's own rows live in a private table found through the
 # workspace-config resolver, never in this repository.
 PRIVATE_TABLE_REL = "config/onex/overlays/prepush_hosts/prepush_hosts.omnimarket.tsv"
 # OMN-23355: a second login on a capacity host carries its own uv and run folder as a
 # row of this overlay, found through the skill overlay roots; the ssh target stays
-# a host and never names a login.
+# a host and never names a login. The node (OMN-23367) reads the rows.
 LOGIN_OVERLAY_NAME = "prepush_logins"
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
-_UV_COLUMN = 5
-_WORKROOT_COLUMN = 7
-_GIT_LOCATION_ENV = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-)
-
-# Legacy env override -> host-table row label. An override REPLACES the row it
-# names; it never ADDS a hostname to the designated set. That distinction is
-# load-bearing: under a table listing several hosts, an override that merely
-# appended a name could no longer DE-designate the local machine, silently
-# inverting the OMN-15059 guard that
-# `test_guard_refuses_full_suite_escalation_on_non_200_host` proves by forcing
-# a nonsense hostname.
-_LEGACY_OVERRIDE_BY_LABEL = {
-    "h200": "PREPUSH_200_HOSTNAME",
-    "h201c": "PREPUSH_201_GATE_RUNNER_HOSTNAME",
-}
 
 
-def _override_var(label: str) -> str:
-    """Per-row override env var name, matching prepush_dispatch.sh."""
-    sanitized = "".join(c if c.isalnum() else "_" for c in label.upper())
-    return f"PREPUSH_HOST_OVERRIDE_{sanitized}"
+def is_full_suite_target(**kwargs: Any) -> bool:
+    return bool(_node().is_full_suite_target(**kwargs))
 
 
-def designated_hostnames(
-    env: dict[str, str] | None = None,
-) -> tuple[str, ...]:
-    """Authorizing identities from the shared trusted table reader, with row overrides."""
-    active_env: dict[str, str] | os._Environ[str] = os.environ if env is None else env
-    table_text = _table_text(resolve_repo_root(), active_env)
-    names: list[str] = []
-    for line in table_text.splitlines():
-        fields = line.split("#", 1)[0].split("\t")
-        if len(fields) < 12 or fields[11] != "authorizing":
-            continue
-        label, hostname = fields[0], fields[2]
-        legacy = _LEGACY_OVERRIDE_BY_LABEL.get(label)
-        if legacy and active_env.get(legacy):
-            hostname = active_env[legacy]
-        names.append(active_env.get(_override_var(label)) or hostname)
-    return tuple(names)
+def login_decision(table_text: str, *, host: str, login: str) -> str:
+    return str(_node().login_decision(table_text, host=host, login=login))
+
+
+def full_suite_host_violation_message(**kwargs: Any) -> str | None:
+    """The node's host rule, with the two table paths this script names."""
+    return _node().full_suite_host_violation_message(
+        private_table_rel=PRIVATE_TABLE_REL, host_table_rel=HOST_TABLE_REL, **kwargs
+    )
 
 
 def resolve_local_login() -> str:
@@ -94,69 +92,44 @@ def resolve_local_login() -> str:
         return ""
 
 
-def _login_overlay_block(env: dict[str, str] | os._Environ[str]) -> str | None:
-    """The ``table`` block of the first per-login overlay on the roots; absence is neutral."""
-    for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep):
-        if not root:
-            continue
-        path = Path(root) / LOGIN_OVERLAY_NAME / "overlay.yaml"
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise ValueError(f"per-login host overlay cannot be read: {exc}") from exc
-        lines = text.splitlines()
-        start = next(
-            (i for i, ln in enumerate(lines) if re.fullmatch(r"table:\s*\|[-+]?\s*", ln)),
-            None,
-        )
-        if start is None:
-            raise ValueError("per-login host overlay has no `table: |` block")
-        block: list[str] = []
-        for ln in lines[start + 1 :]:
-            if ln.strip() and not ln[:1].isspace():
-                break
-            block.append(ln.strip())
-        return "\n".join(block)
-    return None
-
-
-def parse_login_rows(block: str) -> dict[tuple[str, str], tuple[str, str]]:
-    """``label login uv_abs_path workroot`` rows keyed by (label, login)."""
-    rows: dict[tuple[str, str], tuple[str, str]] = {}
-    for raw in block.splitlines():
-        fields = raw.split("#", 1)[0].split()
-        if not fields:
-            continue
-        if len(fields) != 4 or not all(f.startswith("/") for f in fields[2:]):
-            raise ValueError(
-                f"per-login host row must be `label login uv_abs_path workroot` "
-                f"with absolute paths: {raw!r}"
-            )
-        key = (fields[0], fields[1])
-        if key in rows:
-            raise ValueError(f"per-login host row repeated for {key[0]} {key[1]}")
-        rows[key] = (fields[2], fields[3])
-    return rows
-
-
-def apply_login_rows(
-    table_text: str, rows: dict[tuple[str, str], tuple[str, str]], login: str
+def _raw_table_text(
+    repo_root: Path,
+    env: dict[str, str] | os._Environ[str],
+    private_rel: str = PRIVATE_TABLE_REL,
 ) -> str:
-    """Replace uv_abs_path and workroot of the rows ``login`` owns; nothing else moves."""
-    if not login:
-        return table_text
-    out: list[str] = []
-    for line in table_text.split("\n"):
-        fields = line.split("\t")
-        if len(fields) >= 15 and not line.lstrip().startswith("#"):
-            owned = rows.get((fields[0], login))
-            if owned:
-                fields[_UV_COLUMN], fields[_WORKROOT_COLUMN] = owned
-                line = "\t".join(fields)
-        out.append(line)
-    return "\n".join(out)
+    """Shipped and private tables read atomically; divergent working bytes refuse."""
+    shipped = _io().shipped_table_text(repo_root, HOST_TABLE_REL)
+    return shipped + "\n" + (_private_table_text(env, private_rel) or "")
+
+
+def _decide(
+    table_text: str,
+    env: dict[str, str] | os._Environ[str],
+    *,
+    host: str = "",
+    login: str | None = None,
+    private_rel: str = PRIVATE_TABLE_REL,
+) -> Any:
+    """The node's answer for a host and login over the table as read (OMN-23367)."""
+    return (
+        _node()
+        .HandlerPytestFullSuiteHostGuard()
+        .handle(
+            _node().ModelPytestFullSuiteHostGuardRequest(
+                table_text=table_text,
+                login_overlay_text=_io().login_overlay_text(
+                    env, LOGIN_OVERLAY_NAME, OVERLAY_ROOTS_ENV
+                ),
+                login=resolve_local_login() if login is None else login,
+                host=host,
+                env_overrides={
+                    k: v for k, v in env.items() if k.startswith("PREPUSH_")
+                },
+                private_table_rel=private_rel,
+                host_table_rel=HOST_TABLE_REL,
+            )
+        )
+    )
 
 
 def _table_text(
@@ -165,123 +138,35 @@ def _table_text(
     private_rel: str = PRIVATE_TABLE_REL,
     login: str | None = None,
 ) -> str:
-    """Read shipped and private tables atomically, refusing divergent working bytes.
+    """The table with the invoking login's own uv and run folder in place of the host row's.
 
-    The invoking login's own uv and run folder, when the per-login overlay carries a
-    row for it, replace the host row's values (OMN-23355); ``login=""`` reads none."""
-    committed = subprocess.run(
-        ["git", "-C", str(repo_root), "show", f"HEAD:{HOST_TABLE_REL}"],
-        capture_output=True,
-        timeout=15,
-        check=False,
-    )
-    if committed.returncode != 0:
-        raise ValueError(f"host table absent at HEAD ({HOST_TABLE_REL})")
-    working = repo_root / HOST_TABLE_REL
-    if working.exists() and working.read_bytes() != committed.stdout:
-        raise ValueError("host table differs between the working tree and HEAD")
-    private = _private_table_text(env, private_rel)
-    text = committed.stdout.decode("utf-8") + "\n" + (private or "")
-    block = _login_overlay_block(env)
-    if block is None:
-        return text
-    return apply_login_rows(
-        text,
-        parse_login_rows(block),
-        resolve_local_login() if login is None else login,
-    )
+    ``login=""`` reads none (OMN-23355)."""
+    return _decide(
+        _raw_table_text(repo_root, env, private_rel),
+        env,
+        login=login,
+        private_rel=private_rel,
+    ).merged_table_text
 
 
-def login_decision(table_text: str, *, host: str, login: str) -> str:
-    """One line naming the guard's decision for a login on a host and what it resolves to."""
-    for line in table_text.splitlines():
-        fields = line.split("#", 1)[0].split("\t")
-        if len(fields) < 15 or fields[2].lower() != host.lower():
-            continue
-        if fields[11] == "authorizing":
-            return (
-                f"prepush-guard decision: host={host} login={login} row={fields[0]} "
-                f"verdict=authorized uv={fields[_UV_COLUMN]} "
-                f"workroot={fields[_WORKROOT_COLUMN]}"
-            )
-    return (
-        f"prepush-guard decision: host={host} login={login} verdict=refused "
-        "reason=not-designated"
-    )
+def designated_hostnames(env: dict[str, str] | None = None) -> tuple[str, ...]:
+    """Authorizing identities from the shared trusted table reader, with row overrides."""
+    active_env: dict[str, str] | os._Environ[str] = os.environ if env is None else env
+    return _decide(
+        _raw_table_text(resolve_repo_root(), active_env), active_env
+    ).designated_hostnames
 
 
-def _workspace_config_root(
-    env: dict[str, str] | os._Environ[str],
-) -> Path | None:
+def _workspace_config_root(env: dict[str, str] | os._Environ[str]) -> Path | None:
     """Private config root from injection or the workspace owner beside OMNI_HOME."""
-    configured = env.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
-    if configured:
-        return Path(configured)
-    if not env.get("OMNI_HOME", "").strip():
-        return None
-    resolved = subprocess.run(
-        [
-            "bash",
-            "-c",
-            'source "$1"; prepush_workspace_config_root',
-            "resolver",
-            str(Path(__file__).with_name("prepush_dispatch.sh")),
-        ],
-        env={**env, "PREPUSH_PRIVATE_TABLE_REL": PRIVATE_TABLE_REL},
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=False,
-    )
-    return (
-        Path(resolved.stdout.strip())
-        if resolved.returncode == 0 and resolved.stdout.strip()
-        else None
-    )
+    return _io().workspace_config_root(env, PRIVATE_TABLE_REL, _RESOLVER)
 
 
 def _private_table_text(
     env: dict[str, str] | os._Environ[str], private_rel: str = PRIVATE_TABLE_REL
 ) -> str | None:
     """Read private bytes; absence is neutral, present untrusted state refuses."""
-    root = _workspace_config_root(env)
-    if root is None or not private_rel:
-        return None
-    path = root / private_rel
-    try:
-        working = path.read_bytes()
-    except FileNotFoundError:
-        if not path.is_symlink():
-            return None
-        raise ValueError(
-            "private host table cannot be read: dangling symlink"
-        ) from None
-    except OSError as exc:
-        raise ValueError(f"private host table cannot be read: {exc.strerror}") from exc
-    git_env = {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_ENV}
-    top = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=False,
-        env=git_env,
-    )
-    if top.returncode == 0 and Path(top.stdout.strip()).resolve() == root.resolve():
-        committed = subprocess.run(
-            ["git", "-C", str(root), "show", f"HEAD:{private_rel}"],
-            capture_output=True,
-            timeout=15,
-            check=False,
-            env=git_env,
-        )
-        if committed.returncode != 0:
-            raise ValueError("private host table has no committed copy at HEAD")
-        if working != committed.stdout:
-            raise ValueError(
-                "private host table differs between the working tree and HEAD"
-            )
-    return working.decode("utf-8")
+    return _io().private_table_text(_workspace_config_root(env), private_rel)
 
 
 def is_ci_environment(env: dict[str, str] | None = None) -> bool:
@@ -296,79 +181,6 @@ def resolve_local_hostname() -> str:
         return socket.gethostname().split(".", 1)[0]
     except OSError:
         return ""
-
-
-def is_full_suite_target(
-    *,
-    args: list[str],
-    testpaths: list[str],
-    keyword: str,
-    markexpr: str,
-    full_suite_target: str,
-) -> bool:
-    """An unnarrowed full-suite root or ancestor; narrow paths and filters are exempt."""
-    if keyword or markexpr:
-        return False
-    targets = args or testpaths
-    normalized_full = full_suite_target.rstrip("/") + "/"
-    for raw in targets:
-        normalized = str(raw).rstrip("/") + "/"
-        if normalized_full.startswith(normalized):
-            return True
-    return False
-
-
-def full_suite_host_violation_message(
-    *,
-    host: str,
-    target_hostname: str,
-    additional_target_hostnames: tuple[str, ...] = (),
-    override_authorized: bool,
-) -> str | None:
-    """Pure host decision; unknown identity stays fail-open and grants permit mismatches."""
-    if not host or override_authorized:
-        return None
-    allowed_hostnames = tuple(
-        name for name in (target_hostname, *additional_target_hostnames) if name
-    )
-    if any(host.lower() == allowed.lower() for allowed in allowed_hostnames):
-        return None
-    reason = (
-        "no gate host is configured. The shipped table carries only a disabled localhost row"
-        if not allowed_hostnames
-        else "not a designated gate host carrying mode=authorizing in the host tables "
-        f"({', '.join(repr(allowed) for allowed in allowed_hostnames)})"
-    )
-    return (
-        f"direct full-suite pytest invocation refused on host '{host}': {reason}. "
-        "Create the fifteen-column deployment table at "
-        f"${{ONEX_WORKSPACE_CONFIG_ROOT}}/{PRIVATE_TABLE_REL} and set "
-        "ONEX_WORKSPACE_CONFIG_ROOT to its root, then run from a configured gate host "
-        f"(schema and procedure: {HOST_TABLE_REL}). OR mint a single-use override "
-        "grant to run here anyway (visible, receipted, degraded-evidence -- do not "
-        "use as a routine bypass): `uv run python scripts/hooks/prepush_override_grant.py "
-        "mint --reason '<why>'`."
-    )
-
-
-def override_authorization(*, context: str) -> bool:
-    """Honor an ancestor activation first, otherwise spend a scoped grant; fail closed."""
-    try:
-        repo_root = resolve_repo_root()
-        head_sha = resolve_head_sha(repo_root)
-    except Exception:  # noqa: BLE001 -- see fail-closed note below
-        # Blanket by design, both here and below. This runs inside
-        # pytest_configure on EVERY invocation: an unexpected exception must
-        # become "not authorized", never a traceback that breaks collection for
-        # everyone. Narrowing the clause would trade a fail-closed refusal for a
-        # crash in the one path that must not crash.
-        return False
-    try:
-        if has_active_override(repo_root=repo_root, head_sha=head_sha):
-            return True
-        return consume(repo_root=repo_root, head_sha=head_sha, context=context).accepted
-    except Exception:  # noqa: BLE001 -- fail closed, never crash collection
-        return False
 
 
 def enforce(config: object, full_suite_target: str) -> None:
@@ -399,19 +211,14 @@ def enforce(config: object, full_suite_target: str) -> None:
     host = resolve_local_hostname()
     # OMN-16991: identity comes from the committed host table, not from
     # PREPUSH_* env vars the bash hook's scrub deliberately strips before it
-    # spawns this pytest. See designated_hostnames().
+    # spawns this pytest. The node answers (OMN-23367).
     try:
-        all_designated = designated_hostnames()
+        decision = _decide(
+            _raw_table_text(resolve_repo_root(), os.environ), os.environ, host=host
+        )
     except (ValueError, OSError, subprocess.SubprocessError, GrantError) as exc:
         pytest.exit(f"direct full-suite pytest invocation refused: {exc}", returncode=1)
-    target_hostname = all_designated[0] if all_designated else ""
-    message = full_suite_host_violation_message(
-        host=host,
-        target_hostname=target_hostname,
-        additional_target_hostnames=all_designated[1:],
-        override_authorized=False,
-    )
-    if message is None:
+    if decision.allowed:
         return
     # Only a host mismatch may spend a grant; invalid tables already refused.
     if override_authorization(
@@ -419,15 +226,29 @@ def enforce(config: object, full_suite_target: str) -> None:
     ):
         return
 
-    pytest.exit(message, returncode=1)
+    pytest.exit(decision.message or "", returncode=1)
+
+
+def override_authorization(*, context: str) -> bool:
+    """Honor an ancestor activation first, otherwise spend a scoped grant; fail closed."""
+    try:
+        repo_root = resolve_repo_root()
+        head_sha = resolve_head_sha(repo_root)
+        return (
+            has_active_override(repo_root=repo_root, head_sha=head_sha)
+            or consume(repo_root=repo_root, head_sha=head_sha, context=context).accepted
+        )
+    except Exception:  # noqa: BLE001 -- blanket by design: this runs inside
+        # pytest_configure on EVERY invocation, so an unexpected exception must become
+        # "not authorized", never a traceback that breaks collection for everyone.
+        return False
 
 
 def main() -> int:
     """The shell hook calls this same reader, including its refusal diagnostics."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--read-table", choices=("all", "private", "status", "decision"),
-        required=True,
+        "--read-table", choices=("all", "private", "status", "decision"), required=True
     )
     parser.add_argument("--host", default="")
     parser.add_argument("--login", default=None)
@@ -436,39 +257,27 @@ def main() -> int:
     args = parser.parse_args()
     result: str | None
     try:
+        repo_root = args.repo_root or resolve_repo_root()
+        rel = args.private_table_rel
         if args.read_table == "status":
             root = _workspace_config_root(os.environ)
-            path = (
-                root / args.private_table_rel
-                if root and args.private_table_rel
-                else None
-            )
-            result = (
-                f"deployment host table: {path}"
-                if path and path.exists()
-                else f"deployment host table NOT CONFIGURED: {args.private_table_rel} is absent -- set ONEX_WORKSPACE_CONFIG_ROOT "
-                f"to a root holding {args.private_table_rel} (fifteen columns, see {HOST_TABLE_REL})"
+            path = root / rel if root and rel else None
+            result = _node().table_status_line(
+                str(path) if path and path.exists() else None, rel, HOST_TABLE_REL
             )
         elif args.read_table == "private":
-            result = _private_table_text(os.environ, args.private_table_rel)
+            result = _private_table_text(os.environ, rel)
         elif args.read_table == "decision":
-            login = resolve_local_login() if args.login is None else args.login
-            result = login_decision(
-                _table_text(
-                    args.repo_root or resolve_repo_root(),
-                    os.environ,
-                    args.private_table_rel,
-                    login,
-                ),
-                host=args.host or resolve_local_hostname(),
-                login=login,
-            )
-        else:
-            result = _table_text(
-                args.repo_root or resolve_repo_root(),
+            raw = _raw_table_text(repo_root, os.environ, rel)
+            result = _decide(
+                raw,
                 os.environ,
-                args.private_table_rel,
-            )
+                host=args.host or resolve_local_hostname(),
+                login=args.login,
+                private_rel=rel,
+            ).decision_line
+        else:
+            result = _table_text(repo_root, os.environ, rel)
         if result is None:
             return 2
         sys.stdout.write(str(result))
