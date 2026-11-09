@@ -45,6 +45,9 @@ class ModelWorkStateRules(BaseModel):
     ticket_id_pattern: str
     # Linear state types that mean the ticket needs no more work.
     ticket_done_state_types: tuple[str, ...] = Field(min_length=1)
+    # What a ticket's assignee reads as when the snapshot's own ``operator`` is the assignee (OMN-23313): the tracker's alias
+    # for the signed-in user, which the lab fill already accepts for the operator's tickets.
+    operator_assignee_alias: str = Field(default="me", min_length=1)
     # A ticket description line naming its start criterion; names the group `refs`.
     ticket_requires_pattern: str
     # TERMINAL outcomes that close a lane with nothing left; any other outcome leaves the lane stopped.
