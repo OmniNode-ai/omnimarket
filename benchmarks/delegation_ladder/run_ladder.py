@@ -174,6 +174,27 @@ class SubprocessRun(Protocol):
     ) -> subprocess.CompletedProcess[str]: ...
 
 
+# The wait the harness gives its own child process when the caller names no
+# ``--timeout``. It is NOT forwarded to ``onex delegate``: each task class has
+# its own timeout ceiling and the delegate refuses a larger request before it
+# dispatches (``timeout_exceeds_task_class_ceiling``, review is the example), so
+# a harness-wide default sent on every call refused every review-class task with
+# no receipt and no model call (OMN-18339). With no explicit timeout the
+# delegate applies its own class ceiling.
+CLIENT_WAIT_S = 600
+CLIENT_SLACK_S = 180
+
+
+def delegate_timeout_argv(timeout_s: int | None) -> list[str]:
+    """``--timeout`` for ``onex delegate`` only when the caller asked for one."""
+    return [] if timeout_s is None else ["--timeout", str(timeout_s)]
+
+
+def client_wait_s(timeout_s: int | None) -> int:
+    """How long the harness waits on the delegate child process."""
+    return (CLIENT_WAIT_S if timeout_s is None else timeout_s) + CLIENT_SLACK_S
+
+
 def _mapping(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
@@ -256,7 +277,7 @@ def invoke_pinned(
     spec: BackendSpec,
     *,
     onex: Path,
-    timeout_s: int,
+    timeout_s: int | None,
     run: SubprocessRun = subprocess.run,
     in_process_overlay: str | None = None,
 ) -> Invocation:
@@ -347,7 +368,7 @@ def invoke_pinned(
                     "--state-root",
                     str(Path(registry_root) / ".onex_state"),
                 ]
-            argv += ["--timeout", str(timeout_s), "--json"]
+            argv += [*delegate_timeout_argv(timeout_s), "--json"]
             if spec.backend_id:
                 argv += ["--backend-id", spec.backend_id]
 
@@ -357,7 +378,7 @@ def invoke_pinned(
                 argv,
                 capture_output=True,
                 text=True,
-                timeout=timeout_s + 180,
+                timeout=client_wait_s(timeout_s),
                 env=env,
                 check=False,
             )
@@ -368,7 +389,7 @@ def invoke_pinned(
             )
             return _no_answer(
                 int((time.monotonic() - started) * 1000),
-                f"client exceeded {timeout_s + 180}s; {tail[-400:]}",
+                f"client exceeded {client_wait_s(timeout_s)}s; {tail[-400:]}",
             )
         wall_ms = int((time.monotonic() - started) * 1000)
         if spec.kind == "onex_delegate":
@@ -439,7 +460,13 @@ def _recover_rejected(state_root: Path) -> tuple[str, str, str] | None:
     return last.group("body").strip(), last.group("tier"), last.group("reason")
 
 
-def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocation:
+def invoke_local(
+    bundle: ModelTaskBundle,
+    onex: Path,
+    timeout_s: int | None,
+    *,
+    in_process: bool = False,
+) -> Invocation:
     registry_root = os.environ.get("OMNI_HOME")
     if not registry_root:
         raise RuntimeError("OMNI_HOME must be set; there is no default (rule 8)")
@@ -462,68 +489,33 @@ def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocat
                 bundle.prompt,
                 "--task-type",
                 bundle.task_type,
+                *(IN_PROCESS_FLAGS if in_process else ()),
                 "--state-root",
                 str(tmp),
-                "--timeout",
-                str(timeout_s),
+                *delegate_timeout_argv(timeout_s),
+                "--json",
             ],
             capture_output=True,
             text=True,
-            timeout=timeout_s + 180,
+            timeout=client_wait_s(timeout_s),
             env=env,
             check=False,
         )
         wall_ms = int((time.monotonic() - started) * 1000)
 
-        receipt: dict[str, object] | None = None
-        for line in completed.stdout.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("{"):
-                try:
-                    receipt = json.loads(stripped)
-                    break
-                except json.JSONDecodeError:
-                    continue
-        if receipt is None and completed.stdout.strip().startswith("{"):
-            try:
-                receipt = json.loads(completed.stdout)
-            except json.JSONDecodeError:
-                receipt = None
-
-        result = receipt.get("result") if receipt is not None else None
-        if isinstance(result, dict):
-            raw_attempts = result.get("attempts")
-            attempts: list[dict[str, object]] = (
-                [a for a in raw_attempts if isinstance(a, dict)]
-                if isinstance(raw_attempts, list)
-                else []
-            )
-            accepted: dict[str, object] = next(
-                (a for a in attempts if a.get("acceptance_decision") == "accept"),
-                attempts[-1] if attempts else {},
-            )
-            raw_metrics = result.get("metrics")
-            metrics: dict[str, object] = (
-                raw_metrics if isinstance(raw_metrics, dict) else {}
-            )
-            return Invocation(
-                response=str(result.get("response") or ""),
-                delegation_id=str(result.get("correlation_id") or "") or None,
-                tier=_as_str(accepted.get("tier")),
-                backend_id=_as_str(accepted.get("backend_id")),
-                model_id=_as_str(accepted.get("model_id"))
-                or _as_str(result.get("model_name")),
-                input_tokens=_as_int(metrics.get("input_tokens")),
-                output_tokens=_as_int(metrics.get("output_tokens")),
-                total_tokens=_as_int(metrics.get("total_tokens")),
-                cost_usd=_as_float(metrics.get("cost_usd")),
-                model_latency_ms=_as_int(metrics.get("latency_ms")),
-                quality_gate_passed=_as_bool(result.get("quality_gate_passed")),
-                quality_score=_as_float(result.get("quality_score")),
-                wall_ms=wall_ms,
-                refused=False,
-                notes=f"attempts={len(attempts)}",
-            )
+        # ``--json`` is required: without it the CLI prints the answer as plain
+        # text, no receipt line exists, and a successful run was scored as a
+        # refusal with its answer discarded (OMN-18339). The receipt shape is
+        # the deployed lane's, the same one the pinned path reads.
+        receipt = _stdout_receipt(completed.stdout)
+        terminal_notes = ""
+        terminal_attempts: list[dict[str, object]] = []
+        if receipt is not None:
+            got = replace(parse_deployed_receipt(receipt), wall_ms=wall_ms)
+            if got.response:
+                return got
+            terminal_notes = f"terminal: {got.notes}; "
+            terminal_attempts = got.attempts
 
         recovered = _recover_rejected(tmp)
         if recovered is not None:
@@ -573,7 +565,11 @@ def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocat
             quality_score=None,
             wall_ms=wall_ms,
             refused=True,
-            notes=f"no receipt and no recoverable candidate; rc={completed.returncode}; {tail}",
+            notes=(
+                f"no answer and no recoverable candidate; rc={completed.returncode}; "
+                f"{terminal_notes}{tail}"
+            ),
+            attempts=terminal_attempts,
         )
     except subprocess.TimeoutExpired:
         return Invocation(
@@ -589,9 +585,9 @@ def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocat
             model_latency_ms=None,
             quality_gate_passed=None,
             quality_score=None,
-            wall_ms=(timeout_s + 180) * 1000,
+            wall_ms=client_wait_s(timeout_s) * 1000,
             refused=True,
-            notes=f"client exceeded {timeout_s + 180}s",
+            notes=f"client exceeded {client_wait_s(timeout_s)}s",
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -606,7 +602,7 @@ def invoke_cloud(
     bundle: ModelTaskBundle,
     onex: Path,
     api_key_file: Path | None,
-    timeout_s: int,
+    timeout_s: int | None,
     base_url: str | None = None,
 ) -> Invocation:
     registry_root = os.environ.get("OMNI_HOME")
@@ -629,8 +625,7 @@ def invoke_cloud(
         bundle.task_type,
         "--output-dir",
         str(outdir),
-        "--timeout",
-        str(timeout_s),
+        *delegate_timeout_argv(timeout_s),
     ]
     if api_key_file is not None:
         argv += ["--api-key-file", str(api_key_file)]
@@ -643,7 +638,7 @@ def invoke_cloud(
             argv,
             capture_output=True,
             text=True,
-            timeout=timeout_s + 180,
+            timeout=client_wait_s(timeout_s),
             env=env,
             check=False,
         )
@@ -729,9 +724,9 @@ def invoke_cloud(
             model_latency_ms=None,
             quality_gate_passed=None,
             quality_score=None,
-            wall_ms=(timeout_s + 180) * 1000,
+            wall_ms=client_wait_s(timeout_s) * 1000,
             refused=True,
-            notes=f"client exceeded {timeout_s + 180}s",
+            notes=f"client exceeded {client_wait_s(timeout_s)}s",
         )
     finally:
         shutil.rmtree(outdir, ignore_errors=True)
@@ -1693,7 +1688,7 @@ def run_rung_benchmark(args: argparse.Namespace) -> int:
             onex=onex,
             harness_script=harness_script,
             bus_flags=bus_flags,
-            timeout_s=args.timeout,
+            timeout_s=args.timeout or CLIENT_WAIT_S,
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -1746,12 +1741,13 @@ def run_one(
     path: EnumPath,
     onex: Path,
     api_key_file: Path | None,
-    timeout_s: int,
+    timeout_s: int | None,
     base_url: str | None = None,
     transcript_dir: Path | None = None,
     *,
     backend: str | None = None,
     in_process_overlay: str | None = None,
+    in_process: bool = False,
 ) -> ModelRunRecord:
     if backend is not None:
         got = invoke_pinned(
@@ -1762,7 +1758,7 @@ def run_one(
             in_process_overlay=in_process_overlay,
         )
     elif path is EnumPath.LOCAL:
-        got = invoke_local(bundle, onex, timeout_s)
+        got = invoke_local(bundle, onex, timeout_s, in_process=in_process)
     else:
         got = invoke_cloud(bundle, onex, api_key_file, timeout_s, base_url)
 
@@ -1994,7 +1990,13 @@ def main() -> int:
             "records which gateway answered instead of inheriting a stored login."
         ),
     )
-    parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Seconds passed to onex delegate; omitted by default so each task "
+        "class applies its own ceiling.",
+    )
     parser.add_argument(
         "--concurrency",
         type=int,
@@ -2102,6 +2104,7 @@ def main() -> int:
                 transcripts,
                 backend=args.backend,
                 in_process_overlay=args.in_process_overlay,
+                in_process=args.in_process,
             ): bundle
             for bundle in bundles
         }

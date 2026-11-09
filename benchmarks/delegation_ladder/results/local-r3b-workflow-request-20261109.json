@@ -1,0 +1,307 @@
+{
+  "path": "local",
+  "generated_at": "2026-11-09T14:22:51Z",
+  "concurrency": 1,
+  "base_url": null,
+  "transcripts": "results/responses/local",
+  "paid_escalation_disabled": true,
+  "records": [
+    {
+      "task_id": "R3b-01",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.8-27B",
+      "input_tokens": 1066,
+      "output_tokens": 48,
+      "total_tokens": 1114,
+      "cost_usd": 0.0,
+      "model_latency_ms": 2433,
+      "wall_ms": 14327,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.0,
+      "response_chars": 130,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "valid request for the held workflow",
+        "sub_scores": {},
+        "checklist": {
+          "names_a_workflow": true,
+          "names_a_catalogue_workflow": true,
+          "names_the_held_workflow": true,
+          "parameters_are_a_json_object": true,
+          "parameters_validate_against_request_schema": true,
+          "parameter:repo": true,
+          "parameter:path": true
+        }
+      },
+      "response_sha256": "e2b7f1816d838a0ca3ce533e5dfee348d3878cb9af199e6e0aa2662413207234",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 650,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "status=completed; error_message=",
+      "backend": null,
+      "difficulty": null,
+      "task_type": "review",
+      "host": null,
+      "accepted": true,
+      "attempts": [
+        {
+          "backend_id": "local-heavy-reasoning",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "accept",
+          "acceptance_reason": "quality_bar_met",
+          "failure_class": null,
+          "quality_gate_passed": true,
+          "error_message": ""
+        }
+      ],
+      "escalation_count": 0
+    },
+    {
+      "task_id": "R3b-02",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-omnipc2-chat",
+      "model_id": "Qwen3.8-27B",
+      "input_tokens": 1013,
+      "output_tokens": 45,
+      "total_tokens": 1058,
+      "cost_usd": 0.0,
+      "model_latency_ms": 4400,
+      "wall_ms": 14408,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.0,
+      "response_chars": 77,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "valid request for the held workflow",
+        "sub_scores": {},
+        "checklist": {
+          "names_a_workflow": true,
+          "names_a_catalogue_workflow": true,
+          "names_the_held_workflow": true,
+          "parameters_are_a_json_object": true,
+          "parameters_validate_against_request_schema": true,
+          "parameter:run_id": true,
+          "parameter:repo": true
+        }
+      },
+      "response_sha256": "a3fa0752aaad2412d8543e068b16e1080bde0032adb369f3dc205168b623202c",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 607,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "status=completed; error_message=",
+      "backend": null,
+      "difficulty": null,
+      "task_type": "review",
+      "host": null,
+      "accepted": true,
+      "attempts": [
+        {
+          "backend_id": "local-omnipc2-chat",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "accept",
+          "acceptance_reason": "quality_bar_met",
+          "failure_class": null,
+          "quality_gate_passed": true,
+          "error_message": ""
+        }
+      ],
+      "escalation_count": 0
+    },
+    {
+      "task_id": "R3b-03",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.8-27B",
+      "input_tokens": 1115,
+      "output_tokens": 97,
+      "total_tokens": 1212,
+      "cost_usd": 0.0,
+      "model_latency_ms": 3965,
+      "wall_ms": 13650,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.0,
+      "response_chars": 285,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "valid request for the held workflow",
+        "sub_scores": {},
+        "checklist": {
+          "names_a_workflow": true,
+          "names_a_catalogue_workflow": true,
+          "names_the_held_workflow": true,
+          "parameters_are_a_json_object": true,
+          "parameters_validate_against_request_schema": true,
+          "parameter:paths": true,
+          "parameter:repo": true
+        }
+      },
+      "response_sha256": "4bc17ec35441892f1b9d363e7fc7b57ed1a51dcc0308ec49f68ed5bacf134fa1",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 646,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "status=completed; error_message=",
+      "backend": null,
+      "difficulty": null,
+      "task_type": "review",
+      "host": null,
+      "accepted": true,
+      "attempts": [
+        {
+          "backend_id": "local-heavy-reasoning",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "accept",
+          "acceptance_reason": "quality_bar_met",
+          "failure_class": null,
+          "quality_gate_passed": true,
+          "error_message": ""
+        }
+      ],
+      "escalation_count": 0
+    },
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 188801,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R3",
+      "complexity_score": 6,
+      "complexity_features": {
+        "input_tokens_estimate": 758,
+        "distinct_sources": 4,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
+      "backend": null,
+      "difficulty": null,
+      "task_type": "review",
+      "host": null,
+      "accepted": false,
+      "attempts": [],
+      "escalation_count": null
+    }
+  ]
+}
