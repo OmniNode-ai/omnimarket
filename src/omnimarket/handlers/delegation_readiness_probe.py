@@ -41,6 +41,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.handlers.execution_budget_overlay import EXECUTION_BUDGET_OVERLAY_ID
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
@@ -88,6 +89,10 @@ class ModelRungScript(BaseModel):
     timeout_ms: int = Field(default=30000, ge=1)
     cost_class: CostClass = "free"
     tier: str = Field(default="local", min_length=1)
+    #: The rung's output-token cap; ``None`` leaves the probe rung's own default.
+    max_tokens: int | None = Field(default=None, ge=1)
+    #: What the in-memory backend books for an answered call on this rung (a paid rung's scripted, measured cost).
+    scripted_cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class ModelLegSpec(BaseModel):
@@ -114,6 +119,14 @@ class ModelAttemptFact(BaseModel):
     backend_id: str
     failure_class: str | None
     accepted: bool
+    #: Facts of the attempt record a scenario may assert on; all default so an existing reader is unaffected.
+    tier: str | None = None
+    cost_usd: float = 0.0
+    usage_source: str | None = None
+    #: The accept/climb/retry stamp the dispatch port appends (``transition=<kind>:<cause>[:<move_kind>]``).
+    acceptance_detail: str = ""
+    http_status: int | None = None
+    size_band: str | None = None
 
 
 class ModelLegOutcome(BaseModel):
@@ -135,6 +148,8 @@ class ModelLegOutcome(BaseModel):
     budget_ceiling_seconds: int | None = None
     budget_requested_seconds: int | None = None
     budget_refusal_reason: str | None = None
+    #: The run's total spend as the terminal's metrics report it.
+    cost_usd: float = 0.0
 
     @property
     def walked(self) -> tuple[str, ...]:
@@ -211,7 +226,11 @@ class ScriptedLegTransport:
             answers_late = rung.behaviour == "slow" and rung.delay_ms < rung.timeout_ms
             if rung.behaviour == "answer" or answers_late:
                 self._virtual_elapsed_ms += rung.delay_ms if answers_late else 0
-                return _result(request, content=self._answers[request.endpoint_ref])
+                return _result(
+                    request,
+                    content=self._answers[request.endpoint_ref],
+                    cost_usd=rung.scripted_cost_usd,
+                )
             failure = (
                 _STATUS_CLASS[rung.status_code or 503]
                 if rung.behaviour == "status"
@@ -234,6 +253,7 @@ def _result(
     content: str = "",
     failure: EnumDelegationFailureClass | None = None,
     status: int | None = None,
+    cost_usd: Decimal = Decimal("0"),
 ) -> ModelLlmDelegationCallResult:
     failed = failure is not None
     return ModelLlmDelegationCallResult(
@@ -243,8 +263,11 @@ def _result(
         tokens_in=0 if failed else 11,
         tokens_out=0 if failed else 22,
         latency_ms=1,
-        actual_cost_usd=Decimal("0"),
+        actual_cost_usd=cost_usd,
         savings_usd=Decimal("0"),
+        usage_source=EnumUsageSource.MEASURED
+        if cost_usd > 0
+        else EnumUsageSource.UNKNOWN,
         http_status=status,
         failure_class=failure,
         error_message=f"scripted {failure.value}" if failure is not None else None,
@@ -395,6 +418,7 @@ def run_leg(
                 endpoint_ref=urls[rung.backend_id],
                 tier=rung.tier,
                 timeout_ms=rung.timeout_ms,
+                **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
             )
             for rung in leg.rungs
         )
@@ -443,6 +467,20 @@ def run_leg(
                 backend_id=attempt.backend_id,
                 failure_class=attempt.failure_class,
                 accepted=attempt.quality_gate_passed,
+                tier=attempt.tier,
+                cost_usd=attempt.cost_usd,
+                usage_source=(
+                    attempt.usage_source.value
+                    if attempt.usage_source is not None
+                    else None
+                ),
+                acceptance_detail=attempt.acceptance_detail,
+                http_status=attempt.http_status,
+                size_band=(
+                    str(getattr(attempt.size_band, "value", attempt.size_band))
+                    if attempt.size_band is not None
+                    else None
+                ),
             )
             for attempt in response.attempts
         ),
@@ -462,6 +500,7 @@ def run_leg(
             else None
         ),
         budget_refusal_reason=(refusal.reason.value if refusal is not None else None),
+        cost_usd=response.metrics.cost_usd,
     )
 
 

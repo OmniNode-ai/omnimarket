@@ -571,6 +571,7 @@ node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_
 node_delegation_scenario_days_compute = "omnimarket.nodes.node_delegation_scenario_days_compute"
 node_delegation_scenario_days_effect = "omnimarket.nodes.node_delegation_scenario_days_effect"
 node_delegation_scenario_r2_effect = "omnimarket.nodes.node_delegation_scenario_r2_effect"
+node_delegation_scenario_r3_effect = "omnimarket.nodes.node_delegation_scenario_r3_effect"
 node_delegation_scenario_r4_effect = "omnimarket.nodes.node_delegation_scenario_r4_effect"
 node_delegation_scenario_r6_effect = "omnimarket.nodes.node_delegation_scenario_r6_effect"
 node_delegation_seam_measure_compute = "omnimarket.nodes.node_delegation_seam_measure_compute"
