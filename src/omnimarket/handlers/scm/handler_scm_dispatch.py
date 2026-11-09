@@ -115,6 +115,9 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
     ModelScmVerb(
+        verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
+    ),
+    ModelScmVerb(
         verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
     ),
     ModelScmVerb(
@@ -238,10 +241,7 @@ SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
 
 def verb(name: str) -> ModelScmVerb:
     """The served verb named ``name``."""
-    for spec in SCM_VERBS:
-        if spec.verb == name:
-            return spec
-    raise KeyError(name)
+    return {spec.verb: spec for spec in SCM_VERBS}[name]
 
 
 def load_contract(node: EnumScmNode) -> dict[str, JsonValue]:
