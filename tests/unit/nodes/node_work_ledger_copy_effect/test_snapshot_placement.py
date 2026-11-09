@@ -39,6 +39,8 @@ from tests.unit.nodes.node_work_ledger_copy_effect.support_snapshot import (
 )
 
 pytestmark = pytest.mark.unit
+_APPEND = "/usr/local/bin/example-bus-append"
+_ENVIRONMENT = {"ONEX_LEDGER_BUS_APPEND_COMMAND": f"{_APPEND} --bus-lane dev"}
 _EXAMPLE = (
     Path(__file__).resolve().parents[4]
     / "src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.snapshot.example.yaml"
@@ -77,9 +79,9 @@ def test_a_snapshot_run_on_the_source_machine_is_refused_though_the_labels_diffe
     overlay = _overlay(tmp_path)
     _on(monkeypatch, overlay.source.host)
     runner = _runner()
-    result = create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
-        snapshot_request()
-    )
+    result = create_handler_work_ledger_snapshot(
+        overlay, _ENVIRONMENT, run=runner
+    ).handle(snapshot_request())
     assert not result.ok
     assert runner.commands == []
     assert not (tmp_path / "snapshots").exists()
@@ -91,9 +93,9 @@ def test_a_snapshot_run_on_the_store_machine_is_written(
 ) -> None:
     overlay = _overlay(tmp_path)
     _on(monkeypatch, "COPY-HOST.example.invalid")
-    result = create_handler_work_ledger_snapshot(overlay, {}, run=_runner()).handle(
-        snapshot_request()
-    )
+    result = create_handler_work_ledger_snapshot(
+        overlay, _ENVIRONMENT, run=_runner()
+    ).handle(snapshot_request())
     assert result.outcome is EnumSnapshotOutcome.WRITTEN
 
 
@@ -103,10 +105,10 @@ def test_a_drill_run_on_the_source_machine_is_refused_before_any_probe(
     overlay = _overlay(tmp_path)
     _on(monkeypatch, overlay.source.host)
     runner = _runner()
-    result = create_handler_work_ledger_restore_drill(overlay, {}, run=runner).handle(
-        drill_request(None)
-    )
-    assert [a[0] for a in runner.commands if a[0] != "onex-ledger"] == []
+    result = create_handler_work_ledger_restore_drill(
+        overlay, _ENVIRONMENT, run=runner
+    ).handle(drill_request(None))
+    assert [a[0] for a in runner.commands if a[0] not in ("onex-ledger", _APPEND)] == []
     assert result.outcome is EnumDrillOutcome.REFUSED_NOT_DRILL_HOST
 
 
@@ -116,11 +118,13 @@ def test_a_drill_run_on_the_drill_machine_goes_on_to_probe(
     overlay = _overlay(tmp_path)
     _on(monkeypatch, "copy-host")
     runner = _runner()
-    result = create_handler_work_ledger_restore_drill(overlay, {}, run=runner).handle(
-        drill_request(None)
-    )
+    result = create_handler_work_ledger_restore_drill(
+        overlay, _ENVIRONMENT, run=runner
+    ).handle(drill_request(None))
     assert result.outcome is EnumDrillOutcome.REFUSED_NO_SNAPSHOT
-    assert [a[0] for a in runner.commands if a[0] != "onex-ledger"] == ["nc"]
+    assert [a[0] for a in runner.commands if a[0] not in ("onex-ledger", _APPEND)] == [
+        "nc"
+    ]
 
 
 @pytest.mark.parametrize(

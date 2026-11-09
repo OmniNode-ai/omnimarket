@@ -12,15 +12,20 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import socket
 import sqlite3
 import tempfile
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    stamp_request_cell,
+)
 from omnimarket.nodes.node_work_ledger_copy_effect.adapters.adapters_real import (
     Runner,
     expand_home,
@@ -223,7 +228,7 @@ class SqliteTableRebuilder:
 
 
 class AppendDrillReporter:
-    """Appends the drill's receipt as one STATUS row through the configured ledger append command."""
+    """Appends the drill's receipt as one STATUS row over the bus, through the append command the overlay's variable holds."""
 
     def __init__(
         self,
@@ -257,11 +262,36 @@ class AppendDrillReporter:
         )
 
     def report(self, result: ModelDrillResult) -> None:
-        done = self._run(
-            [*map(expand_home, self._o.report_append_argv), self.row(result)],
-            self._environ,
-            self._timeout,
-        )
+        environ = os.environ if self._environ is None else self._environ
+        name = self._o.report_append_command_env
+        argv = [*map(expand_home, shlex.split(environ.get(name, "")))]
+        if not argv:
+            raise CopyStepError(
+                "report", f"{name} is not set: the row has no bus route"
+            )
+        request_id = str(uuid.uuid4())
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".rows", encoding="utf-8", delete=False
+        ) as handle:
+            handle.write(stamp_request_cell(self.row(result), request_id) + "\n")
+        try:
+            done = self._run(
+                [
+                    *argv,
+                    "--lane",
+                    self._o.report_lane,
+                    "--host",
+                    self._o.report_host,
+                    "--request-id",
+                    request_id,
+                    "--rows-file",
+                    handle.name,
+                ],
+                self._environ,
+                self._timeout,
+            )
+        finally:
+            os.unlink(handle.name)
         if done.returncode:
             raise CopyStepError("report", f"the ledger append exited {done.returncode}")
 

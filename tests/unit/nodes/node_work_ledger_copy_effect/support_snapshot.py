@@ -7,6 +7,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 from omnimarket.nodes.node_work_ledger_copy_effect.adapters.adapters_snapshot import (
     MemoryRowSource,
@@ -134,12 +135,18 @@ class RecordingRunner:
 
     def __init__(self, answers: Mapping[str, tuple[int, str]] | None = None) -> None:
         self.commands: list[tuple[str, ...]] = []
+        self.rows_sent: list[str] = []
         self._answers = dict(answers or {})
 
     def __call__(
         self, argv: Sequence[str], env: Mapping[str, str] | None, timeout: int
     ) -> subprocess.CompletedProcess[str]:
         self.commands.append(tuple(argv))
+        if "--rows-file" in argv:
+            # The bus append reads its rows from this file, which is gone once the command returns.
+            self.rows_sent.append(
+                Path(argv[argv.index("--rows-file") + 1]).read_text(encoding="utf-8")
+            )
         code, out = self._answers.get(argv[0], (0, ""))
         return subprocess.CompletedProcess(list(argv), code, out, "")
 
@@ -158,8 +165,6 @@ def assert_no_mutation(
     for argv in commands:
         assert argv[0] in allowed, f"command {argv!r} is not on the allow list"
         assert not set(argv) & set(_MUTATING), f"command {argv!r} names a mutating verb"
-        # The ledger append's last argument is the row text, a payload, not a target.
-        target = argv[:-1] if argv[0] == "onex-ledger" else argv
-        if any(source_host in part for part in target):
+        if any(source_host in part for part in argv):
             assert argv[0] == "nc", f"{argv!r} touches {source_host}"
             assert "-z" in argv, f"{argv!r} is not a connection probe"
