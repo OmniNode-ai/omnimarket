@@ -59,6 +59,14 @@ class ModelWorkStateRules(BaseModel):
     # Receipt statuses that mean the lane's engine has ended.
     receipt_ended_statuses: tuple[str, ...] = ()
     plan: ModelPlanParseRules
+    # How many parent hops above a ticket the scope reads: the ticket, then up to this many ancestors, are checked
+    # against the goal's roots and projects. A chain that reaches neither within the bound is out of scope.
+    scope_chain_max_hops: int = Field(default=6, ge=0)
+    # A pull request body line that names the ticket it works (group `ticket`), read where the title names none.
+    pr_body_ticket_pattern: str = r"(?im)^\s*Ticket:\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)"
+    # Pull request authors (regular expressions, searched) whose pull requests are never flagged for citing no ticket,
+    # such as the bots that open dependency bumps.
+    ticketless_pr_exempt_author_patterns: tuple[str, ...] = (r"\[bot\]$",)
     # Each source's read budget, timeout, attempts and oldest servable snapshot. Every source must have a row.
     source_budgets: dict[EnumWorkStateSource, ModelSourceBudget]
 

@@ -99,6 +99,8 @@ def test_snapshot_json_shape_carries_every_field(tmp_path: Path) -> None:
         "assignee": VIEWER,
         "labels": ["delegation", "machinery"],
         "project": "Delegation Pillar",
+        "projectId": "",
+        "parentId": None,
         "updatedAt": "2026-11-03T14:00:00.000Z",
         "description": "Body of the ticket.",
         "priority": "High",

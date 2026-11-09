@@ -10,7 +10,7 @@ contract_version:
   patch: 0
 node_version: 1.0.0
 description: >-
-  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, updatedAt and description and the top-level operator (the resolved Linear user id), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
+  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, projectId, parentId (the parent issue identifier, null when none), updatedAt and description and the top-level operator (the resolved Linear user id), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
 input_model:
   name: ModelLinearSnapshotRequest
   module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot

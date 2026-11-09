@@ -18,6 +18,8 @@ class ModelTicketSource(BaseModel):
     title: str = ""
     state_type: str
     project: str = ""
+    # The tracker's id of the project, where the source carries one: scope matches a project by name or by id.
+    project_id: str = ""
     parent: str | None = None
     requires: tuple[str, ...] = ()
 
@@ -44,6 +46,9 @@ class ModelPullRequestSource(BaseModel):
     number: int
     title: str = ""
     ticket: str | None = None
+    # The ticket a `Ticket: <id>` line of the body names, where the title names none.
+    body_ticket: str | None = None
+    author: str = ""
     head_sha: str = ""
     state: str
     draft: bool = False

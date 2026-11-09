@@ -190,6 +190,15 @@ def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, 
     return tuple(lanes)
 
 
+def work_state_unticketed_prs(projection: ModelWorkStateResult) -> tuple[str, ...]:
+    """The pull requests ("repo#number") the projection flags as needing a ticket, in the projection's key order."""
+    return tuple(
+        item.key.removeprefix(_PR_PREFIX)
+        for item in projection.items
+        if item.kind is EnumWorkItemKind.PULL_REQUEST and item.needs_ticket
+    )
+
+
 def merge_lanes(
     record: tuple[ModelFloorLane, ...], projected: tuple[ModelFloorLane, ...]
 ) -> tuple[ModelFloorLane, ...]:

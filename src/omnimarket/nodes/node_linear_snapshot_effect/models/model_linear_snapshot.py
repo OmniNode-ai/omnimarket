@@ -3,8 +3,8 @@
 """The Linear snapshot ``linear-<UTC date>.json`` and the request and result of the node that writes it.
 
 One typed shape serves every reader of the file: the lab fill generator (``id``, ``title``,
-``description``, ``statusType``, ``assignee``, ``labels``, ``project`` per issue and the top-level
-``operator``), plans-today's identity sidecar (``operator`` is the resolved Linear user id of the
+``description``, ``statusType``, ``assignee``, ``labels``, ``project``, ``projectId``, ``parentId`` per issue and the
+top-level ``operator``), plans-today's identity sidecar (``operator`` is the resolved Linear user id of the
 signed-in subject, never the literal ``me``, and every issue names its ``assignee``) and plans-today's
 snapshot loader (``status``, ``statusType``, ``updatedAt``, ``priority``). The snapshot holds the signed-in
 subject's open issues, so every issue's ``assignee`` is the ``operator``.
@@ -39,6 +39,12 @@ class ModelSnapshotIssue(BaseModel):
     assignee: NonEmpty
     labels: tuple[str, ...] = ()
     project: str = ""
+    # The project's id, so a reader can match a project by id as well as by name; empty for an issue in no project and
+    # in a file written before the key existed.
+    project_id: str = Field(default="", alias="projectId")
+    # The identifier of the issue's parent (``OMN-22867``), null for an issue with none and in a file written before the
+    # key existed. The work list reads scope up this chain.
+    parent_id: str | None = Field(default=None, alias="parentId")
     updated_at: NonEmpty = Field(alias="updatedAt")
     description: str = ""
     priority: str | None = None

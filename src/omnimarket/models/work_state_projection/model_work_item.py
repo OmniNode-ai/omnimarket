@@ -57,6 +57,8 @@ class ModelWorkItem(BaseModel):
     attributes: tuple[str, ...] = ()
     # Who owes the item, where the source names one (a commitment's owner).
     owner: str | None = None
+    # A pull request only: open, not a draft, by an author the rules do not exempt, and it cites no ticket.
+    needs_ticket: bool = False
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]

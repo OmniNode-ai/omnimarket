@@ -111,7 +111,9 @@ def tickets_from_linear_snapshot(
                     issue.get("statusType") or issue.get("status_type") or ""
                 ),
                 project=str(issue.get("project") or ""),
-                parent=issue.get("parent") or None,
+                project_id=str(issue.get("projectId") or ""),
+                # Old snapshot files carry neither key; `parent` is the spelling the projection's own fixtures use.
+                parent=issue.get("parentId") or issue.get("parent") or None,
                 requires=tuple(refs),
             )
         )
@@ -136,6 +138,7 @@ def pull_requests_from_watcher(
     """Every pull request of the PR watcher state, with the watcher's class as the controller's decision and the red
     checks the base branch requires. With no settings read for the base, every red check is kept."""
     ticket_re = re.compile(_unanchored(rules.ticket_id_pattern))
+    body_ticket_re = re.compile(rules.pr_body_ticket_pattern)
     out: list[ModelPullRequestSource] = []
     for record in (state.get("prs") or {}).values():
         facts = record.get("facts") or {}
@@ -150,6 +153,7 @@ def pull_requests_from_watcher(
             reds = [r for r in reds if r in required]
         title = str(facts.get("title") or "")
         found = ticket_re.search(title)
+        in_body = body_ticket_re.search(str(facts.get("body") or ""))
         state_text = str(facts.get("state") or "")
         if facts.get("merged_at"):
             state_text = "MERGED"
@@ -159,6 +163,8 @@ def pull_requests_from_watcher(
                 number=number,
                 title=title,
                 ticket=found.group(0) if found else None,
+                body_ticket=in_body["ticket"] if in_body else None,
+                author=str(facts.get("author") or ""),
                 head_sha=str(facts.get("head_sha") or ""),
                 state=state_text,
                 draft=bool(facts.get("draft")),

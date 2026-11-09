@@ -74,7 +74,8 @@ query SnapshotIssues($first: Int!, $after: String) {
       state { name type }
       assignee { id }
       labels { nodes { name } }
-      project { name }
+      project { id name }
+      parent { identifier }
     }
   }
 }
@@ -106,7 +107,8 @@ query SnapshotChanges($first: Int!, $after: String, $since: DateTimeOrDuration!)
       state { name type }
       assignee { id }
       labels { nodes { name } }
-      project { name }
+      project { id name }
+      parent { identifier }
     }
   }
 }
@@ -201,6 +203,8 @@ def _issue(node: dict[str, Any], viewer: str) -> ModelSnapshotIssue:
         assignee=assignee.get("id") or viewer,
         labels=tuple(str(label["name"]) for label in labels if label.get("name")),
         project=(node.get("project") or {}).get("name") or "",
+        project_id=(node.get("project") or {}).get("id") or "",
+        parent_id=(node.get("parent") or {}).get("identifier") or None,
         updated_at=node.get("updatedAt") or "",
         description=node.get("description") or "",
         priority=priority,

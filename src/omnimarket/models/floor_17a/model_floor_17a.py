@@ -818,6 +818,8 @@ class ModelFloorSimpleInput(_Frozen):
     pr_class_counts: dict[str, int] = Field(default_factory=dict)
     pr_class_tickets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     pr_class_prs: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Open pull requests ("repo#number") that cite no ticket, as the work-state projection flags them.
+    unticketed_prs: tuple[str, ...] = ()
     # When the friction rollup behind the stoppages was built: the stoppages say nothing newer.
     friction_as_of: datetime | None = None
     stoppages: tuple[ModelFloorCauseIn, ...] = ()
