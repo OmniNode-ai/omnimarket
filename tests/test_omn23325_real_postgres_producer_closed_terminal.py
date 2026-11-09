@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import pytest
 from aiokafka.errors import ProducerClosed
+from pydantic import SecretStr
 
 from omnimarket.projection.runner import MessageMeta, ModelProjectionRuntimeBinding
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
@@ -54,7 +55,7 @@ class TestTerminalEventsSurviveProducerStopOnRealPostgres:
             async with _provisioned_runner() as (runner, admin_conn, _schema):
                 runner._runtime_binding = ModelProjectionRuntimeBinding(
                     kafka_bootstrap_servers="localhost:9092",
-                    database_url="postgresql://stub/stub",  # type: ignore[arg-type]
+                    database_url=SecretStr("postgresql://stub/stub"),
                 )
                 ids = [str(uuid4()) for _ in range(3)]
                 for n, correlation_id in enumerate(ids):
@@ -81,4 +82,6 @@ class TestTerminalEventsSurviveProducerStopOnRealPostgres:
         sent = [m for p in _FakeProducer.instances for m in p.sent]
         # The real writer also publishes snapshot deltas through the same
         # producer; only the terminal events are this test's subject.
-        assert [t for t, _ in sent].count(runner._terminal_topic) == 3
+        terminal_topic = runner._terminal_topic
+        assert terminal_topic is not None
+        assert [t for t, _ in sent].count(terminal_topic) == 3

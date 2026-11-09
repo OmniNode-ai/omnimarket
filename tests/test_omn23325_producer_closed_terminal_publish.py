@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiokafka.errors import ProducerClosed
+from pydantic import SecretStr
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
@@ -82,7 +83,7 @@ def _delegation_runner() -> DelegationProjectionRunner:
 def _binding() -> ModelProjectionRuntimeBinding:
     return ModelProjectionRuntimeBinding(
         kafka_bootstrap_servers="localhost:9092",
-        database_url="postgresql://stub/stub",  # type: ignore[arg-type]
+        database_url=SecretStr("postgresql://stub/stub"),
     )
 
 
@@ -143,7 +144,9 @@ def test_injected_publish_fn_survives_a_producer_stop() -> None:
 
 
 @pytest.mark.unit
-def test_producer_closed_terminal_events_survive_every_runtime_delivery() -> None:
+def test_producer_closed_terminal_events_survive_every_runtime_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Golden chain through the runtime host path: each delivery emits its terminal event.
 
     Before the fix the second and later deliveries logged ProducerClosed and
@@ -155,8 +158,8 @@ def test_producer_closed_terminal_events_survive_every_runtime_delivery() -> Non
         mock_db = MagicMock(spec=AsyncpgAdapter)
         mock_db.execute = AsyncMock(return_value=None)
         runner._db = mock_db
-        runner._connect_standalone_databases = AsyncMock()  # type: ignore[method-assign]
-        runner._close_standalone_databases = AsyncMock()  # type: ignore[method-assign]
+        monkeypatch.setattr(runner, "_connect_standalone_databases", AsyncMock())
+        monkeypatch.setattr(runner, "_close_standalone_databases", AsyncMock())
         topic = runner.subscribe_topics[0]
         for n in range(3):
             data = {

@@ -821,21 +821,19 @@ class BaseProjectionRunner(ABC):
         if self._publish_fn is not None:
             return self._publish_fn
 
-        producer = await self._ensure_producer()
-        if producer is None:
+        if await self._ensure_producer() is None:
             return None
 
-        # OMN-23325: the callable is NOT cached and does not close over
-        # ``producer``. The runtime host stops the producer after every
-        # delivery (KeptPools), so a cached closure would publish through a
-        # stopped producer -- ``ProducerClosed`` on every delivery after the
-        # first. Each call resolves the live producer, building a fresh one
-        # when the last was stopped, so a callable a handler held across a
-        # stop still publishes.
+        # OMN-23325: the callable is NOT cached and does not close over a
+        # producer. The runtime host stops the producer after every delivery
+        # (KeptPools), so a cached closure would publish through a stopped
+        # producer -- ``ProducerClosed`` on every delivery after the first.
+        # Each call resolves the live producer, building a fresh one when the
+        # last was stopped, so a callable a handler held across a stop still
+        # publishes.
         async def _publish(topic: str, value: bytes) -> None:
-            live = await self._ensure_producer()
-            if live is None:
-                raise RuntimeError(f"no Kafka producer available to publish to {topic}")
+            if (live := await self._ensure_producer()) is None:
+                raise RuntimeError("no Kafka producer available to publish")
             await live.send_and_wait(topic, value)
 
         return _publish
