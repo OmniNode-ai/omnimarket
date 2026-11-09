@@ -436,14 +436,15 @@ def test_contract_loads_with_archetype_models_routing_and_descriptor() -> None:
     assert contract["name"] == "node_floor_task_ticket_effect"
     assert contract["node_type"] == "effect"
     assert contract["descriptor"]["node_archetype"] == "effect"
-    routes = {r["operation"]: r for r in contract["handler_routing"]["handlers"]}
-    assert set(routes) == {"floor_task_ticket_mint", "floor_task_ticket_entry_check"}
-    for route in routes.values():
-        for dotted in (route["input_model"], route["output_model"]):
-            module, _, name = dotted.rpartition(".")
-            assert getattr(importlib.import_module(module), name)
-        module = importlib.import_module(route["handler"]["module"])
-        assert getattr(module, route["handler"]["name"])
+    assert "handler_routing" not in contract
+    for dotted in (
+        contract["handler"]["input_model"],
+        contract["handler"]["output_model"],
+    ):
+        module, _, name = dotted.rpartition(".")
+        assert getattr(importlib.import_module(module), name)
+    module = importlib.import_module(contract["handler"]["module"])
+    assert getattr(module, contract["handler"]["class"])
     metadata = yaml.safe_load((NODE_DIR / "metadata.yaml").read_text())
     assert metadata["name"] == contract["name"]
 
