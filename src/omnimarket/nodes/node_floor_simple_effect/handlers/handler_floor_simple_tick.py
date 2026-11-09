@@ -227,6 +227,14 @@ class ModelMvpLaunchRuntime(BaseModel):
     overlay: ModelOverlayRef
     command_env: str = Field(min_length=1)
     timeout_seconds: int = Field(gt=0)
+    # The scheduled read the command route answers from (a step of the floor publish) and the launch candidate manifest file.
+    onex_relpath: str = Field(min_length=1)
+    reads_relpath: str = Field(min_length=1)
+    candidate_relpath: str = Field(min_length=1)
+    read_timeout_seconds: int = Field(gt=0)
+    stage_deadline_seconds: int = Field(gt=0)
+    refresh_seconds: int = Field(gt=0)
+    reads_max_age_seconds: int = Field(gt=0)
 
 
 class ModelFloorSimpleRuntime(BaseModel):

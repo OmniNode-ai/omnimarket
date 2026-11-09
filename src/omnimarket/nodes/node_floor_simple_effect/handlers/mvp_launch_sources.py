@@ -4,7 +4,8 @@
 
 A port with two backends: an in-memory one (the default for tests and a dry run) and a command route, in which the
 command named by the overlay's environment variable reads one JSON request on stdin and answers one JSON document on
-stdout. A command that is not configured, fails, times out or answers something unreadable is an unreadable source:
+stdout. An answer may be ``{"error": reason}``: the source is unreadable for that reason. A command that is not configured, fails,
+times out or answers something unreadable is an unreadable source:
 the reading is NOT WORKING with the reason, never skipped and never WORKING.
 """
 
@@ -98,6 +99,8 @@ class CommandMvpRunSource:
         )
         if isinstance(answer, str):
             return ModelMvpSourceHistory(error=answer)
+        if isinstance(answer.get("error"), str):
+            return ModelMvpSourceHistory(error=str(answer["error"]))
         raw_runs = answer.get("runs", [])
         if not isinstance(raw_runs, list):
             return ModelMvpSourceHistory(error="read-command-runs-malformed")
@@ -111,6 +114,8 @@ class CommandMvpRunSource:
         answer = self._ask({"query": "candidate"})
         if isinstance(answer, str):
             return ModelMvpCandidate(error=answer)
+        if isinstance(answer.get("error"), str):
+            return ModelMvpCandidate(error=str(answer["error"]))
         versions = answer.get("versions")
         if not isinstance(versions, dict) or not all(
             isinstance(k, str) and isinstance(v, str) for k, v in versions.items()

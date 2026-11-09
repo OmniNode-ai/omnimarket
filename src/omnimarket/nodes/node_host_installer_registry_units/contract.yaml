@@ -145,6 +145,9 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       # The landing controller's state directory: the floor's running comparison reads its decisions file (OMN-23018).
       LANDING_STATE_DIR: "{home}/.local/state/omni/landing"
+      # The MVP launch block's command route (OMN-23205): the simple floor asks it for each producer's scheduled runs and for the
+      # launch candidate manifest, and it answers from the record the mvp_launch_reads step keeps. The overlay is found under the roots.
+      ONEX_MVP_LAUNCH_READ_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.nodes.node_floor_simple_effect --home {registry_root} --mvp-answer"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
   # A host's reader of the overlay store (OMN-22561): refreshes each overlay this host keeps and writes the fleet
