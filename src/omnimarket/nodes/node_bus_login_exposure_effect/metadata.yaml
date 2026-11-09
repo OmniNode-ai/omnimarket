@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_bus_login_exposure_effect
+version: 1.0.0
+description: Read the topics and consumer groups one broker login can see, from an in-memory fixture or Redpanda admin reads as that login, and report every topic or group the overlay does not allow it as an exposure.
+pack: operator_tooling
+node_role: effect
+display_name: Bus Login Exposure Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_bus_login_exposure_effect: omnimarket.nodes.node_bus_login_exposure_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- "confluent-kafka>=2.12.0,<3.0.0"
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- bus-login-exposure
