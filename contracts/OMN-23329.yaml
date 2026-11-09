@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23329
+title: The delegation chain's local step routes to our running local model server, which got zero delegation calls in a day
+summary: A host's delegation routing overlay can add a backend with a lead placement, which makes it the first rung of its tier for the task classes it names, with its endpoint and served model in the overlay. A quality-gate miss on the lead rung moves the tier on to its own rung at once, in both the bus workflow and the in-process dispatch.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23329-local-rung-route
+  statement: The routing reducer tries a lead-placed backend ahead of the class's model pin for the classes its placement names, falls through to the tier's own rungs for any request it cannot take, and the orchestrators exclude it after a quality-gate miss.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a delegation routing overlay names the local model server as the first rung for the task classes it can serve, with its endpoint and model in the overlay, never hard-coded -- falsifier: uv run pytest tests -q -k local_rung_route in omnimarket, failing with the overlay entry removed'
+  - id: AC2
+    statement: 'AC2: after install, delegated tasks of those classes reach the local rung and their outcome is recorded, and escalation follows a measured failure -- falsifier: delegation events in the next 24 hours show calls to the local rung with acceptance results'
+evidence_requirements:
+- kind: tests
+  description: The lead-rung routing tests, the in-process and bus escalation tests with their controls, and the fixture overlay entry the failing control strips
+  command: uv run --frozen pytest tests/unit/routing/test_local_rung_route_omn23329.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23329-route
+  description: Routes the packaged ladder and task class contracts over a fixture host overlay. Each served class selects the lead rung with the overlay's endpoint and model; an unnamed class, an over-window prompt and an unresolved credential fall through to the tier's own rung; and the control, the same overlay with the lead entry removed, leads nothing.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_local_rung_route_omn23329.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23329-escalation
+  description: Drives the in-process dispatch and the bus workflow with a lead rung that misses the quality gate. The lead is asked once and the tier's own rung answers the retry; the controls, with the lead unnamed, redraft the lead rung three times in process and exclude nothing on the bus.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_rung_route_escalation_omn23329.py tests/unit/delegation/test_local_rung_route_bus_omn23329.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23329-regression
+  description: The placement, spread and retry-local tests still pass with the lead mode added. A regression check, binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_backend_placement_omn19215.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23329-integration-proof
+  description: After install, a delegated task of a served class reaches the lead rung and its acceptance result is recorded. The first check runs the lead-rung tests at the pushed head on a lab host through the lab work runner; the second reads the run receipts the delegate command writes and goes red on a host whose overlay does not carry the lead rung. Hosted CI has no delegation receipts, so only the local Done gate runs this.
+  source: manual
+  binds_ac:
+  - AC2
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23329 --kind test -- uv run --frozen pytest tests/unit/routing/test_local_rung_route_omn23329.py -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: 'grep -l "local-small" "$OMNI_HOME"/.onex_state/runs/*/receipt.json'
+    cwd: .

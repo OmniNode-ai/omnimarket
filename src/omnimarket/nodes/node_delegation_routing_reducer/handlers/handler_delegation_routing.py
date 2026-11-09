@@ -75,6 +75,7 @@ from omnimarket.handlers.handler_capability_start import (
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.backend_placement import (
     apply_backend_placements,
+    lead_refs,
     load_bound_bifrost_placements,
     spread_groups,
     spread_pick,
@@ -536,6 +537,25 @@ def _select_model_for_task(
             m.backend_ref, task_type, estimated_tokens
         )
     )
+    # OMN-23329: a lead-placed backend is the first rung of its tier for the
+    # classes it declares. It is tried ahead of the class's model pin, which would
+    # otherwise name the tier's own model first; a request it cannot take (class,
+    # context, credential, exclusion) falls through to the tier's own rungs.
+    lead = _recorded_lead_refs()
+    if lead:
+        lead_models = tuple(m for m in tier_models if m.backend_ref in lead)
+        lead_selected = _select_primary_model_for_task(
+            lead_models,
+            task_type,
+            estimated_tokens,
+            bifrost_backends,
+            None,
+            exclude_backend_refs,
+            require_credential=require_credential,
+            quota_state=quota_state,
+        )
+        if lead_selected is not None:
+            return lead_selected
     selected = _select_primary_model_for_task(
         tier_models,
         task_type,
@@ -756,10 +776,15 @@ _config_spread_peers: (
 ) = None
 # The peers' declared weights, bound to the same config object.
 _config_spread_weights: tuple[ModelDelegationConfig, dict[str, float]] | None = None
+# OMN-23329: the lead-mode placed backends of the same config object. A backend
+# named here is the first rung of its tier for the classes it declares; a config
+# installed any other way records none and routes in declaration order.
+_config_lead_refs: tuple[ModelDelegationConfig, frozenset[str]] | None = None
 
 
 def _get_config() -> ModelDelegationConfig:
     global _config, _config_binding, _config_spread_peers, _config_spread_weights
+    global _config_lead_refs
     # An explicitly installed config has no loader-owned binding to refresh.
     if _config is not None and (
         _config_binding is None or _config_binding[0] is not _config
@@ -808,6 +833,7 @@ def _get_config() -> ModelDelegationConfig:
         )
         _config_spread_peers = (_config, spread_groups(placed))
         _config_spread_weights = (_config, spread_weights(placed))
+        _config_lead_refs = (_config, lead_refs(placed))
         _config_binding = (_config, binding_key)
         # Endpoint references must come from the same binding as placements.
         # A supplied endpoint resolver may be uncached; only cached resolvers
@@ -832,6 +858,24 @@ def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
+
+
+def _recorded_lead_refs() -> frozenset[str]:
+    """The lead-placed backends of the config :func:`_get_config` last loaded (OMN-23329)."""
+    recorded = _config_lead_refs
+    if recorded is None or recorded[0] is not _config:
+        return frozenset()
+    return recorded[1]
+
+
+def lead_backend_refs() -> frozenset[str]:
+    """The lead-placed backends of the bound routing config (OMN-23329).
+
+    The orchestrator reads this to exclude a lead rung after a quality-gate miss,
+    so the retry lands on the next rung of the tier and not on the same one.
+    """
+    _get_config()
+    return _recorded_lead_refs()
 
 
 def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:

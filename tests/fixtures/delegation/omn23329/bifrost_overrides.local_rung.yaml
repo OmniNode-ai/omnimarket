@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-23329 fixture: a host's delegation routing overlay (the shape of
+# ~/.omninode/delegation/bifrost_overrides.yaml) that binds the tier's own
+# rungs and ADDS the small local model as the first rung of the local tier for
+# the classes it serves. Addresses are documentation-range placeholders; the
+# lab's real endpoint and served model id live in the overlay the installer
+# writes, never in a package file.
+backends:
+  - backend_id: local-coder
+    endpoint_url: "http://198.51.100.10:8000/v1/chat/completions"
+    model_name: "Qwen3.8-27B"
+  - backend_id: local-heavy-reasoning
+    endpoint_url: "http://198.51.100.10:8000/v1/chat/completions"
+    model_name: "Qwen3.8-27B"
+  - backend_id: local-small
+    provider: local
+    endpoint_url: "http://198.51.100.30:8110/v1/chat/completions"
+    model_name: "small-local-model-q4"
+    tier: local
+    timeout_ms: 60000
+    max_tokens: 512
+    secret_ref: llm.local_small.api_key
+    capabilities:
+      - summarization
+    placement:
+      tier: local
+      mode: lead
+      max_context_tokens: 12000
+      use_for:
+        - summarization
+        - evidence_comment
+        - tail_summary

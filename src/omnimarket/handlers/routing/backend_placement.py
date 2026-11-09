@@ -27,6 +27,11 @@ The routing authority applies placements when it loads the ladder, so the
 reducer, the same-tier sibling probe and the local dispatch path all read one
 placed ladder, and :func:`placement_digest` lets the replay-provenance hash
 cover the placement as well as the tiers file.
+
+A placement whose ``mode`` is ``lead`` (OMN-23329) is mirrored BEFORE the tier's
+own rungs and :func:`lead_refs` names it, so the routing reducer tries it first
+for the classes it names and falls through to the tier's rungs for any request
+it cannot take.
 """
 
 from __future__ import annotations
@@ -157,7 +162,11 @@ def apply_backend_placements(
                     f"{tier.name!r} (rungs: {sorted(declared)})",
                 )
             mirrors.append(_mirror(rung, backend, placement))
-        tiers[tier.name] = tier.model_copy(update={"models": (*tier.models, *mirrors)})
+        if placement.mode is EnumBackendPlacementMode.LEAD:
+            models = (*mirrors, *tier.models)
+        else:
+            models = (*tier.models, *mirrors)
+        tiers[tier.name] = tier.model_copy(update={"models": models})
 
     return config.model_copy(
         update={"tiers": tuple(tiers[tier.name] for tier in config.tiers)}
@@ -184,6 +193,22 @@ def spread_groups(
             if backend.backend_id not in peers:
                 peers.append(backend.backend_id)
     return {rung: tuple(peers) for rung, peers in groups.items()}
+
+
+def lead_refs(
+    placed: Sequence[ModelPlacedDelegationBackend],
+) -> frozenset[str]:
+    """The ``backend_id`` of every lead-mode placed backend (OMN-23329).
+
+    A lead backend is the first rung of its tier for the task classes its
+    placement names. Routing tries it ahead of the class's model pin; a ladder
+    with no lead placement yields an empty set and routes as before.
+    """
+    return frozenset(
+        backend.backend_id
+        for backend in placed
+        if backend.placement.mode is EnumBackendPlacementMode.LEAD
+    )
 
 
 def spread_weights(
@@ -265,6 +290,7 @@ def load_bound_bifrost_placements() -> tuple[ModelPlacedDelegationBackend, ...]:
 
 __all__: list[str] = [
     "apply_backend_placements",
+    "lead_refs",
     "load_bound_bifrost_placements",
     "placement_digest",
     "spread_groups",
