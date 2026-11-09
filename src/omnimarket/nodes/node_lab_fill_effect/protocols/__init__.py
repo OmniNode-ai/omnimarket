@@ -23,17 +23,22 @@ from .protocol_lab_fill_effect import (
 )
 from .protocol_lab_fill_sources import (
     LabFillListed,
+    LabFillMirroredTicket,
+    LabFillRateLimitedError,
     LabFillSourceCutError,
     LabFillTicketNode,
     ProtocolLabFillPlansCopy,
     ProtocolLabFillSourceReaders,
+    ProtocolLabFillTicketMirror,
 )
 
 __all__ = [
     "LabFillClaimFacts",
     "LabFillCommandOutcome",
     "LabFillListed",
+    "LabFillMirroredTicket",
     "LabFillPortError",
+    "LabFillRateLimitedError",
     "LabFillSourceCutError",
     "LabFillTicketNode",
     "ProtocolLabFillApprovedWork",
@@ -52,4 +57,5 @@ __all__ = [
     "ProtocolLabFillSourceReaders",
     "ProtocolLabFillStatusAppender",
     "ProtocolLabFillTicketFacts",
+    "ProtocolLabFillTicketMirror",
 ]

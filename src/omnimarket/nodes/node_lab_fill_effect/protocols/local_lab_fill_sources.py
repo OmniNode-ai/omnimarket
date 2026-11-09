@@ -35,8 +35,11 @@ from omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lane_rese
 from .protocol_lab_fill_effect import LabFillPortError
 from .protocol_lab_fill_sources import (
     LabFillListed,
+    LabFillMirroredTicket,
+    LabFillRateLimitedError,
     LabFillSourceCutError,
     LabFillTicketNode,
+    ProtocolLabFillTicketMirror,
 )
 
 _TICKET = re.compile(r"OMN-[0-9]+")
@@ -230,9 +233,16 @@ OpenPrs = Callable[[], Mapping[str, tuple[str, ...]]]
 class LinearGraphqlQuery:
     """One Linear GraphQL POST under the seconds it is given; the key and endpoint arrive from the overlay."""
 
-    def __init__(self, *, endpoint: str, api_key: str) -> None:
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        api_key: str,
+        rate_limited_statuses: Sequence[int] = (429,),
+    ) -> None:
         self._endpoint = endpoint
         self._key = api_key
+        self._rate_limited = frozenset(rate_limited_statuses)
 
     def __call__(self, query: str, budget_s: float) -> Mapping[str, object]:
         if not self._key:
@@ -249,6 +259,12 @@ class LinearGraphqlQuery:
             raise LabFillSourceCutError(
                 f"Linear read timed out after {budget_s:g} s"
             ) from exc
+        except urllib.error.HTTPError as exc:
+            if exc.code in self._rate_limited:
+                raise LabFillRateLimitedError(
+                    f"Linear refused the read: HTTP {exc.code}"
+                ) from exc
+            raise LabFillPortError(f"Linear read failed: HTTP {exc.code}") from exc
         except urllib.error.URLError as exc:
             if isinstance(exc.reason, TimeoutError):
                 raise LabFillSourceCutError(
@@ -263,6 +279,48 @@ class LinearGraphqlQuery:
         if not isinstance(data, dict):
             raise LabFillPortError("Linear GraphQL printed no data")
         return data
+
+
+class TicketMirrorDirectory:
+    """The read-only Linear mirror kept as one ``<ticket>.json`` per ticket under a directory the overlay names.
+
+    A file is ``{"read_at": <ISO>, "issues": [{"id", "title", "statusType", "childCount"?}]}``, the shape the factory
+    floor reads. A ticket with no file, or a file that is unreadable or states no status type, is absent. A copy
+    without ``childCount`` never read the ticket's children, so ``has_children`` is None and the ticket stage will
+    not take it as resolved.
+    """
+
+    def __init__(self, *, directory: Path) -> None:
+        self._dir = directory
+
+    def __call__(self, tickets: Sequence[str]) -> Mapping[str, LabFillMirroredTicket]:
+        out: dict[str, LabFillMirroredTicket] = {}
+        for ticket in tickets:
+            path = self._dir / f"{ticket}.json"
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+                issues = doc["issues"]
+                issue = next(i for i in issues if i.get("id") == ticket)
+                state_type = str(issue["statusType"])
+                if not state_type:
+                    continue
+                try:
+                    read_at = datetime.fromisoformat(
+                        str(doc["read_at"]).replace("Z", "+00:00")
+                    ).timestamp()
+                except (KeyError, ValueError):
+                    read_at = path.stat().st_mtime
+                count = issue.get("childCount")
+                out[ticket] = LabFillMirroredTicket(
+                    ticket=ticket,
+                    title=str(issue.get("title") or ""),
+                    state_type=state_type,
+                    has_children=None if count is None else int(count) > 0,
+                    read_at_epoch_s=read_at,
+                )
+            except (OSError, ValueError, KeyError, TypeError, StopIteration):
+                continue
+        return out
 
 
 class LedgerWindowReader:
@@ -383,8 +441,12 @@ class LocalLabFillSourceReaders:
         team_key: str = "",
         ticket_batch_size: int = 100,
         open_prs: OpenPrs | None = None,
+        ticket_mirror: ProtocolLabFillTicketMirror | None = None,
+        mirror_max_age_s: float = 0.0,
         now: Callable[[], float] = time.time,
     ) -> None:
+        self._mirror = ticket_mirror
+        self._mirror_max_age_s = mirror_max_age_s
         self._rulings = rulings_tool_path
         self._env = dict(tool_env)
         self._ledger_lines = ledger_lines
@@ -437,15 +499,68 @@ class LocalLabFillSourceReaders:
     def read_tickets(
         self, tickets: Sequence[str], budget_s: float
     ) -> Mapping[str, LabFillTicketNode]:
-        if self._linear is None or self._open_prs is None:
+        """Each ticket from the read-only mirror when its copy is young and read its children, else from one live read.
+
+        When Linear refuses the live read by rate (HTTP 429), the mirror's older copies that read their children
+        stand in for the tickets not yet read; a ticket no copy covers is left out (the handler drops it as
+        ticket-unreadable). A 429 with nothing resolved at all is still a failed read.
+        """
+        if self._open_prs is None:
             raise LabFillPortError(
                 "source-tickets reader is not wired: no Linear query or watcher reader given"
             )
         began = time.monotonic()
-        numbers = sorted(
-            {int(t.split("-")[1]) for t in tickets if _TICKET.fullmatch(t)}
-        )
-        nodes: dict[str, dict[str, object]] = {}
+        wanted = sorted({t for t in tickets if _TICKET.fullmatch(t)})
+        copies = self._mirror(wanted) if self._mirror is not None else {}
+        now = self._now()
+        nodes: dict[str, tuple[str, str, bool]] = {}
+        for ticket, copy in copies.items():
+            if (
+                copy.has_children is not None
+                and 0 <= now - copy.read_at_epoch_s <= self._mirror_max_age_s
+            ):
+                nodes[ticket] = (copy.title, copy.state_type, copy.has_children)
+        live = [t for t in wanted if t not in nodes]
+        if live and self._linear is None:
+            raise LabFillPortError(
+                "source-tickets reader is not wired: no Linear query or watcher reader given"
+            )
+        try:
+            if live and self._linear is not None:
+                nodes.update(self._read_live(self._linear, live, began, budget_s))
+        except LabFillRateLimitedError as exc:
+            for ticket in live:
+                older = copies.get(ticket)
+                if older is not None and older.has_children is not None:
+                    nodes[ticket] = (older.title, older.state_type, older.has_children)
+            if wanted and not nodes:
+                held = (
+                    "no mirror is wired"
+                    if self._mirror is None
+                    else f"the mirror holds none of the {len(wanted)} tickets"
+                )
+                raise LabFillRateLimitedError(f"{exc}; {held}") from exc
+        in_flight = self._open_prs()
+        return {
+            ticket: LabFillTicketNode(
+                ticket=ticket,
+                title=title,
+                state_type=state_type,
+                has_children=has_children,
+                open_prs=tuple(in_flight.get(ticket, ())),
+            )
+            for ticket, (title, state_type, has_children) in nodes.items()
+        }
+
+    def _read_live(
+        self,
+        linear: LinearQuery,
+        tickets: Sequence[str],
+        began: float,
+        budget_s: float,
+    ) -> dict[str, tuple[str, str, bool]]:
+        numbers = [int(t.split("-")[1]) for t in tickets]
+        out: dict[str, tuple[str, str, bool]] = {}
         for offset in range(0, len(numbers), self._batch):
             left = budget_s - (time.monotonic() - began)
             if left <= 0:
@@ -458,25 +573,20 @@ class LocalLabFillSourceReaders:
                 f"number:{{in:{json.dumps(batch)}}}}}){{nodes{{identifier title state{{type}} "
                 "children{nodes{id}}}}}}"
             )
-            issues = self._linear(query, left).get("issues")
+            issues = linear(query, left).get("issues")
             page = issues.get("nodes") if isinstance(issues, dict) else None
             if not isinstance(page, list):
                 raise LabFillPortError("Linear printed no issues list")
             for node in page:
-                if isinstance(node, dict) and isinstance(node.get("identifier"), str):
-                    nodes[node["identifier"]] = node
-        in_flight = self._open_prs()
-        out: dict[str, LabFillTicketNode] = {}
-        for ticket, node in nodes.items():
-            state = node.get("state")
-            children = node.get("children")
-            out[ticket] = LabFillTicketNode(
-                ticket=ticket,
-                title=str(node.get("title", "")),
-                state_type=str(state.get("type", ""))
-                if isinstance(state, dict)
-                else "",
-                has_children=bool(isinstance(children, dict) and children.get("nodes")),
-                open_prs=tuple(in_flight.get(ticket, ())),
-            )
+                if not (
+                    isinstance(node, dict) and isinstance(node.get("identifier"), str)
+                ):
+                    continue
+                state = node.get("state")
+                children = node.get("children")
+                out[node["identifier"]] = (
+                    str(node.get("title", "")),
+                    str(state.get("type", "")) if isinstance(state, dict) else "",
+                    bool(isinstance(children, dict) and children.get("nodes")),
+                )
         return out

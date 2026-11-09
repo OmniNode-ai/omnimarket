@@ -15,6 +15,21 @@ class LabFillSourceCutError(LabFillPortError):
     """A read ran out of the budget it was given. The handler marks that one source stale."""
 
 
+class LabFillRateLimitedError(LabFillPortError):
+    """Linear refused a read by rate (HTTP 429). The ticket stage then falls back to the mirror's older copies."""
+
+
+@dataclass(frozen=True)
+class LabFillMirroredTicket:
+    """One ticket as the read-only Linear mirror holds it; ``has_children`` is None when the copy never read children."""
+
+    ticket: str
+    title: str
+    state_type: str
+    has_children: bool | None
+    read_at_epoch_s: float
+
+
 @dataclass(frozen=True)
 class LabFillTicketNode:
     """A listed ticket as source-tickets read it."""
@@ -32,6 +47,14 @@ class LabFillListed:
 
     found: tuple[tuple[str, str], ...]
     dropped: tuple[tuple[str, int], ...] = ()
+
+
+class ProtocolLabFillTicketMirror(Protocol):
+    """The read-only Linear mirror: each wanted ticket's copy, whatever its age; a ticket it does not hold is absent."""
+
+    def __call__(
+        self, tickets: Sequence[str]
+    ) -> Mapping[str, LabFillMirroredTicket]: ...
 
 
 class ProtocolLabFillPlansCopy(Protocol):
