@@ -15,6 +15,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
+from omnimarket.models.floor_17a.model_worklist import (
+    ModelWorklistClass,
+    ModelWorklistItemIn,
+    ModelWorklistOverlay,
+)
 
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
@@ -376,6 +381,9 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
+    # on the work of a cause whose declared owner is that parent.
+    parent_ticket: str = ""
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -505,6 +513,9 @@ class ModelRedRule(_Frozen):
     # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
     # is on these by construction, so the ids are shown rather than counted.
     unowned_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on, whatever tickets it lists as owners (OMN-23243): a listed owner ticket with no
+    # running lane carries nothing, so the rule reads NOT WORKING and names the row instead of counting it as carried.
+    uncarried_red: tuple[str, ...] = ()
 
 
 class ModelHealthReadingUsed(_Frozen):
@@ -563,6 +574,9 @@ class ModelFloorSimple(_Frozen):
     health: ModelFloorHealthLine | None = None
     # The MVP launch block (OMN-23205): 17 readings of the launch bar; ``None`` is a record written before the block existed.
     mvp_launch: ModelMvpLaunchBlock | None = None
+    # The board's work list (OMN-23184): every in-scope item that needs help, one row per class, members paged. ``None`` is a
+    # record written before the list existed, or an overlay that declares none.
+    worklist: tuple[ModelWorklistClass, ...] | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -755,6 +769,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     error_drill_after_s: int = Field(gt=0)
     chain_deadline_s: int = Field(gt=0)
     details_href: str = Field(min_length=1)
+    # The board's work list (OMN-23184); ``None`` declares none and the floor draws none.
+    worklist: ModelWorklistOverlay | None = None
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -820,6 +836,8 @@ class ModelFloorSimpleInput(_Frozen):
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
+    # The work list's items as the sources read them; ``None`` is a list that was not read (drawn as an unread input).
+    worklist: tuple[ModelWorklistItemIn, ...] | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------
