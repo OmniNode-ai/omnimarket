@@ -103,6 +103,7 @@ def _plant_deployment(
                 "reader_concurrency": 1,
                 "reply_tail_bytes": 4096,
                 "reply_timeout_seconds": 5,
+                "reprobe_seconds": 1800,
                 "default_profile": "inmemory",
                 "profiles": {"inmemory": {"kind": "inmemory"}},
             }
@@ -126,7 +127,7 @@ async def _chain(
     plant_404: bool,
 ) -> ModelJobLogFillResult:
     bodies = {SUMMARY_JOB: (404, b"{}"), RED_JOB: (404, b"{}")} if plant_404 else {}
-    transport = transport_for(SUMMARY_JOB, RED_JOB, bodies=bodies)
+    transport = transport_for(RED_JOB, SUMMARY_JOB, bodies=bodies)
     _plant_deployment(tmp_path, monkeypatch, transport)
     node = resources.files(f"omnimarket.nodes.{NODE}")
     with resources.as_file(node.joinpath("contract.yaml")) as path:

@@ -30,6 +30,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 pytestmark = pytest.mark.integration
 
@@ -170,7 +171,7 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
             # Keep migration 0051's internal audit table in the disposable schema.
             await admin.execute(
-                migration.read_text(encoding="utf-8")
+                for_isolated_schema(migration.read_text(encoding="utf-8"))
                 .replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
                 .replace("omninode_internal.", f"{schema}.")
             )
