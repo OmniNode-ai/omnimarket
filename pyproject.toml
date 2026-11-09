@@ -769,6 +769,7 @@ node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_ta
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"
+node_lab_idle_cost_compute = "omnimarket.nodes.node_lab_idle_cost_compute"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
