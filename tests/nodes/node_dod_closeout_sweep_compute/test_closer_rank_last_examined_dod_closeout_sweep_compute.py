@@ -316,7 +316,8 @@ def test_closer_rank_last_examined_the_contract_integration_payload_holds_one_an
     )
     assert result.scope_bundle is not None
     assert result.scope_bundle["held"] == ["OMN-1"]
-    assert [c["id"] for c in result.scope_bundle["candidates"]] == ["OMN-2"]  # type: ignore[index,union-attr]
+    candidates: Any = result.scope_bundle["candidates"]
+    assert [c["id"] for c in candidates] == ["OMN-2"]
     assert result.scope_examined_next is not None
     assert (
         result.scope_examined_next["OMN-2"]["examined_at"] == "2026-11-09T07:00:00.000Z"
