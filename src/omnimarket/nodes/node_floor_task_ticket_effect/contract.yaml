@@ -29,6 +29,14 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by the floor-fill orchestrator with the payload of a task that has no usable ticket.
+# Handlers the orchestrator calls in process with an injected store; boot does not route to them, so they sit outside handler_routing.
+in_process_handlers:
+- operation: floor_task_ticket_entry_check
+  handler:
+    name: HandlerFloorTaskTicketEntryCheck
+    module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_entry_check
+  input_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskEntryTicketRequest
+  output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskEntryTicketVerdict
 # The node reads no overlay itself: the orchestrator reads the key and carries it on the request, and a request that lacks it
 # is refused naming the key (floor_fill.mint_timeout_seconds).
 deployment_overlay:
