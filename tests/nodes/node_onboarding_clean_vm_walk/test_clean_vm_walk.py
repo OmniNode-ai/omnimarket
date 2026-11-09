@@ -10,6 +10,7 @@ import shlex
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -165,7 +166,7 @@ def test_step_outside_documented_list_is_refused(
     with pytest.raises(StepNotDocumentedError, match="not documented"):
         guard.issue(
             ModelWalkStep.model_construct(
-                kind="hand_fix",  # type: ignore[arg-type]
+                kind=cast(Any, "hand_fix"),
                 argv=valid,
                 timeout_seconds=1,
             )
