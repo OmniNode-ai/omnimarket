@@ -129,8 +129,12 @@ units:
       # directory, because the pool read refuses a table outside its declared roots (OMN-22561).
       - ONEX_LAB_RUN_HOSTS
       - ONEX_LAB_HOST_TABLE_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlays canonical clone first (the floor's owners map and sources live there), then the plugin's overlays
+      # (OMN-23323: the owners map was read from a worktree that worktree triage removed).
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_LAB_RUN_HOSTS: ""
       ONEX_LAB_HOST_TABLE_ROOTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
@@ -171,6 +175,8 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
@@ -208,6 +214,8 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
@@ -240,6 +248,8 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
@@ -276,6 +286,8 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
