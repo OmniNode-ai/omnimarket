@@ -20,6 +20,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
     read_branch_protection,
     read_ci_checks,
     read_commit_check_runs,
+    read_job_log_fill,
     read_job_log_tail,
     read_merge_commit_sha,
     read_merged_pr,
@@ -57,6 +58,8 @@ def dispatch(
         return read_run_jobs(transport, request)
     if op is EnumGithubGatewayOperation.JOB_LOG_TAIL:
         return read_job_log_tail(transport, request)
+    if op is EnumGithubGatewayOperation.JOB_LOG_FILL:
+        return read_job_log_fill(transport, request)
     if op is EnumGithubGatewayOperation.ARTIFACTS:
         return read_artifacts(transport, request)
     if op is EnumGithubGatewayOperation.PR_TEXT:
