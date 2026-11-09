@@ -8,12 +8,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
+from omnimarket.models.model_dev_deploy_reading import (
     ModelLabPassReceiptFact,
     ModelRuntimeMerge,
     ModelRuntimeProbeFact,
 )
+from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 
 
 class ModelDevDeployReadingCommand(BaseModel):

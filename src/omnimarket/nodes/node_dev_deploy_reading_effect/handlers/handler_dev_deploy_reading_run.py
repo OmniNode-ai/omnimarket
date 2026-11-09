@@ -20,13 +20,13 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.model_dev_deploy_reading import (
+    ModelDevDeployReadingRequest,
+    ModelRuntimeMerge,
+)
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_reading import (
     HandlerDevDeployReading,
-)
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
-    ModelDevDeployReadingRequest,
-    ModelRuntimeMerge,
 )
 from omnimarket.nodes.node_dev_deploy_reading_effect.models.model_dev_deploy_reading_run import (
     ModelDevDeployFacts,
