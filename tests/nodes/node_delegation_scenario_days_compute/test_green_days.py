@@ -9,6 +9,7 @@ cancelled slot, a manual run in a slot, a read that stops early) are the failing
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -60,7 +61,7 @@ def _slots(
     day_offset: int,
     *,
     skip: int = 0,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> list[ModelScenarioResult]:
     """Every slot of the UTC day ``day_offset`` days before today, except the last ``skip`` slots."""
     midnight = AS_OF.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
@@ -69,7 +70,7 @@ def _slots(
     step = declaration.cadence.slot_hours
     count = declaration.cadence.slots_per_day - skip
     return [
-        _result(declaration, midnight + timedelta(hours=step * n), **kwargs)  # type: ignore[arg-type]
+        _result(declaration, midnight + timedelta(hours=step * n), **kwargs)
         for n in range(count)
     ]
 
@@ -77,13 +78,13 @@ def _slots(
 def _history(
     declaration: ModelScenarioDeclaration,
     results: list[ModelScenarioResult],
-    **kwargs: object,
+    **kwargs: Any,
 ) -> ModelScenarioHistory:
     return ModelScenarioHistory(
         as_of=AS_OF,
         scenarios=(declaration,),
         results=tuple(results),
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,
     )
 
 

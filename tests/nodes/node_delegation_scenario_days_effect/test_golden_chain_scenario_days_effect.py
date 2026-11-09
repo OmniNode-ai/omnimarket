@@ -26,6 +26,7 @@ from omnimarket.models.model_delegation_scenario import (
 )
 from omnimarket.nodes.node_delegation_scenario_days_effect.handlers.handler_scenario_days_run import (
     HandlerScenarioDaysRun,
+    ModelScenarioDaysRuntime,
     build_runner,
     load_runtime,
     load_schedule,
@@ -87,12 +88,12 @@ class PagedLedger:
 
 
 def _handler(
-    tmp_path: Path, ledger: PagedLedger, runtime: object = RUNTIME
+    tmp_path: Path, ledger: PagedLedger, runtime: ModelScenarioDaysRuntime = RUNTIME
 ) -> tuple[HandlerScenarioDaysRun, list[str], InMemoryScenarioEventSink]:
     rows: list[str] = []
     sink = InMemoryScenarioEventSink()
     handler = HandlerScenarioDaysRun(
-        runtime,  # type: ignore[arg-type]
+        runtime,
         home=tmp_path,
         ledger=ledger,
         appender=rows.append,
@@ -158,7 +159,9 @@ def test_error_chain_scenario_days_effect_a_page_that_does_not_answer_makes_ever
     assert all(row.red and not row.readable for row in result.rows)
     assert "page 2 did not answer" in result.by_id()["R2"].reason
     assert "unreadable=R1,R2,R3,R4,R5,R6,R7,R8,R9" in rows[0]
-    assert sink.events[0][1]["rows"][1]["scenario_id"] == "R2"
+    published_rows = sink.events[0][1]["rows"]
+    assert isinstance(published_rows, list)
+    assert published_rows[1]["scenario_id"] == "R2"
     # Without the break the same ledger reads five green days.
     clean, _, _ = _handler(tmp_path / "clean", PagedLedger(_days(5), size=50))
     assert clean.run().by_id()["R2"].green_days == 5
