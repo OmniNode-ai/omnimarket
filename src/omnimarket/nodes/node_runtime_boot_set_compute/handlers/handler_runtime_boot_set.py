@@ -22,6 +22,7 @@ import json
 
 from pydantic import ValidationError
 
+from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.models.model_runtime_boot_set import (
     BootSetRule,
     ModelRuntimeBootSetRequest,
@@ -84,6 +85,11 @@ class HandlerRuntimeBootSet:
             correlation_id=request.correlation_id,
             deployment=request.deployment,
             status=status,
+            reading_state=(
+                EnumReadingVerdict.WORKING
+                if status == "PASS"
+                else EnumReadingVerdict.NOT_WORKING
+            ),
             rules=tuple(rules),
             declared_contract_count=len(declared),
             loaded_contract_count=len(loaded),
@@ -98,16 +104,32 @@ class HandlerRuntimeBootSet:
             selection_env=",".join(declared),
             time_to_healthy_seconds=observation.time_to_healthy_seconds,
             memory_mib=observation.memory_mib,
-            detail=_detail(request.deployment, status, rules, observation.read_error),
+            detail=_detail(
+                request.deployment,
+                status,
+                rules,
+                observation.read_error,
+                missing,
+                excess_contracts,
+            ),
         )
 
 
 def _detail(
-    deployment: str, status: str, rules: list[BootSetRule], read_error: str
+    deployment: str,
+    status: str,
+    rules: list[BootSetRule],
+    read_error: str,
+    missing: tuple[str, ...],
+    extra: tuple[str, ...],
 ) -> str:
     if not rules:
         return f"{deployment}: boot stayed inside its declared set"
     text = f"{deployment}: {status} on {','.join(rules)}"
+    if missing:
+        text += f"; missing {','.join(missing)}"
+    if extra:
+        text += f"; extra {len(extra)} node(s) such as {extra[0]}"
     return f"{text} ({read_error})" if read_error else text
 
 

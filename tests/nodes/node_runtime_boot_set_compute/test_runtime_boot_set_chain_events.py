@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden and error chain event tests of the boot set judgment (one-runtime plan T28, OMN-23119).
+"""Golden and error chain event tests of the boot set judgment (one-runtime plan T28, OMN-23366).
 
 Publish the judge request on the in-memory bus and assert the event it produces under one correlation id; inject
 today's start and assert the violated event; send a payload that is no request and assert the typed failure. The last

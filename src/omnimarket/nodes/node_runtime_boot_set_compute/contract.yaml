@@ -67,6 +67,6 @@ metadata:
   tags:
   - compute
   - runtime-boot-set-compute
-  - OMN-23119
+  - OMN-23366
   related_tickets:
-  - OMN-23119
+  - OMN-23366

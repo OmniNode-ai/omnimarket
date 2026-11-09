@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_reading import EnumReadingVerdict
+
 BootSetStatus = Literal["PASS", "FAIL", "UNKNOWN"]
 BootSetRule = Literal[
     "NO_DECLARED_SET",
@@ -83,6 +85,8 @@ class ModelRuntimeBootSetVerdict(BaseModel):
     correlation_id: str
     deployment: str
     status: BootSetStatus
+    # WORKING only for a boot that read PASS; FAIL and UNKNOWN both read NOT_WORKING (UNKNOWN blocks like a failure).
+    reading_state: EnumReadingVerdict
     rules: tuple[BootSetRule, ...]
     declared_contract_count: int
     loaded_contract_count: int
@@ -90,6 +94,7 @@ class ModelRuntimeBootSetVerdict(BaseModel):
     declared_topic_count: int
     subscribed_topic_count: int
     topics_over_declared: int
+    # A node and its contract carry one name: excess_contracts are the extra nodes, missing_contracts the missing ones.
     excess_contracts: tuple[str, ...]
     excess_topics: tuple[str, ...]
     missing_contracts: tuple[str, ...]

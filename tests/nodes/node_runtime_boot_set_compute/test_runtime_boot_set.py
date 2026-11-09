@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A boot against its deployment's declared boot set (one-runtime plan, T28, OMN-23119).
+"""A boot against its deployment's declared boot set (one-runtime plan, T28, OMN-23366).
 
 The control replays today's dev start (638 contracts attached and 439 subscriptions with no declared set) and must read
 FAIL; the same start against a declared set reads FAIL with the excess named; a boot that stays inside the declared set
@@ -18,6 +18,7 @@ from omnibase_infra.models.runtime.model_runtime_node_selection import (
     ModelRuntimeNodeSelection,
 )
 
+from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.models.model_runtime_boot_set import ModelBootObservation
 from omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set import (
     HandlerRuntimeBootSet,
@@ -141,3 +142,28 @@ def test_the_contract_declares_its_topics_and_wires_none_at_boot() -> None:
     topics = contract["topics"]
     assert len(set(topics.values())) == len(topics)
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+
+
+def test_ac2_a_boot_missing_one_declared_node_reads_not_working_naming_it() -> None:
+    boot = ModelBootObservation(
+        attached_contracts=DECLARED[:-1],
+        subscribed_topics=declared_boot().subscribed_topics,
+    )
+    verdict = HANDLER.handle(request(boot, declaration()))
+    assert verdict.reading_state is EnumReadingVerdict.NOT_WORKING
+    assert verdict.missing_contracts == (DECLARED[-1],)
+    assert DECLARED[-1] in verdict.detail
+
+
+def test_ac2_an_exact_boot_reads_working() -> None:
+    verdict = HANDLER.handle(request(declared_boot(), declaration()))
+    assert verdict.reading_state is EnumReadingVerdict.WORKING
+    assert verdict.missing_contracts == verdict.excess_contracts == ()
+
+
+def test_ac2_an_extra_node_and_an_unread_boot_each_read_not_working() -> None:
+    extra = HANDLER.handle(request(todays_boot(), declaration()))
+    assert extra.reading_state is EnumReadingVerdict.NOT_WORKING
+    assert extra.excess_contracts
+    unread = HANDLER.handle(request(ModelBootObservation(), declaration()))
+    assert unread.reading_state is EnumReadingVerdict.NOT_WORKING
