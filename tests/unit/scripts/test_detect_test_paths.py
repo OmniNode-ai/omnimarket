@@ -767,3 +767,60 @@ def test_workflow_only_diff_cli_emits_twenty_splits(tmp_path: Path) -> None:
     assert data["is_full_suite"] is True
     assert data["split_count"] == 20
     assert len(data["matrix"]) == 20
+
+
+# --- Shard count follows estimated test time, not the number of paths ---
+#
+# A node change selects tests/gates/, tests/nodes/, tests/unit/ and one root
+# file: four paths, so the path-count rule gave 2 shards, but tests/nodes/ and
+# tests/unit/ hold about 4100 of the suite's 7160 committed seconds. Each shard
+# then ran over 30 minutes and Tests (Split 2/2) hit its 90 minute job limit on
+# omnimarket#5401 and #5508.
+
+
+def test_node_change_shard_count_follows_committed_durations() -> None:
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_host_reading_effect/handlers/join_j2.py",
+            "tests/unit/nodes/node_host_reading_effect/test_join_j2.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+    )
+    assert sel.is_full_suite is False
+    assert "tests/nodes/" in sel.selected_paths
+    assert "tests/unit/" in sel.selected_paths
+    assert sel.split_count >= 10
+    assert sel.matrix == list(range(1, sel.split_count + 1))
+
+
+def test_duration_split_count_scales_and_caps(tmp_path: Path) -> None:
+    from scripts.ci.detect_test_paths import (
+        FULL_SUITE_SPLIT_COUNT,
+        _duration_split_count_for,
+    )
+
+    durations = tmp_path / "durations.json"
+    durations.write_text(
+        '{"tests/a/test_x.py": 700.0, "tests/a/test_y.py": 100.0,'
+        ' "tests/b/test_z.py": 5000.0}'
+    )
+    assert _duration_split_count_for(["tests/a/"], durations, 400) == 2
+    assert _duration_split_count_for(["tests/a/test_x.py"], durations, 400) == 2
+    assert _duration_split_count_for(["tests/b/"], durations, 100) == (
+        FULL_SUITE_SPLIT_COUNT
+    )
+    assert _duration_split_count_for(["tests/none/"], durations, 400) == 1
+
+
+def test_duration_split_count_keeps_path_rule_without_target_or_file(
+    tmp_path: Path,
+) -> None:
+    from scripts.ci.detect_test_paths import _duration_split_count_for
+
+    durations = tmp_path / "durations.json"
+    durations.write_text('{"tests/a/test_x.py": 9000.0}')
+    assert _duration_split_count_for(["tests/a/"], durations, None) == 1
+    assert _duration_split_count_for(["tests/a/"], tmp_path / "missing.json", 400) == 1
+    durations.write_text("not json")
+    assert _duration_split_count_for(["tests/a/"], durations, 400) == 1

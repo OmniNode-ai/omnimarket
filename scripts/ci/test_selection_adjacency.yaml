@@ -25,6 +25,10 @@ shared_modules:
 # Per-repo full-suite escalation threshold.
 thresholds:
   modules_changed_for_full_suite: 6
+  # A narrowed selection gets ceil(estimated seconds / this) shards, never fewer
+  # than the path-count rule and never more than the 20-shard full-suite matrix.
+  # 360 is the full suite's own per-shard share (about 7160 s over 20 shards).
+  target_shard_seconds: 360
 
 # OMN-15639: repo-wide gate directories, unioned into EVERY narrowed
 # selection. These assert invariants over files the adjacency map above
