@@ -1,15 +1,15 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 18 and seed -1730804422715429212 with 2 workers on 56 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 62 and seed -2834219612262029440 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3978914] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
 Parsing file DelegationShrinkRetry.tla
 Parsing file /tmp/Integers.tla
 Parsing file /tmp/Naturals.tla
 Semantic processing of module Naturals
 Semantic processing of module Integers
 Semantic processing of module DelegationShrinkRetry
-Starting... (2026-11-09 12:27:48)
+Starting... (2026-11-09 09:09:01)
 Implied-temporal checking--satisfiability problem has 1 branches.
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-09 12:27:48.
+Finished computing initial states: 1 distinct state generated at 2026-11-09 09:09:01.
 Error: Invariant SwapsAtMostCap is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -67,5 +67,5 @@ State 4: <Swap line 94, col 9 to line 99, col 73 of module DelegationShrinkRetry
 8 states generated, 8 distinct states found, 0 states left on queue.
 The depth of the complete state graph search is 4.
 The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
-Finished in 00s at (2026-11-09 12:27:48)
+Finished in 00s at (2026-11-09 09:09:01)
 exit=12

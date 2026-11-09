@@ -20,8 +20,10 @@ their attempt kind, split id and parent attempt id (OMN-20168).
 
 from __future__ import annotations
 
-from typing import Protocol, cast
+from typing import Protocol, cast, get_args
 from uuid import UUID, uuid5
+
+from pydantic import ValidationError
 
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
 from omnimarket.models.delegation.delegation_attempt_lineage import (
@@ -61,10 +63,6 @@ from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shri
 )
 from omnimarket.nodes.node_delegation_split_compute.handlers.handler_delegation_split import (
     HandlerDelegationSplit,
-)
-
-_DECOMPOSABLE: frozenset[str] = frozenset(
-    {"summarization", "code_review", "review", "document", "migration"}
 )
 
 
@@ -152,18 +150,20 @@ class HandlerShrinkRetry:
         source: str,
     ) -> ModelDelegationSplitSuccess | None:
         """The split compute's units, or None when the source cannot shrink."""
-        if size_band is None or task_class not in _DECOMPOSABLE:
+        if size_band is None or task_class not in get_args(DelegationTaskClass):
             return None
-        if task_class == "migration":
-            return None  # migration units are caller-listed, never cut from prose
-        result = self._splitter.handle(
-            ModelDelegationSplitRequest(
+        # The split compute owns which classes decompose; a request its model refuses
+        # (a migration with no caller-listed units) has no boundary to cut.
+        try:
+            request = ModelDelegationSplitRequest(
                 task_id=task_id,
-                task_class=_as_task_class(task_class),
+                task_class=cast(DelegationTaskClass, task_class),
                 size_band=size_band,
                 source=source,
             )
-        )
+        except ValidationError:
+            return None
+        result = self._splitter.handle(request)
         return result if isinstance(result, ModelDelegationSplitSuccess) else None
 
     async def settle(
@@ -234,7 +234,7 @@ class HandlerShrinkRetry:
         whole = self._recombiner.handle(
             ModelDelegationRecombineRequest(
                 task_id=task_id,
-                task_class=_as_task_class(task_class),
+                task_class=cast(DelegationTaskClass, task_class),
                 answers=tuple(answers),
             )
         )
@@ -339,7 +339,7 @@ class HandlerShrinkRetry:
                 joined = self._recombiner.handle(
                     ModelDelegationRecombineRequest(
                         task_id=unit.unit_id,
-                        task_class=_as_task_class(task_class),
+                        task_class=cast(DelegationTaskClass, task_class),
                         answers=child_answers,
                     )
                 )
@@ -371,17 +371,6 @@ def _answer(
         answer=outcome.answer,
         findings=outcome.findings,
     )
-
-
-def _as_task_class(task_class: str) -> DelegationTaskClass:
-    """The split models' closed class literal, refusing a class they do not name."""
-    if task_class not in _DECOMPOSABLE and task_class not in {
-        "planning",
-        "reasoning",
-        "code_generation",
-    }:
-        raise ValueError(f"task class {task_class!r} has no split rule")
-    return cast(DelegationTaskClass, task_class)
 
 
 __all__ = ["HandlerShrinkRetry", "ProtocolShrinkRetryPorts"]

@@ -5,7 +5,7 @@ The committed results must be for the committed model, configs and outputs; the
 design configs must pass every property; each property must fail on a mutation
 that flips exactly one design knob, shown by the mutant's own TLC output; and
 the one verdict line must approve the model's digest. Rerun
-``tests/formal/delegation_shrink_retry_tlc.sh`` after changing the model or a config.
+``tests/formal/delegation_shrink_retry_tlc.py`` after changing the model or a config.
 """
 
 from __future__ import annotations

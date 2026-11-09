@@ -1,15 +1,15 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 94 and seed -1221806502997401060 with 2 workers on 56 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 103 and seed -3947483339147147147 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3978437] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
 Parsing file DelegationShrinkRetry.tla
 Parsing file /tmp/Integers.tla
 Parsing file /tmp/Naturals.tla
 Semantic processing of module Naturals
 Semantic processing of module Integers
 Semantic processing of module DelegationShrinkRetry
-Starting... (2026-11-09 12:27:43)
+Starting... (2026-11-09 09:08:59)
 Implied-temporal checking--satisfiability problem has 1 branches.
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-09 12:27:43.
+Finished computing initial states: 1 distinct state generated at 2026-11-09 09:09:00.
 Error: Invariant DepthAtMostMax is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -119,5 +119,5 @@ State 8: <Resplit line 114, col 12 to line 117, col 55 of module DelegationShrin
 50 states generated, 46 distinct states found, 0 states left on queue.
 The depth of the complete state graph search is 9.
 The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 2).
-Finished in 00s at (2026-11-09 12:27:43)
+Finished in 00s at (2026-11-09 09:09:00)
 exit=12
