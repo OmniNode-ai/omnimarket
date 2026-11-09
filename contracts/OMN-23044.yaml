@@ -32,13 +32,13 @@ dod_evidence:
     check_value: 'uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule.py src/omnimarket/nodes/node_friction_rollup_compute/tests/test_fixture_headers.py tests/chain/test_landing_failure_terminal.py tests/nodes/node_daily_line_effect/test_no_cross_node_import.py tests/nodes/node_friction_rollup_tick_effect/test_golden_chain_friction_rollup_tick_effect.py tests/nodes/node_friction_rollup_tick_effect/test_parity_friction_rollup_tick.py tests/nodes/node_friction_rollup_tick_effect/test_tessl_review_findings.py tests/nodes/node_linear_snapshot_effect/test_parity_with_unit.py tests/nodes/node_onboarding_clean_vm_walk_effect/test_walk_reading.py tests/nodes/node_temp_retention_effect/test_tessl_review_findings.py tests/unit/nodes/node_daily_line_compute/test_schedule.py tests/unit/nodes/node_eval_corpus_reader_effect/test_join_j15.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23044-skipped-listed
-  description: The pull request body lists every skipped finding with its reason.
+  description: "docs/work-tracking/OMN-23044-slice0-skipped-findings.yaml lists every skipped finding with its reason; the test fails where the file is absent."
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: test -f contracts/OMN-23044.yaml
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/ci/test_tessl_slice0_skipped_findings_omn23044.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23044-integration-proof
   description: The pushed head ran the added tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
