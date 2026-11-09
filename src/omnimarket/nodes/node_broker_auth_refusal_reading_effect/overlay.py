@@ -41,6 +41,25 @@ class ModelRefusalReading(BaseModel):
     needle: str = Field(min_length=1)
     window_seconds: int = Field(ge=60)
     sample_max_chars: int = Field(ge=1)
+    #: Message forms by name: a refusal line holding the text is counted under its name (first match wins).
+    forms: dict[str, str] = Field(min_length=1)
+
+
+class ModelControlMarker(BaseModel):
+    """The deploy's own unauthenticated negative control, told apart from every other client (OMN-18012).
+
+    The control is ``rpk topic list`` with no credentials, run once per deploy by a one-shot container; the
+    broker refuses it by design, which proves an unauthenticated client is refused. Its marker is its source
+    container and the span of its run: a refusal inside that span is the control, up to ``max_lines_per_run``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    container: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    #: Slack either side of the container's span, for the clock between the broker's log and the container's.
+    tolerance_seconds: float = Field(ge=0)
+    #: Refusals one control run explains; every refusal past it inside the span is another client.
+    max_lines_per_run: int = Field(ge=1)
 
 
 class ModelRefusalBars(BaseModel):
@@ -48,7 +67,7 @@ class ModelRefusalBars(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    #: Refusals in the window at or under this read WORKING; zero means any refusal is a finding.
+    #: Refusals that are not the control, in the window, at or under this read WORKING; zero means any is a finding.
     max_refusals: int = Field(ge=0)
 
 
@@ -65,6 +84,7 @@ class ModelBrokerAuthRefusalOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     log_source: ModelBrokerLogSource
+    control: ModelControlMarker
     reading: ModelRefusalReading
     bars: ModelRefusalBars
     ledger_append: ModelLedgerAppendRoute
@@ -76,6 +96,7 @@ class ModelBrokerAuthRefusalOverlay(BaseModel):
         text = json.dumps(
             {
                 "bars": self.bars.model_dump(mode="json"),
+                "control": self.control.model_dump(mode="json"),
                 "reading": self.reading.model_dump(mode="json"),
             },
             sort_keys=True,
@@ -94,6 +115,7 @@ __all__ = [
     "NODE_NAME",
     "ModelBrokerAuthRefusalOverlay",
     "ModelBrokerLogSource",
+    "ModelControlMarker",
     "ModelRefusalBars",
     "ModelRefusalPublish",
     "ModelRefusalReading",

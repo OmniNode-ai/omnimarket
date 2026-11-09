@@ -16,8 +16,8 @@ import hashlib
 import json
 import uuid
 from collections import Counter
-from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -27,6 +27,7 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.models.model_broker_auth_refusal import (
     ModelBrokerAuthRefusalCommand,
     ModelBrokerAuthRefusalResult,
+    ModelRefusalForm,
     ModelRefusalMinute,
     ModelRefusalWindow,
 )
@@ -35,7 +36,10 @@ from omnimarket.nodes.node_broker_auth_refusal_reading_effect.overlay import (
 )
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.protocols import (
     BrokerLogError,
+    ControlRun,
     ProtocolBrokerLog,
+    ProtocolControlRuns,
+    parse_stamp,
 )
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
@@ -64,27 +68,97 @@ def _clean(text: str) -> str:
     return " ".join(text.replace("|", "/").split())
 
 
-def summarize(lines: Sequence[str], sample_max_chars: int) -> ModelRefusalWindow:
-    """Count refusal lines per UTC minute. A line starts with its RFC 3339 timestamp (``docker logs -t``).
+def _sort_key(line: str) -> tuple[int, datetime]:
+    stamp = parse_stamp(line.split(" ", 1)[0])
+    return (0, stamp) if stamp else (1, datetime.min.replace(tzinfo=UTC))
 
-    A line whose timestamp cannot be read still counts: a refusal with no time is a refusal.
+
+def split_control(
+    lines: Sequence[str],
+    controls: Sequence[ControlRun],
+    tolerance_seconds: float,
+    max_lines_per_run: int,
+) -> tuple[list[str], list[str]]:
+    """Split refusal lines into (control, other) by the control's own marker.
+
+    A line is the control when its time falls inside a control run's span (its container's start to finish, plus
+    the slack) and that run has not yet explained ``max_lines_per_run`` lines. A line past that count, a line
+    outside every span and a line with no readable time are another client.
     """
-    seconds: list[str] = []
+    slack = timedelta(seconds=tolerance_seconds)
+    taken = [0] * len(controls)
+    control: list[str] = []
+    other: list[str] = []
+    for line in sorted(lines, key=_sort_key):
+        stamp = parse_stamp(line.split(" ", 1)[0])
+        owner = None
+        if stamp is not None:
+            for index, run in enumerate(controls):
+                if (
+                    run.started_at - slack <= stamp <= run.finished_at + slack
+                    and taken[index] < max_lines_per_run
+                ):
+                    owner = index
+                    break
+        if owner is None:
+            other.append(line)
+        else:
+            taken[owner] += 1
+            control.append(line)
+    return control, other
+
+
+def _seconds(lines: Sequence[str]) -> list[str]:
+    found: list[str] = []
     for line in lines:
         stamp = line.split(" ", 1)[0]
         if len(stamp) >= 19 and stamp[4] == "-" and stamp[10] == "T":
-            seconds.append(stamp[:19])
-    per_minute = Counter(stamp[:16] for stamp in seconds)
-    first_line = lines[0] if lines else ""
+            found.append(stamp[:19])
+    return found
+
+
+def summarize(
+    lines: Sequence[str],
+    *,
+    sample_max_chars: int,
+    forms: Mapping[str, str],
+    controls: Sequence[ControlRun] = (),
+    tolerance_seconds: float = 0,
+    max_lines_per_run: int = 1,
+) -> ModelRefusalWindow:
+    """Count refusal lines, the control apart from every other. A line starts with its RFC 3339 timestamp.
+
+    A line whose timestamp cannot be read still counts, as another client: a refusal with no time is a refusal.
+    """
+    control_lines, other_lines = split_control(
+        lines, controls, tolerance_seconds, max_lines_per_run
+    )
+    other_seconds = _seconds(other_lines)
+    control_seconds = _seconds(control_lines)
+    per_minute = Counter(stamp[:16] for stamp in other_seconds)
+    per_form: Counter[str] = Counter()
+    for line in other_lines:
+        name = next((n for n, text in forms.items() if text in line), "unnamed-form")
+        per_form[name] += 1
+    first_line = other_lines[0] if other_lines else ""
     sample = first_line.split(" ", 1)[1] if " " in first_line else first_line
     return ModelRefusalWindow(
         total=len(lines),
+        control=len(control_lines),
+        other=len(other_lines),
+        control_runs=len(controls),
         minutes=tuple(
             ModelRefusalMinute(minute=minute, count=count)
             for minute, count in sorted(per_minute.items())
         ),
-        first_seen=min(seconds) if seconds else "",
-        last_seen=max(seconds) if seconds else "",
+        first_seen=min(other_seconds) if other_seconds else "",
+        last_seen=max(other_seconds) if other_seconds else "",
+        control_first_seen=min(control_seconds) if control_seconds else "",
+        control_last_seen=max(control_seconds) if control_seconds else "",
+        forms=tuple(
+            ModelRefusalForm(form=name, count=count)
+            for name, count in sorted(per_form.items())
+        ),
         sample=_clean(sample)[:sample_max_chars],
     )
 
@@ -98,12 +172,14 @@ class HandlerBrokerAuthRefusal:
         overlay: ModelBrokerAuthRefusalOverlay,
         host: str,
         source: ProtocolBrokerLog,
+        control_runs: ProtocolControlRuns,
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
     ) -> None:
         self._overlay = overlay
         self._host = host
         self._source = source
+        self._control_runs = control_runs
         self._appender = appender
         self._clock = clock
 
@@ -133,9 +209,28 @@ class HandlerBrokerAuthRefusal:
                 outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
                 reasons=(reason_token(f"log-unreadable-{exc}"),),
             )
-        window = summarize(lines, reading.sample_max_chars)
+        try:
+            controls = self._control_runs.runs()
+        except BrokerLogError as exc:
+            return ModelBrokerAuthRefusalResult(
+                correlation_id=correlation_id,
+                status="completed",
+                host=self._host,
+                verdict=EnumReadingVerdict.UNKNOWN,
+                outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                reasons=(reason_token(f"control-unreadable-{exc}"),),
+            )
+        marker = self._overlay.control
+        window = summarize(
+            lines,
+            sample_max_chars=reading.sample_max_chars,
+            forms=reading.forms,
+            controls=controls,
+            tolerance_seconds=marker.tolerance_seconds,
+            max_lines_per_run=marker.max_lines_per_run,
+        )
         bar = self._overlay.bars.max_refusals
-        over = window.total > bar
+        over = window.other > bar
         return ModelBrokerAuthRefusalResult(
             correlation_id=correlation_id,
             status="completed",
@@ -144,7 +239,7 @@ class HandlerBrokerAuthRefusal:
             if over
             else EnumReadingVerdict.WORKING,
             outcome=EnumReadingOutcome.READ,
-            reasons=(f"refusals-{window.total}-over-{bar}",)
+            reasons=(f"other-refusals-{window.other}-over-{bar}",)
             if over
             else ("inside-the-bar",),
             window=window,
@@ -158,9 +253,20 @@ class HandlerBrokerAuthRefusal:
         window = result.window
         cells_by_name = {
             "refusals": str(window.total) if window else "unknown",
+            "control_refusals": str(window.control) if window else "unknown",
+            "other_refusals": str(window.other) if window else "unknown",
+            "control_runs_held": str(window.control_runs) if window else "unknown",
             "minutes_with_refusals": str(len(window.minutes)) if window else "unknown",
             "first_seen": (window.first_seen or "none") if window else "unknown",
             "last_seen": (window.last_seen or "none") if window else "unknown",
+            "control_last_seen": (window.control_last_seen or "none")
+            if window
+            else "unknown",
+            "other_forms": (
+                ",".join(f"{f.form}:{f.count}" for f in window.forms) or "none"
+            )
+            if window
+            else "unknown",
             "window_seconds": str(self._overlay.reading.window_seconds),
             "bar_max_refusals": str(self._overlay.bars.max_refusals),
         }
@@ -234,6 +340,8 @@ def events_of(
         "outcome": result.outcome.value,
         "reasons": list(result.reasons),
         "refusals": result.window.total if result.window else None,
+        "control_refusals": result.window.control if result.window else None,
+        "other_refusals": result.window.other if result.window else None,
         "row_key": result.row_key,
         "ledger": result.ledger,
     }
@@ -284,5 +392,6 @@ __all__ = [
     "answer_command",
     "events_of",
     "load_topics",
+    "split_control",
     "summarize",
 ]

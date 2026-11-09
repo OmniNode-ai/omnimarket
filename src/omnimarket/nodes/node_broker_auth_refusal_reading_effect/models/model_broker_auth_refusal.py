@@ -20,17 +20,39 @@ class ModelRefusalMinute(BaseModel):
     count: int = Field(ge=1)
 
 
+class ModelRefusalForm(BaseModel):
+    """How many refusals that are not the control hold one named message form (an overlay value)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    form: str = Field(min_length=1)
+    count: int = Field(ge=1)
+
+
 class ModelRefusalWindow(BaseModel):
-    """What the broker's log says over the window, counts and one sample line only."""
+    """What the broker's log says over the window: the control counted apart from every other refusal.
+
+    ``total`` is every refusal line. ``control`` is the deploy's own negative control (it proves an
+    unauthenticated client is refused and stays); ``other`` is the rest and is what the bar judges.
+    ``minutes``, ``first_seen``, ``last_seen``, ``forms`` and ``sample`` describe the others only.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     total: int = Field(ge=0)
+    control: int = Field(default=0, ge=0)
+    other: int = Field(default=0, ge=0)
+    #: Control runs the host held that the window overlaps; none is a window with no deploy in it.
+    control_runs: int = Field(default=0, ge=0)
     minutes: tuple[ModelRefusalMinute, ...] = ()
-    #: UTC ``YYYY-MM-DDTHH:MM:SS`` of the first and last refusal; empty when there is none.
+    #: UTC ``YYYY-MM-DDTHH:MM:SS`` of the first and last refusal that is not the control; empty when none.
     first_seen: str = ""
     last_seen: str = ""
-    #: The first refusal line, cut to the overlay's length, without its timestamp.
+    #: The same for the control's own refusals.
+    control_first_seen: str = ""
+    control_last_seen: str = ""
+    forms: tuple[ModelRefusalForm, ...] = ()
+    #: The first refusal that is not the control, cut to the overlay's length, without its timestamp.
     sample: str = ""
 
 
@@ -71,6 +93,7 @@ class ModelBrokerAuthRefusalResult(BaseModel):
 __all__ = [
     "ModelBrokerAuthRefusalCommand",
     "ModelBrokerAuthRefusalResult",
+    "ModelRefusalForm",
     "ModelRefusalMinute",
     "ModelRefusalWindow",
 ]

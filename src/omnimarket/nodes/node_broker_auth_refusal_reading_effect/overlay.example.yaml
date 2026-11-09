@@ -4,18 +4,26 @@
 # under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
 #
 #   log_source       the broker's container log, read over ssh
+#   control          the deploy's own unauthenticated negative control: its container, the slack either side of its run and the refusals one run explains
 #   reading          the text a refusal line holds, the look-back window and how much of the first line a row keeps
-#   bars             the most refusals in the window that still read WORKING (0: any refusal is a finding)
+#   bars             the most refusals that are not the control, in the window, that still read WORKING (0: any is a finding)
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
 log_source:
   ssh_host_env: EXAMPLE_BROKER_SSH_HOST
   compose_project: example-project
   service: example-broker
   read_timeout_seconds: 30
+control:
+  container: example-project-control
+  tolerance_seconds: 2
+  max_lines_per_run: 1
 reading:
   needle: example_authentication_exception
   window_seconds: 600
   sample_max_chars: 160
+  forms:
+    handshake-skipped: Unexpected auth request
+    auth-failed: Authentication failed
 bars:
   max_refusals: 0
 ledger_append:

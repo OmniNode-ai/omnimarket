@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 
@@ -20,4 +22,44 @@ class ProtocolBrokerLog(Protocol):
         ...
 
 
-__all__ = ["BrokerLogError", "ProtocolBrokerLog"]
+def parse_stamp(text: str) -> datetime | None:
+    """An RFC 3339 UTC stamp as docker writes it (``2026-11-09T15:32:43.997373838Z``), or None when unreadable."""
+    head = text.strip()
+    if len(head) < 19 or head[4] != "-" or head[10] != "T":
+        return None
+    body = head[:19]
+    fraction = head[19:].rstrip("Z")
+    if fraction.startswith(".") and fraction[1:].isdigit():
+        body += "." + fraction[1:7].ljust(6, "0")
+    try:
+        return datetime.fromisoformat(body).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class ControlRun:
+    """One run of the deploy's unauthenticated negative control (OMN-18012): its container and its UTC span."""
+
+    container: str
+    started_at: datetime
+    finished_at: datetime
+
+
+class ProtocolControlRuns(Protocol):
+    def runs(self) -> tuple[ControlRun, ...]:
+        """The control runs the host still holds, by the control's container.
+
+        An absent container is no runs (no deploy has run it); raises ``BrokerLogError`` with a typed reason
+        when the host cannot be asked.
+        """
+        ...
+
+
+__all__ = [
+    "BrokerLogError",
+    "ControlRun",
+    "ProtocolBrokerLog",
+    "ProtocolControlRuns",
+    "parse_stamp",
+]

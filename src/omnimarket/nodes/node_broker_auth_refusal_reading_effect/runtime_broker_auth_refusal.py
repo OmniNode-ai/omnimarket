@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.adapters.broker_log import (
     SshBrokerLog,
+    SshControlRuns,
 )
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.handlers.handler_broker_auth_refusal import (
     HandlerBrokerAuthRefusal,
@@ -57,6 +58,7 @@ def build_handler(
         overlay=overlay,
         host=host,
         source=SshBrokerLog(overlay.log_source, environ),
+        control_runs=SshControlRuns(overlay.log_source, overlay.control, environ),
         appender=build_appender(overlay.ledger_append, overlay.publish.lane, environ)
         if write
         else None,
@@ -82,6 +84,8 @@ def _run(write: bool) -> int:
         f"READING host={result.host} verdict={result.verdict.value} "
         f"outcome={result.outcome.value} "
         f"refusals={window.total if window else 'unknown'} "
+        f"control={window.control if window else 'unknown'} "
+        f"other={window.other if window else 'unknown'} "
         f"first_seen={(window.first_seen or 'none') if window else 'unknown'} "
         f"last_seen={(window.last_seen or 'none') if window else 'unknown'} "
         f"ledger={result.ledger} key={result.row_key} reason={','.join(result.reasons)}\n"
