@@ -1,0 +1,15 @@
+{
+ "ruling": "a recorded goal",
+ "in_scope_repos": [
+  "repo-product"
+ ],
+ "in_scope_prs": [
+  "omnimarket#5043",
+  "omnimarket#5150"
+ ],
+ "prerequisite_prs": [],
+ "paused_prs": [
+  "repo-plugin-b#1548",
+  "omnimarket#4849"
+ ]
+}
