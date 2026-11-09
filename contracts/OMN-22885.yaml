@@ -41,6 +41,8 @@ dod_evidence:
 - id: dod-omn22885-lab-idle-node
   description: The lab-idle cost sum is its own node, node_lab_idle_cost_compute, so `onex node node_lab_idle_cost_compute --input <request.json> --output receipt` runs it (as the second operation of the stall responder it was unreachable, because that contract's input model is the stall request); with since left empty it counts from the last orchestrator CLAIM. The 30 rows still sum to 7,100 lane-minutes. This pull request does not change the status line, which is where AC2 stays open.
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_lab_idle_cost_compute -q
