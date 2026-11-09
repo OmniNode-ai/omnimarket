@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-22938
+title: "The order writer node_order_advance_effect advances a test order on a timer from the gate store's piece records, survives a restart and is fenced"
+summary: A new effect node, node_order_advance_effect, is the order writer of the holder (rebuild plan section 7.5). On each tick it reads the gate store's holder, epoch and order position and the piece records, makes at most one change to the piece at the order position (started, live, in comparison, kept or rolled back) and advances the gate store's order one position only from a kept piece. Every write carries a step key and a fence token, and the order advance carries the epoch it was decided at, so a restart repeats nothing and a writer with a stale fence is refused. A fallback writer takes over by a fenced handover and is refused from the host the current holder runs on. The backend and the comparison window are the order_advance overlay; only the timer store is built. The timer that calls the node is not installed by this change, and the Postgres backend of the gate store and of the piece records is not part of it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22938-order-writer
+  statement: The order writer advances a test order from the piece records on a timer, resumes after a restart without repeating an advance, and is fenced.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the writer advances a test order across started, live, in-comparison, kept and rolled-back, and a restart resumes without a repeated advance -- falsifier: uv run pytest src/omnimarket/nodes/node_order_advance_effect -q -k advance_and_restart"
+  - id: AC2
+    statement: "AC2: a second writer with a stale fence is refused and the holder and its fallback never run on one host -- falsifier: uv run pytest src/omnimarket/nodes/node_order_advance_effect -q -k fence_and_placement"
+  - id: AC3
+    statement: "AC3: golden and error chain tests exist and a named mutation turns each red -- falsifier: uv run pytest src/omnimarket/nodes/node_order_advance_effect -q -k chain"
+evidence_requirements:
+- kind: tests
+  description: The acceptance tests of this ticket at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_order_advance_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn22938-advance-and-restart
+  description: A test order passes started, live, in comparison, kept and rolled back; a kill between the kept record and the order advance is finished once by a restart, and no restart advances twice.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_order_advance_effect -q --no-cov -n 0 -p no:randomly -k advance_and_restart
+    cwd: .
+- id: dod-omn22938-fence-and-placement
+  description: A take-over at a stale epoch, a displaced writer, and a stale read stopped at the piece records or the order advance are refused; a fallback on the holder's host is refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_order_advance_effect -q --no-cov -n 0 -p no:randomly -k fence_and_placement
+    cwd: .
+- id: dod-omn22938-chain
+  description: Golden and error chains run over the in-memory bus, and four named mutations (a lost correlation id, a skipped comparison window, an ignored placement check, an unchecked fence) each turn their chain red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_order_advance_effect -q --no-cov -n 0 -p no:randomly -k chain
+    cwd: .
+- id: dod-omn22938-integration-proof
+  description: The pushed head ran the order-writer tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22938 -- uv run --frozen pytest src/omnimarket/nodes/node_order_advance_effect -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn22938-deploy-source-read
+  description: The checked-out head carries the order-writer handler class, read from the git tree so a hosted runner can run it.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: git grep -c 'class HandlerOrderAdvance' HEAD -- src/omnimarket/nodes/node_order_advance_effect/handlers/handler_order_advance.py | grep -qv ':0$'
+    cwd: .
