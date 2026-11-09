@@ -8,9 +8,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Runs the private-repo-runner-placement gate once per registry repository, merges its
   Actions-variables snapshots dated by the oldest read, and copies the complete snapshot to
-  every available caller-supplied host. Remote copies must read back byte-identical. A failed
+  every available host: the caller's hosts plus every host the lab host table says takes lanes
+  (OMN-23219). Remote copies must read back byte-identical. A failed
   repository read publishes nothing; a failed host copy still lets the other hosts receive
-  the file. Only a complete run writes the heartbeat; a failed run writes a failure record.
+  the file; a lab host table that cannot be read fails the run the same way. Only a complete run writes the heartbeat; a failed run writes a failure record.
 
 input_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_request.ModelPrrpSnapshotPublishRequest
 output_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_result.ModelPrrpSnapshotPublishResult

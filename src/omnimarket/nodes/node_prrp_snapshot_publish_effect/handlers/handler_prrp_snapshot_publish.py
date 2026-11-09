@@ -220,6 +220,9 @@ class HandlerPrrpSnapshotPublish:
                             detail=problem,
                         )
                     )
+        failures[:0] = (
+            request.host_problems
+        )  # a host list that could not be chosen fails the run too
         now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         request.state_dir.mkdir(parents=True, exist_ok=True)
         if failures:

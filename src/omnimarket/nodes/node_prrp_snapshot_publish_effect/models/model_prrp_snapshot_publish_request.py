@@ -19,6 +19,9 @@ class ModelPrrpSnapshotPublishRequest(BaseModel):
     gate_script: Path
     repos_file: Path
     hosts: tuple[ModelPrrpSnapshotHost, ...]
+    # Problems found choosing ``hosts`` (the lab host table could not be read); each one fails the run
+    # after the hosts that are known still receive the file.
+    host_problems: tuple[str, ...] = ()
     state_dir: Path
     home: Path
     # Relative to each host's own home; the lab hosts' PRRP_VARIABLES_SNAPSHOT names the same path.
