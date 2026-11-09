@@ -190,7 +190,7 @@ def test_error_a_source_that_cannot_be_read_draws_every_scheduled_reading_unread
         clock=mvp_clock(),
         served_alarm_ids=lambda: None,
     )
-    # no command is configured: every history and the candidate are unreadable.
+    # no command is configured and the scheduled read has kept no record: every history and the candidate are unreadable.
     assert handler.run(
         ModelFloorSimpleTickRequest(home=str(home)), environ=mvp_env(home)
     ).ok
@@ -198,8 +198,8 @@ def test_error_a_source_that_cannot_be_read_draws_every_scheduled_reading_unread
     assert block.state == "NOT WORKING"
     scheduled = [r for r in block.readings if r.kind == "scheduled"]
     assert {r.reason for r in scheduled} == {"unreadable"}
-    assert {r.detail for r in scheduled} == {"read-command-not-configured"}
-    assert block.candidate_error == "read-command-not-configured"
+    assert {r.detail for r in scheduled} == {"reads-record-missing"}
+    assert block.candidate_error == "candidate-manifest-not-found"
 
 
 def test_a_command_route_reads_histories_and_candidate_through_a_subprocess(
