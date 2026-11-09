@@ -33,7 +33,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_reading
   class: HandlerDevDeployReading
-  input_model: omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading.ModelDevDeployReadingRequest
+  input_model: omnimarket.models.model_dev_deploy_reading.ModelDevDeployReadingRequest
 
 descriptor:
   node_archetype: compute
@@ -44,11 +44,11 @@ descriptor:
 
 input_model:
   name: ModelDevDeployReadingRequest
-  module: omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading
+  module: omnimarket.models.model_dev_deploy_reading
   description: The runtime-affecting merges, the lab pass receipts, the probes and the time to read at.
 output_model:
   name: ModelDevDeployReading
-  module: omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading
+  module: omnimarket.models.model_dev_deploy_reading
   description: The verdict at that time, its reasons and the merges still inside their deadline.
 
 input_subscriptions:
