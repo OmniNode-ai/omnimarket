@@ -31,13 +31,17 @@ import logging
 import time
 import urllib.parse
 from collections.abc import Sequence
-from typing import Any, NoReturn
+from typing import Any
 
 from pydantic import SecretStr
 
 from omnimarket.models.secret_store.plain_http_rule import require_safe_store_address
 from omnimarket.nodes.node_secret_store_effect.adapters.http_exchange import (
     HttpExchange,
+)
+from omnimarket.nodes.node_secret_store_effect.adapters.infisical_wire import (
+    raise_for_status,
+    split_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,26 +50,6 @@ PROVIDER = "infisical"
 
 #: Re-login this long before the token's stated expiry.
 _TOKEN_SLACK_SECONDS = 30.0
-
-
-def split_key(key: str) -> tuple[str, str]:
-    """``/a/b/NAME`` into (``/a/b``, ``NAME``); a bare ``NAME`` is in ``/``.
-
-    Raises:
-        ValueError: an empty name or a name with surrounding whitespace.
-    """
-    folder, _, name = key.rpartition("/")
-    if not name or name != name.strip():
-        raise ValueError("a secret key needs a non-empty name with no padding")
-    return (folder or "/"), name
-
-
-def _raise_for_status(status: int, operation: str) -> NoReturn:
-    if status in (401, 403):
-        raise PermissionError(f"{operation} refused with HTTP {status}")
-    if status == 429 or status >= 500:
-        raise ConnectionError(f"{operation} unavailable with HTTP {status}")
-    raise ValueError(f"{operation} rejected with HTTP {status}")
 
 
 class HandlerInfisicalHttp:
@@ -143,7 +127,7 @@ class HandlerInfisicalHttp:
         )
         token = body.get("accessToken") if status == 200 else None
         if not isinstance(token, str) or not token:
-            _raise_for_status(status if status != 200 else 502, "login")
+            raise_for_status(status if status != 200 else 502, "login")
         expires_in = body.get("expiresIn")
         lifetime = float(expires_in) if isinstance(expires_in, int | float) else 300.0
         self._token = SecretStr(str(token))
@@ -200,7 +184,7 @@ class HandlerInfisicalHttp:
         if status == 404:
             return None
         if status != 200:
-            _raise_for_status(status, "read")
+            raise_for_status(status, "read")
         secret = body.get("secret")
         value = secret.get("secretValue") if isinstance(secret, dict) else None
         if not isinstance(value, str):
@@ -223,7 +207,7 @@ class HandlerInfisicalHttp:
         # older ones. Any other 400 is a rejection, not an existing secret.
         if status == 409 or (status == 400 and "already exist" in message):
             return False
-        _raise_for_status(status, "create")
+        return raise_for_status(status, "create")
 
     async def delete_secret(self, key: str) -> bool:
         del key
@@ -237,7 +221,7 @@ class HandlerInfisicalHttp:
         if status == 404:
             return []
         if status != 200:
-            _raise_for_status(status, "list")
+            raise_for_status(status, "list")
         entries = body.get("secrets")
         names = [
             entry["secretKey"]
