@@ -115,4 +115,6 @@ def test_error_a_declaration_naming_no_ref_holds_instead_of_bypassing() -> None:
 
 def test_error_a_request_with_an_undeclared_field_is_refused() -> None:
     with pytest.raises(ValueError, match="extra_field"):
-        Request(pr=MANIFEST, bodies={}, states={}, extra_field=1)  # type: ignore[call-arg]
+        Request.model_validate(
+            {"pr": MANIFEST, "bodies": {}, "states": {}, "extra_field": 1}
+        )
