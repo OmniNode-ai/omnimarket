@@ -37,6 +37,7 @@ from omnimarket.models.work_state_projection import (
     EnumScopeStatus,
     EnumWorkItemKind,
     EnumWorkItemState,
+    ModelCommitmentSource,
     ModelCriterionPart,
     ModelLaneReceiptSource,
     ModelPullRequestSource,
@@ -49,9 +50,19 @@ from omnimarket.models.work_state_projection import (
 
 CLAIM = "CLAIM"
 TERMINAL = "TERMINAL"
+COMMITMENT_VERIFIED = "verified"
+COMMITMENT_REGRESSED = "regressed"
+COMMITMENT_WITHDRAWN = "withdrawn"
 OUTCOME_CELL = "outcome"
 READING_PREFIX = "reading:"
 _PR_REF = re.compile(r"^(?:[\w.-]+/)?(?P<repo>[\w.-]+)#(?P<number>\d+)$")
+
+
+def _commitment_reason(c: ModelCommitmentSource) -> str:
+    """Why an unfinished commitment is work: its check has not passed yet, or it passed and then failed."""
+    if c.status == COMMITMENT_REGRESSED:
+        return f"regressed: check failed (exit {c.last_exit}) after it passed; owed by {c.owner}"
+    return f"open: check has not passed; owed by {c.owner}"
 
 
 def pr_key(repo: str, number: int) -> str:
@@ -136,17 +147,18 @@ def _read_lanes(
         claims = [r for r in lane_rows if r.row_type == CLAIM]
         if not claims:
             continue
-        lane = _Lane(name=name, claims=claims, first=claims[0].stamp)
-        for c in claims:
-            lane.aliases |= _lane_aliases(c, rules)
         # The run is the one the newest CLAIM opened, or the first one when later CLAIMs are child claims of a run that
-        # has not closed yet: a run ends at its TERMINAL.
+        # has not closed yet: a run ends at its TERMINAL. Attribution and ordering describe that run only.
         run_start = claims[0].stamp
         for r in lane_rows:
             if r.row_type == TERMINAL and r.stamp >= run_start:
                 later = [c for c in claims if c.stamp > r.stamp]
                 if later:
                     run_start = later[0].stamp
+        run_claims = [c for c in claims if c.stamp >= run_start]
+        lane = _Lane(name=name, claims=run_claims, first=run_claims[0].stamp)
+        for c in run_claims:
+            lane.aliases |= _lane_aliases(c, rules)
         lane.after = [r for r in lane_rows if r.stamp >= run_start]
         terminal = next(
             (r for r in reversed(lane.after) if r.row_type == TERMINAL), None
@@ -199,6 +211,7 @@ class _Draft:
     scope: EnumScopeStatus = EnumScopeStatus.PAUSED
     pr: ModelPullRequestSource | None = None
     check: str | None = None
+    commitment: ModelCommitmentSource | None = None
 
 
 def _ticket_in_scope(
@@ -319,6 +332,26 @@ class HandlerWorkStateProjection:
                     pr=pr,
                     check=check,
                 )
+
+        for c in request.commitments:
+            key = f"commitment:{c.commitment_id}"
+            drafts[key] = _Draft(
+                key=key,
+                kind=EnumWorkItemKind.COMMITMENT,
+                title=c.ask,
+                ticket=c.ticket,
+                aliases={key},
+                done=c.status in (COMMITMENT_VERIFIED, COMMITMENT_WITHDRAWN),
+                done_reason="withdrawn"
+                if c.status == COMMITMENT_WITHDRAWN
+                else f"check passes (exit {c.last_exit})",
+                requires=tuple(normalize_ref(r, rules) for r in c.requires),
+                # An operator's ask is in scope by being asked; only a ticket the goal pauses pauses it.
+                scope=EnumScopeStatus.PAUSED
+                if c.ticket in scope.paused_tickets
+                else EnumScopeStatus.IN_SCOPE,
+                commitment=c,
+            )
 
         lanes = _read_lanes(request.ledger_rows, request.receipts, rules, request.now)
         lanes_of: dict[str, list[_Lane]] = defaultdict(list)
@@ -459,6 +492,8 @@ class HandlerWorkStateProjection:
                 reason = (
                     "start criterion reads true" if d.requires else "no prerequisite"
                 )
+                if d.commitment is not None:
+                    reason = _commitment_reason(d.commitment)
             items.append(
                 ModelWorkItem(
                     key=key,
@@ -476,6 +511,7 @@ class HandlerWorkStateProjection:
                     lanes=tuple(ln.name for ln in attributed),
                     live_lane=live_lane,
                     left=left,
+                    owner=d.commitment.owner if d.commitment else None,
                 )
             )
 
@@ -505,6 +541,7 @@ class HandlerWorkStateProjection:
                     lanes=(name,),
                     live_lane=name if lane.state is EnumLaneState.LIVE else None,
                     left=lane.left,
+                    attributes=tuple(sorted(lane.aliases)),
                 )
             )
 
