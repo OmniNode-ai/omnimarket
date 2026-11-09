@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 import omnimarket.nodes.node_work_ledger_reducer_compute as node_package
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_reducer import (
     ModelWorkLedgerReducerRequest,
     ModelWorkLedgerReducerResult,
@@ -34,7 +35,7 @@ pytestmark = pytest.mark.unit
 NODE_DIR = Path(node_package.__file__).parent
 COMMAND_TOPIC = "onex.cmd.omnimarket.work-ledger-reducer-requested.v1"
 TERMINAL_TOPIC = "onex.evt.omnimarket.work-ledger-reducer-completed.v1"
-LEDGER = "ROLLING_WORK_LEDGER.md"
+LEDGER = next(iter(GOVERNED_LEDGER_NAMES))
 ACCEPT = {"verdict": "accept"}
 HOLD = "2026-09-28T10:10:00Z | HOLD | lane=beta | id=2026-09-28T10:10:00Z-beta | surface=lab-dev | until=2026-09-28T12:00:00Z | reserved"
 HOLD_REUSED_ID = "2026-09-28T10:30:00Z | HOLD | lane=beta | id=2026-09-28T10:10:00Z-beta | surface=lab-x | until=2026-09-28T12:00:00Z | again"
