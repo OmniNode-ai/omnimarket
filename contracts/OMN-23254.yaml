@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23254
+title: The lab alarm reads a manifest outage as unreachable and falls back to the last good manifest instead of reading a dev redeploy as a lag reading
+summary: node_lab_alarm gains a typed ManifestUnreachableError, a retrying HttpManifest, an optional manifest.resilience overlay stanza (attempts, retry_delay_seconds, max_stale_seconds, cache_path), a last-good-manifest fallback that names its age, and the named drill fault manifest-down. Broker lag is still read for every group; no alarm is muted and no bound is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23254-manifest-outage-fallback
+  statement: A manifest endpoint that does not answer is retried, then read from the last good manifest while it is no older than the declared bound, and with no usable copy the run is INDETERMINATE and says lag was not read; the alarms and bounds are unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a blip is retried and the manifest is read, an endpoint down for every attempt is typed unreachable naming the attempt count, and a body that arrived and is not JSON is neither retried nor read as unreachable -- falsifier: `uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "blip_is_retried or single_attempt_reader or every_attempt_is_unreachable or not_json_is_not_retried"`'
+  - id: AC2
+    statement: 'AC2: an unreachable manifest falls back to the last good manifest and names its age, the fallback never mutes the alarm, and a last good manifest over the bound is not used -- falsifier: `uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "falls_back_and_names_the_age or never_mutes_the_alarm or over_the_bound or bound_itself_is_still_inside"`'
+  - id: AC3
+    statement: 'AC3: with no last good manifest the run reads manifest-unreachable with lag unread, without the overlay stanza the old typed INDETERMINATE holds, and a manifest that arrived and cannot be read never falls back -- falsifier: `uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "no_last_good_manifest or without_the_overlay_stanza or cannot_be_read_never_falls_back"`'
+  - id: AC4
+    statement: 'AC4: the named break manifest-down reproduces the outage and a drill never overwrites the last good manifest -- falsifier: `uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "named_break_manifest_down or drill_never_overwrites"`'
+evidence_requirements:
+- kind: tests
+  description: The manifest-fallback tests, golden and error chain events included, pass.
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23254-ac1
+  description: A blip is retried and the manifest is read; an endpoint down for every attempt is typed unreachable; a non-JSON body is not retried -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "blip_is_retried or single_attempt_reader or every_attempt_is_unreachable or not_json_is_not_retried"
+    cwd: .
+- id: dod-omn23254-ac2
+  description: An unreachable manifest falls back to the last good manifest within the bound, names its age and never mutes the alarm -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "falls_back_and_names_the_age or never_mutes_the_alarm or over_the_bound or bound_itself_is_still_inside"
+    cwd: .
+- id: dod-omn23254-ac3
+  description: With no usable copy the run is INDETERMINATE and says lag was not read; the old behaviour holds without the stanza -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "no_last_good_manifest or without_the_overlay_stanza or cannot_be_read_never_falls_back"
+    cwd: .
+- id: dod-omn23254-ac4
+  description: The named break manifest-down reproduces the outage and a drill never overwrites the last good manifest -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py -q --no-cov -k "named_break_manifest_down or drill_never_overwrites"
+    cwd: .
+- id: dod-omn23254-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23254 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+    cwd: .
