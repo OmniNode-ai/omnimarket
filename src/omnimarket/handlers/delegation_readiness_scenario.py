@@ -77,6 +77,8 @@ class ModelReadinessRuntime(BaseModel):
     #: ``loopback`` runs every rung as a stub HTTP server called by the real delegation effect; ``inmemory`` scripts
     #: each rung's typed reply (the default for unit runs).
     leg_backend: Literal["loopback", "inmemory"]
+    #: The interface the loopback stub servers bind and the rung URLs name.
+    loopback_host: str = Field(min_length=1)
     probe_tenant_slug: str = Field(min_length=1)
     #: The committed inputs file, relative to the node directory.
     inputs_relpath: str = Field(min_length=1)
@@ -97,8 +99,14 @@ def load_terminal_topic(path: Path) -> str:
     return str(read_contract(path)["terminal_event"])
 
 
-def build_transport(backend: str) -> ProtocolLegTransport:
-    return LoopbackStubServers() if backend == "loopback" else ScriptedLegTransport()
+_TRANSPORT_BY_BACKEND: dict[str, Callable[[str], ProtocolLegTransport]] = {
+    "loopback": LoopbackStubServers,
+    "inmemory": ScriptedLegTransport,
+}
+
+
+def build_transport(backend: str, host: str) -> ProtocolLegTransport:
+    return _TRANSPORT_BY_BACKEND[backend](host)
 
 
 class ReadinessScenarioBase(ABC):
@@ -185,6 +193,7 @@ def build_scenario(
     host = environment.get(runtime.host_env, "").strip() or socket.gethostname()
     home = Path(environment[runtime.home_env])
     backend = runtime.leg_backend
+    loopback_host = runtime.loopback_host
     return handler_class(
         runtime,
         home=home,
@@ -202,7 +211,7 @@ def build_scenario(
             timeout_seconds=runtime.bus_emit_timeout_seconds,
         ),
         terminal_topic=load_terminal_topic(contract_path),
-        transport_factory=lambda: build_transport(backend),
+        transport_factory=lambda: build_transport(backend, loopback_host),
         trigger=trigger,
     )
 

@@ -76,6 +76,7 @@ runtime:
   work_relpath: .onex_state/delegation-scenario-r4/work
   # loopback: one stub HTTP server per rung, called by the real delegation effect. inmemory: scripted typed replies.
   leg_backend: loopback
+  loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r4_legs.yaml
 

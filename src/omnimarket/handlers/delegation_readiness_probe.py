@@ -158,7 +158,8 @@ def _free_port() -> int:
 class ScriptedLegTransport:
     """The in-memory default: every rung answers its scripted typed reply; the effect is a pure function."""
 
-    def __init__(self) -> None:
+    def __init__(self, host: str = "localhost") -> None:
+        self._host = host
         self._scripts: dict[str, ModelRungScript] = {}
         self._answers: dict[str, str] = {}
         self.calls: list[str] = []
@@ -166,7 +167,7 @@ class ScriptedLegTransport:
     def endpoints(self, leg: ModelLegSpec) -> dict[str, str]:
         urls: dict[str, str] = {}
         for index, rung in enumerate(leg.rungs):
-            url = f"http://127.0.0.1:{41000 + index}/{leg.name}/{rung.backend_id}"
+            url = f"http://{self._host}:{41000 + index}/{leg.name}/{rung.backend_id}"
             urls[rung.backend_id] = url
             self._scripts[url] = rung
             self._answers[url] = leg.answer
@@ -221,7 +222,8 @@ def _result(
 class LoopbackStubServers:
     """The real backend: one stub HTTP server per rung, on a loopback port, called by the real delegation effect."""
 
-    def __init__(self) -> None:
+    def __init__(self, host: str = "localhost") -> None:
+        self._host = host
         self._servers: list[ThreadingHTTPServer] = []
         self._threads: list[threading.Thread] = []
 
@@ -232,7 +234,7 @@ class LoopbackStubServers:
                 port = _free_port()
             else:
                 server = ThreadingHTTPServer(
-                    ("127.0.0.1", 0), _stub_handler(rung, leg.answer)
+                    (self._host, 0), _stub_handler(rung, leg.answer)
                 )
                 server.daemon_threads = True
                 port = int(server.server_address[1])
@@ -240,7 +242,7 @@ class LoopbackStubServers:
                 thread.start()
                 self._servers.append(server)
                 self._threads.append(thread)
-            urls[rung.backend_id] = f"http://127.0.0.1:{port}/v1/chat/completions"
+            urls[rung.backend_id] = f"http://{self._host}:{port}/v1/chat/completions"
         return urls
 
     def effect(self) -> None:
