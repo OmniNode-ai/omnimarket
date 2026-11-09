@@ -161,9 +161,6 @@ runtime:
     controller_state_dir_env: LANDING_STATE_DIR
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
-    # The controller's state file (OMN-23184): its landing leases and the cause leases that hold shared reds. The board's work list
-    # names a pull request's owner from it; a state that cannot be read makes the list unread, never empty.
-    controller_state_name: state.json
     controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
@@ -178,6 +175,10 @@ runtime:
     # overlay store's fleet was this node's file from the Mac's reader; it is the hosts' published views now.
     projection_reads_relpath: .onex_state/floor-projection/projection-reads.json
     overlay_store_projection: overlay_store_fleet
+    # The owner map (OMN-23184, OMN-23391): who holds each pull request (the controller's landing leases and the cause leases that hold
+    # shared reds), published by the controller's host from its own state. The board's work list names a pull request's owner from it;
+    # a map that is unknown (never published, or older than its bound) makes the list unread, never empty.
+    owner_map_projection: owner_map
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.

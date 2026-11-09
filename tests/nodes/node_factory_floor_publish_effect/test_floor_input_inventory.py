@@ -25,6 +25,7 @@ FLOOR_NODES = (
     "node_floor_delegation_effect",
     "node_work_state_projection_effect",
     "node_floor_projection_read_effect",
+    "node_floor_owner_map_publish_effect",
 )
 FILE_CLASSES = {"file", "jsonl", "directory", "command", "ssh", "http"}
 TICKET = re.compile(r"^(OMN-\d+|NEED-CHILD-TICKET:[a-z0-9-]+|none)$")

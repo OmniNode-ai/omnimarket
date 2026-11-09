@@ -39,10 +39,11 @@ inputs:
     class: file
     where: $LANDING_STATE_DIR/state.json (fallback ~/.local/state/omni/landing/state.json), keys leases and causes
     read_by: [node_floor_simple_effect]
-    steps: [floor_simple]
+    steps: [floor_simple, floor_projections]
     producer: the landing controller's state file on its host
     replacement: {node: node_floor_owner_map_publish_effect, topic: onex.snapshot.projection.floor-owner-map.v1, status: new}
-    ticket: NEED-CHILD-TICKET:floor-owner-map-projection
+    ticket: OMN-23391
+    pr: omnimarket branch omn-23391-floor-owner-map-projection
     notes: Names who holds each pull request and each shared red (landing lease, cause lease, parked cause) for the board's work list; an unreadable map makes the list unread, never empty.
   - id: lane_list
     order: 2

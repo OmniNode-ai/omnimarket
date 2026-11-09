@@ -10,6 +10,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The projection reader, the producer's publication, the floor's overlay store row and the inventory test pass, with the named breaks."
     command: "uv run --frozen pytest tests/nodes/node_floor_projection_read_effect tests/unit/nodes/node_overlay_store tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov"
+  - kind: "tests"
+    description: "The owner map publisher, its projection read back with the controller's state file deleted, and the board's work list built from it pass."
+    command: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -39,3 +42,11 @@ dod_evidence:
       - check_type: "command"
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23391 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_projection_read_effect tests/unit/nodes/node_overlay_store tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23391-owner-map-projection"
+    description: "AC2, owner map input: the controller's host publishes the owner map with the time it read it, the board's work list takes its owners from the projection with the local state file deleted, and a map older than its bound makes the list unread."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

@@ -8,6 +8,12 @@ from omnimarket.handlers.floor_projection.freshness import (
     load_bundle,
     projection_payload,
 )
+from omnimarket.handlers.floor_projection.owner_map import (
+    LaneOwners,
+    owners_from_payload,
+    parse_controller_state,
+    read_controller_owners,
+)
 from omnimarket.handlers.floor_projection.snapshot_source import (
     BusSnapshotSource,
     InMemorySnapshotSource,
@@ -17,9 +23,13 @@ from omnimarket.handlers.floor_projection.snapshot_source import (
 __all__ = [
     "BusSnapshotSource",
     "InMemorySnapshotSource",
+    "LaneOwners",
     "ProjectionPayload",
     "ProtocolSnapshotSource",
     "load_bundle",
+    "owners_from_payload",
+    "parse_controller_state",
     "projection_payload",
     "publish_envelope",
+    "read_controller_owners",
 ]
