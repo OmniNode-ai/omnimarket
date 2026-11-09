@@ -496,6 +496,7 @@ def _write_mirror_row(
     tenant_uuid: UUID,
     tenant_slug: str,
     now: datetime,
+    source_event_id: str = _LOCAL_MINT_SOURCE,
 ) -> None:
     adapter.upsert(
         TENANT_REGISTRY_MIRROR_TABLE,
@@ -507,7 +508,7 @@ def _write_mirror_row(
             "status": "active",
             "registry_created_at": now.isoformat(),
             "observed_at": now.isoformat(),
-            "source_event_id": _LOCAL_MINT_SOURCE,
+            "source_event_id": source_event_id,
         },
     )
 
