@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_guard_replay import (
     WorkLedgerGuardReplay,
 )
@@ -29,7 +30,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_
 
 pytestmark = pytest.mark.unit
 
-LEDGER = "ROLLING_WORK_LEDGER.md"
+LEDGER = next(iter(GOVERNED_LEDGER_NAMES))
 WEEK_START = datetime(2026, 9, 21, 9, 0, tzinfo=UTC)
 ACCEPT = ModelJudgeVerdict(verdict=EnumJudgeVerdict.ACCEPT)
 
