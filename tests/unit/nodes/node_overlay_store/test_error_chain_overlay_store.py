@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -52,6 +54,20 @@ from tests.unit.nodes.node_overlay_store.support import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _tick_deadline_does_not_outlive_its_test() -> Iterator[None]:
+    """The tick arms a process-exiting deadline; a test that runs it in-process must disarm it.
+
+    ``tick_main`` calls ``faulthandler.dump_traceback_later(..., exit=True)`` and never
+    cancels it, because in production the process ends with the tick. Run in the pytest
+    process, that timer outlives the test and kills the whole run 120 s later, silently,
+    on whichever test is executing then (a shard that held this file died with exit 1 and
+    no summary). The deadline itself is still pinned by the arming test below.
+    """
+    yield
+    faulthandler.cancel_dump_traceback_later()
 
 
 def _loader(

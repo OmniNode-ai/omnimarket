@@ -197,7 +197,9 @@ def test_the_writer_upserts_one_row_and_reports_it_to_the_runtime() -> None:
     out = writer.handle({**_wire(), "_topic": TOPIC, "_envelope_id": "env-1"})
 
     assert out["rows_upserted"] == 1
-    assert db.connected == db.closed == 1
+    assert (db.connected, db.closed) == (1, 0)
+    writer.close_pool()
+    assert (db.connected, db.closed) == (1, 1)
     ((query, args),) = db.statements
     assert "omninode_internal.session_content" in query
     assert "ON CONFLICT (event_id)" in query
