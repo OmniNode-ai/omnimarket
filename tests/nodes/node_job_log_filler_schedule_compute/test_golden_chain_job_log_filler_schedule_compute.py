@@ -287,3 +287,21 @@ async def test_failing_control_an_off_window_tick_fills_nothing(
     assert seen == []
     with pytest.raises(JobLogCacheMissError):
         _cache_only_read(root, RED_JOB)
+
+
+async def test_error_chain_a_runtime_with_no_filler_overlay_answers_a_failed_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dev runtime today: no overlay for the filler, no PR watcher state.
+
+    The scheduled pass must end in a failed terminal event naming why, not in a handler
+    error that is dead-lettered on every window.
+    """
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.delenv(hjf.OVERLAY_FILE_ENV, raising=False)
+    seen = await _drive(_window_start(), wait_seconds=30)
+    assert len(seen) == 1
+    result = _result(seen[0])
+    assert result.status is EnumJobLogFillStatus.FAILED, result
+    assert "overlay unreadable" in (result.error or "")
+    assert result.considered == 0
