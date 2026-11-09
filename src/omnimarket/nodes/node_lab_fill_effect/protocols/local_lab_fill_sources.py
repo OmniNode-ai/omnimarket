@@ -229,7 +229,7 @@ LedgerLines = Callable[[], Sequence[str]]
 OpenPrs = Callable[[], Mapping[str, tuple[str, ...]]]
 
 
-class LinearGraphqlClient:
+class LinearGraphqlQuery:
     """One Linear GraphQL POST under the seconds it is given; the key and endpoint arrive from the overlay."""
 
     def __init__(self, *, endpoint: str, api_key: str) -> None:

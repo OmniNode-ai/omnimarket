@@ -24,7 +24,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import (
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_sources import (
     LedgerWindowReader,
-    LinearGraphqlClient,
+    LinearGraphqlQuery,
     LocalLabFillPlansCopy,
     LocalLabFillSourceReaders,
     WatcherOpenPrs,
@@ -385,23 +385,23 @@ def _serve(reply: dict[str, object], delay_s: float = 0.0) -> tuple[HTTPServer, 
 def test_the_linear_client_reads_data_refuses_errors_and_is_cut_by_its_budget() -> None:
     server, url = _serve({"data": {"issues": {"nodes": []}}})
     try:
-        assert LinearGraphqlClient(endpoint=url, api_key="k")("{x}", 5) == {
+        assert LinearGraphqlQuery(endpoint=url, api_key="k")("{x}", 5) == {
             "issues": {"nodes": []}
         }
         with pytest.raises(LabFillPortError, match="key is missing"):
-            LinearGraphqlClient(endpoint=url, api_key="")("{x}", 5)
+            LinearGraphqlQuery(endpoint=url, api_key="")("{x}", 5)
     finally:
         server.shutdown()
     server, url = _serve({"errors": [{"message": "no"}]})
     try:
         with pytest.raises(LabFillPortError, match="GraphQL errors"):
-            LinearGraphqlClient(endpoint=url, api_key="k")("{x}", 5)
+            LinearGraphqlQuery(endpoint=url, api_key="k")("{x}", 5)
     finally:
         server.shutdown()
     server, url = _serve({"data": {}}, delay_s=1.0)
     try:
         with pytest.raises(LabFillSourceCutError, match="timed out"):
-            LinearGraphqlClient(endpoint=url, api_key="k")("{x}", 0.2)
+            LinearGraphqlQuery(endpoint=url, api_key="k")("{x}", 0.2)
     finally:
         server.shutdown()
 
