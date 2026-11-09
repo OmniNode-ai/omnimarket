@@ -70,10 +70,39 @@ externally_produced_topics:
 externally_consumed_topics:
   - onex.evt.omnimarket.dev-deploy-read.v1
 
+# Rebuild plan 4.1 join J10 (piece 10 to piece 11), OMN-22957: a runtime-affecting merge yields a PASS lab receipt keyed by
+# its sha, and the running runtime reads back that exact sha and answers one correlated functional request. The join
+# handler answers piece 11's chain on the floor's emission contract: a start then a success, a start then a typed failure
+# past the deadline, nothing while the deadline has not passed. The deadline travels on the request from the piece's overlay.
+join_j10:
+  join_id: "J10"
+  from_piece: 10
+  to_piece: 11
+  emission_node: "node_dev_deploy_reading_compute"
+  receipt_missing_code: "dev_deploy_receipt_missing"
+  receipt_late_code: "dev_deploy_receipt_late"
+  receipt_failed_code: "dev_deploy_receipt_failed"
+  receipts_unreadable_code: "dev_deploy_receipts_unreadable"
+  runtime_stale_code: "dev_deploy_runtime_stale"
+  runtime_broken_code: "dev_deploy_runtime_broken"
+  runtime_uncorrelated_code: "dev_deploy_runtime_uncorrelated"
+# The in-process join handler, bound here and not in handler_routing: it takes a receipt reader, a runtime probe, an
+# emission sink and a policy through its constructor, which the auto-wiring cannot supply.
+in_process_handlers:
+  join_j10:
+    handler:
+      module: "omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_join_j10"
+      class: "HandlerDevDeployJoinJ10"
+overlay:
+  id: node_dev_deploy_reading_compute
+  file_env: ONEX_DEV_DEPLOY_JOIN_OVERLAY
+  model: omnimarket.nodes.node_dev_deploy_reading_compute.models.model_join_j10.ModelDevDeployJoinOverlay
+  trust_boundary: Server-owned addresses and key names for the receipts projection and the runtime read; a bus request carries only the merge, its time and the deadline.
+
 metadata:
   description: "Piece 11 reading: lab pass receipt per runtime-affecting sha and a 24-hour exact-sha probe"
   author: "OmniNode Team"
   license: MIT
   created: "2026-11-07"
   tags: [compute, dev-deploy, reading, pure]
-  related_tickets: ["OMN-22478", "OMN-22958"]
+  related_tickets: ["OMN-22478", "OMN-22958", "OMN-22957"]

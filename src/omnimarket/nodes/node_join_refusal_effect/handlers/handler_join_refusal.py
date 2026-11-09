@@ -12,7 +12,8 @@ This node is that answer. For each join the overlay declares it reads the upstre
 rule and the same rows the floor reads, so the same correlation ids), and writes to the emission journal one typed
 ``upstream_<code>`` failure, with no start, of the downstream piece under each id the downstream piece has not answered.
 Three things it does not do: it never answers a drill (a drill is not evidence for a join), it never answers a failure
-twice, and it never answers a success. It changes no verdict and no bound; with the refusal dropped the join reads broken
+twice within the journal window (``emission.window_hours``; an answer older than it is not read back, so a failure still
+inside its upstream lookback is answered again), and it never answers a success. It changes no verdict and no bound; with the refusal dropped the join reads broken
 again (``injected_fault`` in the overlay names that break).
 
 Canonical definition-B shape: ``handle(ModelJoinRefusalCommand) -> ModelJoinRefusalResult``.

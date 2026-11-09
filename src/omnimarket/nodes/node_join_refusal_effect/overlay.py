@@ -29,7 +29,8 @@ class ModelRefusalEmission(BaseModel):
 
     home_env: str = Field(min_length=1)
     journal_relpath: str = Field(min_length=1)
-    #: How far back the journal is read to see which failures the downstream piece has already answered.
+    #: How far back the journal is read to see which failures the downstream piece has already answered: the scope of the
+    #: once-only answer.
     window_hours: int = Field(ge=1)
 
 
