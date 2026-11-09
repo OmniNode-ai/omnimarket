@@ -54,9 +54,11 @@ http_routes:
     method: DELETE
     path: "/v1/tenants/me/inference-credentials/{api_key_ref}"
     authorization: tenant
-http_handler:
+handler:
   name: HandlerInferenceCredentials
   module: omnimarket.nodes.node_inference_credentials.handlers.handler_inference_credentials
+  class: HandlerInferenceCredentials
+  input_model: omnimarket.nodes.node_inference_credentials.models.model_inference_credentials_http.ModelInferenceCredentialsRequest
 capabilities:
   - name: "inference_credentials_http"
     description: "Serve the tenant-gated BYOK submit, list and revoke routes on the runtime's port."

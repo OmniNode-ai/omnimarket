@@ -91,3 +91,20 @@ dod_evidence:
       check_value: >-
         uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane inferport-0855 -- uv run --frozen pytest tests/nodes/node_inference_credentials tests/integration/onex_api_fold -q --no-cov
       cwd: .
+- id: credential-published-source-probe
+  description: >
+    Hosted deploy check of the published source at this checkout's exact commit:
+    the node's contract declares its mount prefix and its handler binding. It
+    checks the published artifact and does not attest a running deployment.
+  source: manual
+  checks:
+    - check_type: command
+      check_value: |-
+        set -euo pipefail;
+        probe_dir=$(mktemp -d);
+        trap 'rm -rf "$probe_dir"' EXIT;
+        root="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes";
+        curl --fail --silent --show-error --location --max-time 30 "$root/node_inference_credentials/contract.yaml" --output "$probe_dir/credentials.yaml";
+        grep -q 'path_prefix: "/v1/tenants/me/inference-credentials"' "$probe_dir/credentials.yaml";
+        grep -q 'name: HandlerInferenceCredentials' "$probe_dir/credentials.yaml"
+      cwd: .
