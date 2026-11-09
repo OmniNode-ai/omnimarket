@@ -8,10 +8,10 @@ shows, and every event names labels only. The overlay holds every setting; nothi
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelRotationMark(BaseModel):
@@ -20,8 +20,24 @@ class ModelRotationMark(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label: str = Field(min_length=1)
+    #: A UTC instant as ``%Y-%m-%dT%H:%M:%SZ``: the pool orders limit times as text, so any accepted
+    #: instant (with an offset, or fractional seconds) is normalised to that form, and a value that
+    #: is not an instant, or names no zone, is refused rather than kept as a limit that never ends.
     until: str | None = None
     revoked: bool = False
+
+    @field_validator("until")
+    @classmethod
+    def _until_is_a_utc_instant(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            instant = datetime.fromisoformat(value)
+        except ValueError:
+            raise ValueError("until is not an ISO 8601 instant") from None
+        if instant.tzinfo is None:
+            raise ValueError("until names no time zone")
+        return instant.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ModelRotationMarksRead(BaseModel):
@@ -120,7 +136,7 @@ class ModelRotationEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["rotated", "no_usable"]
+    kind: Literal["rotated", "rotation_failed", "no_usable"]
     host: str
     from_label: str | None
     to_label: str | None

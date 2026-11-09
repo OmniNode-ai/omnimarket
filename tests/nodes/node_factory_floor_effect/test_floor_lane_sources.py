@@ -613,3 +613,28 @@ def test_a_workers_directory_of_thousands_is_read_without_a_stat_per_entry(
     assert result is not None
     assert [(p.lane, p.alive) for p in result] == [(claim.lane, False)]
     assert not [path for path in stats if path.startswith(str(workers))]
+
+
+def test_receipt_carries_the_time_its_runner_output_file_was_last_written(
+    tmp_path: Path,
+) -> None:
+    """OMN-23081: the runner streams the lane's output to the ``.out`` beside the receipt; its mtime is progress."""
+    write(tmp_path / "streams" / "rlane-streams-1.json", receipt_json("streams"))
+    out = tmp_path / "streams" / "rlane-streams-1.out"
+    out.write_text("tool call in progress\n", encoding="utf-8")
+    stamp = NOW.timestamp() - 90
+    os.utime(out, (stamp, stamp))
+    write(tmp_path / "silent" / "rlane-silent-1.json", receipt_json("silent"))
+    receipts = load_receipts(
+        tmp_path,
+        now=NOW,
+        window_hours=24,
+        glob="rlane-*.json",
+        result_chars=600,
+        scan_workers=2,
+    )
+    assert receipts is not None
+    assert {r.lane: r.output_at for r in receipts} == {
+        "streams": datetime.fromtimestamp(stamp, tz=UTC),
+        "silent": None,
+    }

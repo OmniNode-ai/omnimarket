@@ -103,9 +103,16 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
+    # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
+    ilo_address: NonEmptyStr | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
+    # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
+    # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
+    hostnames: tuple[NonEmptyStr, ...] = ()
     # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
     # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
     # keeps a table that carries them from being refused whole.
@@ -235,6 +242,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    # The overlay store projects the whole lab_hosts overlay into the file ONEX_LAB_RUN_HOSTS names, so a table file may hold
+    # the registry roots too; the placement reads only the hosts from it, the roots key is read from the overlay (OMN-23036).
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":

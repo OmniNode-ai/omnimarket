@@ -5,6 +5,14 @@
 from omnimarket.models.import_relations.enum_import_relations import (
     EnumRelationFindingKind,
 )
+from omnimarket.models.import_relations.model_dependency_gate import (
+    EnumDependencyRiseKind,
+    ModelDependencyBaseline,
+    ModelDependencyGateRequest,
+    ModelDependencyGateResult,
+    ModelDependencyRise,
+    ModelFrozenRelation,
+)
 from omnimarket.models.import_relations.model_import_relations import (
     ModelImportEdge,
     ModelImportRelationOverlay,
@@ -26,7 +34,13 @@ from omnimarket.models.import_relations.model_relation_map_reading import (
 )
 
 __all__ = [
+    "EnumDependencyRiseKind",
     "EnumRelationFindingKind",
+    "ModelDependencyBaseline",
+    "ModelDependencyGateRequest",
+    "ModelDependencyGateResult",
+    "ModelDependencyRise",
+    "ModelFrozenRelation",
     "ModelImportEdge",
     "ModelImportRelationOverlay",
     "ModelImportRelationReport",

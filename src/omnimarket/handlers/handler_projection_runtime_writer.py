@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, ClassVar
 
+from omnimarket.handlers.runtime_delivery_host import RuntimeDeliveryHost
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -31,6 +31,12 @@ class RuntimeProjectionWriter:
     onex_runtime_inprocess_dispatch = True
     runner_type: ClassVar[type[BaseProjectionRunner]]
 
+    def __init__(self) -> None:
+        self._host = RuntimeDeliveryHost(self.runner_type)
+
+    def close(self) -> None:
+        self._host.close()
+
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Apply one delivery; never start a consumer or retain a pool."""
         data = dict(request)
@@ -52,11 +58,7 @@ class RuntimeProjectionWriter:
                 )
             ),
         )
-        projected = asyncio.run(
-            self.runner_type().project_runtime_event(
-                topic, self.event_payload(data), meta
-            )
-        )
+        projected = self._host.deliver(topic, self.event_payload(data), meta)
         return {"projected": projected}
 
     def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:

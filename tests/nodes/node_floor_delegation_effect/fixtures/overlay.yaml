@@ -1,0 +1,21 @@
+# A test overlay of node_floor_delegation_effect: the shape of the deployment overlay with invented repositories and workflows.
+github_url: https://git.example.invalid
+github_org: example-org
+ticket_url_prefix: https://tracker.example.invalid/issue/
+plan_ticket_prefix: "OMN-"
+plan_ticket_first: 23161
+plan_ticket_last: 23183
+operator_answers:
+  - {id: Q1, ruling: "2026-11-08T14:44:15Z"}
+  - {id: Q2, ruling: "2026-11-08T13:46:43Z"}
+  - {id: Q3, ruling: "2026-11-08T13:46:43Z"}
+scenarios:
+  - {id: R1, title: "Customer key only", repo: example-org/infra-b, workflow: scenario-r1.yml, cadence_hours: 1}
+  - {id: R2, title: "Local model after onboarding", repo: example-org/infra-b, workflow: scenario-r2.yml, cadence_hours: 1, builder_ticket: OMN-23172}
+  - {id: R3, title: "Forced escalation", repo: example-org/infra-b, workflow: scenario-r3.yml, cadence_hours: 6, builder_ticket: OMN-23182}
+  - {id: R4, title: "Every rung fails", repo: example-org/infra-b, workflow: scenario-r4.yml, cadence_hours: 6, builder_ticket: OMN-23173}
+  - {id: R5, title: "Several models on one key", repo: example-org/infra-b, workflow: scenario-r5.yml, cadence_hours: 1, builder_ticket: OMN-23183}
+  - {id: R6, title: "A long task", repo: example-org/infra-b, workflow: scenario-r6.yml, cadence_hours: 24, builder_ticket: OMN-23174}
+  - {id: R7, title: "Receipt names the backend", repo: example-org/infra-a, workflow: scenario-r7.yml, cadence_hours: 6, builder_ticket: OMN-23176}
+  - {id: R8, title: "Experiments not counted", repo: example-org/infra-b, workflow: scenario-r8.yml, cadence_hours: 6, builder_ticket: OMN-23175}
+  - {id: R9, title: "Malformed tasks refused", repo: example-org/infra-a, workflow: scenario-r9.yml, cadence_hours: 1, builder_ticket: OMN-23177}
