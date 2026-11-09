@@ -238,6 +238,42 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
+  # The job-log filler (node_job_log_filler_effect, OMN-23032): every two minutes it reads the PR watcher's state (which lives
+  # only on the host that runs the watcher) and asks the deployed gateway over the lane's bus to cache the log of each
+  # failed job of every open pull request's current head, newest failure first, so a lane's cache-only `onex scm job-log`
+  # answers within minutes of the failure. The overlay (profile, lane, cap, classes) is the filler's, found under
+  # ONEX_SKILL_OVERLAY_ROOTS; the one setting here is where the watcher's state file is.
+  job-log-filler:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.job-log-filler
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 120
+      run_at_load: true
+      description: every 120 s and at load
+    registry_project: omnimarket
+    # Ended with its process group and exits 124 past this; launchd starts no second run while one is alive.
+    # Three intervals, the bound the run-limit test holds every unit to; a pass's worst case is the overlay's.
+    run_timeout_s: 360
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_job_log_filler_effect.runtime_job_log_filler_tick
+    entry_file: src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
+    evidence_file: .local/state/omni/job-log-filler/last-run.json
+    state_directory: .onex_state/job-log-filler
   # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
   # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
   # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
