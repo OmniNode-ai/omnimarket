@@ -11,6 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
+def _empty(value: object) -> bool:
+    return not value
+
+
 class ModelLabFillSourceRead(BaseModel):
     """One tool's printed JSON document, or the effect's reason it has none."""
 
@@ -78,6 +82,12 @@ class ModelLabFillSourceTicketFacts(BaseModel):
     assignee_id: str = ""
     attachments: tuple[ModelLabFillSourceAttachment, ...] = ()
     declared_repo: str = ""
+    # OMN-23312: the ticket mirror's delegation facts. ``assignee`` is the assignee the overlay's
+    # delegation owners are matched against, ``parents`` the epics above the ticket (nearest first) and
+    # ``criterion`` how its start criterion reads ("true", "false" or "unread").
+    assignee: str = ""
+    parents: tuple[str, ...] = ()
+    criterion: str = ""
 
 
 class ModelLabFillSourceOpenPr(BaseModel):
@@ -118,6 +128,12 @@ class ModelLabFillSourceCandidate(BaseModel):
     declared_repo: str
     self_contained_code: bool = False
     evidence: str
+    # OMN-23312: the mirror's delegation facts for the selection. A candidate whose mirror row carried none
+    # leaves them out of its dump, so every other candidate keeps its recorded shape.
+    assignee: str = Field(default="", exclude_if=_empty)
+    parents: tuple[str, ...] = Field(default=(), exclude_if=_empty)
+    state_type: str = Field(default="", exclude_if=_empty)
+    criterion: str = Field(default="", exclude_if=_empty)
 
 
 class ModelLabFillSourceCandidatesResult(BaseModel):

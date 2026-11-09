@@ -143,6 +143,10 @@ def test_merged_running_receives_the_floor_overlay_host_table(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["beta/plans/2026-10-"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
                 "host_table_relpath": "hosts.yaml",
             }
         )
@@ -184,6 +188,10 @@ def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["beta/plans/2026-10-"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
                 "host_table_relpath": "hosts.yaml",
             }
         )

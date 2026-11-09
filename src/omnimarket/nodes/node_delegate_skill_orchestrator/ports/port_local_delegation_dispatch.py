@@ -229,6 +229,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
 from omnimarket.models.delegation.model_paid_rung_decision import (
     ModelPaidRungRequest,
 )
+from omnimarket.models.delegation.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
@@ -250,8 +253,9 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunResult,
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
 from omnimarket.models.delegation.wire.model_probe_ladder import (
-    PROBE_LADDER_SOURCE_SURFACE,
+    PROBE_LADDER_SOURCE_SURFACES,
     ModelProbeLadder,
     probe_ladder_admitted,
 )
@@ -269,9 +273,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
-    load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -340,6 +341,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
+    lead_backend_refs,
     measure_grounding_input_tokens,
     next_eligible_tier,
     quota_blocked_backend_refs,
@@ -920,13 +922,20 @@ def local_transport_cause(
 
 
 def local_quality_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refusal: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the local port (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. A rung's refusal
+    of a secret or exfiltration request on policy grounds is its own cause,
+    ``policy_refusal`` (OMN-23216), which the lists declare terminal.
     """
+    if policy_refusal:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -1478,6 +1487,39 @@ _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
     "active_probe_ladder", default=None
 )
 
+# OMN-23162: the transport faults of the faults-mode probe running in this
+# context, if any. Unlike a probe ladder they replace no rung: the production
+# ladder is resolved as usual and a call to a faulted model id answers its
+# fault instead of reaching the provider.
+_ACTIVE_PROBE_FAULTS: ContextVar[ModelProbeFaults | None] = ContextVar(
+    "active_probe_faults", default=None
+)
+
+
+def _injected_probe_fault_result(
+    request: ModelLlmDelegationCallRequest,
+) -> ModelLlmDelegationCallResult | None:
+    """The failed result a faults-mode probe forces for this call, or ``None``.
+
+    ``None`` for every call of a run with no faults and for a model id the
+    faults do not name, which then reaches its provider as in production.
+    """
+    faults = _ACTIVE_PROBE_FAULTS.get()
+    fault = None if faults is None else faults.fault_for(request.model_id)
+    if fault is None:
+        return None
+    return ModelLlmDelegationCallResult(
+        request_id=request.request_id,
+        success=False,
+        failure_class=fault.failure_class,
+        http_status=fault.status_code,
+        error_message=(
+            f"probe fault: model {request.model_id} answered {fault.status_code}"
+        ),
+        latency_ms=0,
+    )
+
+
 # OMN-21310: the rungs the dispatch running in this context skipped because
 # they were reached with less than their floor left. They are named on the
 # result as ``skipped_rungs``, never listed as attempts of their models.
@@ -1789,16 +1831,22 @@ class LocalDelegationDispatchPort:
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
-        probe_ladder: ModelProbeLadder | None = None,
+        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
     ) -> dict[str, object]:
         """Run one delegation, on the routing contract's ladder or a probe ladder.
 
         OMN-21212: ``probe_ladder`` names the rungs this run walks instead of
         the routing contract. It is accepted only from synthetic traffic whose
-        provenance names the doctor's escalation check. Any other request
-        carrying one is refused before dispatch, with zero provider calls: the
-        run's one row is a ``refused_before_dispatch`` failure, and the refusal
-        is raised. A probe run takes no pin and no model choice.
+        provenance names the doctor's escalation check or the readiness suite's
+        probes (OMN-23162). Any other request carrying one is refused before
+        dispatch, with zero provider calls: the run's one row is a
+        ``refused_before_dispatch`` failure, and the refusal is raised. A probe
+        run takes no pin and no model choice.
+
+        OMN-23162: a ``ModelProbeFaults`` ladder replaces no rung. The
+        production ladder is resolved as usual and each call to a model id the
+        faults name answers its transport fault, so the order the run walks is
+        the one production resolves.
         """
         if probe_ladder is None:
             return await self._dispatch_rungs_naming_skips(
@@ -1831,7 +1879,7 @@ class LocalDelegationDispatchPort:
         if not probe_ladder_admitted(provenance):
             refusal = (
                 "a probe ladder is accepted only from synthetic delegation "
-                f"traffic with source_surface {PROBE_LADDER_SOURCE_SURFACE!r}; "
+                f"traffic with source_surface in {sorted(PROBE_LADDER_SOURCE_SURFACES)!r}; "
                 "this request's provenance is "
                 f"{provenance.model_dump(mode='json') if provenance else None}"
             )
@@ -1840,12 +1888,17 @@ class LocalDelegationDispatchPort:
                 "a probe ladder names its own rungs; it takes no backend pin or model"
             )
         if refusal is not None:
-            first_rung = probe_ladder.rungs[0]
+            if isinstance(probe_ladder, ModelProbeFaults):
+                refused_endpoint_ref = "probe-faults:refused-before-dispatch"
+                refused_model_id = probe_ladder.faults[0].model_id
+            else:
+                refused_endpoint_ref = probe_ladder.rungs[0].endpoint_ref
+                refused_model_id = probe_ladder.rungs[0].model_id
             self._project_refusal(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                endpoint_ref=first_rung.endpoint_ref,
-                model_id=first_rung.model_id,
+                endpoint_ref=refused_endpoint_ref,
+                model_id=refused_model_id,
                 prompt=prompt,
                 source_session_id=source_session_id,
                 tenant_id=resolve_or_mint_local_deployment_tenant_id(
@@ -1857,7 +1910,14 @@ class LocalDelegationDispatchPort:
                 queue_wait_ms=queue_wait_ms,
             )
             raise ProtocolConfigurationError(refusal)
-        token = _ACTIVE_PROBE_LADDER.set(_ProbeLadderWalk(probe_ladder))
+        # OMN-23162: a faults-mode ladder replaces no rung, so only a rungs-mode
+        # ladder installs a walk; the faults are read at each provider call.
+        faults_token = None
+        walk_token = None
+        if isinstance(probe_ladder, ModelProbeFaults):
+            faults_token = _ACTIVE_PROBE_FAULTS.set(probe_ladder)
+        else:
+            walk_token = _ACTIVE_PROBE_LADDER.set(_ProbeLadderWalk(probe_ladder))
         try:
             return await self._dispatch_rungs_naming_skips(
                 prompt=prompt,
@@ -1886,7 +1946,10 @@ class LocalDelegationDispatchPort:
                 queue_wait_ms=queue_wait_ms,
             )
         finally:
-            _ACTIVE_PROBE_LADDER.reset(token)
+            if faults_token is not None:
+                _ACTIVE_PROBE_FAULTS.reset(faults_token)
+            if walk_token is not None:
+                _ACTIVE_PROBE_LADDER.reset(walk_token)
 
     async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
@@ -3727,11 +3790,10 @@ class LocalDelegationDispatchPort:
             # floor is the same quality veto the bus stops on.
             quality_cause = local_quality_cause(
                 no_rung_can_satisfy=(
-                    gate_result.no_rung_can_satisfy
-                    or repeated_deterministic_floor
-                    or secret_request_refused
+                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
                 ),
                 fail_category=gate_result.fail_category,
+                policy_refusal=secret_request_refused,
             )
             ladder_stopped_by_veto = (
                 self._decide_transition(quality_cause, task_type=task_type).kind
@@ -3767,6 +3829,9 @@ class LocalDelegationDispatchPort:
                 and is_free_tier(current_tier)
                 and redrafts < tier_max_retries(current_tier)
                 and redraft_leaves_reserve()
+                # OMN-23329: a lead rung's miss is not redrafted on itself; the
+                # exclusion below moves the tier on to its next rung.
+                and backend.backend_id not in lead_backend_refs()
                 else 0
             )
             quality_transition = self._decide_transition(
@@ -4961,7 +5026,12 @@ class LocalDelegationDispatchPort:
             )
         try:
             with dispatch_stage("inference"):
-                if self._effect_process_boundary:
+                # OMN-23162: a faults-mode probe answers a faulted model id's call
+                # with its transport fault, and never reaches the provider.
+                injected_fault_result = _injected_probe_fault_result(call_request)
+                if injected_fault_result is not None:
+                    result = injected_fault_result
+                elif self._effect_process_boundary:
                     effect_child = _run_effect_handler_with_killable_timeout(
                         self._effect_handler,
                         call_request,

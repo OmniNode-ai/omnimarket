@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Stop Escalation Effect (OMN-22941, rebuild plan 6.2)
+#
+# A stop not cleared after the stop reducer contract's stale_after_hours gets exactly one
+# escalation row and an alarm with a delivery receipt, and stays open. The time is not spelled
+# here: the handler reads config.andon_stop.stale_after_hours of node_andon_stop_reducer.
+# The in-memory row sink and alarm channel are the CI backends; the durable row sink and the
+# alarm channel of the deployment are later adapters of the two ports.
+name: node_stop_escalation_effect
+contract_name: node_stop_escalation_effect
+node_name: node_stop_escalation_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Judges one stop at one clock reading. A stop still in a non-terminal state of the reducer's
+  machine after stale_after_hours since it was opened is escalated once: the escalation row is
+  keyed by the stop id, so a replay writes no second row, and the alarm's delivery receipt is
+  recorded on the row. A row without a receipt is retried on replay. The stop is returned as it
+  came in; escalating never clears it.
+
+handler:
+  module: omnimarket.nodes.node_stop_escalation_effect.handlers.handler_stop_escalation
+  class: HandlerStopEscalation
+  input_model: omnimarket.models.model_stop_escalation.ModelStopEscalationRequest
+
+# Not a runtime-dispatched handler: HandlerStopEscalation takes its row sink and alarm channel as
+# constructor parameters, so it runs in process, not through handler_routing.
+cli_handlers:
+  - operation: escalate_stale_stop
+    handler:
+      name: HandlerStopEscalation
+      module: omnimarket.nodes.node_stop_escalation_effect.handlers.handler_stop_escalation
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [stop-escalation-row-write, stop-alarm-delivery]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelStopEscalationRequest
+  module: omnimarket.models.model_stop_escalation
+  description: One stop record and the clock reading to judge it at.
+output_model:
+  name: ModelStopEscalationResult
+  module: omnimarket.models.model_stop_escalation
+  description: The outcome, the unchanged stop, the escalation row and the alarm's receipt.
+
+terminal_event: onex.evt.omnimarket.stop-escalated.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  stop_escalation_requested: onex.cmd.omnimarket.stop-escalation-requested.v1
+  stop_escalated: onex.evt.omnimarket.stop-escalated.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.stop-escalated.v1
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory
