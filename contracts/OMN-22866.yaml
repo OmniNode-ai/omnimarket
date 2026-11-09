@@ -1,16 +1,26 @@
 schema_version: 1.0.0
 ticket_id: OMN-22866
 title: The lab fill briefs that open a pull request tell the lane to push its branch and name its branch and head, so lane-brief check --lab admits them
-summary: From 2026-11-08 21:57Z every lab-fill fire read dispatched=0 with brief-check-refused for each eligible ticket (1 ticket, then up to 7, with 41 free slots at 2026-11-09 04:10Z). lane-brief check --lab refuses a brief whose own prose opens a pull request and carries neither a child-ticket-ids line nor a push-the-branch-and-report sentence (OMN-22883, merged 2026-11-08 21:25Z), and the fill briefs said open one PR whose title contains the ticket and nothing about pushing. The omnimarket lane renderer and the tick node's ticket and diagnose briefs now carry one shared sentence (PUSH_AND_REPORT_LINE) that tells the lane to push the branch and name its branch and head in its TERMINAL. No check, bound or threshold is changed.
+summary: (1) From 2026-11-08 21:57Z every lab-fill fire read dispatched=0 with brief-check-refused for each eligible ticket (1 ticket, then up to 7, with 41 free slots at 2026-11-09 04:10Z). lane-brief check --lab refuses a brief whose own prose opens a pull request and carries neither a child-ticket-ids line nor a push-the-branch-and-report sentence (OMN-22883, merged 2026-11-08 21:25Z), and the fill briefs said open one PR whose title contains the ticket and nothing about pushing. The omnimarket lane renderer and the tick node's ticket and diagnose briefs now carry one shared sentence (PUSH_AND_REPORT_LINE) that tells the lane to push the branch and name its branch and head in its TERMINAL. No check, bound or threshold is changed. (2) The hourly Linear snapshot (node_linear_snapshot_effect) wrote each open issue's state and description but not its attachments or children, so the brief check and the lab fill read every ticket from Linear for the merged-implementation rule and lost dispatches when Linear answered HTTP 429; the full and the incremental read now select the first 50 attachments and children of each issue and write them as attachments and children (child ids), a part with a next page or absent from the answer is written as null, and a snapshot written before the parts existed is read in full once.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+- id: req-omn22866-snapshot-holds-attachments-and-children
+  statement: Each issue of the snapshot file carries its attachments and child ids, written the same by the full and the incremental read, and null when a part was not read.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a full read and an incremental read each write every issue''s attachments and child ids, a part with a next page and a part absent from the answer are written as null, and a snapshot written before the parts existed is read in full -- falsifier: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_attachments_children.py -q --no-cov'
 - id: req-omn22866-fill-brief-admitted
   statement: Every brief the omnimarket lab fill renders passes the child-id check of lane-brief check --lab, and the same brief with the push sentence cut out is refused by it.
   acceptance:
   - id: AC1
     statement: 'AC1: each rendered dispatch kind, the tick ticket brief and the diagnose brief hold no opening sentence the check would refuse, and the ticket brief with the push sentence removed is refused naming open one PR -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov'
+- id: req-omn22866-render-replaces-workflow-copy
+  statement: The lane brief the running lab-fill workflow sends is the omnimarket render, not a copy of its text in the workflow script, and the render answers the recorded workflow briefs plus the push sentence.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: for each of 39 recorded workflow briefs (every fill kind, pinned and unpinned, both fallback shapes) the render answers the recorded text plus the one push sentence, the lane-brief child-id check refuses the recorded briefs that open a pull request and admits every render, and the render runs as a command (python -m omnimarket.nodes.node_lab_fill_plan_compute) that rejects an invalid request -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_render_replays_lab_fill_js.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The brief-check tests with their failing control, and the lab fill plan and effect suites.
@@ -20,6 +30,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn22866-snapshot-parts
+  description: The snapshot node's tests read both queries, a legacy base, a next page and an answer without the parts.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
 - id: dod-omn22866-fill-brief-admitted-ac1
   description: The brief-check tests pass, and the failing control reads the ticket brief refused once the push sentence is cut out.
   source: manual
@@ -28,6 +46,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov
+- id: dod-omn22866-render-replays-workflow
+  description: The render matches the 39 recorded workflow briefs plus the push sentence, the recorded old briefs that open a pull request are refused by the check copy, and the render command writes the handler's brief.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_render_replays_lab_fill_js.py -q --no-cov
 - id: dod-omn22866-lab-fill-suites
   description: The lab fill plan and effect suites still pass.
   source: manual
@@ -43,4 +69,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22866 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov
+    cwd: .
+- id: dod-omn22866-snapshot-integration-proof
+  description: Run the snapshot node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22866-snapshot --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
     cwd: .
