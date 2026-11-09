@@ -28,6 +28,7 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.floor_projection import load_bundle, projection_payload
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -185,7 +186,8 @@ class ModelSourcePaths(BaseModel):
     lab_alarm_runs_relpath: str
     broker_lag_runs_relpath: str
     broker_lag_condition: str
-    overlay_store_relpath: str
+    projection_reads_relpath: str
+    overlay_store_projection: str
     deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
@@ -770,7 +772,13 @@ class HandlerFloorSimpleTick:
             ]
             if any(s.kind == "overlay_store" for s in lab_ov.sources):
                 overlay_store = read_overlay_store(
-                    home / rt.sources.overlay_store_relpath, lab_ov, now
+                    projection_payload(
+                        load_bundle(home / rt.sources.projection_reads_relpath),
+                        rt.sources.overlay_store_projection,
+                        now,
+                    ),
+                    lab_ov,
+                    now,
                 )
                 reads.append(overlay_store)
                 for event in overlay_store_events(

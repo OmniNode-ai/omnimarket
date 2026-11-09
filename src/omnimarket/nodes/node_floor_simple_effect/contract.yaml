@@ -173,7 +173,11 @@ runtime:
     # lag.record_condition), not from the alarm script's record: see read_broker_lag.
     broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
     broker_lag_condition: consumer_group_lag
-    overlay_store_relpath: .onex_state/overlay-store/fleet.json
+    # The projections the floor takes from the bus (OMN-23391): node_floor_projection_read_effect writes the bundle as a step of the
+    # publish, each projection with the time its producer stood by it, and a projection older than its own bound reads unknown. The
+    # overlay store's fleet was this node's file from the Mac's reader; it is the hosts' published views now.
+    projection_reads_relpath: .onex_state/floor-projection/projection-reads.json
+    overlay_store_projection: overlay_store_fleet
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.

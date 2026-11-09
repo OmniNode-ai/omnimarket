@@ -20,10 +20,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.floor_projection import publish_envelope
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
+from omnimarket.models.floor_projection import ModelFloorProjectionEnvelope
 from omnimarket.models.overlay_store import ModelOverlayStoreReadOverlay
 from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read import (
     EXIT_UNREADABLE,
@@ -70,6 +73,38 @@ def _fleet_record(
     return answer
 
 
+async def _publish_fleet_projection(
+    overlay: ModelOverlayStoreReadOverlay,
+    env: Mapping[str, str],
+    fleet_record: Mapping[str, Any],
+    now: datetime,
+) -> None:
+    """This host's view of the fleet as a floor projection, stamped with the time this tick stood by it (OMN-23391).
+
+    The floor reads the newest view any host published, so one host's stalled tick leaves the others' views in place and
+    the projection ages only when every host's tick has stopped. Only the broker backend has a bus to publish on."""
+    if overlay.fleet_projection_id is None or overlay.backend != "bus_snapshot":
+        return
+    bootstrap = overlay.kafka_bootstrap
+    host = env.get(overlay.host_name_env, "").strip()
+    async with open_lane_bus(
+        bus="kafka",
+        lane=None if bootstrap else overlay.bus_lane,
+        kafka_bootstrap=bootstrap,
+        root=workspace_root(env),
+    ) as bus:
+        await publish_envelope(
+            bus,
+            _contract()["fleet_projection"]["topic"],
+            ModelFloorProjectionEnvelope(
+                projection_id=overlay.fleet_projection_id,
+                as_of=now,
+                producer=f"{NODE}:{host}",
+                payload=dict(fleet_record),
+            ),
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -90,9 +125,18 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
     if overlay.fleet_record_relpath:
         record = args.registry_root / overlay.fleet_record_relpath
-        _write_atomically(
-            record, json.dumps(_fleet_record(overlay, env, record, summary), indent=2)
-        )
+        fleet_record = _fleet_record(overlay, env, record, summary)
+        _write_atomically(record, json.dumps(fleet_record, indent=2))
+        try:
+            asyncio.run(
+                _publish_fleet_projection(overlay, env, fleet_record, datetime.now(UTC))
+            )
+        except (
+            Exception
+        ) as exc:  # the broker down is the case the projection's age shows
+            sys.stderr.write(
+                f"{NODE}: fleet projection not published: {type(exc).__name__}: {exc}\n"
+            )
     _write_atomically(
         args.state_dir / "last-run.json",
         json.dumps({"ran_at": datetime.now(UTC).isoformat(), "readings": summary}),

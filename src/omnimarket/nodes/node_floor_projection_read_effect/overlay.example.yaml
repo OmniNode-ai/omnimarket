@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The projections the floor takes from the bus. A host names its own copy with ONEX_FLOOR_PROJECTION_OVERLAY. The in-memory
+# bus is the default and holds no publication, so every projection reads unknown; the real backend is the broker.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+read_window_s: 4.0
+projections:
+  overlay_store_fleet:
+    topic: onex.snapshot.projection.floor-overlay-store-fleet.v1
+    # Each host's reader publishes its view of the fleet every tick; a view older than this reads unknown on the floor.
+    max_age_s: 900

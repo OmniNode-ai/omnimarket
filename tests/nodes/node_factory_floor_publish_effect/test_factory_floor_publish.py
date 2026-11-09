@@ -341,6 +341,7 @@ FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
 FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
+FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 JOIN_J5 = "omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5"
@@ -390,6 +391,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             JOIN_J2,
             JOIN_J5,
             FLOOR_DELEGATION,
+            FLOOR_PROJECTIONS,
             FLOOR_SIMPLE,
         ]
     )
@@ -430,6 +432,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "join_refusal",
         "delegation_tracker",
         "mvp_launch_reads",
+        "floor_projections",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -454,6 +457,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and JOIN_REFUSAL not in argv
                 and JOIN_J2 not in argv
                 and JOIN_J5 not in argv
+                and FLOOR_PROJECTIONS not in argv
             ):
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)
