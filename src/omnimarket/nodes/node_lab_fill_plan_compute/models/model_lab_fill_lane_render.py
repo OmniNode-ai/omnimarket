@@ -95,6 +95,12 @@ class ModelLabFillFallbackItem(BaseModel):
     updated_at: str
     fallback_of: str = Field(alias="fallback_of")
     host: str | None = None
+    # What the first lane carried: the source evidence, the fix evidence, and whether the landing controller
+    # escalated a stalled PR. ``retry`` is "capacity" for the one retry of a lane no host took.
+    retry: str | None = None
+    evidence: str | None = None
+    fix_evidence: str | None = None
+    escalated: bool | None = None
 
 
 class ModelLabFillLaneRenderRequest(BaseModel):
