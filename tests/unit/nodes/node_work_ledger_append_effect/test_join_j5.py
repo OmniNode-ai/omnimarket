@@ -691,7 +691,7 @@ def test_join_j5_a_scratch_name_that_links_to_the_live_ledger_is_refused(
     tmp_path: Path,
 ) -> None:
     """Failed before: ``pytest.raises(ValueError)`` did not raise for a symlink named like a scratch file."""
-    live = tmp_path / "ROLLING_WORK_LEDGER.md"
+    live = tmp_path / sorted(LIVE_LEDGER_FILE_NAMES)[0]
     live.write_text("# live ledger\n", encoding="utf-8")
     link = tmp_path / "scratch-link.md"
     link.symlink_to(live)
