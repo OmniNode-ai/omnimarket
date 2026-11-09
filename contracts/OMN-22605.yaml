@@ -98,3 +98,11 @@ dod_evidence:
         check_value: >-
           uv run python -c 'import json,os; d=json.load(open(os.path.expandvars("$OMNI_HOME/.claude_scratch/factory-floor/floor-simple-reads.json"))); r=[x for x in d["lab_reads"] if x["id"]=="runner_groups"][0]; assert r["status"]=="read" and any(s["name"]=="unnamed runners" or s["name"].endswith(" runners") for s in r["subjects"]), "no split row"'
         cwd: "."
+  - id: "dod-omn22605-deploy-probe"
+    description: "Deploy probe, runnable on the hosted runner: the offline runner split test file is served by GitHub at the checked-out commit and defines a test of the parked-host line, so the probe exits nonzero on a tree without it, including the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_simple_effect/tests/test_offline_runner_split.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def test_" > /dev/null'
+        cwd: "."
