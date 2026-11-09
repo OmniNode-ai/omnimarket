@@ -23,12 +23,12 @@ from typing import Literal
 
 from pydantic import JsonValue, SecretStr
 
+from omnimarket.models.ilo_redfish.model_ilo_overlay import (
+    ModelIloHost,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
     ModelRedfishResponse,
     RedfishTransportError,
-)
-from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_overlay import (
-    ModelIloHost,
 )
 
 _MAX_BODY_BYTES = 4 * 1024 * 1024
@@ -43,16 +43,15 @@ def pinned_context(host: ModelIloHost, overlay_dir: Path) -> ssl.SSLContext:
             not hash to the overlay pin.
     """
     root = overlay_dir.resolve()
-    pem_path = (root / host.tls.ca_file).resolve()
-    if not pem_path.is_relative_to(root) or not pem_path.is_file():
-        raise RedfishTransportError("tls", request_sent=False)
-    try:
-        pem_text = pem_path.read_text(encoding="ascii")
-        der = ssl.PEM_cert_to_DER_cert(pem_text.strip())
-    except (OSError, UnicodeError, ValueError):
-        raise RedfishTransportError("tls", request_sent=False) from None
+    pem_text = _read_pem(root, host.tls.ca_file)
+    der = _der_of(pem_text)
     if hashlib.sha256(der).hexdigest() != host.tls.sha256:
         raise RedfishTransportError("tls", request_sent=False)
+    if host.tls.issuer_file is not None:
+        # A lab-CA-signed certificate: the chain is verified to the lab CA alone, and the pin (checked
+        # after the handshake) still names the exact leaf.
+        pem_text = _read_pem(root, host.tls.issuer_file)
+        _der_of(pem_text)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.verify_mode = ssl.CERT_REQUIRED
@@ -62,6 +61,41 @@ def pinned_context(host: ModelIloHost, overlay_dir: Path) -> ssl.SSLContext:
         context.load_verify_locations(cadata=pem_text)
     except ssl.SSLError:
         raise RedfishTransportError("tls", request_sent=False) from None
+    return context
+
+
+def _read_pem(root: Path, name: str) -> str:
+    pem_path = (root / name).resolve()
+    if not pem_path.is_relative_to(root) or not pem_path.is_file():
+        raise RedfishTransportError("tls", request_sent=False)
+    try:
+        return pem_path.read_text(encoding="ascii")
+    except (OSError, UnicodeError):
+        raise RedfishTransportError("tls", request_sent=False) from None
+
+
+def _der_of(pem_text: str) -> bytes:
+    try:
+        return ssl.PEM_cert_to_DER_cert(pem_text.strip())
+    except ValueError:
+        raise RedfishTransportError("tls", request_sent=False) from None
+
+
+def legacy_context() -> ssl.SSLContext:
+    """The context for an iLO whose certificate key is too weak for the platform's default security level.
+
+    iLO 4 firmware 2.82 presents an RSA 1024-bit certificate that the default OpenSSL security level
+    refuses before any check of ours runs. This context lowers only that level (``@SECLEVEL=0``) and
+    does not verify a chain, so the ONLY trust it gives is the exact SHA-256 pin that
+    ``PinnedHttpsTransport`` compares right after the handshake and before any request byte is sent.
+    It is used for the certificate fetch and for the one setup step that replaces the weak certificate;
+    nothing else may be given this context.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    context.set_ciphers("DEFAULT:@SECLEVEL=0")
     return context
 
 
@@ -146,6 +180,17 @@ class PinnedHttpsTransport:
         der = sock.getpeercert(binary_form=True)
         if der is None or hashlib.sha256(der).hexdigest() != self._host.tls.sha256:
             raise RedfishTransportError("tls", request_sent=False)
+
+
+def build_legacy_pinned_transport(
+    host: ModelIloHost, overlay_dir: Path, *, timeout_s: float = 30.0
+) -> PinnedHttpsTransport:
+    """The legacy-key transport: an exact SHA-256 pin, no chain, refuses before sending on any difference.
+
+    ``overlay_dir`` is unused: the pin is the whole trust, so no file is read.
+    """
+    del overlay_dir
+    return PinnedHttpsTransport(host, legacy_context(), timeout_s=timeout_s)
 
 
 def build_pinned_transport(

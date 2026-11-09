@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: each job exit in the rollup is named with its job and exit code, and each job''s cause is fixed with a failing control so the row stops recurring -- falsifier: uv run pytest of each fixed job''s test plus the floor row''s count'
+- id: req-omn22881-linear-snapshot-429
+  statement: The hourly Linear snapshot waits out Linear's HTTP 429 by its Retry-After, reads only the issues updated since the last good read, and keeps the last good snapshot with its age when the limit outlasts the wait, instead of exiting 1 with nothing written.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the recorded 2026-11-08T08:05Z answer (HTTP 429 from the Linear GraphQL endpoint) is waited out and the snapshot written, the next read asks only for issues updated since the last good read, and a limit past the wait budget keeps the last good file and records its age (exit 0 under the age limit, exit 1 past it) -- falsifier: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_rate_limit_backoff.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The run-limit wrapper ends a hung run at the limit and exits 124, red without the contract and template change
@@ -28,6 +33,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
+- id: dod-omn22881-linear-snapshot-429
+  description: The snapshot node's tests replay the recorded 429, the incremental read and the kept-snapshot age.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
+    cwd: .
+- id: dod-omn22881-cell-names-no-lane
+  description: The job-exit alarm's FRICTION cell names no fix lane when dispatch is unconfigured, and states the lane only when a dispatch command is set. The tests fail on the merge base, where the request has no dispatch_configured field and the cell always claims a dispatched lane.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_cell_names_no_lane_when_unsent.py tests/nodes/node_silent_failure_alarm_effect/test_job_exit_row_matches_dispatch_omn22881.py -q --no-cov
     cwd: .
 - id: dod-omn22881-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

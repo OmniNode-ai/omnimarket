@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_check_run_effect
+version: "1.0.0"
+description: "Posts a lab-bound job's required check run on the exact head with its attempt identity, invalidates superseded attempts, and reads a head's check back."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [effect, github, check-run, lab]
+pack: "data"
+display_name: "Effect: Lab Check Run"
+node_role: "effect"

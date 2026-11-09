@@ -158,6 +158,45 @@ from datetime import UTC, date, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+# OMN-23079: the job and context tables are overlay data in
+# ci_summary_rules.json beside this file (stdlib json: the poller runs with no
+# third-party packages). Each entry keeps the derivation note it carried here.
+# A missing, unparsable or malformed table raises at import: CI Summary fails
+# closed rather than gating on an empty table.
+RULES_FILE = Path(__file__).with_name("ci_summary_rules.json")
+
+
+class CiSummaryRules:
+    """Read the named tables of the CI Summary rules overlay."""
+
+    def __init__(self, path: Path) -> None:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if doc.get("contract") != "ci_summary_rules" or doc.get("version") != 1:
+            raise ValueError(f"{path.name}: not a version-1 ci_summary_rules overlay")
+        self._rules: dict[str, object] = doc["rules"]
+
+    def _names(self, name: str, kind: str) -> list[str]:
+        table = self._rules[name]
+        if not isinstance(table, dict) or table.get("kind") != kind:
+            raise ValueError(f"{RULES_FILE.name}: {name} is not a {kind} table")
+        names = [entry["name"] for entry in table["entries"]]
+        if not all(isinstance(n, str) and n for n in names):
+            raise ValueError(
+                f"{RULES_FILE.name}: {name} has an empty or non-text entry"
+            )
+        if len(set(names)) != len(names):
+            raise ValueError(f"{RULES_FILE.name}: {name} repeats an entry")
+        return names
+
+    def tuple(self, name: str) -> tuple[str, ...]:
+        return tuple(self._names(name, "tuple"))
+
+    def frozenset(self, name: str) -> frozenset[str]:
+        return frozenset(self._names(name, "frozenset"))
+
+
+RULES = CiSummaryRules(RULES_FILE)
+
 # The poller's own job — excluded to avoid self-deadlock.
 SELF_JOB_NAME = "CI Summary"
 
@@ -167,236 +206,11 @@ TEST_SPLIT_PREFIX = "Tests (Split "
 # The selector job whose success proves the test matrix should exist.
 DETECT_CHANGES_JOB = "Detect Changes"
 
-# Strict aggregate gates: present + completed + conclusion == success.
-#
-# Derivation (re-derived for omnimarket — NOT copied from omnibase_core). Each
-# job below carries NO legitimate ``if:`` skip path in omnimarket's ci.yml: it
-# is gated only on ``needs: occ-preflight`` (fail-propagation, not a skip) and
-# runs on every gating event (pull_request / merge_group / push). It therefore
-# never legitimately reports ``skipped`` on a valid PR, so a skip = anomaly =
-# fail-closed. Names are the ``name:`` display strings the Actions jobs API
-# returns (verified against a live run 29799112037 on 2026-07-21).
-#
-# ONE deliberate exception (OMN-16217, 2026-08-18): ``Coverage Sweep Gate``
-# now carries a job-level ``if:`` that legitimately skips it on a DRAFT
-# dev-targeting PR (the org-wide draft-state CI admission gate fan-out of
-# onex_change_control#6686 / OMN-15731 — see the job's own comment in
-# ci.yml). This is intentional and does NOT weaken this module: the job stays
-# in STRICT_GATE_JOBS (not SKIPPABLE_GATE_JOBS), so a ``skipped`` conclusion
-# — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
-# legitimate if:" derivation above is otherwise unchanged for every other row.
-STRICT_GATE_JOBS: tuple[str, ...] = (
-    "Internal Release Path Guard (OMN-19998)",  # internal-release-path-guard
-    # Repo-owned evidence dependency — non-PR events keep their existing gates;
-    # no ``if:``, so the job is always present + completed.
-    "Repo Evidence Dependency",
-    # zone-filter reusable — it IS the docs-only classifier, so it always runs
-    # (it never skips itself); only ``needs: occ-preflight``.
-    "zone-filter / Zone Filter (docs-only check)",
-    "lint",  # lint — needs occ-preflight, no if:
-    "Topic Naming Lint",  # topic-naming-lint — needs occ-preflight, no if:
-    "Runtime Sweep",  # runtime-sweep — needs occ-preflight, no if:
-    "Compliance Sweep",  # compliance-sweep — needs occ-preflight, no if:
-    "Core-Only Install Gate",  # core-only-install — needs occ-preflight, no if:
-    "Customer Clean-Install Delegate Gate",  # customer-clean-install (OMN-16200) — needs occ-preflight, if: always()
-    "Sibling Release Compatibility Gate (OMN-20381)",  # sibling-release-compat (OMN-20381) — needs occ-preflight, if: always()
-    # contract-compliance — its ``if:`` is
-    # ``occ-preflight.result == 'success' && (pull_request||merge_group||push)``;
-    # the event clause is always true (those are the only triggers), so it never
-    # legitimately skips on a valid PR.
-    "Contract Compliance Check",
-    "Contract Sweep Gate",  # contract-sweep-gate — needs occ-preflight, no if:
-    "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
-    "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
-    "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
-    "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
-    "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
-    "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
-    "Coverage Sweep Gate",  # coverage-sweep-gate — shard-artifact census since OMN-18556; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
-    "Workflow Module Resolution",  # workflow-module-refs — needs occ-preflight, no if:
-    "no-noncanonical-lifecycle-classes",  # unconditional (OMN-14350), no needs/if:
-    # OMN-16774: whole event chains driven from the REAL contract.yaml through
-    # the REAL handler and the REAL dispatch seam on the in-memory bus
-    # (tests/chains/). THIS LINE IS HALF THE MECHANISM. The default-deny sweep
-    # already fails CI Summary when the job FAILS, but an unregistered job that
-    # is `skipped` or absent yields SUCCESS — so without this entry, deleting or
-    # skipping the job would silently retire the only per-PR proof that a chain
-    # still terminalizes. Unconditional in ci.yml (no needs/if), so a skip is
-    # anomalous and never a legitimate opt-out. Registered because OMN-16767
-    # proved the failure mode is SILENT: a contract edit in THIS repo took the
-    # delegation chain to zero behind fully green CI, with every request landing
-    # in the quarantine sink.
-    "Event Chain Gate",  # event-chain-gate
-    "Event Registry Drift",  # event-registry-drift — needs occ-preflight, no if: (strict per OMN-14590)
-    "Topic Drift Check",  # topic-drift-check — needs occ-preflight, no if: (strict per OMN-14590)
-    "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
-    "contract-topic-graph",  # unconditional (OMN-14582/14640), no needs/if: — strict
-    "Merge Reason-Code Gate",  # merge-reason-code-gate — no needs/if: (strict per OMN-14765)
-    # OMN-15483: the consumer-independent merge-hold enforcement point. The
-    # merge NODE honoring the hold marker binds one consumer; the foreground
-    # Codex controller that performed every merge in OMN-15483's incident
-    # table contains no omnimarket code and stays unbound by any amount of it.
-    # Registering the hold gate HERE is what binds every consumer at once: a
-    # held PR fails this job, this job is strict, "CI Summary" is required, so
-    # a held PR can never be required-green for the Codex controller,
-    # `gh pr merge`, auto-merge, or the node path alike. Unconditional in
-    # ci.yml (no needs/if:), so skipped/cancelled is anomalous and fails closed
-    # here — detection without enforcement is rule-5 noncompliance, and the
-    # strict slot IS the enforcement.
-    "Merge Hold Gate (OMN-15483)",
-    # OMN-16344: release-identity gate — blocks merging a packaged-source change
-    # onto an already-published version string, the mechanism that keeps dev's
-    # project.version ahead of the last released tag (omnibase_infra OMN-13412,
-    # omnibase_core OMN-13411). Unconditional in ci.yml (no needs/if:), so a
-    # skipped/cancelled conclusion is anomalous and fails closed here.
-    #
-    # The strict slot IS the enforcement, and it is why this gate needs no
-    # branch-protection change: "CI Summary" is already a live required context
-    # on both dev and main, so a PR that aliases two code states under one
-    # version can never be required-green. Detection alone would be rule-5
-    # noncompliance — omnimarket's dev sat at 0.4.8, identical to the published
-    # v0.4.8 tag, through seven commits of src/ changes precisely because no
-    # surface made it RED.
-    "Release Identity Gate",
-    # OMN-20298: shape-gate detectors never wait on the preflight. Unconditional in
-    # ci.yml (no needs/if:), so a skipped/cancelled conclusion fails closed here.
-    "Shape-Gate Independence (OMN-20298)",
-    # OMN-20287: direct model calls stay in delegation nodes; baseline only shrinks.
-    # Unconditional in ci.yml, so skipped/cancelled conclusions fail closed here.
-    "Direct Model Call Gate (OMN-20287)",
-    # OMN-18868: the wire-compatibility gate — replays every changed wire
-    # payload through the LAST RELEASED consumer's own model and refuses the
-    # pull request on that model's own refusal. THIS LINE IS THE ENFORCEMENT,
-    # on exactly the terms "Event Chain Gate" states above: the default-deny
-    # sweep fails CI Summary when a job FAILS, but an unregistered job that is
-    # `skipped` or absent yields SUCCESS — and a silently-absent wire check is
-    # the precise shape of the defect it exists for.
-    #
-    # It needs no branch-protection change for the same reason the release-
-    # identity gate does not: "CI Summary" is already a live required context
-    # on dev and main, so a pull request whose wire payload no released
-    # consumer can decode can never be required-green. Detection alone would
-    # be rule-5 noncompliance, and it is not hypothetical here — omnimarket
-    # #2692 merged fully green and then dead-lettered every delegate on the
-    # deployed lane (OMN-18852), because producer and consumer in a test are
-    # the same commit and 771 golden chains could not see the skew.
-    #
-    # Unconditional in ci.yml (no needs/if:), so a skipped or cancelled
-    # conclusion is anomalous and never a legitimate opt-out.
-    "Wire Compatibility Gate",
-    # OMN-18012: the two boundary jobs. THIS LINE IS HALF THE MECHANISM, same
-    # as "Event Chain Gate" above -- the default-deny sweep fails CI Summary
-    # when a job FAILS, but an unregistered job that is `skipped` or absent
-    # yields SUCCESS, and a silently-absent boundary test is the exact failure
-    # mode these jobs exist to end. Both are unconditional in ci.yml (no
-    # needs/if), so a skip is anomalous and never a legitimate opt-out.
-    "Customer Path Boundary (OMN-18012)",  # customer-path-boundary
-    "JS Toolchain Hermetic (OMN-18012)",  # js-toolchain-hermetic
-    # OMN-18031: the per-run runner-route decision. THIS LINE IS HALF THE
-    # MECHANISM, on exactly the terms "Event Chain Gate" above states: the
-    # default-deny sweep fails CI Summary when a job FAILS, but an unregistered
-    # job that is `skipped` or absent yields SUCCESS -- so without this entry,
-    # deleting the `route` job would silently retire the routing decision
-    # behind a green run, and the one consumer wired to it
-    # (`JS Toolchain Hermetic (OMN-18012)`) would fail to SCHEDULE rather than
-    # report. The job is unconditional in ci.yml (no needs/if), so a skip is
-    # anomalous and never a legitimate opt-out.
-    #
-    # The name is the CALLER's display name plus the reusable's inner job name.
-    # A reusable-workflow caller surfaces in the jobs API as
-    # "<caller display> / <inner job>", where <caller display> is the caller
-    # job's `name:` when it sets one and its job key otherwise -- which is why
-    # this row reads "Runner Route (OMN-18031) / route" while `zone-filter`
-    # above, which sets no `name:`, reads from its key. Verified against live
-    # omnibase_infra run 35337599072, whose jobs API returns both shapes.
-    "Runner Route (OMN-18031) / route",  # route
-    # OMN-18790: the skip-count baseline ratchet (epic OMN-18775; ported from
-    # omnibase_infra OMN-18776). THIS LINE IS HALF THE MECHANISM, on the
-    # identical reasoning as the entries above: the default-deny sweep below
-    # already fails CI Summary when this job FAILS, but an unregistered job that
-    # is `skipped` or ABSENT yields SUCCESS. The failure mode it closes is
-    # itself silent and measured -- five per-repo skip counts byte-identical
-    # across three consecutive runs each, this repo's `Tests (Split 1/20)` among
-    # them at 42/42/42, and 91 PostgreSQL-16 cases collected-and-skipped on
-    # every full-matrix run for 49 days with no surface registering it -- so a
-    # gate that could be silently deleted would reproduce the exact shape it
-    # exists to refuse. The job is unconditional in ci.yml (`if: always()`), so
-    # a skip is anomalous and never a legitimate opt-out. Pinned by
-    # tests/ci/test_skip_count_ratchet_omn18790.py.
-    "Skip Count Ratchet (OMN-18776)",  # skip-count-ratchet
-    # OMN-20304: the canonical-file-shape ratchet (operator ruling 2026-10-01:
-    # no new scripts, plugins or exceptions). Registered on the same terms as
-    # "Event Chain Gate" above: a FAILURE already fails CI Summary through the
-    # default-deny sweep, and this row makes a skipped or absent conclusion fail
-    # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
-    "Canonical File Shape (OMN-20304)",  # canonical-file-shape
-    # OMN-19998: public-repository runner placement; unconditional in ci.yml
-    # (no needs/if), so a skip or absence fails closed here.
-    "Public Runner Placement (OMN-19998)",  # public-runner-placement
-    # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
-    # change to the generic test job's selection cannot drop them. Registered
-    # on the same terms as the rows above; unconditional in ci.yml.
-    "BYOK Customer Chooses Model (OMN-20844)",  # byok-customer-chooses-model
-)
+STRICT_GATE_JOBS: tuple[str, ...] = RULES.tuple("STRICT_GATE_JOBS")
 
-# Skippable aggregate gates: present + completed + success OR skipped.
-#
-# Derivation: EXACTLY the jobs gated behind
-# ``needs.zone-filter.outputs.docs_only != 'true'`` in omnimarket's ci.yml
-# (directly, or — for ``test`` handled by the matrix rule — via a ``needs`` on
-# ``detect-changes`` which is itself docs-only-gated). A docs-only PR
-# legitimately skips these, so ``skipped`` is accepted. This is the point the
-# plan makes explicit: a job strict in omnibase_core may legitimately skip in
-# omnimarket — here the entire E2E/golden/typecheck lane is docs-only-gated.
-SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
-    "Dev Full Suite Reuse / Full Suite Reuse Probe",
-    "Dev Full Suite Reuse / Full Suite Pass Marker",
-    "Dev Push Full Suite Reuse",
-    "typecheck",  # if: docs_only != 'true'
-    "Detect Changes",  # if: docs_only != 'true' (also drives the matrix rule)
-    "Integration Silent-Skip Guard (OMN-14172)",  # if: docs_only != 'true'
-    "E2E Workflow Runner (inmemory bus)",  # if: docs_only != 'true'
-    "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
-    "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
-    "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
-    "Generated Event Chains (walker paths)",  # if: docs_only != 'true'
-    # OMN-19684: merge-test-durations combines every full-suite shard's
-    # recorded durations into the one cache entry the next run's balancer
-    # reads. Its own `if:` is
-    # `always() && needs.detect-changes.outputs.is_full_suite == 'true' &&
-    # needs.test.result == 'success'` -- broader than the plain docs_only
-    # gate above: it also legitimately reports `skipped` on a non-full-suite
-    # (smart-selection) run, and whenever the upstream `test` matrix does not
-    # conclude `success` (a shard failed, was cancelled, or the run was
-    # cancelled outright), so a skipped/cancelled shard must not itself sink
-    # this job's own conclusion below `skipped`. It is not STRICT: unlike the
-    # unconditional gates above, it has real, deliberate skip paths and a
-    # `skipped` conclusion here is routine, not anomalous. It is not
-    # SOFT_ALLOWLIST either: when it DOES run (full-suite, upstream shards
-    # green) a real `failure` here means the merge script or the artifact
-    # wiring is broken and the balancer silently degrades to count-based
-    # splitting forever with nothing catching it -- exactly the "detection
-    # without enforcement" gap Operating Rule 5 exists to close, and exactly
-    # the defect (OMN-19684 round 3) this job's own upload step just needed
-    # `include-hidden-files: true` to stop hitting. SKIPPABLE_GATE_JOBS is
-    # the class built for precisely this shape: present + completed +
-    # success OR skipped, real failure still fails closed.
-    "Merge test durations",  # merge-test-durations
-)
+SKIPPABLE_GATE_JOBS: tuple[str, ...] = RULES.tuple("SKIPPABLE_GATE_JOBS")
 
-# OMN-19998: these jobs must actually pass on the queue commit. PR-scoped
-# metadata verdicts may be inherited; the full-suite verdict never is.
-QUEUE_HEAVY_GATE_JOBS: tuple[str, ...] = (
-    "Detect Changes",
-    "Integration Silent-Skip Guard (OMN-14172)",
-    "E2E Workflow Runner (inmemory bus)",
-    "Golden Chain Suite (inmemory bus)",
-    "SEA E2E Acceptance + Error Chains (OMN-12660)",
-    "Generated-Node Golden Chain Gate (OMN-13624)",
-    "Generated Event Chains (walker paths)",
-    "Coverage Sweep Gate",
-    "Merge test durations",
-)
+QUEUE_HEAVY_GATE_JOBS: tuple[str, ...] = RULES.tuple("QUEUE_HEAVY_GATE_JOBS")
 DEV_SUITE_REUSE_JOB = "Dev Push Full Suite Reuse"
 
 # --------------------------------------------------------------------------- #
@@ -451,66 +265,20 @@ DEV_SUITE_REUSE_JOB = "Dev Push Full Suite Reuse"
 # operator ruling that is not about saving minutes.
 DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
-DOCS_ONLY_SKIPPABLE_GATE_JOBS: tuple[str, ...] = ("Coverage Sweep Gate",)
+DOCS_ONLY_SKIPPABLE_GATE_JOBS: tuple[str, ...] = RULES.tuple(
+    "DOCS_ONLY_SKIPPABLE_GATE_JOBS"
+)
 
 # Every job the completeness anchor must observe present+good for SUCCESS.
 GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 
-# Jobs that do NOT gate merge today (verified against ci.yml on 2026-07-21). The
-# default-deny sweep ignores these so it never newly-wedges a PR on a job that is
-# already non-blocking. Keep this list SMALL and only add jobs that genuinely
-# already exist in ci.yml as non-gating.
-SOFT_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # OMN-19998: release staleness (OMN-18010) stays an unconditional job in
-        # ci.yml that measures dev against the newest release tag and reports
-        # STALE, but it no longer gates CI Summary. Operator ruling
-        # 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
-        # release." and "have no users right now." Consumers take omnimarket
-        # by branch or tag pin, so release debt is visible on the check-run and
-        # never holds a PR or dev. Its 24-hour threshold is unchanged.
-        "Release Staleness (OMN-18010)",  # release-staleness
-    }
-)
+SOFT_ALLOWLIST: frozenset[str] = RULES.frozenset("SOFT_ALLOWLIST")
 
-# L4: contexts produced by OTHER workflow files (separate runs the in-run
-# poller never observes), ASSERTED against the PR head SHA's
-# `commits/{sha}/check-runs`. Superset of the old UNSUMMARIZED_REQUIRED_CONTEXTS
-# doc-only list: every entry that was already live-required on dev and/or main
-# stays here (now enforced, not merely disclosed); `reason-graph` was dropped
-# (removed from branch protection 2026-07-25 — product-readiness-shadow.yml is
-# a self-declared non-required Phase-3 canary, see EXEMPT_CONTEXTS in the test
-# file); `shell-hygiene` was dropped for the same reason (self-declared
-# staged/deferred promotion, see EXEMPT_CONTEXTS); `verify / verify` and
-# `call-reject-skip-token / scan / reject-skip-gate-token` were added (live
-# main-required, missing from the old disclosure list). NEW gap closures
-# (never required anywhere before this gate): `fsm-handler-drift`,
-# `skill-mapping-input-coverage-gate`, `node-migration-vendor-parity-gate`,
-# `node-drift-gate` (was main-only), `contract-validation` (was main-only),
-# `deploy-gate / deploy-gate` (was main-only), `validate` (from
-# validator-runtime-profiles.yml — its own header claimed the required-
-# status-check name is "Runtime Profiles / validate", which is FALSE: that
-# job has no job-level `uses:`, so GitHub names its check-run after the job's
-# own `name:` field only, exactly like the sibling bare-name `state-coverage-
-# gate` job — "validate", not workflow-name-prefixed. Corrected in the same
-# PR that adds this assertion.).
-#
-# `receipt-honesty` (OMN-16878 AC3): promoted out of EXEMPT_CONTEXTS, where it
-# sat as "self-declared staged, not yet promoted" — receipt-honesty.yml's own
-# header said only "Required-status-check name (when later flipped)", a
-# deferral with no unmet technical precondition, not a genuine blocker.
-# `contract-validation` was already asserted here; the sibling gap this closes
-# is that omniclaude and omnibase_infra both already carry `receipt-honesty`
-# in their own equivalent tuples (OMN-16878 AC1/AC2) while omnimarket's own
-# CI ran the same producer on every PR and could not block on it — Operating
-# Rule 5 (detection not wired as a pre-merge gate is advisory and gets
-# ignored). Admission: 10/10 recent merged dev PR heads sampled
-# (#2194-#2203, 2026-08-29) present and green, consistent with the ticket's
-# original 16/16 measurement; non-vacuity is the shared
-# `omnibase_core.validation.validator_receipt_honesty` proof already recorded
-# for the sibling repos (OCC#7433 dod-nonvacuity-negative-tests: gamed
-# receipt exits 1, real committed receipt exits 0). Pinned by
-# `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
+# OMN-23079: this table stays a literal in this file. The advisory-job gate
+# (omniclaude scripts/advisory_job_gate.py, pinned by advisory-job-gate.yml) and
+# two other omniclaude audit scripts read it with ast.literal_eval; a call into
+# the overlay fails them with "is not a literal". It moves to overlay data when
+# those readers read the overlay.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # OMN-20073 S6: repo-owned evidence gates PR admission without OCC contexts.
     "repo-evidence / dod-verify",

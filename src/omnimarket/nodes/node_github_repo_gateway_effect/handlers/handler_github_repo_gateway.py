@@ -47,6 +47,7 @@ from omnimarket.models.model_github_gateway_io import (
     ModelGithubGatewayResponse,
     ModelJobLogTailResult,
 )
+from omnimarket.models.model_job_log_cache_miss import JOB_LOG_CACHE_MISS
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_job_log_cache import (
     ModelCachedJobLog,
@@ -67,18 +68,27 @@ from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportE
 _HANDLER_ID = "node_github_repo_gateway_effect"
 
 
-def cache_policy() -> ModelJobLogCachePolicy:
-    """Use the existing host read-cache root, with an optional typed overlay."""
+def declared_cache_policy() -> ModelJobLogCachePolicy:
+    """The policy as the overlay or the contract declares it, with no root resolved."""
     overlay_id = "github_job_logs"
     if find_node_overlay(overlay_id) is not None:
-        policy = load_structured_overlay(overlay_id, ModelJobLogCachePolicy)
-    else:
-        import yaml
+        return load_structured_overlay(overlay_id, ModelJobLogCachePolicy)
+    import yaml
 
-        contract = Path(__file__).parents[1] / "contract.yaml"
-        policy = ModelJobLogCachePolicy.model_validate(
-            yaml.safe_load(contract.read_text())["job_log_cache"]
-        )
+    contract = Path(__file__).parents[1] / "contract.yaml"
+    return ModelJobLogCachePolicy.model_validate(
+        yaml.safe_load(contract.read_text())["job_log_cache"]
+    )
+
+
+def lane_reads_cache_only() -> bool:
+    """Whether a lane's ``job-log`` read answers from the cache only (declared, never coded)."""
+    return declared_cache_policy().lane_reads_cache_only
+
+
+def cache_policy() -> ModelJobLogCachePolicy:
+    """Use the existing host read-cache root, with an optional typed overlay."""
+    policy = declared_cache_policy()
     root = policy.root or (
         resolve_onex_state_root(purpose="GitHub job-log cache")
         / "github-read-cache"
@@ -199,7 +209,12 @@ class JobLogCacheTransport:
 
     def _network(self) -> GitHubReadTransportProtocol:
         if self.request.cache_only or self.transport is None:
-            raise GitHubTransportError("JOB-LOG-CACHE-MISS: no GitHub call made")
+            raise GitHubTransportError(
+                f"{JOB_LOG_CACHE_MISS}: no GitHub call made; job {self.request.job_id} "
+                f"of {self.request.repo} is not under the job-log cache path "
+                f"{self.root} (entry {self.raw.name}); node_job_log_filler_effect "
+                f"fills that cache from merge-relevant runs"
+            )
         return self.transport
 
     def _metadata(self) -> ModelCachedJobLog | None:

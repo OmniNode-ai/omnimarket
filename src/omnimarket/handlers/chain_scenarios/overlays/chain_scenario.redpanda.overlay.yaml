@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Real broker overlay for the nightly run against the instance tagged drill. The bootstrap
+# servers come from the environment variable named here, never from this file.
+bus: kafka
+kafka_bootstrap_env: ONEX_CHAIN_SCENARIO_KAFKA_BOOTSTRAP
+terminal_deadline_ms: 15000
+failure_row_type: FRICTION
+scrub_env: []
+backend_group: onex.backends
+backend_name: event_bus_kafka
