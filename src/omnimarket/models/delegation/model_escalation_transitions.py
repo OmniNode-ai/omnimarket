@@ -53,6 +53,9 @@ class EnumEscalationCause(StrEnum):
     # terminate: no later provider call.
     PINNED_BACKEND_FAILED = "pinned_backend_failed"
     QUALITY_VETO = "quality_veto"
+    # OMN-23216: a local rung refused a secret or exfiltration request on policy
+    # grounds; the refusal is the answer and no costlier rung improves it.
+    POLICY_REFUSAL = "policy_refusal"
     ESCALATION_LIMIT = "escalation_limit"
     LADDER_EXHAUSTED = "ladder_exhausted"
     NON_RETRYABLE_FAILURE = "non_retryable_failure"

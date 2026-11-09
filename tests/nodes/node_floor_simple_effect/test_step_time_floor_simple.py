@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.models.floor_17a import (
@@ -56,6 +57,15 @@ AT = datetime(2026, 11, 6, 19, 0, tzinfo=UTC)
 
 # The ledger the publisher read had 126,000 rows inside the window.
 LEDGER_ROWS = 126_000
+# The generated files carry a neutral name: the file name is not what the cycle reads, the environment variable the node's
+# contract names is, and that name is taken from the contract rather than spelled here.
+LEDGER_STEM = "fixture-ledger"
+CONTRACT_LEDGER_PATH_ENV: str = yaml.safe_load(
+    (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_floor_simple_effect/contract.yaml"
+    ).read_text(encoding="utf-8")
+)["runtime"]["ledger"]["path_env"]
 ROLLS = 6
 # The step limit is 15 s. The bound is a third of it: on a lab host the fixed ledger read takes about a second, and the
 # unfixed one took over a minute, so the bound sits between the two with room for a loaded host.
@@ -108,14 +118,14 @@ def filler_row(index: int) -> str:
 
 def write_ledger(root: Path, total: int = LEDGER_ROWS) -> Path:
     """A live ledger and ``ROLLS`` rolls beside it holding ``total`` rows, the recorded rows among them."""
-    live = root / "ROLLING_WORK_LEDGER.md"
+    live = root / f"{LEDGER_STEM}.md"
     archive = root / "archive"
     archive.mkdir(parents=True)
     recorded = recorded_rows()
     per_file = total // (ROLLS + 1)
     files = [
         live,
-        *(archive / f"ROLLING_WORK_LEDGER_roll-{n}.md" for n in range(ROLLS)),
+        *(archive / f"{LEDGER_STEM}_roll-{n}.md" for n in range(ROLLS)),
     ]
     for number, path in enumerate(files):
         body = [filler_row(number * per_file + i) for i in range(per_file)]
@@ -126,7 +136,7 @@ def write_ledger(root: Path, total: int = LEDGER_ROWS) -> Path:
 
 
 def route_env(home: Path, live: Path) -> dict[str, str]:
-    return {**environ(home), "ONEX_LEDGER_PATH": str(live)}
+    return {**environ(home), CONTRACT_LEDGER_PATH_ENV: str(live)}
 
 
 @pytest.fixture(scope="module")
@@ -140,7 +150,7 @@ def count_opens(monkeypatch: pytest.MonkeyPatch, live: Path) -> dict[str, int]:
     real_open = Path.open
 
     def counting(self: Path, *args: Any, **kwargs: Any) -> Any:
-        if self.name.startswith("ROLLING_WORK_LEDGER"):
+        if self.name.startswith(LEDGER_STEM):
             opened[self.name] = opened.get(self.name, 0) + 1
         return real_open(self, *args, **kwargs)
 

@@ -83,7 +83,16 @@ def run_board(
     root.mkdir(parents=True)
     contains = list(head["plan_path_contains"]) or ["no-plan-is-declared-by-this-case"]
     (root / "overlay.yaml").write_text(
-        yaml.safe_dump({"plan_path_contains": contains}), encoding="utf-8"
+        yaml.safe_dump(
+            {
+                "plan_path_contains": contains,
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
+            }
+        ),
+        encoding="utf-8",
     )
     shutil.copy(source / head["overlay_file"], root / "line_board.yaml")
     rows = source / "ledger-rows.txt"

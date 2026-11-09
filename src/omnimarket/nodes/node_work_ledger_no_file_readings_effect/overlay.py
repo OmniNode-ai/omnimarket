@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The overlay of node_work_ledger_no_file_readings_effect: every bound and name, none in code.
+
+Found at ``<root>/node_work_ledger_no_file_readings_effect/overlay.yaml`` under a root named in
+``ONEX_SKILL_OVERLAY_ROOTS``, or at the file ``ONEX_LEDGER_NO_FILE_OVERLAY`` names. The package ships
+``overlay.example.yaml`` with the in-memory route. No key has a default.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_work_ledger_no_file_readings_effect.models import (
+    ModelNoFileOverlay,
+)
+
+NODE_NAME = "node_work_ledger_no_file_readings_effect"
+OVERLAY_FILE_ENV = "ONEX_LEDGER_NO_FILE_OVERLAY"
+
+
+def load_overlay(environ: Mapping[str, str] | None = None) -> ModelNoFileOverlay:
+    return load_structured_overlay(
+        NODE_NAME, ModelNoFileOverlay, environ, file_env=OVERLAY_FILE_ENV
+    )

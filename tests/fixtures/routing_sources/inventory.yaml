@@ -266,6 +266,8 @@ not_routing_configs:
     reason: model ids that code binds for a fixed purpose, read through model_binding_reader; no choice among routes
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
     reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
+  - path: src/omnimarket/configs/release_asset_retry.v1.yaml
+    reason: statuses and waits of the release asset download retry; it selects no route
   - path: src/omnimarket/configs/runtime_paths.yaml
     reason: filesystem locations nodes fall back to when no setting names one; it selects no route
   - path: src/omnimarket/configs/seams.v1.yaml
