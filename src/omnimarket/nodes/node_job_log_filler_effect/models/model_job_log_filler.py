@@ -49,6 +49,10 @@ class ModelJobLogFillerOverlay(BaseModel):
     #: Bytes of the log's end a read keeps in its reply (the cache keeps the whole log).
     reply_tail_bytes: int = Field(ge=1)
     reply_timeout_seconds: float = Field(gt=0)
+    #: A log a pass confirmed cached is not probed again until this many seconds have passed. A probe over
+    #: the bus is a round trip the gateway answers one at a time (measured 2026-11-09: about 0.25 s each,
+    #: 841 probes in about four minutes), so probing every open run on every tick does not fit a tick.
+    reprobe_seconds: int = Field(ge=1)
     profiles: dict[str, ModelJobLogFillerBusProfile] = Field(min_length=1)
     default_profile: str = Field(min_length=1)
 
