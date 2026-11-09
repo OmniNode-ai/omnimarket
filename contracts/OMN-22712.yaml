@@ -54,14 +54,14 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_venv_atomic_install_effect/test_measured_event_budget.py -q --no-cov --tb=line -k "not ac4"
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn22712-ac4
-  description: AC4 bound to the canonical-file-shape ratchet test in omnibase_infra, which this change does not touch.
+  description: AC4 bound to this repository's canonical-file-shape ratchet test and to the node-shape test; the ratchet baseline is not touched.
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_canonical_file_shape_ratchet_omn21523.py -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnibase_infra
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_venv_atomic_install_effect/test_measured_event_budget.py -q --no-cov --tb=line -k ac4
     cwd: ${OMNI_HOME}/omnimarket
