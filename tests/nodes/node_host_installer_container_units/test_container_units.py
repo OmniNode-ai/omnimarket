@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_host_installer_container_units.__main__ import main
 from omnimarket.nodes.node_host_installer_container_units.handlers.handler_container_units import (
     HandlerContainerUnits,
     render_unit,
@@ -23,6 +22,9 @@ from omnimarket.nodes.node_host_installer_container_units.models.model_container
 )
 from omnimarket.nodes.node_host_installer_container_units.node import (
     NodeHostInstallerContainerUnits,
+)
+from omnimarket.nodes.node_host_installer_container_units.runtime_container_units import (
+    main,
 )
 
 pytestmark = pytest.mark.unit
