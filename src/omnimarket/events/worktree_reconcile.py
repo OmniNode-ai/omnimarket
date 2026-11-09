@@ -164,6 +164,8 @@ class ModelWorktreeReconcileRunCompletedEvent(BaseModel):
     failures: int = Field(ge=0)
     freed_bytes: int = Field(ge=0)
     needs_human_paths: tuple[str, ...]
+    deferred: int = Field(default=0, ge=0)
+    deferred_paths: tuple[str, ...] = ()
 
 
 class ModelWorktreeReconcileRunResult(BaseModel):

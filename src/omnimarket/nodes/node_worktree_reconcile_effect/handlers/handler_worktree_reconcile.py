@@ -174,6 +174,10 @@ class HandlerWorktreeReconcile:
                 for e in events
                 if e.decision.decision == Decision.NEEDS_HUMAN
             ),
+            deferred=sum(probe_class(e.facts) == "deferred" for e in events),
+            deferred_paths=tuple(
+                e.facts.path for e in events if probe_class(e.facts) == "deferred"
+            ),
         )
         self._publisher.publish(self._completed_topic, completed)
         return ModelWorktreeReconcileRunResult(

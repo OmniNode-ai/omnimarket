@@ -107,6 +107,8 @@ def test_the_recorded_tick_reads_exit_zero_for_load_and_host_facts_only() -> Non
     assert {r.outcome for r in deferred} == {"kept"}
     assert done.needs_human == 3
     assert done.failures == 10
+    assert done.deferred == 30
+    assert done.deferred_paths == tuple(r.facts.path for r in deferred)
     assert not fake.removed
     assert not fake.pinned
     assert done.removed == 0
@@ -121,6 +123,7 @@ def test_only_load_and_host_facts_leave_a_run_with_no_failure() -> None:
     result = Fakes(items).handler().handle(command())
     done = result.completed_event
     assert (done.failures, done.needs_human) == (0, 2)
+    assert (done.deferred, done.deferred_paths) == (1, ("/trees/a",))
     assert result.decided_events[0].outcome == "kept"
     assert done.needs_human_paths == ("/trees/b", "/trees/c")
     reasons = {row.facts.path: row.decision.reasons for row in result.decided_events}
