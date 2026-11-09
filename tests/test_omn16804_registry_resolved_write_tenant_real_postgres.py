@@ -61,6 +61,7 @@ from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
     TenantRegistryResolutionError,
 )
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -98,6 +99,8 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     schema-equivalent here. Same helper, same reasoning, as
     ``tests/test_omn15909_real_postgres_projection_write_path_gate.py``.
     """
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 

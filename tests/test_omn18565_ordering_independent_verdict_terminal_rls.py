@@ -70,6 +70,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.tenant_isolation import TenantRequiredError
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 psycopg2 = pytest.importorskip("psycopg2")
 
@@ -197,6 +198,8 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     schema-equivalent here. Same helper, same reasoning, as the other
     real-Postgres suites in this directory.
     """
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
