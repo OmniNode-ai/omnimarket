@@ -202,3 +202,49 @@ async def test_closeout_over_the_bus_profiles(
     assert runtime._contract["terminal_event"] == (
         "onex.evt.omnimarket.lane-closeout-completed.v1"
     )
+
+
+def test_uncommitted_changes_are_salvaged_to_the_named_branch_and_the_tree_may_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{key}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{key}_EMAIL", "t@example.invalid")
+    origin = make_origin(tmp_path)
+    tree = linked(tmp_path, origin)
+    (tree / "f.txt").write_text("changed\n", encoding="utf-8")
+    (tree / "new.py").write_text("x = 1\n", encoding="utf-8")
+    request = ModelLaneCloseoutRequest(
+        lane="lane-1", tree=str(tree), tag="lane-1", salvage_branch="salvage/lane-1"
+    )
+    got = HandlerLaneCloseout().handle(request)
+    assert (got.verdict, got.detail, got.removed) == (
+        Verdict.WIP,
+        "salvage/lane-1",
+        True,
+    )
+    assert git(origin, "show", "salvage/lane-1:f.txt") == "changed"
+    assert git(origin, "show", "salvage/lane-1:new.py") == "x = 1"
+    assert not tree.exists()
+
+
+def test_a_salvage_that_cannot_push_keeps_the_dirty_tree_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{key}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{key}_EMAIL", "t@example.invalid")
+    tree = linked(tmp_path, make_origin(tmp_path))
+    (tree / "f.txt").write_text("changed\n", encoding="utf-8")
+    git(tree, "remote", "set-url", "origin", str(tmp_path / "no-such-remote.git"))
+    request = ModelLaneCloseoutRequest(
+        lane="lane-1", tree=str(tree), tag="lane-1", salvage_branch="salvage/lane-1"
+    )
+    got = HandlerLaneCloseout().handle(request)
+    assert (got.verdict, got.detail, got.removed) == (
+        Verdict.KEEP,
+        "salvage-push-failed",
+        False,
+    )
+    assert (tree / "f.txt").read_text(encoding="utf-8") == "changed\n"
+    assert git(tree, "status", "--porcelain") == "M f.txt"

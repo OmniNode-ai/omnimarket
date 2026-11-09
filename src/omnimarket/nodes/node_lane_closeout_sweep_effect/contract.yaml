@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_closeout_sweep_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Close out every ended lane on the host it ran on, whichever launcher started it (remote-lane, lab fill, landing worker): push unpushed commits to a WIP branch, commit uncommitted changes to a salvage branch and push it, remove the trees and the run directory, and write one closeout record per lane run. A tree that cannot be pushed is kept with its reason and retried on the next sweep. Returns the count of ended lane runs with no record.
+input_model:
+  name: ModelLaneCloseoutSweepRequest
+  module: omnimarket.models.lane_closeout.model_lane_closeout_sweep_request
+output_model:
+  name: ModelLaneCloseoutSweepResult
+  module: omnimarket.models.lane_closeout.model_lane_closeout_sweep_result
+handler:
+  module: omnimarket.nodes.node_lane_closeout_sweep_effect.handlers.handler_lane_closeout_sweep
+  class: HandlerLaneCloseoutSweep
+  input_model: omnimarket.models.lane_closeout.model_lane_closeout_sweep_request.ModelLaneCloseoutSweepRequest
+  output_model: omnimarket.models.lane_closeout.model_lane_closeout_sweep_result.ModelLaneCloseoutSweepResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: sweep_ended_lanes
+      handler:
+        name: HandlerLaneCloseoutSweep
+        module: omnimarket.nodes.node_lane_closeout_sweep_effect.handlers.handler_lane_closeout_sweep
+      event_model:
+        name: ModelLaneCloseoutSweepRequest
+        module: omnimarket.models.lane_closeout.model_lane_closeout_sweep_request
+      subscribe_topic: onex.cmd.omnimarket.lane-closeout-sweep-requested.v1
+      topic: onex.cmd.omnimarket.lane-closeout-sweep-requested.v1
+      publish_topic: onex.evt.omnimarket.lane-closeout-sweep-completed.v1
+      message_category: command
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 240000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lane-closeout-sweep-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-closeout-sweep-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-closeout-sweep-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-closeout-sweep-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-closeout-sweep-completed.v1
+metadata:
+  ticket: OMN-23375
+  transport_type: kafka

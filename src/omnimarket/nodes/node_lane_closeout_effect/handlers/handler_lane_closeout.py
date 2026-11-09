@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
@@ -30,6 +32,63 @@ def _git(tree: Path, *argv: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _salvage(
+    request: ModelLaneCloseoutRequest, tree: Path
+) -> tuple[EnumLaneGuardVerdict, str]:
+    """Commit every change of the tree to ``request.salvage_branch`` and push it (OMN-23375).
+
+    The commit is built with Git plumbing from a private index, so the tree's own index, branch and hooks
+    are untouched and the tree is unchanged when anything fails; the push is never forced.
+    """
+    branch = request.salvage_branch
+    scratch = Path(tempfile.mkdtemp(prefix="lane-salvage-"))
+    try:
+        env = {
+            **scrub_git_location_env(os.environ),
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_INDEX_FILE": str(scratch / "index"),
+        }
+
+        def plumbing(*argv: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", "-C", str(tree), *argv],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+        head = plumbing("rev-parse", "-q", "--verify", "HEAD")
+        parents: tuple[str, ...] = ()
+        if head.returncode == 0:
+            parents = ("-p", head.stdout.strip())
+            if plumbing("read-tree", "HEAD").returncode:
+                return EnumLaneGuardVerdict.KEEP, "salvage-index-failed"
+        if plumbing("add", "-A").returncode:
+            return EnumLaneGuardVerdict.KEEP, "salvage-add-failed"
+        written = plumbing("write-tree")
+        if written.returncode:
+            return EnumLaneGuardVerdict.KEEP, "salvage-write-failed"
+        message = f"chore: salvage the uncommitted work of lane {request.lane} ({request.tag})"
+        commit = plumbing(
+            "commit-tree", written.stdout.strip(), *parents, "-m", message
+        )
+        if commit.returncode:
+            return EnumLaneGuardVerdict.KEEP, "salvage-commit-failed"
+        pushed = _git(
+            tree,
+            "push",
+            "-q",
+            request.url or "origin",
+            f"{commit.stdout.strip()}:refs/heads/{branch}",
+        )
+        if pushed.returncode:
+            return EnumLaneGuardVerdict.KEEP, "salvage-push-failed"
+        return EnumLaneGuardVerdict.WIP, branch
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def _guard(
     request: ModelLaneCloseoutRequest, tree: Path
 ) -> tuple[EnumLaneGuardVerdict, str]:
@@ -41,6 +100,8 @@ def _guard(
     if status.returncode:
         return EnumLaneGuardVerdict.KEEP, "status-unreadable"
     if status.stdout.strip():
+        if request.salvage_branch:
+            return _salvage(request, tree)
         return EnumLaneGuardVerdict.KEEP, "uncommitted-changes"
 
     branch = _git(tree, "symbolic-ref", "-q", "--short", "HEAD")
