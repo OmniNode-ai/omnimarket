@@ -23,17 +23,15 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.delegation_ladder import scorers
 from benchmarks.delegation_ladder.models import (
     EnumOutcome,
     ModelScore,
     ModelTaskBundle,
 )
-from benchmarks.delegation_ladder.scorers import (
-    parse_workflow_request,
-    score_exact_match,
-    score_workflow_request,
-)
+from benchmarks.delegation_ladder.run_ladder import score
+from benchmarks.delegation_ladder.scorers import score_exact_match
+from omnimarket.handlers import workflow_request_score
+from omnimarket.handlers.workflow_request_score import parse_workflow_request
 
 HERE = Path(__file__).resolve().parent.parent
 FIXTURES = HERE / "fixtures"
@@ -55,8 +53,7 @@ def _score(task_id: str, response: str) -> EnumOutcome:
 
 
 def _result(task_id: str, response: str) -> ModelScore:
-    config = dict(_bundle(task_id).scorer_config)
-    return score_workflow_request(response, config, FIXTURES)
+    return score(_bundle(task_id), response)
 
 
 def _answer(workflow: str, params: dict[str, object]) -> str:
@@ -463,12 +460,8 @@ def test_parse_reads_the_name_line_and_the_first_object() -> None:
 
 
 def _workflow_request_functions() -> list[ast.FunctionDef]:
-    tree = ast.parse(Path(scorers.__file__).read_text(encoding="utf-8"))
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and "workflow_request" in node.name
-    ]
+    tree = ast.parse(Path(workflow_request_score.__file__).read_text(encoding="utf-8"))
+    return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
 
 
 def test_ac5_the_check_finds_the_new_scorer_functions() -> None:
@@ -478,6 +471,8 @@ def test_ac5_the_check_finds_the_new_scorer_functions() -> None:
         "parse_workflow_request",
         "score_workflow_request",
         "_workflow_request_patch_applies",
+        "same_literal",
+        "_text",
     }
 
 
@@ -497,7 +492,7 @@ def test_ac5_no_threshold_is_written_in_the_new_scorer() -> None:
 
 
 def test_ac5_the_module_level_constants_of_the_new_scorer_are_not_numeric() -> None:
-    tree = ast.parse(Path(scorers.__file__).read_text(encoding="utf-8"))
+    tree = ast.parse(Path(workflow_request_score.__file__).read_text(encoding="utf-8"))
     offenders = [
         target.id
         for node in tree.body

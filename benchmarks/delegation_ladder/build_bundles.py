@@ -650,13 +650,9 @@ def r6() -> list[dict[str, object]]:
 # a plausible wrong choice, because a rung whose every task has one obvious
 # answer measures nothing.
 
-_R3B_PATCH_TIMEOUT_S = 30
-
 # (task id, title, situation, held workflow, held parameter values). The held
 # values are only those the situation supplies; the scorer also validates the
-# whole parameter object against the workflow's request schema (OMN-18339), so
-# a response that omits a required parameter or types one wrongly fails even
-# when every held value is present.
+# whole parameter object against the workflow's request schema (OMN-18339).
 _R3B_SPECS: tuple[tuple[str, str, str, str, dict[str, object]], ...] = (
     (
         "R3b-01",
@@ -715,17 +711,14 @@ def r3b() -> list[dict[str, object]]:
     catalogue = _fixture("workflow_catalogue.txt")
     tasks: list[dict[str, object]] = []
     for task_id, title, situation, workflow, held in _R3B_SPECS:
-        config: dict[str, object] = {
-            "expected_workflow": workflow,
-            "expected_parameters": held,
-        }
+        config: dict[str, object] = {"expected_workflow": workflow}
+        config["expected_parameters"] = held
         if workflow == "apply_patch_and_test":
-            # The request must carry a diff, and the diff must apply to the
-            # file it names (OMN-18339): "mentions the test path" is not a patch.
+            # The diff must apply to the file it names (OMN-18339).
             config["patch_check"] = {
                 "target_file": "src/omnimarket/cost/usage_normalizer.py",
                 "subject_file": "r3b_04_usage_normalizer.txt",
-                "timeout_s": _R3B_PATCH_TIMEOUT_S,
+                "timeout_s": 30,
             }
         tasks.append(
             {
@@ -736,11 +729,7 @@ def r3b() -> list[dict[str, object]]:
                     "The catalogue is the one proposed in the delegated "
                     "execution-surface plan; every workflow in it is packaging of a "
                     "surface that already exists in the workspace. The situations "
-                    "are real repository paths and a real recorded run id. The "
-                    "response is scored by parsing it and validating the parameter "
-                    "object against the workflow's request schema "
-                    "(fixtures/workflow_request_schemas.json), not by substring "
-                    "(OMN-18339)."
+                    "are real repository paths and a real recorded run id."
                 ),
                 "prompt": (
                     "Choose exactly one workflow from the catalogue below and fill "

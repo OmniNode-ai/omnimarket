@@ -154,11 +154,9 @@ class ModelRunRecord(BaseModel):
     model_id: str | None
     input_tokens: int | None
     output_tokens: int | None
-    total_tokens: int | None = Field(
-        default=None,
-        description="Present on both paths. The gateway reports only a total, so "
-        "the split is None there rather than a guess.",
-    )
+    # Present on both paths. The gateway reports only a total, so the split is
+    # None there rather than a guess.
+    total_tokens: int | None = None
     cost_usd: float | None
     model_latency_ms: int | None = Field(
         default=None,
