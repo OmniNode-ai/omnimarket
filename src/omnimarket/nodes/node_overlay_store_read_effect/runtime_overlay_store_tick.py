@@ -82,8 +82,8 @@ async def _publish_fleet_projection(
     """This host's view of the fleet as a floor projection, stamped with the time this tick stood by it (OMN-23391).
 
     The floor reads the newest view any host published, so one host's stalled tick leaves the others' views in place and
-    the projection ages only when every host's tick has stopped. Only the broker backend has a bus to publish on."""
-    if overlay.fleet_projection_id is None or overlay.backend != "bus_snapshot":
+    the projection ages only when every host's tick has stopped. The overlay accepts the id only on the broker backend."""
+    if overlay.fleet_projection_id is None:
         return
     bootstrap = overlay.kafka_bootstrap
     host = env.get(overlay.host_name_env, "").strip()
