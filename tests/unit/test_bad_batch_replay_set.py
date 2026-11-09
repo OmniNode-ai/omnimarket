@@ -9,8 +9,10 @@ death with the ledger row (file and line) and the identifiers of its run, and
 the corrected count. These tests check the fixture against itself, so they run
 on any runner with no ledger present.
 
-OMN-22968 AC1 (the matched_or_corrected tests). AC2, the classifier replay, is
-not here: the classifier node of piece 13 is not on the landing branch yet.
+OMN-22968 AC1 (the matched_or_corrected tests) and AC2 (the replay tests): the
+replay feeds each death through the lane result sweep node's own ``classify``
+with the vocabulary its overlay example ships, and a planted misclassification
+must be reported.
 """
 
 from __future__ import annotations
@@ -18,10 +20,21 @@ from __future__ import annotations
 import copy
 import json
 import re
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+
+import omnimarket.nodes.node_lane_result_sweep_effect as sweep_node
+from omnimarket.models.model_lane_result_sweep import (
+    EnumLaneResultClass,
+    ModelLaneReceipt,
+)
+from omnimarket.nodes.node_lane_result_sweep_effect.handlers.handler_lane_result_sweep import (
+    classify,
+)
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -35,7 +48,8 @@ _TS = re.compile(r"^2026-11-04T\d\d:\d\d:\d\dZ$")
 
 
 def _load() -> dict[str, Any]:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+    doc: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return doc
 
 
 def verify_set(doc: dict[str, Any]) -> list[str]:
@@ -157,3 +171,106 @@ def test_matched_or_corrected_fails_on_a_planted_break(
     mutate(broken)
     problems = verify_set(broken)
     assert any(expected in p for p in problems), problems
+
+
+Classifier = Callable[
+    [
+        ModelLaneReceipt,
+        Mapping[str, EnumLaneResultClass],
+        Mapping[str, EnumLaneResultClass],
+    ],
+    EnumLaneResultClass,
+]
+
+
+def _vocabulary(name: str) -> dict[str, EnumLaneResultClass]:
+    """One token table of the sweep node's shipped overlay example."""
+    example = Path(sweep_node.__file__).parent / "overlay.example.yaml"
+    table = yaml.safe_load(example.read_text(encoding="utf-8"))[name]
+    return {token: EnumLaneResultClass(cls) for token, cls in table.items()}
+
+
+def _receipt_of(doc: dict[str, Any], death: dict[str, Any]) -> ModelLaneReceipt:
+    return ModelLaneReceipt.model_validate(
+        {
+            "lane": death["lane"],
+            "finished_at": death["ts"],
+            "terminal_outcome": doc["source"]["terminal_outcome"],
+            "engine_rc": death["engine_rc"],
+        }
+    )
+
+
+def replay(doc: dict[str, Any], classifier: Classifier) -> list[str]:
+    """Classify every death of the set; each one that does not read failed is listed."""
+    outcomes = _vocabulary("outcome_classes")
+    results = _vocabulary("result_classes")
+    wrong: list[str] = []
+    for death in doc["deaths"]:
+        got = classifier(_receipt_of(doc, death), outcomes, results)
+        if got is not EnumLaneResultClass.FAILED:
+            wrong.append(f"{death['lane']}: read {got.value}, not failed")
+    return wrong
+
+
+def test_replay_classifies_every_death_failed() -> None:
+    doc = _load()
+    assert len(doc["deaths"]) == 16
+    assert replay(doc, classify) == []
+
+
+def test_replay_reads_a_handed_off_claim_over_a_dead_engine_as_failed() -> None:
+    doc = _load()
+    for death in doc["deaths"]:
+        if death["engine_rc"] == 0:
+            continue
+        claimed = _receipt_of(doc, death).model_copy(
+            update={"terminal_outcome": "handed-off"}
+        )
+        got = classify(claimed, _vocabulary("outcome_classes"), {})
+        assert got is EnumLaneResultClass.FAILED, death["lane"]
+
+
+def _never_failed(
+    receipt: ModelLaneReceipt,
+    outcomes: Mapping[str, EnumLaneResultClass],
+    results: Mapping[str, EnumLaneResultClass],
+) -> EnumLaneResultClass:
+    return EnumLaneResultClass.DONE
+
+
+def _failed_only_on_a_nonzero_exit(
+    receipt: ModelLaneReceipt,
+    outcomes: Mapping[str, EnumLaneResultClass],
+    results: Mapping[str, EnumLaneResultClass],
+) -> EnumLaneResultClass:
+    if receipt.engine_rc not in (None, 0):
+        return EnumLaneResultClass.FAILED
+    return EnumLaneResultClass.PARTIAL
+
+
+@pytest.mark.parametrize(
+    ("classifier", "wrong_count"),
+    [(_never_failed, 16), (_failed_only_on_a_nonzero_exit, 2)],
+)
+def test_replay_fails_on_misclass(classifier: Classifier, wrong_count: int) -> None:
+    wrong = replay(_load(), classifier)
+    assert len(wrong) == wrong_count, wrong
+
+
+def test_replay_fails_on_misclass_through_the_vocabulary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A vocabulary that maps the dead lanes' ``failed`` token to done is caught."""
+    real = _vocabulary
+
+    def broken(name: str) -> dict[str, EnumLaneResultClass]:
+        table = real(name)
+        if name == "outcome_classes":
+            table["failed"] = EnumLaneResultClass.DONE
+        return table
+
+    monkeypatch.setattr(f"{__name__}._vocabulary", broken)
+    zero_exit = [d for d in _load()["deaths"] if d["engine_rc"] == 0]
+    assert len(zero_exit) == 2
+    assert len(replay(_load(), classify)) == len(zero_exit)
