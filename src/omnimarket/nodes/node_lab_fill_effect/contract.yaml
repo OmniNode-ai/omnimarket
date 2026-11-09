@@ -81,6 +81,13 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send.ModelLabFillSendRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchResult"
+    # The send gate on its own: the same decision the launch handler takes, answered from supplied facts.
+    - operation: "gate_lab_fill_send"
+      handler:
+        name: "HandlerLabFillSendGate"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send_gate"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send_gate.ModelLabFillSendGateRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send_gate.ModelLabFillSendGateResult"
     - operation: "read_lab_fill_receipts"
       handler:
         name: "HandlerLabFillReceipts"
