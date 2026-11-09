@@ -27,11 +27,9 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.models.lane_resend import ModelLaneResendRequest
 from omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lane_resend import (
     HandlerLaneResend,
-)
-from omnimarket.nodes.node_lab_fill_selection_compute.models.model_lane_resend import (
-    ModelLaneResendRequest,
 )
 
 from .protocol_lab_fill_effect import LabFillPortError
