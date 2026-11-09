@@ -21,7 +21,6 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.local_deployment.tenant_identity import (
     _ensure_tables_on,
-    _write_mirror_row,
     ensure_install_identity_mirrored,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -94,12 +93,19 @@ def ensure_declared_host_tenant_mirrored(
     _ensure_tables_on(db)
     if db.query(TENANT_REGISTRY_MIRROR_TABLE, {"tenant_uuid": str(declared)}):
         return
-    _write_mirror_row(
-        db,
-        tenant_uuid=declared,
-        tenant_slug=f"lab-{declared.hex[:12]}",
-        now=datetime.now(tz=UTC),
-        source_event_id=_DECLARED_HOST_TENANT_SOURCE,
+    now = datetime.now(tz=UTC).isoformat()
+    db.upsert(
+        TENANT_REGISTRY_MIRROR_TABLE,
+        "tenant_slug",
+        {
+            "tenant_slug": f"lab-{declared.hex[:12]}",
+            "tenant_uuid": str(declared),
+            "display_name": "lab host declared tenant",
+            "status": "active",
+            "registry_created_at": now,
+            "observed_at": now,
+            "source_event_id": _DECLARED_HOST_TENANT_SOURCE,
+        },
     )
 
 
@@ -109,11 +115,11 @@ def require_tenant_mirrored(db: object, tenant_id: str) -> None:
     This install's own identity is mirrored first (see
     :func:`ensure_install_identity_mirrored`), then the tenant this host's row of
     the lab host table declares (see :func:`ensure_declared_host_tenant_mirrored`);
-    any other tenant handed in by a caller is never mirrored here. A target with no ``query``, or one that cannot be read
-    or written (a locked or unwritable store), is a storage fault and not a
-    mirror that lacks the tenant, so it does not refuse: the best-effort
-    evidence write keeps its existing handling of it and the delegation
-    response is never broken by the store.
+    any other tenant handed in by a caller is never mirrored here. A target with no
+    ``query``, or one that cannot be read or written (a locked or unwritable store),
+    is a storage fault and not a mirror that lacks the tenant, so it does not
+    refuse: the best-effort evidence write keeps its existing handling of it and
+    the delegation response is never broken by the store.
 
     Raises:
         TenantRegistryResolutionError: the mirror (or the closed legacy mapping)
