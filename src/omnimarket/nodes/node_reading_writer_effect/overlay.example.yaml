@@ -13,7 +13,10 @@
 #   pieces           per piece: readable_today with sources, or UNKNOWN with its reason; every piece
 #                    names the fault injected on purpose
 #   landing_route    where piece 9 reads the pull request watcher: the variable holding its state file, the goal
-#                    scope overlay, the watcher classes that are green and waiting and the conflict merge states
+#                    scope overlay, the watcher classes that are green and waiting and the conflict merge states.
+#                    A route with `source: projection` reads the pr_state projection instead and may carry
+#                    `retry: {passes, pause_seconds}`: a projection that could not be reached is read again, `passes`
+#                    more times, `pause_seconds` apart, inside the same run; absent, it is read once
 #   schedule_hosts   hosts that install the hourly systemd user timer
 #   unit_environment environment the installed unit carries (the routes' variables)
 #   two_backend      optional: the piece whose row also carries the count of effects not yet on both
