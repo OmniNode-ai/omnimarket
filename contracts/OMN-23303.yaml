@@ -45,11 +45,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
     cwd: .
-- id: dod-omn23303-filler-deploy
-  description: Reads the unit declaration from the branch's installer contract; the exit status depends on the contract holding the ai.omninode.job-log-filler label with its 120 s interval, so it goes red on a branch without the unit. Runs on a hosted runner.
+- id: dod-omn23303-ac2-unit-declared
+  description: Runs the installer's run-limit test, which holds the declared job-log-filler unit to a run timeout of at most three intervals. It binds AC2's unit declaration only; the reading of a failed job's log through the mirror after install stays on the unbound integration proof.
   source: manual
   binds_ac:
   - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23303-filler-deploy
+  description: Reads the unit declaration from the branch's installer contract; the exit status depends on the contract holding the ai.omninode.job-log-filler label with its 120 s interval, so it goes red on a branch without the unit. Runs on a hosted runner.
+  source: manual
   checks:
   - check_type: command
     check_value: 'grep -q "label: ai.omninode.job-log-filler" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && grep -q "start_interval: 120" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'

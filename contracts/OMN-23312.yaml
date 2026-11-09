@@ -31,11 +31,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py -k delegation_first -q -p no:randomly
     cwd: .
-- id: dod-omn23312-ac2-handler-served
-  description: Deploy probe. GitHub serves the selection handler at the checked-out HEAD with the delegation-first rank and the other-owner gate. It fails at the merge base, which has neither. The tick-log reading after install is taken from the lab-fill tick and recorded on the ticket.
+- id: dod-omn23312-ac2-candidates-reach-selection
+  description: The candidate builder passes the ticket mirror's assignee, parents, state type and criterion, and the selection ranks the built candidate first; with no mirror facts passed it is not ranked. The tick-log reading after install is taken from the lab-fill tick and recorded on the ticket.
   source: manual
   binds_ac:
   - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -k delegation -q -p no:randomly
+    cwd: .
+- id: dod-omn23312-handler-served
+  description: Deploy probe. GitHub serves the selection handler at the checked-out HEAD with the delegation-first rank and the other-owner gate. It fails at the merge base, which has neither.
+  source: manual
   checks:
   - check_type: command
     check_value: >-
