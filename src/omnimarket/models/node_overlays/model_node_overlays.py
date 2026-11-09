@@ -64,10 +64,44 @@ class ModelDuplicateGuardGeneratedPathsOverlay(_ModelOverlayDocument):
     generated_paths: dict[NonBlank, tuple[NonBlank, ...]] = Field(min_length=1)
 
 
+class ModelRouteCheckOverlay(_ModelOverlayDocument):
+    """``node_delegation_rubric_check_compute``: the served model id of the local rung (OMN-19184)."""
+
+    route_check_local_model: NonBlank
+
+
+class ModelAbCompareRegistryEntry(_ModelOverlayDocument):
+    """One model of the A/B compare registry; ``model_id_default`` may be empty, which skips the model."""
+
+    id: NonBlank
+    display_name: NonBlank
+    protocol: NonBlank
+    location: NonBlank
+    cost_per_1k_input: float = Field(ge=0)
+    cost_per_1k_output: float = Field(ge=0)
+    context_window: int = Field(gt=0)
+    endpoint_env: str | None = None
+    endpoint: str | None = None
+    model_id_env: str | None = None
+    model_id_default: str | None = None
+    model_id: str | None = None
+    requires_key: str | None = None
+
+
+class ModelAbCompareRegistryOverlay(_ModelOverlayDocument):
+    """``node_ab_compare_orchestrator``: the whole registry of models the A/B compare runs (OMN-19184)."""
+
+    schema_version: NonBlank
+    models: tuple[ModelAbCompareRegistryEntry, ...] = Field(min_length=1)
+
+
 __all__ = [
+    "ModelAbCompareRegistryEntry",
+    "ModelAbCompareRegistryOverlay",
     "ModelDuplicateGuardGeneratedPathsOverlay",
     "ModelIntegrationSweepOverlay",
     "ModelLabDiskHygieneOverlay",
     "ModelLabSliPackOverlay",
+    "ModelRouteCheckOverlay",
     "ModelRuntimeHostOverlay",
 ]
