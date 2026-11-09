@@ -39,6 +39,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _real_delegation_completed_payload,
 )
@@ -199,7 +200,7 @@ async def _rls_enforced_local_runner(
         await admin.execute(_TENANT_PROJECTION_WRITER_ROLE_SQL)
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
             await admin.execute(
-                migration.read_text(encoding="utf-8").replace(
+                for_isolated_schema(migration.read_text(encoding="utf-8")).replace(
                     "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
                 )
             )
@@ -211,6 +212,11 @@ async def _rls_enforced_local_runner(
         await admin.execute(
             f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {schema} "
             f"TO {writer_role}"
+        )
+        # OMN-21970: an insert draws the projection_cursor sequence, which 0065
+        # grants the real writer, tenant_projection_writer; this stand-in needs it too.
+        await admin.execute(
+            f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA {schema} TO {writer_role}"
         )
         pool = await asyncpg.create_pool(
             user=writer_role,

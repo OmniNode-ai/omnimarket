@@ -41,6 +41,7 @@ def overlay(**changes: object) -> ModelJobLogFillerOverlay:
         "reader_concurrency": 1,
         "reply_tail_bytes": 4096,
         "reply_timeout_seconds": 5.0,
+        "reprobe_seconds": 1800,
         "default_profile": "inmemory",
         "profiles": {
             "inmemory": ModelJobLogFillerBusProfile(kind="inmemory"),
