@@ -26,6 +26,11 @@ class ModelLabFillDeployment:
     companion_repositories: tuple[str, ...]
     not_work_repositories: tuple[str, ...]
     document_repositories: tuple[str, ...]
+    # OMN-23312: the delegation epics (a ticket is delegation work when it is one of them or sits under
+    # one) and the assignees who own delegation work for this deployment. Both come from the
+    # overlay; empty means the deployment names no delegation work and nothing is ranked or refused.
+    delegation_epics: tuple[str, ...] = ()
+    delegation_owners: tuple[str, ...] = ()
 
     @classmethod
     def from_overlay(cls, raw: object) -> ModelLabFillDeployment:
@@ -40,12 +45,13 @@ class ModelLabFillDeployment:
         missing = set(keys) - raw.keys()
         if missing:
             raise ValueError("overlay missing keys: " + ", ".join(sorted(missing)))
-        unknown = raw.keys() - set(keys)
+        optional = ("delegation_epics", "delegation_owners")
+        unknown = raw.keys() - set(keys) - set(optional)
         if unknown:
             raise ValueError(
                 "overlay unknown keys: " + ", ".join(sorted(map(str, unknown)))
             )
-        for key in keys:
+        for key in (*keys, *(k for k in optional if k in raw)):
             value = raw[key]
             if not isinstance(value, list):
                 raise ValueError(f"{key} must be a list of strings")
@@ -56,6 +62,8 @@ class ModelLabFillDeployment:
             companion_repositories=tuple(raw["companion_repositories"]),
             not_work_repositories=tuple(raw["not_work_repositories"]),
             document_repositories=tuple(raw["document_repositories"]),
+            delegation_epics=tuple(raw.get("delegation_epics", [])),
+            delegation_owners=tuple(raw.get("delegation_owners", [])),
         )
 
     def __post_init__(self) -> None:
@@ -63,6 +71,8 @@ class ModelLabFillDeployment:
             "companion_repositories",
             "not_work_repositories",
             "document_repositories",
+            "delegation_epics",
+            "delegation_owners",
         ):
             value = getattr(self, key)
             if not isinstance(value, tuple) or any(
