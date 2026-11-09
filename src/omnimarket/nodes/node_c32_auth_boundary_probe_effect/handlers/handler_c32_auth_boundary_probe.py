@@ -9,6 +9,7 @@ that concludes ``failure`` and is still emitted: a broken probe must read red, n
 
 from __future__ import annotations
 
+import sys
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -67,6 +68,10 @@ def build_prober(
     overlay: ModelC32ProbeOverlay, profile: str | None
 ) -> ProtocolC32Prober:
     chosen = overlay.profile(profile)
+    if chosen.kind == "tick":
+        return LocalOnexC32Prober(
+            str(Path(sys.executable).parent), graded_packages=chosen.graded_packages
+        )
     if chosen.kind == "local":
         assert chosen.onex_bin_dir is not None
         return LocalOnexC32Prober(

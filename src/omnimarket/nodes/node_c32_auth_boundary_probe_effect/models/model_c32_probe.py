@@ -109,8 +109,9 @@ class ModelC32ProbeResult(_Frozen):
 
 
 class ModelC32ProfileOverlay(_Frozen):
-    kind: Literal["inmemory", "local"]
+    kind: Literal["inmemory", "local", "tick"]
     # ``local``: the directory holding the ``onex`` the probe grades, put first on PATH for the probe's own commands.
+    # ``tick``: the environment the tick itself runs in (the registry project's) is the one graded; no directory is named.
     onex_bin_dir: str | None = None
     # ``local``: the packages whose installed versions the run records, so M1 can compare them with the launch candidate.
     graded_packages: tuple[str, ...] = ()
@@ -119,8 +120,12 @@ class ModelC32ProfileOverlay(_Frozen):
     def _local_names_its_cli(self) -> ModelC32ProfileOverlay:
         if self.kind == "local" and not self.onex_bin_dir:
             raise ValueError("a local profile names onex_bin_dir")
-        if self.kind == "local" and not self.graded_packages:
-            raise ValueError("a local profile names graded_packages")
+        if self.kind == "tick" and self.onex_bin_dir:
+            raise ValueError(
+                "a tick profile grades its own environment and names no onex_bin_dir"
+            )
+        if self.kind in ("local", "tick") and not self.graded_packages:
+            raise ValueError(f"a {self.kind} profile names graded_packages")
         return self
 
 

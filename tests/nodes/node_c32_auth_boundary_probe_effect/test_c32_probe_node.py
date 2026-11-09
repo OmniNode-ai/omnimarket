@@ -430,3 +430,38 @@ def test_the_host_installer_declares_a_daily_systemd_unit_for_the_tick() -> None
     assert unit["schedule"]["run_timeout_s"] <= 3 * unit["schedule"]["start_interval"]
     assert unit["module"].endswith(f"{NODE}.runtime_c32_probe_tick")
     assert (NODE_DIR.parent.parent.parent.parent / unit["entry_file"]).is_file()
+
+
+def test_a_tick_profile_grades_the_environment_the_tick_runs_in_and_names_no_directory() -> (
+    None
+):
+    import sys
+
+    overlay = ModelC32ProbeOverlay.model_validate(
+        {
+            "default_profile": "tick",
+            "profiles": {"tick": {"kind": "tick", "graded_packages": ["pydantic"]}},
+            "history_file": "h.jsonl",
+            "history_keep": 3,
+            "result_topic": TOPIC,
+        }
+    )
+    prober = hcp.build_prober(overlay, None)
+    assert isinstance(prober, LocalOnexC32Prober)
+    assert prober._bin_dir == str(Path(sys.executable).parent)
+    with pytest.raises(Exception, match="onex_bin_dir"):
+        ModelC32ProbeOverlay.model_validate(
+            {
+                "default_profile": "tick",
+                "profiles": {
+                    "tick": {
+                        "kind": "tick",
+                        "onex_bin_dir": "/x",
+                        "graded_packages": ["a"],
+                    }
+                },
+                "history_file": "h.jsonl",
+                "history_keep": 3,
+                "result_topic": TOPIC,
+            }
+        )

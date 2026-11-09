@@ -13,3 +13,6 @@ profiles:
     kind: local
     onex_bin_dir: /example/venv/bin
     graded_packages: [example-core, example-market]
+  tick:
+    kind: tick
+    graded_packages: [example-core, example-market]
