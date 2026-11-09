@@ -12,6 +12,7 @@ never consulted.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import sqlite3
 from pathlib import Path
@@ -25,6 +26,10 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    PROBE_LADDER_WIRE_KEY,
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     PROBE_LADDER_SOURCE_SURFACE,
     ModelProbeLadder,
@@ -232,3 +237,75 @@ def test_probe_ladder_rungs_must_be_loopback_and_distinct() -> None:
         ModelProbeLadder(rungs=(_LADDER.rungs[0], _LADDER.rungs[0]))
     with pytest.raises(ValidationError):
         ModelProbeLadder(rungs=())
+
+
+def _wire_request(**extra: object) -> dict[str, object]:
+    return {
+        "prompt": "summarise the module",
+        "task_type": "research",
+        "source": "claude-code",
+        **extra,
+    }
+
+
+def test_probe_ladder_wire_key_is_tolerated_and_ignored() -> None:
+    """OMN-23161: a request may carry ``probe_ladder``; this release ignores it.
+
+    Step 1 of 2: the key is decoded without being declared, so the pinned
+    consumer accepts it before a later release adds the field.
+    """
+    assert PROBE_LADDER_WIRE_KEY == "probe_ladder"
+    ladder = _LADDER.model_dump(mode="json")
+
+    plain = ModelDelegateSkillRequest.model_validate(_wire_request())
+    for value in (ladder, None):
+        carried = ModelDelegateSkillRequest.model_validate(
+            _wire_request(**{PROBE_LADDER_WIRE_KEY: value})
+        )
+        assert PROBE_LADDER_WIRE_KEY not in carried.model_dump(mode="json")
+        assert carried.model_dump(
+            mode="json", exclude={"correlation_id"}
+        ) == plain.model_dump(mode="json", exclude={"correlation_id"})
+
+
+def test_probe_ladder_tolerance_does_not_widen_other_unknown_keys() -> None:
+    with pytest.raises(ValidationError, match="not_a_field"):
+        ModelDelegateSkillRequest.model_validate(
+            _wire_request(**{PROBE_LADDER_WIRE_KEY: None, "not_a_field": 1})
+        )
+
+
+def _gate_graded_keys() -> dict[str, list[str]]:
+    """The key sets the Wire Compatibility Gate grades for the request model.
+
+    Loads the gate's own probe from ``scripts/ci`` and describes the real wire
+    module, so the keys read here are the keys the gate pushes through each
+    pinned consumer.
+    """
+    probe_path = (
+        Path(__file__).resolve().parents[3] / "scripts" / "ci" / "_wire_compat_probe.py"
+    )
+    spec = importlib.util.spec_from_file_location("_wire_compat_probe", probe_path)
+    assert spec is not None
+    assert spec.loader is not None
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    import omnimarket.models.delegation.wire.model_delegate_skill_request as wire
+
+    return probe._describe(wire)["ModelDelegateSkillRequest"]
+
+
+def test_probe_ladder_key_stays_outside_the_wire_gate_graded_keys() -> None:
+    """OMN-23161 AC2: the tolerated key adds nothing for a pinned consumer to refuse.
+
+    The gate grades the maximal key set the producer can emit. A key this
+    release decodes and drops is not in that set, so the pinned consumer sees
+    no new key; the request that carries it still decodes here.
+    """
+    graded = _gate_graded_keys()
+    assert PROBE_LADDER_WIRE_KEY not in graded["emitted_keys"]
+    assert PROBE_LADDER_WIRE_KEY not in graded["validation_keys"]
+    assert graded["extra"] == "forbid"
+    ModelDelegateSkillRequest.model_validate(
+        _wire_request(**{PROBE_LADDER_WIRE_KEY: _LADDER.model_dump(mode="json")})
+    )

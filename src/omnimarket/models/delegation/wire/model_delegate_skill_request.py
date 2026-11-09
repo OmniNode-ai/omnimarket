@@ -56,6 +56,12 @@ MODEL_WIRE_KEY = "model"
 # ``_tolerate_client_call_before_it_is_declared``.
 CLIENT_CALL_WIRE_KEY = "client_call"
 
+# OMN-23161 (step 1 of 2): the request key that will carry a probe ladder. The
+# local dispatch port already takes a typed ``ModelProbeLadder`` as a dispatch
+# argument (OMN-21212); the request carries none yet. Decoded, not declared, by
+# ``_tolerate_probe_ladder_before_it_is_declared``.
+PROBE_LADDER_WIRE_KEY = "probe_ladder"
+
 # OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
 # terminal can carry the same ids. Declared on the request below; the released
 # step-1 decoder ``_tolerate_trace_context_before_it_is_declared`` is now a no-op
@@ -428,6 +434,22 @@ class ModelDelegateSkillRequest(BaseModel):
             )
         return {key: item for key, item in data.items() if key != CLIENT_CALL_WIRE_KEY}
 
+    # OMN-23161, step 1 of 2: accept and ignore ``probe_ladder`` before it is
+    # declared, the same tolerate-before-declare order as ``client_call`` above.
+    # Declaring it outright is refused by the Wire Compatibility Gate, which
+    # grades the maximal key set against the pinned consumer's model. This
+    # release drops the key whatever it holds, so a later release can carry it
+    # and a pinned consumer still decodes the request. Step 2 declares the
+    # field once a release carrying this is out and the consumer pin advances.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_probe_ladder_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or PROBE_LADDER_WIRE_KEY not in data:
+            return data
+        if PROBE_LADDER_WIRE_KEY in cls.model_fields:
+            return data
+        return {key: item for key, item in data.items() if key != PROBE_LADDER_WIRE_KEY}
+
     # OMN-19437, step 2 is done: ``trace_id`` and ``span_id`` are now declared
     # (below), so this released step-1 decoder is a no-op for this class. Keep it
     # in place for a subclass or an older payload that still routes through it:
@@ -528,6 +550,7 @@ __all__: list[str] = [
     "CLIENT_CALL_WIRE_KEY",
     "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
+    "PROBE_LADDER_WIRE_KEY",
     "TRACE_CONTEXT_WIRE_KEYS",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",

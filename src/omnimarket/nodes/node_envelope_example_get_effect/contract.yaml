@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeEnvelopeExampleGetEffect
+#
+# GET /v1/envelopes/example moved from the public API service into the runtime. One contract
+# per route: the two example-envelope routes were bound to a single contract id
+# before the move (node_envelope_processor:1.0.0).
+name: "node_envelope_example_get_effect"
+contract_name: "node_envelope_example_get_effect"
+node_name: "node_envelope_example_get_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+description: >
+  Answers GET /v1/envelopes/example with an anonymous in-memory example ONEX envelope, built from the settings of this contract's config block and the lane overlay. Stateless: it reads no body, calls no database, bus or identity service, and no credential is required or refused. The public API service bound this route and its twin to one contract id, node_envelope_processor:1.0.0; the runtime serves each route from its own contract.
+
+input_model:
+  name: "ModelEnvelopeExampleRequest"
+  module: "omnimarket.models.model_envelope_example"
+  description: "No input: the route takes no body and ignores any it receives."
+output_model:
+  name: "ModelOnexEnvelope"
+  module: "omnimarket.models.model_onex_envelope"
+  description: "The example ONEX envelope."
+
+# The route is answered over HTTP through the mount below. The same handler also
+# answers the command topic, so the node is a wired runtime node and the built
+# envelope is observable on the completion topic.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.envelope-example-get.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.envelope-example-get-built.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.envelope-example-get.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.envelope-example-get-built.v1"
+terminal_event: "onex.evt.omnimarket.envelope-example-get-built.v1"
+published_events:
+  - event_type: "EnvelopeExampleGetBuilt"
+    topic: "onex.evt.omnimarket.envelope-example-get-built.v1"
+    description: "The example ONEX envelope the handler built."
+externally_produced_topics:
+  - topic: "onex.cmd.omnimarket.envelope-example-get.v1"
+    producer: "any caller that asks the runtime for an example envelope over the bus; the HTTP route needs no producer"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "envelope_example.get"
+      event_model:
+        name: "ModelEnvelopeExampleRequest"
+        module: "omnimarket.models.model_envelope_example"
+      event_type: "envelope-example.get"
+      topic: "onex.cmd.omnimarket.envelope-example-get.v1"
+      message_category: "COMMAND"
+      handler:
+        name: "HandlerEnvelopeExampleGet"
+        module: "omnimarket.nodes.node_envelope_example_get_effect.handlers.handler_envelope_example_get"
+      supported_operations:
+        - "envelope_example.get"
+      description: "Build the example envelope for GET /v1/envelopes/example."
+  execution_mode: "single"
+  max_timeout_seconds: 5
+
+# Handlers get their overlay through the lane overlay binding, never the environment.
+handler_dependencies:
+  - omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+
+# Every value of the example. A lane overlay document named for this node
+# replaces the values it names.
+config:
+  envelope_example:
+    source_node: "onex-api"
+    envelope_version: "1.0.0"
+    operation: "TENANT_CREATED"
+    tags:
+      category: "tenant"
+      event_type: "lifecycle"
+    payload:
+      tenant_slug: "demo"
+      tenant_name: "Demo Tenant"
+      plan: "free"
+    generated_id_fields:
+      - "tenant_id"
+
+# The route this node's app serves, read by the app; the app holds no path.
+http_ingress:
+  handler:
+    name: "HandlerEnvelopeExampleGet"
+    module: "omnimarket.nodes.node_envelope_example_get_effect.handlers.handler_envelope_example_get"
+  path: "/v1/envelopes/example"
+  methods: [GET]
+  authorization: anonymous
+  response_status: 200
+  input_schema:
+    type: object
+    properties: {}
+    additionalProperties: true
+
+# Runtime-owned HTTP boundary: the narrowest prefix, equal to the route path.
+http_mount:
+  factory: "omnimarket.nodes.node_envelope_example_get_effect.handlers.http_app:create_app"
+  path_prefix: "/v1/envelopes/example"
+
+capabilities:
+  - name: "envelope_example_get_http"
+    description: "Serve GET /v1/envelopes/example on the runtime's port."
+metadata:
+  description: "Anonymous example ONEX envelope, GET /v1/envelopes/example."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22338"
+  tags:
+    - "effect"
+    - "public_api"
+    - "envelope"

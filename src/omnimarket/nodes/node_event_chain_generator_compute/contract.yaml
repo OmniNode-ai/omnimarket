@@ -52,6 +52,11 @@ handler_routing:
       handler:
         name: HandlerEventChainGenerator
         module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
+    # OMN-19998: the golden and error test module of one node, generated from its chain_scenarios.
+    - operation: generate_scenario_tests
+      handler:
+        name: HandlerScenarioTestGenerator
+        module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_scenario_test_generator
 
 descriptor:
   node_archetype: compute

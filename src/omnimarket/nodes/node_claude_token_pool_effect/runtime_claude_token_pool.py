@@ -142,11 +142,15 @@ def run_tick(
     if row is None:
         raise ValueError(f"{host} is not a host of the {NODE_NAME} overlay")
     user_home = home or Path.home()
-    root = registry_root or Path(os.environ.get("OMNI_HOME", ""))
-    if not str(root):
-        raise ValueError(
-            "OMNI_HOME is not set; the tick keeps its rotation record under it"
-        )
+    # Absent is decided on the text, before it becomes a Path: Path("") is ".", the working directory.
+    root = registry_root
+    if root is None:
+        root_text = os.environ.get("OMNI_HOME", "")
+        if not root_text:
+            raise ValueError(
+                "OMNI_HOME is not set; the tick keeps its rotation record under it"
+            )
+        root = Path(root_text)
     source = declared.marks_source
     handler = HandlerClaudeTokenRotation(
         pool=pool or HandlerClaudeTokenPool(host=host),
@@ -176,7 +180,10 @@ def _tick(args: argparse.Namespace) -> int:
     )
     if result.alarm:
         sys.stderr.write(result.alarm + "\n")
-    return EXIT_ALL_LIMITED if result.outcome == "no_usable" else 0
+    if result.outcome == "no_usable":
+        return EXIT_ALL_LIMITED
+    # A tick that fell back to local marks still did its work, but its exit status says the sync was refused.
+    return EXIT_EMPTY if sync.state in ("unreadable", "stale") else 0
 
 
 def _schedule(arguments: Sequence[str]) -> int:

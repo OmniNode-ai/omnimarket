@@ -36,6 +36,20 @@ handler_routing:
         module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_reading
       input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingRequest
       output_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingResult
+    - operation: read_required_sender
+      topic: onex.cmd.omnimarket.seam-required-sender-read-requested.v1
+      handler:
+        name: HandlerRequiredSender
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender
+      input_model: omnimarket.models.seam_reading.model_required_sender.ModelRequiredSenderRequest
+      output_model: omnimarket.models.seam_reading.model_required_sender.ModelRequiredSenderResult
+    - operation: append_seam_rows
+      topic: onex.cmd.omnimarket.seam-rows-append-requested.v1
+      handler:
+        name: HandlerSeamRowAppend
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_row_append
+      input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_row.ModelSeamRowAppendRequest
+      output_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_row.ModelSeamRowAppendResult
 
 descriptor:
   node_archetype: compute
@@ -66,8 +80,26 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.seam-reading-rendered.v1
 
+# OMN-22909: HandlerRequiredSender is pure and HandlerSeamRowAppend takes its row store as a
+# constructor parameter (in-memory by default), so both run through answer_command, not
+# handler_routing. The store has no update and no delete: a row whose key is stored with
+# different content is refused as a rewrite.
+topics:
+  required_sender_read_requested: onex.cmd.omnimarket.seam-required-sender-read-requested.v1
+  required_sender_read_completed: onex.evt.omnimarket.seam-required-sender-read-completed.v1
+  required_sender_read_failed: onex.evt.omnimarket.seam-required-sender-read-failed.v1
+  seam_rows_append_requested: onex.cmd.omnimarket.seam-rows-append-requested.v1
+  seam_rows_append_started: onex.evt.omnimarket.seam-rows-append-started.v1
+  seam_rows_appended: onex.evt.omnimarket.seam-rows-appended.v1
+  seam_rows_refused: onex.evt.omnimarket.seam-rows-refused.v1
+
 externally_consumed_topics:
   - onex.evt.omnimarket.seam-reading-rendered.v1
+  - onex.evt.omnimarket.seam-required-sender-read-completed.v1
+  - onex.evt.omnimarket.seam-required-sender-read-failed.v1
+  - onex.evt.omnimarket.seam-rows-append-started.v1
+  - onex.evt.omnimarket.seam-rows-appended.v1
+  - onex.evt.omnimarket.seam-rows-refused.v1
 
 metadata:
   ticket: OMN-21459
