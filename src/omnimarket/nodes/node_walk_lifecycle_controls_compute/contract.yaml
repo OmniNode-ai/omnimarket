@@ -65,7 +65,7 @@ overlay:
   id: node_walk_lifecycle_controls_compute
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
 metadata:
-  transport_type: local
+  transport_type: kafka
   description: Lifecycle grading of the call recorder against the observer, with positive controls.
   author: OmniNode Team
   created: '2026-11-08'

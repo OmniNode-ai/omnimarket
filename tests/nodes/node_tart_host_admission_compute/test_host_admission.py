@@ -28,6 +28,7 @@ from omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admissi
     ModelAdmissionReceipt,
     ModelAdmissionRequest,
     ModelCredentialEvidence,
+    ModelCredentialGrade,
     ModelCredentialGradeRequest,
     ModelCredentialPlanRequest,
     ModelCredentialRouteSettings,
@@ -77,7 +78,7 @@ def _evidence(name: str, **update: object) -> ModelCredentialEvidence:
     return ModelCredentialEvidence.model_validate(base)
 
 
-def _grade(*evidence: ModelCredentialEvidence):  # type: ignore[no-untyped-def]
+def _grade(*evidence: ModelCredentialEvidence) -> ModelCredentialGrade:
     return HandlerCredentialRouteGrade().handle(
         ModelCredentialGradeRequest(
             expected_names=("probe_key", "plugin_credential"), evidence=evidence
@@ -163,9 +164,13 @@ def test_credential_route_overlay_refuses_a_value_shaped_secret_ref() -> None:
     bad = {
         **ROUTE_FIELDS,
         "credentials": [
-            {**ROUTE_FIELDS["credentials"][0], "secret_ref": "sk-live abc"}
+            {
+                "name": "probe_key",
+                "secret_ref": "sk-live abc",
+                "guest_file": "probe_key",
+            }
         ],
-    }  # type: ignore[index]
+    }
 
     with pytest.raises(ValidationError):
         ModelCredentialRouteSettings.model_validate(bad)

@@ -54,6 +54,10 @@ descriptor:
   runtime_profiles: []
   idempotent: true
   timeout_ms: 5000
+metadata:
+  transport_type: local
+  description: Tart host admission for the clean-VM walk, invoked directly.
+  author: OmniNode Team
 replay:
   requires_validator_version: true
   timestamp_authority: ingest_sequence
