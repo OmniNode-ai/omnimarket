@@ -33,6 +33,7 @@ class EnumAskState(StrEnum):
     DROPPED = "dropped"
     NEW = "new"
     UNVERIFIED = "unverified"
+    FAILED = "failed"
 
 
 class EnumAskLink(StrEnum):
@@ -125,6 +126,7 @@ class ModelAskStateConfig(BaseModel):
     )
     check_verdict_cell: str = Field(min_length=1)
     check_pass_verdict: str = Field(min_length=1)
+    check_fail_verdict: str = Field(min_length=1)
     done_check_cell: str = Field(
         min_length=1,
         description="the cell naming an ask's done check on its owning row",
@@ -250,6 +252,7 @@ class ModelAskCounts(BaseModel):
     dropped: int = 0
     new: int = 0
     unverified: int = 0
+    failed: int = 0
     total: int = 0
 
 
