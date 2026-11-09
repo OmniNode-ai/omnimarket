@@ -136,11 +136,13 @@ event_bus:
 # events behind while it was still taking rows. Running four at once overlaps
 # those waits.
 #
-# THE WRITER MUST NOT SHARE ITS ADAPTER. Concurrent messages that share one
-# adapter close each other's pool. On the dev lane that showed as "call
-# connect() first" and "pool is closed", and every such record was rewound.
-# ClaudeHookEventsProjectionWriter._message_db therefore opens one
-# single-connection adapter per message, on the DSN the runtime bound.
+# THE WRITER MUST NOT CLOSE A POOL ANOTHER MESSAGE IS USING. Concurrent messages
+# that opened loops of their own over one shared adapter closed each other's
+# pool. On the dev lane that showed as "call connect() first" and "pool is
+# closed", and every such record was rewound. Opening a pool per message instead
+# cost one connect per message (OMN-23257). The writer now keeps ONE pool, opened
+# once on the DSN the runtime bound and run on one dedicated loop; each message
+# holds one connection for its statements, and the pool is sized below.
 #
 # ORDERING: the topic no longer completes in partition order. This writer
 # already accepts events out of order. The event insert is idempotent on
@@ -153,6 +155,16 @@ event_bus:
 # resolves on the child's next event.
 consume_concurrency:
   max_in_flight_records: 4
+
+# OMN-23257: the one pool this writer keeps. max_size is the in-flight bound
+# above, because a message holds one connection at a time. A message that waits
+# acquire_timeout_seconds for a connection raises WriterPoolExhaustedError and is
+# redelivered; it never opens a pool of its own.
+writer_pool:
+  min_size: 1
+  max_size: 4
+  acquire_timeout_seconds: 30
+  command_timeout_seconds: 30
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-claude-hook-events-applied.v1
