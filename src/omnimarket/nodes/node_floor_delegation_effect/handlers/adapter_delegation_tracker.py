@@ -259,6 +259,7 @@ def _scenario_result(
         "builder_ticket": decl.builder_ticket,
         "builder_group": builder_group,
         "workflow_url": f"{rt.github_url}/{decl.repo}/actions/workflows/{decl.workflow}",
+        "read_seconds": read.read_seconds if read is not None else None,
     }
     if read is None:
         return ModelScenarioResult(

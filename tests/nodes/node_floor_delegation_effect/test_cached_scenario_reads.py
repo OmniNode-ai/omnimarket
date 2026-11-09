@@ -16,6 +16,7 @@ from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_s
     read_scenarios,
 )
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
+    ModelScenarioRead,
     ModelScenarioReads,
 )
 
@@ -25,12 +26,12 @@ DECL = RT.scenarios[0]
 OTHERS = [d for d in RT.scenarios if d.id != DECL.id]
 
 
-def _seed(home: Path, *reads_to_keep: object) -> None:
+def _seed(home: Path, *reads_to_keep: ModelScenarioRead) -> None:
     """Write the cached scenario-runs file the way the scenario stage leaves it; every other scenario read just now."""
     fresh = [read(d.id, run("success", 10), read_minutes_ago=0) for d in OTHERS]
     doc = ModelScenarioReads(
         updated_at=iso(NOW),
-        reads=(*reads_to_keep, *fresh),  # type: ignore[arg-type]
+        reads=(*reads_to_keep, *fresh),
     )
     target = home / RT.scenario_reads_relpath
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -117,3 +118,63 @@ def test_r5_cached_run_list_control_a_missing_workflow_is_asked_again_once_the_m
     assert DECL.workflow in runner.read
     assert kept.read == "read"
     assert kept.read_at == iso(NOW)  # the new read, not the cached 404
+
+
+def test_r5_cached_run_list_an_unread_read_is_asked_again_on_the_next_run(
+    tmp_path: Path,
+) -> None:
+    """A read that failed is not an answer: it is not held back for scenario_refresh_seconds like a read that worked."""
+    home = write_home(tmp_path)
+    _seed(
+        home,
+        read(
+            DECL.id,
+            kind="unread",
+            read_minutes_ago=1,
+            reason="exit 124: timed out after 25 s",
+        ),
+    )
+    runner = _runner((0, runs_answer(("completed", "success", 5)), ""))
+    got = read_scenarios(RT, home, NOW, runner, clock=lambda: NOW)
+    kept = next(r for r in got.reads if r.scenario == DECL.id)
+    assert DECL.workflow in runner.read
+    assert kept.read == "read"
+
+
+def test_r5_cached_run_list_control_a_read_that_worked_a_minute_ago_is_not_asked_again(
+    tmp_path: Path,
+) -> None:
+    home = write_home(tmp_path)
+    _seed(home, read(DECL.id, run("success", 30), read_minutes_ago=1))
+    runner = _runner((0, runs_answer(("completed", "failure", 5)), ""))
+    got = read_scenarios(RT, home, NOW, runner, clock=lambda: NOW)
+    kept = next(r for r in got.reads if r.scenario == DECL.id)
+    assert DECL.workflow not in runner.read
+    assert [r.conclusion for r in kept.runs] == ["success"]
+
+
+def test_r5_cached_run_list_each_read_records_how_long_it_took(tmp_path: Path) -> None:
+    """The board says how long a read took, so a slow host shows as a number on the floor, not as a bare timeout."""
+    home = write_home(tmp_path)
+    _seed(home)
+    got = read_scenarios(
+        RT,
+        home,
+        NOW,
+        _runner((0, runs_answer(("completed", "success", 5)), "")),
+        clock=lambda: NOW,
+    )
+    fresh = next(r for r in got.reads if r.scenario == DECL.id)
+    assert fresh.read == "read"
+    assert fresh.read_seconds is not None
+    assert fresh.read_seconds >= 0
+    timed_out = read_scenarios(
+        RT,
+        write_home(tmp_path / "again"),
+        NOW,
+        _runner((124, "", "timed out after 25 s")),
+        clock=lambda: NOW,
+    )
+    failed = next(r for r in timed_out.reads if r.scenario == DECL.id)
+    assert failed.read == "unread"
+    assert failed.read_seconds is not None

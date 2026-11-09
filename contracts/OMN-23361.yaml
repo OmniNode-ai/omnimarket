@@ -3,7 +3,7 @@ ticket_id: OMN-23361
 title: The delegation board reads scenario R5 from the cached run list, and the customer-key route waits between rate-limited re-issues
 summary: >-
   node_floor_delegation_effect keeps the previous good scenario read when a new read fails or times out and the previous read is younger
-  than 1800 s, and re-asks a workflow read as missing only after scenario_missing_refresh_seconds (1500); the 25 s read bound is unchanged.
+  than 1800 s, and re-asks a workflow read as missing only after scenario_missing_refresh_seconds (1500); the 25 s read bound is unchanged. A read that failed is asked again on the next run instead of waiting scenario_refresh_seconds, and every scenario read records read_seconds.
   ModelByokProviderBackend gains retry_wait_seconds (the openrouter row declares 20), and the local delegation dispatch port waits that
   long before each same-route re-issue after a rate-limited attempt, issuing no re-issue whose wait the run budget cannot hold with another attempt.
 is_seam_ticket: false

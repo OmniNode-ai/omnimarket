@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -290,7 +291,9 @@ def read_scenario(
         "--limit",
         str(rt.scenario_run_limit),
     ]
+    began = time.monotonic()
     code, out, err = run(argv, rt.scenario_read_timeout_seconds)
+    took = round(time.monotonic() - began, 1)
     answer = _json_line(out)
     if answer is None:
         tail = (err or out).strip().splitlines()[-1:] or ["no answer"]
@@ -298,6 +301,7 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason=f"exit {code}: {tail[0][:240]}",
         )
     result = answer.get("result")
@@ -306,13 +310,18 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason="the answer has no result",
         )
     if answer.get("outcome") != "completed":
         reason = str(result.get("failure_reason") or answer.get("outcome") or "failed")
         kind: ScenarioReadKind = "no_workflow" if "HTTP 404" in reason else "unread"
         return ModelScenarioRead(
-            scenario=decl.id, read=kind, read_at=at, reason=reason[:240]
+            scenario=decl.id,
+            read=kind,
+            read_at=at,
+            read_seconds=took,
+            reason=reason[:240],
         )
     runs = result.get("runs")
     if not isinstance(runs, list):
@@ -320,6 +329,7 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason="the answer lists no runs",
         )
     parsed: list[ModelScenarioRun] = []
@@ -338,7 +348,7 @@ def read_scenario(
             )
         )
     return ModelScenarioRead(
-        scenario=decl.id, read="read", read_at=at, runs=tuple(parsed)
+        scenario=decl.id, read="read", read_at=at, read_seconds=took, runs=tuple(parsed)
     )
 
 
@@ -392,7 +402,9 @@ def read_scenarios(
                 if previous.read == "no_workflow"
                 else rt.scenario_refresh_seconds
             )
-            if age < refresh:
+            # A read that failed is not an answer, so it is not held back like one that worked: it is asked again on the next
+            # run, after every scenario that has waited longer (the order is by read_at, which a failed read also sets).
+            if previous.read != "unread" and age < refresh:
                 continue
         elapsed = (tick() - started).total_seconds()
         if (
