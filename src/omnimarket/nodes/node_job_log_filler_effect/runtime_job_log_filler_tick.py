@@ -66,6 +66,7 @@ def evidence_for(result: ModelJobLogFillResult, now: datetime) -> dict[str, Any]
         "already_cached": result.already_cached,
         "failed": result.failed,
         "deferred": result.deferred,
+        "budget_exhausted": result.budget_exhausted,
         "stale_skipped": result.stale_skipped,
         "coverage": (held / result.considered) if result.considered else 1.0,
         "error": result.error,
