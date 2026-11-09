@@ -17,8 +17,23 @@ class ModelFrictionRollupStepSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    ledger_path_env: str = Field(min_length=1)
-    archive_subdir: str = Field(min_length=1)
+    ledger_read_command_env: str = Field(
+        min_length=1,
+        description="The variable that holds the bus read command; the ledger is read through the bus, never from a file.",
+    )
+    ledger_read_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_row_limit: int = Field(
+        ge=1,
+        description="Rows one bus read may return; an answer longer than this is refused as truncated, never rolled short.",
+    )
+    ledger_row_kinds: tuple[str, ...] = Field(
+        min_length=1,
+        description="The row kinds the rollup reads: the FRICTION rows and the kinds its signals are drawn from.",
+    )
+    ledger_chunk_hours: int = Field(
+        ge=1,
+        description="Each bus read covers this many hours, so no answer outgrows its limit.",
+    )
     window_hours: int = Field(gt=0)
     bucket_hours: int = Field(gt=0)
     umbrella_tickets: tuple[str, ...]
