@@ -65,6 +65,8 @@ _SSH_OPTIONS = (
     "-o",
     "ServerAliveInterval=15",
 )
+# ssh's own exit status for a connection it could not make (not the remote command's).
+_SSH_CONNECT_FAILED = 255
 
 
 def _registry_slugs(repos_file: Path) -> list[str]:
@@ -154,10 +156,39 @@ _REMOTE_WRITE = (
 _REMOTE_READ = 'cat "$HOME"/{rel}'
 
 
-def _send(
-    request: ModelPrrpSnapshotPublishRequest, host: ModelPrrpSnapshotHost, data: bytes
-) -> str:
-    """Copy the file to one remote host over the lab's ssh transport and read it back."""
+def _routes(host: ModelPrrpSnapshotHost) -> list[tuple[str, tuple[str, ...]]]:
+    """Each ssh destination of the row with the options that carry its jump host and key.
+
+    ``target`` first, then each fallback in order; a fallback takes its own ``fallback_*`` cell, else
+    the row's. The key is offered only when its file exists on this host, as the launcher does.
+    """
+    rows = [(host.target, host.ssh_user, host.proxy_jump, host.ssh_identity)] + [
+        (
+            name,
+            host.fallback_ssh_user or host.ssh_user,
+            host.fallback_proxy_jump or host.proxy_jump,
+            host.fallback_ssh_identity or host.ssh_identity,
+        )
+        for name in host.fallback_targets
+    ]
+    routes: list[tuple[str, tuple[str, ...]]] = []
+    for name, user, jump, identity in rows:
+        key = Path(identity).expanduser() if identity else None
+        options = (
+            *(("-J", jump) if jump else ()),
+            *(("-i", str(key)) if key is not None and key.is_file() else ()),
+        )
+        routes.append((f"{user}@{name}" if user else name, options))
+    return routes
+
+
+def _send_one(
+    request: ModelPrrpSnapshotPublishRequest,
+    destination: str,
+    options: tuple[str, ...],
+    data: bytes,
+) -> tuple[str, bool]:
+    """Copy the file to one ssh destination and read it back: the problem, and whether ssh never connected."""
     rel = shlex.quote(request.destination)
     for body, stdin in (
         (_REMOTE_WRITE.format(rel=rel), data),
@@ -165,22 +196,45 @@ def _send(
     ):
         try:
             done = subprocess.run(
-                [request.ssh_program, *_SSH_OPTIONS, host.target, body],
+                [request.ssh_program, *_SSH_OPTIONS, *options, destination, body],
                 input=stdin,
                 capture_output=True,
                 timeout=request.ssh_timeout_seconds,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            return f"ssh to {host.target} did not complete ({error})"
+            return f"ssh to {destination} did not complete ({error})", True
         if done.returncode:
             return (
-                f"ssh to {host.target} exited {done.returncode}: "
-                f"{done.stderr.decode(errors='replace').strip()[:300]}"
+                f"ssh to {destination} exited {done.returncode}: "
+                f"{done.stderr.decode(errors='replace').strip()[:300]}",
+                done.returncode == _SSH_CONNECT_FAILED,
             )
         if stdin is None and done.stdout != data:
-            return f"the copy on {host.target} did not read back identical to what was sent"
-    return ""
+            return (
+                f"the copy on {destination} did not read back identical to what was sent",
+                False,
+            )
+    return "", False
+
+
+def _send(
+    request: ModelPrrpSnapshotPublishRequest, host: ModelPrrpSnapshotHost, data: bytes
+) -> str:
+    """Copy the file to one remote host over the lab's ssh transport and read it back.
+
+    A destination ssh could not connect to hands over to the row's next fallback; a copy that
+    connected and failed, or did not read back identical, is the host's failure as it stands.
+    """
+    problems: list[str] = []
+    for destination, options in _routes(host):
+        problem, unreachable = _send_one(request, destination, options, data)
+        if not problem:
+            return ""
+        problems.append(problem)
+        if not unreachable:
+            break
+    return "; ".join(problems)
 
 
 def takes_lanes(row: ModelLabHostRow) -> bool:
@@ -197,6 +251,13 @@ def lane_hosts(table: ModelLabHostsTable) -> tuple[ModelPrrpSnapshotHost, ...]:
             local=row.local,
             available=row.available,
             unavailable_reason=row.unavailable_reason or "",
+            fallback_targets=tuple(row.fallback_targets),
+            ssh_user=row.ssh_user,
+            proxy_jump=row.proxy_jump,
+            ssh_identity=row.ssh_identity,
+            fallback_ssh_user=row.fallback_ssh_user,
+            fallback_proxy_jump=row.fallback_proxy_jump,
+            fallback_ssh_identity=row.fallback_ssh_identity,
         )
         for row in table.hosts
         if takes_lanes(row)
