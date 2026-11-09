@@ -1,0 +1,12 @@
+# Settings of node_lane_closeout_sweep_effect (OMN-23375). The deployed values live in the overlays
+# repository under node_lane_closeout_sweep_effect/overlay.yaml; the node holds no default for any of them.
+runs_root: ~/lab-run/runs
+worktrees_dir: omni_worktrees
+records_dir: lane-closeout/records
+ctx_suffix: .ctx
+run_prefixes: [rlane-]
+finished_markers: [run.rc, engine.json]
+grace_seconds: 900
+orphan_age_seconds: 21600
+max_lanes_per_sweep: 100
+salvage_branch_prefix: salvage

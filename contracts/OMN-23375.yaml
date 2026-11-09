@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-23375
+title: Every remote lane's worktree and run directory is closed out on the host it ran on, fill lanes included, and a kept dirty tree is salvaged and swept
+summary: >-
+  A new node, node_lane_closeout_sweep_effect, runs on every lab host as a declared systemd unit of the host installer and closes out
+  every lane that ended on that host, whichever launcher started it (remote-lane, lab fill, landing worker): unpushed commits go to a
+  WIP branch, uncommitted changes to a salvage branch, then the trees and the run directory are removed and one closeout record per lane
+  run is written. A tree that cannot be pushed is kept with its reason and retried every tick. The sweep's settings are an overlay in the
+  overlays repository. The lane closeout node gains the salvage step.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- topics
+- public_api
+requirements:
+- id: req-omn23375-closeout
+  statement: A lane that ended on a lab host is closed out on that host by the host's own sweep, with a record, whoever launched it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a lane of every launcher (remote-lane, lab fill, landing worker) that ends on a lab host has its worktree and run directory removed on that host, or kept with a recorded reason -- falsifier: uv run pytest over the closeout tests with a fill-launched lane fixture fails today with no closeout record'
+  - id: AC2
+    statement: 'AC2: a kept dirty tree is pushed to a salvage branch and removed by a scheduled sweep on every lab host within a day -- falsifier: a scheduled sweep run on h053 leaves a tree older than 24 h whose lane has a finished receipt'
+  - id: AC3
+    statement: 'AC3: over the next day, h053''s lanes with no closeout record are zero -- falsifier: the receipt count of h053 lanes ended after rollout with no closeout record is above zero'
+evidence_requirements:
+- kind: tests
+  description: The sweep tests (fill-launched, landing and remote-lane fixtures, dirty salvage, kept-and-retried, orphan, live process, the named record-write break) and the lane closeout salvage tests.
+  command: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23375-ac1-sweep
+  description: >-
+    The tests build a host with an ended fill-launched lane (run.rc, a tree with staged and untracked changes): the read-only sweep names it
+    unrecorded and changes nothing (the failing control, which has no node to run against before this change), and one sweep pushes a
+    salvage branch, removes the tree, the run directory and the context directory, and writes the record. Landing-worker and remote-lane
+    fixtures take the same path. The named break is the record write removed: the reading says one lane is unrecorded.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect -q --no-cov -m "not kafka"
+    cwd: .
+- id: dod-omn23375-ac2-salvage
+  description: >-
+    A dirty tree is committed to a salvage branch with Git plumbing and pushed, then removed; a tree whose push fails is kept with
+    salvage-push-failed, left unchanged, and removed on the next sweep once the push works. The unit is declared for systemd with a 300 s
+    tick and a 240 s limit.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_closeout_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py -q --no-cov -m "not kafka"
+    cwd: .
+- id: dod-omn23375-ac3-reading
+  description: >-
+    The reading a day after install: the sweep's read mode run on h053 exits 0 when no ended lane is left without a closeout record, and
+    3 naming the lanes otherwise.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python -m omnimarket.nodes.node_lane_closeout_sweep_effect.runtime_lane_closeout_sweep --omni-home "$OMNI_HOME" --state-dir "$OMNI_HOME/.onex_state/lane-closeout-sweep" --read
+    cwd: .
+- id: dod-omn23375-integration-proof
+  description: The sweep and salvage tests run on a lab host at the pushed head through the lab-work node.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23375 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect -q --no-cov -m "not kafka"
+    cwd: .
