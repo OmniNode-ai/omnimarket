@@ -40,8 +40,10 @@ from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
 from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
+    ManifestUnreachableError,
     ManifestUnreadableError,
     ProtocolGroupLagReader,
+    ProtocolManifestCache,
     ProtocolManifestSource,
     ProtocolRunRecordStore,
     ProtocolSampleStore,
@@ -170,6 +172,25 @@ def derive_groups(
     return tuple(sorted({g for found in groups.values() for g in found}))
 
 
+def _declared_contracts(
+    manifest: Mapping[str, Any], nodes: Sequence[tuple[str, str]]
+) -> dict[str, Any]:
+    """Only the declared nodes' contracts: what the fallback needs, a few kilobytes of a 2 MB manifest."""
+    wanted = set(nodes)
+    contracts = manifest.get("contracts")
+    kept = (
+        [
+            c
+            for c in contracts
+            if isinstance(c, Mapping)
+            and (c.get("package_name"), c.get("name")) in wanted
+        ]
+        if isinstance(contracts, list)
+        else []
+    )
+    return {"contracts": kept}
+
+
 class HandlerBrokerLag:
     """Read the declared nodes' live consumer groups over the injected manifest source and lag reader."""
 
@@ -182,7 +203,9 @@ class HandlerBrokerLag:
         samples: ProtocolSampleStore,
         records: ProtocolRunRecordStore,
         clock: Callable[[], datetime],
+        manifest_cache: ProtocolManifestCache | None = None,
     ) -> None:
+        self._manifest_cache = manifest_cache
         self._overlay = overlay
         self._manifest = manifest
         self._lag = lag
@@ -197,17 +220,68 @@ class HandlerBrokerLag:
         if request.fault is EnumLabAlarmFault.UNKNOWN_NODE:
             nodes.append(_UNKNOWN_NODE)
         try:
+            manifest, notes = self._manifest_for(request, nodes)
+        except ManifestUnreachableError as exc:
+            return self._unreachable(request, str(exc), previous)
+        except ManifestUnreadableError as exc:
+            return self._indeterminate(request, (), (f"derivation:{exc}",), previous)
+        try:
             groups = derive_groups(
-                self._manifest.read(),
+                manifest,
                 env=self._overlay.groups.env,
                 instance=self._overlay.groups.instance,
                 nodes=nodes,
             )
-        except (ConsumerGroupDerivationError, ManifestUnreadableError) as exc:
+        except ConsumerGroupDerivationError as exc:
             return self._indeterminate(request, (), (f"derivation:{exc}",), previous)
         readings, sample, unreadable = self._read_all(groups, previous, request.fault)
         return self._judge(
-            request, groups, readings, sample, unreadable, previous, drill
+            request, groups, readings, sample, unreadable, previous, drill, notes
+        )
+
+    def _manifest_for(
+        self, request: ModelBrokerLagCommand, nodes: Sequence[tuple[str, str]]
+    ) -> tuple[Mapping[str, Any], tuple[str, ...]]:
+        """The manifest to derive from, and the notes naming a fallback.
+
+        A reachable manifest is kept as the last good one (only the declared nodes' contracts). An
+        unreachable one falls back to that copy while it is within the overlay's staleness bound, and the
+        note names its age; with no copy, or an older one, the unreachable error stands. A manifest that
+        arrived and cannot be read never falls back: that is not an endpoint that is down.
+        """
+        try:
+            if request.fault is EnumLabAlarmFault.MANIFEST_DOWN:
+                raise ManifestUnreachableError(
+                    "manifest fetch failed (injected manifest-down)"
+                )
+            manifest = self._manifest.read()
+        except ManifestUnreachableError as exc:
+            return self._last_good(str(exc))
+        if (
+            self._manifest_cache is not None
+            and request.write
+            and request.fault is EnumLabAlarmFault.NONE
+        ):
+            self._manifest_cache.save(
+                _declared_contracts(manifest, nodes), self._clock()
+            )
+        return manifest, ()
+
+    def _last_good(self, why: str) -> tuple[Mapping[str, Any], tuple[str, ...]]:
+        resilience = self._overlay.manifest.resilience
+        if self._manifest_cache is None or resilience is None:
+            raise ManifestUnreachableError(why)
+        cached = self._manifest_cache.load()
+        if cached is None:
+            raise ManifestUnreachableError(f"{why}; no last good manifest is kept")
+        manifest, fetched_at = cached
+        age = max(0, int((self._clock() - fetched_at).total_seconds()))
+        if age > resilience.max_stale_seconds:
+            raise ManifestUnreachableError(
+                f"{why}; the last good manifest is {age}s old, over the {resilience.max_stale_seconds}s bound"
+            )
+        return manifest, (
+            f"manifest-stale:group names from the last good manifest, {age}s old ({why})",
         )
 
     def _read_all(
@@ -266,6 +340,7 @@ class HandlerBrokerLag:
         unreadable: list[str],
         previous: dict[str, int] | None,
         drill: bool,
+        notes: tuple[str, ...] = (),
     ) -> ModelBrokerLagResult:
         if unreadable:
             return self._result(
@@ -279,6 +354,7 @@ class HandlerBrokerLag:
                 previous,
                 drill,
                 "an unreadable group is not a group at zero",
+                notes,
             )
         never = tuple(
             f"{r.group}: {r.detail}"
@@ -297,6 +373,7 @@ class HandlerBrokerLag:
                 previous,
                 drill,
                 "no previous sample, so growth could not be evaluated; this run is the baseline",
+                notes,
             )
         alarms: list[str] = []
         for reading in readings:
@@ -320,6 +397,7 @@ class HandlerBrokerLag:
             previous,
             drill,
             "growth across two consecutive samples, and only growth; a high flat lag is not an alarm",
+            notes,
         )
 
     def _indeterminate(
@@ -340,6 +418,32 @@ class HandlerBrokerLag:
             reasons=reasons,
             sample_kept=False,
             evidence="the watched groups could not be derived from the running image's contracts, so no lag was sampled; an alarm that cannot name its subjects has not read zero lag",
+            failure="indeterminate:" + ";".join(reasons),
+        )
+        return self._record(request, result)
+
+    def _unreachable(
+        self,
+        request: ModelBrokerLagCommand,
+        why: str,
+        previous: dict[str, int] | None,
+    ) -> ModelBrokerLagResult:
+        """The manifest endpoint did not answer and no usable last good copy exists.
+
+        Still INDETERMINATE, never OK and never muted, but named for what it is: no lag was read, and
+        nothing here says the lag is high or low. The previous sample is left as it was.
+        """
+        reasons = (f"manifest-unreachable:{why}; lag was not read",)
+        result = ModelBrokerLagResult(
+            correlation_id=request.correlation_id,
+            outcome=EnumBrokerLagOutcome.INDETERMINATE,
+            fault=request.fault,
+            declared_groups=(),
+            readings=(),
+            alarms=(),
+            reasons=reasons,
+            sample_kept=False,
+            evidence="the manifest endpoint did not answer, so the group names and the lag were not read; this is the reader's reading, not a lag figure",
             failure="indeterminate:" + ";".join(reasons),
         )
         return self._record(request, result)
@@ -392,6 +496,7 @@ class HandlerBrokerLag:
         previous: dict[str, int] | None,
         drill: bool,
         rule: str,
+        notes: tuple[str, ...] = (),
     ) -> ModelBrokerLagResult:
         # A drill never moves the baseline, and a pass that could not read every group keeps none.
         keep = (
@@ -405,7 +510,7 @@ class HandlerBrokerLag:
         if outcome is EnumBrokerLagOutcome.ALARM:
             failure = "alarm:" + ";".join(alarms)
         elif outcome is EnumBrokerLagOutcome.INDETERMINATE:
-            failure = "indeterminate:" + ";".join(reasons)
+            failure = "indeterminate:" + ";".join((*notes, *reasons))
         result = ModelBrokerLagResult(
             correlation_id=request.correlation_id,
             outcome=outcome,
@@ -413,9 +518,10 @@ class HandlerBrokerLag:
             declared_groups=tuple(groups),
             readings=tuple(readings),
             alarms=alarms,
-            reasons=reasons,
+            reasons=(*notes, *reasons),
             sample_kept=keep,
-            evidence=f"{len(groups)} groups derived, {len(sample)} read; {rule}",
+            evidence=(f"{notes[0]}; " if notes else "")
+            + f"{len(groups)} groups derived, {len(sample)} read; {rule}",
             failure=failure,
         )
         return self._record(request, result)
