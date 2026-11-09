@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..host_table import HostTableError, read_host_aliases
+from .model_closer_liveness_options import ModelCloserLivenessOptions
 from .model_drainer_watch_options import ModelDrainerWatchOptions
 from .model_quiet_host_repair import ModelHostDrainerCommand
 
@@ -122,6 +123,9 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # Exit codes a job declares as its own finding, by label (OMN-19998): a floor job exiting 1 for
     # floors under is working, so its episode briefs a lane to act on the finding, not the job.
     job_finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
+    # The ticket closer's staleness check (OMN-20718). None means this caller configured none,
+    # which the tick reports as UNCONFIGURED and never treats as a pass.
+    closer: ModelCloserLivenessOptions | None = None
     bash: str = "bash"
     python: str = Field(default_factory=lambda: sys.executable)
 

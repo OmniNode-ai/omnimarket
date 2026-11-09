@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_judge import (
     judge_row,
 )
@@ -26,7 +27,7 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_
 
 pytestmark = pytest.mark.unit
 
-LEDGER = "ROLLING_WORK_LEDGER.md"
+LEDGER = next(iter(GOVERNED_LEDGER_NAMES))
 HOLD = "2026-09-28T10:10:00Z | HOLD | lane=beta | id=2026-09-28T10:10:00Z-beta | surface=lab-dev | until=2026-09-28T12:00:00Z | reserved"
 HOLD_OTHER_LANE = "2026-09-28T10:20:00Z | HOLD | lane=gamma | id=2026-09-28T10:20:00Z-gamma | surface=lab-dev | until=2026-09-28T12:00:00Z | reserved too"
 HOLD_REUSED_ID = "2026-09-28T10:30:00Z | HOLD | lane=beta | id=2026-09-28T10:10:00Z-beta | surface=lab-x | until=2026-09-28T12:00:00Z | again"

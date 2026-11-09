@@ -33,10 +33,13 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 RECORDED = json.loads(
     (FIXTURES / "recorded_day_unit_output.json").read_text(encoding="utf-8")
 )
-SOURCE_FILES = {
-    "ROLLING_WORK_LEDGER.md": "recorded_day_ledger.md",
-    "archive/ROLLING_WORK_LEDGER_2026-11-06-split.md": "recorded_day_archive_split.md",
-}
+SOURCE_FILES = dict(
+    zip(
+        RECORDED["request"]["source_displays"],
+        ("recorded_day_ledger.md", "recorded_day_archive_split.md"),
+        strict=True,
+    )
+)
 HANDLER = HandlerFrictionRollup()
 
 
