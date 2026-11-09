@@ -9,6 +9,7 @@ every dump, so a result written as JSON names labels and fingerprints only.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -44,6 +45,11 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     label: str | None = None
     marks: tuple[ModelRotationMark, ...] = ()
     labels: tuple[str, ...] = ()
+    #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
+    #: instant is newer than the snapshot and is kept; unset, the marks are authoritative.
+    marks_at: datetime | None = None
+    #: Decide on the pool as the operation would leave it, and write neither the pool nor the status mirror.
+    dry_run: bool = False
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
     force: bool = False

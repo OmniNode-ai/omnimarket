@@ -41,12 +41,16 @@ class EnumRepositoryVisibility(StrEnum):
 
 
 class ModelGroupRunner(BaseModel):
-    """One runner of a group, by name and labels."""
+    """One runner of a group, by name, labels and whether the organization lists it online.
+
+    ``online`` is None when the read did not carry the runner's status; that reads UNKNOWN for a subject that needs it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(min_length=1)
     labels: tuple[str, ...] = ()
+    online: bool | None = None
 
 
 class ModelGroupFact(BaseModel):
@@ -88,6 +92,29 @@ class ModelCanaryFacts(BaseModel):
     runs: tuple[ModelCanaryRun, ...] = ()
 
 
+class ModelMergeGroupJobFact(BaseModel):
+    """One completed merge-group job read from a run record: its repository, its result and the runner that ran it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_id: int
+    repository: str = Field(min_length=1)
+    repository_visibility: EnumRepositoryVisibility
+    conclusion: str = Field(min_length=1)
+    runner_name: str | None = None
+    runner_group_id: int | None = None
+
+
+class ModelPrivateQueueSettings(BaseModel):
+    """The overlay's private merge-queue pool: the group's name, its runners' name prefix and how many must be online."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    group_name: str = Field(min_length=1)
+    runner_name_prefix: str = Field(min_length=1)
+    expected_online_members: int = Field(gt=0)
+
+
 class ModelRunnerGroupReadingSettings(BaseModel):
     """The overlay's settings; no default here is a policy."""
 
@@ -95,6 +122,7 @@ class ModelRunnerGroupReadingSettings(BaseModel):
 
     lab_runner_labels: tuple[str, ...] = Field(min_length=1)
     max_age_seconds: int = Field(gt=0)
+    private_queue: ModelPrivateQueueSettings | None = None
 
 
 class ModelRunnerGroupReadingRequest(BaseModel):
@@ -109,6 +137,7 @@ class ModelRunnerGroupReadingRequest(BaseModel):
     groups: tuple[ModelGroupFact, ...] = ()
     repositories: tuple[ModelRepositoryFact, ...] = ()
     canary: ModelCanaryFacts | None = None
+    merge_group_jobs: tuple[ModelMergeGroupJobFact, ...] | None = None
     read_failure: EnumGroupReadFailure | None = None
 
 
