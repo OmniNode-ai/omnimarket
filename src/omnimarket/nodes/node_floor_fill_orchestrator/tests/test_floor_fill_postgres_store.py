@@ -21,6 +21,9 @@ from urllib.parse import quote
 import pytest
 from pydantic import SecretStr
 
+from omnimarket.handlers.floor_fill_state_store_postgres import (
+    PostgresFloorStateStore,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EnumFloorFillCommand,
     EnumFloorFillStatus,
@@ -33,9 +36,6 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
     ScriptedStarter,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.store_postgres import (
-    PostgresFloorStateStore,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
     OVERLAY,
