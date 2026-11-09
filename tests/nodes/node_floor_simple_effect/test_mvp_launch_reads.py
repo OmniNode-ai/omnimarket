@@ -3,8 +3,7 @@
 """The MVP launch block's scheduled read and its command route (OMN-23205, plan task M1).
 
 Golden: the publish step's read lists each producer workflow's scheduled runs through the source-control node once, keeps them in a
-record, and the floor cycle, reading through the real command route (a subprocess answering from that record and the launch candidate
-manifest), draws the readings the record supports. Error: a workflow the source-control node could not list, a read older than its
+record, and the floor cycle, reading that record and the launch candidate manifest file, draws the readings the record supports. Error: a workflow the source-control node could not list, a read older than its
 bound, a missing record, a missing candidate manifest and an overlay that cannot be read each draw the reading NOT WORKING with the
 reason, never WORKING. The named break (the read drops the conclusion) turns the golden test red.
 """
@@ -12,9 +11,8 @@ reason, never WORKING. The named break (the read drops the conclusion) turns the
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -42,7 +40,6 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_reads import 
     refresh,
 )
 from omnimarket.nodes.node_floor_simple_effect.runtime_floor_simple import (
-    run_mvp_answer,
     run_mvp_reads,
 )
 from tests.nodes.node_floor_simple_effect.mvp_support import CANDIDATE, MVP_NOW
@@ -52,7 +49,7 @@ pytestmark = pytest.mark.unit
 
 RT = load_runtime().mvp_launch
 FLOOR = ".claude_scratch/factory-floor/floor-simple.json"
-REAL_NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+REAL_NOW = MVP_NOW
 # The shape of the overlay the floor reads on the lab (the overlays repository's node_product_floor_verdict_compute_mvp_launch), with the
 # estate's repository names replaced.
 OVERLAY_FILE = Path(__file__).parent / "fixtures" / "mvp_launch" / "overlay.yaml"
@@ -121,15 +118,10 @@ def write_candidate(home: Path) -> None:
 
 
 def tick(home: Path) -> ModelMvpLaunchBlock:
-    """One floor cycle reading through the real command route: a subprocess answering from the record."""
+    """One floor cycle reading through the deployed source: the record the scheduled read keeps and the candidate manifest file."""
     overlay = home.parent / "mvp-overlay.yaml"
     overlay.write_text(yaml.safe_dump(ungraded_overlay()), encoding="utf-8")
-    command = f"{sys.executable} -m omnimarket.nodes.node_floor_simple_effect --home {home} --mvp-answer"
-    env = {
-        **environ(home),
-        "ONEX_MVP_LAUNCH_OVERLAY": str(overlay),
-        RT.command_env: command,
-    }
+    env = {**environ(home), "ONEX_MVP_LAUNCH_OVERLAY": str(overlay)}
     state = {"n": 0}
 
     def clock() -> datetime:
@@ -152,12 +144,12 @@ def reading(block: ModelMvpLaunchBlock, item_id: str) -> tuple[str, str]:
     return found.state, found.reason
 
 
-def test_golden_the_scheduled_read_feeds_the_floor_through_the_command_route(
+def test_golden_the_scheduled_read_feeds_the_floor_through_the_record(
     tmp_path: Path,
 ) -> None:
     home = build_home(tmp_path)
     runner = Runner()
-    refreshed(home, runner, datetime.now(UTC))
+    refreshed(home, runner, MVP_NOW)
     write_candidate(home)
     sources = declared_sources(overlay_model())
     assert sorted(w for w, _ in runner.calls) == sorted(
@@ -244,7 +236,7 @@ def test_error_a_workflow_the_source_control_node_could_not_list_is_not_working_
     failing = overlay_model().readings[0].source
     assert failing is not None
     runner = Runner({failing.workflow: (1, "", "HTTP 404 Not Found")})
-    refreshed(home, runner, datetime.now(UTC))
+    refreshed(home, runner, MVP_NOW)
     write_candidate(home)
     block = tick(home)
     named = next(r for r in block.readings if r.id == "C11")
@@ -262,7 +254,7 @@ def test_error_a_run_list_that_failed_carries_the_gateways_reason(
     )
     spec = overlay_model().readings[0].source
     assert spec is not None
-    refreshed(home, Runner({spec.workflow: (0, failed, "")}), datetime.now(UTC))
+    refreshed(home, Runner({spec.workflow: (0, failed, "")}), MVP_NOW)
     write_candidate(home)
     named = next(r for r in tick(home).readings if r.id == "C11")
     assert named.state == "NOT WORKING"
@@ -276,7 +268,7 @@ def test_error_a_read_older_than_its_bound_is_stale_never_current(
     refreshed(
         home,
         Runner(),
-        datetime.now(UTC) - timedelta(seconds=RT.reads_max_age_seconds + 60),
+        MVP_NOW - timedelta(seconds=RT.reads_max_age_seconds + 60),
     )
     write_candidate(home)
     block = tick(home)
@@ -310,14 +302,42 @@ def test_error_a_malformed_candidate_manifest_is_unreadable_not_empty(
     assert got == {"error": "candidate-manifest-malformed"}
 
 
-def test_error_an_unknown_query_and_a_request_that_is_not_json_answer_with_a_reason(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_error_an_unknown_query_answers_with_a_reason(tmp_path: Path) -> None:
+    home = build_home(tmp_path)
+    got = answer(
+        {"query": "nope"},
+        reads_path=home / RT.reads_relpath,
+        candidate_path=home / RT.candidate_relpath,
+        reads_max_age_seconds=RT.reads_max_age_seconds,
+        now=REAL_NOW,
+    )
+    assert got == {"error": "unknown-query:nope"}
+
+
+def test_a_command_named_by_the_environment_replaces_the_record_as_the_source(
+    tmp_path: Path,
 ) -> None:
     home = build_home(tmp_path)
-    assert run_mvp_answer(str(home), {}, "not json") == 0
-    assert json.loads(capsys.readouterr().out) == {"error": "request-not-an-object"}
-    assert run_mvp_answer(str(home), {}, json.dumps({"query": "nope"})) == 0
-    assert json.loads(capsys.readouterr().out) == {"error": "unknown-query:nope"}
+    env = {
+        **environ(home),
+        "ONEX_MVP_LAUNCH_OVERLAY": str(home.parent / "ov.yaml"),
+        RT.command_env: "/nonexistent/command",
+    }
+    (home.parent / "ov.yaml").write_text(
+        yaml.safe_dump(ungraded_overlay()), encoding="utf-8"
+    )
+    handler = HandlerFloorSimpleTick(
+        sink=InMemoryEmissionSink(),
+        clock=lambda: MVP_NOW,
+        served_alarm_ids=lambda: None,
+    )
+    assert handler.run(ModelFloorSimpleTickRequest(home=str(home)), environ=env).ok
+    doc = ModelFloorSimple.model_validate_json(
+        (home / FLOOR).read_text(encoding="utf-8")
+    )
+    assert doc.mvp_launch is not None
+    c11 = next(r for r in doc.mvp_launch.readings if r.id == "C11")
+    assert c11.detail.startswith("read-command-failed")
 
 
 def test_error_an_overlay_that_cannot_be_read_reads_nothing_and_exits_refused(
@@ -342,7 +362,7 @@ def test_injected_break_the_read_drops_the_conclusion_and_turns_the_golden_readi
     """The named break ``read-drops-conclusion``: a failed latest run is recorded as a success, so the floor reads it WORKING."""
     failing = Runner({w: (0, run_list_answer("failure"), "") for w in _workflows()})
     home = build_home(tmp_path / "honest")
-    refreshed(home, failing, datetime.now(UTC))
+    refreshed(home, failing, MVP_NOW)
     write_candidate(home)
     assert reading(tick(home), "C11") == ("NOT WORKING", "failure")
 
@@ -353,7 +373,7 @@ def test_injected_break_the_read_drops_the_conclusion_and_turns_the_golden_readi
 
     monkeypatch.setattr(mvp_launch_reads, "_run_from", conclusion_dropped)
     home = build_home(tmp_path / "broken")
-    refreshed(home, failing, datetime.now(UTC))
+    refreshed(home, failing, MVP_NOW)
     write_candidate(home)
     assert reading(tick(home), "C11") == ("WORKING", "ok")
 

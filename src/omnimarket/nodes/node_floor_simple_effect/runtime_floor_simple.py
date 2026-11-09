@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The command line of the 17a cycle: ``--home`` for the registry home, ``--drill-error`` for the defined fault, ``--drill-offline SOURCE`` for a planted offline source,
 ``--check-overlays ROOT`` to load the three overlays from a root and say which is invalid (exit 1), ``--mvp-reads`` to
-refresh the MVP launch block's scheduled read (a step of the floor publish) and ``--mvp-answer`` to answer one of the block's source
-requests from stdin (the command the block's source port runs)."""
+refresh the MVP launch block's scheduled read of its producers' runs (a step of the floor publish)."""
 
 from __future__ import annotations
 
@@ -32,7 +31,6 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tic
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_reads import (
     CommandRunner,
-    answer,
     refresh,
 )
 
@@ -94,40 +92,6 @@ def run_mvp_reads(
     return 0
 
 
-def run_mvp_answer(
-    home_arg: str | None,
-    env: Mapping[str, str],
-    request_text: str,
-    now: datetime | None = None,
-) -> int:
-    """Answer one source request of the MVP launch block from the record; the answer carries its own reason when it cannot be had."""
-    rt = load_runtime().mvp_launch
-    home = _home(home_arg, env)
-    if home is None:
-        sys.stdout.write(json.dumps({"error": "no-registry-home"}) + "\n")
-        return 0
-    try:
-        request = json.loads(request_text)
-    except ValueError:
-        request = None
-    if not isinstance(request, dict):
-        sys.stdout.write(json.dumps({"error": "request-not-an-object"}) + "\n")
-        return 0
-    sys.stdout.write(
-        json.dumps(
-            answer(
-                request,
-                reads_path=home / rt.reads_relpath,
-                candidate_path=home / rt.candidate_relpath,
-                reads_max_age_seconds=rt.reads_max_age_seconds,
-                now=now or datetime.now(UTC),
-            )
-        )
-        + "\n"
-    )
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="floor_simple")
     ap.add_argument("--home", "--omni-home", dest="home", help="the registry home")
@@ -163,16 +127,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="refresh the MVP launch block's scheduled read of its producers' runs and exit",
     )
-    ap.add_argument(
-        "--mvp-answer",
-        action="store_true",
-        help="answer one MVP launch source request (JSON on stdin) from the record and exit",
-    )
     args = ap.parse_args(argv)
     if args.mvp_reads:
         return run_mvp_reads(args.home, os.environ)
-    if args.mvp_answer:
-        return run_mvp_answer(args.home, os.environ, sys.stdin.read())
     if args.check_overlays:
         try:
             for line in check_overlays(Path(args.check_overlays)):
