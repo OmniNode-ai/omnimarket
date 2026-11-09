@@ -1284,3 +1284,17 @@ def test_lifecycle_controls_the_real_onex_without_its_load_line_fails_blind_imag
     assert broken.lifecycle_controls == "failed"
     assert "recorder-blind-image" in broken.failed_reasons
     assert _tree(broken, "onex").verdict is EnumReadingVerdict.NOT_WORKING
+
+
+def test_lifecycle_controls_the_contract_declares_one_graded_terminal_topic() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["success"]
+        == "onex.evt.omnimarket.walk-lifecycle-controls-graded.v1"
+    )
+    assert (
+        contract["terminal_event"]
+        == contract["runtime_dispatch"]["terminal_events"]["success"]
+    )
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
