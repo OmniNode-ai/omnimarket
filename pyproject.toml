@@ -649,6 +649,7 @@ node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_comp
 node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
 node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_compute"
 node_floor_compare_effect = "omnimarket.nodes.node_floor_compare_effect"
+node_floor_delegation_effect = "omnimarket.nodes.node_floor_delegation_effect"
 node_floor_emission_compute = "omnimarket.nodes.node_floor_emission_compute"
 node_floor_fill_candidates_compute = "omnimarket.nodes.node_floor_fill_candidates_compute"
 node_floor_fill_lines_compute = "omnimarket.nodes.node_floor_fill_lines_compute"
