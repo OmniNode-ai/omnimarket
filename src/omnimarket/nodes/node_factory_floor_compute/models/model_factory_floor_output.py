@@ -334,6 +334,8 @@ class ModelFloorLane(BaseModel):
     liveness_detail: str = "no process reading was supplied"
     # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell), "" when the CLAIM names none.
+    parent_ticket: str = ""
 
 
 class ModelFloorLamp(BaseModel):

@@ -9,12 +9,14 @@ Error: every way the file or the history cannot be read is an unread cause, neve
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.models.model_runtime_host_reads import (
     ModelRuntimeHostReadOverlay,
@@ -213,3 +215,158 @@ def test_golden_the_shipped_overlay_shape_builds_a_source(tmp_path: Path) -> Non
     )
     assert cause == ""
     assert built is not None
+
+
+# --- A running commit the reader's own clone never fetched (OMN-23031) -------------------------------------------------
+#
+# The pair that was read as "merged, not running" for 2773 minutes: both merges were ancestors of the running revision, but
+# that revision was installed from a branch, so the floor host's clone had never fetched it and `git rev-list` exited 128.
+# Replayed here with real git: the reader's clone holds the two merges and not the running commit; the runtime host's clone
+# holds the running commit on top of them.
+
+
+def _git(repo: Path, *args: str) -> str:
+    done = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "-C",
+            str(repo),
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    return done.stdout.strip()
+
+
+class Pair:
+    """Two clones of one history: the reader's stops at the second merge, the runtime host's runs on past it."""
+
+    def __init__(self, root: Path) -> None:
+        self.reader_home = root / "reader"
+        self.host_home = root / "host"
+        reader = self.reader_home / "omnibase_infra"
+        reader.mkdir(parents=True)
+        _git(reader, "init", "-q", "-b", "dev")
+        self.merge_a = self._commit(reader, "first merge")
+        self.merge_b = self._commit(reader, "second merge")
+        host = self.host_home / "omnibase_infra"
+        self.host_home.mkdir()
+        subprocess.run(
+            ["git", "clone", "-q", str(reader), str(host)],
+            check=True,
+            capture_output=True,
+            env=scrub_git_location_env(os.environ),
+        )
+        _git(host, "checkout", "-q", "-b", "branch-install")
+        self.running = self._commit(host, "branch commit, never merged")
+        self.unmerged = self._commit(reader, "a later merge the build lacks")
+
+    @staticmethod
+    def _commit(repo: Path, message: str) -> str:
+        _git(repo, "commit", "-q", "--allow-empty", "-m", message)
+        return _git(repo, "rev-parse", "HEAD")
+
+
+def _pair_source(
+    pair: Pair,
+    *,
+    runtime_clone_home: str | None,
+    ref: str | None = None,
+    seen: list[str] | None = None,
+) -> SourceDeployedProvenance:
+    document = {"infra_vcs_ref": pair.running if ref is None else ref}
+
+    def run(
+        argv: Sequence[str], stdin: bytes | None, timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
+        script = (stdin or b"").decode()
+        if seen is not None:
+            seen.append(script)
+        if "rev-list" not in script:
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps(document).encode(), b""
+            )
+        return subprocess.run(
+            ["bash", "-s"],
+            input=stdin,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            env=scrub_git_location_env(os.environ),
+        )
+
+    return SourceDeployedProvenance(
+        overlay=OVERLAY.model_copy(
+            update={
+                "runtime_clone_home": runtime_clone_home,
+                "repo_refs": OVERLAY.repo_refs[:1],
+            }
+        ),
+        labels=LABELS,
+        environ={"RUNTIME_SSH": "runtime-host"},
+        home=pair.reader_home,
+        now=NOW,
+        run=run,
+    )
+
+
+def _merges(pair: Pair) -> list[tuple[str, int, str]]:
+    return [
+        ("OmniNode-ai/omnibase_infra", 5663, pair.merge_a),
+        ("OmniNode-ai/omnibase_infra", 5674, pair.merge_b),
+        ("OmniNode-ai/omnibase_infra", 5708, pair.unmerged),
+    ]
+
+
+def test_golden_an_ancestor_of_a_running_commit_the_reader_never_fetched_is_running(
+    tmp_path: Path,
+) -> None:
+    pair = Pair(tmp_path)
+    with pytest.raises(subprocess.CalledProcessError):
+        _git(pair.reader_home / "omnibase_infra", "cat-file", "-e", pair.running)
+    read = _pair_source(pair, runtime_clone_home=str(pair.host_home)).read(
+        _merges(pair)
+    )
+    assert read.unread_cause == ""
+    assert {e.number for e in read.evidence} == {5663, 5674}
+    assert {e.merge_sha for e in read.evidence} == {pair.merge_a, pair.merge_b}
+
+
+def test_control_without_the_runtime_clone_home_the_pair_is_not_placed(
+    tmp_path: Path,
+) -> None:
+    """The break the golden test names: the reader as it was, with only its own clone, cannot place either merge."""
+    pair = Pair(tmp_path)
+    read = _pair_source(pair, runtime_clone_home=None).read(_merges(pair))
+    assert read.evidence == ()
+    assert "omnibase_infra: history of the deployed ref unreadable" in read.unread_cause
+
+
+def test_error_a_commit_neither_clone_holds_names_both_causes(tmp_path: Path) -> None:
+    pair = Pair(tmp_path)
+    read = _pair_source(
+        pair, runtime_clone_home=str(pair.host_home), ref="f" * 40
+    ).read(_merges(pair))
+    assert read.evidence == ()
+    assert "omnibase_infra: history of the deployed ref unreadable" in read.unread_cause
+    assert "on the runtime host" in read.unread_cause
+
+
+def test_error_a_ref_that_is_not_a_commit_id_never_reaches_the_runtime_host(
+    tmp_path: Path,
+) -> None:
+    pair = Pair(tmp_path)
+    seen: list[str] = []
+    read = _pair_source(
+        pair, runtime_clone_home=str(pair.host_home), ref="dev; touch /tmp/x", seen=seen
+    ).read(_merges(pair))
+    assert read.evidence == ()
+    assert "not a commit id" in read.unread_cause
+    assert not any("rev-list" in script for script in seen)
