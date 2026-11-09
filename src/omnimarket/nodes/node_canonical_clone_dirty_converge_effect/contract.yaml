@@ -84,3 +84,10 @@ dirty_converge:
   lane: canonical-clone-sync
   tracking_branches: [main, dev, master]
   max_listed: 8  # Paths and commits named in the ledger row; the rest are counted.
+  # OMN-22718: the deploy agent holds these mkdir locks from staging its siblings through its last image
+  # build (omnibase_infra deploy_agent.reconcile_host_lock): the registry root's and the host root's
+  # beside it. A clone it stages into reads as dirty, and an open pull request's build reads as detached;
+  # converging it mid-build put the tracked placeholder back and failed the second build on empty
+  # provenance. A tick leaves every clone alone while one of these is held and younger than the age below.
+  build_lock_dirs: [.onex-reconcile-host.lock, ../.onex-reconcile-host.lock]
+  build_lock_max_age_seconds: 3900  # Above the agent's 3600 s image build bound; an older lock is stale.
