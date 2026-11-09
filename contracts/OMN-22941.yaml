@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22941
+title: The gate core, the stop reducer's release predicate, the stop escalation effect and J6's stop drill
+summary: >-
+  The stop reducer no longer clears a stop on consecutive fixed readings alone: the clear transition is guarded by a release predicate that needs a go-and-see row and a WORKING reading, both dated after the stop and the reading also after the newest lease, and a clear produces a typed release record. node_stop_escalation_effect gives a stop not cleared after stale_after_hours exactly one escalation row and one alarm with a delivery receipt, and leaves it open. J6's integration test gains a stop drill that refuses a send above a stop on a test piece, which then clears or escalates. Not built here: the stop opener node, a durable row sink and an alarm channel adapter for the escalation effect, and a release of the gate store's stop fence when a stop clears.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22941-gate-core
+    statement: >-
+      A stop clears only with a go-and-see row and a WORKING reading, an uncleared stale stop is escalated once, and J6's drill shows both.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a stop clears only with a go-and-see row and a WORKING reading dated after the stop and the last lease, and two fixed readings alone leave it open -- falsifier: uv run pytest src/omnimarket/nodes/node_andon_stop_reducer -q -k release_predicate"
+      - id: AC2
+        statement: "AC2: a stop not cleared after stale_after_hours gets exactly one escalation row and an alarm with a delivery receipt and stays open -- falsifier: uv run pytest src/omnimarket/nodes/node_stop_escalation_effect -q -k escalate_once"
+      - id: AC3
+        statement: "AC3: J6's drill refuses a send above a stop on a test piece, which then clears or escalates -- falsifier: uv run pytest tests/integration/test_join_j6.py -q -k stop_drill"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The release predicate tests, the escalation tests, the J6 drill and the reducer and queue suites the contract change touches.
+    command: uv run --frozen pytest src/omnimarket/nodes/node_andon_stop_reducer src/omnimarket/nodes/node_stop_escalation_effect tests/integration/test_join_j6.py tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22941-ac1-release-predicate
+    description: >-
+      Two or more fixed readings with no go-and-see row leave the stop in fixed with the reason go_and_see_missing; each missing or stale part (no row, an empty row, a row before the stop, no reading, a reading that is not WORKING, a reading before the stop, a reading before the newest lease) holds the stop open; a go-and-see row with a WORKING reading dated after the stop and the lease clears it and returns a typed release record. Before this change the same readings cleared the stop.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_andon_stop_reducer -q -n 0 --no-cov -k release_predicate
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22941-ac2-escalate-once
+    description: >-
+      A stop open at stale_after_hours gets one escalation row and one alarm whose delivery receipt is on the row; judged again it writes nothing; a stop one second younger, and a stop already cleared or declared false, get nothing; a failed alarm keeps the row and a replay delivers without a second row; the stop is returned unchanged.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_stop_escalation_effect -q -n 0 --no-cov -k escalate_once
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22941-ac3-j6-stop-drill
+    description: >-
+      On the J6 rig, a send above a stop on the test piece is refused by the gate store fence and the stop gate while another piece stays sendable; the stop then clears on a go-and-see row and a WORKING reading, or, with fixed readings alone, stays open and escalates once with the send still refused.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/integration/test_join_j6.py -q -n 0 --no-cov -k stop_drill
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn22941-node-import
+    description: >-
+      The new node's contract and handler import and the reducer's changed contract loads through core's state machine validation, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn22941-integration-proof
+    description: >-
+      The pushed head ran the release predicate, escalation and J6 drill tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22941-20261109T0227Z -- uv run --frozen pytest src/omnimarket/nodes/node_andon_stop_reducer src/omnimarket/nodes/node_stop_escalation_effect tests/integration/test_join_j6.py -q -n 0 --no-cov
+        cwd: .
