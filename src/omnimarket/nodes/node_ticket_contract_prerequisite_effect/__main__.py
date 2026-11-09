@@ -5,11 +5,11 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.container.container_ticket_contract_prerequisite_effect import (
     create_handler_ticket_contract_prerequisite,
+    default_head,
 )
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
     ModelTicketContractPrerequisiteRequest,
@@ -18,7 +18,7 @@ from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_tick
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--head", default=os.environ.get("PRE_COMMIT_TO_REF") or "HEAD")
+    parser.add_argument("--head", default=default_head())
     parser.add_argument("--base", default="origin/dev")
     parser.add_argument("--title")
     args = parser.parse_args()
