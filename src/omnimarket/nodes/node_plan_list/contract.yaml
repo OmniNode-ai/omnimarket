@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePlanList
+#
+# GET /v1/plans, moved from the hosted onex-api into the runtime. The plan
+# catalog is anonymous and global: every plan tier joined to its entitlements.
+name: "node_plan_list"
+contract_name: "node_plan_list"
+node_name: "node_plan_list"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+# Experimental until the T18e cutover: the route is served by the runtime mount only
+# and declares no bus topics, so the node-liveness gate needs the lifecycle stated.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Serves GET /v1/plans from the runtime's HTTP port. Reads every plan tier left-joined to its entitlements through the plan catalog repository and answers the list of plans in catalog order, each with its entitlements. Anonymous: a presented credential is ignored. A failed catalog read answers 500 with detail "failed to list plans".
+input_model:
+  name: "ModelPlanListRequest"
+  module: "omnimarket.nodes.node_plan_list.models"
+  description: "GET /v1/plans carries no input."
+config:
+  database:
+    # Logical secret name resolved by the runtime secret resolver; the address
+    # itself is never in this file or in the process environment.
+    dsn_secret: "catalog.database.dsn"
+    pool_max_size: 4
+    query_timeout_seconds: 10
+# Runtime-owned HTTP boundary. The narrowest prefix, equal to the route path.
+http_mount:
+  factory: "omnimarket.nodes.node_plan_list.handlers.http_app:create_app"
+  path_prefix: "/v1/plans"
+http_route:
+  method: GET
+  path: "/v1/plans"
+  contract_id: "node_plan_list:1.0.0"
+  authorization: anonymous
+  input_schema:
+    type: object
+    properties: {}
+    additionalProperties: true
+  handler:
+    name: HandlerPlanList
+    module: omnimarket.nodes.node_plan_list.handlers.handler_plan_list
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves the logical name catalog.database.dsn for the Postgres binding of the plan catalog repository. Absent means every catalog read answers 500."
+    required: false
+capabilities:
+  - name: "plan_catalog_http_read"
+    description: "Serve the anonymous plan catalog read on the runtime's port."
+metadata:
+  description: "GET /v1/plans from the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22337"
+  tags:
+    - "effect"
+    - "http"
+    - "catalog"
