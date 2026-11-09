@@ -170,7 +170,18 @@ def _overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         encoding="utf-8",
     )
     overlay = tmp_path / "overlay.yaml"
-    overlay.write_text(yaml.safe_dump({"plan_path_contains": [LINE]}), encoding="utf-8")
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "plan_path_contains": [LINE],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv(runtime.overlay_file_env, str(overlay))
     ledger = tmp_path / "ledger.txt"
     ledger.write_text(LEDGER + "\n", encoding="utf-8")
