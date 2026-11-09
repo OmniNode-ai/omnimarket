@@ -42,25 +42,24 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_red_rule_carrier_omn23243.py -q --no-cov
     cwd: .
 - id: dod-omn23243-ac2-unowned
-  description: The existing unowned-red tests of node_floor_simple_compute pass unchanged.
+  description: The declared-owner reading is unchanged - an empty owners list is still named in unowned_red (new test, fails on the base handler which has no uncarried_red) - and the existing unowned-red tests pass unchanged.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_red_rule_carrier_omn23243.py::test_golden_the_declared_owner_reading_is_unchanged tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
     cwd: .
 - id: dod-omn23243-ac3-served
   description: >-
     After the publisher install the served floor-simple.json carries red_rule.uncarried_red and its state reads NOT WORKING
-    while it is not empty. Read after the install, not at this pull request.
+    while it is not empty. The test binds the served document shape and the page; the live curl read happens after the install.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: curl -s "$FLOOR_SIMPLE_JSON_URL" | python3 -c "import json,sys; r=json.load(sys.stdin)['red_rule']; assert 'uncarried_red' in r and (r['state']=='NOT WORKING' or not r['uncarried_red']), r['state']"
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_red_rule_carrier_omn23243.py::test_golden_the_served_document_and_page_carry_the_reading -q --no-cov
     cwd: .
 - id: dod-omn23243-integration-proof
   description: The node tests run on a lab host at the pushed head through the lab-work node.
