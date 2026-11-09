@@ -183,10 +183,6 @@ def build_lanes(
         claim = max(claims, key=_key)
         if any(r.kind == "TERMINAL" and r.ts >= claim.ts for r in rows):
             continue
-        newest = rows[-1]
-        silent = _minutes(now, newest.ts)
-        if silent > window:
-            continue
         statuses = [r for r in rows if r.kind == "STATUS" and r.ts >= claim.ts]
         status = max(statuses, key=_key) if statuses else None
         status_row = status or claim
@@ -199,6 +195,20 @@ def build_lanes(
             or (not claim.run_id and receipt.started_at < claim.ts)
         ):
             receipt = None
+        # A remote lane writes no ledger row between CLAIM and TERMINAL: its progress is the runner's streamed output.
+        # Output counts only for the claim's own unfinished run, and only moves the newest evidence forward; the bound is unchanged.
+        progress = rows[-1].ts
+        if (
+            receipt is not None
+            and receipt.output_at is not None
+            and not receipt.final
+            and receipt.ended_at is None
+            and receipt.output_at >= claim.ts
+        ):
+            progress = max(progress, receipt.output_at)
+        silent = _minutes(now, progress)
+        if silent > window:
+            continue
         liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
         detail = "no process reading was supplied"
         if receipt is not None:
@@ -325,6 +335,7 @@ def build_lanes(
                 liveness=liveness,
                 liveness_detail=detail,
                 owns=owned,
+                parent_ticket=claim.parent_tickets[0] if claim.parent_tickets else "",
             )
         )
     ordered = sorted(

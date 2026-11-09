@@ -58,9 +58,16 @@ _CONTENT = "### ANSWER\ndef test_verify_registration():\n    assert True"
 
 
 # OMN-22822: a request older than the completion bound is expired, not routed, so
-# the live request these replays feed the workflow is stamped when the module loads
-# (one value, so the captured and the replayed run still compare byte for byte).
+# the live request these replays feed the workflow is stamped when each test starts
+# (one value per test, so the captured and the replayed run still compare byte for
+# byte). A stamp taken at module load goes stale on a long split run.
 _EMITTED_AT = datetime.now(UTC)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_emitted_at() -> None:
+    global _EMITTED_AT
+    _EMITTED_AT = datetime.now(UTC)
 
 
 def _request() -> ModelDelegationRequest:

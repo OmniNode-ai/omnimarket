@@ -74,6 +74,8 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 </main>
 <script>
 "use strict";
+let pieceMeasures = {}, measuresFailure = "not read yet";
+const COMPARE_DATA = "floor-compare.json";
 const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000, TABS = ["process", "machines"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
@@ -94,6 +96,14 @@ async function load(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     doc = await r.json(); failure = "";
   } catch (e) { failure = String(e.message || e); }
+  // Each live piece against the old way (OMN-23081) is in the comparison record; a failed read leaves the panel saying so.
+  try {
+    const c = await fetch(COMPARE_DATA, {cache: "no-store"});
+    if (!c.ok) throw new Error("HTTP " + c.status);
+    const cd = await c.json();
+    pieceMeasures = {}; for (const pm of (cd.pieces || [])) pieceMeasures[pm.piece] = pm;
+    measuresFailure = "";
+  } catch (e) { measuresFailure = String(e.message || e); }
   draw();
 }
 // The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
@@ -107,6 +117,12 @@ function healthRow(hl){
   const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
   return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
 }
+// The warning a refresh failure or an expired record calls for; the open panel shows it too, since it sits over the page.
+function recordWarning(age, limit){
+  if (failure) return `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
+  if (age > limit) return `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  return "";
+}
 function draw(){
   const app = document.getElementById("app");
   if (!doc) { app.innerHTML = `<div class="frozen">The floor record cannot be read (${esc(failure)}). Nothing below can be trusted.</div><div class="more"><a href="detail.html">Details: lines, machines, shipping, delegation</a></div>`; return; }
@@ -115,8 +131,7 @@ function draw(){
   let h = "";
   tintIcon(failure || age > limit || !ICON_TINT[doc.level] ? "grey" : doc.level);
   document.title = (failure || age > limit ? "STALE " : "") + "Factory floor, record " + ago(age);
-  if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
-  else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  h += recordWarning(age, limit);
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
@@ -192,17 +207,31 @@ const panel = document.createElement("aside");
 panel.id = "ppanel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "ptitle"); panel.setAttribute("aria-hidden", "true");
 panel.innerHTML = `<div class="ph"><div><div class="pn" id="pnum"></div><h2 id="ptitle"></h2></div><button id="pclose" type="button" aria-label="Close the piece details">Close</button></div><div id="pbody"></div>`;
 document.body.append(tip, back, panel);
+// The window as configured, never rounded into another interval: whole days, else whole hours, else whole minutes, else seconds.
+function windowText(s){
+  const unit = (n, one, many) => n + " " + (n === 1 ? one : many);
+  if (!s) s = 86400;
+  if (s === 86400) return "24 hours";
+  if (s % 86400 === 0) return unit(s / 86400, "day", "days");
+  if (s % 3600 === 0) return unit(s / 3600, "hour", "hours");
+  if (s % 60 === 0) return unit(s / 60, "minute", "minutes");
+  return unit(s, "second", "seconds");
+}
+// A piece with an event on record, or a count above zero, has events even when it has not both a golden and an error one.
+const hasEvents = p => p.golden_age_s != null || p.error_age_s != null || (p.golden_in_window || 0) > 0 || (p.error_in_window || 0) > 0;
+function eventsSection(p){
+  const cnt = v => v == null ? "not read" : String(v);
+  return `<h3>Events in the last ${esc(windowText(p.window_s))}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`
+    + `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
+}
 function panelBody(p){
-  const w = whoIsOn(p), win = p.window_s ? Math.round(p.window_s / 3600) : 24;
-  const winText = win % 24 === 0 ? (win / 24 === 1 ? "24 hours" : win / 24 + " days") : win + " hours";
+  const w = whoIsOn(p);
   let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
   h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
-  if (p.status === "not_started") return h + `<h3>State</h3><p>Not started. It has no reading and no events yet.</p><h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+  if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
   h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
-  const cnt = v => v == null ? "not read" : String(v);
-  h += `<h3>Events in the last ${esc(winText)}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`;
-  h += `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
-  h += `<h3>Against the old way, 7 days</h3><p class="mute">The floor record carries no 7-day comparison for this piece yet.</p>`;
+  h += eventsSection(p);
+  h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
   h += `<h3>Who is on it</h3>`;
   h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
   h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
@@ -210,13 +239,31 @@ function panelBody(p){
   if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
   return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
 }
+// The piece's measure against its baseline over its first 7 days, and on day 7 the verdict (OMN-23081). Never inferred:
+// the words and numbers are the comparison record's own; a missing record or piece says so.
+const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
+const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
+const num = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+function measureSection(p){
+  const pm = pieceMeasures[p.piece];
+  if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
+  let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
+  h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
+  for (const m of pm.measures) {
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(num(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(num(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(num(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p class="mute">Source: ${esc(m.source)}</p>`;
+  }
+  return h;
+}
 const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
 function renderPanel(){
   const p = pieceOf(openPiece);
   if (!p) { hidePanel(); return; }
   document.getElementById("pnum").textContent = "Piece " + p.piece + " of " + doc.pieces.length;
   document.getElementById("ptitle").textContent = p.name;
-  document.getElementById("pbody").innerHTML = panelBody(p);
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  document.getElementById("pbody").innerHTML = recordWarning(age, doc.freshness_max_age_s || FALLBACK_MAX_AGE_S) + panelBody(p);
 }
 function showPanel(n){
   if (!pieceOf(n)) return;
