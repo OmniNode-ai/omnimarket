@@ -14,11 +14,9 @@ migration's own degraded values (empty, empty, false), as the migration document
 
 from __future__ import annotations
 
+import importlib
 from contextlib import closing
 from typing import Any
-
-import psycopg2  # type: ignore[import-untyped]
-from psycopg2 import sql
 
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_store_settings import (
     ModelFloorFillStoreSettings,
@@ -27,6 +25,10 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     FloorFillUnreadableError,
     ModelStateRead,
 )
+
+# psycopg2 ships no type stubs; load it as Any rather than suppress the import.
+psycopg2: Any = importlib.import_module("psycopg2")
+sql: Any = importlib.import_module("psycopg2.sql")
 
 
 class PostgresFloorStateStore:
@@ -45,7 +47,7 @@ class PostgresFloorStateStore:
         return connection
 
     @staticmethod
-    def _unreadable(error: psycopg2.Error) -> FloorFillUnreadableError:
+    def _unreadable(error: Exception) -> FloorFillUnreadableError:
         detail = (str(error).strip().splitlines() or [""])[0]
         return FloorFillUnreadableError(
             f"store-unreachable:{type(error).__name__}:{detail}"

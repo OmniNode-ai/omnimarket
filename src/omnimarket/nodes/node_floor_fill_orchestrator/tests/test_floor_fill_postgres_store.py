@@ -10,6 +10,7 @@ The unreachable-store tests need no database: they point the store at a port not
 
 from __future__ import annotations
 
+import importlib
 import os
 import threading
 import uuid
@@ -17,9 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 from urllib.parse import quote
 
-import psycopg2  # type: ignore[import-untyped]
 import pytest
-from psycopg2 import sql
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
@@ -44,6 +43,10 @@ from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
     SynchronizedSnapshot,
     harness,
 )
+
+# psycopg2 ships no type stubs; load it as Any rather than suppress the import.
+psycopg2: Any = importlib.import_module("psycopg2")
+sql: Any = importlib.import_module("psycopg2.sql")
 
 pytestmark = pytest.mark.integration
 
@@ -123,6 +126,7 @@ def schema_dsn() -> Iterator[tuple[str, str]]:
         admin = psycopg2.connect(dsn, connect_timeout=CONNECT_TIMEOUT_SECONDS)
     except psycopg2.OperationalError as error:
         pytest.skip(f"no reachable Postgres for the real floor_fill_state: {error}")
+        return
     admin.autocommit = True
     with admin.cursor() as cursor:
         cursor.execute(
