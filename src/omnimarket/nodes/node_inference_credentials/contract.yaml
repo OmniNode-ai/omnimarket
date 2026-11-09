@@ -6,9 +6,10 @@
 #
 # POST, GET and DELETE /v1/tenants/me/inference-credentials, moved from the hosted
 # onex-api (routers/inference_credentials.py, OMN-16405) into the runtime. Every route
-# is behind a tenant credential: the caller identity resolver is bound by DI and the
-# mount refuses every request before any read or write when it resolves no tenant or
-# none is bound. Writes call omnimarket's credential publisher; reads and the revoke
+# is behind a tenant credential: the caller identity resolver is bound by DI or, when
+# none is bound, built from this node's overlay (a bearer token verified against the
+# issuer's key set). The mount refuses every request before any read or write when it
+# resolves no tenant or no resolver is available. Writes call omnimarket's credential publisher; reads and the revoke
 # ownership check read the tenant_inference_credentials projection.
 name: "node_inference_credentials"
 contract_name: "node_inference_credentials"

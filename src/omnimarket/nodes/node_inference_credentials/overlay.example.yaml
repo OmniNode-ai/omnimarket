@@ -1,0 +1,13 @@
+# Synthetic values. A deployment's real overlay lives in the overlays repository at
+# node_inference_credentials/overlay.yaml and is found under ONEX_SKILL_OVERLAY_ROOTS.
+# Loaded into ModelEdgeIdentityOverlay; every field is required and has no default in code.
+jwks_url: https://issuer.invalid/realms/example/protocol/openid-connect/certs
+issuer: https://issuer.invalid/realms/example
+audience: example-audience
+algorithms:
+  - RS256
+tenant_id_claim: tenant_id
+tenant_slug_claim: tenant_slug
+principal_id_claim: principal_id
+jwks_cache_seconds: 300
+leeway_seconds: 0
