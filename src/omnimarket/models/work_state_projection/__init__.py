@@ -44,6 +44,7 @@ from omnimarket.models.work_state_projection.model_work_state_rules import (
     ModelWorkStateRules,
 )
 from omnimarket.models.work_state_projection.model_work_state_sources import (
+    ModelCommitmentSource,
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
@@ -59,6 +60,7 @@ __all__ = [
     "EnumWorkItemKind",
     "EnumWorkItemState",
     "EnumWorkStateSource",
+    "ModelCommitmentSource",
     "ModelCriterionPart",
     "ModelLaneReceiptSource",
     "ModelPlanParseRules",

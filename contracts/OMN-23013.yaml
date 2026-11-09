@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23013
+title: Every operator ask becomes a ledger commitment with a runnable acceptance check, and the work-state projection lists the open ones as work
+summary: An operator ask is recorded as a ledger commitment row (the ask verbatim, an owner, a runnable check argv) by node_commitment_ledger_compute; node_commitment_check_runner_effect runs each due commitment's check on a schedule and writes the reading that closes it (verified) or reopens it (regressed); the work-state projection reads the commitments as a source and lists every unfinished one as available, blocked or stopped work that the fill dispatches through ready().
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23013-commitments
+  statement: An ask recorded in session survives compaction as a ledger row with an owner and a runnable check, stays open until the check passes on the running system, reopens when the check later fails, and shows in the work-state projection as work.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an operator ask recorded in session becomes a ledger COMMITMENT row with the ask verbatim, an owner and a runnable acceptance check; it stays open until its check passes on the running system, and a check that later fails reopens it as regressed, with a failing control -- falsifier: uv run pytest of the commitment rows and their check runner'
+  - id: AC2
+    statement: 'AC2: the work-state projection lists every open commitment as a work item (available, blocked or stopped), so the fill dispatches it like any other ready work -- falsifier: uv run pytest of the projection''s commitment source plus a projection read showing an open commitment'
+evidence_requirements:
+- kind: tests
+  description: The commitment row, check runner, chain event, writer and projection commitment tests
+  command: uv run --frozen pytest tests/nodes/node_commitment_ledger_compute tests/nodes/node_commitment_writer_effect tests/nodes/node_commitment_check_runner_effect tests/nodes/node_work_state_projection_compute/test_work_state_commitments.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23013-ac1
+  description: The commitment row tests (the ask verbatim with pipes and quotes, owner and check required, the fold of open, verified and regressed), the check runner tests (verified on a passing check, open on a failing one, regressed on a later failure, an allowlist that refuses, a real subprocess exit code and timeout), the golden and error chain event tests, the real-backend command line tests and their injected-break twins pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_commitment_ledger_compute tests/nodes/node_commitment_writer_effect tests/nodes/node_commitment_check_runner_effect -q --no-cov
+    cwd: .
+- id: dod-omn23013-ac2
+  description: The projection tests pass, including the open commitment that reads available and appears in ready(), the blocked, stopped, verified and regressed commitments, the failing control that drops the commitment cell from the attribution cells, and the read of a nine day old ask through the effect.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_commitments.py -q --no-cov
+    cwd: .
+- id: dod-omn23013-integration-proof
+  description: Run the commitment node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23013 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_commitment_ledger_compute tests/nodes/node_commitment_writer_effect tests/nodes/node_commitment_check_runner_effect tests/nodes/node_work_state_projection_compute -q --no-cov
+    cwd: .
