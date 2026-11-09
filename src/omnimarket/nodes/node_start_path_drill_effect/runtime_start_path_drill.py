@@ -76,6 +76,7 @@ def build_handler(
             lane=overlay.publish.observe_lane,
             actor=overlay.publish.actor,
             host=host,
+            batch=True,
         )
     handler = HandlerStartPathDrill(
         overlay=overlay,

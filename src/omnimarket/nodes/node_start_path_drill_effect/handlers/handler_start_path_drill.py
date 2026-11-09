@@ -215,6 +215,14 @@ class HandlerStartPathDrill:
                     control_outcome=control.outcome.value,
                 )
             )
+        flush = getattr(self._log, "flush", None)
+        if callable(flush):
+            try:
+                flush()
+            except (
+                Exception
+            ):  # a log fault is counted below and never undoes the decision
+                log.raised += 1
         bypassed = [d.path for d in drilled if not d.planted_refused]
         control_refused = [d.path for d in drilled if not d.control_admitted]
         reasons: list[str] = []

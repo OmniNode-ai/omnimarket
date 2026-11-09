@@ -201,3 +201,26 @@ def test_start_path_drill_a_census_path_twice_is_refused_by_the_overlay() -> Non
     document["census"].append(document["census"][0])
     with pytest.raises(ValueError, match="twice"):
         type(example_overlay()).model_validate(document)
+
+
+def test_start_path_drill_a_batched_observe_log_sends_every_decision_in_one_append() -> (
+    None
+):
+    world = World(batch=True)
+    result = world.handler().handle(RUN)
+    assert result.verdict is EnumReadingVerdict.WORKING, result.reasons
+    assert len(world.log_ledger.lines) == 30
+    assert len(world.log_ledger.append_requests) == 1
+    assert result.log_written == 30
+
+
+def test_start_path_drill_break_a_batch_the_ledger_refuses_counts_every_row_failed() -> (
+    None
+):
+    world = World(batch=True)
+    world.break_observe_log_refuses_rows()
+    result = world.handler().handle(RUN)
+    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.log_failed == 30
+    assert "observe-log-append-failed-30" in result.reasons
+    assert world.log_ledger.lines == []

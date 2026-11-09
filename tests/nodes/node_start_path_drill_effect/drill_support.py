@@ -97,7 +97,8 @@ class RefusesEverythingStore:
 class World:
     """The drill's inputs, with one place per named break."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, batch: bool = False) -> None:
+        self.batch = batch
         self.overlay = example_overlay()
         self.declared = load_declared_paths()
         self.admission_paths: tuple[str, ...] = ()
@@ -132,6 +133,7 @@ class World:
             actor=self.overlay.publish.actor,
             host="example-lab-host",
             clock=lambda: NOW,
+            batch=self.batch,
         )
         return HandlerStartPathDrill(
             overlay=self.overlay,
