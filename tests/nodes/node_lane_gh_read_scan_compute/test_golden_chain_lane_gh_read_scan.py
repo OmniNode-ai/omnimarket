@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,10 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
     HandlerGhReadScan,
     answer_command,
+)
+from omnimarket.nodes.node_lane_gh_read_scan_compute.models.model_gh_read_scan import (
+    ModelGhReadScanRequest,
+    ModelGhReadScanResult,
 )
 
 pytestmark = pytest.mark.unit
@@ -59,7 +64,7 @@ async def publish(
         for topic, body in answer_command(message.value, handler):
             await bus.publish(topic, key=None, value=body)
 
-    def collector(topic: str):
+    def collector(topic: str) -> Callable[[Any], Awaitable[None]]:
         async def collect(message: Any) -> None:
             seen.append((topic, json.loads(message.value)))
             done.set()
@@ -115,7 +120,7 @@ def test_named_break_a_scanner_that_finds_nothing_turns_the_golden_assertion_red
     None
 ):
     class BlindScanner(HandlerGhReadScan):
-        def handle(self, request):  # type: ignore[no-untyped-def]
+        def handle(self, request: ModelGhReadScanRequest) -> ModelGhReadScanResult:
             result = super().handle(request)
             return result.model_copy(update={"findings": ()})
 

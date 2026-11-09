@@ -9,6 +9,8 @@ mirror that answers it; each refusal has a positive control (the same text namin
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 
 from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
@@ -60,12 +62,14 @@ ADMITTED = [
 ]
 
 
-def scan(text: str, kind: str = "prose") -> tuple[ModelGhReadFinding, ...]:
+def scan(
+    text: str, kind: Literal["prose", "code"] = "prose"
+) -> tuple[ModelGhReadFinding, ...]:
     return (
         HandlerGhReadScan()
         .handle(
             ModelGhReadScanRequest(
-                surfaces=(ModelGhReadSurface(path="x.md", text=text, kind=kind),)  # type: ignore[arg-type]
+                surfaces=(ModelGhReadSurface(path="x.md", text=text, kind=kind),)
             )
         )
         .findings
