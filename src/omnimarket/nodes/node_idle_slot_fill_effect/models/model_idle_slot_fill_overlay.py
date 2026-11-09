@@ -41,6 +41,20 @@ class ModelCloudBacklogOverlay(BaseModel):
     window_hours: float = 24
 
 
+class ModelBoardOverlay(BaseModel):
+    """Where the fill reads the board's work list (OMN-23184) and how old it may be: the ``idle_slot_fill_board`` overlay.
+
+    The floor's published document (``floor-simple.json``) holds one row per work class with every member and its owner state.
+    ``classes`` names the classes whose unowned members the fill takes first; ``floor_relpath`` is under the registry root.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    floor_relpath: str
+    max_age_s: int
+    classes: list[str]
+
+
 class ModelIdleSlotFillOverlay(BaseModel):
     """The ``idle_slot_fill`` overlay document; every field is optional so that an unset one refuses by name."""
 
