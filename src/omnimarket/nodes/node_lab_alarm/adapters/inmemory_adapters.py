@@ -5,27 +5,49 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
+    ModelEffectsGroupReading,
+    ModelEscalationBrief,
+)
 from omnimarket.nodes.node_lab_alarm.protocols import (
+    EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
+    LaneDispatchError,
+    ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
 )
 
 
 class InMemoryManifest:
-    """Serves one manifest payload, or refuses with ``unreadable``."""
+    """Serves one manifest payload, or refuses with ``unreadable`` or, as an endpoint that is down, ``unreachable``."""
 
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self.payload = payload
         self.unreadable: str | None = None
+        self.unreachable: str | None = None
 
     def read(self) -> Mapping[str, Any]:
+        if self.unreachable is not None:
+            raise ManifestUnreachableError(self.unreachable)
         if self.unreadable is not None:
             raise ManifestUnreadableError(self.unreadable)
         return self.payload
+
+
+class InMemoryManifestCache:
+    def __init__(self, entry: tuple[Mapping[str, Any], datetime] | None = None) -> None:
+        self.entry = entry
+
+    def load(self) -> tuple[Mapping[str, Any], datetime] | None:
+        return self.entry
+
+    def save(self, manifest: Mapping[str, Any], fetched_at: datetime) -> None:
+        self.entry = (dict(manifest), fetched_at)
 
 
 class InMemoryLag:
@@ -70,4 +92,50 @@ class InMemoryRunRecords:
         self.records.append(dict(record))
 
 
-__all__ = ["InMemoryLag", "InMemoryManifest", "InMemoryRunRecords", "InMemorySamples"]
+class InMemoryEffectsGroups:
+    """Serves the readings it holds, or refuses with ``unreadable``."""
+
+    def __init__(self, readings: tuple[ModelEffectsGroupReading, ...]) -> None:
+        self.readings = readings
+        self.unreadable: str | None = None
+
+    def read(self) -> tuple[ModelEffectsGroupReading, ...]:
+        if self.unreadable is not None:
+            raise EffectsGroupReadError(self.unreadable)
+        return self.readings
+
+
+class InMemoryHeldState:
+    def __init__(self, state: Mapping[str, str] | None = None) -> None:
+        self.state: dict[str, str] = dict(state or {})
+
+    def load(self) -> dict[str, str]:
+        return dict(self.state)
+
+    def save(self, state: Mapping[str, str]) -> None:
+        self.state = dict(state)
+
+
+class InMemoryDispatcher:
+    """Records every brief it is given instead of starting a lane; ``refuse`` makes it raise."""
+
+    def __init__(self) -> None:
+        self.briefs: list[ModelEscalationBrief] = []
+        self.refuse: str | None = None
+
+    def dispatch(self, brief: ModelEscalationBrief) -> None:
+        if self.refuse is not None:
+            raise LaneDispatchError(self.refuse)
+        self.briefs.append(brief)
+
+
+__all__ = [
+    "InMemoryDispatcher",
+    "InMemoryEffectsGroups",
+    "InMemoryHeldState",
+    "InMemoryLag",
+    "InMemoryManifest",
+    "InMemoryManifestCache",
+    "InMemoryRunRecords",
+    "InMemorySamples",
+]

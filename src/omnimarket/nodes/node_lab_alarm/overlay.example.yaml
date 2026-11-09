@@ -9,6 +9,13 @@ bus:
 manifest:
   url: http://example-host:8085/v1/introspection/manifest
   timeout_seconds: 10
+  # Optional. Absent: one attempt, no fallback. Present: retry a manifest that does not answer, then take the
+  # group names from the last good manifest while it is no older than max_stale_seconds, naming its age.
+  resilience:
+    attempts: 3
+    retry_delay_seconds: 5
+    max_stale_seconds: 3600
+    cache_path: .onex_state/lab-alarm/manifest-last-good.json
 groups:
   env: local
   instance: runtime-main
@@ -36,3 +43,17 @@ schedule:
       venv: examplepkg/.venv
       environment: {}
 injected_fault: A watched group's lag grows between two samples
+# The effects-held condition (OMN-23106). Required like every key. The bound is the alarm script's
+# own 60 seconds, held here as data.
+effects_held:
+  group_prefix: local.examplepkg.node_example_consumer.consume.
+  group_suffix: .__i.runtime-effects.__t.onex.cmd.example.work-requested.v1
+  held_after_seconds: 60
+  timeout_seconds: 30
+  state_path: .onex_state/lab-alarm/effects-held-state.json
+  escalation:
+    command: [example-lane-dispatch]
+    model: example-model
+    ticket: OMN-1
+    settle_seconds: 20
+    brief_dir: .onex_state/lab-alarm/escalation-briefs

@@ -106,7 +106,11 @@ units:
       # the two named keys its overlay refers to. Not required: unset, a Slack alarm is refused with a typed reason and
       # goes to the second channel.
       ONEX_ALERT_CHANNEL_ENV_FILE: alert_env_file
-    required_environment_inputs: [ONEX_RUNTIME_SSH_HOST]
+      # The name the ledger knows this host by (OMN-23086). The publish cycle's join J5 step appends a ledger row and the
+      # friction rollup reads the ledger over the bus; both name the host that writes. The J5 overlay names this variable as
+      # its ledger host_env. Required: a unit installed without it ran the J5 step to INDETERMINATE (exit 3) every tick.
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
     # otherwise build the project's venv on never gets the grant: under launchd its LAN connections fail with
@@ -132,6 +136,11 @@ units:
       ONEX_PLANS_KB_PATH: "{plans_path}"
       CLAUDE_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
       ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      # The ledger over the bus (OMN-23086): the append command the J5 step writes its row with, and the read command it and the
+      # friction rollup read the ledger back with. The J5 overlay names both variables as its ledger command_env and
+      # projection read command_env; the commands are the ones the other ledger-writing units run.
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       # The landing controller's state directory: the floor's running comparison reads its decisions file (OMN-23018).
@@ -238,6 +247,82 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
+  # The job-log filler (node_job_log_filler_effect, OMN-23032): every two minutes it reads the PR watcher's state (which lives
+  # only on the host that runs the watcher) and asks the deployed gateway over the lane's bus to cache the log of each
+  # failed job of every open pull request's current head, newest failure first, so a lane's cache-only `onex scm job-log`
+  # answers within minutes of the failure. The overlay (profile, lane, cap, classes) is the filler's, found under
+  # ONEX_SKILL_OVERLAY_ROOTS; the one setting here is where the watcher's state file is.
+  job-log-filler:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.job-log-filler
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 120
+      run_at_load: true
+      description: every 120 s and at load
+    registry_project: omnimarket
+    # Ended with its process group and exits 124 past this; launchd starts no second run while one is alive.
+    # Three intervals, the bound the run-limit test holds every unit to; a pass's worst case is the overlay's.
+    run_timeout_s: 360
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_job_log_filler_effect.runtime_job_log_filler_tick
+    entry_file: src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
+    evidence_file: .local/state/omni/job-log-filler/last-run.json
+    state_directory: .onex_state/job-log-filler
+  # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
+  # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
+  # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
+  # is the host's proven onex-ledger command line), none is a secret.
+  work-ledger-parity-receipt:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.work-ledger-parity-receipt
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    # The node's own timeout_ms is 1020000 (its contract); the unit ends a hung run at 1020 s and exits 124, before the next tick.
+    run_timeout_s: 1020
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.runtime_parity_receipt
+    entry_file: src/omnimarket/nodes/node_work_ledger_parity_receipt_effect/runtime_parity_receipt.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_LEDGER_COMMAND
+      - ONEX_LEDGER_PARITY_PYTHON
+      - ONEX_LEDGER_PARITY_OVERLAY
+      - ONEX_LEDGER_PARITY_ENV_FILE
+    environment:
+      ONEX_LEDGER_PARITY_FILE: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      ONEX_LEDGER_PARITY_PYTHON: "{registry_root}/.onex-dispatch-venv/bin/python"
+      ONEX_LEDGER_PARITY_OVERLAY: "{marketplace_root}/plugins/onex-overlays/overlays/delegation_health/overlay.yaml"
+      ONEX_LEDGER_PARITY_ENV_FILE: "{home}/.omnibase/.env"
+      ONEX_LEDGER_PARITY_PG_PORT: "5436"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/work-ledger-parity-receipt/last-run.json
+    state_directory: .onex_state/work-ledger-parity-receipt
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
