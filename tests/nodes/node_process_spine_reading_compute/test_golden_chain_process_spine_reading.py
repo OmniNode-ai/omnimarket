@@ -20,8 +20,10 @@ error chain red.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6 import (
@@ -204,3 +206,25 @@ def test_chain_mutation_gate_ignores_stop_turns_the_golden_chain_red() -> None:
 def test_chain_mutation_fault_not_planted_turns_the_error_chain_red() -> None:
     with pytest.raises(AssertionError):
         scenario_error(fault_not_planted)
+
+
+NODES = Path(__file__).parents[3] / "src" / "omnimarket" / "nodes"
+
+
+@pytest.mark.parametrize(
+    ("node", "terminal"),
+    [
+        (
+            "node_process_spine_reading_compute",
+            "onex.evt.omnimarket.process-spine-read.v1",
+        ),
+        ("node_stop_drill_effect", "onex.evt.omnimarket.stop-drill-completed.v1"),
+    ],
+)
+def test_chain_each_node_declares_the_terminal_event_its_run_ends_in(
+    node: str, terminal: str
+) -> None:
+    contract = yaml.safe_load((NODES / node / "contract.yaml").read_text())
+    assert contract["terminal_event"] == terminal
+    assert terminal in contract["event_bus"]["publish_topics"]
+    assert terminal in contract["externally_consumed_topics"]
