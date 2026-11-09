@@ -9,6 +9,13 @@ bus:
 manifest:
   url: http://example-host:8085/v1/introspection/manifest
   timeout_seconds: 10
+  # Optional. Absent: one attempt, no fallback. Present: retry a manifest that does not answer, then take the
+  # group names from the last good manifest while it is no older than max_stale_seconds, naming its age.
+  resilience:
+    attempts: 3
+    retry_delay_seconds: 5
+    max_stale_seconds: 3600
+    cache_path: .onex_state/lab-alarm/manifest-last-good.json
 groups:
   env: local
   instance: runtime-main
