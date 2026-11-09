@@ -144,7 +144,7 @@ def roll(
     request = ModelFrictionRollupRequest(
         sources=[
             ModelFrictionRollupSource(
-                display="ROLLING_WORK_LEDGER.md",
+                display="fixture-ledger.md",
                 kind="markdown",
                 text=ledger_text(rows),
             )

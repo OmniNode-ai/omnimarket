@@ -52,6 +52,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledge
     load_join_j5_policy,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    LIVE_LEDGER_FILE_NAMES,
     InMemoryJoinLedger,
     InMemoryProjectedRows,
     InMemoryStoreIdentities,
@@ -298,11 +299,10 @@ def test_join_j5_error_the_live_ledger_file_is_refused_as_a_scratch_lane(
     tmp_path: Path,
 ) -> None:
     """A scratch lane can never be the live ledger: its name is refused before anything is opened."""
+    live_name = next(iter(LIVE_LEDGER_FILE_NAMES))
     with pytest.raises(ValueError, match="live ledger"):
-        ScratchFileJoinLedger(
-            tmp_path / "ROLLING_WORK_LEDGER.md", projection=InMemoryProjectedRows()
-        )
-    assert not (tmp_path / "ROLLING_WORK_LEDGER.md").exists()
+        ScratchFileJoinLedger(tmp_path / live_name, projection=InMemoryProjectedRows())
+    assert not (tmp_path / live_name).exists()
 
 
 # --- the error join -----------------------------------------------------------------------------------------------
