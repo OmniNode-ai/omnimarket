@@ -17,6 +17,8 @@ from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelReadingPoint,
     ModelSourceRead,
+    ReadingVerdict,
+    SourceKind,
 )
 
 NOW = datetime(2026, 11, 9, 12, 0, 0, tzinfo=UTC)
@@ -112,16 +114,18 @@ def ago(**delta: float) -> datetime:
     return NOW - timedelta(**delta)
 
 
-def read(source_id: str, kind: str, *points: tuple[datetime, str]) -> ModelSourceRead:
+def read(
+    source_id: str, kind: SourceKind, *points: tuple[datetime, ReadingVerdict]
+) -> ModelSourceRead:
     return ModelSourceRead(
         source_id=source_id,
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         read="read",
         read_at=NOW,
         points=tuple(
             ModelReadingPoint(at=at, verdict=v, ref=f"ref-{i}")
             for i, (at, v) in enumerate(points)
-        ),  # type: ignore[arg-type]
+        ),
     )
 
 
