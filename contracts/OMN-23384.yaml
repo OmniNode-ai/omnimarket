@@ -51,3 +51,12 @@ dod_evidence:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23384 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_run_spill_effect tests/nodes/node_lab_disk_watermark_effect -q --no-cov -p no:randomly'
     cwd: .
+- id: dod-omn23384-entry-points
+  description: The three nodes #5667 added (node_host_installer_serve_units, node_lab_disk_watermark_effect, node_lab_run_spill_effect) are registered under onex.nodes in pyproject.toml. The inventory test fails on dev without the entries and passes with them.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly
+    cwd: .
