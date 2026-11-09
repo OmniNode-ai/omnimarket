@@ -178,6 +178,57 @@ def test_an_empty_replay_is_equivalent_and_has_no_window() -> None:
     assert (result.judged, result.equivalent, result.window_start) == (0, True, None)
 
 
+def _window_inside_the_first_hold() -> tuple[str, list[ModelRecordedRow]]:
+    """The first hold's row, and the week from its RELEASE on: a window that begins mid-hold."""
+    week = _week()
+    hold_row = week[0].row
+    return hold_row, week[1:]
+
+
+def test_error_a_window_that_begins_mid_hold_is_refused_as_incomplete() -> None:
+    _hold, window = _window_inside_the_first_hold()
+    with pytest.raises(ValueError, match=r"incomplete.*mid-hold"):
+        _replay(window)
+
+
+def test_golden_a_mid_hold_window_is_judged_against_the_rows_before_it() -> None:
+    hold, window = _window_inside_the_first_hold()
+    result = WorkLedgerGuardReplay().handle(
+        ModelGuardReplayRequest(
+            ledger_name=LEDGER, prior_accepted=(hold,), entries=tuple(window)
+        )
+    )
+    assert result.judged == len(window)
+    assert result.differences == ()
+    assert result.equivalent is True
+
+
+def test_the_accepted_rows_before_the_window_are_the_ledger_it_is_judged_on() -> None:
+    # A second HOLD declaring an id the window's first hold already declared is refused on the ledger's
+    # state alone. A window that begins at the second one is judged on the declaring row supplied before it.
+    at = _stamp(WEEK_START)
+    hold = (
+        f"{at} | HOLD | lane=beta | id={at}-beta | surface=lab-dev | "
+        f"until={_stamp(WEEK_START + timedelta(hours=6))} | reserved"
+    )
+    reuse = hold.replace("surface=lab-dev", "surface=lab-x")
+    refusal = judge_row(reuse, hold, LEDGER)
+    assert refusal.verdict is EnumJudgeVerdict.REFUSE
+    window = [
+        ModelRecordedRow(row_ref="reuse", row=reuse, recorded=refusal, at=WEEK_START)
+    ]
+    with_prior = WorkLedgerGuardReplay().handle(
+        ModelGuardReplayRequest(
+            ledger_name=LEDGER, prior_accepted=(hold,), entries=tuple(window)
+        )
+    )
+    assert with_prior.differences == ()
+    # Failing control: the same window judged on an empty ledger accepts the reuse, so the recorded
+    # refusal reads as a changed verdict that the guards never made.
+    without_prior = _replay(window)
+    assert [d.row_ref for d in without_prior.differences] == ["reuse"]
+
+
 def test_a_window_replay_judges_against_the_accepted_history_before_the_window() -> (
     None
 ):
