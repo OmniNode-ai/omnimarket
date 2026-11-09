@@ -29,6 +29,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute -q --no-cov -n 0 -p no:randomly -k fold_absence
     cwd: .
+- id: dod-omn23275-caller-fact
+  description: The caller builds the fold-absence fact in omnimarket. With the fold file absent and the host-drift declaration overlay read, the request carries the declaring hosts, whether the reading host is one and whether its plist is installed, and the real decision handler turns each of the four cases into its finding. With the declaration withheld, a path that is not a missing file, or a fold that exists, the request carries no fact. With the absence build stubbed out, four of the ten tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect -q --no-cov -n 0 -p no:randomly -k fold_absence
+    cwd: .
 - id: dod-omn23275-integration-proof
   description: The pushed head ran the silent-failure alarm compute node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
