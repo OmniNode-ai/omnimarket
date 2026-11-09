@@ -8,11 +8,12 @@
 #   ticket_requires_pattern  the ticket description line naming its start criterion (group `refs`)
 #   terminal_done_outcomes   TERMINAL outcomes that leave nothing; any other outcome leaves the lane stopped
 #   attribution_cells        CLAIM cell -> item alias prefix; a lane is attributed to every item one of these names
+#                            (commitment=<id> attributes a lane to the operator ask it works)
 #   left_cells               cells of a lane's later rows that say what is left
 #   lane_live_hours          a lane with no closing row is live this long after its newest row
 #   receipt_ended_statuses   lane receipt statuses that mean the engine has ended
 #   plan                     how a plan file spells a task, its ticket, its start criterion and done
-#   source_budgets           one row per source (ledger, pr-watcher, linear, plans, receipts, readings): timeout_seconds
+#   source_budgets           one row per source (ledger, pr-watcher, linear, plans, receipts, readings, commitments): timeout_seconds
 #                            is the wait for one read attempt, attempts how many are made, budget_seconds the most wall
 #                            time the source may take in a run, and max_stale_age_seconds how old its last snapshot may
 #                            be and still be served (marked stale with its age) when the source is over its budget
@@ -25,6 +26,7 @@ attribution_cells:
   owns: pr
   cause: cause
   key: key
+  commitment: commitment
 left_cells: [branch, head, pr, blocker]
 lane_live_hours: 3
 receipt_ended_statuses: [no-host, exited, stopped, failed]
@@ -40,3 +42,4 @@ source_budgets:
   plans: {timeout_seconds: 10, budget_seconds: 15, attempts: 2, max_stale_age_seconds: 21600}
   receipts: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 1800}
   readings: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 1800}
+  commitments: {timeout_seconds: 20, budget_seconds: 30, attempts: 2, max_stale_age_seconds: 1800}
