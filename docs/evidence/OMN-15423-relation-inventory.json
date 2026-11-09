@@ -6749,6 +6749,7 @@
       ],
       "foreign_keys": [],
       "grants": [
+        "DELETE TO tenant_projection_writer",
         "SELECT TO app_dashboard",
         "SELECT, INSERT, UPDATE TO tenant_projection_writer"
       ],
