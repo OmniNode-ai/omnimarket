@@ -4,8 +4,12 @@
 
 from pathlib import Path
 
+from omnimarket.models.model_gh_read_scan import (
+    ModelGhReadScanRequest,
+    ModelGhReadScanResult,
+)
+
 from .handlers.handler_gh_read_scan import HandlerGhReadScan
-from .models.model_gh_read_scan import ModelGhReadScanRequest, ModelGhReadScanResult
 
 
 class NodeLaneGhReadScanCompute:

@@ -20,13 +20,13 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.model_gh_read_scan import (
+    ModelGhReadScanRequest,
+    ModelGhReadScanResult,
+)
 from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
     HandlerGhReadScan,
     answer_command,
-)
-from omnimarket.nodes.node_lane_gh_read_scan_compute.models.model_gh_read_scan import (
-    ModelGhReadScanRequest,
-    ModelGhReadScanResult,
 )
 
 pytestmark = pytest.mark.unit

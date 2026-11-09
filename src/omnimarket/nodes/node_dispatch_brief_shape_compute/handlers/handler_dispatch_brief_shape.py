@@ -43,12 +43,12 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.wip_admission_brief_gate import (
     dispatch_wip_refusal,
 )
-from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
-    HandlerGhReadScan,
-)
-from omnimarket.nodes.node_lane_gh_read_scan_compute.models.model_gh_read_scan import (
+from omnimarket.models.model_gh_read_scan import (
     ModelGhReadScanRequest,
     ModelGhReadSurface,
+)
+from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
+    HandlerGhReadScan,
 )
 
 from ..models.model_dispatch_brief_shape import (

@@ -24,7 +24,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from ..models.model_gh_read_scan import (
+from omnimarket.models.model_gh_read_scan import (
     ModelGhReadFinding,
     ModelGhReadScanRequest,
     ModelGhReadScanResult,

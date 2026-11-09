@@ -13,13 +13,13 @@ from typing import Literal
 
 import pytest
 
-from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
-    HandlerGhReadScan,
-)
-from omnimarket.nodes.node_lane_gh_read_scan_compute.models.model_gh_read_scan import (
+from omnimarket.models.model_gh_read_scan import (
     ModelGhReadFinding,
     ModelGhReadScanRequest,
     ModelGhReadSurface,
+)
+from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
+    HandlerGhReadScan,
 )
 
 pytestmark = pytest.mark.unit
