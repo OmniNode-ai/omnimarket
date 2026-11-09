@@ -2,7 +2,7 @@ schema_version: "1.0.0"
 ticket_id: OMN-23313
 title: The floor shows a red row when an operator-owned startable delegation ticket has no running lane
 summary: >-
-  Adds the delegation:idle cause row to node_floor_simple_compute. It is red while any operator-owned delegation ticket whose start criterion reads true has no live lane, amber when each has one, and absent when none can start. Which tickets count (the delegation epics and the operator's assignee value) is overlay data; the assignee and parent reach the floor through the work-state projection.
+  Also makes the floor read the go from RULING rows by the pieces they name, so the ruling that opened rebuild pieces 7 and 11 reads. Adds the delegation:idle cause row to node_floor_simple_compute. It is red while any operator-owned delegation ticket whose start criterion reads true has no live lane, amber when each has one, and absent when none can start. Which tickets count (the delegation epics and the operator's assignee value) is overlay data; the assignee and parent reach the floor through the work-state projection.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -20,6 +20,10 @@ evidence_requirements:
     description: >-
       The focused tests of the row: the compute reading, the source reader and the whole-cycle board read.
     command: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_delegation_idle_omn23313.py tests/nodes/node_work_state_projection_compute/test_delegation_idle_sources_omn23313.py tests/nodes/node_floor_simple_effect/test_delegation_idle_board_omn23313.py -q -n 0 --no-cov
+  - kind: tests
+    description: >-
+      The go read by subject: the ruling of 2026-11-09 opens pieces 7 and 11, a rule without the open pattern opens neither.
+    command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_go_by_subject_floor_simple.py -q -n 0 --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -44,6 +48,14 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_delegation_idle_board_omn23313.py tests/nodes/node_work_state_projection_compute/test_delegation_idle_sources_omn23313.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23313-go-by-subject
+    description: >-
+      The floor reads the go from RULING rows by the pieces they name: the recorded ruling of 2026-11-09 (answered Ok agreed) opens pieces 7 and 11 beside the in-order go of 6, and with the open pattern removed from the overlay the five rows that read it fail.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_go_by_subject_floor_simple.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23313-row
     description: >-

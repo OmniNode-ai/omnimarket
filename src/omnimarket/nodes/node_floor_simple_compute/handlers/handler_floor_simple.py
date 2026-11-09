@@ -493,6 +493,7 @@ class HandlerFloorSimple:
             # A piece starts on a go, as step 0, or when its own start criterion reads true (RULING 2026-11-07T12:20:46Z).
             admitted = (
                 (go is not None and n <= go)
+                or n in r.go_pieces
                 or n in ov.rebuild.step0_pieces
                 or (n in criteria and set(criteria[n].after_working) <= working)
             )
@@ -1107,7 +1108,7 @@ class HandlerFloorSimple:
                 (
                     x.piece
                     for x in rows
-                    if x.piece <= go
+                    if (x.piece <= go or x.piece in r.go_pieces)
                     and x.piece not in ov.rebuild.step0_pieces
                     and x.status != "working"
                 ),
@@ -1137,4 +1138,5 @@ class HandlerFloorSimple:
             headline=headline,
             next_text=next_text,
             go_given_through=go,
+            go_pieces=r.go_pieces,
         )

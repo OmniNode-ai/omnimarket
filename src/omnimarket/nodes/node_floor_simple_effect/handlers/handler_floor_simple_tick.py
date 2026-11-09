@@ -693,8 +693,9 @@ class HandlerFloorSimpleTick:
         piece = floor_ov.rebuild.lab_state_piece
         ledger = self._read_ledger(rt, floor_ov, env, now)
         go = ledger.facts.go_given_through if ledger.facts is not None else None
+        go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events)
+        pre = self._receipts(sink, floor_ov, now, rt, go, go_pieces, ledger_events)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -702,7 +703,9 @@ class HandlerFloorSimpleTick:
             or (row.error_age_s > floor_ov.error_drill_after_s)
         ):
             self._drill(step)
-            pre = self._receipts(sink, floor_ov, self._clock(), rt, go, ledger_events)
+            pre = self._receipts(
+                sink, floor_ov, self._clock(), rt, go, go_pieces, ledger_events
+            )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
@@ -837,7 +840,9 @@ class HandlerFloorSimpleTick:
         )
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
-            lambda: self._receipts(sink, floor_ov, now, rt, go, ledger_events),
+            lambda: self._receipts(
+                sink, floor_ov, now, rt, go, go_pieces, ledger_events
+            ),
             lambda out: {
                 "chains": len(out.chains),
                 "findings": len(out.findings),
@@ -902,6 +907,7 @@ class HandlerFloorSimpleTick:
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
+            go_pieces=go_pieces,
             sources_read={
                 "floor_record": record is not None,
                 "work_state_projection": work_state is not None,
@@ -1119,6 +1125,7 @@ class HandlerFloorSimpleTick:
         now: datetime,
         rt: ModelFloorSimpleRuntime,
         go: int | None,
+        go_pieces: tuple[int, ...],
         ledger_events: tuple[ModelNodeEmission, ...],
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
@@ -1140,6 +1147,7 @@ class HandlerFloorSimpleTick:
                     p.piece
                     for p in ov.pieces
                     if (go is not None and p.piece <= go)
+                    or p.piece in go_pieces
                     or p.piece in ov.rebuild.step0_pieces
                 }
                 | {e.piece for e in emissions}

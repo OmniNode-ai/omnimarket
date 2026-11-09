@@ -517,6 +517,8 @@ class ModelRebuild(_Frozen):
     next_text: str
     # The highest piece the ledger's go rulings cover, or ``None`` when the ledger could not be read: unread is not zero.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313); empty when none, or when the ledger was unread.
+    go_pieces: tuple[int, ...] = ()
 
 
 class ModelRedRule(_Frozen):
@@ -610,6 +612,13 @@ class ModelGoRule(_Frozen):
     lookback_days: int = Field(gt=0)
     question_pattern: str = Field(min_length=1)
     affirmative_pattern: str = Field(min_length=1)
+    # A piece opened by subject, apart from the in-order go (OMN-23313): a RULING row of ``lane`` on any of
+    # ``open_tickets`` (``ticket`` is read in order above) whose question matches ``open_pattern`` opens the pieces its group ``list`` names, wherever they sit in
+    # the order, when the verbatim answer matches ``open_affirmative_pattern``; a later ruling that names a piece and does not
+    # match takes it back. The three are declared together or not at all, and a rule without them opens nothing by subject.
+    open_tickets: tuple[str, ...] = ()
+    open_pattern: str | None = Field(default=None, min_length=1)
+    open_affirmative_pattern: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _patterns(self) -> ModelGoRule:
@@ -620,6 +629,20 @@ class ModelGoRule(_Frozen):
             raise ValueError(f"a go rule pattern does not compile: {exc}") from exc
         if "first" not in question.groupindex:
             raise ValueError("the question pattern names a group called first")
+        if (self.open_pattern is None) != (self.open_affirmative_pattern is None):
+            raise ValueError(
+                "open_pattern and open_affirmative_pattern are declared together"
+            )
+        if self.open_pattern is not None and self.open_affirmative_pattern is not None:
+            try:
+                opened = re.compile(self.open_pattern)
+                re.compile(self.open_affirmative_pattern)
+            except re.error as exc:
+                raise ValueError(f"an open pattern does not compile: {exc}") from exc
+            if "list" not in opened.groupindex:
+                raise ValueError("the open pattern names a group called list")
+        elif self.open_tickets:
+            raise ValueError("open_tickets are declared with the open patterns")
         return self
 
 
@@ -848,6 +871,8 @@ class ModelFloorSimpleInput(_Frozen):
     shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313).
+    go_pieces: tuple[int, ...] = ()
     alarms: tuple[ModelFloorAlarmLine, ...] = ()
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
