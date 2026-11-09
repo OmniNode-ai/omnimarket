@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23288
+title: Declare the ledger environment for the lab-test-harness Mac unit and render its plist parseable
+summary: The registry unit declaration for ai.omninode.lab-test-harness (Mac) now declares ONEX_LEDGER_HOST_NAME (also a path-override name, so an install on another host overrides it) and ONEX_LEDGER_BUS_APPEND_COMMAND, the two names the harness overlay's emission.ledger block needs. Without them each Mac tick built no appender and exited 1. The plist template's XML comment no longer spells any placeholder token, because the renderer replaced the token with the environment, whose two hyphens in a row are not legal inside an XML comment, and the rendered plist did not parse. No alarm is muted and no bound is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23288-harness-ledger-env
+  statement: The lab-test-harness unit declares the ledger environment its overlay needs, the plist rendered from the template parses, and after install on the Mac the unit's next run exits 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab-test-harness unit''s contract declares the ledger environment it needs and the rendered plist parses -- falsifier: uv run pytest tests -q -k lab_test_harness in omnimarket, red on 3 of 5 before the fix'
+  - id: AC2
+    statement: 'AC2: after install on the Mac the unit''s next run exits 0 -- falsifier: launchctl list for the unit shows last exit 0 and its stdout log has a run after the install'
+evidence_requirements:
+- kind: tests
+  description: The five tests of the harness ledger environment, 4 of which fail on the merge base 1550767a0, measured by lane labharness-0845 (the appender refuses with ONEX_LEDGER_BUS_APPEND_COMMAND is not set; the rendered plist raises ExpatError) and all 5 pass with the change.
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_harness_ledger_env.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23288-ac1-env-and-plist
+  description: Builds the harness's own ledger appender from the environment the rendered unit carries, overrides the host name, removes either ledger variable as the named break (the appender refuses), and pins the template comment. The named break is the merge base, where 4 of the 5 fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_harness_ledger_env.py -q --no-cov
+    cwd: .
+- id: dod-omn23288-ac1-node-tests
+  description: The node's other test files still pass, run as one file each in the lane and as the whole node on a lab host.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
+- id: dod-omn23288-ac2-mac-run
+  description: After the unit is installed on the Mac from the pull request's branch, launchctl list for the unit shows last exit 0 and its stdout log has a run after the install. Only the Mac runs this unbound check, so only the local Done gate does.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: sh -c "launchctl list ai.omninode.lab-test-harness"
+    cwd: .
+- id: dod-omn23288-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23288 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+    cwd: .
