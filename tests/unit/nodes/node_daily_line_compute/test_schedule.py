@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The daily line's schedule and scheduled run (OMN-22925 AC3).
 
-The timer fires at 05:30 on the Eastern clock; one run reads the floor record and the ledger, publishes the line beside
+The timer fires at 05:30 on the Eastern clock; one run reads the floor record and the open claims the bus answers, publishes the line beside
 the floor record and writes exactly one ledger STATUS row. A floor record or ledger that cannot be read gives UNKNOWN for
 its part and the run still publishes and writes its row.
 """
@@ -15,6 +15,7 @@ import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -24,12 +25,17 @@ from omnimarket.nodes.node_daily_line_effect.handlers import (
 from omnimarket.nodes.node_daily_line_effect.handlers import schedule as sched
 from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
     HandlerDailyLineRun,
-    command_appender,
+    bus_appender,
     count_open_claims,
     load_runtime,
     read_floor_record,
     write_atomic,
 )
+from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
+    InMemoryPointRead,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointAnswer
 
 pytestmark = pytest.mark.unit
 
@@ -64,16 +70,6 @@ def _floor(generated_at: datetime, *, reading_state: str | None = "WORKING") -> 
     )
 
 
-LEDGER = "\n".join(
-    [
-        "2026-11-08T08:00:00Z | CLAIM | lane=a | ticket=OMN-1 | actor=x | model=y | est ~1 lane-hours; displaces z; (OMN-1)",
-        "2026-11-08T08:01:00Z | CLAIM | lane=b | ticket=OMN-2 | actor=x | model=y | est ~1 lane-hours; displaces z; (OMN-2)",
-        "2026-11-08T08:02:00Z | CLAIM | lane=c | ticket=OMN-3 | actor=x | model=y | est ~1 lane-hours; displaces z; (OMN-3)",
-        "2026-11-08T09:00:00Z | TERMINAL | lane=b | ticket=OMN-2 | outcome=done | text",
-    ]
-)
-
-
 class FakeRunner:
     def __init__(self, fail_on: str | None = None) -> None:
         self.calls: list[list[str]] = []
@@ -85,29 +81,46 @@ class FakeRunner:
         return subprocess.CompletedProcess(list(command), 1 if failed else 0, "", "")
 
 
-def _home(
-    tmp_path: Path, *, floor: str | None, ledger: str | None
-) -> tuple[Path, Path]:
+def _home(tmp_path: Path, *, floor: str | None) -> Path:
     home = tmp_path / "registry"
     floor_dir = home / ".claude_scratch" / "factory-floor"
     floor_dir.mkdir(parents=True)
     if floor is not None:
         (floor_dir / "floor-simple.json").write_text(floor, encoding="utf-8")
-    ledger_path = tmp_path / "ledger" / "ROLLING_WORK_LEDGER.md"
-    ledger_path.parent.mkdir()
-    if ledger is not None:
-        ledger_path.write_text(ledger + "\n", encoding="utf-8")
-    return home, ledger_path
+    return home
 
 
-def _runner(home: Path, ledger: Path, rows: list[str]) -> HandlerDailyLineRun:
+def _read(open_claims: int | None) -> InMemoryPointRead:
+    """The in-memory point read: an answer of ``open_claims`` claims, or no answer at all."""
+    if open_claims is None:
+        return InMemoryPointRead()
+    return InMemoryPointRead({"open-claims": ModelPointAnswer(matched=open_claims)})
+
+
+def _runner(
+    home: Path, read: InMemoryPointRead | None, rows: list[str]
+) -> HandlerDailyLineRun:
     return HandlerDailyLineRun(
         load_runtime(),
         home=home,
-        ledger=ledger,
+        ledger=read,
         appender=rows.append,
         clock=lambda: NOW,
     )
+
+
+class FakeAppender:
+    """A bus append that answers with a fixed outcome and records each (rows, request id)."""
+
+    def __init__(
+        self, status: Literal["accepted", "duplicate", "refused", "pending", "error"]
+    ) -> None:
+        self.status = status
+        self.calls: list[tuple[str, str]] = []
+
+    def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
+        self.calls.append((rows, request_id))
+        return ModelAppendOutcome(status=self.status, message="fixed")
 
 
 # --- the schedule ------------------------------------------------------------------------------------------------------
@@ -215,11 +228,9 @@ def test_schedule_install_reports_a_failed_enable(tmp_path: Path) -> None:
 def test_schedule_run_publishes_the_line_and_writes_one_status_row(
     tmp_path: Path,
 ) -> None:
-    home, ledger = _home(
-        tmp_path, floor=_floor(NOW - timedelta(minutes=4)), ledger=LEDGER
-    )
+    home = _home(tmp_path, floor=_floor(NOW - timedelta(minutes=4)))
     rows: list[str] = []
-    runner = _runner(home, ledger, rows)
+    runner = _runner(home, _read(2), rows)
 
     publication = runner.run()
 
@@ -245,9 +256,9 @@ def test_schedule_run_publishes_the_line_and_writes_one_status_row(
 def test_schedule_run_with_every_source_missing_still_publishes_and_writes_one_row(
     tmp_path: Path,
 ) -> None:
-    home, ledger = _home(tmp_path, floor=None, ledger=None)
+    home = _home(tmp_path, floor=None)
     rows: list[str] = []
-    runner = _runner(home, ledger, rows)
+    runner = _runner(home, _read(None), rows)
 
     publication = runner.run()
 
@@ -265,11 +276,9 @@ def test_schedule_run_with_every_source_missing_still_publishes_and_writes_one_r
 
 
 def test_schedule_run_a_stale_floor_record_is_not_a_reading(tmp_path: Path) -> None:
-    home, ledger = _home(
-        tmp_path, floor=_floor(NOW - timedelta(hours=3)), ledger=LEDGER
-    )
+    home = _home(tmp_path, floor=_floor(NOW - timedelta(hours=3)))
     rows: list[str] = []
-    publication = _runner(home, ledger, rows).run()
+    publication = _runner(home, _read(2), rows).run()
     assert publication.unknown_parts == ("piece1", "j1")
     assert publication.parts[2].text == "2"
 
@@ -277,8 +286,8 @@ def test_schedule_run_a_stale_floor_record_is_not_a_reading(tmp_path: Path) -> N
 def test_schedule_run_a_floor_piece_with_no_reading_state_reads_unknown_with_the_floors_words(
     tmp_path: Path,
 ) -> None:
-    home, ledger = _home(tmp_path, floor=_floor(NOW, reading_state=None), ledger=LEDGER)
-    publication = _runner(home, ledger, []).run()
+    home = _home(tmp_path, floor=_floor(NOW, reading_state=None))
+    publication = _runner(home, _read(2), []).run()
     assert publication.line.startswith(
         "Piece 1, code graph: UNKNOWN (2 nightly runs in 24 hours), joined to piece 2, hosts, by J1: passed;"
     )
@@ -287,9 +296,9 @@ def test_schedule_run_a_floor_piece_with_no_reading_state_reads_unknown_with_the
 def test_schedule_run_a_floor_piece_with_no_reading_state_is_listed_unknown_not_read(
     tmp_path: Path,
 ) -> None:
-    home, ledger = _home(tmp_path, floor=_floor(NOW, reading_state=None), ledger=LEDGER)
+    home = _home(tmp_path, floor=_floor(NOW, reading_state=None))
     rows: list[str] = []
-    publication = _runner(home, ledger, rows).run()
+    publication = _runner(home, _read(2), rows).run()
     assert publication.unknown_parts == ("piece1",)
     assert "unknown=piece1 | " in rows[0]
 
@@ -332,39 +341,72 @@ def test_schedule_floor_record_that_is_not_a_floor_reads_as_nothing(
     )
 
 
-def test_schedule_open_claims_count_the_claims_with_no_terminal(tmp_path: Path) -> None:
-    _, ledger = _home(tmp_path, floor=None, ledger=LEDGER)
-    assert count_open_claims(ledger, now=NOW) == 2
+def test_schedule_open_claims_count_is_the_bus_answers_matched_claims() -> None:
+    read = _read(2)
+    assert count_open_claims(read) == 2
+    assert [q.query for q in read.requests] == ["open-claims"]
 
 
-def test_schedule_open_claims_an_unreadable_ledger_is_none_not_zero(
-    tmp_path: Path,
-) -> None:
-    assert count_open_claims(tmp_path / "absent.md", now=NOW) is None
+def test_schedule_open_claims_a_bus_with_no_answer_is_none_not_zero() -> None:
+    assert count_open_claims(_read(None)) is None
+    assert count_open_claims(None) is None
 
 
-def test_schedule_command_appender_runs_the_configured_command_without_a_shell(
-    tmp_path: Path,
-) -> None:
-    seen: list[list[str]] = []
+def test_schedule_open_claims_zero_claims_is_zero_not_unread() -> None:
+    assert count_open_claims(_read(0)) == 0
 
-    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        seen.append(argv)
-        assert kwargs["check"] is False
-        return subprocess.CompletedProcess(argv, 0, "", "")
 
-    ledger = tmp_path / "ledger.md"
-    command_appender(load_runtime().append_command, ledger, run=run)(
-        "a | STATUS | x; rm -rf /"
-    )
-    assert seen == [
-        ["onex-ledger", str(ledger), "--append", "a | STATUS | x; rm -rf /"]
+def test_schedule_bus_appender_sends_the_row_whole_under_a_fresh_request_id() -> None:
+    appender = FakeAppender("accepted")
+    ids = iter(["id-1", "id-2"])
+    append = bus_appender(appender, new_id=lambda: next(ids))
+    append("a | STATUS | x; rm -rf /")
+    append("b | STATUS | y")
+    assert appender.calls == [
+        ("a | STATUS | x; rm -rf /", "id-1"),
+        ("b | STATUS | y", "id-2"),
     ]
 
 
-def test_schedule_command_appender_raises_on_a_failed_append(tmp_path: Path) -> None:
-    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(argv, 3, "", "refused")
+@pytest.mark.parametrize("status", ["refused", "pending", "error"])
+def test_schedule_bus_appender_raises_unless_the_row_is_accepted(
+    status: Literal["refused", "pending", "error"],
+) -> None:
+    with pytest.raises(RuntimeError, match=f"was {status}: fixed"):
+        bus_appender(FakeAppender(status))("row")
 
-    with pytest.raises(RuntimeError, match="exited 3: refused"):
-        command_appender(("onex-ledger", "{row}"), tmp_path / "l.md", run=run)("row")
+
+def test_schedule_bus_appender_treats_a_duplicate_receipt_as_landed() -> None:
+    bus_appender(FakeAppender("duplicate"))("row")
+
+
+def test_schedule_unit_carries_the_bus_routes_set_at_install_and_skips_the_unset() -> (
+    None
+):
+    service, _ = sched.render_systemd(
+        sched.load_schedule(),
+        omni_root=Path("/data/omni"),
+        home=Path("/home/lab"),
+        python=Path("/usr/bin/python3"),
+        environment={
+            "ONEX_LEDGER_BUS_READ_COMMAND": "/venv/bin/python -m bus read --bus-lane dev",
+            "ONEX_HOST_NAME": "  ",
+        },
+    )
+    assert (
+        'Environment="ONEX_LEDGER_BUS_READ_COMMAND=/venv/bin/python -m bus read --bus-lane dev"\n'
+        in service
+    )
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND" not in service
+    assert "ONEX_HOST_NAME" not in service
+
+
+def test_schedule_unit_refuses_a_route_value_a_quoted_line_cannot_carry() -> None:
+    with pytest.raises(ValueError, match="ONEX_LEDGER_BUS_READ_COMMAND"):
+        sched.render_systemd(
+            sched.load_schedule(),
+            omni_root=Path("/data/omni"),
+            home=Path("/home/lab"),
+            python=Path("/usr/bin/python3"),
+            environment={"ONEX_LEDGER_BUS_READ_COMMAND": 'bus "read'},
+        )

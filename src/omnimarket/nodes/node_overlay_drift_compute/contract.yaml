@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overlay Consumer Join Compute (OMN-23150, OMN-22478)
+#
+# For each consumer of an overlay key that this node's overlay declares, reads the overlay's value and the
+# value the consumer depends on (a shell default, a config key), normalises both and goes NOT WORKING when
+# they differ. A park list held in a file the overlay names, outside any overlay, is reported by the same
+# read. It writes reading rows and nothing else: a reading is never a gate, a stop or an admission.
+name: node_overlay_drift_compute
+contract_name: node_overlay_drift_compute
+node_name: node_overlay_drift_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The join check between an overlay and its consumers. A consumer whose effective value equals the
+  overlay value reads WORKING; one that differs reads NOT WORKING and is named with both values; a park
+  list found in a file outside an overlay reads NOT WORKING and is named; a file or key that cannot be
+  read reads UNKNOWN. Without its overlay the run is refused.
+
+handler:
+  module: omnimarket.nodes.node_overlay_drift_compute.handlers.handler_overlay_drift_compute
+  class: HandlerOverlayDriftCompute
+  input_model: omnimarket.nodes.node_overlay_drift_compute.models.model_overlay_drift_compute.ModelOverlayJoinCommand
+
+# HandlerOverlayDriftCompute takes the overlay, host, file source, appender and clock as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelOverlayJoinCommand
+  module: omnimarket.nodes.node_overlay_drift_compute.models.model_overlay_drift_compute
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelOverlayJoinResult
+  module: omnimarket.nodes.node_overlay_drift_compute.models.model_overlay_drift_compute
+  description: The verdict, each consumer mismatch with both values, each park list found outside an overlay, and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.overlay-consumer-join-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  overlay_consumer_join_requested: onex.cmd.omnimarket.overlay-consumer-join-requested.v1
+  overlay_consumer_join_written: onex.evt.omnimarket.overlay-consumer-join-written.v1
+  overlay_consumer_join_failed: onex.evt.omnimarket.overlay-consumer-join-failed.v1
+  overlay_consumer_join_run_completed: onex.evt.omnimarket.overlay-consumer-join-run-completed.v1
+  overlay_consumer_join_run_failed: onex.evt.omnimarket.overlay-consumer-join-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-consumer-join-written.v1
+  - onex.evt.omnimarket.overlay-consumer-join-failed.v1
+  - onex.evt.omnimarket.overlay-consumer-join-run-completed.v1
+  - onex.evt.omnimarket.overlay-consumer-join-run-failed.v1

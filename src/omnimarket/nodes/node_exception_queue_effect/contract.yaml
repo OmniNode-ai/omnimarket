@@ -9,7 +9,7 @@ description: >
   remote-lane runner to mechanize it (a detector, an actor and a friction replay scenario). A row of a class in
   the stop registry of node_andon_stop_reducer also opens an andon stop; stop_event persists a writer's event to it
   through that reducer's rule (a write from a role other than the trigger's is refused and the refusal recorded),
-  and open_stops reads the stops for stop_gate after reconciling ONEX_LEDGER_PATH when bound.
+  and open_stops reads the stops for stop_gate after reconciling the bound ledger file when one is bound.
   sync_ledger_holds detects in-force registered HOLDs, emits as the detector role and grants the
   named swarm lane's lease. A HOLD id is consumed once across queue resolution and replay;
   a RELEASE prevents first ingestion but never clears an already opened stop or removes its readback.

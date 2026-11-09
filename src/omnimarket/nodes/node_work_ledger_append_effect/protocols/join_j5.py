@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 
+from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES
 from omnimarket.handlers.work_ledger_fold import WorkLedgerFoldError, fold_row
 from omnimarket.models.model_work_ledger_fold_request import ModelWorkLedgerFoldRequest
 from omnimarket.models.model_work_ledger_fold_result import ModelWorkLedgerRowRecord
@@ -23,8 +24,8 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_appe
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 
-#: File names that are the live ledger; a scratch lane never takes one.
-LIVE_LEDGER_FILE_NAMES = frozenset({"ROLLING_WORK_LEDGER.md"})
+#: File names that are the live ledger, taken from the row grammar that governs it; a scratch lane never takes one.
+LIVE_LEDGER_FILE_NAMES = GOVERNED_LEDGER_NAMES
 
 
 class StoreIdentityUnresolvedError(LookupError):
