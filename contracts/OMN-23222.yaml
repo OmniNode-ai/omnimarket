@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23222
+title: dod-verify prunes the old hermetic verify environments it left on a host, the fix recorded as pushed with no pull request
+summary: >-
+  A dod-verify run builds a lock-exact environment per uv project under DOD_VERIFY_HERMETIC_VENV_ROOT, keyed by project path and lock bytes, and before this change none was ever removed; on 2026-11-08 lane h051-disk-b-0055 freed 13 GB on h051 by removing 25 of them by hand and recorded the fix as pushed with no pull request (commit cc8284710b on branch omn-22993-dod-verify-venv-prune). After a build or reuse of the environment a run needs, the collector now removes the sibling environments whose mtime is older than DOD_VERIFY_HERMETIC_VENV_RETENTION_S (default 6 hours; a malformed or non-positive value falls back to the default). The environment in use is marked used first and a directory with no bin/python is never removed. This complements the per-run removal of omnimarket#5478, which does not remove environments older runs left behind.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23222-stale-venvs-pruned
+    statement: >-
+      A dod-verify run removes the hermetic environments beside its own that no run has used for the retention period, and keeps recent ones.
+    acceptance:
+      - id: AC1
+        statement: "AC1: building or reusing a hermetic environment removes the sibling environments older than the retention and keeps the recent ones and the environment in use -- falsifier: tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py fails against evidence_collector.py from origin/dev and passes with this change"
+evidence_requirements:
+  - kind: tests
+    description: The hermetic environment retention tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23222-ac1-stale-envs-pruned
+    description: >-
+      The retention tests pass on the branch head; with evidence_collector.py restored from origin/dev, 2 of the 3 fail (the stale-sibling prune and the reused-environment mark).
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23222-retention-tests
+    description: >-
+      The retention tests, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn23222-venv-prune-integration-proof
+    description: >-
+      The pushed head ran the retention tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ledger-prless-2130 -- uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov
+        cwd: .

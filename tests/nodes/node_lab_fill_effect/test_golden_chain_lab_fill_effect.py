@@ -35,6 +35,7 @@ from .fakes import (
     FakeChecks,
     FakeClock,
     FakeLedgerReader,
+    FakeMerged,
     FakeOwners,
     FakePlacement,
     FakeReceipts,
@@ -47,6 +48,8 @@ OPERATIONS = (
     "probe_lab_fill_hosts",
     "read_lab_fill_owner_facts",
     "launch_lab_fill_lane",
+    "send_lab_fill_lane",
+    "gate_lab_fill_send",
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",
     "write_lab_fill_status",
@@ -187,6 +190,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
         blocks=FakeBlocks(),
         runner=runner,
         clock=clock,
+        merged=FakeMerged(),
     ).handle(
         ModelLabFillLaunchRequest(
             launch=launch,
