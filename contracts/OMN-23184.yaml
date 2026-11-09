@@ -21,7 +21,7 @@ requirements:
   - id: AC4
     statement: 'AC4: a ticket, plan task or pull request is in scope when it or any ancestor within the rules hop bound is a goal root or sits in a goal project (by name or id): a child with no project under a goal root or under a Factory ticket is in scope -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''a_child_with_no_project or matched_by_name_or_by_id or hop_bound''`'
   - id: AC5
-    statement: 'AC5: a paused ticket on the chain wins over the root or project above it, a paused pull request stays out, and omnimarket#5445 and a chain reaching no root and no goal project stay out -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''paused_ticket_on_the_chain_leaves or 5445 or reaching_no_root''`'
+    statement: 'AC5: a paused ticket on the chain wins over the root or project above it, a paused pull request stays out, and omnimarket#5445 and a chain reaching no root and no goal project stay out -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''paused_ticket_on_the_chain_leaves or paused_ticket_wins_over_a_project_matched_by_id or 5445 or reaching_no_root''`'
   - id: AC6
     statement: 'AC6: the snapshot writer asks for the parent identifier and the project id and writes parentId and projectId, and a file from before the keys still reads -- falsifier: `uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py -q --no-cov`'
   - id: AC7
@@ -93,7 +93,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k 'paused_ticket_on_the_chain_leaves or 5445 or reaching_no_root'
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k 'paused_ticket_on_the_chain_leaves or paused_ticket_wins_over_a_project_matched_by_id or 5445 or reaching_no_root'
     cwd: .
 - id: dod-omn23184-scope-ac3
   description: The snapshot writer emits parentId and projectId from the GraphQL answer, and an old file without them validates.

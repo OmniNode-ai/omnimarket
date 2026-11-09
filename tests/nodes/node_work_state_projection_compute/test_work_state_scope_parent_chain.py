@@ -409,3 +409,28 @@ def test_a_paused_ticket_on_the_chain_leaves_a_sibling_branch_four_hops_down_in_
     )
     assert _scope_of(result, "ticket:OMN-3") is EnumScopeStatus.PAUSED
     assert _scope_of(result, "ticket:OMN-6") is EnumScopeStatus.IN_SCOPE
+
+
+def test_a_paused_ticket_wins_over_a_project_matched_by_id_above_it(rules, now) -> None:
+    """The project above the paused ticket is matched by id; the ticket below it stays paused, its sibling is in scope."""
+    result = _project(
+        now=now,
+        rules=rules,
+        scope=ModelWorkScope(
+            in_scope_projects=(FACTORY_ID,), paused_tickets=("OMN-2",)
+        ),
+        tickets=tickets_from_linear_snapshot(
+            {
+                "operator": "user-1",
+                "issues": [
+                    _issue("OMN-1", None, projectId=FACTORY_ID),
+                    _issue("OMN-2", "OMN-1"),
+                    _issue("OMN-3", "OMN-2"),
+                    _issue("OMN-4", "OMN-1"),
+                ],
+            },
+            rules,
+        ),
+    )
+    assert _scope_of(result, "ticket:OMN-3") is EnumScopeStatus.PAUSED
+    assert _scope_of(result, "ticket:OMN-4") is EnumScopeStatus.IN_SCOPE
