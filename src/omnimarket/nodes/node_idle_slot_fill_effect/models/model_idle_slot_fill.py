@@ -71,6 +71,8 @@ class ModelIdleSlotFillRequest:
         default_factory=dict
     )  # declared child ticket for each backlog class
     watcher_state: Mapping[str, Any] | None = None
+    # The board's unowned work items (OMN-23184), taken before every other candidate; see ``board_items``.
+    board: list[dict[str, Any]] = field(default_factory=list)
     completed: Mapping[str, str] = field(
         default_factory=dict
     )  # experiment key -> "<lane> at <ended_at>"

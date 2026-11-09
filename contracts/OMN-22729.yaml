@@ -51,3 +51,13 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22729 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ask_done_check_effect tests/unit/nodes/node_ask_state_compute tests/unit/nodes/test_golden_chain_ask_state.py -q --no-cov
     cwd: .
+- id: dod-omn22729-ac1-failed-and-timeout
+  description: The failed state follows the newest FALSE verdict row, and a timed-out query node command emits an UNKNOWN verdict, never a TRUE one.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py tests/unit/nodes/node_ask_done_check_effect/test_ask_done_check_chain_events.py -q --no-cov -k "three_states_of_a_reported_done_ask or named_break_query_node_timeout"
+    cwd: .
