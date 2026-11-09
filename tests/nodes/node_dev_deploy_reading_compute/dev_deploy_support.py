@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
+from omnimarket.models.model_dev_deploy_reading import (
     ModelDevDeployReadingRequest,
 )
 
