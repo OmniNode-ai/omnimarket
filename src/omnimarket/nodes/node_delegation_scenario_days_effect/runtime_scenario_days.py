@@ -17,6 +17,7 @@ from pathlib import Path
 from omnimarket.handlers import delegation_scenario_runtime as runtime_parts
 from omnimarket.nodes.node_delegation_scenario_days_effect.handlers.handler_scenario_days_run import (
     NODE_MODULE,
+    HandlerScenarioDaysRun,
     build_runner,
     dump,
     load_schedule,
@@ -33,7 +34,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.verb == "run":
-        sys.stdout.write(dump(build_runner().run()) + "\n")
+        runner: HandlerScenarioDaysRun = build_runner()
+        sys.stdout.write(dump(runner.run()) + "\n")
         return 0
 
     schedule = load_schedule()

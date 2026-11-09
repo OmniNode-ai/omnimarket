@@ -19,6 +19,8 @@ from omnimarket.handlers import delegation_scenario_runtime as runtime_parts
 from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2 import (
     NODE_MODULE,
+    HandlerScenarioR2,
+    HandlerSubprocessCommand,
     build_runner,
     load_schedule,
 )
@@ -38,7 +40,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         trigger = (
             EnumScenarioTrigger.MANUAL if args.manual else EnumScenarioTrigger.SCHEDULE
         )
-        result = build_runner(trigger=trigger).run()
+        runner: HandlerScenarioR2 = build_runner(
+            trigger=trigger, command=HandlerSubprocessCommand()
+        )
+        result = runner.run()
         sys.stdout.write(result.model_dump_json(indent=2) + "\n")
         return 0 if result.conclusion.value == "success" else 1
 
