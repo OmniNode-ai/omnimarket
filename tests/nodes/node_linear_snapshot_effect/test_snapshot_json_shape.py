@@ -102,6 +102,8 @@ def test_snapshot_json_shape_carries_every_field(tmp_path: Path) -> None:
         "updatedAt": "2026-11-03T14:00:00.000Z",
         "description": "Body of the ticket.",
         "priority": "High",
+        "attachments": None,  # the answer carried no parts: not read, never "has none"
+        "children": None,
     }
     assert doc["issues"][1]["description"] == ""
     # the typed model reads the file back as written

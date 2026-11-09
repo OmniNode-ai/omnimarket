@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger No-File Readings Effect (OMN-22917, piece 6: the seven readings of plan section 4.3)
+#
+# Runs the seven readings that prove no file ledger as one node. Each reads its facts through a probe
+# port (in memory by default, a command route as the real backend), is judged by a pure function and
+# carries the break that must turn it red. A reading is information: it shows on the floor and decides
+# no start. A probe that cannot run reads UNKNOWN, which counts as NOT_WORKING.
+name: node_work_ledger_no_file_readings_effect
+contract_name: node_work_ledger_no_file_readings_effect
+node_name: node_work_ledger_no_file_readings_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The seven readings of the rebuild plan's section 4.3: no file at the path and a probe append that
+  returns a sequence and reads back; a census of executable readers and writers at zero; the path
+  absent for an hour with every reader restarted and no file fallback; a table rebuilt from the
+  accepted-row topic equal to the live one; the snapshot restore drill; no publish job and no 'ledger
+  rows through' commit for 48 hours; a daily receipt that compares the table to the accepted-row topic
+  only and is exact. With write, one STATUS row per reading is appended through the reading appender.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_no_file_readings_effect.handlers.handler_no_file_readings
+  class: HandlerNoFileReadings
+  input_model: omnimarket.nodes.node_work_ledger_no_file_readings_effect.models.model_no_file_readings.ModelNoFileRequest
+
+# HandlerNoFileReadings takes the overlay, the probe port, the emission sink, the appender and the
+# clock as constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [probe-read, ledger-append, event-journal]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelNoFileRequest
+  module: omnimarket.nodes.node_work_ledger_no_file_readings_effect.models.model_no_file_readings
+  description: The correlation id and whether to append the readings as ledger rows.
+output_model:
+  name: ModelNoFileResult
+  module: omnimarket.nodes.node_work_ledger_no_file_readings_effect.models.model_no_file_readings
+  description: Seven readings with verdict, outcome, reasons and the break that turns each red.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_work_ledger_no_file_readings_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22917
+  transport_type: inmemory
