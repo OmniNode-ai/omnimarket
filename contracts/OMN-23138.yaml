@@ -66,3 +66,10 @@ dod_evidence:
     check_value: |-
       uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane graph-OMN-23138-2200 -- uv run --frozen pytest src/omnimarket/nodes/node_network_graph_compute src/omnimarket/nodes/node_create_ticket tests/nodes/node_create_ticket tests/nodes/node_linear_ticket_write_effect tests/nodes/node_repo_health_repair_effect -q --no-cov
     cwd: .
+- id: dod-omn23138-deploy-probe
+  description: Deploy probe. The handler_lane_intake_create.py GitHub serves at the checked-out commit defines HandlerLaneIntakeCreate, the command-and-typed-result create path; the probe exits nonzero on a tree without it, so it fails at the merge base.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_lane_intake_create.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'class HandlerLaneIntakeCreate' > /dev/null
+    cwd: .
