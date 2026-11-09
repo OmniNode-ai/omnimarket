@@ -38,7 +38,7 @@ pytestmark = pytest.mark.unit
 
 _LEAD = "local-small"
 _RUNG = "local-heavy-reasoning"
-_MODELS = {_LEAD: "small-local-model-q4", _RUNG: "Qwen3.8-27B"}
+_MODELS = {_LEAD: "small-local-model-q4", _RUNG: "fixture-rung-model"}
 _GOOD = (
     "### ANSWER\nAccording to Smith (2020) and the theorem in section 3, the "
     "tradeoff is significant because the evidence shows X; therefore we conclude "

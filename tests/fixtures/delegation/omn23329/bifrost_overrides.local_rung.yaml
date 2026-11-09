@@ -10,10 +10,10 @@
 backends:
   - backend_id: local-coder
     endpoint_url: "http://198.51.100.10:8000/v1/chat/completions"
-    model_name: "Qwen3.8-27B"
+    model_name: "fixture-rung-model"
   - backend_id: local-heavy-reasoning
     endpoint_url: "http://198.51.100.10:8000/v1/chat/completions"
-    model_name: "Qwen3.8-27B"
+    model_name: "fixture-rung-model"
   - backend_id: local-small
     provider: local
     endpoint_url: "http://198.51.100.30:8110/v1/chat/completions"
