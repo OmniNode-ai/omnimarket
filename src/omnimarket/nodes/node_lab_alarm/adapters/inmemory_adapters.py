@@ -5,27 +5,43 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
+    ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
 )
 
 
 class InMemoryManifest:
-    """Serves one manifest payload, or refuses with ``unreadable``."""
+    """Serves one manifest payload, or refuses with ``unreadable`` or, as an endpoint that is down, ``unreachable``."""
 
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self.payload = payload
         self.unreadable: str | None = None
+        self.unreachable: str | None = None
 
     def read(self) -> Mapping[str, Any]:
+        if self.unreachable is not None:
+            raise ManifestUnreachableError(self.unreachable)
         if self.unreadable is not None:
             raise ManifestUnreadableError(self.unreadable)
         return self.payload
+
+
+class InMemoryManifestCache:
+    def __init__(self, entry: tuple[Mapping[str, Any], datetime] | None = None) -> None:
+        self.entry = entry
+
+    def load(self) -> tuple[Mapping[str, Any], datetime] | None:
+        return self.entry
+
+    def save(self, manifest: Mapping[str, Any], fetched_at: datetime) -> None:
+        self.entry = (dict(manifest), fetched_at)
 
 
 class InMemoryLag:
@@ -70,4 +86,10 @@ class InMemoryRunRecords:
         self.records.append(dict(record))
 
 
-__all__ = ["InMemoryLag", "InMemoryManifest", "InMemoryRunRecords", "InMemorySamples"]
+__all__ = [
+    "InMemoryLag",
+    "InMemoryManifest",
+    "InMemoryManifestCache",
+    "InMemoryRunRecords",
+    "InMemorySamples",
+]
