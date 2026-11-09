@@ -148,3 +148,19 @@ def test_failing_control_a_failing_enable_is_the_install_exit_code(
         environment={},
     )
     assert code == 5
+
+
+def test_delegation_events_defect_scan_the_unit_carries_the_workspace_config_root_the_bus_append_needs() -> (
+    None
+):
+    """Found on the lab: a unit without it ran the scan and then failed to append (bus exit 69)."""
+    schedule = sched.load_schedule()
+    assert "ONEX_WORKSPACE_CONFIG_ROOT" in schedule.unit_environment
+    service, _ = sched.render_systemd(
+        schedule,
+        omni_root=ROOT,
+        home=HOME,
+        python=PYTHON,
+        environment={"ONEX_WORKSPACE_CONFIG_ROOT": "/srv/config"},
+    )
+    assert 'Environment="ONEX_WORKSPACE_CONFIG_ROOT=/srv/config"\n' in service

@@ -75,7 +75,7 @@ schedule:
   unit_name: onex-delegation-events-defect-scan
   state_directory: .onex_state/delegation-events-defect-scan
   timeout_seconds: 300
-  unit_environment: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME]
+  unit_environment: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME]
   cadence:
     on_calendar: "*-*-* 06:15:00"
     time_zone: UTC
