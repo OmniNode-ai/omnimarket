@@ -11,11 +11,13 @@ row that did not go, why.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .model_lab_fill_effect import LANE_PATTERN, RUN_KEY_PATTERN
+from .model_lab_fill_send_gate import DEFAULT_FACT_HOSTS
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 PriorityClass = Literal["mvp-landing", "process-fix", "other"]
@@ -86,6 +88,10 @@ class ModelLabFillTickRequest(BaseModel):
     park_hours: int = Field(default=24, ge=1)
     # OMN-21881: the overlay's cloud placement switch; the default is off.
     cloud: ModelLabFillTickCloud = Field(default_factory=ModelLabFillTickCloud)
+    # OMN-23277, the send gate: each host's reach (host -> hosts it reaches) and the hosts whose facts a brief may cite.
+    # A host absent from host_reach reaches no other host, so an h200-bound brief is sent only where it is declared.
+    host_reach: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    fact_hosts: tuple[str, ...] = DEFAULT_FACT_HOSTS
 
     @field_validator("ledger_path", "approved_work_path", "brief_dir")
     @classmethod
