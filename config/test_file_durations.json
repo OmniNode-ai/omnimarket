@@ -1,5 +1,6 @@
 {
   "src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py": 0.17,
+  "src/omnimarket/nodes/node_seam_reading_compute/tests/test_no_producer_topic_list.py": 0.3,
   "tests/analysis/test_ast_import_scanner.py": 0.17,
   "tests/chain/test_landing_bus_start_failure.py": 0.14,
   "tests/chain/test_landing_error.py": 0.19,
@@ -4257,6 +4258,7 @@
   "tests/unit/nodes/node_rsd_offline_c0_validate_compute/test_handler_rsd_offline_c0.py": 1.4,
   "tests/unit/nodes/node_seam_read_orchestrator/test_attach_on_demand.py": 0.09,
   "tests/unit/nodes/node_seam_reading_compute/test_append_only_rows.py": 0.02,
+  "tests/unit/nodes/node_seam_reading_compute/test_no_producer_topic_join.py": 2.0,
   "tests/unit/nodes/node_seam_reading_compute/test_omn22909_review_findings.py": 0.01,
   "tests/unit/nodes/node_seam_reading_compute/test_required_sender.py": 0.03,
   "tests/unit/nodes/node_secret_reading_effect/test_join_j4.py": 0.06,
