@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_prompt_gh_read_guard_effect
+version: 1.0.0
+description: Refuse an Agent or Workflow dispatch whose prompt tells a subagent to read GitHub
+  through gh, naming the onex scm verb that answers it. Called by the omniclaude PreToolUse
+  Agent/Workflow entrypoint (pre_tool_use_agent_model_guard.sh).
+pack: distributed_validation
+node_role: effect
+display_name: Agent Prompt Gh Read Guard Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_agent_prompt_gh_read_guard_effect: omnimarket.nodes.node_agent_prompt_gh_read_guard_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- hook-guard
+- lane-github-read
