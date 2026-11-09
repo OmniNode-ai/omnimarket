@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23216
+title: A refusal on a local model for a policy reason ends the run instead of trying a paid model
+summary: The declared transition lists gain the cause policy_refusal in terminate_on for every task class. The local dispatch port and the bus orchestrator both classify a refused secret or exfiltration request as that cause, so the run makes no later provider call and ends with the contract's typed reason. A 503 on the same rung is not that cause and still moves to the next rung. No bound or check is widened.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23216-policy-refusal-terminates
+  statement: A fixed policy refusal on rung 1 makes no later attempt, and a 503 on rung 1 still moves.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a fixed policy refusal on rung 1 makes no later attempt, and a 503 on rung 1 still moves -- falsifier: `uv run pytest tests/unit/delegation/test_policy_refusal_terminates.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The policy-refusal tests, including the control that climbs when the cause is removed, pass.
+  command: uv run --frozen pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23216-ac1-tests
+  description: Runs the policy-refusal tests. A refused secret request on the local rung makes one call and records the cause policy_refusal as a terminate; a 503 on the local rung moves to the cloud rung; the control with the cause removed climbs to the cloud rung.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+    cwd: .
+- id: dod-omn23216-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23216 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_policy_refusal_terminates.py -q --no-cov
+    cwd: .

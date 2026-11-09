@@ -41,6 +41,11 @@ def _when(value: object) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def open_claims_query() -> ModelPointQuery:
+    """The point query that counts the open claims, so a caller never imports the model."""
+    return ModelPointQuery(query="open-claims")
+
+
 def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
     request: dict[str, object] = {
         "correlation_id": correlation_id,

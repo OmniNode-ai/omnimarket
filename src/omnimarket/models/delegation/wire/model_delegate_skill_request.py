@@ -31,6 +31,8 @@ from omnimarket.events.delegation import (
 from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDeclaredOutputs,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 
 # OMN-15482: the closed set of ``response_format`` directives this delegation
 # path genuinely threads end-to-end (onto the outbound chat-completions
@@ -56,10 +58,11 @@ MODEL_WIRE_KEY = "model"
 # ``_tolerate_client_call_before_it_is_declared``.
 CLIENT_CALL_WIRE_KEY = "client_call"
 
-# OMN-23161 (step 1 of 2): the request key that will carry a probe ladder. The
-# local dispatch port already takes a typed ``ModelProbeLadder`` as a dispatch
-# argument (OMN-21212); the request carries none yet. Decoded, not declared, by
-# ``_tolerate_probe_ladder_before_it_is_declared``.
+# OMN-23161 (step 1 of 2), declared by OMN-23162 (step 2): the request key that
+# carries a probe ladder. The local dispatch port takes it as a dispatch
+# argument (OMN-21212) and admits it only from synthetic traffic. The released
+# step-1 decoder ``_tolerate_probe_ladder_before_it_is_declared`` is now a
+# no-op for this class.
 PROBE_LADDER_WIRE_KEY = "probe_ladder"
 
 # OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
@@ -180,6 +183,19 @@ class ModelDelegateSkillRequest(BaseModel):
     # publish. The handler copies both onto every terminal it builds so the
     # delegation_events row joins to the trace. ``exclude_if`` keeps a command
     # that carries no ids byte-identical on the wire to today's.
+    probe_ladder: ModelProbeLadder | ModelProbeFaults | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "OMN-23162: a synthetic probe's per-run ladder. In rungs mode "
+            "(ModelProbeLadder) it names the rungs the run walks instead of the "
+            "routing contract's; in faults mode (ModelProbeFaults) the production "
+            "ladder is resolved as usual and it only names transport faults keyed "
+            "by model id. The local dispatch port refuses it, before any provider "
+            "call, unless the provenance is synthetic with a probe source surface. "
+            "None is an ordinary request."
+        ),
+    )
     trace_id: UUID | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -436,11 +452,9 @@ class ModelDelegateSkillRequest(BaseModel):
 
     # OMN-23161, step 1 of 2: accept and ignore ``probe_ladder`` before it is
     # declared, the same tolerate-before-declare order as ``client_call`` above.
-    # Declaring it outright is refused by the Wire Compatibility Gate, which
-    # grades the maximal key set against the pinned consumer's model. This
-    # release drops the key whatever it holds, so a later release can carry it
-    # and a pinned consumer still decodes the request. Step 2 declares the
-    # field once a release carrying this is out and the consumer pin advances.
+    # OMN-23162, step 2 is done: ``probe_ladder`` is now declared (above), so
+    # this released step-1 decoder is a no-op for this class. Keep it in place
+    # for a subclass that does not declare the field.
     @model_validator(mode="before")
     @classmethod
     def _tolerate_probe_ladder_before_it_is_declared(cls, data: Any) -> Any:
