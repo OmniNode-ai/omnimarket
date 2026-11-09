@@ -36,6 +36,13 @@ class ModelLabFillCandidateInput:
     ticket_prs: tuple[str, ...] = ()
     merged_prs: tuple[str, ...] = ()
     body: str = ""
+    # Delegation ownership and start facts from the ticket mirror (OMN-23312): the ticket's assignee,
+    # the epics it sits under (nearest first), its state type, and how its start criterion reads
+    # ("true", "false" or "unread"). The deployment overlay says which epics and assignees are delegation.
+    assignee: str = ""
+    parents: tuple[str, ...] = ()
+    state_type: str = ""
+    criterion: str = ""
 
 
 @dataclass(frozen=True, slots=True)
