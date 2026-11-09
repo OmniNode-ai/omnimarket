@@ -20,6 +20,8 @@ capabilities:
   side_effect_class: destructive
 dependencies:
 - PyYAML>=6.0.3
+- aiokafka>=0.10.0
+- omnibase-infra>=0.1.0
 license: MIT
 authors:
 - OmniNode Team
