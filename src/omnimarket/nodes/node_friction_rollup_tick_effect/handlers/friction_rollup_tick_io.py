@@ -12,8 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.models.friction_rollup import (
-    ModelFrictionClassOwner,
-    ModelFrictionClassRule,
     ModelFrictionRollupSource,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
@@ -109,23 +107,3 @@ def load_settings(path: Path) -> ModelFrictionRollupTickSettings:
     return ModelFrictionRollupTickSettings.model_validate(
         yaml.safe_load(path.read_text(encoding="utf-8"))
     )
-
-
-def load_class_rules(
-    path: Path,
-) -> tuple[list[ModelFrictionClassRule], list[ModelFrictionClassOwner]]:
-    """The class rules and class owners of the rules file; raises when it cannot be read or is malformed."""
-    import yaml
-
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise ValueError("rules file is not a mapping")
-    rules = [
-        ModelFrictionClassRule.model_validate(item)
-        for item in document.get("class_rules") or []
-    ]
-    owners = [
-        ModelFrictionClassOwner.model_validate(item)
-        for item in document.get("class_owners") or []
-    ]
-    return rules, owners

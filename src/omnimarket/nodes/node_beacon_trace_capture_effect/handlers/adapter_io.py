@@ -10,6 +10,12 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.handlers.writer_pool_host import (
+    WriterPoolClosedError,
+    WriterPoolExhaustedError,
+    load_writer_pool_settings,
+)
+from omnimarket.models.model_writer_pool_settings import ModelWriterPoolSettings
 from omnimarket.nodes.node_beacon_trace_capture_effect.models.model_beacon_hook_event import (
     ModelBeaconHookEvent,
 )
@@ -110,28 +116,75 @@ class KafkaHookEventPublisher:
 
 
 class ProjectionReadback:
-    """Read only the projection rows corresponding to this batch's event IDs."""
+    """Read only the projection rows corresponding to this batch's event IDs.
 
-    def __init__(self, dsn: str | None = None) -> None:
+    One pool opens on the first read and serves every later read and poll; a
+    closed readback raises ``WriterPoolClosedError`` and never reconnects. The
+    pool is sized by the node contract's ``writer_pool`` (OMN-23257).
+    """
+
+    def __init__(
+        self, dsn: str | None = None, settings: ModelWriterPoolSettings | None = None
+    ) -> None:
         # Let the adapter resolve its default DSN.
         self._dsn = dsn or ""
+        self._settings = settings or load_writer_pool_settings(
+            "node_beacon_trace_capture_effect"
+        )
+        self._adapter: Any = None
+        self._admission: asyncio.Semaphore | None = None
+        self._closed = False
+
+    async def open(self) -> None:
+        """Open the one pool; later calls find it open, a closed readback refuses."""
+        if self._closed:
+            raise WriterPoolClosedError("beacon readback: pool is closed")
+        if self._adapter is not None:
+            return
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+        adapter = AsyncpgAdapter(
+            dsn=self._dsn,
+            min_size=self._settings.min_size,
+            max_size=self._settings.max_size,
+            command_timeout=self._settings.command_timeout_seconds,
+        )
+        await adapter.connect()
+        self._adapter = adapter
+        self._admission = asyncio.Semaphore(self._settings.max_size)
+
+    async def close(self) -> None:
+        self._closed = True
+        adapter, self._adapter = self._adapter, None
+        if adapter is not None:
+            await adapter.close()
 
     async def read(self, event_ids: tuple[UUID, ...]) -> list[dict[str, Any]]:
         if not event_ids:
             return []
-        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-
-        adapter = AsyncpgAdapter(dsn=self._dsn, min_size=1, max_size=1)
+        await self.open()
+        admission = self._admission
+        if admission is None or self._adapter is None:
+            raise WriterPoolClosedError("beacon readback: pool is closed")
         try:
-            await adapter.connect()
-            return await adapter.execute(
+            await asyncio.wait_for(
+                admission.acquire(), self._settings.acquire_timeout_seconds
+            )
+        except TimeoutError as exc:
+            raise WriterPoolExhaustedError(
+                "beacon readback: every connection busy for "
+                f"{self._settings.acquire_timeout_seconds}s"
+            ) from exc
+        try:
+            rows: list[dict[str, Any]] = await self._adapter.execute(
                 "select event_id, session_id, hook_event_name, lane, emitted_at "
                 "from omninode_internal.claude_hook_events "
                 "where event_id = any($1::uuid[]) order by emitted_at",
                 list(event_ids),
             )
+            return rows
         finally:
-            await adapter.close()
+            admission.release()
 
     async def read_until_visible(
         self,
@@ -140,7 +193,10 @@ class ProjectionReadback:
         poll_interval_seconds: float,
         deadline_seconds: float,
     ) -> list[dict[str, Any]]:
-        """Poll until every event is visible or the deadline passes; return the last rows read."""
+        """Poll until every event is visible or the deadline passes; return the last rows read.
+
+        Every poll reuses the one pool, which this call closes on return.
+        """
         rows: list[dict[str, Any]] = []
         expected = set(event_ids)
         if not expected:
@@ -154,3 +210,5 @@ class ProjectionReadback:
                     await asyncio.sleep(poll_interval_seconds)
         except TimeoutError:
             return rows
+        finally:
+            await self.close()
