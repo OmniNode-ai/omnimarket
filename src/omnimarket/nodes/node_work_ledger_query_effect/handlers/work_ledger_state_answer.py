@@ -27,6 +27,7 @@ from pydantic import ValidationError
 from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerHoldCounts,
+    ModelWorkLedgerHoldInForce,
     ModelWorkLedgerOpenClaim,
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerStateCursor,
@@ -129,26 +130,26 @@ def _age(now: datetime, moment: datetime) -> str:
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
 
 
-def _hold_lines(
-    request: ModelWorkLedgerQueryRequest,
-    entities: Sequence[ModelWorkLedgerStateEntity],
-    page: ModelWorkLedgerStatePage,
+def partition_stale_holds(
+    holds: Sequence[ModelWorkLedgerHoldInForce], now: datetime, stale_after: timedelta
+) -> tuple[list[ModelWorkLedgerHoldInForce], list[ModelWorkLedgerHoldInForce]]:
+    """Split holds into (live, stale) in one pass, with no pairwise model comparison."""
+    live: list[ModelWorkLedgerHoldInForce] = []
+    stale: list[ModelWorkLedgerHoldInForce] = []
+    for hold in holds:
+        is_stale = stale_hold(hold.until, hold.row.row_ts, now, stale_after)
+        (stale if is_stale else live).append(hold)
+    return live, stale
+
+
+def hold_lines(
+    holds: Sequence[ModelWorkLedgerHoldInForce],
+    stale: Sequence[ModelWorkLedgerHoldInForce],
+    counts: ModelWorkLedgerHoldCounts,
     now: datetime,
     stale_after: timedelta,
-) -> dict[str, object]:
-    rows = _parsed(entities)
-    open_holds, _ = replay.holds_in_force(rows, now=now)
-    if len(open_holds) != len(entities):
-        raise WorkLedgerReadError(
-            f"state page holds {len(entities)} open holds but {len(open_holds)} read as in force"
-        )
-    stale = [
-        h for h in open_holds if stale_hold(h.until, h.row.row_ts, now, stale_after)
-    ]
-    holds = [h for h in open_holds if h not in stale]
-    counts = ModelWorkLedgerHoldCounts(
-        checked=page.total, released=page.released, expired=page.expired
-    )
+) -> tuple[str, ...]:
+    """The ``holds`` verb lines: live holds, then the stale ones with their age."""
     lines = [
         f"HOLD {h.hold_id} by={h.by} scope=<"
         + ";".join(
@@ -173,11 +174,31 @@ def _hold_lines(
             f"  STALE {h.hold_id} by={h.by} age={_age(now, h.row.row_ts)} db:{h.row.row_id}"
             for h in stale
         ]
+    return tuple(lines)
+
+
+def _hold_lines(
+    request: ModelWorkLedgerQueryRequest,
+    entities: Sequence[ModelWorkLedgerStateEntity],
+    page: ModelWorkLedgerStatePage,
+    now: datetime,
+    stale_after: timedelta,
+) -> dict[str, object]:
+    rows = _parsed(entities)
+    open_holds, _ = replay.holds_in_force(rows, now=now)
+    if len(open_holds) != len(entities):
+        raise WorkLedgerReadError(
+            f"state page holds {len(entities)} open holds but {len(open_holds)} read as in force"
+        )
+    holds, stale = partition_stale_holds(open_holds, now, stale_after)
+    counts = ModelWorkLedgerHoldCounts(
+        checked=page.total, released=page.released, expired=page.expired
+    )
     return {
         "matched": len(holds),
         "holds": tuple(holds),
         "hold_counts": counts,
-        "lines": tuple(lines),
+        "lines": hold_lines(holds, stale, counts, now, stale_after),
     }
 
 
@@ -194,16 +215,15 @@ def stale_hold_row(
     )
 
 
-def _inbox_lines(
-    request: ModelWorkLedgerQueryRequest,
-    entities: Sequence[ModelWorkLedgerStateEntity],
+def inbox_answer(
+    every: Sequence[replay.LedgerRow],
+    lanes: Sequence[str],
     now: datetime,
     stale_after: timedelta,
 ) -> dict[str, object]:
-    every = _parsed(entities)
+    """The ``inbox`` sections and lines of parsed rows; stale holds are counted out, not hidden."""
     rows = [r for r in every if not stale_hold_row(r, now, stale_after)]
     by_id = {r.record.row_id: r for r in rows}
-    lanes = request.lanes or ((request.lane,) if request.lane else ())
     boxes = tuple(replay.inbox(rows, lane) for lane in lanes)
     lines: list[str] = []
     for box in boxes:
@@ -230,6 +250,16 @@ def _inbox_lines(
         "inbox": boxes,
         "lines": tuple(lines),
     }
+
+
+def _inbox_lines(
+    request: ModelWorkLedgerQueryRequest,
+    entities: Sequence[ModelWorkLedgerStateEntity],
+    now: datetime,
+    stale_after: timedelta,
+) -> dict[str, object]:
+    lanes = request.lanes or ((request.lane,) if request.lane else ())
+    return inbox_answer(_parsed(entities), lanes, now, stale_after)
 
 
 def _claim_lines(
@@ -318,6 +348,9 @@ def state_answer(
 __all__ = [
     "decode_cursor",
     "encode_cursor",
+    "hold_lines",
+    "inbox_answer",
     "parse_claims_since",
+    "partition_stale_holds",
     "state_answer",
 ]

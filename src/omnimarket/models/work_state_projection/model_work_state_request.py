@@ -17,6 +17,7 @@ from omnimarket.models.work_state_projection.model_work_state_rules import (
     ModelWorkStateRules,
 )
 from omnimarket.models.work_state_projection.model_work_state_sources import (
+    ModelCommitmentSource,
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
     ModelPullRequestSource,
@@ -39,6 +40,7 @@ class ModelWorkStateRequest(BaseModel):
     ledger_rows: tuple[ModelLedgerEvidenceRow, ...] = ()
     receipts: tuple[ModelLaneReceiptSource, ...] = ()
     readings: tuple[ModelReadingSource, ...] = ()
+    commitments: tuple[ModelCommitmentSource, ...] = ()
     unread: tuple[str, ...] = ()
     # How each source stood: fresh, stale with the snapshot's age, or unread.
     source_status: tuple[ModelSourceStatus, ...] = ()

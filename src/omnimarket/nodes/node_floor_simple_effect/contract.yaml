@@ -140,6 +140,9 @@ runtime:
     row_limit: 100000
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
+    # The work-state projection node's output (OMN-22935): the lanes the floor draws are attributed to its rows from their
+    # CLAIM cells in this projection, never from an owner typed into the overlay. An unreadable projection is a cause.
+    work_state_relpath: .onex_state/work-state/work-state.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
     # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
