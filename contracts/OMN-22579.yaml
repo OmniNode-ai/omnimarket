@@ -7,14 +7,8 @@ interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn22579-overlay-timer-root
-  statement: The overlay home names the merged-pull-request reader for each host, a failed reader keeps the tree, the timer runs on each host, and a run counts every entry under its registry root.
+  statement: A run counts every entry under its registry root, including a directory that holds a .git directory. The overlay and timer parts of the ticket are merged elsewhere (overlays#12) and are not changed here.
   acceptance:
-  - id: AC1
-    statement: 'AC1: the overlay names onex scm pr-heads as the reader for h051, h053 and h201 and no gh call, and loads through ModelWorktreeScheduleOverlay -- falsifier: the overlay home ci workflow loads overlays/node_worktree_reconcile_effect/overlay.yaml through the pinned model and fails when the pin line is absent'
-  - id: AC2
-    statement: 'AC2: a reader that exits non-zero keeps the tree and counts a failure -- falsifier: a tick of the same overlay with the reader pointed at a missing command removes nothing and reports failures above zero'
-  - id: AC3
-    statement: 'AC3: onex-worktree-reconcile.timer is enabled on h051 and h053 and one timer-fired run leaves a latest.json with scanned, removed and failures -- falsifier: systemctl --user list-timers onex-worktree-reconcile.timer on each host shows no timer or no latest.json'
   - id: AC4
     statement: 'AC4: h201 scans the trees under its real registry root, not 15 -- falsifier: the h201 latest.json reports scanned equal to the trees under the registry root''s omni_worktrees directory plus its empty directories'
 evidence_requirements:
@@ -26,33 +20,6 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn22579-ac1-overlay-loads
-  description: An overlay with typed reconcile commands loads through ModelWorktreeScheduleOverlay. The overlay home's own ci workflow is the falsifier named on the ticket and is read in that repository.
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov -k overlay_uses_typed_reconcile_commands
-    cwd: .
-- id: dod-omn22579-ac2-failed-reader-keeps
-  description: A merged-pull-request reader that fails keeps the tree, records merged_pr_read_failed and counts one failure.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_worktree_reconcile_effect.py -q --no-cov -k a_failed_reader_is_a_failure_and_keeps_the_tree
-    cwd: .
-- id: dod-omn22579-ac3-tick-receipt
-  description: A tick writes latest.json carrying the completed event with scanned, removed and failures.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov -k tick_refreshes_correlation_and_writes_receipt
-    cwd: .
 - id: dod-omn22579-ac4-git-dirs-counted
   description: A clone and a sandbox's leftover .git directory under a registry root are discovered beside a linked worktree, and neither classifies as a removal; at the merge base only the linked worktree is discovered and the test fails.
   source: manual
