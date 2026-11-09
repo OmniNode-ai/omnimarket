@@ -15,6 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.lab_check_verdict import EnumLabCheckVerdict
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     SHA_PATTERN,
 )
@@ -24,16 +25,6 @@ class EnumLabCheckConclusion(StrEnum):
     SUCCESS = "success"
     FAILURE = "failure"
     PENDING = "pending"
-
-
-class EnumLabCheckVerdict(StrEnum):
-    """What the decision reads off a head's lab-bound check runs."""
-
-    PASS = "pass"
-    FAILED = "failed"
-    PENDING = "pending"
-    MISSING = "missing"
-    SUPERSEDED = "superseded"
 
 
 class ModelLandingLabCheckRun(BaseModel):
