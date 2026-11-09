@@ -40,8 +40,15 @@ def read_history(path: Path) -> tuple[tuple[ModelSnapshot, ...], int]:
 
 def append_snapshot(path: Path, snapshot: ModelSnapshot) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(snapshot.model_dump_json() + "\n")
+    with path.open("a+b") as handle:
+        # An interrupted append leaves a line with no end; the next record starts on a line of its own, so the reader
+        # skips the fragment and still reads this record whole.
+        size = handle.seek(0, 2)
+        if size:
+            handle.seek(size - 1)
+            if handle.read(1) != b"\n":
+                handle.write(b"\n")
+        handle.write((snapshot.model_dump_json() + "\n").encode("utf-8"))
 
 
 def rewrite_history(path: Path, snapshots: tuple[ModelSnapshot, ...]) -> None:

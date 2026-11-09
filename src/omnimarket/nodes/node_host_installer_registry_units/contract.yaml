@@ -7,7 +7,7 @@ lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Install a self-contained copied alarm payload, or render and install a launchd registry_module_tick unit that runs a node module of a project with
+  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
   `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
   unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
   which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
@@ -138,6 +138,72 @@ units:
       LANDING_STATE_DIR: "{home}/.local/state/omni/landing"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
+  # A host's reader of the overlay store (OMN-22561): refreshes each overlay this host keeps and writes the fleet
+  # record the floor reads. Which overlays, which store and how old is too old are its overlay.
+  overlay-store-refresh:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.overlay-store-refresh
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_tick
+    entry_file: src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
+    state_directory: .onex_state/overlay-store-refresh
+    # h101's registry root links to an external volume: launchd could not open logs there (exit 78, EX_CONFIG, no log).
+    log_directory: .local/state/omni/overlay-store-refresh
+    # The same volume bars launchd from the working directory: uv ended up in getcwd for good (measured on h101, sample of the
+    # stalled process). The job runs from, and passes the tick as its omni home, a directory under the home.
+    launchd_root: .local/state/omni/overlay-store-refresh
+  # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
+  # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
+  overlay-store-refresh-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-store-refresh
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 300
+      run_timeout_s: 240
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_tick
+    entry_file: src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
+    state_directory: .onex_state/overlay-store-refresh
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
@@ -172,6 +238,46 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
+  # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
+  # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
+  # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
+  # is the host's proven onex-ledger command line), none is a secret.
+  work-ledger-parity-receipt:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.work-ledger-parity-receipt
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    # The node's own timeout_ms is 1020000 (its contract); the unit ends a hung run at 1020 s and exits 124, before the next tick.
+    run_timeout_s: 1020
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.runtime_parity_receipt
+    entry_file: src/omnimarket/nodes/node_work_ledger_parity_receipt_effect/runtime_parity_receipt.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_LEDGER_COMMAND
+      - ONEX_LEDGER_PARITY_PYTHON
+      - ONEX_LEDGER_PARITY_OVERLAY
+      - ONEX_LEDGER_PARITY_ENV_FILE
+    environment:
+      ONEX_LEDGER_PARITY_FILE: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      ONEX_LEDGER_PARITY_PYTHON: "{registry_root}/.onex-dispatch-venv/bin/python"
+      ONEX_LEDGER_PARITY_OVERLAY: "{marketplace_root}/plugins/onex-overlays/overlays/delegation_health/overlay.yaml"
+      ONEX_LEDGER_PARITY_ENV_FILE: "{home}/.omnibase/.env"
+      ONEX_LEDGER_PARITY_PG_PORT: "5436"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/work-ledger-parity-receipt/last-run.json
+    state_directory: .onex_state/work-ledger-parity-receipt
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
@@ -230,6 +336,9 @@ units:
             "SELECT host || chr(124) || max(emitted_at) FROM omninode_internal.claude_hook_events
             WHERE emitted_at > now() - make_interval(days => 1) GROUP BY host"
         host_table: "{host_table_path}"
+        # Leave out of the quiet-host reading each host the lab host table declares unavailable (OMN-22778); the
+        # alarm reads that table through the unit's ONEX_WORKSPACE_CONFIG_ROOT, the way every other consumer does.
+        skip_unavailable_hosts: true
         # The drainer this host watches and reinstalls (the launching Mac is h200).
         drainer:
           host: h200

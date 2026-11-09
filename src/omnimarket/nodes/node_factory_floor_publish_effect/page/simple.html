@@ -25,7 +25,10 @@ h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
 .p:focus-visible,.line .n a:focus-visible,#pclose:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .line .n a{font-size:inherit;color:inherit;text-decoration:underline dotted}
-.p.cur{background:var(--blue);color:#fff;font-weight:650}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.p.grey{background:#e6e8eb;color:var(--mute)}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.p.cur{border:3px solid var(--ink);box-shadow:inset 0 0 0 2px #fff;font-weight:650}
+.legend{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:6px;font-size:12px;color:var(--mute)}.legend span{white-space:nowrap}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:#e6e8eb}.sw.green{background:var(--green)}.sw.amber{background:var(--amber)}.sw.red{background:var(--red)}.sw.cur{background:#fff;border:2px solid var(--ink)}
 .piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
 .line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
 .line .n{flex:none;width:1.8em;color:var(--mute);text-align:right}.line .t{flex:1}.line .t small{color:var(--mute)}.line .a{flex:none;color:var(--mute);font-size:12px}
@@ -68,12 +71,14 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
 .hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
 </style></head><body><main>
-<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a></div>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
 <section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
 <section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
 </main>
 <script>
 "use strict";
+let pieceMeasures = {}, measuresFailure = "not read yet";
+const COMPARE_DATA = "floor-compare.json";
 const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000, TABS = ["process", "machines"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
@@ -94,6 +99,14 @@ async function load(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     doc = await r.json(); failure = "";
   } catch (e) { failure = String(e.message || e); }
+  // Each live piece against the old way (OMN-23081) is in the comparison record; a failed read leaves the panel saying so.
+  try {
+    const c = await fetch(COMPARE_DATA, {cache: "no-store"});
+    if (!c.ok) throw new Error("HTTP " + c.status);
+    const cd = await c.json();
+    pieceMeasures = {}; for (const pm of (cd.pieces || [])) pieceMeasures[pm.piece] = pm;
+    measuresFailure = "";
+  } catch (e) { measuresFailure = String(e.message || e); }
   draw();
 }
 // The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
@@ -107,6 +120,12 @@ function healthRow(hl){
   const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
   return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
 }
+// The warning a refresh failure or an expired record calls for; the open panel shows it too, since it sits over the page.
+function recordWarning(age, limit){
+  if (failure) return `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
+  if (age > limit) return `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  return "";
+}
 function draw(){
   const app = document.getElementById("app");
   if (!doc) { app.innerHTML = `<div class="frozen">The floor record cannot be read (${esc(failure)}). Nothing below can be trusted.</div><div class="more"><a href="detail.html">Details: lines, machines, shipping, delegation</a></div>`; return; }
@@ -115,8 +134,13 @@ function draw(){
   let h = "";
   tintIcon(failure || age > limit || !ICON_TINT[doc.level] ? "grey" : doc.level);
   document.title = (failure || age > limit ? "STALE " : "") + "Factory floor, record " + ago(age);
-  if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
-  else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  h += recordWarning(age, limit);
+  const cur = doc.rebuild.current_piece;
+  // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
+  // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
+  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
@@ -130,9 +154,6 @@ function draw(){
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
-  const cur = doc.rebuild.current_piece;
-  h += `<h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.piece === cur ? "cur" : p.status === "not_started" ? "" : esc(p.draw)}" href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
-  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div>`;
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
@@ -144,6 +165,7 @@ function draw(){
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
   if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
+  if ((r.uncarried_red || []).length) h += `<div class="rule bad">${r.uncarried_red.length} red with no live lane on it: ${r.uncarried_red.map(esc).join(", ")}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
@@ -192,17 +214,31 @@ const panel = document.createElement("aside");
 panel.id = "ppanel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "ptitle"); panel.setAttribute("aria-hidden", "true");
 panel.innerHTML = `<div class="ph"><div><div class="pn" id="pnum"></div><h2 id="ptitle"></h2></div><button id="pclose" type="button" aria-label="Close the piece details">Close</button></div><div id="pbody"></div>`;
 document.body.append(tip, back, panel);
+// The window as configured, never rounded into another interval: whole days, else whole hours, else whole minutes, else seconds.
+function windowText(s){
+  const unit = (n, one, many) => n + " " + (n === 1 ? one : many);
+  if (!s) s = 86400;
+  if (s === 86400) return "24 hours";
+  if (s % 86400 === 0) return unit(s / 86400, "day", "days");
+  if (s % 3600 === 0) return unit(s / 3600, "hour", "hours");
+  if (s % 60 === 0) return unit(s / 60, "minute", "minutes");
+  return unit(s, "second", "seconds");
+}
+// A piece with an event on record, or a count above zero, has events even when it has not both a golden and an error one.
+const hasEvents = p => p.golden_age_s != null || p.error_age_s != null || (p.golden_in_window || 0) > 0 || (p.error_in_window || 0) > 0;
+function eventsSection(p){
+  const cnt = v => v == null ? "not read" : String(v);
+  return `<h3>Events in the last ${esc(windowText(p.window_s))}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`
+    + `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
+}
 function panelBody(p){
-  const w = whoIsOn(p), win = p.window_s ? Math.round(p.window_s / 3600) : 24;
-  const winText = win % 24 === 0 ? (win / 24 === 1 ? "24 hours" : win / 24 + " days") : win + " hours";
+  const w = whoIsOn(p);
   let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
   h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
-  if (p.status === "not_started") return h + `<h3>State</h3><p>Not started. It has no reading and no events yet.</p><h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+  if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
   h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
-  const cnt = v => v == null ? "not read" : String(v);
-  h += `<h3>Events in the last ${esc(winText)}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`;
-  h += `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
-  h += `<h3>Against the old way, 7 days</h3><p class="mute">The floor record carries no 7-day comparison for this piece yet.</p>`;
+  h += eventsSection(p);
+  h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
   h += `<h3>Who is on it</h3>`;
   h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
   h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
@@ -210,13 +246,31 @@ function panelBody(p){
   if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
   return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
 }
+// The piece's measure against its baseline over its first 7 days, and on day 7 the verdict (OMN-23081). Never inferred:
+// the words and numbers are the comparison record's own; a missing record or piece says so.
+const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
+const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
+const num = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+function measureSection(p){
+  const pm = pieceMeasures[p.piece];
+  if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
+  let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
+  h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
+  for (const m of pm.measures) {
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(num(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(num(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(num(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p class="mute">Source: ${esc(m.source)}</p>`;
+  }
+  return h;
+}
 const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
 function renderPanel(){
   const p = pieceOf(openPiece);
   if (!p) { hidePanel(); return; }
   document.getElementById("pnum").textContent = "Piece " + p.piece + " of " + doc.pieces.length;
   document.getElementById("ptitle").textContent = p.name;
-  document.getElementById("pbody").innerHTML = panelBody(p);
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  document.getElementById("pbody").innerHTML = recordWarning(age, doc.freshness_max_age_s || FALLBACK_MAX_AGE_S) + panelBody(p);
 }
 function showPanel(n){
   if (!pieceOf(n)) return;
@@ -283,14 +337,14 @@ function showTab(){
 // draws, test_simple_page_machines holds the two equal). Every cell names its source, its state (read, stale or unread)
 // and the reason; an unread cell is never drawn as a number and a stale one is marked.
 let mdoc = null, mfailure = "";
-const num = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d;
+const numOr = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d;
 const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
 function ageText(ms){
   const m = Math.max(0, Math.round(ms / 60000));
   return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
 }
 function sinceRecord(){ const t = mdoc ? Date.parse(mdoc.generated_at) : NaN; return Number.isNaN(t) ? 0 : Math.max(0, Date.now() - t); }
-function liveMs(min){ return num(min) * 60000 + sinceRecord(); }
+function liveMs(min){ return numOr(min) * 60000 + sinceRecord(); }
 const HOST_WORD = {out: "Out of selection", unread: "Not read", stale: "Reading out of date", refusing: "Refusing new work", read: "Read"};
 const HOST_TONE = {out: "idle", unread: "idle", stale: "warn", refusing: "warn", read: "ok"};
 function cellMin(c){ return c.age_min == null ? "" : `, read ${ageText(liveMs(c.age_min))} ago`; }

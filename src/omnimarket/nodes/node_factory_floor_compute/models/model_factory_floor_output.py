@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
+    ModelFloorSourceHealth,
 )
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
@@ -334,6 +335,8 @@ class ModelFloorLane(BaseModel):
     liveness_detail: str = "no process reading was supplied"
     # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell), "" when the CLAIM names none.
+    parent_ticket: str = ""
 
 
 class ModelFloorLamp(BaseModel):
@@ -557,6 +560,8 @@ class ModelFloorSources(BaseModel):
     runner_fleet_cause: str = ""
     # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
     merged_running_cause: str = ""
+    # How each source the line board depends on was read (copied from the request unchanged).
+    health: tuple[ModelFloorSourceHealth, ...] = ()
 
 
 LimitKind = Literal[

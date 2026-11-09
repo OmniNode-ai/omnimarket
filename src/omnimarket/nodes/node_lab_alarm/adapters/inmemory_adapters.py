@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
@@ -16,21 +17,37 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
     LaneDispatchError,
+    ManifestUnreachableError,
     ManifestUnreadableError,
+    RunRecordUnwritableError,
 )
 
 
 class InMemoryManifest:
-    """Serves one manifest payload, or refuses with ``unreadable``."""
+    """Serves one manifest payload, or refuses with ``unreadable`` or, as an endpoint that is down, ``unreachable``."""
 
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self.payload = payload
         self.unreadable: str | None = None
+        self.unreachable: str | None = None
 
     def read(self) -> Mapping[str, Any]:
+        if self.unreachable is not None:
+            raise ManifestUnreachableError(self.unreachable)
         if self.unreadable is not None:
             raise ManifestUnreadableError(self.unreadable)
         return self.payload
+
+
+class InMemoryManifestCache:
+    def __init__(self, entry: tuple[Mapping[str, Any], datetime] | None = None) -> None:
+        self.entry = entry
+
+    def load(self) -> tuple[Mapping[str, Any], datetime] | None:
+        return self.entry
+
+    def save(self, manifest: Mapping[str, Any], fetched_at: datetime) -> None:
+        self.entry = (dict(manifest), fetched_at)
 
 
 class InMemoryLag:
@@ -60,6 +77,19 @@ class InMemorySamples:
 
     def save(self, sample: Mapping[str, int]) -> None:
         self.sample = dict(sample)
+
+
+class InMemoryRunRecords:
+    """Keeps the appended run records in a list; ``unwritable`` makes the next append refuse."""
+
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+        self.unwritable: str | None = None
+
+    def append(self, record: Mapping[str, Any]) -> None:
+        if self.unwritable is not None:
+            raise RunRecordUnwritableError(self.unwritable)
+        self.records.append(dict(record))
 
 
 class InMemoryEffectsGroups:
@@ -105,5 +135,7 @@ __all__ = [
     "InMemoryHeldState",
     "InMemoryLag",
     "InMemoryManifest",
+    "InMemoryManifestCache",
+    "InMemoryRunRecords",
     "InMemorySamples",
 ]

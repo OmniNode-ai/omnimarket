@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23081
+title: Each rebuild piece that goes live is measured against the old way for 7 days on the floor, kept if better, rolled back if worse
+summary: node_floor_compare_effect reads an overlay that declares, for live rebuild pieces 1, 2, 3, 5 and 6, the outcome measure (a compare-history key), the live date and the baseline window; it reads the baseline from the history before the live date and each of the first 7 days after it, records a day-7 verdict of better, worse or unread once, and writes them as the pieces of floor-compare.json. New history keys come from dated sources (lab slots free and ledger read lag from the factory floor record and its dated copies; capacity refusals and parity failures from ledger rows; each piece's last golden age from the floor). The main floor page's piece panel shows the measure in its Against the old way section. No check and no bound changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23081-piece-measure
+  statement: Each live rebuild piece is measured against its baseline from before it went live over its first 7 days, with a day-7 verdict of better, worse or unread that is never inferred, shown on the floor's piece card.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each live piece declares, as overlay data, the outcome measure that compares it with the old way (for example piece 2: lab slots available and lanes refused for capacity; piece 6: ledger read freshness and parity), its baseline from history before it went live, and the date it went live -- falsifier: the floor''s piece JSON carrying the measure, baseline and live date for pieces 1, 2, 3, 5 and 6'
+  - id: AC2
+    statement: 'AC2: the floor shows each piece''s measure against its baseline over its first 7 days, and on day 7 a verdict of better, worse or unread (never inferred) -- falsifier: uv run pytest of the comparison''s tests with a planted better and a planted worse history'
+  - id: AC3
+    statement: 'AC3: the floor_simple publisher reads the ledger once per cycle whatever the number of queries, so the ledger read stays far under the 15 s step limit and returns the same facts as one read per query -- falsifier: uv run pytest of the step-time tests, which fail on a read that opens each ledger file once per query'
+- id: req-omn23081-delegation-tab
+  statement: The floor has a Delegation tab that says whether delegation is shippable (every delegation scenario passes on its latest scheduled run) and where each ticket of the delegation readiness plan stands, from data the publisher computes each run.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the Delegation tab shows one shippable line that is yes only when every scenario''s latest finished scheduled run succeeded (a failed, cancelled, missing, not built or unread scenario makes it no), and the plan''s 23 tickets grouped as done, merged and awaiting the closer, pull request open (red or green), lane running (lane and host) and not started (start condition true or false), with counts at the top and every number and row opening its details -- falsifier: uv run pytest tests/nodes/node_floor_delegation_effect tests/nodes/node_factory_floor_publish_effect/test_delegation_page.py -q --no-cov, whose control plants one failing scenario and expects the page to draw not shippable'
+evidence_requirements:
+- kind: tests
+  description: The piece measure tests (planted better and planted worse history), the comparison node and the page tests pass
+  command: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23081-piece-measure-tests
+  description: Runs the piece measure tests with a planted better and a planted worse history, the shipped overlay check for pieces 1, 2, 3, 5 and 6, the comparison node and the publisher page tests.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+    cwd: .
+- id: dod-omn23081-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23081 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_compare_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+    cwd: .
+- id: dod-omn23081-floor-simple-step-time
+  description: Runs the floor_simple step-time tests, which fail on a ledger read that opens each ledger file once per query, and the parity of the batched read with one read per query.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_step_time_floor_simple.py -q --no-cov
+    cwd: .
+- id: dod-omn23081-delegation-tab-tests
+  description: Runs the delegation tracker tests (the shippable line with a planted failing scenario, the ticket groups and start conditions, the readers, the two stages) and the page tests, which draw the served tracker under node.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_delegation_effect tests/nodes/node_factory_floor_publish_effect/test_delegation_page.py -q --no-cov
+    cwd: .

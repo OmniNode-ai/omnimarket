@@ -38,6 +38,10 @@ description: >
   `set_only` records the developer's rule, `local` or `free`, under which every
   delegation on this machine skips a model outside it; `clear_only` removes it.
   A status carries the rule in force as `only`.
+  `ladder` lists every routable model in the order delegation tries it: the
+  model chosen first, then the local models, then each key's models. Each rung
+  carries its provider, model and cost class: `free`, `paid`, or `unknown` when
+  the catalogue declares no price (never read as free).
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 

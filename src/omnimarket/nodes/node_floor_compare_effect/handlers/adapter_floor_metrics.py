@@ -89,6 +89,14 @@ def snapshot_from_floor_simple(
             key = f"piece:{piece.get('piece')}"
             values[key] = float(rt.piece_rank[str(piece["draw"])])
             labels[key] = f"{piece.get('piece')}, {piece.get('name', '')}".rstrip(", ")
+        # The age of the piece's last golden event, in hours (OMN-23081): read only when the floor read it.
+        if (
+            isinstance(piece, Mapping)
+            and (age := _number(piece.get("golden_age_s"))) is not None
+        ):
+            gkey = f"piece_golden_age_h:{piece.get('piece')}"
+            values[gkey] = round(age / 3600.0, 3)
+            labels[gkey] = f"{piece.get('piece')}, {piece.get('name', '')}".rstrip(", ")
     for lab in doc.get("lab_state") or ():
         if (
             isinstance(lab, Mapping)
@@ -98,7 +106,28 @@ def snapshot_from_floor_simple(
             key = f"lab:{lab['id']}"
             values[key] = float(rt.piece_rank[str(lab["draw"])])
             labels[key] = str(lab.get("title") or lab["id"])
-    return ModelSnapshot(at=at, source=source, values=values, labels=labels)
+    # The floor lists these collections in full for a document that read them: the producer leaves out a pull request cause
+    # with no pull requests and a lab cause that is WORKING, and the alarms list holds every alarm that is up. A key under
+    # them that the document does not hold was read as absent (zero), not left unread.
+    complete: list[str] = []
+    numbers = {
+        str(i.get("key")): i
+        for i in doc.get("numbers") or ()
+        if isinstance(i, Mapping) and i.get("read") is True
+    }
+    if "open_prs" in numbers and isinstance(doc.get("causes"), list):
+        complete.append("cause:prs:")
+    if doc.get("lab_state"):
+        complete.append("cause:lab:")
+    if isinstance(alarms, list):
+        complete.append("alarm:")
+    return ModelSnapshot(
+        at=at,
+        source=source,
+        values=values,
+        labels=labels,
+        complete=tuple(complete),
+    )
 
 
 def snapshot_from_factory_record(
@@ -119,10 +148,50 @@ def snapshot_from_factory_record(
         if (n := _number(item.get("occurrences"))) is not None:
             values[f"cause:{cid}"] = n
             labels[f"cause:{cid}"] = title
-        if (c := _number(item.get("cost_minutes"))) is not None:
+        if (
+            cid not in rt.estimated_cost_stoppages
+            and (c := _number(item.get("cost_minutes"))) is not None
+        ):
             values[f"stoppage_cost:{cid}"] = c
             labels[f"stoppage_cost:{cid}"] = title
-    bays = [b for b in floor.get("bays") or () if isinstance(b, Mapping)]
-    if bays and not any(b.get("stale") for b in bays):
-        values["slots_busy"] = float(sum(int(b.get("running") or 0) for b in bays))
+    # As the live floor reads slots: the hosts whose bay is stale are left out, the rest are summed, and a reading with no
+    # capacity among the hosts that were read is unread.
+    read = [
+        b
+        for b in floor.get("bays") or ()
+        if isinstance(b, Mapping) and not b.get("stale")
+    ]
+    if sum(int(b.get("slots") or 0) for b in read) > 0:
+        values["slots_busy"] = float(sum(int(b.get("running") or 0) for b in read))
     return ModelSnapshot(at=at, source=source, values=values, labels=labels)
+
+
+def measures_from_factory_record(
+    doc: Mapping[str, Any], rt: ModelFloorCompareRuntime, *, source: str
+) -> ModelSnapshot | None:
+    """The piece measures one factory floor record holds (OMN-23081): lab slots free over the hosts read fresh, and how far
+    the newest ledger row read lags the record's own read. A value the record did not read is left out."""
+    del rt
+    at = parse_stamp(doc.get("generated_at"))
+    floor = doc.get("floor")
+    if at is None or not isinstance(floor, Mapping):
+        return None
+    values: dict[str, float] = {}
+    # A host read stale has no slot available to a lane, so only fresh hosts count; with no fresh host it is unread.
+    fresh = [
+        b
+        for b in floor.get("bays") or ()
+        if isinstance(b, Mapping) and not b.get("stale")
+    ]
+    frees = [_number(b.get("free")) for b in fresh]
+    if fresh and all(f is not None for f in frees):
+        values["slots_free"] = float(sum(f for f in frees if f is not None))
+    sources = doc.get("sources")
+    newest = (
+        parse_stamp(sources.get("ledger_newest_row"))
+        if isinstance(sources, Mapping)
+        else None
+    )
+    if newest is not None:
+        values["ledger_read_lag_s"] = max(0.0, (at - newest).total_seconds())
+    return ModelSnapshot(at=at, source=source, values=values)

@@ -19,6 +19,7 @@ import math
 import os
 import shlex
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -46,6 +47,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegat
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
     HandlerFleetObservationSource,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source import (
+    HandlerFrictionRollupSource,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
     HandlerProcessHealthPayload,
@@ -162,6 +166,31 @@ def write_atomic(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def _within_seconds[T](seconds: float, work: Callable[[], T], message: str) -> T:
+    """The result of ``work``, or ``TimeoutError(message)`` once ``seconds`` have passed.
+
+    The work runs in a daemon thread so a stuck read or a backtracking pattern cannot hold the publication: the caller
+    reports the step failed and goes on. The thread is left to finish on its own; it holds no lock the cycle needs.
+    """
+    outcome: list[T] = []
+    failure: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            outcome.append(work())
+        except BaseException as exc:
+            failure.append(exc)
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError(message)
+    if failure:
+        raise failure[0]
+    return outcome[0]
+
+
 def _tail(raw: bytes) -> str:
     return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
 
@@ -199,10 +228,10 @@ class PhaseBudget:
 
     def timeout(self) -> int:
         """The limit for the next call: the transfer limit or what the phase has left, whichever is less."""
-        left = math.ceil(self.remaining())
+        left = math.floor(self.remaining())
         if left <= 0:
             raise PublishRefusedError(
-                f"the {self._phase} budget of this cycle is spent; the previous files on the server are untouched"
+                f"the {self._phase} budget of this cycle is spent; files already replaced earlier in this phase stay replaced"
             )
         return min(self._cap, left)
 
@@ -260,9 +289,11 @@ class HandlerFactoryFloorPublish:
         self,
         runner: Runner = run_process,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._run = runner
         self._clock = clock
+        self._wall_clock = wall_clock
         self._served: (
             tuple[
                 ModelFactoryFloorPublishRuntime,
@@ -324,6 +355,8 @@ class HandlerFactoryFloorPublish:
         simple_reads = self._read_simple(home / rt.simple_reads_relpath)
         compare_page = (NODE_DIR / rt.compare_page_relpath).read_bytes()
         compare_data = self._read_simple(home / rt.compare_data_relpath)
+        tracker_page = (NODE_DIR / rt.delegation_tracker_page_relpath).read_bytes()
+        tracker_data = self._read_simple(home / rt.delegation_tracker_data_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
@@ -360,6 +393,7 @@ class HandlerFactoryFloorPublish:
             "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
             "simple_floor": "published" if simple_data is not None else "absent",
             "floor_compare": "published" if compare_data is not None else "absent",
+            "delegation_tracker": "published" if tracker_data is not None else "absent",
             "process_health": "published" if health is not None else "absent",
             "process_health_reason": health_payload.reason,
             "delegation": "published" if delegation is not None else "absent",
@@ -375,6 +409,7 @@ class HandlerFactoryFloorPublish:
             (rt.names.page, page),
             (rt.names.simple_page, simple_page),
             (rt.names.compare_page, compare_page),
+            (rt.names.delegation_tracker_page, tracker_page),
             (rt.names.status, status),
         ]
         if simple_reads is not None:
@@ -383,6 +418,8 @@ class HandlerFactoryFloorPublish:
             files.append((rt.names.simple_data, simple_data))
         if compare_data is not None:
             files.append((rt.names.compare_data, compare_data))
+        if tracker_data is not None:
+            files.append((rt.names.delegation_tracker_data, tracker_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))
@@ -619,6 +656,24 @@ class HandlerFactoryFloorPublish:
                 write_atomic(home / step.output_relpath, json.dumps(reading).encode())
                 if reading["status"] != "read":
                     return failed("producer unread", str(reading["reason"]))
+                return ModelPublishStepResult(name=step.name, status="ok")
+            if step.kind == "friction_rollup":
+                if step.rollup is None or step.output_relpath is None:
+                    raise ValueError(
+                        "a friction rollup step names its settings and an output"
+                    )
+                settings = step.rollup
+                report = _within_seconds(
+                    step.timeout_seconds,
+                    lambda: HandlerFrictionRollupSource().handle(
+                        settings, now=self._wall_clock(), environ=env
+                    ),
+                    f"the friction rollup ran past its {step.timeout_seconds} s budget",
+                )
+                write_atomic(
+                    home / step.output_relpath,
+                    json.dumps(report, sort_keys=True).encode("utf-8"),
+                )
                 return ModelPublishStepResult(name=step.name, status="ok")
             if step.kind == "copy":
                 if step.source_relpath is None or step.output_relpath is None:

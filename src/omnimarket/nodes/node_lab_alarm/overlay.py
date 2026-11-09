@@ -46,11 +46,31 @@ class ModelGroupDerivation(BaseModel):
     nodes: tuple[ModelDeclaredNode, ...] = Field(min_length=1)
 
 
+class ModelManifestResilience(BaseModel):
+    """How the alarm treats a manifest endpoint that does not answer (it is down while dev redeploys).
+
+    Retries and the last-good fallback never touch the lag rule or any lag bound: the broker is still
+    read for every group, the fallback only supplies the group names, and its age is named in the result.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Fetch attempts per run, the first included.
+    attempts: int = Field(ge=1)
+    retry_delay_seconds: float = Field(ge=0)
+    #: The oldest last-good manifest the run may take its group names from; older reads INDETERMINATE.
+    max_stale_seconds: int = Field(ge=1)
+    #: Where the last good manifest (only the declared nodes' contracts) is kept.
+    cache_path: str = Field(min_length=1)
+
+
 class ModelManifestSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     url: str = Field(min_length=1)
     timeout_seconds: float = Field(gt=0)
+    #: Absent means one attempt and no fallback (the behaviour before OMN-22874); declare it to turn both on.
+    resilience: ModelManifestResilience | None = None
 
 
 class ModelLagSettings(BaseModel):
@@ -59,6 +79,46 @@ class ModelLagSettings(BaseModel):
     timeout_seconds: float = Field(gt=0)
     #: Where the previous sample is kept between ticks.
     state_path: str = Field(min_length=1)
+    #: Where each finished run is appended, in the shape the floor's broker lag source reads.
+    record_path: str = Field(min_length=1)
+    #: The condition name the run record carries, the one the floor's overlay lists for the broker.
+    record_condition: str = Field(min_length=1)
+
+
+class ModelLabAlarmScheduleHost(BaseModel):
+    """A host that runs the broker lag read on the schedule."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    scheduler: Literal["systemd-user", "launchd"]
+    #: The venv whose interpreter runs the unit, relative to the registry root. A kept tree, never a worktree.
+    venv: str = Field(min_length=1)
+    #: Environment the host's unit carries; ``$OMNI_HOME`` and ``$HOME`` are filled in at install.
+    environment: dict[str, str]
+
+
+class ModelLabAlarmSchedule(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    launchd_label: str = Field(min_length=1)
+    #: Relative to the registry root: the unit's log directory.
+    state_directory: str = Field(min_length=1)
+    #: Seconds between two runs. The floor reads the record no older than its own bound, so keep it well under.
+    interval_seconds: int = Field(ge=60)
+    timeout_seconds: int = Field(ge=1)
+    hosts: tuple[ModelLabAlarmScheduleHost, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_hosts(self) -> ModelLabAlarmSchedule:
+        names = [host.name for host in self.hosts]
+        if len(names) != len(set(names)):
+            raise ValueError("a schedule host is declared twice")
+        return self
+
+    def host(self, name: str) -> ModelLabAlarmScheduleHost | None:
+        return next((host for host in self.hosts if host.name == name), None)
 
 
 class ModelEscalationSettings(BaseModel):
@@ -99,6 +159,7 @@ class ModelLabAlarmOverlay(BaseModel):
     manifest: ModelManifestSettings
     groups: ModelGroupDerivation
     lag: ModelLagSettings
+    schedule: ModelLabAlarmSchedule
     injected_fault: str = Field(min_length=1)
     effects_held: ModelEffectsHeldSettings
 
@@ -122,7 +183,10 @@ __all__ = [
     "ModelEscalationSettings",
     "ModelGroupDerivation",
     "ModelLabAlarmOverlay",
+    "ModelLabAlarmSchedule",
+    "ModelLabAlarmScheduleHost",
     "ModelLagSettings",
+    "ModelManifestResilience",
     "ModelManifestSettings",
     "load_overlay",
 ]

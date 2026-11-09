@@ -11,6 +11,7 @@ are INDETERMINATE and never a smaller list or a zero.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -20,6 +21,7 @@ import yaml
 from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryLag,
     InMemoryManifest,
+    InMemoryRunRecords,
     InMemorySamples,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
@@ -95,6 +97,8 @@ def _handler(
         manifest=manifest or InMemoryManifest(_manifest()),
         lag=lag,
         samples=samples,
+        records=InMemoryRunRecords(),
+        clock=lambda: datetime(2026, 11, 8, 1, 0, tzinfo=UTC),
     )
     return handler, lag, samples
 

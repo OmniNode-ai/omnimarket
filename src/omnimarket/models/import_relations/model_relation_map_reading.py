@@ -9,6 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.import_relations.model_dependency_gate import (
+    ModelDependencyGateResult,
+)
 from omnimarket.models.import_relations.model_import_relations import (
     ModelImportRelationReport,
 )
@@ -29,6 +32,9 @@ class ModelRelationMapReadingCommand(BaseModel):
     piece: int = Field(ge=1)
     window_start: datetime
     report: ModelImportRelationReport | None
+    #: The dependency gate's verdict over the same report; the row carries its current and frozen counts.
+    #: ``None`` reads as ``count=unread`` in the row, never as a zero.
+    gate: ModelDependencyGateResult | None = None
     write: bool = True
 
 
