@@ -35,6 +35,7 @@ from .fakes import (
     FakeChecks,
     FakeClock,
     FakeLedgerReader,
+    FakeMerged,
     FakeOwners,
     FakePlacement,
     FakeReceipts,
@@ -188,6 +189,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
         blocks=FakeBlocks(),
         runner=runner,
         clock=clock,
+        merged=FakeMerged(),
     ).handle(
         ModelLabFillLaunchRequest(
             launch=launch,
