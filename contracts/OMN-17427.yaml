@@ -978,7 +978,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch1_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-fill-runs-dry"
@@ -2487,7 +2487,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch3_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn17427-claude-pool-revoked-unit"
@@ -4117,7 +4117,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch5_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn17427-owner-summary-facts"
