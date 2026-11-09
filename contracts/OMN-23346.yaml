@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-23346
+title: Drop the stale transport-import exclusion for the merge sweep compute entry point (validator exclusion burn-down, slice 2)
+summary: >-
+  The static transport-import exclusion list in scripts/ci/check_unimported_handlers.py carried node_merge_sweep_compute/__main__.py although
+  that file holds no banned import. The entry is removed, and a guard test fails when any remaining exclusion no longer hides a violation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23346-stale-exclusion
+  statement: The transport-import exclusion list carries no entry that hides nothing, and a test keeps it that way.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the transport-import exclusion list no longer carries node_merge_sweep_compute/__main__.py and the transport-import check passes without it -- falsifier: uv run pytest -q -k transport_import in omnimarket'
+  - id: AC2
+    statement: 'AC2: the change merges on dev with contracts/OMN-23346.yaml -- falsifier: uv run pytest tests/contracts -q -k OMN-23346'
+evidence_requirements:
+- kind: tests
+  description: The transport-import gate tests, including the guard that every static exclusion still violates.
+  command: uv run --frozen pytest tests/ci/test_dynamic_import_gate.py -q --no-cov -k transport_import
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23346-ac1-exclusion-dropped
+  description: >-
+    The guard test asks ValidatorTransportImport for each remaining static exclusion and fails if one reports no banned import. The check
+    scripts/ci/check_unimported_handlers.py --transport-imports reports 0 violations with the entry removed. The named break is the
+    __main__.py entry planted back: the guard test fails and names node_merge_sweep_compute/__main__.py.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_dynamic_import_gate.py -q --no-cov -k transport_import_static_excludes
+    cwd: .
+- id: dod-omn23346-ac2-contract
+  description: This contract file ships in the pull request that drops the entry, and the ticket-contract schema test loads it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q --no-cov
+    cwd: .
