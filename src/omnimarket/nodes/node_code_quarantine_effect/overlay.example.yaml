@@ -19,9 +19,9 @@ in_memory:
   lab_runtime_start_green: true
   reading_present: true
 report:
-  append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+  append_argv: [onex-ledger, --append]
   lane: code-quarantine
   actor: node:node_code_quarantine_effect
   timeout_seconds: 60
   environment:
-    ONEX_LEDGER_PATH: /srv/ledger/ROLLING_WORK_LEDGER.md
+    LEDGER_STORE_DIR: /srv/ledger
