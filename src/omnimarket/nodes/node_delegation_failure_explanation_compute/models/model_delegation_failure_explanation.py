@@ -10,10 +10,10 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-COMMENTARY_MARKER: Final = "onex.commentary.omnimarket.not_evidence.v1"
+COMMENTARY_MARKER: Final = "commentary_not_evidence_v1"
 """The machine-readable marker on every output; the contract's explanation_rules repeats it."""
 
-CommentaryMarker = Literal["onex.commentary.omnimarket.not_evidence.v1"]
+CommentaryMarker = Literal["commentary_not_evidence_v1"]
 
 
 class _Frozen(BaseModel):

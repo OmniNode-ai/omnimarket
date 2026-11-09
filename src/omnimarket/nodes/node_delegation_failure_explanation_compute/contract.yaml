@@ -64,7 +64,7 @@ metadata:
   related_tickets: [OMN-18538]
 # The rules the handler reads. Change a value here and the account changes with no code change.
 explanation_rules:
-  commentary_marker: onex.commentary.omnimarket.not_evidence.v1
+  commentary_marker: commentary_not_evidence_v1
   # The only surfaces this node reads. Each input field names the column or model field it comes from.
   held_surfaces:
     correlation_id: delegation_client_verdict.correlation_id
