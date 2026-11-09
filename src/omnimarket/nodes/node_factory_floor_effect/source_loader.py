@@ -134,7 +134,8 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
-_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+# The hour is 00..23: Python 3.14's fromisoformat reads T24:00:00 as the next midnight, strptime never did.
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.ASCII)
 
 
 def _ledger_ts(value: str) -> datetime | None:

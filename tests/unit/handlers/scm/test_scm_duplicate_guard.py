@@ -23,10 +23,14 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.handlers.scm import scm_cli
+from omnimarket.models.model_github_gateway_io import ModelOpenPrFactsResult
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot import (
     load_digest_config,
     parse_diff,
     read_request,
+)
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
+    OpenPrFactsUnreadableError,
 )
 
 pytestmark = pytest.mark.unit
@@ -181,6 +185,30 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     return built
 
 
+class UnreadableGateway:
+    """An in-memory open-PR source that cannot answer, whatever bus the host has (OMN-23295).
+
+    The CLI builds a gateway source that opens the bus; on a lab host the bus is live and answers, so a test that
+    wants "the watcher is stale and the gateway cannot be read" must inject the second half.
+    """
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def read(self, repo: str) -> ModelOpenPrFactsResult:
+        self.asked.append(repo)
+        raise OpenPrFactsUnreadableError("the in-memory gateway has no answer")
+
+
+@pytest.fixture
+def gateway(monkeypatch: pytest.MonkeyPatch) -> UnreadableGateway:
+    source = UnreadableGateway()
+    monkeypatch.setattr(
+        scm_cli, "gateway_open_prs_source", lambda *_args, **_kwargs: source
+    )
+    return source
+
+
 def invoke(args: list[str]) -> Result:
     return CliRunner().invoke(scm_cli.scm_group, args, catch_exceptions=False)
 
@@ -221,14 +249,19 @@ def test_a_branch_the_lane_never_made_cannot_be_checked(world: World) -> None:
     assert json.loads(result.stdout)["state"] == "unchecked"
 
 
-def test_a_watcher_that_stopped_ticking_checks_nothing(world: World) -> None:
+def test_a_watcher_that_stopped_ticking_checks_nothing(
+    world: World, gateway: UnreadableGateway
+) -> None:
     world.lane_branch("src/metrics.py", 15)
     world.write_state(datetime.now(UTC) - timedelta(hours=2))
 
     result = invoke(world.check_args())
 
     assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
-    assert "last_tick" in json.loads(result.stdout)["reason"]
+    reason = json.loads(result.stdout)["reason"]
+    assert "last_tick" in reason
+    assert "the in-memory gateway has no answer" in reason
+    assert gateway.asked == [TARGET]
 
 
 def test_an_unset_ledger_path_checks_nothing(
@@ -332,7 +365,10 @@ def test_pr_create_goes_on_to_the_bus_when_the_guard_reads_clear(
 
 
 def test_pr_create_opens_nothing_when_the_guard_cannot_read(
-    world: World, sent: list[object], monkeypatch: pytest.MonkeyPatch
+    world: World,
+    sent: list[object],
+    gateway: UnreadableGateway,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     world.lane_branch("src/metrics.py", 15)
     monkeypatch.chdir(world.lane)
@@ -343,6 +379,7 @@ def test_pr_create_opens_nothing_when_the_guard_cannot_read(
     assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
     assert sent == []
     assert "PR-DUPLICATE-GUARD unchecked" in result.stderr
+    assert gateway.asked == [TARGET]
 
 
 # ---- the diff parser

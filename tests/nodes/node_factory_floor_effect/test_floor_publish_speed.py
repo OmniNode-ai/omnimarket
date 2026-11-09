@@ -110,6 +110,14 @@ def test_golden_the_fast_ledger_stamp_gives_the_answer_strptime_gave(
     assert _ledger_ts(stamp) == expected
 
 
+def test_error_stamp_fast_path_refuses_hour_24_on_every_python() -> None:
+    """Python 3.14 reads T24:00:00 as the next midnight; strptime, and so the ledger, never did (OMN-23295)."""
+    assert _ledger_ts("2026-11-06T24:00:00Z") is None
+    assert _ledger_ts("2026-11-06T23:59:59Z") == datetime(
+        2026, 11, 6, 23, 59, 59, tzinfo=UTC
+    )
+
+
 def test_error_the_import_of_the_effect_does_not_pull_in_the_infrastructure_package() -> (
     None
 ):
