@@ -30,7 +30,7 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 )
 from tests.unit.nodes.node_landing_canary_effect.canary_support import (
     World,
-    overlay,
+    operational_overlay,
 )
 
 pytestmark = pytest.mark.unit
@@ -59,8 +59,9 @@ RULE = ModelPieceEventRule(
 
 
 def _row(*, drill: bool, stalled: bool) -> str:
-    settings = overlay().model_copy(
-        update={"publish": overlay().publish.model_copy(update={"drill": drill})}
+    base = operational_overlay()
+    settings = base.model_copy(
+        update={"publish": base.publish.model_copy(update={"drill": drill})}
     )
     world, ledger = World(), InMemoryLedger()
     if stalled:

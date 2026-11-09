@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: work_ledger_file_census_effect
+version: "1.0.0"
+description: "Counts executable readers and writers of the ledger file's name and path variable over the registered repositories and holds the count in a shrink-only ratchet."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_file_census_effect: omnimarket.nodes.node_work_ledger_file_census_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, work-ledger, census, ratchet]
+pack: "data"
+display_name: "Effect: Work Ledger File Census"
+node_role: "effect"
+license: "MIT"

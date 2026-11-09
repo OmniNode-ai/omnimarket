@@ -14,6 +14,7 @@ class EnumWorkStateSource(StrEnum):
     PLANS = "plans"
     RECEIPTS = "receipts"
     READINGS = "readings"
+    COMMITMENTS = "commitments"
 
 
 __all__ = ["EnumWorkStateSource"]

@@ -117,6 +117,7 @@ config:
   check_lane: ask-check
   check_verdict_cell: verdict
   check_pass_verdict: "TRUE"
+  check_fail_verdict: "FALSE"
   done_check_cell: done_check
   owned_state: owned
   owner_cell: owner

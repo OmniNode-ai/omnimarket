@@ -58,6 +58,9 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
+from omnimarket.enums.enum_delegation_end_of_ladder_reason import (
+    EnumDelegationEndOfLadderReason,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
@@ -118,6 +121,17 @@ _ANSWER = (
 _VETO_RULE = "no_refusal"
 _TRUNCATION_CHECK = "not_truncated_by_output_budget"
 _FAULTS = ("wrong_key", "quota", "timeout", "gate_veto", "truncation")
+#: OMN-23165: the consumer terminal's reason is one word from the closed list;
+#: the canonical terminal still names the deciding cause.
+_EXPECTED_END_REASONS = {
+    "wrong_key": EnumDelegationEndOfLadderReason.EVERY_RUNG_FAILED,
+    "quota": EnumDelegationEndOfLadderReason.EVERY_RUNG_RATE_LIMITED,
+    "gate_veto": EnumDelegationEndOfLadderReason.QUALITY_VETO,
+    # On the bus path the inference handler raises on finish_reason=length, so
+    # the rung fails before the quality gate decides; the canonical terminal
+    # below still names quality_gate_refused.
+    "truncation": EnumDelegationEndOfLadderReason.EVERY_RUNG_FAILED,
+}
 _EXPECTED_CAUSES = {
     "wrong_key": EnumDelegationTerminalFailureCause.AUTH_FAILED,
     "quota": EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED,
@@ -298,25 +312,39 @@ async def test_each_fault_decides_its_own_cause_and_none_reads_provider_error(
 ) -> None:
     run = await _run_fault(fault, monkeypatch, record_property)
 
-    # OMN-21264: the consumer terminal hands the run back to its caller and
-    # keeps the deciding cause as its reason, except a run whose clock ran out,
-    # which keeps its own cause; the canonical terminal the projection copies
-    # its cause from still names the deciding cause.
+    # OMN-21264: the consumer terminal hands the run back to its caller, except
+    # a run whose clock ran out, which keeps its own cause. OMN-23165: the
+    # handed-back run names one word from the closed list as its reason; the
+    # canonical terminal the projection copies its cause from still names the
+    # deciding cause.
     consumer_cause: object = run.consumer.terminal_failure_cause
-    if fault != "timeout":
+    readers: list[tuple[str, object, object]] = []
+    if fault == "timeout":
+        readers.append(("consumer terminal", consumer_cause, _EXPECTED_CAUSES[fault]))
+    else:
         assert (
             consumer_cause is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
         ), (fault, consumer_cause)
-        consumer_cause = run.consumer.terminal_failure_reason
-    for reader, cause in (
-        ("consumer terminal", consumer_cause),
-        ("canonical terminal", run.canonical.terminal_failure_cause),
-    ):
+        readers.append(
+            (
+                "consumer terminal reason",
+                run.consumer.terminal_failure_reason,
+                _EXPECTED_END_REASONS[fault].value,
+            )
+        )
+    readers.append(
+        (
+            "canonical terminal",
+            run.canonical.terminal_failure_cause,
+            _EXPECTED_CAUSES[fault],
+        )
+    )
+    for reader, cause, expected in readers:
         assert cause != EnumDelegationTerminalFailureCause.PROVIDER_ERROR, (
             fault,
             reader,
         )
-        assert cause == _EXPECTED_CAUSES[fault], (fault, reader, cause)
+        assert cause == expected, (fault, reader, cause)
 
 
 async def test_the_veto_names_its_rule_on_the_deciding_attempt(

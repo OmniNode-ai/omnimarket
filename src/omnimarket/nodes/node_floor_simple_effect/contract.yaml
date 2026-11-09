@@ -87,6 +87,12 @@ runtime:
   # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
   # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
   health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
+  # The MVP launch block (OMN-23205): its own overlay (17 readings, their cron, grace and Mac legs) and the command route the
+  # producers' scheduled runs and the launch candidate manifest are read through (the command is named by the variable).
+  mvp_launch:
+    overlay: {overlay_id: node_product_floor_verdict_compute_mvp_launch, file_env: ONEX_MVP_LAUNCH_OVERLAY}
+    command_env: ONEX_MVP_LAUNCH_READ_COMMAND
+    timeout_seconds: 60
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
@@ -116,6 +122,7 @@ runtime:
     - node_floor_simple_compute:compute_floor_simple
     - node_lab_state_alarm_effect:publish_canary
     - node_product_floor_verdict_compute:decide_customer_health
+    - node_product_floor_verdict_compute:decide_mvp_launch
   # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
   # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
   # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
@@ -133,6 +140,9 @@ runtime:
     row_limit: 100000
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
+    # The work-state projection node's output (OMN-22935): the lanes the floor draws are attributed to its rows from their
+    # CLAIM cells in this projection, never from an owner typed into the overlay. An unreadable projection is a cause.
+    work_state_relpath: .onex_state/work-state/work-state.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
     # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
@@ -140,6 +150,9 @@ runtime:
     controller_state_dir_env: LANDING_STATE_DIR
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
+    # The controller's state file (OMN-23184): its landing leases and the cause leases that hold shared reds. The board's work list
+    # names a pull request's owner from it; a state that cannot be read makes the list unread, never empty.
+    controller_state_name: state.json
     controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
