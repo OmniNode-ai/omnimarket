@@ -86,6 +86,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
 from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources import (
     CommandMvpRunSource,
     ProtocolMvpRunSource,
+    RecordMvpRunSource,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
@@ -227,6 +228,14 @@ class ModelMvpLaunchRuntime(BaseModel):
     overlay: ModelOverlayRef
     command_env: str = Field(min_length=1)
     timeout_seconds: int = Field(gt=0)
+    # The scheduled read the command route answers from (a step of the floor publish) and the launch candidate manifest file.
+    onex_relpath: str = Field(min_length=1)
+    reads_relpath: str = Field(min_length=1)
+    candidate_relpath: str = Field(min_length=1)
+    read_timeout_seconds: int = Field(gt=0)
+    stage_deadline_seconds: int = Field(gt=0)
+    refresh_seconds: int = Field(gt=0)
+    reads_max_age_seconds: int = Field(gt=0)
 
 
 class ModelFloorSimpleRuntime(BaseModel):
@@ -920,7 +929,7 @@ class HandlerFloorSimpleTick:
             },
         )
         doc = self._with_health(rt, env, doc, floor_ov, step)
-        doc = self._with_mvp_launch(rt, env, doc, floor_ov, step)
+        doc = self._with_mvp_launch(rt, env, home, doc, floor_ov, step)
         payload = {
             "lab_reads": [r.model_dump(mode="json") for r in reads],
             "floor_input": floor_input.model_dump(mode="json"),
@@ -1002,6 +1011,7 @@ class HandlerFloorSimpleTick:
         self,
         rt: ModelFloorSimpleRuntime,
         env: Mapping[str, str],
+        home: Path,
         doc: ModelFloorSimple,
         floor_ov: ModelFloorSimpleOverlay,
         step: Callable[..., Any],
@@ -1029,8 +1039,16 @@ class HandlerFloorSimpleTick:
                     )
                 }
             )
-        source = self._mvp_source or CommandMvpRunSource(
-            env.get(rt.mvp_launch.command_env, ""), rt.mvp_launch.timeout_seconds
+        command = env.get(rt.mvp_launch.command_env, "").strip()
+        source = self._mvp_source or (
+            CommandMvpRunSource(command, rt.mvp_launch.timeout_seconds)
+            if command
+            else RecordMvpRunSource(
+                home / rt.mvp_launch.reads_relpath,
+                home / rt.mvp_launch.candidate_relpath,
+                rt.mvp_launch.reads_max_age_seconds,
+                doc.generated_at,
+            )
         )
 
         def decide() -> ModelMvpLaunchBlock:
