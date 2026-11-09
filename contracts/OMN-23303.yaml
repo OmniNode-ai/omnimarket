@@ -51,6 +51,9 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
+    cwd: .
   - check_type: command
     check_value: 'grep -q "label: ai.omninode.job-log-filler" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && grep -q "start_interval: 120" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'
     cwd: .
