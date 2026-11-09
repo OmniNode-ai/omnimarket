@@ -93,7 +93,7 @@ def test_typed_decision_event_golden_model_decision_is_one_completed_row(
     assert result.decided_by is EnumTypedDecisionDecider.MODEL
 
     (event,) = publisher.events
-    assert event.topic.endswith("delegate-skill-completed.v1")
+    assert event.topic == "onex.evt.omnimarket.delegate-skill-completed.v1"
     assert event.correlation_id == str(request.correlation_id)
     assert event.payload["status"] == "completed"
     assert event.payload["backend_id"] == _BACKEND_ID
@@ -143,7 +143,7 @@ def test_typed_decision_event_error_backend_http_error_is_one_failed_row(
     assert result.decided_by is EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR
 
     (event,) = publisher.events
-    assert event.topic.endswith("delegate-skill-failed.v1")
+    assert event.topic == "onex.evt.omnimarket.delegate-skill-failed.v1"
     assert event.payload["status"] == "failed"
     assert event.payload["backend_id"] == _BACKEND_ID
     assert "backend_http_error" in str(event.payload["error_message"])
@@ -161,7 +161,7 @@ def test_typed_decision_event_error_refused_repository_is_one_failed_row_with_no
     _handler(recorder, publisher, tmp_path).handle(_choice(_REFUSED))
     assert recorder.decision_calls == []
     (event,) = publisher.events
-    assert event.topic.endswith("delegate-skill-failed.v1")
+    assert event.topic == "onex.evt.omnimarket.delegate-skill-failed.v1"
     assert "repository_refused" in str(event.payload["error_message"])
     (row,) = _project(event)
     assert row["terminal_ok"] is False
