@@ -335,7 +335,11 @@ def read_watcher(
     scope: ModelGoalScope | None,
     conflict_states: tuple[str, ...] = (),
     admissions: Mapping[str, Mapping[str, Any]] | None = NO_ADMISSIONS,
+    projected: frozenset[str] = frozenset(),
 ) -> WatcherReading | None:
+    """``projected`` holds the pull requests (``repo#n``) the work-state projection keeps in scope through the goal's ticket
+    rule. The goal scope's lists name 58 pull requests and the rule admits the rest by ticket, so reading the lists alone left
+    the red class holding the 2 listed ones while the controller counted 60 to 70 (OMN-23184)."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         last_tick = parse_time(data["last_tick"])
@@ -363,6 +367,8 @@ def read_watcher(
             str(facts.get("head_ref", "")),
             str(facts.get("body", "")),
         )
+        if where == "unlisted" and str(key) in projected:
+            where = "in_scope"
         if where != "in_scope":
             outside += 1
             paused += where == "paused"
