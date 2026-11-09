@@ -93,154 +93,56 @@ requirements:
       The Hostile Reviewer clones omniintelligence at the revision whose retry of an unparseable review reply gets 8192 tokens instead of 4096.
   - id: "req-omn17427-precommit-commit-path"
     statement: "A commit no longer pays for whole-repo scans that CI runs on every pull request, and the staged-paths hygiene scan returns the whole-tree verdict."
-    acceptance:
-      - id: "AC35"
-        statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
-      - id: "AC36"
-        statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
   - id: "req-morning-phases-lab-work"
     statement: "The morning ground-state node refuses a phase sent as the unroutable agent_delegation class with a typed error naming the missing capability, and runs each phase as bus lab work instead."
-    acceptance:
-      - id: "AC37"
-        statement: "AC37: the delegation gateway raises MorningPhaseCapabilityPendingError naming agent_orchestration and its tracking before publishing anything, and the default gateway sends every phase as a lab work unit that needs a logged-in agent CLI, at the run's labWork repository and pushed sha, through a full in-memory bus cycle -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q fails at the merge base"
   - id: "req-superseded-run-cancel"
     statement: "A queued or in-progress CI run that a later push or a merge-queue exit left behind is cancelled from the run list and the queue read alone, one event per cancel, and a run on a PR's current head is never cancelled."
-    acceptance:
-      - id: "AC38"
-        statement: "AC38: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
-      - id: "AC39"
-        statement: "AC39: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
   - id: "req-named-test-runner"
     statement: "The default local delegation port grades code answers on the named tests carried inline by their request, and records whether tests ran."
-    acceptance:
-      - id: "AC40"
-        statement: "AC40: the default local port accepts a correct answer and rejects an incorrect answer by executing the request's inline named tests without a caller workspace -- falsifier: the two golden-chain inline-test cases fail at the merge base."
-      - id: "AC41"
-        statement: "AC41: code requests naming no tests are decided UNTESTED on the local and bus paths, while named tests that never ran remain INSUFFICIENT -- falsifier: the focused verdict cases fail at the merge base."
-      - id: "AC42"
-        statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
-      - id: "AC43"
-        statement: "AC43: the deployed orchestrator runs the named tests a bus request carries in the sandbox runner before its gate intent leaves, the gate reducer judges the answer on that run, a request naming none stays UNTESTED, and named tests no runner ran are refused as INSUFFICIENT -- falsifier: the four deployed-chain cases fail at the merge base."
   - id: "req-declared-table-retention"
     statement: "The retention node prunes every registered lab table to its declared window in bounded, committed batches on the runtime tick, and never touches a ledger, credential, tenant registry or migration history table."
-    acceptance:
-      - id: "AC44"
-        statement: "AC44: node_retention_cleanup registers omninode_internal.consumer_flow_windows, deletes a batched target in bounded batches with one committed transaction each and the tenant GUC first, isolates a failing target, refuses a protected table at load, and runs once per declared interval on the runtime tick -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q fails at the merge base"
   - id: req-verified-delete
     statement: A local file is deleted only after Drive reports the size and md5 of the staged part that holds it.
-    acceptance:
-    - id: AC46
-      statement: 'AC46: a part Drive reports with a different md5, a missing object or a failed upload deletes nothing and stops the run, and a file changed after staging is kept -- falsifier: the focused pytest finds a deleted source file after a corrupt md5, a missing object, a failed upload or a post-staging change'
   - id: req-safety
     statement: The node refuses the landing controller host and never archives protected or fresh files.
-    acceptance:
-    - id: AC47
-      statement: 'AC47: a host whose overlay roles include landing_controller, or that the overlay does not list, is refused before any file is read, and the live ledger, memory files, symlinks and files inside the seven-day window are never archived -- falsifier: the focused pytest finds a file read or deleted on the controller host, or a protected or fresh file archived'
   - id: req-throttle
     statement: Staging and upload run under a bounded CPU, IO and bandwidth budget through a CLI uploader, not Drive for desktop.
-    acceptance:
-    - id: AC48
-      statement: 'AC48: every staged command carries nice and an IO class, the upload carries a bytes-per-second cap and one stream, the uploader is rclone and no argument names Drive for desktop''s folder, and a missing uploader remote is a typed credential refusal -- falsifier: the focused pytest finds an un-niced command, an uncapped upload or a Drive for desktop path'
   - id: req-nightly
     statement: The archive is a nightly Eastern off-peak host tick and an onex verb.
-    acceptance:
-    - id: AC49
-      statement: 'AC49: the contract subscribes to the runtime tick with a 01:00 to 05:00 America/New_York window, a tick runs once per interval inside it, and onex lab-archive run is registered and exits 2 on a refused host -- falsifier: the focused pytest finds a run outside the window, a second run inside the interval, or an unregistered verb'
   - id: "req-lab-story-log"
     statement: "The work ledger's week becomes a sanitized story log by a node, with private names replaced by roles from the public-repo hygiene vocabulary, and the log is never written when a private name survives."
-    acceptance:
-      - id: "AC52"
-        statement: "AC52: node_lab_story_log_effect writes the ISO week's rulings, incidents and merged pull requests grouped by theme with their timestamps and figures, leaves out rows outside the week and the operator's quoted words, and replaces private repository names, addresses, host names, lane ids and person names by roles -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'no_private_name_survives or only_rows_inside or operators_own_words'"
-      - id: "AC53"
-        statement: "AC53: a sanitizer that lets a private name through stops the write, and a vocabulary with no private repository names is refused -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'surviving_private_name or no_private_repos or missing_vocabulary'"
   - id: "req-declared-file-retention"
     statement: "The retention node retires the lab hosts' unbounded file paths from the same contract, with a keep window set by each path's readers, archives history before removing it, and reports bytes and files removed and archived per run."
-    acceptance:
-      - id: "AC58"
-        statement: "AC58: node_retention_cleanup declares ledger-detail, worktree-pins, worktree-removal-snapshots, lane-scratch, remote-lane-receipts, lab-run-lane-dirs, lane-reports and claude-transcripts in retention_policy.file_retention, each with its readers and a keep window of at least seven days, and retires a unit only when every file in it is older than the window -- falsifier: uv run pytest tests/nodes/test_omn17427_file_retention.py -q fails at the merge base"
-      - id: "AC59"
-        statement: "AC59: an archive entry removes a unit only after the copy is read back and every checksum matches, removes nothing without an archive tree, never follows symlinks and never touches memory directories or the live ledger, and the cleanup run reports bytes and files removed and archived -- falsifier: the archive, verify-failure, symlink and protected-path cases in tests/nodes/test_omn17427_file_retention.py fail at the merge base"
   - id: "req-sweep-root-no-registry-fallback"
     statement: "Sweep orchestrators refuse a stale ONEX_CC_REPO_PATH instead of locating a change-control clone through OMNI_HOME."
-    acceptance:
-      - id: "AC50"
-        statement: "AC50: both sweep root resolvers raise RuntimeError for a missing or contract-less ONEX_CC_REPO_PATH even when OMNI_HOME holds a valid registry clone, and when OMNI_HOME is unset; explicit roots and valid environment roots still resolve -- falsifier: the focused resolve_root tests fail against the earlier resolver implementations."
   - id: "req-contract-search-declared-roots"
     statement: "EvidenceCollector searches its declared contract roots without an additional working-directory-relative fallback."
-    acceptance:
-      - id: "AC51"
-        statement: "AC51: with OMNI_HOME and ONEX_CC_REPO_PATH unset, a change-control contract below the working directory is not found; the declared ONEX_CC_REPO_PATH root still resolves -- falsifier: the focused contract-root tests find the working-directory contract against the earlier collector implementation."
   - id: "req-occ-companion-producer-dropped"
     statement: "omnimarket carries no workflow, publisher or check of the OCC companion producer once every caller that still reaches it reads it at an immutable ref."
-    acceptance:
-      - id: "AC54"
-        statement: "AC54: occ-emitter-golden-gate.yml, occ-s7-replay.yml, publish_occ_companion_effect_command.py, occ_companion_merge_heal.py, check_minted_evidence_is_probative.py and check_self_bind_entry_binding.py do not exist and CI Summary expects no OCC Emitter Golden Gate context -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py tests/ci/test_occ_callers_removed_omn20073.py -q -p no:randomly fails at the merge base"
   - id: "req-duplication-sweep-d3-core-handler"
     statement: "The duplication sweep's D3 migration-conflict check runs omnibase_core's migration-conflict handler in process, so it reads no onex_change_control checkout and runs no external command."
-    acceptance:
-      - id: "AC55"
-        statement: "AC55: D3 reports a table two repos create with different columns as NAME_CONFLICT, passes distinct tables, finds a conflict with an empty PATH, and ignores a check-migration-conflicts command and suppressions file placed in an onex_change_control directory beside the repos -- falsifier: uv run pytest tests/test_golden_chain_duplication_sweep.py tests/test_sweep_dispatch_scope_resolution.py -q -k d3 fails at the merge base"
   - id: "req-dod-verify-occ-root-explicit-only"
     statement: "dod_verify's evidence collector locates the change-control clone only through ONEX_CC_REPO_PATH or the contract's own path, never under OMNI_HOME."
-    acceptance:
-      - id: "AC56"
-        statement: "AC56: with only OMNI_HOME pointing at a registry that holds a change-control clone, _find_contract, _resolve_occ_root and _resolve_contract_repo_dir resolve nothing, _infer_occ_cwd returns the tree the contract was read from, and ONEX_CC_REPO_PATH still resolves -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_17427_find_contract_roots.py -q fails at the merge base"
   - id: "req-default-repo-lists-off-change-control"
     statement: "The default repository lists of the git mirror sync, the merge sweep and the PR snapshot name no change-control repository, and a checkout of any repository binds a DoD contract as a product repository."
-    acceptance:
-      - id: "AC57"
-        statement: "AC57: git_mirror.REGISTRY_REPOS, both merge-sweep _DEFAULT_REPOS lists and the PR snapshot DEFAULT_REPOS name no change-control repository, and resolve_contract_subject binds a change-control checkout as PRODUCT_REPOSITORY -- falsifier: uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q fails at the merge base"
   - id: "req-lab-fill-tick-no-model"
     statement: "One lab-fill tick fills a fire's free slots from the approved-work list with no model call: ownership read once, the Linear assignee and state re-read directly per launch, lanes launched through the remote-lane runner, and a result naming what was dispatched and why the rest was not."
-    acceptance:
-      - id: "AC58"
-        statement: "AC58: node_lab_fill_effect's run_lab_fill_tick dispatches free slots in priority order, frees a slot a refused candidate leaves for the next, skips owned and blocked rows before launch, launches nothing when apply is false, never treats an unread owner as free, and stops on a runner or standing-rules failure leaving the rest untried -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q fails at the merge base"
   - id: "req-lab-fill-zero-placement-alarm"
     statement: "A lab-fill tick that leaves free slots unplaced names every unplaced lane with its reason, acts on a second such tick in a row with one deduplicated diagnose lane and an event, and parks a candidate the brief check refused twice instead of retrying it every tick."
-    acceptance:
-      - id: "AC60"
-        statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
   - id: "req-lab-fill-dod-verify-fallback"
     statement: "Lab-fill selection takes tickets it skipped because their implementation merged as DoD-verify lanes for the slots ordinary and pr-land work leave idle, one per ticket and gated by the ticket's lab-fill attempt history, and the dispatch plan ranks them last, scopes them by the kind they were enumerated as and renders a brief that closes the ticket only on a passing DoD receipt."
-    acceptance:
-      - id: "AC61"
-        statement: "AC61: with the 2026-10-17T1730Z run's shape (9 free slots on h101:1, h202:4, h201:4, 2 eligible candidates, 41 implementation-merged) selection plus the dispatch plan dispatch at least 9 lanes where the base dispatches 2; an open or blocked-in-cooldown verify lane, a second row of the same ticket and an out-of-scope origin are not taken -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q fails at the merge base"
   - id: "req-review-finding-evidence"
     statement: "The hostile reviewer blocks only on an Important finding the pull request introduced, with a file and line inside its diff, that is not of a style or cleanup class; after three review rounds on one pull request it re-reviews only the new diff and does not repeat a finding it has posted."
-    acceptance:
-      - id: "AC72"
-        statement: "AC72: a blocking finding on a line the pull request did not add or change is classed Pre-existing and dropped, and a finding whose file the pull request does not change, or whose line is past the end of the file at the head, is refused for want of evidence; a finding on a changed line keeps blocking -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'pre_existing or refused or changed or past_the_end' fails at the merge base"
-      - id: "AC73"
-        statement: "AC73: a finding of a style or cleanup class is dropped as a Nit, while a security, logic, integration or contract category, a title that names a defect and a finding bound to a standing rule keep blocking -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'style_and_cleanup or real_defect or standing_rule' fails at the merge base"
-      - id: "AC74"
-        statement: "AC74: from the fourth review round of one pull request a finding already posted is not repeated and a finding on a line outside the diff since the previous round does not block, while rounds one to three and a rerun of one head repeat nothing; the gate comment carries the round state only from the Actions bot -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q fails at the merge base"
   - id: "req-hook-push-rehearsal-caller"
     statement: "A pull request that changes the pre-push set runs omnibase_core's hook push rehearsal before it merges."
-    acceptance:
-      - id: "AC62"
-        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a dev-merge tag (dev-<14 digits>-<12 hex>) that is on an omnibase_core branch, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
   - id: "req-review-finding-parse-veto"
     statement: "A blocking hostile-review finding that claims a Python, YAML or JSON file is syntactically invalid is checked by parsing that file at the pull request head, and dropped with a logged reason when it parses; findings of every other class are left as the reviewers raised them."
-    acceptance:
-      - id: "AC70"
-        statement: "AC70: node_review_finding_veto_effect drops a blocking finding whose title claims a Python, YAML or JSON file is invalid when ast.parse, yaml.safe_load_all or json.loads accepts that file at the head, turns a verdict that rested only on such findings into passed, and logs the reason -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json' fails at the merge base"
-      - id: "AC71"
-        statement: "AC71: a syntax claim stays blocking when the file does not parse or cannot be read at the head, names another file or language, or is about text parsed at run time, and findings of other classes and warnings are never examined; the hostile-reviewer workflow runs the veto from the base commit before it reads the verdict -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q fails at the merge base"
   - id: "req-remove-coderabbit"
     statement: "CodeRabbit is removed from the review-gate code: the coderabbit-triage node, skills and registrations are gone, and no arm gate, merge-state, fix-routing, comment-resolution or inventory path counts, waits on or parses CodeRabbit threads."
-    acceptance:
-      - id: "AC81"
-        statement: "AC81: node_coderabbit_triage and its skills are deleted, ModelArmCandidate and the lifecycle inventory carry no coderabbit_unresolved, EnumPrBlockReason has no CODERABBIT and the fix handler no dispatch_coderabbit_reply, and the arm gate withholds on six criteria -- falsifier: uv run pytest tests/unit/nodes/node_pr_arm_gate_compute/test_handler_arm_gate.py tests/unit/nodes/node_pr_arm_gate_compute/test_arm_gate_head_check_verdict_composition.py tests/test_golden_chain_pr_lifecycle_fix_effect.py tests/test_omn_13987_pr_lifecycle_arm_activation.py -q fails at the merge base"
   - id: "req-core-pin-compatibility"
     statement: "The omnibase-core dependency and override floors must fit the newest recorded omnibase_infra pin, and the recorded incompatible incident pair must be refused."
-    acceptance:
-      - id: "AC64"
-        statement: "AC64: the recorded incident pair is refused, floors at or below the infra pin are accepted, the recorded pin list retains the incident pin in version order, and both pyproject.toml core floors fit the newest recorded pin -- falsifier: uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
   - id: "req-session-capability-digest"
     statement: "A session that opens inside a registry root starts with the cached capability digest, a stale or missing digest is named with its fix, and a session elsewhere is not touched, decided by a contract-declared effect node that reads two cached files and never blocks a session."
-    acceptance:
-      - id: "AC63"
-        statement: "AC63: node_session_capability_digest_effect prints the cached digest inside a registry root, prints nothing outside every root, prints a STALE line with its launchd fix for a missing or over-45-minute digest, prints one pointer line on a compact restart, opens no socket and exits 0 on every input -- falsifier: uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
   - id: "req-ci-red-watcher-facts-only"
     statement: "The CI-red triage reader uses watcher facts without launching gh, and incomplete observations record facts-unavailable without starting an effect."
   - id: "req-repository-prose-removed"
@@ -257,9 +159,6 @@ requirements:
     statement: "A fix worker's result carries a typed disposition (fixed, wrong, intentional, not_applicable) with the finding's id and class for each hostile-reviewer finding it answered, published as events; a pure compute folds them with the review pass signal into per-repo noise share, one-round pass share and rounds-to-pass, and names each finding class that appears on three distinct PRs inside seven days with one stable dedupe key."
   - id: "req-claude-account-token-pool"
     statement: "Each host keeps a local secret-store entry per Claude account, resolves the first usable token in account order, marks a usage limit on that account and reports token-free pool status."
-    acceptance:
-      - id: "AC71"
-        statement: "AC71: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
   - id: "req-claude-pool-revoked-token"
     statement: "A Claude pool token whose OAuth login was revoked is marked revoked on its own label, resolve skips it while another token is usable, one alert names the revoked label, and only a pool with no usable token reports ALARM."
   - id: "req-claude-pool-revoked-not-limited"
@@ -268,46 +167,21 @@ requirements:
     statement: "context_compaction is an internal delegation task class: the compaction orchestrator can name it, it is never resolved from prompt text, it declares an execution budget and a ladder it can reach, every market consumer of the task-class universe accepts it, and the summarization-shaped inference protocol profiles shape its requests."
   - id: "req-publisher-fixture-one-copy"
     statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
-    acceptance:
-      - id: "AC70"
-        statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
   - id: "req-hostile-reviewer-delegation-route"
     statement: "The hostile reviewer can send its model calls through the delegation node's review task class and its completed event carries the merged findings and a verdict."
-    acceptance:
-      - id: "AC71"
-        statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
   - id: "req-retire-remaining-change-control-paths"
     statement: "Evidence stays in the product repository and no companion writer or observer is registered."
-    acceptance:
-      - id: "AC74"
-        statement: "AC74: retired writer and observer nodes are absent from disk and discovery, queued companion commands refuse without a writer, product evidence readback requires its current head and passing repository evidence checks, and binding fields are accepted without another checkout while unknown fields refuse -- falsifier: uv run pytest tests/test_omn17427_occ_retirement.py -q fails at the merge base"
   - id: "req-cli-run-node-on-expected-missing-list"
     statement: "A node that is run as a CLI and has no onex.nodes entry point is named on the dogfood inventory's expected-missing list, so the inventory check reports no unexplained directory."
-    acceptance:
-      - id: "AC72"
-        statement: "AC72: the market node runtime dogfood inventory classifies node_claude_token_pool_effect as an expected-missing entry point and reports no node directory without an onex.nodes entry point that is not on the list -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q reports a node directory with no onex.nodes entry point that is not on the list"
   - id: "req-patch-apply-dispatch"
     statement: "The patch apply dispatch workflow lives in the portable node package, with typed bus ingress and host-configured registry, runner and ledger writer."
-    acceptance:
-      - id: "AC74"
-        statement: "AC74: the node dispatches unapplied patches, closes applied or expired patches, holds live claims and recent dispatches, and returns a typed terminal through its declared bus contract using host-configured adapters -- falsifier: uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q fails when the node is absent"
   - id: "req-gateway-pr-text-cross-repository"
     statement: "The GitHub gateway's pr_text read reports the head repository and whether the head is cross-repository, so a caller that refuses fork heads reads it from the gateway and needs no gh CLI."
-    acceptance:
-      - id: "AC73"
-        statement: "AC73: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
   - id: "req-repo-evidence-caller-verifier-floor"
     statement: "The repo-evidence caller workflow refuses a verifier below the receipt gate's floor, and the commit-stage hook and the CI lint step that run that refusal stay wired."
-    acceptance:
-      - id: "AC74"
-        statement: "AC74: the call-repo-evidence-gate-verifier-floor pre-commit hook and its paired ci.yml lint step run the caller verifier-floor test, and the caller's verifier-version is at or above 0.4.303 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_floor_wiring_omn17427.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov fails when the hook or the lint step is removed or the caller's verifier-version is below 0.4.303"
   - id: "req-ci-summary-external-default-deny"
     statement: |-
       CI Summary judges every head check-run that earlier layers do not account for with a success-only external sweep, known non-PR event exemptions and validated expiring exclusions.
-    acceptance:
-      - id: "AC74"
-        statement: |-
-          AC74: an unregistered pull_request-event failure reaches a non-zero main() verdict, success passes, running and replacement rows hold PENDING, unknown provenance is swept, known non-PR events are exempt, and malformed or expired exclusions cannot hide a red -- falsifier: the focused external sweep, exclusion and production poller tests fail at the merge base
   - id: "req-landing-decision-ledger-mirror"
     statement: "The landing controller's decisions reach the work ledger from the typed landing decision event, hosted by the ledger serve process."
   - id: "req-dev-cause-lane-receiver"
@@ -330,9 +204,6 @@ requirements:
     statement: "The automation-liveness overlay completeness check lives in the portable node package; the private overlay data stays in the private repository and is passed in by path."
   - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
     statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
-    acceptance:
-      - id: "AC81"
-        statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
   - id: "req-rehome-lab-secret-store-and-worktree-audit"
     statement: "The lab secret-store override and the legacy worktree audit run as omnimarket nodes with their behaviour, refusals and console scripts unchanged."
   - id: "req-rehome-lab-nodes-slice-3"
@@ -636,172 +507,60 @@ requirements:
   - id: req-owner-summary-facts
     statement: Owner-summary facts reads the watcher merges and queue, ledger lane outcomes and M4 rows, omits watcher
       authors, and names unreadable sources in errors.
-    acceptance:
-    - id: AC4351
-      statement: 'AC4351: Owner-summary facts reads the watcher merges and queue, ledger lane outcomes and M4 rows,
-        omits watcher authors, and names unreadable sources in errors. Falsifier: the focused golden-chain owner-summary
-        tests fail when this behavior is absent.'
   - id: req-owner-summary-draft
     statement: Draft check refuses missing footer, over 420 words, token-shaped secrets, home paths, fabricated ticket/PR,
       missing M4 line, and a Friction heading when its data is unavailable.
-    acceptance:
-    - id: AC4352
-      statement: 'AC4352: Draft check refuses missing footer, over 420 words, token-shaped secrets, home paths, fabricated
-        ticket/PR, missing M4 line, and a Friction heading when its data is unavailable. Falsifier: the focused golden-chain
-        owner-summary tests fail when this behavior is absent.'
   - id: req-owner-summary-watermark
     statement: Watermark has 12-hour default, last sent start, 48-hour cap and facts/check/mark-sent CLI round trip.
-    acceptance:
-    - id: AC4353
-      statement: 'AC4353: Watermark has 12-hour default, last sent start, 48-hour cap and facts/check/mark-sent CLI
-        round trip. Falsifier: the focused golden-chain owner-summary tests fail when this behavior is absent.'
   - id: req-owner-summary-coverage
     statement: Draft check requires M4, blocked and partial tickets, the facts' counts, headline,
       unconfirmed-running statement, friction gap and Gaps section. Merged changes, merged-only
       tickets and closed work runs may be omitted only with exact counts by class or outcome
       and the full list link on one Not listed line immediately above the footer.
-    acceptance:
-    - id: AC4354
-      statement: 'AC4354: Draft check accepts counted omissions of merged changes, merged-only tickets
-        and closed work runs, refuses missing or wrong omission counts or full list link, and still
-        requires M4, blocked and partial tickets, counts, headline, unconfirmed-running statement,
-        friction gap and Gaps section. Cited changes stay beside their tickets; shorthand, overclaims
-        and unsupported superlatives are refused. Facts supply every non-dependency merged change
-        and its class. Falsifier: the focused coverage and omitted-line tests fail without these behaviors.'
   - id: req-owner-summary-review-triage
     statement: Reviewer triage separates explicitly counted omissions from actionable findings.
-    acceptance:
-    - id: AC4357
-      statement: 'AC4357: Recorded review lines about correctly counted omitted changes, merged-only
-        tickets and closed work runs are NAMED-OMISSION. Wrong facts, required tickets and omissions
-        with incorrect counts remain FINDING. The triage CLI exits nonzero for actionable findings
-        and zero for only named omissions or APPROVE. Falsifier: the recorded-findings, wrong-facts,
-        incorrect-count and triage CLI tests fail without these behaviors.'
   - id: req-shard-plan-record-freshness
     statement: The committed per-file durations record names all but a handful of the test files, so the shard planner does not weight unrecorded files at the median.
-    acceptance:
-    - id: AC4400
-      statement: 'AC4400: config/test_file_durations.json leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails at the merge base (162 unrecorded) and passes at the head (6).'
   - id: req-gateway-token-under-running-loop
     statement: A host whose GitHub token resolves reads PR facts in process when the read runs under a running event loop, as dod_verify does.
-    acceptance:
-    - id: AC4401
-      statement: 'AC4401: with GITHUB_TOKEN set, the gateway read client reports that the token resolves when asked from inside a running event loop -- falsifier: uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -k token_that_resolves fails at the merge base and passes at the head.'
   - id: req-live-events-poison-quarantine
     statement: The live-events projection writer dead-letters a poison event to the contract's dlq topic and advances the offset instead of crash-looping, and projects a list-valued source as a string.
-    acceptance:
-    - id: AC21288
-      statement: 'AC21288: an oversize snapshot delta and a validation error are published to the contract dlq topic and the offset is committed, a missing publisher holds the offset, and a list source projects a comma-joined string source row -- falsifier: the focused pytest fails at the merge base.'
   - id: "req-pr4543-rebuild-amd64-runner"
     statement: "The runtime rebuild caller selects the immutable reusable revision carrying the arch-amd64 publisher runner label and passes the merge identity and overlay credentials."
-    acceptance:
-      - id: "AC4543"
-        statement: "AC4543: the rebuild caller selects the dev-merge tag dev-20261028175438-79bc8a26389c of omnibase_infra and passes the merge revision and overlay app secrets without an infra_ref override -- falsifier: uv run pytest tests/ci/test_rebuild_trigger_arch_runner_pin_omn17427.py -q fails on the merge-base caller's old pin."
   - id: "req-pr4543-first-party-dev-merge-tags"
     statement: "Workflow references to our own repositories are dev-merge tags, and the pin check is omnibase_core's check-action-pins reading this repository's overlay."
-    acceptance:
-      - id: "AC4544"
-        statement: "AC4544: the pre-commit hook rev and the ci.yml step name the same omnibase_core dev-merge tag, the overlay lists only sha exceptions with a reason, and every first-party uses in the workflows is a dev-merge tag or a listed exception -- falsifier: uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q fails on the merge-base repository, which has no overlay."
   - id: "req-one-fix-one-pr"
     statement: "A lane about to open a pull request is refused when an open pull request in the same repository already changes the same lines, or the same file under the same title words, or cites the same check or cause, or when another lane holds a live CLAIM with the same cause= cell; the refusal names the pull request to adopt, and a source the check cannot read opens nothing."
-    acceptance:
-      - id: "AC1742711"
-        statement: "AC1742711: with omnibase_core#2159 open on a rename of line 9 of the protocol_binding baseline, a second branch renaming that line is refused by onex scm pr-duplicate-check (exit 4) and by onex scm pr-create (no bus call), naming omnibase_core#2159 -- falsifier: the second branch passes, or the refusal does not name omnibase_core#2159"
-      - id: "AC1742712"
-        statement: "AC1742712: an unrelated open pull request in the same repository, or one touching the same file on other lines under an unrelated title, does not refuse the new one -- falsifier: a branch editing src/metrics.py line 15 is refused while omnibase_core#2170 edits line 3"
-      - id: "AC1742713"
-        statement: "AC1742713: in a second repository, #1326 against open #1320 (the same dispatch_fix_guard rewrite) is refused naming #1320, and another lane's live CLAIM with the same cause= cell refuses with that lane named -- falsifier: the fold reads clear for either planted case"
-      - id: "AC1742714"
-        statement: "AC1742714: a watcher state older than 15 minutes, an unset ONEX_LEDGER_PATH or a branch no checkout holds exits 3 and opens nothing -- falsifier: pr-create reaches the bus with any of the three"
   - id: "req-ledger-facts-quoted-cause"
     statement: "The landing ledger facts compute reads a quoted CLAIM cause cell as its quoted text and reports an owner the model refuses instead of raising."
-    acceptance:
-      - id: "AC1742715"
-        statement: "AC1742715: a CLAIM cause cell written as cause=\"omnibase_infra:Hostile Review Thread Gate\" followed by free text reads as owner OmniNode-ai/omnibase_infra with check Hostile Review Thread Gate, and an unclosed-quote CLAIM is listed in cause_owners_skipped while every other owner is returned -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -k 'quoted_cause or model_refuses' -q fails at the merge base"
   - id: "req-core-dev-tag-repoint"
     statement: "omnimarket resolves omnibase_core at its dev merge tag dev-20261030152335-66d35d2283c3 and omnibase_infra at dev-20261030213019-091013fd7adb, and the callers of the handler modules those releases moved run the new node homes."
-    acceptance:
-      - id: "AC1742716"
-        statement: "AC1742716: with the two pins in place, the dependency-provenance script reads its sibling list and dev-tag shape from core's first_party_ref contract rows, and the duplicate-id, todo-format, routing-authority, contract-walker and OCC port callers run core's node runtimes -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py fails at the merge base (it calls load_policy, which the old script lacks) or passes there"
   - id: "req-host-reconcile-owns-schedule"
     statement: "The host reconcile node owns its schedule: its contract declares an hourly repair-mode run, its overlay declares which hosts run the reconciler and what schedules it on each, the package names no host, and a host that declares the reconciler with no scheduler fails by name."
-    acceptance:
-      - id: "AC1742721"
-        statement: "AC1742721: a host that declares the reconciler with no scheduler makes schedule check and every schedule verb exit 1 naming that host, and an overlay in which every host has a scheduler exits 0 -- falsifier: tests/test_host_reconcile_schedule.py::test_a_host_that_declares_the_reconciler_with_no_scheduler_fails_naming_the_host passes with the gap host unnamed or the check exits 0 on it"
-      - id: "AC1742722"
-        statement: "AC1742722: the unit the node renders runs python -m omnimarket.nodes.node_host_reconcile_effect with the registry root and the tracked branch, never a check flag, and the arguments it passes request repair mode from the node's own entry point -- falsifier: tests/test_host_reconcile_schedule.py::test_the_rendered_unit_runs_the_node_in_repair_mode sees a check flag or a mode other than repair"
-      - id: "AC1742723"
-        statement: "AC1742723: the cadence is the contract's, once an hour, and the package names no host or address -- falsifier: tests/test_host_reconcile_schedule.py::test_the_contract_declares_an_hourly_repair_schedule and ::test_the_package_names_no_host"
-      - id: "AC1742724"
-        statement: "AC1742724: schedule install on a host whose row is systemd-user writes both units, enables the timer and fails when systemd lists no schedule, when the interpreter is missing or when any other host lacks a scheduler, and installs nothing for a host scheduled by another owner -- falsifier: the install tests of tests/test_host_reconcile_schedule.py"
   - id: "req-terminal-wait-excludes-route-discovery"
     statement: "The pre-dispatch failure terminal test runs the runtime port's real route discovery before its terminal wait, so the 10 second deadline times only dispatch and the terminal, not the cold parse of every node contract."
-    acceptance:
-      - id: "AC1742725"
-        statement: "AC1742725: test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic awaits the runtime port's own route resolution before asyncio.wait_for and keeps the wait_for timeout at 10 seconds; both port kinds pass -- falsifier: the source check below fails on the merge base, whose single 10 second wait_for also covers first route discovery"
   - id: "req-pr4603-shared-budget-readback"
     statement: "The delegation budget projection uses the infra revision that declares its relation and grants, and the readback measures shared projection rows instead of host-local receipts by default."
-    acceptance:
-      - id: "AC460301"
-        statement: "The budget readings projection resolves its database privileges and wires through the real infra runtime with the locked dependency; the old infra pin fails Event Chain Gate collection on missing SELECT."
-      - id: "AC460302"
-        statement: "Delegate-skill terminals retain their budget and duration, refuse older and untimed deliveries, and the projection readback selects completed terminals inside the requested window and fails an over-budget run."
-      - id: "AC460303"
-        statement: "The budget readings migrations are byte-identical to the files delivered by infra#5469, including transactional reconciliation of required columns, defaults and constraints."
   - id: "req-pr4640-test-bus-lane"
     statement: "Integration tests use the broker from the declared test lane and refuse any other lane before constructing a producer."
-    acceptance:
-      - id: "AC1742726"
-        statement: "AC1742726: config/test_bus_lane.yaml selects a concrete lane, an ambient KAFKA_BOOTSTRAP_SERVERS naming another lane cannot change the resolved broker, and conftest uses the declared broker -- falsifier: tests/test_bus_lane_guard_omn17427.py fails its declared-lane, ambient-env or conftest-broker cases"
-      - id: "AC1742727"
-        statement: "AC1742727: every other concrete lane's broker is refused, including an aliased host with that lane's port, an undeclared broker is refused, and the declared broker is accepted -- falsifier: tests/test_bus_lane_guard_omn17427.py fails its broker-refusal or acceptance cases"
-      - id: "AC1742728"
-        statement: "AC1742728: the Kafka fixture refuses another lane's broker before constructing any producer -- falsifier: tests/test_bus_lane_guard_omn17427.py::test_kafka_probe_refuses_before_constructing_a_producer constructs a producer or does not raise BusLaneRefusalError"
   - id: "req-core-infra-pins-move-together"
     statement: "omnimarket pins omnibase_core at dev-20261031000524-fc6159b98026 and omnibase_infra at dev-20261031054837-4284f5bf5587, whose own omnibase-core pin is that same tag, so the sibling sources resolve to one core."
-    acceptance:
-      - id: "AC1742729"
-        statement: "AC1742729: pyproject.toml and uv.lock name the same infra and core dev merge tags, the locked core tag is the one recorded for the locked infra commit, and the lock pins the newest recorded pair (infra 4284f5bf5587, core fc6159b98026) -- falsifier: tests/ci/test_sibling_core_pin_pair_omn17427.py fails at the merge base, whose lock pins infra 091013fd7adb and core 66d35d2283c3"
   - id: "req-core-5bb91ae7e720-infra-pair"
     statement: "omnimarket pins omnibase_core at dev-20261031202655-5bb91ae7e720 and omnibase_infra at dev-20261101125736-3f93a2cc6f6c (omnibase_infra#5536), whose own omnibase-core pin is that same tag, so the newest reachable core resolves to one source and the core-only bot bumps omnimarket#4652 to #4740 are superseded."
-    acceptance:
-      - id: "AC1742730"
-        statement: "AC1742730: uv.lock pins omnibase-core dev-20261031202655-5bb91ae7e720 at 5bb91ae7e72094a62a1198dbc92803448a05ec67 and omnibase-infra dev-20261101125736-3f93a2cc6f6c at 3f93a2cc6f6c18c7ad4fa6e74738908692c21449, that pair is the newest INFRA_CORE_TAGS row, and core 5bb91ae7e720 beside the previous infra 4284f5bf5587 is still named as the conflict -- falsifier: tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py fails at the merge base, whose lock pins infra 4284f5bf5587 and core fc6159b98026"
   - id: "req-live-unread-publickey-fix"
     statement: "A lab-headroom UNKNOWN line whose live admission probe was refused by SSH public-key authentication names the hop owner adding the launching host's key as its FIX, since rerunning the tick reads the same refused hop; any other unreadable probe keeps the rerun advice."
-    acceptance:
-      - id: "AC1742731"
-        statement: "AC1742731: a probe_error carrying 'Permission denied (publickey' yields a FIX telling the host owner to add the launching host's public key to the via= hop's authorized_keys, without the rerun or --hosts --lane advice, and a timed-out probe still yields the rerun advice -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k publickey_refusal fails at the merge base, where every unreadable probe gets the rerun advice"
   - id: "req-lab-host-row-ssh-route"
     statement: "A lab host table whose rows declare the login, the jump host or the key file of their ssh destination (ssh_user, proxy_jump, ssh_identity) is read by lab placement, not refused whole, and a value ssh could read as an option is refused."
-    acceptance:
-      - id: "AC1742732"
-        statement: "AC1742732: ModelLabHostRow accepts ssh_user, proxy_jump and ssh_identity (each omitted by default), a table carrying them loads through load_host_table, and a login, jump host or key file that begins with a dash, holds a space or shell syntax, or has a '..' segment is refused -- falsifier: uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -k login_jump_host fails at the merge base, where the row model forbids the three fields"
   - id: "req-live-unread-receipt-owner-and-reader"
     statement: "A lab-headroom UNKNOWN line for an unreadable host leads with the owner action the probe receipt's LAUNCHER-GAP tag names, says a rerun clears nothing for any gap the launcher recorded (auth refused, name unresolved, sshd refused, no route), and sends the operator to the hosts-probe receipt readings, the read_pool reading the tick itself used, instead of the listing onex_lab_run.py --hosts prints."
-    acceptance:
-      - id: "AC1742733"
-        statement: "AC1742733: ModelLabAdmission accepts probe_owner; h101 and h053 (AUTH-REFUSED) and h106 (NAME-UNRESOLVED) lines lead with the receipt's owner action and no rerun advice, an sshd-refused gap says a rerun clears nothing, a receipt with no owner keeps the regex-derived owner, and an unclassified timeout keeps the rerun advice and names the receipt readings -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap' fails at the merge base, where probe_owner is refused as an extra field"
   - id: "req-pr5134-safety-pin-bounded-retry"
     statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
-    acceptance:
-      - id: "AC513401"
-        statement: "AC513401: the security-scan workflow pins safety==3.8.1, retries a transient exit 1 a bounded number of times, and exits at once on exit 64 (a real finding) -- falsifier: tests/test_security_scan_workflow_omn17427.py::test_safety_install_is_pinned, ::test_enforcing_invocation_has_no_or_true and ::test_only_crash_exit_is_retried fail at the merge base, where safety is unpinned and not retried."
   - id: "req-lock-security-floors"
     statement: "uv.lock holds multidict and mako at versions outside the affected ranges of the advisories the Dependency Security Scan reports, so the scan passes on dev."
-    acceptance:
-      - id: "AC3003201"
-        statement: "AC3003201: uv.lock locks multidict at 6.9.1 or later and mako at 1.4.2 or later -- falsifier: tests/test_uv_lock_security_floors_omn17427.py fails against the lock at the merge base (multidict 6.8.0, mako 1.4.1)"
   - id: "req-auto-wiring-batch-publish-only-tail"
     statement: "A bounded auto-wiring batch that holds only contracts the runtime never dispatches wires nothing and is not reported as a smoke failure."
-    acceptance:
-      - id: "AC1742790"
-        statement: "AC1742790: a wiring batch whose every contract is skipped for declaring no event_bus.subscribe_topics passes the batch smoke check, while a batch that wired nothing with an unskipped contract still fails -- falsifier: tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_a_publish_only_tail_batch_is_not_a_smoke_failure fails at the merge base, where the bare total_wired > 0 assertion reds the batch"
   - id: "req-command-wrapped-pytest-binds-its-file"
     statement: "A dod_evidence check whose check_type is command and whose command runs uv run pytest over an existing repo test file binds that file, so evidence that has to prepare its own environment first is not read as unbound and does not red every open pull request of the repository."
-    acceptance:
-      - id: "AC2249601"
-        statement: "AC2249601: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -1988,6 +1747,314 @@ dod_evidence:
         check_value: "uv run pytest tests/test_resolve_root_fail_fast.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC50"]
+  - id: "dod-omn-17427-contract-only-retirement-batch-2"
+    description: "Retires the claims of 35 contract-only criteria (batch 2 of the OMN-17427 contract-only retirement) that the live ticket never carried; each retired item still runs its own tests as a regression guard, and this item carries one check of its own."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        cwd: .
+    supersedes_ac_binding:
+      - item: "dod-omn17427-claude-token-pool-unit"
+        label: "AC71"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC71 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-claude-token-pool-unit still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-claude-token-pool-golden-chain"
+        label: "AC71"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC71 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-claude-token-pool-golden-chain still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac74-patch-apply-dispatch"
+        label: "AC74"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC74 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac74-patch-apply-dispatch still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac64-core-pin-compatibility"
+        label: "AC64"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC64 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac64-core-pin-compatibility still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac34-precommit-push-scans"
+        label: "AC35"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC35 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac34-precommit-push-scans still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac35-hygiene-staged-paths"
+        label: "AC36"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC36 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac35-hygiene-staged-paths still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac37-morning-phases-lab-work"
+        label: "AC37"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC37 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac37-morning-phases-lab-work still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac37-agent-session-boundary"
+        label: "AC37"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC37 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac37-agent-session-boundary still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac37-superseded-run-rule"
+        label: "AC38"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC38 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac37-superseded-run-rule still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac38-superseded-run-events"
+        label: "AC39"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC39 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac38-superseded-run-events still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac38-inline-named-test-grading"
+        label: "AC40"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC40 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac38-inline-named-test-grading still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac39-named-test-verdicts"
+        label: "AC41"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC41 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac39-named-test-verdicts still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac40-named-test-isolation"
+        label: "AC42"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC42 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac40-named-test-isolation still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac43-deployed-named-tests"
+        label: "AC43"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC43 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac43-deployed-named-tests still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac44-declared-table-retention"
+        label: "AC44"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC44 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac44-declared-table-retention still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac46-ac47-archive"
+        label: "AC46"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC46 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac46-ac47-archive still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac46-ac47-archive"
+        label: "AC47"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC47 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac46-ac47-archive still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac48-ac49-throttle-tick"
+        label: "AC48"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC48 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac48-ac49-throttle-tick still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac48-ac49-throttle-tick"
+        label: "AC49"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC49 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac48-ac49-throttle-tick still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac52-lab-story-log"
+        label: "AC52"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC52 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac52-lab-story-log still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac53-lab-story-log-refusals"
+        label: "AC53"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC53 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac53-lab-story-log-refusals still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac58-ac59-declared-file-retention"
+        label: "AC58"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC58 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac58-ac59-declared-file-retention still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac58-ac59-declared-file-retention"
+        label: "AC59"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC59 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac58-ac59-declared-file-retention still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac50-sweep-root-no-registry-fallback"
+        label: "AC50"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC50 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac50-sweep-root-no-registry-fallback still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac51-contract-search-declared-roots"
+        label: "AC51"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC51 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac51-contract-search-declared-roots still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac54-occ-companion-producer-dropped"
+        label: "AC54"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC54 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac54-occ-companion-producer-dropped still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac55-d3-core-handler"
+        label: "AC55"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC55 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac55-d3-core-handler still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac56-occ-root-explicit-only"
+        label: "AC56"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC56 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac56-occ-root-explicit-only still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac57-default-repos-off-occ"
+        label: "AC57"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC57 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac57-default-repos-off-occ still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac58-lab-fill-tick"
+        label: "AC58"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC58 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac58-lab-fill-tick still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac60-lab-fill-zero-placement-alarm"
+        label: "AC60"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC60 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac60-lab-fill-zero-placement-alarm still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac61-lab-fill-dod-verify-fallback"
+        label: "AC61"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC61 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac61-lab-fill-dod-verify-fallback still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac72-review-finding-evidence"
+        label: "AC72"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC72 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac72-review-finding-evidence still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac73-review-finding-nits-never-block"
+        label: "AC73"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC73 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac73-review-finding-nits-never-block still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac74-review-rounds-re-review-new-diff"
+        label: "AC74"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC74 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac74-review-rounds-re-review-new-diff still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac62-hook-push-rehearsal-caller"
+        label: "AC62"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC62 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac62-hook-push-rehearsal-caller still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac70-review-finding-parse-veto"
+        label: "AC70"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC70 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac70-review-finding-parse-veto still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac71-veto-keeps-other-findings"
+        label: "AC71"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC71 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac71-veto-keeps-other-findings still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac63-session-capability-digest"
+        label: "AC63"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC63 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac63-session-capability-digest still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac61-remove-coderabbit"
+        label: "AC81"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC81 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac61-remove-coderabbit still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac70-publisher-fixture-one-copy"
+        label: "AC70"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC70 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac70-publisher-fixture-one-copy still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac69-hostile-review-delegation"
+        label: "AC71"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC71 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac69-hostile-review-delegation still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac72-repo-evidence-retirement"
+        label: "AC74"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC74 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac72-repo-evidence-retirement still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-dogfood-inventory-lists-token-pool"
+        label: "AC72"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC72 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-dogfood-inventory-lists-token-pool still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac70-gateway-pr-text-cross-repository"
+        label: "AC73"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC73 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac70-gateway-pr-text-cross-repository still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-repo-evidence-caller-verifier-floor"
+        label: "AC74"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC74 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-repo-evidence-caller-verifier-floor still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac63-external-default-deny"
+        label: "AC74"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC74 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac63-external-default-deny still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac79-sweep-provenance-unreadable-runs"
+        label: "AC81"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC81 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac79-sweep-provenance-unreadable-runs still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4470-file-retention-policy"
+        label: "AC58"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC58 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4470-file-retention-policy still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4470-file-retention-safety"
+        label: "AC59"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC59 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4470-file-retention-safety still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
   - id: "dod-omn17427-ac51-contract-search-declared-roots"
     description: "The collector ignores a working-directory-relative clone when environment roots are unset and retains both declared-root positive controls."
     source: "manual"
@@ -4217,6 +4284,254 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
+  - id: "dod-omn-17427-contract-only-retirement-batch-5"
+    description: "Retires the claims of 36 contract-only criteria (batch 5 of the OMN-17427 contract-only retirement) that the live ticket never carried; each retired item still runs its own tests as a regression guard, and this item carries one check of its own."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        cwd: .
+    supersedes_ac_binding:
+      - item: "dod-omn17427-owner-summary-facts"
+        label: "AC4351"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4351 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-facts still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-owner-summary-draft"
+        label: "AC4352"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4352 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-draft still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-owner-summary-watermark"
+        label: "AC4353"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4353 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-watermark still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-owner-summary-coverage"
+        label: "AC4354"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4354 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-coverage still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-owner-summary-counted-omissions"
+        label: "AC4354"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4354 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-counted-omissions still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-owner-summary-review-triage"
+        label: "AC4357"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4357 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-owner-summary-review-triage still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-shard-plan-record-freshness"
+        label: "AC4400"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4400 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-shard-plan-record-freshness still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-gateway-token-under-running-loop"
+        label: "AC4401"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4401 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-gateway-token-under-running-loop still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-live-events-poison-quarantine"
+        label: "AC21288"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC21288 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-live-events-poison-quarantine still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4543-rebuild-trigger-pin"
+        label: "AC4543"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4543 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4543-rebuild-trigger-pin still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-first-party-dev-merge-tags"
+        label: "AC4544"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4544 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-first-party-dev-merge-tags still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-fold"
+        label: "AC1742711"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742711 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-fold still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-fold"
+        label: "AC1742712"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742712 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-fold still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-fold"
+        label: "AC1742713"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742713 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-fold still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-cli"
+        label: "AC1742711"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742711 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-cli still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-cli"
+        label: "AC1742712"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742712 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-cli still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-one-fix-one-pr-cli"
+        label: "AC1742714"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742714 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-one-fix-one-pr-cli still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-core-dev-tag-repoint"
+        label: "AC1742716"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742716 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-core-dev-tag-repoint still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ledger-facts-quoted-cause"
+        label: "AC1742715"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742715 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ledger-facts-quoted-cause still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-host-reconcile-owns-schedule"
+        label: "AC1742721"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742721 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-host-reconcile-owns-schedule still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-host-reconcile-owns-schedule"
+        label: "AC1742722"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742722 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-host-reconcile-owns-schedule still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-host-reconcile-owns-schedule"
+        label: "AC1742723"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742723 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-host-reconcile-owns-schedule still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-host-reconcile-owns-schedule"
+        label: "AC1742724"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742724 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-host-reconcile-owns-schedule still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac1742725-discovery-before-wait"
+        label: "AC1742725"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742725 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac1742725-discovery-before-wait still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4603-runtime-wiring"
+        label: "AC460301"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC460301 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4603-runtime-wiring still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4603-shared-budget"
+        label: "AC460302"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC460302 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4603-shared-budget still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4603-migration-parity"
+        label: "AC460303"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC460303 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4603-migration-parity still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4640-declared-test-broker"
+        label: "AC1742726"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742726 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4640-declared-test-broker still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4640-other-brokers-refused"
+        label: "AC1742727"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742727 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4640-other-brokers-refused still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr4640-refuse-before-producer"
+        label: "AC1742728"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742728 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr4640-refuse-before-producer still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-core-infra-pin-pair"
+        label: "AC1742729"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742729 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-core-infra-pin-pair still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-core-5bb91ae7e720-infra-pair"
+        label: "AC1742730"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742730 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-core-5bb91ae7e720-infra-pair still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-publickey-refusal-names-host-owner"
+        label: "AC1742731"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742731 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-publickey-refusal-names-host-owner still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ssh-route-row-model"
+        label: "AC1742732"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742732 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ssh-route-row-model still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-record-supplement"
+        label: "AC4400"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4400 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-record-supplement still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-receipt-owner-and-reader"
+        label: "AC1742733"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742733 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-receipt-owner-and-reader still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pr5134-safety-pin-retry"
+        label: "AC513401"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC513401 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pr5134-safety-pin-retry still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-lock-security-floors"
+        label: "AC3003201"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC3003201 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-lock-security-floors still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-wiring-batch-publish-only"
+        label: "AC1742790"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC1742790 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-wiring-batch-publish-only still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-command-wrapped-pytest-binds"
+        label: "AC2249601"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC2249601 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-command-wrapped-pytest-binds still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
   - id: "dod-omn17427-morning-phase-tools-only"
     description: "The tools-only session guard, the phase tool catalog and server, and the HandlerMorningPhaseTools gateway are exercised by the PR's focused tests; they fail at the merge base, which has no tools package, no gateway and no --tools-only transport."
     source: "manual"
