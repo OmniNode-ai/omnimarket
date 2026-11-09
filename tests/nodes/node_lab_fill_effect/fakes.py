@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from uuid import UUID
 
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -110,6 +111,7 @@ class FakeMerged:
     """The merged pull requests per ticket the send gate reads (OMN-23277); none merged by default."""
 
     by_ticket: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    built: Sequence[ModelLabFillBuiltReport] = ()
     fail: str = ""
     calls: list[str] = field(default_factory=list)
 
@@ -118,6 +120,11 @@ class FakeMerged:
         if self.fail:
             raise LabFillPortError(self.fail)
         return self.by_ticket.get(ticket, ())
+
+    def built_reports(
+        self, ticket: str, ledger_path: str
+    ) -> Sequence[ModelLabFillBuiltReport]:
+        return tuple(r for r in self.built if r.ticket == ticket)
 
 
 @dataclass

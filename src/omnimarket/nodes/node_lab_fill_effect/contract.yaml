@@ -124,6 +124,14 @@ handler_routing:
 send_gate:
   fact_hosts: [h200]
 
+# OMN-23376: the public canonical clones whose default branches the merged-ticket skip reads beside the PR watcher's state (no GitHub
+# read). The private repositories the deployment also reads are the overlay's extra_repos, never named here.
+merged_history:
+  repos: [omnimarket, omnibase_core, omnibase_infra, omnibase_spi, omnibase_compat, omniclaude, omniintelligence, omnimemory]
+  base_refs: [origin/dev, origin/main]
+  since_days: 120
+  evidence_prefix: "evidence("
+
 dependencies:
   - name: omnimarket.nodes.node_cloud_session_placement_effect
     dependency_type: internal
