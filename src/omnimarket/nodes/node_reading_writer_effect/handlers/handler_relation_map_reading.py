@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from omnimarket.models.import_relations import (
+    ModelDependencyGateResult,
     ModelImportRelationReport,
     ModelRelationMapReadingCommand,
     ModelRelationMapReadingResult,
@@ -57,6 +58,20 @@ def reason_of(report: ModelImportRelationReport | None) -> str:
     )
 
 
+def gate_cells(gate: ModelDependencyGateResult | None) -> list[str]:
+    """The dependency gate's counts as row cells: current and frozen, the floor shows both."""
+    if gate is None:
+        return ["count=unread", "frozen=unread", "gate=unread"]
+    return [
+        f"count={gate.current_count}",
+        f"frozen={gate.frozen_count}",
+        f"subsystems={gate.current_subsystems}",
+        f"frozen_subsystems={gate.frozen_subsystems}",
+        f"gate={gate.state}",
+        f"baseline={gate.baseline_sha256[:16]}",
+    ]
+
+
 def build_relation_map_row(
     command: ModelRelationMapReadingCommand,
     *,
@@ -86,6 +101,7 @@ def build_relation_map_row(
         f"key={reason_token(key)}",
         f"content={content}",
     ]
+    cells.extend(gate_cells(command.gate))
     if report is not None:
         for finding in report.findings:
             cells.append(
@@ -125,6 +141,8 @@ class HandlerRelationMapReading:
                 row=row,
             )
         content = "none" if command.report is None else command.report.digest()
+        if command.gate is not None:
+            content += command.gate.model_dump_json()
         request_id = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,

@@ -18,12 +18,12 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorLedgerRow,
     ModelFloorPlanInput,
+    ModelFloorSourceHealth,
 )
 from omnimarket.models.model_floor_line_select import (
     HealthState,
     LineClass,
     ModelFloorClassRule,
-    ModelFloorSourceHealth,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import pr_key
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
@@ -275,7 +275,7 @@ def select_extra_lines(
     goal_rule = _rule(request, "goal")
     goal_ids: dict[str, str] = {}  # ticket -> goal line id
     if "goal" in enabled:
-        for goal in sorted(request.goal_rows, key=lambda g: g.row_id):
+        for goal in sorted(request.line_goals, key=lambda g: g.row_id):
             if not goal.is_open:
                 continue
             line_id = f"{goal_rule.id_prefix}{goal.row_id}"
@@ -366,12 +366,12 @@ def select_extra_lines(
                 line_class="process",
                 data_age=data_age,
             )
-            for decl in dict.fromkeys(request.processes)
+            for decl in dict.fromkeys(request.line_processes)
         )
 
     process_order = {
         f"{_rule(request, 'process').id_prefix}{decl.name}": n
-        for n, decl in enumerate(request.processes)
+        for n, decl in enumerate(request.line_processes)
     }
     ranked = sorted(
         lines,

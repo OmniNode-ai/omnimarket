@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-22866
+title: The lab fill briefs that open a pull request tell the lane to push its branch and name its branch and head, so lane-brief check --lab admits them
+summary: From 2026-11-08 21:57Z every lab-fill fire read dispatched=0 with brief-check-refused for each eligible ticket (1 ticket, then up to 7, with 41 free slots at 2026-11-09 04:10Z). lane-brief check --lab refuses a brief whose own prose opens a pull request and carries neither a child-ticket-ids line nor a push-the-branch-and-report sentence (OMN-22883, merged 2026-11-08 21:25Z), and the fill briefs said open one PR whose title contains the ticket and nothing about pushing. The omnimarket lane renderer and the tick node's ticket and diagnose briefs now carry one shared sentence (PUSH_AND_REPORT_LINE) that tells the lane to push the branch and name its branch and head in its TERMINAL. No check, bound or threshold is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22866-fill-brief-admitted
+  statement: Every brief the omnimarket lab fill renders passes the child-id check of lane-brief check --lab, and the same brief with the push sentence cut out is refused by it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each rendered dispatch kind, the tick ticket brief and the diagnose brief hold no opening sentence the check would refuse, and the ticket brief with the push sentence removed is refused naming open one PR -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The brief-check tests with their failing control, and the lab fill plan and effect suites.
+  command: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_fill_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22866-fill-brief-admitted-ac1
+  description: The brief-check tests pass, and the failing control reads the ticket brief refused once the push sentence is cut out.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov
+- id: dod-omn22866-lab-fill-suites
+  description: The lab fill plan and effect suites still pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_fill_effect -q --no-cov
+- id: dod-omn22866-lab-fill-integration-proof
+  description: The brief-check tests run on a lab host at the pushed head, and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22866 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_brief_check_omn22866.py -q --no-cov
+    cwd: .

@@ -12,12 +12,12 @@ import pytest
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
+    ModelFloorSourceHealth,
     ModelFloorWatcher,
 )
 from omnimarket.models.model_floor_line_select import (
-    ModelFloorGoalRow,
-    ModelFloorProcessDecl,
-    ModelFloorSourceHealth,
+    ModelFloorLineGoal,
+    ModelFloorLineProcess,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers import (
     floor_line_select,
@@ -98,10 +98,10 @@ def _nine_line_request(**overrides: object) -> ModelFactoryFloorRequest:
                 text="a ruling no plan maps",
             ),
         ),
-        "goal_rows": (ModelFloorGoalRow(row_id="g1", name="a goal row"),),
-        "processes": (
-            ModelFloorProcessDecl(name="lab-fill"),
-            ModelFloorProcessDecl(name="pr-watcher"),
+        "line_goals": (ModelFloorLineGoal(row_id="g1", name="a goal row"),),
+        "line_processes": (
+            ModelFloorLineProcess(name="lab-fill"),
+            ModelFloorLineProcess(name="pr-watcher"),
         ),
         "source_health": _health(),
     }

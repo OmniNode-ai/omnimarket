@@ -7,6 +7,7 @@ from omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder 
     ModelCauseSkip,
     ModelLabIdleCostRequest,
     ModelLabIdleCostResult,
+    ModelRowRefusal,
     ModelStallResponderRequest,
     ModelStallResponderResult,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "ModelCauseSkip",
     "ModelLabIdleCostRequest",
     "ModelLabIdleCostResult",
+    "ModelRowRefusal",
     "ModelStallResponderRequest",
     "ModelStallResponderResult",
 ]

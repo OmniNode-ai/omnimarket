@@ -42,3 +42,12 @@ dod_evidence:
       - check_type: command
         check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20804 -- uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_compute -q --no-cov
         cwd: .
+  - id: dod-omn20804-moved-layout-refuses-undeclared
+    description: "The check is run from its new home with the overlay and the sources declaration in a separate overlays checkout that is not a scanned repository (OMN-20804, RULING 2026-11-03T18:40:27Z): a fixture installer in a registry clone with no line in that sources overlay makes the command exit 1 naming the file, the same fixture with the line exits 0, and a line whose file is gone exits 1. Fails if the run stops reading the overlay and the sources by path, or stops scanning the registry clones."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_moved_layout_omn20804.py -q
+        cwd: "."
+    binds_ac:
+      - AC3

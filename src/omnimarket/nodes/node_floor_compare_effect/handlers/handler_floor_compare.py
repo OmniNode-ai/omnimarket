@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.cycle_interrupt import CycleInterrupted, interruptible
 from omnimarket.handlers.emission_sink import (
     ChainEmitter,
     JsonlEmissionSink,
@@ -251,9 +252,16 @@ class HandlerFloorCompare:
             clock=self._clock,
             drill=request.drill_error,
         )
-        chain.start()
+        # From the start, every way out ends in a success or a typed failure (OMN-22864): an error, a termination signal and
+        # the cycle's own deadline each close the start. The close is outside the signal span so a late signal cannot cut it.
         try:
-            return self._cycle(request, rt, home, now, chain, env)
+            with interruptible(rt.cycle_deadline_seconds):
+                chain.start()
+                return self._cycle(request, rt, home, now, chain, env)
+        except CycleInterrupted as exc:
+            if chain.open:
+                chain.failure(exc.code, exc.detail)
+            raise
         except BaseException as exc:
             if chain.open:
                 chain.failure("cycle_interrupted", f"{type(exc).__name__}: {exc}")
@@ -460,7 +468,11 @@ class HandlerFloorCompare:
         hs = rt.history
         days = request.history_days or hs.backfill_days
         book = load_book(
-            hs, env, home, now - timedelta(hours=days * 24 + hs.window_hours + 1)
+            hs,
+            env,
+            home,
+            now - timedelta(hours=days * 24 + hs.window_hours + 1),
+            until=now,
         )
         points = backfill_snapshots(
             book, hs, now, days, rt.min_gap_seconds, load_friction_rules(hs)

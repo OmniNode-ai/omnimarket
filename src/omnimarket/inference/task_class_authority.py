@@ -866,6 +866,7 @@ class ModelTaskClassEscalationPolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     max_escalations: int | None = None
+    paid_from_size_band: Literal["S", "M", "L"] | None = None
     tier_order: tuple[str, ...] | None = Field(
         default=None,
         description="The closed, ordered set of routing tiers this class may use.",
@@ -1001,6 +1002,7 @@ class ModelTaskClassAuthority(BaseModel):
         default_factory=dict
     )
     size_band_thresholds: ModelSizeBandThresholds | None = None
+    paid_from_size_band: Literal["S", "M", "L"] | None = None
     facts_first_prompt: ModelFactsFirstPromptPolicy | None = Field(
         default=None,
         description=(
@@ -1312,11 +1314,8 @@ def withheld_delegation_refusal(task_class: str) -> str | None:
     it, and a backend that does declare the capability still resolves.
     """
     authority = _delegation_task_class_authority()
-    declared = authority.unroutable_task_classes.get(task_class)
-    if (
-        declared is None
-        or declared.status is not EnumRoutingAvailabilityStatus.WITHHELD
-    ):
+    entry = authority.unroutable_task_classes.get(task_class)
+    if entry is None or entry.status is not EnumRoutingAvailabilityStatus.WITHHELD:
         return None
     return authority.unroutable_refusal(task_class)
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 LineClass = Literal["declared", "plan", "goal", "ruling", "ticket", "process"]
 HealthState = Literal["read", "read-empty", "stale", "unread"]
@@ -23,7 +23,7 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
-class ModelFloorGoalRow(BaseModel):
+class ModelFloorLineGoal(BaseModel):
     """One row of the goal file; only an open row is a line (class goal), keyed ``goal:<row_id>``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -34,26 +34,13 @@ class ModelFloorGoalRow(BaseModel):
     tickets: tuple[str, ...] = ()
 
 
-class ModelFloorProcessDecl(BaseModel):
+class ModelFloorLineProcess(BaseModel):
     """A factory process the deployment overlay declares; each is a line (class process), keyed ``process:<name>``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(min_length=1)
     title: str = ""
-
-
-class ModelFloorSourceHealth(BaseModel):
-    """What the caller found when it read one source: read, read-empty, stale or unread, when, and why."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    source: str = Field(min_length=1)
-    state: HealthState
-    read_at: datetime | None = None
-    cause: str = ""
-
-    _utc = field_validator("read_at")(_aware)
 
 
 class ModelFloorClassRule(BaseModel):
