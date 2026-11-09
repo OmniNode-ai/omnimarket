@@ -9,12 +9,12 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.model_dev_deploy_reading import (
+    ModelDevDeployReading,
+)
 from omnimarket.models.model_reading import EnumReadingVerdict as V
 from omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_reading import (
     HandlerDevDeployReading,
-)
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
-    ModelDevDeployReading,
 )
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     LANE,
