@@ -168,3 +168,7 @@ in_process_handlers:
     handler:
       module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
       class: "HandlerLandingJoinJ8"
+  join_j8_live:
+    handler:
+      module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8_live"
+      class: "HandlerLandingJoinJ8Live"
