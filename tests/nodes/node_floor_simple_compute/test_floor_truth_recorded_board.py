@@ -170,7 +170,7 @@ def test_golden_a_declared_owner_ticket_still_counts() -> None:
 
 def test_golden_the_colour_rule_holds_on_the_recorded_board() -> None:
     doc, request = board()
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
     assert check_red_rule(doc, request.lanes).violations == ()
 
 
@@ -486,7 +486,7 @@ def test_error_a_stoppage_that_stopped_is_not_counted_in_the_red_sentence_or_the
     doc, request = board()
     red_ids = [c.id for c in doc.causes if c.listed and c.state == "red"]
     assert not set(red_ids) & set(stopped_ids(doc))
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
     assert doc.red_rule.red_rows == len(red_ids) + sum(
         1 for p in doc.pieces if p.draw == "red"
     ) + sum(1 for line in doc.lab_state if line.draw == "red")

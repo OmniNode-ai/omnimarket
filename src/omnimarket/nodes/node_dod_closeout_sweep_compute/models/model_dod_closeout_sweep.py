@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -202,6 +202,10 @@ class ModelRunSummary(BaseModel):
     flip_refused: list[ModelRunFlipRefusal] = Field(default_factory=list)
     held_for_amendment: list[str]
     deferred_count: int = Field(ge=0)
+    # OMN-20718: a dry run flips nothing by design and reads no zero-flip; the candidate sources
+    # name the tickets the run enumerated and where each came from ("merged" = a merged PR).
+    apply: bool = True
+    candidate_sources: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ModelDodCloseoutZeroFlipAlert(BaseModel):
@@ -216,6 +220,32 @@ class ModelDodCloseoutZeroFlipAlert(BaseModel):
     deferred_count: int = Field(ge=1)
     top_deferral_reason: str
     observed_at: str
+
+
+class ModelDodCloseoutZeroFlipReading(BaseModel):
+    """OMN-20718: a run that closed zero tickets, read as a working closer, never a failed run.
+
+    ``exit_code`` is always 0: the closer's own exit reports whether it ran, and the staleness
+    alarm reports whether it stopped running. ``reason_counts`` counts why the run's tickets
+    were not flipped (refused bindings and unmet criteria by class, refused done-flips, tickets
+    held for an amendment, tickets behind the candidate budget).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    run_key: str = Field(pattern=r"^[^\s|]+$", description="One ledger token.")
+    observed_at: str
+    exit_code: Literal[0] = 0
+    candidate_count: int = Field(
+        ge=0, description="Tickets In Review with a merged PR."
+    )
+    selected_count: int = Field(ge=0)
+    open_count: int = Field(ge=0)
+    held_count: int = Field(ge=0)
+    deferred_count: int = Field(ge=0)
+    reason_counts: dict[str, int]
+    top_reason: str
 
 
 class ModelSprintProject(BaseModel):
@@ -636,6 +666,7 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     # completion and ground_state
     completion_rows: list[str] | None = None
     zero_flip_alert: ModelDodCloseoutZeroFlipAlert | None = None
+    zero_flip_reading: ModelDodCloseoutZeroFlipReading | None = None
     zero_flip_streak: int | None = None
     top_deferral_reason: str | None = None
     health: EnumCloserHealth | None = None
