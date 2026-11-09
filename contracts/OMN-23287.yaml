@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23287
 title: Narrowed test selection sizes its shard count from estimated test time, not from the number of selected paths
-summary: _split_count_for in scripts/ci/detect_test_paths.py counted selected paths, so a node change that selects four paths (two of them tests/nodes/ and tests/unit/, about 4100 of the suite's 7160 committed seconds) got 2 shards of roughly 2000 s each and Tests (Split 2/2) ran past its job limit. A narrowed selection now also gets ceil(estimated seconds / thresholds.target_shard_seconds) shards, read from the committed config/test_file_durations.json, never fewer than the path-count rule and never more than the 20-shard full-suite matrix. The target (360 s) is a setting in scripts/ci/test_selection_adjacency.yaml; a missing or unreadable durations file keeps the path-count rule.
+summary: _split_count_for in scripts/ci/detect_test_paths.py counted selected paths, so a node change that selects four paths (two of them tests/nodes/ and tests/unit/, about 4100 of the suite's 7160 committed seconds) got 2 shards of roughly 2000 s each and Tests (Split 2/2) ran past its job limit. A narrowed selection now also gets ceil(estimated seconds / thresholds.target_shard_seconds) shards, read from the committed config/test_file_durations.json, never fewer than the path-count rule and never more than the 20-shard full-suite matrix. The logic lives in src/omnimarket/models/test_shard_count.py (target 360 s), which scripts/ci/detect_test_paths.py loads; a missing or unreadable durations file keeps the path-count rule.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,7 +15,7 @@ requirements:
     statement: 'AC2: Tests (Split 2/2) no longer times out on omnimarket#5508 at its newest head after the change merges -- falsifier: pr_state_local.py --pr omnimarket#5508 shows no Split shard in red for a timeout'
 evidence_requirements:
 - kind: tests
-  description: The node-change selection gets at least 10 shards (2 on the base), the shard count scales with the committed durations and caps at 20, and a missing target, missing file or unreadable file keeps the path-count rule.
+  description: The node-change selection gets at least 10 shards (2 on the base), the shard count scales with the committed durations and caps at 20, and a missing file or unreadable file keeps the path-count rule.
   command: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov
 emergency_bypass:
   enabled: false
@@ -23,7 +23,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23287-ac1-duration-shards
-  description: Runs the real compute_selection on a node change over the committed adjacency map and durations file and reads split_count (12 now, 2 on the base script), and runs _duration_split_count_for over a written durations file for the scale, cap and fallback cases. The named break is the base script, whose path-count rule gives 2 and which has no _duration_split_count_for.
+  description: Runs the real compute_selection on a node change over the committed adjacency map and durations file and reads split_count (12 now, 2 on the base script), and runs duration_split_count over a written durations file for the scale, cap and fallback cases. The named break is the base script, whose path-count rule gives 2 and which has no duration_split_count.
   source: manual
   binds_ac:
   - AC1
@@ -32,7 +32,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -k split_count_by_duration -q --no-cov
     cwd: .
 - id: dod-omn23287-existing-selection-tests
-  description: The existing test selection tests (adjacency map, full-suite escalation, workflow-only diff, loader) still pass with the new thresholds field.
+  description: The existing test selection tests (adjacency map, full-suite escalation, workflow-only diff, loader) still pass with the shard-count module.
   source: manual
   binds_ac:
   - AC1

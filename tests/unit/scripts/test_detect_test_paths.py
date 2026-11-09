@@ -795,9 +795,11 @@ def test_split_count_by_duration_node_change_follows_committed_durations() -> No
 
 
 def test_split_count_by_duration_scales_and_caps(tmp_path: Path) -> None:
-    from scripts.ci.detect_test_paths import (
+    from omnimarket.models.test_shard_count import (
         FULL_SUITE_SPLIT_COUNT,
-        _duration_split_count_for,
+    )
+    from omnimarket.models.test_shard_count import (
+        duration_split_count as _duration_split_count_for,
     )
 
     durations = tmp_path / "durations.json"
@@ -816,11 +818,13 @@ def test_split_count_by_duration_scales_and_caps(tmp_path: Path) -> None:
 def test_split_count_by_duration_keeps_path_rule_without_target_or_file(
     tmp_path: Path,
 ) -> None:
-    from scripts.ci.detect_test_paths import _duration_split_count_for
+    from omnimarket.models.test_shard_count import (
+        duration_split_count as _duration_split_count_for,
+    )
 
     durations = tmp_path / "durations.json"
     durations.write_text('{"tests/a/test_x.py": 9000.0}')
-    assert _duration_split_count_for(["tests/a/"], durations, None) == 1
+    assert _duration_split_count_for(["tests/a/"], durations, 400) == 20
     assert _duration_split_count_for(["tests/a/"], tmp_path / "missing.json", 400) == 1
     durations.write_text("not json")
     assert _duration_split_count_for(["tests/a/"], durations, 400) == 1

@@ -19,14 +19,6 @@ class ModelAdjacencyEntry(BaseModel):
 class ModelThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     modules_changed_for_full_suite: int = Field(..., ge=1)
-    target_shard_seconds: int | None = Field(default=None, ge=1)
-    """Estimated seconds of test time one narrowed-selection shard should carry.
-
-    A narrowed selection sizes its shard count from the committed per-file
-    durations (``config/test_file_durations.json``) divided by this target, so
-    two broad directories do not become two shards that each run for an hour.
-    ``None`` keeps the path-count rule alone.
-    """
 
 
 class ModelAdjacencyMap(BaseModel):

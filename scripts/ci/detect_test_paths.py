@@ -5,8 +5,7 @@
 from __future__ import annotations
 
 import argparse
-import json
-import math
+import importlib
 import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -24,8 +23,7 @@ TEST_PREFIX = "tests/"
 
 FULL_SUITE_BRANCHES = {"main"}
 
-DURATIONS_RELATIVE_PATH = "config/test_file_durations.json"
-FULL_SUITE_SPLIT_COUNT = 20
+SHARD_HANDLER_DIR = "src/omnimarket/models"
 
 
 def resolve_test_paths(
@@ -196,13 +194,9 @@ def compute_selection(
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
         selected = sorted(set(selected) | set(config.always_selected_paths))
-    split_count = max(
-        _split_count_for(selected),
-        _duration_split_count_for(
-            selected,
-            root / DURATIONS_RELATIVE_PATH,
-            config.thresholds.target_shard_seconds,
-        ),
+    sys.path.insert(0, str(REPO_ROOT / SHARD_HANDLER_DIR))
+    split_count = importlib.import_module("test_shard_count").split_count(
+        selected, root / "config/test_file_durations.json"
     )
 
     return ModelTestSelection(
@@ -217,65 +211,11 @@ def compute_selection(
 def _full_suite(reason: EnumFullSuiteReason) -> ModelTestSelection:
     return ModelTestSelection(
         selected_paths=["tests/"],
-        split_count=FULL_SUITE_SPLIT_COUNT,
+        split_count=20,
         is_full_suite=True,
         full_suite_reason=reason,
-        matrix=list(range(1, FULL_SUITE_SPLIT_COUNT + 1)),
+        matrix=list(range(1, 21)),
     )
-
-
-def _estimated_seconds(selected_paths: list[str], durations_path: Path) -> float:
-    """Sum the committed per-file durations of every test file a selection covers."""
-    try:
-        durations = json.loads(durations_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return 0.0
-    if not isinstance(durations, dict):
-        return 0.0
-    total = 0.0
-    for test_file, seconds in durations.items():
-        if not isinstance(seconds, (int, float)):
-            continue
-        if any(
-            test_file == path or (path.endswith("/") and test_file.startswith(path))
-            for path in selected_paths
-        ):
-            total += float(seconds)
-    return total
-
-
-def _duration_split_count_for(
-    selected_paths: list[str],
-    durations_path: Path,
-    target_shard_seconds: int | None,
-) -> int:
-    """Shard count that keeps each shard near the target share of test time.
-
-    The path-count rule sees four directories and answers 2 even when two of
-    them hold most of the suite (tests/nodes/ and tests/unit/ together are about
-    4100 of the 7160 seconds), which made one shard run for over an hour.
-    """
-    if target_shard_seconds is None:
-        return 1
-    estimated = _estimated_seconds(selected_paths, durations_path)
-    if estimated <= 0:
-        return 1
-    return min(
-        FULL_SUITE_SPLIT_COUNT, max(1, math.ceil(estimated / target_shard_seconds))
-    )
-
-
-def _split_count_for(selected_paths: list[str]) -> int:
-    n = len(selected_paths)
-    if n <= 2:
-        return 1
-    if n <= 5:
-        return 2
-    if n <= 10:
-        return 3
-    if n <= 16:
-        return 4
-    return 5
 
 
 def main(argv: list[str] | None = None) -> int:
