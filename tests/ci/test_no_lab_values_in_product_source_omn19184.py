@@ -37,7 +37,8 @@ _YamlLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 #: A served model id that exists only on the lab's hosts, a lab LAN address, a lab hostname,
 #: or a lab runtime address written as a short host suffix and port.
 LAB_VALUE = re.compile(
-    r"Qwen3\.8-27B|deepseek-v4-flash|\b192\.168\.86\.\d{1,3}\b"
+    r"Qwen3\.8-27B|deepseek-v4-"
+    r"flash|\b192\.168\.86\.\d{1,3}\b"
     r"|\bh(?:0\d\d|1\d\d|2\d\d)\b|\.20[12]:\d{4,5}",
     re.IGNORECASE,
 )
