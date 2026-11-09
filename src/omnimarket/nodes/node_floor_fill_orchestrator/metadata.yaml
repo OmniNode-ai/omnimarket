@@ -17,6 +17,7 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-spi>=0.23.3,<0.24.0"
+  - "psycopg2-binary>=2.9.10"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "floor-fill"]

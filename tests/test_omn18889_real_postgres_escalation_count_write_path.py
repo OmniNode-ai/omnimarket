@@ -42,6 +42,8 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 #: Every test here needs a real Postgres. The decorator is repeated on each
 #: function as well as declared here, because the write-path gate reads the
 #: literal ``@pytest.mark.integration`` text out of the diff.
@@ -113,7 +115,8 @@ async def _provision(connection: asyncpg.Connection, schema: str) -> None:
     await connection.execute(f'CREATE SCHEMA "{schema}"')
     await connection.execute(f'SET search_path TO "{schema}", public')
     for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
-        sql = migration.read_text(encoding="utf-8")
+        # OMN-21970: the node's migrations may name public.; apply them here.
+        sql = for_isolated_schema(migration.read_text(encoding="utf-8"))
         await connection.execute(_CONCURRENT_INDEX.sub("CREATE INDEX", sql))
 
 

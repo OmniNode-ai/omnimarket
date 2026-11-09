@@ -33,6 +33,13 @@ jobs:
       # whose topic set reached it. The runner has 16 GiB. The sizing step writes this value
       # into the env file and the read-back step fails if the broker started on another one.
       COMPOSED_BROKER_MEMORY: 6G
+      # The runner image carries no Python 3.12, so the first `uv run` in the infra checkout
+      # downloaded cpython from github.com inside the build step, and a 504 or a stalled request
+      # there failed the job. A dedicated step installs the interpreter with these retries and
+      # fails loudly when all of them fail; every other step is told never to download one.
+      COMPOSED_PYTHON_INSTALL_ATTEMPTS: 5
+      COMPOSED_PYTHON_INSTALL_RETRY_SECONDS: 20
+      UV_PYTHON_DOWNLOADS: never
     steps:
       - name: Checkout omnimarket
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -94,6 +101,24 @@ jobs:
           repository: OmniNode-ai/omnibase_infra
           ref: ${{ steps.pins.outputs.infra_ref }}
           path: infra
+
+      - name: Provision Python 3.12 with retries (the runner image carries none)
+        env:
+          UV_PYTHON_DOWNLOADS: automatic
+        run: |
+          set -euo pipefail
+          attempt=1
+          until uv python install "$UV_PYTHON"; do
+            if [ "$attempt" -ge "$COMPOSED_PYTHON_INSTALL_ATTEMPTS" ]; then
+              echo "::error::uv python install ${UV_PYTHON} failed on all ${COMPOSED_PYTHON_INSTALL_ATTEMPTS} attempts"
+              exit 1
+            fi
+            echo "::warning::uv python install ${UV_PYTHON} failed on attempt ${attempt} of ${COMPOSED_PYTHON_INSTALL_ATTEMPTS}; retrying in ${COMPOSED_PYTHON_INSTALL_RETRY_SECONDS}s"
+            sleep "$COMPOSED_PYTHON_INSTALL_RETRY_SECONDS"
+            attempt=$((attempt + 1))
+          done
+          # Read back, not assumed: the interpreter later steps resolve must exist now.
+          uv python find "$UV_PYTHON"
 
       - name: Require Docker Compose (fail, never skip)
         run: |
