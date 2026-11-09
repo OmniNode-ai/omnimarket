@@ -14,6 +14,10 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
 from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistClass,
@@ -744,6 +748,8 @@ class ModelNumbersOverlay(_Frozen):
 
 class ModelCauseOverlay(_Frozen):
     max_shown: int = Field(gt=0)
+    # The delegation:idle row (OMN-23313); ``None`` declares none and the floor draws none.
+    delegation_idle: ModelDelegationIdleOverlay | None = None
     titles: dict[str, str] = Field(default_factory=dict)
     owners: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     needs_operator: tuple[str, ...] = ()
@@ -842,6 +848,9 @@ class ModelFloorSimpleInput(_Frozen):
     )
     # The work list's items as the sources read them; ``None`` is a list that was not read (drawn as an unread input).
     worklist: tuple[ModelWorklistItemIn, ...] | None = None
+    # The operator-owned delegation tickets whose start criterion reads true (OMN-23313); ``None`` is a list that was not
+    # read (drawn as an unread input), ``()`` is a list that was read and holds none.
+    delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------

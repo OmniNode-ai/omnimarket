@@ -16,7 +16,7 @@ by a reader that does not share its code path.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Literal
 
@@ -801,6 +801,7 @@ class HandlerFloorSimple:
                 item.tickets,
                 last_seen=item.last_seen,
             )
+        self._delegation_idle(r, add)
         for name, ok in sorted(r.sources_read.items()):
             if not ok:
                 add(
@@ -862,6 +863,39 @@ class HandlerFloorSimple:
                     (),
                 )
         return out
+
+    @staticmethod
+    def _delegation_idle(r: ModelFloorSimpleInput, add: Callable[..., None]) -> None:
+        """The delegation:idle row (OMN-23313): operator-owned delegation tickets that can start, and who is on them.
+
+        The sources hand over only the tickets the operator owns, under a delegation epic, whose start criterion reads
+        true. A ticket is idle when no live lane is on it (``live_lanes``: its own ticket or a ``parent_ticket=``). The row
+        owns the idle tickets, so it draws red while any has no lane, and owns every ticket once each has one, so it draws
+        amber then. The overlay's ``causes.owners`` entry for the row adds the tickets whose lanes work on the row itself.
+        """
+        spec = r.overlay.causes.delegation_idle
+        if spec is None or not r.delegation_tickets:
+            return
+        tickets = tuple(dict.fromkeys(t.ticket for t in r.delegation_tickets))
+        idle = tuple(t for t in tickets if not live_lanes(r.lanes, (t,)))
+        shown = ", ".join((idle or tickets)[:6])
+        more = len(idle or tickets) - 6
+        tail = f"; and {more} more" if more > 0 else ""
+        detail = (
+            f"{len(idle)} of {len(tickets)} operator-owned delegation tickets can start and have no lane on them: "
+            f"{shown}{tail}."
+            if idle
+            else f"All {len(tickets)} operator-owned delegation tickets that can start have a lane: {shown}{tail}."
+        )
+        add(
+            "delegation:idle",
+            spec.title,
+            detail,
+            len(idle) or len(tickets),
+            "delegation tickets",
+            tickets,
+            owners=idle or tickets,
+        )
 
     @staticmethod
     def _stoppage_detail(item: ModelFloorCauseIn, r: ModelFloorSimpleInput) -> str:

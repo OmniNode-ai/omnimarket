@@ -96,6 +96,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     parse_time,
     read_admissions,
     read_broker_lag,
+    read_delegation_tickets,
     read_deploy_lag,
     read_disk,
     read_hosts,
@@ -859,6 +860,12 @@ class HandlerFloorSimpleTick:
             conflict_states=lab_ov.conflict_merge_states,
             now=now,
         )
+        delegation_spec = floor_ov.causes.delegation_idle
+        delegation_tickets = (
+            read_delegation_tickets(work_state, delegation_spec)
+            if delegation_spec is not None
+            else None
+        )
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
@@ -906,8 +913,14 @@ class HandlerFloorSimpleTick:
                     if floor_ov.worklist is not None
                     else {}
                 ),
+                **(
+                    {"delegation_tickets": delegation_tickets is not None}
+                    if delegation_spec is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
         )
