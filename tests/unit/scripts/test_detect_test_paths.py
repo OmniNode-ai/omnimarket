@@ -778,7 +778,7 @@ def test_workflow_only_diff_cli_emits_twenty_splits(tmp_path: Path) -> None:
 # omnimarket#5401 and #5508.
 
 
-def test_node_change_shard_count_follows_committed_durations() -> None:
+def test_split_count_by_duration_node_change_follows_committed_durations() -> None:
     sel = compute_selection(
         changed_files=[
             "src/omnimarket/nodes/node_host_reading_effect/handlers/join_j2.py",
@@ -794,7 +794,7 @@ def test_node_change_shard_count_follows_committed_durations() -> None:
     assert sel.matrix == list(range(1, sel.split_count + 1))
 
 
-def test_duration_split_count_scales_and_caps(tmp_path: Path) -> None:
+def test_split_count_by_duration_scales_and_caps(tmp_path: Path) -> None:
     from scripts.ci.detect_test_paths import (
         FULL_SUITE_SPLIT_COUNT,
         _duration_split_count_for,
@@ -813,7 +813,7 @@ def test_duration_split_count_scales_and_caps(tmp_path: Path) -> None:
     assert _duration_split_count_for(["tests/none/"], durations, 400) == 1
 
 
-def test_duration_split_count_keeps_path_rule_without_target_or_file(
+def test_split_count_by_duration_keeps_path_rule_without_target_or_file(
     tmp_path: Path,
 ) -> None:
     from scripts.ci.detect_test_paths import _duration_split_count_for
