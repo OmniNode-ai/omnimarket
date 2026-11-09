@@ -193,18 +193,14 @@ async def test_injected_break_a_node_left_out_of_the_runtime_stops_answering(
     assert answers == {("GET", BREAK_PATH): None}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "T18 (OMN-23217): onex-api is still a separate container; the pending "
-        "identities have no node mount yet. Strict: when the last port lands this "
-        "turns green, and the marker must go in the same pull request."
-    ),
-)
-async def test_every_onex_api_identity_answers_from_the_one_container(
+async def test_the_identities_that_fall_through_are_exactly_the_recorded_pending_ones(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # T18 (OMN-23217): onex-api is still a separate container, so the pending
+    # identities have no node mount yet. This runs (never skips) and pins the
+    # unserved set to the record: a port that lands must move its entry to served.
     wanted = [i for i in identities() if i["state"] != "retired"]
     answers = await read_from_the_runtime(runtime_contract_paths(), wanted, monkeypatch)
-    unserved = sorted(key for key, prefix in answers.items() if prefix is None)
-    assert unserved == [], f"{len(unserved)} identities fall through: {unserved}"
+    unserved = {key for key, prefix in answers.items() if prefix is None}
+    pending = {(i["method"], i["path"]) for i in wanted if i["state"] == "pending"}
+    assert unserved == pending
