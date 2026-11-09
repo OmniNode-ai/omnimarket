@@ -102,6 +102,8 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -233,6 +235,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
+        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -254,6 +257,27 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _ProbeLadderDispatchKwargs(TypedDict, total=False):
+    """A synthetic probe's ladder, passed only when the request carries one (OMN-23162).
+
+    An ordinary request calls the port exactly as before. A request that carries
+    a ladder is never run without it: a port that does not declare
+    ``probe_ladder`` (omnibase_infra's runtime dispatch port) raises
+    ``TypeError`` on the keyword, which fails the probe loudly instead of
+    running it as an ordinary delegation.
+    """
+
+    probe_ladder: ModelProbeLadder | ModelProbeFaults
+
+
+def _probe_ladder_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _ProbeLadderDispatchKwargs:
+    if request.probe_ladder is not None:
+        return {"probe_ladder": request.probe_ladder}
     return {}
 
 
@@ -1808,6 +1832,8 @@ class HandlerDelegateSkill:
                     **_no_escalation_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
+                    # OMN-23162: only when carried -- see _ProbeLadderDispatchKwargs.
+                    **_probe_ladder_dispatch_kwargs(request),
                     # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
                     **_named_tests_dispatch_kwargs(
                         request, self._dispatch_port.dispatch
