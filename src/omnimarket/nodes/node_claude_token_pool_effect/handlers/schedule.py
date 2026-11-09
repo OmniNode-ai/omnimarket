@@ -182,6 +182,21 @@ def render_launchd(
     )
 
 
+#: What launchctl and systemctl answer when the job is not there to stop: nothing is running, so nothing to keep.
+_ABSENT_MARKERS = (
+    "no such process",
+    "could not find service",
+    "does not exist",
+    "not loaded",
+    "not found",
+)
+
+
+def _already_absent(done: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{done.stdout}\n{done.stderr}".lower()
+    return any(marker in text for marker in _ABSENT_MARKERS)
+
+
 class RotationScheduler:
     """Install, remove and run the rotation schedule on one declared host."""
 
@@ -314,12 +329,22 @@ class RotationScheduler:
         if host.scheduler == "launchd":
             done = self.run(["launchctl", "bootout", self.target])
             output += done.stdout
+            if done.returncode and not _already_absent(done):
+                # A loaded agent keeps its definition apart from the file: the schedule may still be
+                # running, so keep the file and the failure.
+                return ModelRotationScheduleResult(
+                    exit_code=done.returncode, stdout=output, stderr=done.stderr
+                )
             self.plist.unlink(missing_ok=True)
             return ModelRotationScheduleResult(
                 exit_code=0, stdout=output + f"removed {self.plist}\n"
             )
         done = self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
         output += done.stdout
+        if done.returncode and not _already_absent(done):
+            return ModelRotationScheduleResult(
+                exit_code=done.returncode, stdout=output, stderr=done.stderr
+            )
         for unit in (self.timer_name, self.service_name):
             target = self.unit_dir / unit
             if target.exists():

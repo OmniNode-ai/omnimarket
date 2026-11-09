@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "node": "projection_work_ledger",
+  "receipts": [
+    {
+      "case_name": "golden_claim_event_is_folded_into_state",
+      "case_hash": "0a6b42e1945f235dd51387ddf98b75466e5fc9d46116b051638b741b0e5fedc6",
+      "injected_break": "DROP_TERMINAL_PUBLISH",
+      "outcome": "red",
+      "failed_assertion": "SILENCE"
+    },
+    {
+      "case_name": "golden_claim_event_is_folded_into_state",
+      "case_hash": "0a6b42e1945f235dd51387ddf98b75466e5fc9d46116b051638b741b0e5fedc6",
+      "injected_break": "WRONG_CORRELATION_ID",
+      "outcome": "red",
+      "failed_assertion": "CORRELATION"
+    },
+    {
+      "case_name": "golden_claim_event_is_folded_into_state",
+      "case_hash": "0a6b42e1945f235dd51387ddf98b75466e5fc9d46116b051638b741b0e5fedc6",
+      "injected_break": "SKIPPED_REDUCER_UPDATE",
+      "outcome": "red",
+      "failed_assertion": "STATE_UPDATE"
+    }
+  ]
+}

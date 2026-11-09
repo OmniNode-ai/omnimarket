@@ -170,7 +170,6 @@ class HandlerReadingWriter:
         pause: Callable[[float], None] = time.sleep,
     ) -> None:
         self._pause = pause
-        self._window_read: tuple[ModelLedgerQuery, ModelLedgerRead] | None = None
         self._landing = landing
         self._two_backend_source = two_backend_source
         self._overlay = overlay
@@ -179,12 +178,14 @@ class HandlerReadingWriter:
         self._clock = clock
         self._compute = compute or HandlerReadingCompute()
         self._revision = revision or load_revision()
+        # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
+        self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
+        self._cycle_reads = {}
         now = self._clock().astimezone(UTC)
-        self._window_read = None
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
         start = command.window_start.astimezone(UTC)
@@ -244,7 +245,7 @@ class HandlerReadingWriter:
                 break
             self._pause(retry.pause_seconds)
             # A row a lost reply left behind must be read back, so a retry pass asks the ledger again.
-            self._window_read = None
+            self._cycle_reads = {}
             for i in failed:
                 current[i] = self._piece(
                     self._overlay.spec(current[i].piece), start, end, cutoff, now, True
@@ -299,12 +300,30 @@ class HandlerReadingWriter:
             read = self._source.read(query)
         return read
 
+    def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """One read per distinct query in a cycle (OMN-23119).
+
+        The replay check asks the same question, the reading rows of this window, once for every
+        computed piece. Through the command route each ask is a process and a bus round trip of
+        its own, about 9 s when the lab is quiet and the 60 s bus timeout when the read node is
+        stalled, and the one that stalls turns its piece UNKNOWN for the hour. An answer is kept
+        only when it was read: an error is never kept, so the next ask reads again. A read that
+        fails is asked again for the passes the overlay's read_retry declares.
+        """
+        kept = self._cycle_reads.get(query)
+        if kept is not None:
+            return kept
+        read = self._read_again_on_error(query)
+        if read.error is None:
+            self._cycle_reads[query] = read
+        return read
+
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
         for source in spec.all_sources:
-            read = self._read_again_on_error(
+            read = self._read(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
                     until=end,
@@ -333,22 +352,17 @@ class HandlerReadingWriter:
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
     ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         publish = self._overlay.publish
-        query = ModelLedgerQuery(
-            since=window_end,
-            until=now + timedelta(seconds=1),
-            row_type=_ROW_TYPE,
-            lane=publish.lane,
-            term=publish.reading_term,
+        read = self._read(
+            ModelLedgerQuery(
+                since=window_end,
+                until=now + timedelta(seconds=1),
+                row_type=_ROW_TYPE,
+                lane=publish.lane,
+                term=publish.reading_term,
+            )
         )
-        # Every piece of one pass asks the same question, so one answer serves them all (OMN-23119): eighteen reads of a
-        # slow ledger bus were eighteen chances for a reply to time out. An error is never kept; the next piece asks again.
-        if self._window_read is not None and self._window_read[0] == query:
-            read = self._window_read[1]
-        else:
-            read = self._source.read(query)
-            if read.error is not None:
-                return (), read.error
-            self._window_read = (query, read)
+        if read.error is not None:
+            return (), read.error
         mine = tuple(
             row
             for row in read.rows

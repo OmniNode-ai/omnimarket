@@ -11,7 +11,7 @@
 #
 # This task writes the contract and a pure handler that lists the seam readings in line order;
 # walking the graph and the node that gathers the facts arrive with the tasks that read the
-# seams, so this node has no topic yet.
+# seams, so the attach-on-demand activation (OMN-22909) declares the topics below.
 #
 # The graph is not the `seams:` declaration that node_seam_graph_compute extracts or the
 # projection that node_seam_match_compute compares: those are code seams between repositories
@@ -34,6 +34,7 @@ description: >
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles: [effects]
   idempotent: false
   timeout_ms: 60000
 
@@ -630,6 +631,48 @@ workflow_coordination:
             one_emitter: true
             overlay_keys: {latency_budget: view_seams.VS-17.latency_budget_seconds, settlement_deadline: view_seams.VS-17.settlement_deadline_seconds}
             status: declared
+
+# Attach-on-demand activation (OMN-22909, base-first piece 3): HandlerAttachOnDemand takes its
+# attacher and seam bus as optional constructor parameters; it is bound here so the node contract owns it,
+# and it runs wired through answer_command. It attaches the one on-demand node that consumes a seam's command topic,
+# demands the command, reads the correlated result by the seam's deadline and detaches.
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_seam_read_plan:HandlerSeamReadPlan
+  handlers:
+    - operation: attach_on_demand
+      topic: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+      handler:
+        name: HandlerAttachOnDemand
+        module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_attach_on_demand
+      input_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandRequest
+      output_model: omnimarket.models.seam_reading.model_attach_on_demand.ModelAttachOnDemandResult
+
+terminal_event: onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+  # answer_command returns each event as (topic, bytes) for the runtime to publish; only the terminal
+  # event is declared here because the parity gate (OMN-17017) wants a publish call for any other topic.
+  publish_topics:
+    - onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+
+topics:
+  attach_on_demand_requested: onex.cmd.omnimarket.seam-attach-on-demand-requested.v1
+  attach_on_demand_started: onex.evt.omnimarket.seam-attach-on-demand-started.v1
+  on_demand_node_attached: onex.evt.omnimarket.seam-on-demand-node-attached.v1
+  attach_on_demand_completed: onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+  attach_on_demand_failed: onex.evt.omnimarket.seam-attach-on-demand-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.seam-attach-on-demand-started.v1
+  - onex.evt.omnimarket.seam-on-demand-node-attached.v1
+  - onex.evt.omnimarket.seam-attach-on-demand-completed.v1
+  - onex.evt.omnimarket.seam-attach-on-demand-failed.v1
 
 config:
   seam_read:
