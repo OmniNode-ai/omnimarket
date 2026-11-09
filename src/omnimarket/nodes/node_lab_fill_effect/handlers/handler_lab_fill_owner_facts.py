@@ -30,7 +30,7 @@ def _error(exc: Exception) -> str:
 
 
 class HandlerLabFillOwnerFacts:
-    """Read the claim store, the PR claim registry and the PR watcher's merged PRs."""
+    """Read the claim store, the PR claim registry, the PR watcher's merged PRs and the work-state projection."""
 
     def __init__(
         self,
@@ -83,6 +83,18 @@ class HandlerLabFillOwnerFacts:
                 }
             except LabFillPortError as exc:
                 merged = _error(exc)
+        work_state: dict[str, tuple[str, ...]] | str | None
+        try:
+            attributed = self._reader.work_state_owners(
+                request.work_state_path, request.work_state_max_age_s
+            )
+            work_state = (
+                None
+                if attributed is None
+                else {t: tuple(lanes) for t, lanes in attributed.items()}
+            )
+        except LabFillPortError as exc:
+            work_state = _error(exc)
         return ModelLabFillOwnerFacts(
             claim_index=claim_index,
             ledger_claims=ledger_claims,
@@ -90,4 +102,5 @@ class HandlerLabFillOwnerFacts:
             staleness_hours=staleness,
             pr_claims=pr_claims,
             watcher_merged=merged,
+            work_state_owners=work_state,
         )

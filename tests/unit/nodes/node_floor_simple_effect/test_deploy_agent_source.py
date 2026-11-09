@@ -358,3 +358,41 @@ def test_the_note_does_not_claim_no_success_when_only_a_bounded_history_is_kept(
     note = read_deploy_agent(path, OVERLAY, NOW).subjects[0].note
     assert "no success among the newest" in note
     assert f"keeps only the newest {OVERLAY.deploy_agent_history}" in note
+
+
+def test_a_merge_read_as_not_running_names_the_unread_running_build() -> None:
+    """OMN-23031: the row read 'merged, not running' while the count's own record said it could not read the running build."""
+    record = {
+        "floor": {
+            "merged_running": {
+                "generated_at": NOW.isoformat(),
+                "evidence_unread": [
+                    "deployed: omnibase_infra: history of the deployed ref unreadable (git rev-list exited 128)"
+                ],
+                "days": [
+                    {
+                        "merges": [
+                            {
+                                "repo": "omnibase_infra",
+                                "number": 5663,
+                                "merged_at": (
+                                    NOW - timedelta(minutes=2773)
+                                ).isoformat(),
+                                "running": False,
+                                "reason": "not_yet_deployed",
+                            }
+                        ]
+                    }
+                ],
+            }
+        }
+    }
+    read = read_deploy_lag(record, NOW, OVERLAY)
+    assert "evidence unread: deployed: omnibase_infra: history of the deployed ref" in (
+        read.subjects[0].note
+    )
+    clean = cast(dict[str, Any], record["floor"])["merged_running"]
+    del clean["evidence_unread"]
+    assert (
+        "evidence unread" not in read_deploy_lag(record, NOW, OVERLAY).subjects[0].note
+    )

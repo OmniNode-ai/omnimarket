@@ -14,10 +14,13 @@ of a host is ignored; a host with no ``hostnames`` is not attributable and is le
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
+
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 
 
 class HostTableError(ValueError):
@@ -61,3 +64,23 @@ def read_host_aliases(path: Path) -> dict[str, tuple[str, ...]]:
     if not aliases:
         raise HostTableError(f"{path}: no host declares hostnames")
     return aliases
+
+
+def read_unavailable_hosts(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[frozenset[str], str]:
+    """The host ids the lab host table declares unavailable, and why it could not be read ('' when read).
+
+    A host with ``available: false`` takes no lane (OMN-22778): lane rows that name it are not lane work
+    that lost its hook events. The table is the one lab host list, read the way every other consumer reads
+    it (``resolve_lab_hosts_table``). A table that cannot be read gives an empty set and the reason, so the
+    caller keeps counting every host and says so; it never hides a host on a guess.
+    """
+    env = os.environ if environ is None else environ
+    try:
+        table = resolve_lab_hosts_table(env)
+    except (
+        Exception
+    ) as exc:  # any unreadable table is reported, never raised into the tick
+        return frozenset(), " ".join(f"{type(exc).__name__}: {exc}".split())[:200]
+    return frozenset(row.name for row in table.hosts if not row.available), ""
