@@ -37,6 +37,14 @@ handler:
 handler_routing:
   default_handler: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write:HandlerModelOverlayWrite
 
+# The CLI command module is bound here so the canonical-file-shape check
+# finds its owner; it routes nothing (the CLI imports it directly).
+command_bindings:
+  overlay_command:
+    handler:
+      name: write_model_overlay
+      module: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command
+
 descriptor:
   node_archetype: effect
   purity: impure
