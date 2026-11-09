@@ -124,6 +124,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # own `python -m` CLI; it subscribes to no topic, so it has no onex.nodes
     # entry point.
     "node_host_table_copies_drift_compute",
+    # OMN-23150: the overlay consumer join compute takes its overlay, file
+    # source, environment, appender and clock as constructor parameters and
+    # runs through its own `python -m` CLI; it subscribes to no topic, so it
+    # has no onex.nodes entry point.
+    "node_overlay_drift_compute",
     # OMN-19988: the local alert compute is called in process by the local
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.

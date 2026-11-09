@@ -32,6 +32,7 @@ _ROW_PATTERN = re.compile(
     r"\s*\|\s*([A-Z][A-Z-]*)\s*\|"
 )
 _FIELD_PATTERN = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*?)\s*$")
+_MARKED_COST = re.compile(r"lane-|~", re.IGNORECASE)
 _COST_COLON_PATTERN = re.compile(r"^\s*(costs?)\s*:\s*(.*?)\s*$", re.IGNORECASE)
 _TICKET_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _TRAILING_PARENTHETICAL = re.compile(r"\s*\(([^()]*)\)\s*$")
@@ -420,11 +421,12 @@ def _cost(row: LedgerRow) -> tuple[str, str, float | None]:
 
 
 def _inline_cost(text: str) -> str | None:
-    """The duration a cell-less row states as its cost, not the first duration its prose mentions (OMN-22879).
+    """The duration a cell-less row states as its cost, not the first duration its prose mentions (OMN-22879, OMN-23220).
 
-    A duration in the prose can be an age ("a snapshot 390 hours old against a 24 hour limit"), which is not what the
-    row cost anyone. Durations followed by "old" or "ago" are skipped; of the rest the first one written in lane units
-    ("~0.5 lane-hours") is the row's own cost estimate and wins over earlier plain ones; with none, the first remains.
+    A duration in the prose can be an age ("a snapshot 390 hours old against a 24 hour limit") or a limit, which is not what the
+    row cost anyone. Durations followed by "old" or "ago" are skipped; of the rest the first one a lane wrote as lane time
+    ("~0.5 lane-hours") or with an estimate marker ("~20 minutes") is the row's own cost and wins over earlier plain ones;
+    with none marked, the first remains.
     """
     candidates = [
         match.group(0)
@@ -432,7 +434,7 @@ def _inline_cost(text: str) -> str | None:
         if _AGE_SUFFIX.match(text, match.end()) is None
     ]
     for candidate in candidates:
-        if "lane-" in candidate.lower():
+        if _MARKED_COST.search(candidate):
             return candidate
     return candidates[0] if candidates else None
 
