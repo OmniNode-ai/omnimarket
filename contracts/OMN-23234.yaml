@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: every earlier class rule test of the friction rollup node still passes at the pushed head -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov'
   - id: AC3
     statement: 'AC3: the nine FRICTION rows written after 2026-11-08T19:46Z that the shipped rules left unclassified are each named by a shipped class rule with an owner (three by the existing prrp-snapshot-stale-on-lab-host class, six by new rules), and the rule list as origin/dev holds it leaves every one unclassified -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_unclassified_after_1946_2026_11_09.py -q --no-cov'
+  - id: AC4
+    statement: 'AC4: the five FRICTION rows that the split of the broad local-hooks rule left unclassified are each named by a shipped class rule with an owner (two by the existing hook-preflight-minutes-per-commit class, three by new rules), and the rule list as origin/dev holds it leaves every one unclassified -- falsifier: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_hook_split_leftovers_2026_11_09.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The friction rollup node tests at the pushed head, including the recorded-row test and its control.
@@ -50,6 +52,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_unclassified_after_1946_2026_11_09.py -q --no-cov
+    cwd: .
+- id: dod-omn23234-ac4
+  description: The recorded-rows test passes, including the control that runs each row through the rules as they stood and reads it unclassified.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_compute/test_class_rules_hook_split_leftovers_2026_11_09.py -q --no-cov
     cwd: .
 - id: dod-omn23234-integration-proof
   description: The pushed head ran the friction rollup node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
