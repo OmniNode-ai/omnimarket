@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioDaysRun is built by the node CLI factory (build_runner) with the contract runtime block, not routed by handler_routing or imported by name
 """One scheduled read of the delegation scenarios' green days (OMN-23171).
 
 Reads each scenario's STATUS rows for the window from the ledger over the bus read command, one page at a time. A page
@@ -37,6 +38,7 @@ from omnimarket.models.model_delegation_scenario import (
     ModelScenarioResult,
     from_status_row,
 )
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_delegation_scenario_days_compute.handlers.handler_scenario_green_days import (
     HandlerScenarioGreenDays,
 )
@@ -47,7 +49,6 @@ from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapter
     CommandPointRead,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
-    ModelPointQuery,
     ProtocolLedgerPointRead,
 )
 

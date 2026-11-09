@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioR2 and HandlerSubprocessCommand are built by the node CLI factory with the contract runtime block, not routed by handler_routing or imported by name
 """Scenario R2, a local model added after onboarding (OMN-23172, readiness plan 2.2).
 
 One run, in a fresh home directory:
