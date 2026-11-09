@@ -450,13 +450,46 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._coalescer = AggregateCoalescer(
             window_s_from_contract(self._contract), self._publish_aggregate_snapshots
         )
+        # True once a runtime delivery enabled the coalescer: the runner then
+        # outlives each delivery and `_stop_producer` leaves the producer and the
+        # pending republish to the window and to `close_runtime_resources`.
+        self._kept_across_deliveries = False
 
     async def run(self) -> None:
         if self._coalescer.window_s is not None:
             self._coalescer.enable()
         await super().run()
 
+    async def project_runtime_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Apply one runtime delivery with the aggregate republish off its commit path.
+
+        The runtime delivery host keeps this runner and its loop for the process
+        (see ``KeptPools``), so a republish deferred to the contract window
+        survives the delivery that marked it. Without this the inline republish
+        re-read four whole-table views before every offset commit, which held
+        each ``delegate-skill-completed`` commit 4 to 33 s on the dev lane.
+        """
+        if self._coalescer.window_s is not None and not self._coalescer.enabled:
+            self._coalescer.enable()
+        self._kept_across_deliveries = self._coalescer.enabled
+        return await super().project_runtime_event(topic, data, meta)
+
+    async def close_runtime_resources(self) -> None:
+        # Publish what the window still holds while the pools are open, then let
+        # the pools and the producer go.
+        self._kept_across_deliveries = False
+        await self._coalescer.drain()
+        await super().close_runtime_resources()
+
     async def _stop_producer(self) -> None:
+        # A delivery that returns on a kept runner leaves the producer and the
+        # coalescer to the window: draining here would put the aggregate read
+        # back on every commit, and stopping the producer would close it under
+        # a flush in flight.
+        if self._kept_across_deliveries:
+            return
         # Every exit of run and shutdown stops the producer: publish what the
         # coalescer still holds first.
         await self._coalescer.drain()
