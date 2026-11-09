@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-23308
+title: A lane's job-log read that misses the mirror cache is filled on demand by a gateway operation with a job-log-fill verb
+summary: >-
+  The GitHub repo gateway gains the job_log_fill operation: it serves one named job's log from the host-shared job-log cache, or on a miss
+  downloads that one log into the cache and returns it. `onex scm job-log-fill` exposes it to lanes. The cache-only `job-log` read keeps
+  refusing a miss, and node_job_log_filler_effect still fills the cache on its timer.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23308-fill
+  statement: The gateway fills one named job's log into the cache on a miss and returns it, and a job-log-fill verb exposes that to lanes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a gateway operation fills one named job''s log into the mirror on a cache miss and returns it, and a job-log-fill verb exposes it to lanes -- falsifier: uv run pytest tests -q -k job_log_fill_on_miss in omnimarket, failing with the fill path removed'
+  - id: AC2
+    statement: 'AC2: a lab lane''s read of a red job''s log that was not cached returns the log -- falsifier: a lane read through the verb on a job absent from the cache returns its log text'
+evidence_requirements:
+- kind: tests
+  description: The job_log_fill tests (miss downloads once and returns, hit makes no request, the cache-only read serves the filled log, the verb answers over the bus, a failed download caches nothing).
+  command: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_fill_on_miss.py -q --no-cov -k job_log_fill
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23308-ac1-fill
+  description: >-
+    The tests send a job_log_fill request for a job the cache lacks: the recorded transport sees exactly one log request, the log text comes back,
+    and a second request makes none. The named break is the fill path removed from the gateway handler: the miss is refused with
+    JOB-LOG-CACHE-MISS and the tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_fill_on_miss.py -q --no-cov -k job_log_fill_on_miss
+    cwd: .
+- id: dod-omn23308-ac2-lane-read
+  description: >-
+    The verb test runs `onex scm job-log-fill` through the in-memory bus on a job absent from the cache and reads the log text from the answer.
+    The read of the live gateway after install is recorded in the pull request.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_fill_on_miss.py -q --no-cov -k job_log_fill_on_miss_through_the_scm_verb
+    cwd: .
+- id: dod-omn23308-integration-proof
+  description: The job_log_fill tests run on a lab host at the pushed head through the lab-work node.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23308 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_fill_on_miss.py -q --no-cov -k job_log_fill
+    cwd: .
