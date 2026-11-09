@@ -19,16 +19,6 @@ class ModelAdjacencyEntry(BaseModel):
 class ModelThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     modules_changed_for_full_suite: int = Field(..., ge=1)
-    narrowed_seconds_for_full_suite: int | None = Field(default=None, ge=1)
-    """Recorded serial seconds above which a narrowed selection runs as the full suite.
-
-    A narrowed selection is split into at most five pytest-split shards that
-    are not planned by file duration. When the files it selects add up to more
-    than this many recorded seconds (config/test_file_durations.json), two to
-    five shards each carry several times the work of one of the twenty planned
-    full-suite shards, so the selection takes the full-suite matrix instead.
-    ``None`` leaves narrowing unbounded by weight.
-    """
 
 
 class ModelAdjacencyMap(BaseModel):

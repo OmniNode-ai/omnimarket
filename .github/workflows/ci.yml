@@ -1232,6 +1232,9 @@ jobs:
         id: detect
         env:
           FLAG: "on"
+          # OMN-23296: the selector calls node_test_selection_selector_compute, which
+          # imports only pydantic and pyyaml; src/ holds it without installing the package.
+          PYTHONPATH: src
         run: |
           . .venv/bin/activate
           python -m scripts.ci.detect_test_paths \

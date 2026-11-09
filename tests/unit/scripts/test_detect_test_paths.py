@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
+import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
@@ -27,11 +29,19 @@ def _scripts_on_path(tmp_path: Path) -> None:
         sys.path.insert(0, str(repo_root))
 
 
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.policy_file import (  # noqa: E402
+    load_policy,
+)
+from scripts.ci import detect_test_paths  # noqa: E402
 from scripts.ci.detect_test_paths import (  # noqa: E402
+    REPO_ROOT,
     compute_selection,
     resolve_test_paths,
 )
-from scripts.ci.test_selection_models import EnumFullSuiteReason  # noqa: E402
+from scripts.ci.test_selection_models import (  # noqa: E402
+    EnumFullSuiteReason,
+    ModelTestSelection,
+)
 
 
 def test_adjacency_yaml_loads() -> None:
@@ -802,28 +812,94 @@ def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
     )
     assert selection.is_full_suite is False
     assert "tests/unit/" not in selection.selected_paths
-    assert selection.split_count == 2
+    assert selection.split_count == 3
 
 
-def test_without_the_bound_the_heavy_selection_is_two_unplanned_shards(
-    tmp_path: Path,
+def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    text = ADJACENCY_PATH.read_text()
-    assert "narrowed_seconds_for_full_suite" in text
-    unbounded = tmp_path / "adjacency.yaml"
-    unbounded.write_text(
-        "\n".join(
-            line
-            for line in text.splitlines()
-            if "narrowed_seconds_for_full_suite" not in line
-        )
+    # Failing control (OMN-23296): a policy that sizes by path count alone, as the
+    # old script did, gives tests/nodes/ with tests/unit/ two shards of about 2,000
+    # recorded seconds each.
+    from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
+        handler_test_selection_selector as selector,
+    )
+
+    loose = load_policy().model_copy(
+        update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
+    )
+    monkeypatch.setattr(
+        detect_test_paths,
+        "HandlerTestSelectionSelector",
+        lambda: selector.HandlerTestSelectionSelector(policy=loose),
     )
     selection = compute_selection(
-        _HEAVY_CHANGE, unbounded, ref_name="omn-22868-x", event_name="pull_request"
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
     )
     assert selection.is_full_suite is False
     assert selection.split_count == 2
     assert "tests/unit/" in selection.selected_paths
+    assert _shard_seconds(selection) > 1000
+
+
+def _shard_seconds(selection: ModelTestSelection) -> float:
+    """Recorded seconds one shard of a narrowed selection carries, read from the durations file."""
+    durations = json.loads((REPO_ROOT / "config/test_file_durations.json").read_text())
+    covered = sum(
+        seconds
+        for test_file, seconds in durations.items()
+        if any(
+            test_file == path or (path.endswith("/") and test_file.startswith(path))
+            for path in selection.selected_paths
+        )
+    )
+    return covered / selection.split_count
+
+
+def _every_single_module_change() -> list[list[str]]:
+    adjacency = yaml.safe_load(ADJACENCY_PATH.read_text())["adjacency"]
+    return [
+        [f"src/omnimarket/{module}/x.py", extra]
+        for module in sorted(adjacency)
+        for extra in ("tests/unit/test_x.py", "tests/nodes/test_x.py", "docs/x.md")
+    ]
+
+
+def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> None:
+    target = load_policy().target_shard_seconds
+    narrowed = 0
+    for changed in [_HEAVY_CHANGE, _LIGHT_CHANGE, *_every_single_module_change()]:
+        selection = compute_selection(
+            changed, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+        )
+        if selection.is_full_suite:
+            assert selection.split_count == 20
+            continue
+        narrowed += 1
+        assert _shard_seconds(selection) <= target, (changed, selection)
+    assert narrowed > 0
+
+
+def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() -> None:
+    selection = compute_selection(
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is True
+    assert selection.split_count == 20
+    assert selection.matrix == list(range(1, 21))
+
+
+def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
+    None
+):
+    # tests/nodes/ alone is about 970 recorded seconds: one path, but three shards.
+    selection = compute_selection(
+        _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert len(selection.selected_paths) < 5
+    assert selection.split_count == 3
+    assert _shard_seconds(selection) <= 360
 
 
 def test_a_bounded_selection_with_no_durations_file_fails_closed(
