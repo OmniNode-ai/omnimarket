@@ -65,3 +65,15 @@ dod_evidence:
   - check_type: command
     check_value: "test -s $HOME/.local/state/omni/job-log-filler/last-run.json && grep -Eq 'status.: .(completed|partial)' $HOME/.local/state/omni/job-log-filler/last-run.json"
     cwd: .
+- id: dod-omn23303-workspace-config-root
+  description: Runs the focused tests that render the job-log-filler unit and read ONEX_WORKSPACE_CONFIG_ROOT from the host's request, with a second host value as control and a refusal when the host gives none; then reads the declaration from the branch's installer contract, so the exit status goes red on a branch whose unit lacks the setting. Without it the unit's every read fails (lane declaration table missing).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_tick.py -q --no-cov -p no:randomly -k workspace_config_root
+    cwd: .
+  - check_type: command
+    check_value: 'awk "/^  job-log-filler:/{f=1;next} f&&/^  [a-z]/{f=0} f" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml | grep -q "ONEX_WORKSPACE_CONFIG_ROOT: \"{workspace_config_root}\""'
+    cwd: .
