@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23278
+title: Split the OMN-17427 contract-only retirement into batches of about 40 labels so dod-verify fits its evidence window
+summary: One change that retired every contract-only label of the OMN-17427 contract ran the 227 checks of the retired items inside repo-evidence / dod-verify, about 54 minutes against the 43 minute window of Repo Evidence Dependency, so it could never pass. The retirement is five batches of at most 40 labels. Each batch retires its labels with its own carrier item, so no carrier references another batch's items, and the evidence window is unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23278-contract-only-retirement-in-batches
+  statement: The contract-only labels of contracts/OMN-17427.yaml are retired in batches of at most 40 labels, each batch retired whole by its own carrier item, with the evidence window of Repo Evidence Dependency unchanged.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the retirement lands as batch PRs of at most 40 labels each, and each batch's dod-verify run finishes inside the unchanged evidence window -- falsifier: the dod-verify job duration on each batch PR, read from the mirror, is under the window, and git diff shows the window bound unchanged"
+  - id: AC2
+    statement: "AC2: omnimarket#5150 is closed unmerged with a comment naming the batch PRs -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#5150 shows CLOSED and uv run pytest tests -q -k contract_only passes on main"
+evidence_requirements:
+- kind: tests
+  description: The batch tables hold at most 40 labels each and overlap nowhere, each batch is retired whole or not at all, the carriers repeat no check of a retired item, and the evidence window line of ci.yml is unchanged.
+  command: uv run --frozen pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23278-ac1-batch-size-and-window
+  description: Reads the batch tables in the test file and ci.yml. Each batch names at most 40 labels and no label twice, and the 2580 second window line of Repo Evidence Dependency is still in ci.yml. The named break is a batch carrier left beside a still-declared label, which the detector reads as half retired. The dod-verify job duration of each batch pull request is read from the PR watcher state after the run and is not a check of this item.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -k "contract_only_batches or contract_only_evidence_window or contract_only_detector or contract_only_retirement_has_begun" -q --no-cov
+    cwd: .
+- id: dod-omn23278-ac2-contract-only-batches-whole
+  description: Reads contracts/OMN-17427.yaml. Every batch whose carrier is present has no label still declared and a retirement entry for every item that binds one of its labels, a batch without its carrier keeps all its labels, at least one carrier exists, and no carrier repeats a check of a retired item. The closing of omnimarket#5150 is read with onex scm pr-view and is not a check of this item.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -k contract_only -q --no-cov
+    cwd: .
