@@ -46,11 +46,31 @@ class ModelGroupDerivation(BaseModel):
     nodes: tuple[ModelDeclaredNode, ...] = Field(min_length=1)
 
 
+class ModelManifestResilience(BaseModel):
+    """How the alarm treats a manifest endpoint that does not answer (it is down while dev redeploys).
+
+    Retries and the last-good fallback never touch the lag rule or any lag bound: the broker is still
+    read for every group, the fallback only supplies the group names, and its age is named in the result.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Fetch attempts per run, the first included.
+    attempts: int = Field(ge=1)
+    retry_delay_seconds: float = Field(ge=0)
+    #: The oldest last-good manifest the run may take its group names from; older reads INDETERMINATE.
+    max_stale_seconds: int = Field(ge=1)
+    #: Where the last good manifest (only the declared nodes' contracts) is kept.
+    cache_path: str = Field(min_length=1)
+
+
 class ModelManifestSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     url: str = Field(min_length=1)
     timeout_seconds: float = Field(gt=0)
+    #: Absent means one attempt and no fallback (the behaviour before OMN-22874); declare it to turn both on.
+    resilience: ModelManifestResilience | None = None
 
 
 class ModelLagSettings(BaseModel):
@@ -132,6 +152,7 @@ __all__ = [
     "ModelLabAlarmSchedule",
     "ModelLabAlarmScheduleHost",
     "ModelLagSettings",
+    "ModelManifestResilience",
     "ModelManifestSettings",
     "load_overlay",
 ]

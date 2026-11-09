@@ -257,7 +257,16 @@ def test_draft_pr_plan_is_drawn_by_the_effect_handler_from_the_watcher_and_the_c
     )
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text(
-        yaml.safe_dump({"plan_path_contains": ["draft-wave-plan"]}), encoding="utf-8"
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["draft-wave-plan"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
+            }
+        ),
+        encoding="utf-8",
     )
     rows = tmp_path / "ledger.txt"
     rows.write_text("", encoding="utf-8")

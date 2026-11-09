@@ -3667,6 +3667,15 @@ jobs:
               )
           print(f"omnibase_infra overlay import path: {package_path}")
           PY
+      - name: Verify catalog HTTP mounts and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
+      - name: Verify catalog HTTP Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_CATALOG_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_plan_list/test_http_runtime_profiles.py tests/nodes/node_usage_privileges/test_http_runtime_profiles.py -q --no-cov --refuse-skips
       - name: Run customer-path boundary tests
         env:
           # A missing docker daemon must be RED here, never a green skip.
@@ -4027,6 +4036,20 @@ jobs:
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
               python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --head HEAD
           fi
+      # OMN-22917: the no-file census ratchet rides in this job, so a failure
+      # fails CI Summary through this strict gate. Executable readers and writers
+      # of the ledger file's name or path variable stay at or under the shrink-only
+      # ratchet file, and the ratchet and the seven no-file readings turn red on
+      # their planted breaks.
+      - name: Ledger file census is at or under its ratchet (OMN-22917)
+        env:
+          ONEX_LEDGER_CENSUS_ROOT: .
+          ONEX_LEDGER_CENSUS_OVERLAY: src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml
+        run: uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+      - name: Ledger file census ratchet turns red on a seeded reader (OMN-22917)
+        run: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:cacheprovider
+      - name: The seven no-file readings turn red on their planted breaks (OMN-22917)
+        run: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py tests/unit/nodes/node_work_ledger_no_file_readings_effect -q --no-cov -p no:cacheprovider
 
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). omnibase_core's check refuses
