@@ -14,6 +14,10 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
 from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistClass,
@@ -259,6 +263,14 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # A host the pool refuses only on load that its own placed units explain is busy with our work, not failing (OMN-22870).
+    # ``own_load_marker`` is the refusal part the placement prints when the units placed on the host explain the load over the
+    # bar; ``load_bar_markers`` are the load bar's own refusal parts. A refusal made of those parts alone, with the own-load
+    # part among them, reads fine; any other part (memory, disk, parity, heat, link) and a load nothing placed explains stay red.
+    # An empty ``own_load_marker`` turns the reading off, so every refusal reads red as before.
+    own_load_marker: str = ""
+    load_bar_markers: tuple[str, ...] = ()
+    refusal_separator: str = "; "
     # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
     conflict_merge_states: tuple[str, ...] = ()
     # The host table and plan rules that split the offline runners into parked on purpose and real problems.
@@ -406,6 +418,8 @@ class ModelFloorCauseIn(_Frozen):
     prs: tuple[str, ...] = ()
     needs_operator: bool = False
     last_seen: datetime | None = None
+    # When a STATUS row reported the stoppage resolved: a stoppage not seen since is not occurring, whatever the window.
+    resolved_at: datetime | None = None
     # The cost the reporter logged for a stoppage (the reporter's own figure, not a measurement).
     reported_cost_minutes: float | None = None
 
@@ -428,8 +442,10 @@ class ModelFloorCause(_Frozen):
     members: tuple[str, ...] = ()
     last_seen: datetime | None = None
     last_seen_age_s: int | None = None
-    # A stoppage: true when it was seen inside the overlay's window, false when not, ``None`` for a cause that is not one.
+    # A stoppage: true when it was seen inside the overlay's window, false when not or when a STATUS row reported it resolved
+    # after its last row, ``None`` for a cause that is not one.
     still_occurring: bool | None = None
+    resolved_at: datetime | None = None
 
 
 class ModelFloorJoinRow(_Frozen):
@@ -505,6 +521,8 @@ class ModelRebuild(_Frozen):
     next_text: str
     # The highest piece the ledger's go rulings cover, or ``None`` when the ledger could not be read: unread is not zero.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313); empty when none, or when the ledger was unread.
+    go_pieces: tuple[int, ...] = ()
 
 
 class ModelRedRule(_Frozen):
@@ -598,6 +616,13 @@ class ModelGoRule(_Frozen):
     lookback_days: int = Field(gt=0)
     question_pattern: str = Field(min_length=1)
     affirmative_pattern: str = Field(min_length=1)
+    # A piece opened by subject, apart from the in-order go (OMN-23313): a RULING row of ``lane`` on any of
+    # ``open_tickets`` (``ticket`` is read in order above) whose question matches ``open_pattern`` opens the pieces its group ``list`` names, wherever they sit in
+    # the order, when the verbatim answer matches ``open_affirmative_pattern``; a later ruling that names a piece and does not
+    # match takes it back. The three are declared together or not at all, and a rule without them opens nothing by subject.
+    open_tickets: tuple[str, ...] = ()
+    open_pattern: str | None = Field(default=None, min_length=1)
+    open_affirmative_pattern: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _patterns(self) -> ModelGoRule:
@@ -608,6 +633,20 @@ class ModelGoRule(_Frozen):
             raise ValueError(f"a go rule pattern does not compile: {exc}") from exc
         if "first" not in question.groupindex:
             raise ValueError("the question pattern names a group called first")
+        if (self.open_pattern is None) != (self.open_affirmative_pattern is None):
+            raise ValueError(
+                "open_pattern and open_affirmative_pattern are declared together"
+            )
+        if self.open_pattern is not None and self.open_affirmative_pattern is not None:
+            try:
+                opened = re.compile(self.open_pattern)
+                re.compile(self.open_affirmative_pattern)
+            except re.error as exc:
+                raise ValueError(f"an open pattern does not compile: {exc}") from exc
+            if "list" not in opened.groupindex:
+                raise ValueError("the open pattern names a group called list")
+        elif self.open_tickets:
+            raise ValueError("open_tickets are declared with the open patterns")
         return self
 
 
@@ -744,6 +783,8 @@ class ModelNumbersOverlay(_Frozen):
 
 class ModelCauseOverlay(_Frozen):
     max_shown: int = Field(gt=0)
+    # The delegation:idle row (OMN-23313); ``None`` declares none and the floor draws none.
+    delegation_idle: ModelDelegationIdleOverlay | None = None
     titles: dict[str, str] = Field(default_factory=dict)
     owners: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     needs_operator: tuple[str, ...] = ()
@@ -834,6 +875,8 @@ class ModelFloorSimpleInput(_Frozen):
     shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313).
+    go_pieces: tuple[int, ...] = ()
     alarms: tuple[ModelFloorAlarmLine, ...] = ()
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
@@ -842,6 +885,9 @@ class ModelFloorSimpleInput(_Frozen):
     )
     # The work list's items as the sources read them; ``None`` is a list that was not read (drawn as an unread input).
     worklist: tuple[ModelWorklistItemIn, ...] | None = None
+    # The operator-owned delegation tickets whose start criterion reads true (OMN-23313); ``None`` is a list that was not
+    # read (drawn as an unread input), ``()`` is a list that was read and holds none.
+    delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------

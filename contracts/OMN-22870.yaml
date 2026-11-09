@@ -20,6 +20,11 @@ requirements:
     statement: 'AC3: the weak certificate is replaced only after an exact-fingerprint confirmation, over a legacy connection that refuses a different SHA-256 before sending a byte and carries only the sign-in and the two certificate actions; the CSR comes from the iLO''s own listed GenerateCSR action, the lab CA key lives only in the store, and the connection after the reset verifies the lab CA -- falsifier: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup_certificate.py -q --no-cov, which fails on dev where the replacement does not exist'
   - id: AC4
     statement: 'AC4: each host is asked its own administrator password with a same-as-previous shortcut, and the typed password is in the store before the first iLO contact, so a rerun asks nothing -- falsifier: tests test_each_host_is_asked_for_its_own_password_and_it_is_stored_before_any_ilo_contact and test_a_typed_password_survives_a_failed_run_and_the_rerun_asks_nothing in tests/nodes/node_ilo_redfish_effect/test_setup.py'
+- id: req-omn22870-hosts-own-load
+  statement: The lab hosts reader reads a host fine, with the note busy with its own placed units, when its refusal is made of load-bar parts and the own-load part alone; any other part or an unexplained load stays red.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a host whose only refusal is the load bar plus RESERVE-OWN-LOAD reads fine, while an unexplained load, an own load with a memory refusal, and the overlay marker turned off all read failing -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_hosts_own_load_floor_simple.py -q --no-cov, which fails on dev where the reading does not exist'
 evidence_requirements:
 - kind: tests
   description: The setup verb tests over a scripted Redfish transport and a dict-backed secret store.
@@ -47,6 +52,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_ilo_redfish_effect/test_setup_certificate.py -q --no-cov
+- id: dod-omn22870-ac5
+  description: The hosts own-load reading tests pass on the branch and fail on the dev source, where the reading does not exist.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_hosts_own_load_floor_simple.py -q --no-cov
 - id: dod-omn22870-integration-proof
   description: Run the iLO Redfish node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
