@@ -68,10 +68,15 @@ HARNESS = textwrap.dedent(
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(src)[1];
     const els = {}, listeners = {};
     const mk = id => ({id, innerHTML: "", textContent: "", hidden: false, attrs: {}, style: {}, dataset: {},
-      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+      classList: {add() {}, remove() {}}, append() {}, querySelectorAll: () => [], focus() {},
+      getBoundingClientRect: () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0}),
+      setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, addEventListener() {}});
+    globalThis.document = {title: "", activeElement: null, body: mk("body"), documentElement: {clientWidth: 400},
+      createElement: () => mk(""), querySelector: () => null, querySelectorAll: () => [],
+      getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
     globalThis.window = {addEventListener(k, f) { (listeners[k] = listeners[k] || []).push(f); }};
-    globalThis.location = {hash: opts.hash || ""};
+    globalThis.history = {state: null, pushState() {}, replaceState() {}, back() {}};
+    globalThis.location = {hash: opts.hash || "", pathname: "/", search: ""};
     const now = Date.parse(opts.now);
     Date.now = () => now;
     globalThis.setInterval = () => 0;
