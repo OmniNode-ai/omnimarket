@@ -309,6 +309,18 @@ runtime:
     timeout_seconds: 85
     module: omnimarket.nodes.node_beta_board_effect
     args: ["run", "--home", "{home}"]
+  # OMN-23205 (plan task M1): the MVP launch block's scheduled read. It lists the latest scheduled runs of each producer workflow the
+  # block's overlay names through the source-control node, one at a time (the reads queue behind each other), the least recently read
+  # first, stopping at its own 80 s stage deadline, and keeps the answers in a record that the simple floor's command route reads. It runs
+  # with the other input steps, so it adds nothing past the group's 90 s. Not required: when it fails the previous record stays, and
+  # a read older than 30 minutes is drawn stale on the block, so a reading is NOT WORKING with that reason and never read as current.
+  - name: mvp_launch_reads
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--mvp-reads"]
   - name: factory_floor
     kind: module
     required: true
