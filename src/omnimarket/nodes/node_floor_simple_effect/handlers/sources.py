@@ -106,6 +106,7 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             pr=str(item.get("pr") or ""),
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
+            parent_ticket=str(item.get("parent_ticket") or ""),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
