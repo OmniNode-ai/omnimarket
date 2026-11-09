@@ -13,7 +13,7 @@ from omnimarket.models.lab_test_harness import (
     ModelLabTestHarnessEmission,
     ModelLabTestHarnessScheduleHost,
 )
-from omnimarket.nodes.node_process_spine_reading_compute.models import (
+from omnimarket.models.model_process_spine_reading import (
     ModelDrillObservation,
     ModelProcessSpineReading,
 )

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_process_spine_reading_compute.models import (
+from omnimarket.models.model_process_spine_reading import (
     EnumDrillSend,
     ModelDrillObservation,
 )

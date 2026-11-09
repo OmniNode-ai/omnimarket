@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of node_process_spine_reading_compute."""
 
-from omnimarket.nodes.node_process_spine_reading_compute.models.model_process_spine_reading import (
+from omnimarket.models.model_process_spine_reading import (
     EnumDrillSend,
     ModelDrillObservation,
     ModelProcessSpineReading,

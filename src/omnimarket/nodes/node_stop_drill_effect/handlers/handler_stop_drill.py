@@ -31,18 +31,18 @@ from omnimarket.models.model_gate_store_join_j6 import (
     ModelJoinJ6Request,
     ModelJoinJ6Result,
 )
+from omnimarket.models.model_process_spine_reading import (
+    EnumDrillSend,
+    ModelDrillObservation,
+    ModelProcessSpineReading,
+    ModelProcessSpineReadingRequest,
+)
 from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6 import (
     HandlerGateStoreJoinJ6,
 )
 from omnimarket.nodes.node_process_spine_reading_compute.handlers.handler_process_spine_reading import (
     HandlerProcessSpineReading,
-)
-from omnimarket.nodes.node_process_spine_reading_compute.models import (
-    EnumDrillSend,
-    ModelDrillObservation,
-    ModelProcessSpineReading,
-    ModelProcessSpineReadingRequest,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolReadingAppender,
