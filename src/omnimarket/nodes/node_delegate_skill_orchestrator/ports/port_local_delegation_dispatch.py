@@ -229,6 +229,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
 from omnimarket.models.delegation.model_paid_rung_decision import (
     ModelPaidRungRequest,
 )
+from omnimarket.models.delegation.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
@@ -269,9 +272,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
-    load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -920,13 +920,20 @@ def local_transport_cause(
 
 
 def local_quality_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refusal: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the local port (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. A rung's refusal
+    of a secret or exfiltration request on policy grounds is its own cause,
+    ``policy_refusal`` (OMN-23216), which the lists declare terminal.
     """
+    if policy_refusal:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -3727,11 +3734,10 @@ class LocalDelegationDispatchPort:
             # floor is the same quality veto the bus stops on.
             quality_cause = local_quality_cause(
                 no_rung_can_satisfy=(
-                    gate_result.no_rung_can_satisfy
-                    or repeated_deterministic_floor
-                    or secret_request_refused
+                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
                 ),
                 fail_category=gate_result.fail_category,
+                policy_refusal=secret_request_refused,
             )
             ladder_stopped_by_veto = (
                 self._decide_transition(quality_cause, task_type=task_type).kind
