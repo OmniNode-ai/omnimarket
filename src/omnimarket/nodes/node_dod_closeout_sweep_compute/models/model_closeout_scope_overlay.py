@@ -44,6 +44,9 @@ class ModelCloseoutScopeOverlay(BaseModel):
     eligible_states: list[str] = Field(min_length=1)
     rank_rules: list[EnumRankRule]
     no_contract_reserve: int = Field(ge=0)
+    # True: a ticket with no contract on a default branch (and no recorded post-merge condition)
+    # is selected only through the reserve above, never into a free slot of the ranking.
+    no_contract_only_by_reserve: bool
     bundle_max_bytes: int = Field(ge=1024)
     held_cap: int = Field(ge=0)
     waiting_cap: int = Field(ge=0)

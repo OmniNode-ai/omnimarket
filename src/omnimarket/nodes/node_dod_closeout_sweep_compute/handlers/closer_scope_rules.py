@@ -265,7 +265,9 @@ def select_candidates(
         (r for r in eligible if r["id"] not in held_ids),
         key=lambda r: rank_key(r, overlay),
     )
-    ids = _apply_reserve(ranked, limit, overlay.no_contract_reserve)
+    ids = _apply_reserve(
+        ranked, limit, overlay.no_contract_reserve, overlay.no_contract_only_by_reserve
+    )
     chosen = set(ids)
     return {
         "selected": ids,
@@ -277,12 +279,32 @@ def select_candidates(
     }
 
 
+def _is_contractless(row: Mapping[str, Any]) -> bool:
+    """No contract on a default branch and no recorded post-merge condition: a ticket
+    dod_verify cannot run for and no earlier adjudication is waiting to re-check."""
+    return row.get("has_contract") is False and not _rule_applies(
+        EnumRankRule.WAITING_ON, row
+    )
+
+
 def _apply_reserve(
-    ranked: Sequence[dict[str, Any]], limit: int, reserve: int
+    ranked: Sequence[dict[str, Any]],
+    limit: int,
+    reserve: int,
+    only_by_reserve: bool = False,
 ) -> list[str]:
     """The top ``limit`` of the ranking, except that up to ``reserve`` of those slots go to
     the best-ranked tickets with no contract, so the binder can still author a contract
-    for them and the has_contract rule cannot starve them. Order stays the ranking's."""
+    for them and the has_contract rule cannot starve them. Order stays the ranking's.
+    With ``only_by_reserve`` a ticket with no contract takes no other slot: the run holds the
+    verifiable tickets and the reserve, and is smaller when fewer than ``limit`` can verify."""
+    position = {r["id"]: n for n, r in enumerate(ranked)}
+    if only_by_reserve:
+        kept = [r for r in ranked if not _is_contractless(r)]
+        reserved = [r for r in ranked if _is_contractless(r)][:reserve]
+        base = kept[: max(limit - len(reserved), 0)]
+        picked = [*base, *reserved][:limit]
+        return sorted((r["id"] for r in picked), key=lambda i: position[i])
     head = [r["id"] for r in ranked[:limit]]
     if not reserve or limit <= reserve or not ranked:
         return head
@@ -290,16 +312,15 @@ def _apply_reserve(
     if not without:
         return head
     keep = limit - min(reserve, len(without))
-    base = [r["id"] for r in ranked[:keep]]
-    taken = set(base)
-    slots = limit - len(base)
+    base_ids = [r["id"] for r in ranked[:keep]]
+    taken = set(base_ids)
+    slots = limit - len(base_ids)
     extra = [i for i in without if i not in taken][:slots]
     if len(extra) < slots:
         extra += [r["id"] for r in ranked[keep:] if r["id"] not in extra][
             : slots - len(extra)
         ]
-    position = {r["id"]: n for n, r in enumerate(ranked)}
-    return sorted([*base, *extra], key=lambda i: position[i])
+    return sorted([*base_ids, *extra], key=lambda i: position[i])
 
 
 def _encoded(obj: Mapping[str, Any]) -> str:

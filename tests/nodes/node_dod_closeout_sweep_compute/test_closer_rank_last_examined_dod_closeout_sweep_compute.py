@@ -266,7 +266,10 @@ def test_closer_rank_last_examined_no_record_leaves_the_memory_alone(
 def test_closer_rank_last_examined_the_packaged_overlay_holds_after_one_selection(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    args = _command(tmp_path)
+    contracts = [{"id": f"OMN-{i:02d}", "has_contract": True} for i in (1, 2, 3)]
+    args = _command(
+        tmp_path, "--contract-state", str(_write(tmp_path / "k3.json", contracts))
+    )
     assert runtime_main([*args, "--max", "3", "--now", "2026-11-09T06:00:00.000Z"]) == 0
     assert len(json.loads(capsys.readouterr().out)["candidates"]) == 3
     assert runtime_main([*args, "--max", "3", "--now", "2026-11-09T06:01:00.000Z"]) == 0
@@ -357,3 +360,35 @@ def test_closer_rank_last_examined_a_written_memory_reads_back_whole(
     write_examined_memory(tmp_path / "deep" / "memory.json", memory)
     assert read_examined_memory(tmp_path / "deep" / "memory.json") == memory
     assert read_examined_memory(tmp_path / "absent.json") == {}
+
+
+def test_closer_rank_last_examined_an_empty_pr_state_for_candidates_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The prs command exited 2 on an overlay key the checkout did not know, the run wrote its
+    stdout as [], and every one of 6500 tickets read 'no PR state row' on four fires in a row:
+    a zero-flip that looked like a working closer. An empty array for candidates is the reader's
+    failure, never a scope with nothing to do."""
+    empty = _write(tmp_path / "empty.json", [])
+    assert runtime_main([*_command(tmp_path, "--pr-state", str(empty))]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "closeout-scope: REFUSED" in captured.err
+    assert "PR reader failed" in captured.err
+    assert not (tmp_path / "memory.json").exists()
+
+
+def test_closer_rank_last_examined_pr_rows_for_candidates_are_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert runtime_main(_command(tmp_path)) == 0
+    assert len(json.loads(capsys.readouterr().out)["candidates"]) == 2
+
+
+def test_closer_rank_last_examined_no_candidates_and_no_pr_state_is_an_empty_scope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    empty = _write(tmp_path / "empty.json", [])
+    args = _command(tmp_path, "--candidates", str(empty), "--pr-state", str(empty))
+    assert runtime_main(args) == 0
+    assert json.loads(capsys.readouterr().out)["candidates"] == []

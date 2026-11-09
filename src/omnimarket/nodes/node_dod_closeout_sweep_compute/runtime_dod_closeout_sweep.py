@@ -237,6 +237,13 @@ def main(argv: list[str] | None = None) -> int:
                 for c in candidates
                 if isinstance(c.get("id"), str)
             ]
+        pr_state = read_array(args.pr_state, "--pr-state")
+        if candidates and not pr_state:
+            raise ScopeInputUnreadableError(
+                f"--pr-state {args.pr_state}: an empty array for {len(candidates)} candidate(s); "
+                "the prs command prints a row for every ticket it is given, so the PR reader "
+                "failed and every ticket would read as waiting on PR state"
+            )
         memory_path = args.examined_memory or _examined_memory_path(overlay)
         examined = read_examined_memory(memory_path)
         now = args.now or _clock_now()
@@ -244,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
             kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
             date="1970-01-01",
             scope_candidates=candidates,
-            scope_pr_state=read_array(args.pr_state, "--pr-state"),
+            scope_pr_state=pr_state,
             scope_text_state=read_array(args.text_state, "--text-state"),
             scope_contract_state=contract_state,
             scope_overlay=overlay,

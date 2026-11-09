@@ -35,7 +35,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD1"]
   - id: "dod-omn23282-bundle-command-memory"
-    description: "The bundle command records each selected ticket in the memory file and rotates through the scope on the next call; an unreadable memory file is refused with exit 2 naming the file."
+    description: "The bundle command records each selected ticket in the memory file and rotates through the scope on the next call; an unreadable memory file is refused with exit 2 naming the file, and an empty PR state for a non-empty scope is refused with exit 2 (the PR reader failed) instead of reading every ticket as waiting."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -43,6 +43,9 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py::test_closer_rank_last_examined_an_unreadable_memory_is_refused_by_name -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py::test_closer_rank_last_examined_an_empty_pr_state_for_candidates_is_refused -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD2"]
   - id: "dod-omn23282-integration-proof"
