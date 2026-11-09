@@ -132,7 +132,11 @@ def test_deliveries_parse_the_writer_contract_once_and_still_write_real_rows(
         }
         for payload in (intro, heartbeat, {**heartbeat, "_offset": 43}):
             assert writer.handle(payload) == {"projected": True}
-            assert all(not adapter.is_connected for adapter in adapters)
+            # OMN-23196: the pool opened by the first delivery serves the rest.
+            assert len(adapters) == 1
+            assert all(adapter.is_connected for adapter in adapters)
+        writer.close()
+        assert all(not adapter.is_connected for adapter in adapters)
         rows = asyncio.run(readback())
         assert len(rows) == 1
         row = rows[0]

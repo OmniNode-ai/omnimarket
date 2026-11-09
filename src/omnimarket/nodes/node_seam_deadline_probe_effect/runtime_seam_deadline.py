@@ -51,6 +51,9 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     load_overlay,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
+from omnimarket.nodes.node_seam_reading_compute.handlers.handler_required_sender import (
+    HandlerRequiredSender,
+)
 
 _SEAM_BUSES: dict[str, Callable[[str], ProtocolSeamBus]] = {
     "inmemory": lambda _lane: InMemorySeamBus(),
@@ -74,6 +77,7 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         if write
         else None,
         clock=lambda: datetime.now(UTC),
+        required_sender=HandlerRequiredSender(),
     )
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
@@ -91,6 +95,13 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
             f"deadline_s={reading.deadline_seconds} demand={reading.correlation_id}"
             + (f" detail={reading.detail}" if reading.detail else "")
             + "\n"
+        )
+    if result.counts is not None:
+        sys.stdout.write(
+            f"COUNTS automatic={result.counts.automatic} on_demand={result.counts.on_demand} "
+            f"required_without_sender={result.counts.required_without_sender} "
+            f"working={result.counts.working} not_working={result.counts.not_working} "
+            f"unknown={result.counts.unknown}\n"
         )
     sys.stdout.write(
         f"RUN host={host} verdict={result.verdict.value} outcome={result.outcome.value} "

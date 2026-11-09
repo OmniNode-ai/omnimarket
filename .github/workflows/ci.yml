@@ -3698,6 +3698,15 @@ jobs:
           OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
           ONEX_WEBHOOK_HTTP_TEST_PROFILE: redpanda
         run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify example-envelope route nodes, in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_post_effect/test_both_mounts_together.py tests/nodes/node_envelope_example_post_effect/test_http_runtime_profiles.py tests/nodes/node_envelope_example_post_effect/test_t18b_replay_machinery.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify example-envelope route nodes, Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_ENVELOPE_EXAMPLE_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_envelope_example_post_effect/test_http_runtime_profiles.py tests/nodes/node_envelope_example_post_effect/test_both_mounts_together.py tests/nodes/node_envelope_example_get_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
 
   # ============================================================================
   # JS TOOLCHAIN HERMETIC (OMN-18012 gate 5)

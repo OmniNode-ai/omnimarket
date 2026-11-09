@@ -263,6 +263,37 @@ def test_error_one_row_under_two_sequences_is_refused() -> None:
         _rebuild((*events, moved))
 
 
+def test_a_live_twin_of_a_bootstrap_row_gives_the_row_its_sequence() -> None:
+    # The projection promotes a NULL ledger_seq when the sequenced twin arrives, so the rebuild must too.
+    bootstrap = _topic()[0]
+    assert bootstrap.ledger_seq is None
+    twin = bootstrap.model_copy(
+        update={
+            "source": EnumAcceptedRowSource.LIVE,
+            "ledger_seq": 40,
+            "legacy_ordinal": None,
+        }
+    )
+    rebuilt = _rebuild((bootstrap, twin)).rebuilt
+    assert [(row.row_id, row.ledger_seq) for row in rebuilt.rows] == [
+        (bootstrap.row_id, 40)
+    ]
+
+
+def test_error_a_promoted_row_is_still_refused_under_a_second_sequence() -> None:
+    bootstrap = _topic()[0]
+    first = bootstrap.model_copy(
+        update={
+            "source": EnumAcceptedRowSource.LIVE,
+            "ledger_seq": 40,
+            "legacy_ordinal": None,
+        }
+    )
+    second = first.model_copy(update={"ledger_seq": 41})
+    with pytest.raises(WorkLedgerRebuildError, match="accepted under two sequences"):
+        _rebuild((bootstrap, first, second))
+
+
 def test_error_an_event_with_no_place_is_refused() -> None:
     placeless = _topic()[4].model_copy(update={"ledger_seq": None})
     with pytest.raises(

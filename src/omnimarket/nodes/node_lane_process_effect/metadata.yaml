@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_process_effect
+version: 0.1.0
+description: Start the lane runner detached, or run one bounded command, through the injected
+  ProtocolLaneProcessRunner; refuses a spec that names the script runner.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lane_process_effect: omnimarket.nodes.node_lane_process_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase-spi>=0.23.3,<0.24.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- floor
+- fill
+- in_process
+pack: operator_tooling
+display_name: Lane Process Effect
+node_role: effect

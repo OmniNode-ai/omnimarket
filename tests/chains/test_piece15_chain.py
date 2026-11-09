@@ -10,6 +10,9 @@ never the dev lane's) and asserts the chain that comes back out of it:
 
     PIECE15_CHAIN_BOOTSTRAP=<host:port> uv run pytest tests/chains/test_piece15_chain.py -m kafka -q
 
+A proof run also sets ``PIECE15_REQUIRE_BROKER=1``: without a named broker the broker cases then fail
+instead of skipping, so a green run means the broker cases ran.
+
 Mutations (W19): ``drop_success_emit`` removes the success terminal from the bus and
 ``swallow_failure`` removes the failure terminal; every golden chain must go red under the first
 and every error chain under the second.
@@ -20,9 +23,13 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from collections.abc import Callable
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_delegation_synthetic_probe_compute.handlers.handler_delegation_synthetic_probe import (
     load_rules,
@@ -54,7 +61,11 @@ pytestmark = [
 
 OWNER = "node_delegation_orchestrator"
 BOOTSTRAP_ENV = "PIECE15_CHAIN_BOOTSTRAP"
+#: When set, a missing broker is a failure, so a proof run cannot succeed on skipped broker cases.
+REQUIRE_BROKER_ENV = "PIECE15_REQUIRE_BROKER"
 TIMEOUT_S = 30.0
+CONTRACT_FILE = Path(__file__).parents[2] / "contracts" / "OMN-22977.yaml"
+PROOF_ID = "dod-omn22977-integration-proof"
 
 # The named mutations: which event classes the broken emit never publishes.
 MUTATIONS: dict[str, frozenset[str]] = {
@@ -179,6 +190,43 @@ async def test_mutation_leaves_the_other_kind_of_chain_green(
         check(chain, cid, run)
 
 
+def broker_bootstrap() -> str:
+    """The lab broker the caller named; absent, skip, or fail when the run requires a broker."""
+    bootstrap = os.environ.get(BOOTSTRAP_ENV)
+    if bootstrap:
+        return bootstrap
+    message = f"{BOOTSTRAP_ENV} names no lab broker"
+    if os.environ.get(REQUIRE_BROKER_ENV):
+        pytest.fail(f"{message}, and {REQUIRE_BROKER_ENV} requires one")
+    pytest.skip(f"Kafka not reachable: {message}")
+
+
+def from_carried(run: Any, read: list[tuple[str, str, str]]) -> Any:
+    """The run as the carrier returned it: type, key and payload of each event decoded from `read`."""
+    if len(read) != len(run.events):
+        raise ChainAssertionError(
+            f"the carrier returned {len(read)} events; the run emitted {len(run.events)}"
+        )
+    events = tuple(
+        replace(
+            event,
+            event_type=event_type,
+            correlation_id=type(event.correlation_id)(key),
+            payload=type(event.payload).model_validate_json(value),
+        )
+        for event, (event_type, key, value) in zip(run.events, read, strict=True)
+    )
+    return replace(run, events=events)
+
+
+def identity_carry(events: tuple[ChainEvent, ...]) -> list[tuple[str, str, str]]:
+    """What RedpandaCarry returns for a broker that delivers every event untouched."""
+    return [
+        (e.event_type, str(e.correlation_id), e.payload.model_dump_json())
+        for e in events
+    ]
+
+
 class RedpandaCarry:
     """Publish a run's typed events through a real broker and read the chain back out of it."""
 
@@ -235,9 +283,7 @@ class RedpandaCarry:
 @pytest.mark.integration
 @pytest.mark.parametrize("kind", ["golden", "error"])
 async def test_chain_holds_on_the_real_broker(kind: str) -> None:
-    bootstrap = os.environ.get(BOOTSTRAP_ENV)
-    if not bootstrap:
-        pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no lab broker")
+    bootstrap = broker_bootstrap()
     for chain in by_kind(kind):
         cid, run = await run_chain(chain)
         events = run.events
@@ -248,4 +294,66 @@ async def test_chain_holds_on_the_real_broker(kind: str) -> None:
         assert [item[2] for item in read] == [
             e.payload.model_dump_json() for e in events
         ]
-        check(chain, cid, run)
+        # The assertion runs over what the broker returned, never the in-memory run.
+        check(chain, cid, from_carried(run, read))
+
+
+Carry = Callable[[tuple[ChainEvent, ...]], list[tuple[str, str, str]]]
+
+
+def drop_last(events: tuple[ChainEvent, ...]) -> list[tuple[str, str, str]]:
+    return identity_carry(events)[:-1]
+
+
+def rename_terminal(events: tuple[ChainEvent, ...]) -> list[tuple[str, str, str]]:
+    carried = identity_carry(events)
+    return [*carried[:-1], ("ModelSomethingElse", *carried[-1][1:])]
+
+
+def rekey_terminal(events: tuple[ChainEvent, ...]) -> list[tuple[str, str, str]]:
+    carried = identity_carry(events)
+    return [*carried[:-1], (carried[-1][0], str(uuid.uuid4()), carried[-1][2])]
+
+
+@pytest.mark.parametrize("kind", ["golden", "error"])
+async def test_the_chain_assertion_reads_what_the_carrier_returned(kind: str) -> None:
+    """Carry fidelity decides the chain assertion: an untouched carry holds, a broken one goes red."""
+    for chain in by_kind(kind):
+        cid, run = await run_chain(chain)
+        check(chain, cid, from_carried(run, identity_carry(run.events)))
+        for broken in (drop_last, rename_terminal, rekey_terminal):
+            with pytest.raises((ChainAssertionError, ValueError)):
+                check(chain, cid, from_carried(run, broken(run.events)))
+
+
+def test_a_missing_broker_fails_when_the_run_requires_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(BOOTSTRAP_ENV, raising=False)
+    monkeypatch.setenv(REQUIRE_BROKER_ENV, "1")
+    with pytest.raises(pytest.fail.Exception):
+        broker_bootstrap()
+
+
+def test_a_missing_broker_skips_when_the_run_does_not_require_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(BOOTSTRAP_ENV, raising=False)
+    monkeypatch.delenv(REQUIRE_BROKER_ENV, raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        broker_bootstrap()
+
+
+def test_a_named_broker_is_used_as_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(BOOTSTRAP_ENV, "broker.example:9092")
+    monkeypatch.setenv(REQUIRE_BROKER_ENV, "1")
+    assert broker_bootstrap() == "broker.example:9092"
+
+
+def test_the_integration_proof_command_requires_the_broker_cases() -> None:
+    """The contract's lab proof sets the require flag, so skipped broker cases cannot pass it."""
+    contract = yaml.safe_load(CONTRACT_FILE.read_text(encoding="utf-8"))
+    proof = next(item for item in contract["dod_evidence"] if item["id"] == PROOF_ID)
+    command = proof["checks"][0]["check_value"]
+    assert f"{REQUIRE_BROKER_ENV}=1" in command
+    assert "test_piece15_chain.py" in command
