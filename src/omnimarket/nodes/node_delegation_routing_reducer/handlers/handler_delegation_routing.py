@@ -333,12 +333,16 @@ _LOCAL_TIERS = {"local"}
 # (model, task_type, cost_usd, reason) at the execution boundary so it can never
 # happen silently (the original OMN-14097 concern). An operator may opt OUT
 # per-process by setting ONEX_DELEGATION_ALLOW_PAID to a falsy value
-# (0/false/no/off), which fails the ladder closed to the free tiers. This gate is
+# (0/false/no/off), which fails the ladder closed to the free tiers. That is "no
+# METERED escalation", NOT "no escalation at all" (OMN-18308): a free non-local
+# rung (cheap_frontier) stays reachable. It applies to a caller-pinned backend as
+# well as to the ladder. This gate is
 # the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
 # routing reducer (``delta``) and the bus-less escalation loop
 # (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
 _ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
 _ALLOW_PAID_FALSY = frozenset({"0", "false", "no", "off"})
+_PAID_COST_TYPES = frozenset({EnumTierCostType.METERED, EnumTierCostType.BUDGETED})
 
 
 def _paid_escalation_allowed() -> bool:
@@ -357,6 +361,28 @@ def _paid_escalation_allowed() -> bool:
     # design this gate deliberately provides.
     raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
     return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
+
+
+def _tier_is_paid(tier: ModelRoutingTier) -> bool:
+    """Return whether a rung can bill for a call (OMN-18308).
+
+    Paid means the flat per-1k figure is above zero OR the typed cost model says
+    ``metered`` or ``budgeted``. The flat figure alone let a tier typed ``budgeted``
+    with a ``0.0`` flat figure pass as free under the opt-out.
+    """
+    if tier.cost_per_1k_tokens > 0:
+        return True
+    return tier.cost is not None and tier.cost.cost_type in _PAID_COST_TYPES
+
+
+def _paid_gate_closed_for(tier: ModelRoutingTier) -> bool:
+    """Return whether ``ONEX_DELEGATION_ALLOW_PAID`` opts out AND ``tier`` is paid.
+
+    The one place the opt-out is applied: the contract predicate, the exclusion
+    report and the caller-pin path all ask it (OMN-18308: the pin path skipped the
+    predicate, so a pin on a paid rung routed there under the opt-out).
+    """
+    return _tier_is_paid(tier) and not _paid_escalation_allowed()
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
@@ -1246,7 +1272,7 @@ def _tier_allowed_by_contract(
     # ONEX_DELEGATION_ALLOW_PAID, in which case the ladder fails closed to the free
     # tiers. Applied first (independent of the contract entry) so the opt-out covers
     # every routing surface. Free tiers (local, cheap_frontier) are always eligible.
-    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+    if _paid_gate_closed_for(tier):
         return False
 
     if entry is None:
@@ -2577,7 +2603,7 @@ def _tier_exclusion_reason(
     Returns ``None`` when the tier is allowed — the two functions are pinned to
     agree by :func:`build_routing_exclusion_report`'s own regression test.
     """
-    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+    if _paid_gate_closed_for(tier):
         return EnumRoutingExclusionReason.TIER_PAID_GATE_CLOSED
     if entry is None:
         if tier.name not in _LOCAL_TIERS:
@@ -3150,6 +3176,12 @@ def delta(
             ):
                 continue
 
+            # OMN-18308: a pin outranks task-class tier policy but never the
+            # no-paid opt-out; a pin on a paid rung falls through to the pinned
+            # refusal below instead of routing to it.
+            if requested_backend_ref is not None and _paid_gate_closed_for(tier):
+                continue
+
             if requested_backend_ref is not None:
                 # Caller pin precedence is exact and intentionally bypasses
                 # ``use_for`` / task model overrides.  Endpoint, secret, context,
@@ -3404,7 +3436,8 @@ def delta(
             f"{BIFROST_CONTRACT_SURFACE} entry carries a complete endpoint_url "
             f"and model_name, whose declared secret_ref resolves, with enough "
             f"context capacity, and not already excluded by transport-failure "
-            f"memory.\n{report.render()}"
+            f"memory. A paid rung is also refused while "
+            f"{_ALLOW_PAID_ENV} opts out of paid escalation.\n{report.render()}"
         )
     else:
         msg = report.render()

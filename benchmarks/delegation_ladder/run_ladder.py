@@ -11,7 +11,9 @@ only its own plumbing -- reading a file it just wrote -- and nothing that would
 give the model a second attempt at the same prompt.
 
 **Paid escalation is disabled on the local path** (``ONEX_DELEGATION_ALLOW_PAID=0``).
-The operator asked what the LOCAL model can do; leaving escalation on would
+That removes every METERED rung, including a caller-pinned one; it does not confine
+the run to the local tier, so a free non-local rung stays reachable and the result
+rows record the answering tier (OMN-18308). The operator asked what the LOCAL model can do; leaving escalation on would
 measure the escalation chain and bill for the privilege. When the local tier's
 answer is refused by the quality gate, the harness recovers the rejected text
 from the run's own capture log and scores it anyway, so the table can report the
