@@ -209,9 +209,9 @@ def test_error_a_needs_operator_cause_is_red_even_with_a_lane_on_it() -> None:
     doc = HandlerFloorSimple().handle(base.model_copy(update={"overlay": overlay}))
     cause = next(c for c in doc.causes if c.id == "prs:red")
     assert (cause.state, cause.needs_operator) == ("red", True)
-    assert (
-        doc.red_rule.state == "WORKING"
-    )  # a red row that needs the operator is allowed
+    # a red row that needs the operator is allowed: the colour rule has no violation and a live lane carries it
+    assert doc.red_rule.violations == ()
+    assert "prs:red" not in doc.red_rule.uncarried_red
 
 
 def test_error_an_unread_input_is_unread_and_a_cause_never_zero() -> None:

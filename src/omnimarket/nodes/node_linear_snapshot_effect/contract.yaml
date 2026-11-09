@@ -36,6 +36,8 @@ descriptor:
   side_effects:
   - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
   - writes linear-<UTC date>.json under the output directory, replacing the file atomically
+  - writes linear-snapshot-state.json beside it, the time of the last good read and of the last attempt with its status
+  - waits out an HTTP 429 by its Retry-After within a budget, and keeps the last good snapshot (copied to today's name when today has none) when the limit outlasts it
 metadata:
   transport_type: HTTP
   description: >-
