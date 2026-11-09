@@ -356,6 +356,21 @@ class ModelLandingCauseOwner(BaseModel):
         return self
 
 
+class ModelLandingCrossRepoCause(BaseModel):
+    """A red check the controller has named as caused by a change in another repository.
+
+    ``check`` is the red check's name as the PR watcher reads it; ``owner`` is the
+    change, as ``repo#n``, whose merge clears it. Read from the controller's own
+    earlier messages and the declared order of the change (OMN-23345): a worker
+    leased on a PR that is not the cause's repository cannot push the fix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(..., min_length=1)
+    owner: str = Field(..., pattern=PR_KEY_PATTERN)
+
+
 class ModelLandingCauseRelease(BaseModel):
     """A RELEASE row naming a parked cause; it ends a park that began before it."""
 
@@ -597,6 +612,13 @@ class ModelLandingFacts(BaseModel):
         default=(), description="Repos under their landing floor (the floor alarm)."
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
+    cross_repo_causes: tuple[ModelLandingCrossRepoCause, ...] = Field(
+        default=(),
+        description=(
+            "Red checks already named as caused by an open change in another "
+            "repository: a PR red only on these gets no worker (OMN-23345)."
+        ),
+    )
     cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
     cause_escalations: tuple[ModelLandingCauseEscalation, ...] = Field(
         default=(),
@@ -661,6 +683,7 @@ __all__: list[str] = [
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
     "ModelLandingCompanionFacts",
+    "ModelLandingCrossRepoCause",
     "ModelLandingFacts",
     "ModelLandingPolicy",
     "ModelLandingPrFacts",

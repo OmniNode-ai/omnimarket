@@ -797,6 +797,7 @@ node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_co
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
 node_landing_tlc_receipt_effect = "omnimarket.nodes.node_landing_tlc_receipt_effect"
 node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gate_compute"
+node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gate_compute"
 node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
 node_lane_brief_draft_compute = "omnimarket.nodes.node_lane_brief_draft_compute"
 node_lane_brief_gate_orchestrator = "omnimarket.nodes.node_lane_brief_gate_orchestrator"
