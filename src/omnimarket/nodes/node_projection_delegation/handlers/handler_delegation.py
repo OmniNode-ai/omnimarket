@@ -95,6 +95,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
+    _stamp_terminal_turn_count,
     _stamp_unmeasured_latency,
     _unpriced_cost_as_null,
     compute_generation_proof_fields,
@@ -1625,7 +1626,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 if key == "finish_reason" and row.get("truncated") is None:
                     row["truncated"] = existing.get("truncated")
         # Same None-only timing merge as the sync writer; keep measured zero.
-        for key in ("queue_wait_ms", "execution_ms"):
+        for key in ("queue_wait_ms", "execution_ms", "turn_count"):
             if row.get(key) is None and existing.get(key) is not None:
                 row[key] = existing[key]
         if bool(existing.get("request_override_applied")):
@@ -2045,6 +2046,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
+        _stamp_terminal_turn_count(row, event.attempts_count)
         # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
         if event.trace_id is not None:
             row["trace_id"] = str(event.trace_id)

@@ -522,6 +522,8 @@ projection_api:
         - requested_model
         - queue_wait_ms
         - execution_ms
+        # OMN-18534: the terminal's total inference calls (migration 0068).
+        - turn_count
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model
