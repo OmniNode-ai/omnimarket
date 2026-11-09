@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - C32 Auth Boundary Probe Effect (OMN-23213, MVP launch plan task M17)
+#
+# Moved from the cloud repository's c32-local-auth-boundary.yml producer into omnimarket (operator ruling 2026-11-09:
+# the cloud repository is cloud only). One run starts the real `onex dashboard` in a scratch HOME and grades the five
+# auth cases (current token served as the positive control; stale token, no token, non-loopback interface and
+# cross-origin read refused), the non-loopback bind refused at start, and a planted credential value absent from the
+# event log, the store and every page response. The run record is shaped as the MVP launch block's ModelMvpRun and goes
+# on the result topic, where the launch reading M1 reads C32. A timer unit (node_host_installer_registry_units,
+# c32-auth-boundary-probe) runs the node daily on the lab.
+name: node_c32_auth_boundary_probe_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT: run the C32 local auth-boundary probe once and publish the run (run id, trigger, verdict PASS, FAIL,
+  PRECONDITION-ABSENT or ERROR, conclusion success only for PASS, every graded clause) on the result topic. A probe
+  that raises is an ERROR run that concludes failure and is still published. The in-memory profile grades nothing
+  and reads PRECONDITION-ABSENT; the local profile runs the probe against the onex found in the overlay's directory.
+input_model:
+  name: ModelC32ProbeRequest
+  module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe
+  description: "Correlation id and the trigger (schedule or manual)."
+output_model:
+  name: ModelC32ProbeResult
+  module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe
+  description: "The run record: run id, times, event, status, conclusion, verdict, clauses, preconditions."
+handler:
+  module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.handlers.handler_c32_auth_boundary_probe
+  class: HandlerC32AuthBoundaryProbe
+  input_model: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe.ModelC32ProbeRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerC32AuthBoundaryProbe
+        module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.handlers.handler_c32_auth_boundary_probe
+      event_model:
+        name: ModelC32ProbeRequest
+        module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  # The producer workflow's own limit was 20 minutes (measured 9 min 46 s, nearly all of it the install).
+  timeout_ms: 1200000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+terminal_event: onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+externally_produced_topics: []
+externally_consumed_topics:
+  - topic: onex.evt.omnimarket.c32-auth-boundary-probe-completed.v1
+    consumer: "the MVP launch block (node_floor_simple_effect, M1) reads C32 from the newest scheduled run"
+overlay:
+  id: node_c32_auth_boundary_probe_effect
+  file_env: ONEX_C32_PROBE_OVERLAY
+  example: overlay.example.yaml
+reading:
+  name: c32_auth_boundary_newest_scheduled_run
+  description: "The conclusion of the newest scheduled run of the probe (success only when every clause held), and its age."
+  injected_fault: "A dashboard that accepts a stale token (planted in tests as a prober whose stale-token clause is not ok): the run concludes failure, verdict FAIL, and the tick exits 1."
+metadata:
+  transport_type: kafka
+  description: "Runs the C32 local auth-boundary probe and publishes the run"
+  author: "OmniNode Team"
+  tags: ["effect", "probe", "c32", "mvp", "OMN-23213"]

@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23213
+title: The C32 local auth-boundary proof runs daily on the lab as an omnimarket node and its run goes on the bus where the launch reading reads C32
+summary: node_c32_auth_boundary_probe_effect runs the C32 probe (five auth cases and the planted-credential search against the dashboard `onex dashboard` starts) once a day from a systemd timer unit on a lab host and emits the run, shaped as the launch block's run record, on its result topic.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23213-c32-daily-node
+  statement: The C32 probe runs on a daily schedule as an omnimarket node on the lab (not in the cloud repository, operator ruling 2026-11-09), concludes success only when every clause held, and emits its run on the node's result topic where the MVP launch block (M1) reads C32.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node has a daily timer unit declared in the host installer and a scheduled tick of it has run on a lab host with a PASS verdict from the real probe -- falsifier: the focused node tests pass (a failing clause, an absent surface, a probe that graded nothing, a probe that raised and a green run on other versions than the candidate each read C32 NOT WORKING in M1), and the installed unit''s last-run.json reads verdict PASS with ran_at no older than 26 hours'
+evidence_requirements:
+- kind: tests
+  description: The node's golden and error chain event tests, the ported probe case tests and the unit declaration test pass
+  command: uv run --frozen pytest tests/nodes/node_c32_auth_boundary_probe_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23213-node-tests
+  description: Runs the node's focused tests. The golden chain concludes success, emits one run on the result topic and reads C32 WORKING in the MVP launch block; the error chains (a stale token accepted, an absent surface, a probe that graded nothing, a probe that raised, a bus that refused the run, a green run on other versions than the candidate, no overlay, a result topic the contract does not declare) each conclude failure or exit non-zero and say why; the unit test reads the daily systemd unit from the installer contract.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c32_auth_boundary_probe_effect/test_c32_probe_node.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23213-probe-cases
+  description: Runs the ported probe case tests, which drive the five auth cases and the planted-credential search against fake servers (an ideal server passes, a tokenless server fails cases 1, 2, 3 and 5, a dead server fails every case).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c32_auth_boundary_probe_effect/test_probe_cases.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23213-unit-run-limit
+  description: Runs the installer's run-limit test, which holds every declared unit, the new c32-auth-boundary-probe unit included, to a run timeout of at most three intervals. A regression check that passes at the merge base by design, so it binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23213-unit-declaration
+  description: Reads the unit declaration from the branch's installer contract; the exit status depends on the contract holding the onex-c32-auth-boundary-probe label with its 86400 s interval, so it goes red on a branch without the unit. Runs on a hosted runner.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: 'grep -q "label: onex-c32-auth-boundary-probe" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && grep -q "start_interval: 86400" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'
+    cwd: .
+- id: dod-omn23213-integration-proof
+  description: On the lab host where the unit is installed from the branch, the timer's tick has run the real probe and written last-run.json with verdict PASS. The first check runs the node's focused tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  binds_ac:
+  - AC1
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23213 --kind test -- uv run --frozen pytest tests/nodes/node_c32_auth_boundary_probe_effect -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: "test -s $HOME/.local/state/omni/c32-auth-boundary-probe/last-run.json && grep -Eq 'verdict.: .PASS' $HOME/.local/state/omni/c32-auth-boundary-probe/last-run.json"
+    cwd: .
