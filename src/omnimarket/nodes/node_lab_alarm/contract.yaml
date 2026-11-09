@@ -39,22 +39,20 @@ handler:
   class: HandlerBrokerLag
   input_model: omnimarket.nodes.node_lab_alarm.models.model_lab_alarm.ModelBrokerLagCommand
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: broker_lag
-      handler:
-        name: HandlerBrokerLag
-        module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
-    - operation: effects_held
-      handler:
-        name: HandlerEffectsHeld
-        module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
-
+# No handler_routing: HandlerBrokerLag (omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag) takes the
+# overlay, the manifest source, the lag reader and the sample store as constructor parameters, and
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
-# the same way. HandlerBrokerLag takes the overlay, the manifest source, the lag reader and the sample store as
-# constructor parameters, so the node runs through its own CLI, not handler_routing.
+# the same way. The boot resolver cannot inject those, so a handler_routing entry for either would
+# quarantine at boot; the node runs through its own CLI, which builds both handlers.
+# HandlerEffectsHeld is bound here and not in handler_routing so the canonical-file-shape ratchet finds it
+# inside this node while the auto-wiring, which reads only handler_routing, never constructs it. The broker-lag
+# handler is bound by the handler block above.
+in_process_handlers:
+  effects_held:
+    handler:
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
+      class: HandlerEffectsHeld
 
 descriptor:
   node_archetype: effect
