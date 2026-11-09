@@ -22,8 +22,8 @@ identities:
   - {method: GET, path: /v1/usage/privileges, state: pending, named_in: T18a inventory}
   - {method: POST, path: /envelopes/example, state: served, named_in: src/omnimarket/nodes/node_envelope_example_post_effect/contract.yaml}
   - {method: GET, path: /v1/workflows/contracts, state: pending, named_in: src/omnimarket/cloud/transport_cloud_delegation.py}
-  - {method: GET, path: /v1/tenants/me/savings, state: pending, named_in: tests/test_omn15583_savings_writer_binds_envelope_tenant.py}
-  - {method: GET, path: /v1/tenants/me/delegations, state: pending, named_in: src/omnimarket/nodes/node_projection_savings/contract.yaml}
+  - {method: GET, path: /v1/tenants/me/savings, state: served, named_in: src/omnimarket/nodes/node_tenant_savings_read_effect/contract.yaml}
+  - {method: GET, path: /v1/tenants/me/delegations, state: served, named_in: src/omnimarket/nodes/node_tenant_delegations_read_effect/contract.yaml}
   - {method: POST, path: /v1/tenants/me/inference-credentials, state: pending, named_in: src/omnimarket/models/model_inference_credential_create_request.py}
   - {method: GET, path: /v1/tenants/me/inference-credentials, state: pending, named_in: src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml}
   - {method: DELETE, path: "/v1/tenants/me/inference-credentials/{api_key_ref}", state: pending, named_in: T18a inventory}
