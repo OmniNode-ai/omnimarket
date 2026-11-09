@@ -118,6 +118,12 @@ class ProtocolLabFillLiveChecks(Protocol):
     ) -> tuple[str, str]: ...
 
 
+class ProtocolLabFillMergedWork(Protocol):
+    """The merged pull requests that name a ticket (``repo#number``), read from the PR watcher's state (OMN-23277)."""
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]: ...
+
+
 class ProtocolLabFillBriefBlocks(Protocol):
     """The committed standing rules and the delegation and lab blocks of a brief."""
 
