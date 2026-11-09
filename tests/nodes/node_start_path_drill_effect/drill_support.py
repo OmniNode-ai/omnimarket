@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from omnimarket.nodes.node_start_path_drill_effect.handlers.handler_start_path_d
 from omnimarket.nodes.node_start_path_drill_effect.overlay import (
     ModelStartPathDrillOverlay,
 )
+from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 
 EXAMPLE = (
     Path(__file__).resolve().parents[3]
@@ -104,7 +106,7 @@ class World:
         self.admission_paths: tuple[str, ...] = ()
         self.reading_ledger = InMemoryLedger()
         self.log_ledger = InMemoryLedger()
-        self.store_factory: object = None
+        self.store_factory: Callable[[], ProtocolGateStore] | None = None
 
     def break_path_left_out_of_the_census(self, path: str) -> None:
         census = tuple(p for p in self.overlay.census if p.id != path)
@@ -123,7 +125,7 @@ class World:
         self.log_ledger.append_status = "refused"
 
     def handler(self, *, write: bool = True) -> HandlerStartPathDrill:
-        factory: object = self.store_factory
+        factory = self.store_factory
         store_factory = (
             in_memory_drill_store(self.overlay.gate) if factory is None else factory
         )
@@ -143,5 +145,5 @@ class World:
             log=log,
             appender=self.reading_ledger if write else None,
             clock=lambda: NOW,
-            store_factory=store_factory,  # type: ignore[arg-type]
+            store_factory=store_factory,
         )
