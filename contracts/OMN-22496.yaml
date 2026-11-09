@@ -67,7 +67,7 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22496-checks-run-inside-omni-home"
-    description: "AC4: the guard test reads this contract and finds no check outside ${OMNI_HOME}/omnimarket; its planted cwd \".\" and missing-cwd controls are named."
+    description: "AC4: the guard test reads this contract and finds no check outside ${OMNI_HOME}/omnimarket; its planted cwd \".\" and missing-cwd controls are each named by the test."
     source: "manual"
     binds_ac: ["AC4"]
     checks:
