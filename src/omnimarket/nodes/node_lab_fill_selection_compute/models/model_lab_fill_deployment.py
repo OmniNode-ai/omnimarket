@@ -28,7 +28,8 @@ class ModelLabFillDeployment:
     document_repositories: tuple[str, ...]
     # OMN-23312: the delegation epics (a ticket is delegation work when it is one of them or sits under
     # one) and the assignees who own delegation work for this deployment. Both come from the
-    # overlay; empty means the deployment names no delegation work and nothing is ranked or refused.
+    # overlay. No epics: the deployment names no delegation work and nothing is ranked or refused.
+    # Epics but no owners: every delegation ticket under the epics is owned, whoever its assignee is.
     delegation_epics: tuple[str, ...] = ()
     delegation_owners: tuple[str, ...] = ()
 

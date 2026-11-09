@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23312
 title: The lab fill sends the operator's own startable delegation tickets first, so no lab slot sits free while one waits
-summary: node_lab_fill_selection_compute ranks the open delegation tickets of the deployment's delegation owners whose start criterion reads true ahead of every other ticket source, and never selects a delegation ticket owned by anyone else. The delegation epics and owners come from the node's overlay; a deployment that names none is unchanged.
+summary: node_lab_fill_selection_compute ranks the open delegation tickets of the deployment's delegation owners whose start criterion reads true ahead of every other ticket source, and never selects a delegation ticket owned by anyone else. The delegation epics (and, optionally, owners) come from the node's overlay; a deployment that names no epics is unchanged, and one that names epics but no owners owns every delegation ticket under them (RULING 2026-11-08T13:40:42Z). The plan node's candidate builder passes the ticket mirror's assignee, parents, state type and criterion to the selection.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,8 +15,8 @@ requirements:
     statement: 'AC2: after install, a lab-fill tick with free slots sends a lane for every startable operator-owned delegation ticket that has none -- falsifier: the lab-fill tick log after install lists those tickets in its sent set'
 evidence_requirements:
 - kind: tests
-  description: Twenty-four tests over the ranking, the other-owner refusal, the unread and false criterion, closed tickets, the empty overlay and the overlay validation, with an injected break that removes the rank; with the sort key replaced by a constant three of them fail.
-  command: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py -q -p no:randomly
+  description: Tests over the ranking, the other-owner refusal, the all-owned default of an overlay with no owners, the unread and false criterion, closed tickets, the empty overlay and the overlay validation, with an injected break that removes the rank; the candidate builder's passing of the mirror facts with its control; and the overlay loader. With the sort key replaced by a constant three of the ranking tests fail.
+  command: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_deployment_overlay.py tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -q -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''

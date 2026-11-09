@@ -86,11 +86,16 @@ def is_delegation(
 def delegation_owned(
     candidate: ModelLabFillCandidateInput, deployment: ModelLabFillDeployment
 ) -> bool:
-    """The ticket's assignee is one of the deployment's delegation owners; unassigned is no one's."""
+    """The ticket's assignee is one of the deployment's delegation owners; unassigned is no one's.
+
+    A deployment that names no owners owns every delegation ticket under its epics, whoever the
+    assignee is (RULING 2026-11-08T13:40:42Z: delegation is ours in full, so no owner filter
+    excludes a delegation ticket). Naming owners narrows that to those assignees."""
+    owners = {owner.strip().lower() for owner in deployment.delegation_owners}
+    if not owners:
+        return True
     assignee = candidate.assignee.strip().lower()
-    return bool(assignee) and assignee in {
-        owner.strip().lower() for owner in deployment.delegation_owners
-    }
+    return bool(assignee) and assignee in owners
 
 
 def delegation_first(

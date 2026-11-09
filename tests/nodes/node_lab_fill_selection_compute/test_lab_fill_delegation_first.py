@@ -187,3 +187,34 @@ def test_delegation_first_overlay_keeps_three_role_keys_required() -> None:
         ModelLabFillDeployment.from_overlay(
             {k: v for k, v in OVERLAY.items() if k != "document_repositories"}
         )
+
+
+def test_delegation_first_no_owners_named_owns_every_delegation_ticket() -> None:
+    """RULING 2026-11-08T13:40:42Z: epics without owners means no owner filter excludes a ticket."""
+    everyone = ModelLabFillDeployment.from_overlay(
+        {k: v for k, v in OVERLAY.items() if k != "delegation_owners"}
+    )
+    result = _select(
+        _candidate("OMN-2"),
+        _delegation("OMN-30", assignee="someone-else"),
+        _delegation("OMN-31", assignee=""),
+        deployment=everyone,
+    )
+    assert _eligible(result) == ["OMN-30", "OMN-31", "OMN-2"]
+    by_ticket = {d.ticket: d for d in result.decisions}
+    assert by_ticket["OMN-30"].caller_reason == "delegation-first"
+    assert by_ticket["OMN-31"].caller_reason == "delegation-first"
+
+
+def test_delegation_first_no_owners_named_still_needs_epic_and_open_state() -> None:
+    everyone = ModelLabFillDeployment.from_overlay(
+        {k: v for k, v in OVERLAY.items() if k != "delegation_owners"}
+    )
+    result = _select(
+        _candidate("OMN-2"),
+        _delegation("OMN-30", parents=("OMN-elsewhere",)),
+        _delegation("OMN-31", state_type="completed"),
+        deployment=everyone,
+    )
+    assert _eligible(result) == ["OMN-2", "OMN-30", "OMN-31"]
+    assert all(d.caller_reason == "" for d in result.decisions)
