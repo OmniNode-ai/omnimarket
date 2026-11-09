@@ -18,7 +18,9 @@ class_rules:
     pattern: 'pass refused:'
   - name: local-hooks-fail-one-per-attempt
     owner: "the owners of the pre-commit and pre-push hook set of the repository that refused"
-    pattern: '(?:pre-push|pre-commit|hook round|commit attempts|failing hooks|release-identity hook|mixed-category hook)'
+    # Only text that says the hooks failed one at a time over several attempts. A row that merely names the pre-commit or pre-push
+    # stage is a different cause (OMN-23220): it matched 8 rows of 8 causes and 3 of 3 recorded rows of other causes.
+    pattern: '(?:hook round|commit attempts|failing hooks|release-identity hook|mixed-category hook)'
   - name: installed-copy-behind-merged-code
     owner: "the host installer (the declared installer and adopt-merged), not the lane that met it"
     pattern: '(?:installed revision \w+ carries|record-clobber|dispatch venv|ImportError|clone moved beside)'
@@ -92,7 +94,7 @@ class_rules:
   # named from their own text. A row that names the host table is one cause whatever else it lists, so that rule goes first.
   - name: lab-host-table-unusable-for-lab-run
     owner: "the owner of the lab host list that lab-run and placement read (the lab_hosts overlay, its row model in the omnimarket reader and the declared table roots): the table is rejected, sits outside the roots or lacks a row field, so no run is placed"
-    pattern: '(?:HostTableOutsideRootsError|lab_hosts overlay invalid|host table (?:field|invalid)|lab_run_hosts\.yaml hosts\.\d+|hosts\.\d+\.(?:volumes_root|ilo_address)|declares no ledger_path)'
+    pattern: '(?:HostTableOutsideRootsError|lab_hosts overlay (?:invalid|failed validation)|host table (?:field|invalid)|lab_run_hosts\.yaml hosts\.\d+|hosts\.\d+\.(?:volumes_root|ilo_address)|ilo_address of two hosts|declares no ledger_path)'
   - name: lane-github-read-budget-spent
     owner: "the owner of the lane GitHub read gateway: a lane's budget of reads is spent by job-log windows before the reds are read"
     pattern: 'GitHub read budget of \d+'
@@ -157,6 +159,23 @@ class_rules:
   - name: harness-delegate-fixed-call-budget-kills-long-run
     owner: "the owner of the harness-delegate task class budgets (a class's fixed call budget cannot be raised, and a harness that writes its answer only at the end loses a run that reaches it)"
     pattern: "fixed \\d+ s call budget"
+  # The 8 rows of 2026-11-07T21:01Z to 2026-11-08T15:21Z that the broad rule filed under local-hooks-fail-one-per-attempt (OMN-23220): one
+  # cause each, named from their own text. A row that names the host table goes to that rule, which is above these.
+  - name: hook-preflight-push-hook-before-first-commit
+    owner: "the owner of hook-preflight in the remote-lane skill: its pass of the pre-push ticket-contract hook read HEAD, which cannot carry contracts/<ticket>.yaml before the first commit (fixed in the installed plugin tree of a host that has taken the fix)"
+    pattern: 'hook-preflight.{0,200}ticket-contract'
+  - name: commit-stage-hooks-exceed-the-command-time-limit
+    owner: "the owner of the repository's commit-stage pre-commit hook set (about 80 hooks run one after another): the set takes longer than the limit of a detached or foreground command on a loaded host"
+    pattern: 'did not finish in \d+ minutes'
+  - name: private-repo-runner-placement-hook-cannot-read-visibility
+    owner: "the owner of the private-repo-runner-placement hook (OMN-18205): it reads repository visibility from GitHub, which a lane may not, and no PRRP_VARIABLES_SNAPSHOT is published to the lab hosts"
+    pattern: 'private-repo-runner-placement (?:pre-commit )?hook \(OMN-\d+\) cannot resolve'
+  - name: pre-push-ticket-contract-hook-refuses-old-merge-commit
+    owner: "the owner of the pre-push ticket-contract hook: it refuses an old merge commit that cites a ticket with no contract file, so the install branch cannot be pushed"
+    pattern: 'refuses an old merge commit'
+  - name: pre-commit-stash-in-registry-clone-opens-ledger-path-window
+    owner: "the owner of the registry clone commit guard: a commit attempted in the clone makes pre-commit stash and restore its unstaged files, so the live ledger path is a regular file for seconds"
+    pattern: 'pre-commit stashed'
 # A class a writer already names (class cell present) that no ticket or lane owns: the owner goes on the class.
 class_owners:
   - class_name: tick-liveness
