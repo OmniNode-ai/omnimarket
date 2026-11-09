@@ -32,6 +32,9 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelPieceDef,
 )
+from omnimarket.models.model_dev_deploy_reading import (
+    ModelLabPassReceiptFact,
+)
 from omnimarket.nodes.node_dev_deploy_reading_compute.adapters.adapter_in_memory_dev_deploy import (
     InMemoryLabPassReceipts,
     InMemoryRuntime,
@@ -43,9 +46,6 @@ from omnimarket.nodes.node_dev_deploy_reading_compute.adapters.adapter_real_dev_
 from omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_join_j10 import (
     HandlerDevDeployJoinJ10,
     load_join_j10_policy,
-)
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
-    ModelLabPassReceiptFact,
 )
 from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_join_j10 import (
     EnumJoinJ10Outcome,

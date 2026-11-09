@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-23312
+title: The lab fill sends the operator's own startable delegation tickets first, so no lab slot sits free while one waits
+summary: node_lab_fill_selection_compute ranks the open delegation tickets of the deployment's delegation owners whose start criterion reads true ahead of every other ticket source, and never selects a delegation ticket owned by anyone else. The delegation epics (and, optionally, owners) come from the node's overlay; a deployment that names no epics is unchanged, and one that names epics but no owners owns every delegation ticket under them (RULING 2026-11-08T13:40:42Z). The plan node's candidate builder passes the ticket mirror's assignee, parents, state type and criterion to the selection.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23312-delegation-first
+  statement: The lab fill's selection puts owned, open, startable delegation tickets ahead of every other candidate and refuses every delegation ticket whose assignee is not one of the overlay's delegation owners.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab fill''s selection ranks the operator''s own open delegation tickets whose start criterion reads true ahead of every other ticket source, and never selects a delegation ticket owned by someone else -- falsifier: uv run pytest tests -q -k delegation_first in omnimarket, failing with the rank removed'
+  - id: AC2
+    statement: 'AC2: after install, a lab-fill tick with free slots sends a lane for every startable operator-owned delegation ticket that has none -- falsifier: the lab-fill tick log after install lists those tickets in its sent set'
+evidence_requirements:
+- kind: tests
+  description: Tests over the ranking, the other-owner refusal, the all-owned default of an overlay with no owners, the unread and false criterion, closed tickets, the empty overlay and the overlay validation, with an injected break that removes the rank; the candidate builder's passing of the mirror facts with its control; and the overlay loader. With the sort key replaced by a constant three of the ranking tests fail.
+  command: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_deployment_overlay.py tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -q -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23312-ac1-delegation-first
+  description: The delegation-first tests pass in the one test file; the rank removed (sort key constant) fails the ranking, epic and owner-match tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py -k delegation_first -q -p no:randomly
+    cwd: .
+- id: dod-omn23312-ac2-candidates-reach-selection
+  description: The candidate builder passes the ticket mirror's assignee, parents, state type and criterion, and the selection ranks the built candidate first; with no mirror facts passed it is not ranked. The tick-log reading after install is taken from the lab-fill tick and recorded on the ticket.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -k delegation -q -p no:randomly
+    cwd: .
+- id: dod-omn23312-handler-served
+  description: Deploy probe. GitHub serves the selection handler at the checked-out HEAD with the delegation-first rank and the other-owner gate. It fails at the merge base, which has neither.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_selection_compute/handlers/handler_lab_fill_selection.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("delegation_first", "other-owner:delegation", "DELEGATION_FIRST")); print("lab-fill delegation-first deploy probe: PASS")'
+- id: dod-omn23312-integration-proof
+  description: Run this pull request's own delegation-first tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23312 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_delegation_first.py -q --no-cov
+    cwd: .
