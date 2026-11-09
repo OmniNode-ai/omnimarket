@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23184
+title: The board lists every in-scope work item that needs help with its owner state, and the lab fill takes its candidates from those rows first
+summary: Adds the work list to node_floor_simple_compute (pull requests that are red or conflicting, tickets a lane left stopped, required checks red over an hour from a shared cause nobody owns, each with an owner state), reads it in node_floor_simple_effect from the watcher state, the landing controller's state file and the work-state projection, lets the ticket rule count toward the red class (the reason prs:red held 2 while the controller counted 60 to 70), and makes node_idle_slot_fill_effect take the unowned rows first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23184-board-worklist
+  statement: The board is the complete work list of in-scope items that need help, each with whether a live lane, a landing lease or a cause lease owns it, and the lab fill draws from it first.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: tonight''s watcher state read without the projection draws the red class from 2 pull requests, and read with the projection counts every red pull request the ticket rule keeps in scope -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov -k "control_the_lists_alone or ticket_rule_admits"'
+  - id: AC2
+    statement: 'AC2: every red or conflicting open in-scope pull request, every stopped in-scope ticket with a named follow-up and no successor, and every required check red over an hour on several pull requests with no cause lease is listed with its owner state, and a class row is red while any member is unowned -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov -k "golden or error"'
+  - id: AC3
+    statement: 'AC3: the lab fill takes the unowned board rows before its other candidates and takes none a lane or lease owns, and without the idle_slot_fill_board overlay it sends the stored item -- falsifier: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The work list's golden and error tests, the failing control from tonight's watcher state, and the fill tests
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23184-ac1
+  description: The red class counts what the ticket rule keeps in scope, and the control without the projection draws 2 -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov -k "control_the_lists_alone or ticket_rule_admits"
+    cwd: .
+- id: dod-omn23184-ac2
+  description: The three classes are listed with owner states and the class row is red while any member is unowned -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov
+    cwd: .
+- id: dod-omn23184-ac3
+  description: The lab fill takes unowned board rows first and the control without the idle_slot_fill_board overlay sends the stored item -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov
+    cwd: .
+- id: dod-omn23184-integration-proof
+  description: Run the work list's tests, the floor cycle's chain tests and the lab fill's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23184 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute tests/nodes/node_idle_slot_fill_effect -q --no-cov
+    cwd: .

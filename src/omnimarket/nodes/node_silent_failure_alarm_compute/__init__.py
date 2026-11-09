@@ -3,6 +3,9 @@
 """Public decision interface of the silent-failure alarm compute node."""
 
 from .handlers import (
+    HandlerCloserStalenessAlarm as HandlerCloserStalenessAlarm,
+)
+from .handlers import (
     HandlerDrainerAlarm as HandlerDrainerAlarm,
 )
 from .handlers import (

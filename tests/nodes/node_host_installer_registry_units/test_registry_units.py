@@ -574,3 +574,66 @@ def test_the_lock_dies_with_its_holder_process_so_the_next_install_runs(
             holder.wait(timeout=30)
         if holder.stdout is not None:
             holder.stdout.close()
+
+
+PARITY_UNIT = "work-ledger-parity-receipt"
+PARITY_ENTRY = "src/omnimarket/nodes/node_work_ledger_parity_receipt_effect/runtime_parity_receipt.py"
+
+
+def test_the_work_ledger_parity_receipt_unit_runs_its_node_module_hourly_with_the_parity_settings(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=PARITY_ENTRY)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=PARITY_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    plist = plist_of(result.rendered)
+    assert plist["Label"] == "ai.omninode.work-ledger-parity-receipt"
+    assert plist["StartInterval"] == 3600
+    args = plist["ProgramArguments"]
+    assert args[args.index("-m") + 1] == (
+        "omnimarket.nodes.node_work_ledger_parity_receipt_effect.runtime_parity_receipt"
+    )
+    environment = plist["EnvironmentVariables"]
+    assert environment["ONEX_LEDGER_PARITY_FILE"].startswith(str(tmp_path / "omni"))
+    for name in (
+        "ONEX_LEDGER_COMMAND",
+        "ONEX_LEDGER_PARITY_PYTHON",
+        "ONEX_LEDGER_PARITY_OVERLAY",
+        "ONEX_LEDGER_PARITY_ENV_FILE",
+        "ONEX_LEDGER_PARITY_PG_PORT",
+    ):
+        assert environment[name], name
+
+
+def test_the_work_ledger_parity_receipt_unit_refuses_a_checkout_without_its_module(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    branch = tmp_path / "branch"
+    revision = make_checkout(
+        branch, entry="src/omnimarket/nodes/other/runtime_other.py"
+    )
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=PARITY_UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "failure"
