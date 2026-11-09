@@ -33,13 +33,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/test_golden_chain_secret_store_effect.py -q -k plain_http
 - id: dod-omn23193-ac2
-  description: The https and loopback addresses still work.
+  description: The https and loopback addresses still work, and a plain-http host the overlay names works (this last test fails on the base, which has no plain_http_hosts key).
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/test_golden_chain_secret_store_effect.py -q -k "https or loopback"
+    check_value: uv run pytest tests/unit/nodes/test_golden_chain_secret_store_effect.py -q -k "test_https_and_loopback_addresses_still_work or test_plain_http_to_a_host_the_overlay_names_works"
 - id: dod-omn23193-ac3
   description: Both golden chains pass, including the test that the captured store and the adapter hold the one shared function and no private copy.
   source: manual
