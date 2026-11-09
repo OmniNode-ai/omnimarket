@@ -316,6 +316,31 @@ def _record_appender(record: Path) -> LedgerAppender:
     return append
 
 
+def _build_inmemory_lane(
+    settings: ModelLaneSettings, environment: Mapping[str, str]
+) -> ProtocolR8Lane:
+    """The typed in-memory model of the tenant lane; it reads no setting and no environment."""
+    del settings, environment
+    return InMemoryLane()
+
+
+def _build_http_lane(
+    settings: ModelLaneSettings, environment: Mapping[str, str]
+) -> ProtocolR8Lane:
+    """The real tenant API, addressed and keyed from the environment variables the contract names."""
+    return HttpLane(settings, environment)
+
+
+#: The contract's ``lane.backend`` value picks the lane from this table; the pattern on ``ModelLaneSettings.backend`` admits
+#: exactly these keys, so a backend the table lacks cannot reach it.
+LANE_BUILDERS: Mapping[
+    str, Callable[[ModelLaneSettings, Mapping[str, str]], ProtocolR8Lane]
+] = {
+    "inmemory": _build_inmemory_lane,
+    "http": _build_http_lane,
+}
+
+
 def build_runner(
     env: Mapping[str, str] | None = None,
     *,
@@ -345,9 +370,7 @@ def build_runner(
         )
 
     def lane_factory() -> ProtocolR8Lane:
-        if settings.backend == "inmemory":
-            return InMemoryLane()
-        return HttpLane(settings, environment)
+        return LANE_BUILDERS[settings.backend](settings, environment)
 
     return HandlerScenarioR8(
         runtime,
