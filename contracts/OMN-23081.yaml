@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: the floor shows each piece''s measure against its baseline over its first 7 days, and on day 7 a verdict of better, worse or unread (never inferred) -- falsifier: uv run pytest of the comparison''s tests with a planted better and a planted worse history'
   - id: AC3
     statement: 'AC3: the floor_simple publisher reads the ledger once per cycle whatever the number of queries, so the ledger read stays far under the 15 s step limit and returns the same facts as one read per query -- falsifier: uv run pytest of the step-time tests, which fail on a read that opens each ledger file once per query'
+  - id: AC4
+    statement: 'AC4: a rebuild piece reads ready on the floor only when its own reading works and every join it owns passes, and the floor overlay''s readiness block loads on dev -- falsifier: uv run pytest of the readiness controls, which fail on dev where the block and the handler are absent'
 evidence_requirements:
 - kind: tests
   description: The piece measure tests (planted better and planted worse history), the comparison node and the page tests pass
@@ -52,10 +54,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_step_time_floor_simple.py -q --no-cov
     cwd: .
 - id: dod-omn23081-readiness-tests
-  description: Runs the readiness controls (a piece is ready only when its own reading works and every join it owns passes) and the recorded-board tests at the pushed head, with the failing control that breaks a counted join.
+  description: Runs the readiness controls (a piece is ready only when its own reading works and every join it owns passes, the finding count in a join's reason, the join owners of the recorded board), which fail on dev where the readiness block and handler are absent.
   source: manual
-  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
   checks:
-  - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py tests/nodes/node_floor_simple_compute/test_floor_truth_recorded_board.py -q --no-cov
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
     cwd: .
