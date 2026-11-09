@@ -502,6 +502,23 @@ def _by_kind(overlay: ModelLabStateOverlay, kind: str) -> ModelLabSourceDef:
     return next(s for s in overlay.sources if s.kind == kind)
 
 
+def _busy_with_own_units(reason: str, overlay: ModelLabStateOverlay) -> bool:
+    """True when the pool's refusal is the load bar alone and the units placed on the host explain that load (OMN-22870).
+
+    The placement prints the own-load part only when the load bar refuses and the load less the cost of the units placed
+    there is inside the bar. A host full of our own work refuses new work; it is not failing. Any other refusal part,
+    and a load nothing placed explains (no own-load part), is not this case.
+    """
+    marker = overlay.own_load_marker
+    if not marker:
+        return False
+    parts = [p.strip() for p in reason.split(overlay.refusal_separator) if p.strip()]
+    if not any(p.startswith(marker) for p in parts):
+        return False
+    allowed = (marker, *overlay.load_bar_markers)
+    return all(p.startswith(allowed) for p in parts)
+
+
 def read_hosts(
     record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
 ) -> ModelLabSourceRead:
@@ -527,14 +544,22 @@ def read_hosts(
             subjects.append(ModelLabSubject(name=host, ok=False, note="unread"))
             continue
         admission = m.get("admission") or {}
+        reason = str(admission.get("reason", ""))
         refused = admission.get("state") == "refused"
+        if refused and _busy_with_own_units(reason, overlay):
+            subjects.append(
+                ModelLabSubject(
+                    name=host,
+                    ok=True,
+                    note=f"busy with its own placed units: {reason}"[:140],
+                )
+            )
+            continue
         subjects.append(
             ModelLabSubject(
                 name=host,
                 ok=not refused,
-                note=str(admission.get("reason", ""))[:140]
-                if refused
-                else "advertising",
+                note=reason[:140] if refused else "advertising",
             )
         )
     working = sum(1 for s in subjects if s.ok)

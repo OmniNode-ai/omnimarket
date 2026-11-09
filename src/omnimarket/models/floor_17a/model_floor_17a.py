@@ -263,6 +263,14 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # A host the pool refuses only on load that its own placed units explain is busy with our work, not failing (OMN-22870).
+    # ``own_load_marker`` is the refusal part the placement prints when the units placed on the host explain the load over the
+    # bar; ``load_bar_markers`` are the load bar's own refusal parts. A refusal made of those parts alone, with the own-load
+    # part among them, reads fine; any other part (memory, disk, parity, heat, link) and a load nothing placed explains stay red.
+    # An empty ``own_load_marker`` turns the reading off, so every refusal reads red as before.
+    own_load_marker: str = ""
+    load_bar_markers: tuple[str, ...] = ()
+    refusal_separator: str = "; "
     # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
     conflict_merge_states: tuple[str, ...] = ()
     # The host table and plan rules that split the offline runners into parked on purpose and real problems.
