@@ -64,5 +64,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_order_advance_effect/handlers/handler_order_advance.py?ref=omn-22938-order-advance-effect' --jq .content | base64 -d | grep -q 'class HandlerOrderAdvance'
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_order_advance_effect/handlers/handler_order_advance.py?ref=omn-22938-order-advance-effect' --jq .content | base64 -d | grep 'class HandlerOrderAdvance' >/dev/null
     cwd: .
