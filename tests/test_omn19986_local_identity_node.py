@@ -60,9 +60,20 @@ def test_the_node_handler_and_the_store_plan_decide_the_same() -> None:
             assert node.row == plan_local_identity_write(event, stored, stamp)
 
 
+def test_declared_output_state_and_terminal_agree() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+    terminal = "onex.evt.omnimarket.projection-local-identity-applied.v1"
+    assert contract["event_bus"]["publish_topics"] == [terminal]
+    assert contract["terminal_event"] == terminal
+
+
 def test_the_contract_declares_the_event_and_the_tenant_scoped_exposure() -> None:
     contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
     assert contract["event_bus"]["subscribe_topics"] == [
+        "onex.evt.omnimarket.local-identity-minted.v1"
+    ]
+    # The mint event comes from the CLI, so its producer is declared, not inferred.
+    assert [entry["topic"] for entry in contract["externally_produced_topics"]] == [
         "onex.evt.omnimarket.local-identity-minted.v1"
     ]
     exposure = contract["projection_api"]

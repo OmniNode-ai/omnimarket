@@ -59,6 +59,9 @@ event_bus:
     - onex.dlq.omnimarket.projection-local-identity-malformed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-local-identity-applied.v1
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.local-identity-minted.v1
+    producer: "`onex local init` and the implicit mint (omnimarket.local_deployment.tenant_identity), which mint the install's tenant identity once -- the CLI, not a node contract"
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.local-identity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention

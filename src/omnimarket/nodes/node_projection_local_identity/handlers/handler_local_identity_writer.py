@@ -3,7 +3,8 @@
 """Postgres writer for local-identity-minted events.
 
 It applies the same pure plan the local store applies (``plan_local_identity_write``)
-inside one transaction: the registry check, the tenant setting, a lock on the
+after the registry check, which reads the mirror through its own binding, and then
+inside one transaction on the write binding: the tenant setting, a lock on the
 tenant, a read of its row, then at most one upsert. A written row is published
 as a snapshot delta; an exact replay that writes nothing republishes the stored
 row, since a publish can fail after the commit, and a later mint publishes nothing.
@@ -14,7 +15,6 @@ know is refused, so the runtime dead-letters the event and nothing is stored.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -22,6 +22,9 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.handler_projection_runtime_writer import (
+    RuntimeProjectionWriter,
+)
 from omnimarket.models.model_local_identity_minted import ModelLocalIdentityMinted
 from omnimarket.nodes.node_projection_local_identity.handlers.handler_projection_local_identity import (
     HandlerProjectionLocalIdentity,
@@ -91,10 +94,13 @@ def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
     return wired
 
 
-class LocalIdentityProjectionWriter(BaseProjectionRunner):
-    """Store each mint event's planned row under its tenant and publish it."""
+class HandlerLocalIdentityProjectionRunner(BaseProjectionRunner):
+    """Store each mint event's planned row under its tenant and publish it.
 
-    onex_runtime_inprocess_dispatch = True
+    The runtime dispatches ``LocalIdentityProjectionWriter`` below, which applies this
+    runner once per delivery with one pool per topology binding: its tables span the
+    tenant and internal schemas, and one pool is one login role.
+    """
 
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
@@ -127,29 +133,6 @@ class LocalIdentityProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no DLQ publisher configured for {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        return asyncio.run(self._project_one_message(data, meta))
-
-    async def _project_one_message(
-        self, data: dict[str, Any], meta: MessageMeta
-    ) -> dict[str, Any]:
-        await self.db.connect()
-        try:
-            rows = await self._project_event(data, meta)
-        finally:
-            await self._stop_producer()
-            await self.db.close()
-        return {"rows_upserted": len(rows), "identity_rows": rows}
-
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -167,8 +150,16 @@ class LocalIdentityProjectionWriter(BaseProjectionRunner):
         tenant = str(event.tenant_id)
         written: list[dict[str, Any]] = []
         replayed: list[dict[str, Any]] = []
-        async with self.db.pool.acquire() as conn, conn.transaction():
-            await confirm_registry_tenant(conn, tenant)
+        # The registry is read through the mirror's own binding, not the tenant
+        # write pool, whose role holds nothing on it. A tenant the registry does
+        # not know is refused here, before the write pool is touched.
+        await confirm_registry_tenant(
+            self.db_for("tenant_registry_mirror", operation="read"), tenant
+        )
+        async with (
+            self.db_for("local_identity", operation="write").pool.acquire() as conn,
+            conn.transaction(),
+        ):
             await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             await conn.execute(
                 "SELECT pg_advisory_xact_lock(hashtext($1))", f"local_identity:{tenant}"
@@ -209,4 +200,14 @@ class LocalIdentityProjectionWriter(BaseProjectionRunner):
         return written
 
 
-__all__ = ["LocalIdentityProjectionWriter", "confirm_registry_tenant"]
+class LocalIdentityProjectionWriter(RuntimeProjectionWriter):
+    """Runtime dispatch entrypoint: apply the runner once for each delivery."""
+
+    runner_type = HandlerLocalIdentityProjectionRunner
+
+
+__all__ = [
+    "HandlerLocalIdentityProjectionRunner",
+    "LocalIdentityProjectionWriter",
+    "confirm_registry_tenant",
+]

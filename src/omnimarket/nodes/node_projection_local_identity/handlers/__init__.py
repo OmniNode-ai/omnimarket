@@ -13,12 +13,16 @@ from omnimarket.models.model_local_identity_fold import (
     plan_local_identity_write,
 )
 
-from .handler_local_identity_writer import LocalIdentityProjectionWriter
+from .handler_local_identity_writer import (
+    HandlerLocalIdentityProjectionRunner,
+    LocalIdentityProjectionWriter,
+)
 from .handler_projection_local_identity import HandlerProjectionLocalIdentity
 
 __all__ = [
     "LOCAL_IDENTITY_KEY",
     "LOCAL_IDENTITY_TABLE",
+    "HandlerLocalIdentityProjectionRunner",
     "HandlerProjectionLocalIdentity",
     "LocalIdentityProjectionWriter",
     "apply_local_identity_minted",
