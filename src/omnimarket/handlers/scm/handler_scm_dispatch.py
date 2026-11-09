@@ -114,6 +114,13 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="job_log_tail",
         replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
+    # OMN-23308: the miss a lane meets before the filler reaches the job.
+    ModelScmVerb(
+        verb="job-log-fill",
+        node=_G,
+        operation="job_log_fill",
+        replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs (a job the cache does not hold)",
+    ),
     ModelScmVerb(
         verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
     ),
