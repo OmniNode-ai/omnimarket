@@ -8,7 +8,11 @@
            for the error end of the join, then ``DIR/last-run.json`` as the unit's evidence.
 ``--want golden|error|any``  which end of the join a ``run`` exercises (default any).
 ``--pr <owner/repo#n>``      pin the head instead of picking one.
-``--inject <break>``         swap in a named injected break (the failing control); refused unless the overlay allows it.
+``--inject <break>``         swap in a named injected break (the failing control); refused unless the overlay allows it and names a
+                           control_journal, where its chains are written, never to the floor's journal.
+``relocate-controls --cid <id> ...``  one-time move of control chains that an earlier run wrote to the floor's journal: each
+                           chain (piece 8 failed, no piece 9 event under its id) is appended to the control journal and removed
+                           from the floor's; any other id is refused and nothing is moved.
 
 Exit codes of ``run``: 0 both chains written; 2 the lab-bound check is still running inside its wait bound (nothing written);
 3 nothing could be judged (no overlay, stale or unreadable watcher state, no head serves the wanted end). ``tick`` exits 0
@@ -63,13 +67,17 @@ def _handler(
         state = json.loads(_expand(overlay.watcher_state_path).read_text())
     except (OSError, ValueError) as exc:
         raise WatcherStateError(f"watcher state is unreadable: {exc}") from exc
+    if inject is None:
+        journal = overlay.emission_journal
+    elif overlay.control_journal is None:
+        raise ValueError(
+            "an injected break needs the overlay's control_journal: it is never written to the floor's journal"
+        )
+    else:
+        journal = overlay.control_journal
     return HandlerLandingJoinJ8Live(
         subjects=WatcherLabCheckCollector(state, overlay, datetime.now(UTC), inject),
-        sink=JsonlEmissionSink(
-            _expand(
-                overlay.emission_journal if inject is None else overlay.control_journal
-            )
-        ),
+        sink=JsonlEmissionSink(_expand(journal)),
         overlay=overlay,
         policy=load_join_j8_policy(),
         clock=lambda: datetime.now(UTC),
@@ -128,6 +136,64 @@ def write_evidence(
     temporary.replace(target)
 
 
+def relocate_controls(
+    overlay: ModelJoinJ8LiveOverlay, cids: Sequence[str]
+) -> dict[str, int]:
+    """Move control chains out of the floor's journal into the control journal; all or nothing.
+
+    A chain moves only when it is the silent-landing shape: a piece 8 failure under the id and no piece 9 event. A chain
+    that piece 9 answered, or an id the journal does not hold, is a real chain or no chain, and refuses the whole move.
+    """
+    if overlay.control_journal is None:
+        raise ValueError(
+            "relocating control chains needs the overlay's control_journal"
+        )
+    floor = _expand(overlay.emission_journal)
+    try:
+        lines = floor.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError as exc:
+        raise ValueError(f"the floor's journal is unreadable: {exc}") from exc
+    wanted = set(cids)
+    moved: list[str] = []
+    kept: list[str] = []
+    seen: dict[str, dict[str, bool]] = {}
+    for line in lines:
+        try:
+            row = json.loads(line)
+            cid = row.get("correlation_id")
+        except ValueError:
+            cid = None
+        if cid in wanted:
+            moved.append(line)
+            flags = seen.setdefault(cid, {"piece8_failure": False, "piece9": False})
+            flags["piece9"] |= row.get("piece") == 9
+            flags["piece8_failure"] |= (
+                row.get("piece") == 8 and row.get("phase") == "failure"
+            )
+        else:
+            kept.append(line)
+    for cid in sorted(wanted):
+        shape = seen.get(cid)
+        if shape is None or shape["piece9"] or not shape["piece8_failure"]:
+            raise ValueError(
+                f"{cid} is not a control chain in the floor's journal (needs a piece 8 failure and no piece 9 event); nothing moved"
+            )
+    control = _expand(overlay.control_journal)
+    control.parent.mkdir(parents=True, exist_ok=True)
+    with control.open("a", encoding="utf-8") as handle:
+        handle.writelines(moved)
+    temporary = floor.with_name(f".{floor.name}.{os.getpid()}.tmp")
+    temporary.write_text("".join(kept), encoding="utf-8")
+    temporary.replace(floor)
+    return {"chains": len(wanted), "events": len(moved)}
+
+
+def _relocate(arguments: argparse.Namespace) -> int:
+    overlay = load_structured_overlay(OVERLAY_ID, ModelJoinJ8LiveOverlay)
+    sys.stdout.write(json.dumps(relocate_controls(overlay, arguments.cid)) + "\n")
+    return 0
+
+
 def _tick(state_dir: Path | None) -> int:
     """What the host unit runs: the golden end, then the error end, each its own real head and correlation id."""
     overlay = load_structured_overlay(OVERLAY_ID, ModelJoinJ8LiveOverlay)
@@ -149,15 +215,20 @@ def _tick(state_dir: Path | None) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="node_pr_landing_join_j8")
-    parser.add_argument("verb", nargs="?", choices=("run", "tick"), default="tick")
+    parser.add_argument(
+        "verb", nargs="?", choices=("run", "tick", "relocate-controls"), default="tick"
+    )
     parser.add_argument("--omni-home", type=Path)
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--want", choices=[w.value for w in EnumJ8Want], default="any")
     parser.add_argument("--pr")
     parser.add_argument("--correlation-id")
+    parser.add_argument("--cid", action="append", default=[])
     parser.add_argument("--inject", choices=[b.value for b in EnumJ8Break])
     arguments = parser.parse_args(argv)
     try:
+        if arguments.verb == "relocate-controls":
+            return _relocate(arguments)
         return (
             _run(arguments) if arguments.verb == "run" else _tick(arguments.state_dir)
         )

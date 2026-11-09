@@ -482,6 +482,88 @@ def test_control_silent_landing_run_leaves_the_floors_journal_unread_as_broken(
     assert _fold(control, late) == ("broken", ["downstream_missing_typed_failure"])
 
 
+def test_error_an_injected_break_without_a_control_journal_is_refused_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23087: an overlay with no control_journal (the one installed before the split) never lets a control reach the
+    floor's journal."""
+    journal = _install_overlay(tmp_path, monkeypatch, control_journal=None)
+    with redirect_stdout(io.StringIO()):
+        assert runtime_join_j8.main(["run", "--inject", "silent-landing"]) == 3
+    assert not journal.exists()
+    assert not (tmp_path / "controls.jsonl").exists()
+
+
+def _silent_landing_cid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert runtime_join_j8.main(["run", "--inject", "silent-landing"]) == 0
+    return str(json.loads(out.getvalue())["correlation_id"])
+
+
+def test_relocate_controls_moves_a_control_chain_out_of_the_floors_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The floor read J8 broken from control chains an earlier run wrote to its journal; moving them reads it passed."""
+    journal = _install_overlay(tmp_path, monkeypatch)
+    for want in ("golden", "error"):
+        with redirect_stdout(io.StringIO()):
+            assert runtime_join_j8.main(["run", "--want", want]) == 0
+    cid = _silent_landing_cid(tmp_path, monkeypatch)
+    control = tmp_path / "controls.jsonl"
+    with journal.open("a", encoding="utf-8") as handle:
+        handle.write(control.read_text())
+    control.unlink()
+    late = datetime.now(UTC) + timedelta(seconds=CHAIN_DEADLINE_S + 60)
+    floor = InMemoryEmissionSink()
+    floor.events.extend(
+        JsonlEmissionSink(journal).read(datetime(2000, 1, 1, tzinfo=UTC))
+    )
+    assert _fold(floor, late) == ("broken", ["downstream_missing_typed_failure"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert runtime_join_j8.main(["relocate-controls", "--cid", cid]) == 0
+    assert json.loads(out.getvalue()) == {"chains": 1, "events": 2}
+    floor = InMemoryEmissionSink()
+    floor.events.extend(
+        JsonlEmissionSink(journal).read(datetime(2000, 1, 1, tzinfo=UTC))
+    )
+    assert _fold(floor, late) == ("passed", [])
+    moved = InMemoryEmissionSink()
+    moved.events.extend(
+        JsonlEmissionSink(control).read(datetime(2000, 1, 1, tzinfo=UTC))
+    )
+    assert _fold(moved, late) == ("broken", ["downstream_missing_typed_failure"])
+
+
+def test_error_relocate_controls_refuses_a_real_chain_an_unknown_id_and_moves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = _install_overlay(tmp_path, monkeypatch)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert runtime_join_j8.main(["run", "--want", "golden"]) == 0
+    real = str(json.loads(out.getvalue())["correlation_id"])
+    before = journal.read_text()
+    for cid in (real, "0" * 32):
+        with redirect_stdout(io.StringIO()):
+            assert runtime_join_j8.main(["relocate-controls", "--cid", cid]) == 3
+    assert journal.read_text() == before
+    assert not (tmp_path / "controls.jsonl").exists()
+
+
+def test_error_relocate_controls_without_a_control_journal_moves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = _install_overlay(tmp_path, monkeypatch, control_journal=None)
+    with redirect_stdout(io.StringIO()):
+        assert runtime_join_j8.main(["run", "--want", "golden"]) == 0
+    before = journal.read_text()
+    with redirect_stdout(io.StringIO()):
+        assert runtime_join_j8.main(["relocate-controls", "--cid", "x"]) == 3
+    assert journal.read_text() == before
+
+
 def test_error_an_overlay_whose_control_journal_is_the_floors_journal_is_refused() -> (
     None
 ):

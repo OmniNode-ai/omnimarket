@@ -29,6 +29,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8_live.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23087-j8-control-journal
+  description: A named injected break writes to the overlay's control journal and is refused when the overlay names none, so it never leaves piece 8 failed and piece 9 silent in the floor's journal; relocate-controls moves control chains an earlier run left there and refuses a real chain. The tests fold the floor's journal broken without the split and passed with it.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8_live.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23087-j8-floor
   description: The served floor reads J8 as passed. Hosted CI cannot reach the floor host (the URL is in FLOOR_SIMPLE_URL), so only the local Done gate runs this unbound check. It reads passed only after the landing-join-j8 unit is installed on the floor host with its overlay.
   source: manual

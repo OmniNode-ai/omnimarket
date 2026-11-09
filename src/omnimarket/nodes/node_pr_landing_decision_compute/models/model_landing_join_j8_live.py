@@ -70,7 +70,8 @@ class ModelJoinJ8LiveOverlay(BaseModel):
     #: Where a named injected break writes its chains. A failing control is evidence for the join's reading, never for the
     #: floor: a control chain in the floor's journal is a real broken chain on the floor (piece 8 failed, piece 9 silent for
     #: the deadline), so the control gets a journal of its own and the two must differ.
-    control_journal: str = Field(min_length=1)
+    #: Absent means no injected break can run under this overlay: it is refused, never written to the floor's journal.
+    control_journal: str | None = Field(default=None, min_length=1)
     #: A drill run is tagged so no join counts it as evidence.
     drill: bool
     #: Whether this overlay may run a named injected break (the join's failing control).
@@ -78,7 +79,10 @@ class ModelJoinJ8LiveOverlay(BaseModel):
 
     @model_validator(mode="after")
     def _control_journal_is_not_the_floors(self) -> ModelJoinJ8LiveOverlay:
-        if self.control_journal == self.emission_journal:
+        if (
+            self.control_journal is not None
+            and self.control_journal == self.emission_journal
+        ):
             raise ValueError(
                 "control_journal must differ from emission_journal: an injected break written to the floor's journal reads as a real broken chain"
             )
