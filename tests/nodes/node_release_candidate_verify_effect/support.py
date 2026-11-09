@@ -268,14 +268,28 @@ def install_uv_tool(base: Path, wheel_dir: Path) -> tuple[str, str]:
 
 
 def pip_template_from_stub_install(
-    base: Path, wheel_dir: Path
+    base: Path, wheel_dir: Path, installer_python: Path | None = None
 ) -> ModelLauncherTemplate:
-    """The launcher template of whatever pip this interpreter bundles, generated from a stub install."""
+    """The launcher template of the pip that writes the install, generated from a stub install.
+
+    That pip is the one this interpreter bundles, or the one the given interpreter carries (pipx's shared pip).
+    """
     stub = base / "pip-template-stub"
     _run([sys.executable, "-m", "venv", str(stub)])
+    pip_cmd = (
+        [str(stub / "bin" / "pip")]
+        if installer_python is None
+        else [
+            str(installer_python),
+            "-m",
+            "pip",
+            "--python",
+            str(stub / "bin" / "python"),
+        ]
+    )
     _run(
         [
-            str(stub / "bin" / "pip"),
+            *pip_cmd,
             "install",
             "-q",
             "--no-index",
@@ -295,7 +309,13 @@ def pip_template_from_stub_install(
     )
     text = text.replace("sys.exit(cli())", "sys.exit({target_attr}())")
     pip_version = subprocess.run(
-        [str(stub / "bin" / "pip"), "--version"],
+        [
+            str(stub / "bin" / "pip")
+            if installer_python is None
+            else str(installer_python),
+            *([] if installer_python is None else ["-m", "pip"]),
+            "--version",
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -310,14 +330,14 @@ def pip_template_from_stub_install(
 
 
 def overlay_with_bundled_pip(
-    base: Path, wheel_dir: Path
+    base: Path, wheel_dir: Path, installer_python: Path | None = None
 ) -> ModelReleaseCandidateOverlay:
     default = load_default_overlay()
     return default.model_copy(
         update={
             "launcher_templates": (
                 *default.launcher_templates,
-                pip_template_from_stub_install(base, wheel_dir),
+                pip_template_from_stub_install(base, wheel_dir, installer_python),
             )
         }
     )

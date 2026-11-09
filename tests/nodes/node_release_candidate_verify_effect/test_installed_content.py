@@ -61,12 +61,13 @@ def test_untouched_pipx_passes(
     manifest: ModelReleaseCandidateManifest, wheel_dir: Path, tmp_path: Path
 ) -> None:
     prefix, onex = support.install_pipx(tmp_path, wheel_dir)
-    # Without pipx the pip venv it wraps is used, and that pip may write a launcher no checked-in
-    # template covers; its template is then generated from a stub install, as the overlay's were.
-    overlay = (
-        None
-        if shutil.which("pipx")
-        else support.overlay_with_bundled_pip(tmp_path, wheel_dir)
+    # The pip that writes the launcher (pipx's shared pip, else the bundled one) may write one no
+    # checked-in template covers; its template is then generated from a stub install, as the overlay's were.
+    shared_python = tmp_path / "pipx-home" / "shared" / "bin" / "python"
+    overlay = support.overlay_with_bundled_pip(
+        tmp_path,
+        wheel_dir,
+        shared_python if shutil.which("pipx") and shared_python.exists() else None,
     )
     result = HandlerReleaseCandidateVerify().handle(
         support.request(manifest, prefix, onex, overlay)
