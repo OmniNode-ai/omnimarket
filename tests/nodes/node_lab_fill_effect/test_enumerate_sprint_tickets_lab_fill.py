@@ -9,7 +9,8 @@ and then raises LabFillSourceCutError when the cost is more.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 import pytest
 
@@ -27,8 +28,8 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import (
 from .fakes import FakeClock
 
 
-def _issue(n: int, state: str = "started", **over: object) -> LabFillIssueNode:
-    base = {
+def _issue(n: int, state: str = "started", **over: Any) -> LabFillIssueNode:
+    base: dict[str, Any] = {
         "ticket": f"OMN-{n}",
         "title": f"title {n}",
         "state_type": state,
@@ -43,12 +44,11 @@ def _issue(n: int, state: str = "started", **over: object) -> LabFillIssueNode:
         "prs": (),
         "merged_implementations": (),
     }
-    base.update(over)
-    return LabFillIssueNode(**base)  # type: ignore[arg-type]
+    return replace(LabFillIssueNode(**base), **over)
 
 
-def _pr(n: int, ticket: int, **over: object) -> LabFillWatcherPr:
-    base = {
+def _pr(n: int, ticket: int, **over: Any) -> LabFillWatcherPr:
+    base: dict[str, Any] = {
         "repo": "omnimarket",
         "number": n,
         "title": f"fix(OMN-{ticket}): x",
@@ -60,11 +60,10 @@ def _pr(n: int, ticket: int, **over: object) -> LabFillWatcherPr:
         "ci_head_matches": True,
         "ci_verdict": "GREEN",
     }
-    base.update(over)
-    return LabFillWatcherPr(**base)  # type: ignore[arg-type]
+    return replace(LabFillWatcherPr(**base), **over)
 
 
-def _request(**over: object) -> ModelLabFillSprintTicketsRequest:
+def _request(**over: Any) -> ModelLabFillSprintTicketsRequest:
     base: dict[str, object] = {
         "project_id": "proj",
         "ticket_state_types": ("backlog", "unstarted", "started"),
@@ -77,7 +76,7 @@ def _request(**over: object) -> ModelLabFillSprintTicketsRequest:
         "stage_floor_s": 10.0,
     }
     base.update(over)
-    return ModelLabFillSprintTicketsRequest(**base)  # type: ignore[arg-type]
+    return ModelLabFillSprintTicketsRequest.model_validate(base)
 
 
 @dataclass

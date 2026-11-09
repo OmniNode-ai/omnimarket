@@ -9,7 +9,8 @@ and then raises LabFillSourceCutError when the cost is more.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -40,7 +41,7 @@ KINDS = ("process-fix", "partial-node", "wiring")
 BASES = ("linear-state", "acceptance-on-main", "merged-history", "duplicate")
 
 
-def _row(n: int, **over: object) -> dict[str, object]:
+def _row(n: int, **over: Any) -> dict[str, object]:
     row: dict[str, object] = {
         "id": f"row-{n}",
         "kind": "process-fix",
@@ -55,8 +56,8 @@ def _row(n: int, **over: object) -> dict[str, object]:
     return row
 
 
-def _ticket(n: int, state: str = "started", **over: object) -> LabFillApprovedTicket:
-    base = {
+def _ticket(n: int, state: str = "started", **over: Any) -> LabFillApprovedTicket:
+    base: dict[str, Any] = {
         "ticket": f"OMN-{n}",
         "state_type": state,
         "assignee_id": "",
@@ -66,11 +67,10 @@ def _ticket(n: int, state: str = "started", **over: object) -> LabFillApprovedTi
         "prs": (),
         "merged_implementations": (),
     }
-    base.update(over)
-    return LabFillApprovedTicket(**base)  # type: ignore[arg-type]
+    return replace(LabFillApprovedTicket(**base), **over)
 
 
-def _request(**over: object) -> ModelLabFillApprovedWorkRequest:
+def _request(**over: Any) -> ModelLabFillApprovedWorkRequest:
     base: dict[str, object] = {
         "path": "approved.json",
         "kinds": KINDS,
@@ -81,7 +81,7 @@ def _request(**over: object) -> ModelLabFillApprovedWorkRequest:
         "stage_floor_s": 10.0,
     }
     base.update(over)
-    return ModelLabFillApprovedWorkRequest(**base)  # type: ignore[arg-type]
+    return ModelLabFillApprovedWorkRequest.model_validate(base)
 
 
 @dataclass
