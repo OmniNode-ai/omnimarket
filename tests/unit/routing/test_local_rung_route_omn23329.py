@@ -58,7 +58,6 @@ def _reset() -> None:
     routing._config_binding = None
     routing._config_spread_peers = None
     routing._config_spread_weights = None
-    routing._config_lead_refs = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
 

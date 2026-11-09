@@ -29,16 +29,16 @@ placed ladder, and :func:`placement_digest` lets the replay-provenance hash
 cover the placement as well as the tiers file.
 
 A placement whose ``mode`` is ``lead`` (OMN-23329) is mirrored BEFORE the tier's
-own rungs and :func:`lead_refs` names it, so the routing reducer tries it first
-for the classes it names and falls through to the tier's rungs for any request
-it cannot take.
+own rungs, as a :class:`ModelLeadTierModel`, so the routing reducer tries it first
+for the classes it names and falls through to the tier's rungs for any request it
+cannot take.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from omnibase_infra.errors import ProtocolConfigurationError
 
@@ -58,6 +58,33 @@ from omnimarket.models.delegation.wire import (
     ModelRoutingTier,
     ModelTierModel,
 )
+
+
+class ModelLeadTierModel(ModelTierModel):
+    """A tier entry mirrored by a ``lead`` placement (OMN-23329).
+
+    The same entry as its parent, kept as its own type so the routing reducer can
+    tell a lead rung from the tier's own rungs without a second source of truth
+    that could drift from the ladder it was applied to.
+    """
+
+
+def _entry_type(placement: ModelDelegationBackendPlacement) -> type[ModelTierModel]:
+    if placement.mode is EnumBackendPlacementMode.LEAD:
+        return ModelLeadTierModel
+    return ModelTierModel
+
+
+def lead_models(tier_models: Sequence[ModelTierModel]) -> tuple[ModelTierModel, ...]:
+    """The lead-placed entries of a tier, in ladder order (OMN-23329)."""
+    return tuple(m for m in tier_models if isinstance(m, ModelLeadTierModel))
+
+
+def lead_refs_in(config: ModelDelegationConfig) -> frozenset[str]:
+    """The ``backend_ref`` of every lead-placed entry in ``config`` (OMN-23329)."""
+    return frozenset(
+        m.backend_ref for tier in config.tiers for m in lead_models(tier.models)
+    )
 
 
 def _refuse(backend_id: str, reason: str) -> ProtocolConfigurationError:
@@ -83,7 +110,7 @@ def _mirror(
                 f"use_for {sorted(placement.use_for)} shares no task class with "
                 f"rung {rung.backend_ref!r} (rung use_for: {sorted(rung.use_for)})",
             )
-    return ModelTierModel(
+    return _entry_type(placement)(
         # The placed backend's own served id: routing sends a local tier's
         # entry id as the request model, and the served-model guard checks it.
         id=backend.model_name,
@@ -103,7 +130,7 @@ def _standalone(
     """A rung declared by the placement alone (OMN-20376), with its own use_for."""
     assert placement.use_for is not None  # the placement model enforces it
     fast_path = placement.fast_path_threshold_tokens
-    return ModelTierModel(
+    return _entry_type(placement)(
         id=backend.model_name,
         backend_ref=backend.backend_id,
         max_context_tokens=placement.max_context_tokens,
@@ -195,20 +222,44 @@ def spread_groups(
     return {rung: tuple(peers) for rung, peers in groups.items()}
 
 
-def lead_refs(
-    placed: Sequence[ModelPlacedDelegationBackend],
-) -> frozenset[str]:
-    """The ``backend_id`` of every lead-mode placed backend (OMN-23329).
+def pick_spread_member(
+    selected: ModelTierModel,
+    tier_models: Sequence[ModelTierModel],
+    task_type: str,
+    estimated_tokens: int,
+    exclude_backend_refs: frozenset[str],
+    spread_peers: dict[str, tuple[str, ...]],
+    member_weights: dict[str, float],
+    spread_key: str,
+    routable: Callable[[str], bool],
+) -> ModelTierModel:
+    """One member of ``selected``'s spread group, by stable hash of ``spread_key``.
 
-    A lead backend is the first rung of its tier for the task classes its
-    placement names. Routing tries it ahead of the class's model pin; a ladder
-    with no lead placement yields an empty set and routes as before.
+    The group is ``selected`` plus each spread peer of it that is not excluded, is
+    ``routable``, declares ``task_type`` and fits ``estimated_tokens``; each member
+    takes the share its placement weight declares (``selected``'s is 1.0). A group
+    of one returns ``selected`` (OMN-19215 AC4).
     """
-    return frozenset(
-        backend.backend_id
-        for backend in placed
-        if backend.placement.mode is EnumBackendPlacementMode.LEAD
-    )
+    group: list[ModelTierModel] = [selected]
+    for peer_ref in spread_peers.get(selected.backend_ref, ()):
+        if peer_ref in exclude_backend_refs or not routable(peer_ref):
+            continue
+        member = next(
+            (
+                model
+                for model in tier_models
+                if model.backend_ref == peer_ref
+                and task_type in model.use_for
+                and estimated_tokens <= model.max_context_tokens
+            ),
+            None,
+        )
+        if member is not None:
+            group.append(member)
+    if len(group) == 1:
+        return selected
+    weights = [1.0, *(member_weights.get(m.backend_ref, 1.0) for m in group[1:])]
+    return group[spread_pick(spread_key, weights)]
 
 
 def spread_weights(
@@ -289,9 +340,12 @@ def load_bound_bifrost_placements() -> tuple[ModelPlacedDelegationBackend, ...]:
 
 
 __all__: list[str] = [
+    "ModelLeadTierModel",
     "apply_backend_placements",
-    "lead_refs",
+    "lead_models",
+    "lead_refs_in",
     "load_bound_bifrost_placements",
+    "pick_spread_member",
     "placement_digest",
     "spread_groups",
     "spread_index",

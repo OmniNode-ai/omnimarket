@@ -56,11 +56,13 @@ def _free_local(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _drive_to_gate(handler: HandlerDelegationWorkflow, cid: UUID) -> None:
     handler.handle_delegation_request(
-        ModelDelegationRequest(
-            prompt="Summarize: the build passed.",
-            task_type=_TASK,  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
+        ModelDelegationRequest.model_validate(
+            {
+                "prompt": "Summarize: the build passed.",
+                "task_type": _TASK,
+                "correlation_id": cid,
+                "emitted_at": datetime.now(UTC),
+            }
         )
     )
     handler.handle_routing_decision(
