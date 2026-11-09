@@ -4715,5 +4715,7 @@
   "tests/unit/nodes/node_landing_canary_effect/test_review_findings_omn23069.py": 0.32,
   "tests/unit/nodes/node_product_floor_verdict_compute/test_mvp_launch.py": 0.3,
   "tests/unit/nodes/node_secret_reading_effect/test_rotation_readback_findings.py": 0.05,
-  "tests/unit/nodes/node_work_ledger_query_effect/test_review_findings_omn23069_ledgerq.py": 0.24
+  "tests/unit/nodes/node_work_ledger_query_effect/test_review_findings_omn23069_ledgerq.py": 0.24,
+  "tests/nodes/node_silent_failure_alarm_compute/test_closer_staleness_omn20718.py": 0.64,
+  "tests/test_omn20718_zero_flip_reading.py": 0.01
 }
