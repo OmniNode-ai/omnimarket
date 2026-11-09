@@ -28,5 +28,15 @@ class EnumBackendPlacementMode(StrEnum):
     retries the other members, as with ``FALLBACK``.
     """
 
+    LEAD = "lead"
+    """Is the first rung of its tier for the classes it names (OMN-23329).
+
+    The mirrored entry is placed BEFORE the tier's own rungs, and the routing
+    reducer tries it ahead of the class's model pin. A request the entry cannot
+    take (class, context, unroutable, excluded) falls through to the tier's own
+    rungs unchanged. A quality-gate miss on a lead rung excludes it for the
+    rest of that workflow, so the retry lands on the next rung of the tier.
+    """
+
 
 __all__: list[str] = ["EnumBackendPlacementMode"]
