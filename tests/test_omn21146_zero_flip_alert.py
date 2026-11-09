@@ -96,6 +96,7 @@ def test_no_deferred_tickets_suppresses_alert_but_preserves_friction() -> None:
     assert result.zero_flip_alert is None
     assert result.completion_rows is not None
     assert [row.split(" | ")[1] for row in result.completion_rows] == [
+        "STATUS",
         "FRICTION",
         "TERMINAL",
     ]
@@ -107,7 +108,10 @@ def test_one_run_below_threshold_has_no_alert() -> None:
     assert result.zero_flip_streak == 2
     assert result.zero_flip_alert is None
     assert result.completion_rows is not None
-    assert [row.split(" | ")[1] for row in result.completion_rows] == ["TERMINAL"]
+    assert [row.split(" | ")[1] for row in result.completion_rows] == [
+        "STATUS",
+        "TERMINAL",
+    ]
 
 
 def test_a_flip_resets_the_streak_and_suppresses_alert() -> None:
@@ -121,8 +125,8 @@ def test_a_flip_resets_the_streak_and_suppresses_alert() -> None:
 @pytest.mark.parametrize(
     ("threshold", "expected_rows", "expected_health"),
     [
-        (5, ["TERMINAL"], EnumCloserHealth.GREEN),
-        (3, ["FRICTION", "TERMINAL"], EnumCloserHealth.RED),
+        (5, ["STATUS", "TERMINAL"], EnumCloserHealth.GREEN),
+        (3, ["STATUS", "FRICTION", "TERMINAL"], EnumCloserHealth.RED),
     ],
 )
 def test_threshold_input_controls_alert_friction_and_health(
