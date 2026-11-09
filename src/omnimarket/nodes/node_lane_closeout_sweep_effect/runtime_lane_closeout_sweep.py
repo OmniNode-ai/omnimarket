@@ -36,6 +36,9 @@ EXIT_OK = 0
 EXIT_UNREADABLE = 2
 EXIT_UNRECORDED = 3
 HOST_ENV = "LAB_WORK_HOST_NAME"
+UNRECORDED_NAMED = (
+    20  # the reading names this many lanes; ``unrecorded`` counts them all
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         "host": result.host,
         "ended_lanes": result.ended_lanes,
         "unrecorded": result.unrecorded,
-        "unrecorded_lanes": list(result.unrecorded_lanes),
+        "unrecorded_lanes": list(result.unrecorded_lanes[:UNRECORDED_NAMED]),
         "closed": len(result.closed),
         "closed_complete": sum(1 for r in result.closed if r.complete),
         "closed_kept": sum(1 for r in result.closed if not r.complete),
