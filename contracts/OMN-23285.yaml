@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23285
+title: composed-runtime-boot provisions Python 3.12 with retries instead of a bare github.com interpreter download on ubuntu-latest
+summary: ubuntu-latest is now ubuntu-26.04 with no Python 3.12, so the first uv run in the infra checkout (make up-local, step "Build the infra runtime image at the pinned ref") downloaded cpython from github.com and failed intermittently on a 504 or a request timeout. The job now installs the interpreter in its own step after the infra checkout, retrying a failed download for a declared number of attempts and failing loudly when all fail, and every other step is told never to download one. No step is removed or skipped.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23285-provision-python-with-retries
+  statement: The composed-runtime-boot job installs Python 3.12 in a retrying step before the infra build, and the build step no longer downloads an interpreter.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the composed-runtime-boot job provisions Python 3.12 before the infra build through a step that retries a failed download, and the build step no longer downloads an interpreter -- falsifier: uv run pytest tests -q -k composed_runtime_boot_python in omnimarket, a workflow-shape test that fails on the old workflow'
+  - id: AC2
+    statement: 'AC2: composed-runtime-boot reads green on omnimarket#5515 and two other affected open PRs at their newest heads after the change, with no step removed or skipped -- falsifier: pr_state_local.py on those PRs shows no composed-runtime-boot in red, and git diff shows no step removed'
+evidence_requirements:
+- kind: tests
+  description: Five workflow-shape and behaviour tests over the job's own provisioning step, including an injected break where every download attempt fails, all failing on the old workflow.
+  command: uv run --frozen pytest tests/unit/docker/test_composed_runtime_boot_python_provision.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23285-ac1-provision-step
+  description: Reads the workflow and runs the provisioning step's own script against a stand-in uv that fails the first two installs (passes on the third, then reads the interpreter back) and one that fails every install (the step exits 1 with an error line naming the attempt count). The named break is the old workflow, which has no provisioning step and lets the build step download the interpreter.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/docker/test_composed_runtime_boot_python_provision.py -k composed_runtime_boot_python -q --no-cov
+    cwd: .
+- id: dod-omn23285-ac2-no-step-removed
+  description: The workflow diff against the base adds one step and job settings and removes no step line; the live reading of composed-runtime-boot on the affected open pull requests is taken from the PR watcher after the push.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/docker/test_composed_runtime_boot_python_provision.py -k provision_step_comes_before -q --no-cov
+    cwd: .
+- id: dod-omn23285-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23285 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/docker/test_composed_runtime_boot_python_provision.py -q --no-cov
+    cwd: .
