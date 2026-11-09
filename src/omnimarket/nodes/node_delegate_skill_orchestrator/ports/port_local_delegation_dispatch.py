@@ -120,6 +120,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_delegation_context_strategy import (
+    EnumDelegationContextStrategy,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
@@ -132,6 +135,11 @@ from omnimarket.handlers.delegation_model_scope import (
     read_model_scope,
 )
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
+from omnimarket.handlers.handler_capability_start import (
+    ProtocolCapabilityCellReader,
+    read_capability_cells,
+    resolve_capability_cell_reader,
+)
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
@@ -232,6 +240,13 @@ from omnimarket.models.delegation.model_paid_rung_decision import (
 from omnimarket.models.delegation.model_secret_request_refusal import (
     load_secret_request_refusal,
 )
+from omnimarket.models.delegation.model_shrink_retry import ModelShrinkRetryCaps
+from omnimarket.models.delegation.model_shrink_retry_outcome import (
+    EnumShrinkRetryResolution,
+    ModelShrinkRetryOutcome,
+    ModelShrinkUnitOutcome,
+    ModelShrinkWholeCheck,
+)
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
@@ -263,6 +278,10 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.model_delegation_split_recombine import (
+    EnumDelegationSizeBand,
+    ModelDelegationSplitUnit,
+)
 from omnimarket.models.model_usage_call_event import ModelUsageCallEvent
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     current_dispatch_progress,
@@ -270,6 +289,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_test_run import (
     HandlerNamedTestRun,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry import (
+    HandlerShrinkRetry,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
@@ -349,12 +371,16 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
+    resolve_task_class_shrink_caps,
     resolve_task_class_tier_order,
     resolve_task_class_transitions,
     shipped_house_credential_refs,
     sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
+)
+from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_policy import (
+    next_best_configuration,
 )
 
 # Import the canonical effect via its public package surface (not its internal
@@ -1648,8 +1674,14 @@ class LocalDelegationDispatchPort:
         named_test_runner: _NamedTestRunner | None = None,
         answer_judge: _AnswerJudge | None = None,
         clock: Callable[[], float] | None = None,
+        capability_cell_reader: ProtocolCapabilityCellReader | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-20172: the capability map's cells, read to find the second MET
+        # configuration a rubric-failed model may be retried with. None resolves
+        # the live reader on first use (None again when no projection DSN is set),
+        # and no reader means the swap rung is skipped.
+        self._capability_cell_reader = capability_cell_reader
         # OMN-21214: the monotonic clock the rung deadlines are kept on. Tests
         # inject one so a slow rung costs no wall time. Without one, the port
         # reads ``_ladder_clock`` when it is called, so the OMN-17427 run budget
@@ -2457,7 +2489,21 @@ class LocalDelegationDispatchPort:
                 )
             return next_backend
 
+        # OMN-20172: the one configuration swap per model per request. The swapped
+        # configuration applies to the next attempt on that backend and model only.
+        config_swap_counts: dict[tuple[str, str], int] = {}
+        swapped_configuration: ModelAttemptConfiguration | None = None
+        swapped_key: tuple[str, str] | None = None
         while True:
+            attempt_temperature, attempt_max_tokens = temperature, max_tokens
+            if swapped_configuration is not None and swapped_key == (
+                backend.backend_id,
+                backend.model_id,
+            ):
+                if swapped_configuration.temperature is not None:
+                    attempt_temperature = swapped_configuration.temperature
+                if swapped_configuration.max_tokens is not None:
+                    attempt_max_tokens = swapped_configuration.max_tokens
             # OMN-19987: a backend chosen for this pass is a routing decision;
             # a retry on the backend already chosen is not a new one.
             run_steps.routing(
@@ -2657,7 +2703,9 @@ class LocalDelegationDispatchPort:
                         "host": endpoint_host(backend.endpoint_ref),
                         # OMN-20168: what this rung was sent with, and the request's band.
                         "configuration": _attempt_configuration(
-                            backend, max_tokens=max_tokens, temperature=temperature
+                            backend,
+                            max_tokens=attempt_max_tokens,
+                            temperature=attempt_temperature,
                         ),
                         "size_band": attempt_size_band,
                         "acceptance_decision": (
@@ -2871,7 +2919,7 @@ class LocalDelegationDispatchPort:
                 prompt=prompt,
                 task_type=task_type,
                 correlation_id=correlation_id,
-                max_tokens=max_tokens,
+                max_tokens=attempt_max_tokens,
                 quality_contract_mode=quality_contract_mode,
                 acceptance_criteria=acceptance_criteria,
                 response_contract=response_contract,
@@ -2881,7 +2929,7 @@ class LocalDelegationDispatchPort:
                 # first retry would be the same fidelity defect, just harder to
                 # observe.
                 system_prompt=system_prompt,
-                temperature=temperature,
+                temperature=attempt_temperature,
                 response_format=response_format,
                 run_steps=run_steps,
                 # OMN-21077: every rung's answer is tested, not only the first.
@@ -2994,7 +3042,9 @@ class LocalDelegationDispatchPort:
                             transport_failure_class,
                             transport_failure_message,
                             configuration=_attempt_configuration(
-                                backend, max_tokens=max_tokens, temperature=temperature
+                                backend,
+                                max_tokens=attempt_max_tokens,
+                                temperature=attempt_temperature,
                             ),
                             size_band=attempt_size_band,
                         )
@@ -3129,7 +3179,9 @@ class LocalDelegationDispatchPort:
                         "host": endpoint_host(backend.endpoint_ref),
                         # OMN-20168: what this rung was sent with, and the request's band.
                         "configuration": _attempt_configuration(
-                            backend, max_tokens=max_tokens, temperature=temperature
+                            backend,
+                            max_tokens=attempt_max_tokens,
+                            temperature=attempt_temperature,
                         ),
                         "size_band": attempt_size_band,
                         "http_status": transport_result.http_status,
@@ -3543,7 +3595,9 @@ class LocalDelegationDispatchPort:
                         "host": endpoint_host(backend.endpoint_ref),
                         # OMN-20168: what this rung was sent with, and the request's band.
                         "configuration": _attempt_configuration(
-                            backend, max_tokens=max_tokens, temperature=temperature
+                            backend,
+                            max_tokens=attempt_max_tokens,
+                            temperature=attempt_temperature,
                         ),
                         "size_band": attempt_size_band,
                         "http_status": earlier.http_status,
@@ -3586,7 +3640,9 @@ class LocalDelegationDispatchPort:
                     "host": endpoint_host(backend.endpoint_ref),
                     # OMN-20168: what this rung was sent with, and the request's band.
                     "configuration": _attempt_configuration(
-                        backend, max_tokens=max_tokens, temperature=temperature
+                        backend,
+                        max_tokens=attempt_max_tokens,
+                        temperature=attempt_temperature,
                     ),
                     "size_band": attempt_size_band,
                     "http_status": result.http_status,
@@ -3652,6 +3708,104 @@ class LocalDelegationDispatchPort:
             ):
                 best_content = result.content
                 best_content_score = gate_result.quality_score
+
+            # OMN-20172: a rubric failure climbs the ladder before the chain
+            # escalates: one configuration swap on this model and backend, then
+            # shrink (units on this model and backend, the whole checked), then
+            # the existing escalation below.
+            shrink_caps = (
+                resolve_task_class_shrink_caps(task_type)
+                if (
+                    not quality_passed
+                    and gate_result.fail_category == "rubric_failed"
+                    and not secret_request_refused
+                    and not no_escalation
+                    and pinned_backend_id is None
+                )
+                else None
+            )
+            if shrink_caps is not None:
+                swap_key = (backend.backend_id, backend.model_id)
+                shrink_ports = _LocalShrinkPorts(
+                    run_attempt=self._run_single_attempt,
+                    is_accepted=self._is_quality_accepted,
+                    next_backend=self._resolve_next_backend,
+                    evaluate_gate=self._evaluate_quality_gate,
+                    caps=shrink_caps,
+                    backend=backend,
+                    task_type=task_type,
+                    prompt=prompt,
+                    correlation_id=correlation_id,
+                    max_tokens=attempt_max_tokens,
+                    temperature=attempt_temperature,
+                    quality_contract_mode=quality_contract_mode,
+                    acceptance_criteria=acceptance_criteria,
+                    system_prompt=system_prompt,
+                    response_format=response_format,
+                    size_band=attempt_size_band,
+                )
+                settled = await self._settle_rubric_failure(
+                    caps=shrink_caps,
+                    backend=backend,
+                    task_type=task_type,
+                    prompt=prompt,
+                    tenant_id=resolved_tenant_id,
+                    correlation_id=correlation_id,
+                    attempts=attempts,
+                    swaps_used=config_swap_counts.get(swap_key, 0),
+                    current_configuration=ModelAttemptConfiguration.model_validate(
+                        _attempt_configuration(
+                            backend,
+                            max_tokens=attempt_max_tokens,
+                            temperature=attempt_temperature,
+                        )
+                    ),
+                    ports=shrink_ports,
+                )
+                if True:
+                    if settled.resolution is EnumShrinkRetryResolution.CONFIG_SWAP:
+                        assert settled.configuration is not None
+                        config_swap_counts[swap_key] = (
+                            config_swap_counts.get(swap_key, 0) + 1
+                        )
+                        swapped_configuration = settled.configuration
+                        swapped_key = swap_key
+                        attempts[-1]["acceptance_detail"] = (
+                            f"{attempts[-1].get('acceptance_detail') or ''} "
+                            "transition=retry:rubric_failed:config_swap"
+                        ).strip()
+                        logger.info(
+                            "LocalDelegationDispatch: configuration swap "
+                            "task_type=%s backend=%s model=%s correlation=%s",
+                            task_type,
+                            backend.backend_id,
+                            backend.model_id,
+                            correlation_id,
+                        )
+                        continue
+                    attempts.extend(settled.events)
+                    for event in settled.events:
+                        event_cost = Decimal(str(event.get("cost_usd") or 0))
+                        cumulative_cost_usd += event_cost
+                    if (
+                        settled.resolution is EnumShrinkRetryResolution.ACCEPTED
+                        and shrink_ports.whole_gate_result is not None
+                        and settled.answer is not None
+                    ):
+                        gate_result = shrink_ports.whole_gate_result
+                        result = result.model_copy(update={"content": settled.answer})
+                        quality_passed = True
+                        acceptance_decision = EnumDelegationAcceptanceDecision.ACCEPT
+                        logger.info(
+                            "LocalDelegationDispatch: shrink accepted the recombined "
+                            "whole task_type=%s backend=%s units=%d depth=%d "
+                            "correlation=%s",
+                            task_type,
+                            backend.backend_id,
+                            settled.unit_attempts,
+                            settled.split_depth,
+                            correlation_id,
+                        )
 
             if quality_passed:
                 # OMN-16419: prefer the LIVE-CONFIRMED served model id (set by
@@ -4150,6 +4304,70 @@ class LocalDelegationDispatchPort:
             )
             escalation_count += 1
             backend = _with_model_choice(next_backend)
+
+    async def _settle_rubric_failure(
+        self,
+        *,
+        caps: ModelShrinkRetryCaps,
+        backend: ModelResolvedDelegationBackend,
+        task_type: str,
+        prompt: str,
+        tenant_id: str,
+        correlation_id: UUID,
+        attempts: list[dict[str, object]],
+        swaps_used: int,
+        current_configuration: ModelAttemptConfiguration,
+        ports: _LocalShrinkPorts,
+    ) -> ModelShrinkRetryOutcome:
+        """The ladder's next move for a rubric-failed whole attempt (OMN-20172).
+
+        A class that declares no caps never reaches here and keeps the existing
+        escalation exactly. The second configuration is a read of the
+        capability map's stored cells; nothing is searched on a live request.
+        """
+        band = _measured_size_band(
+            task_type=task_type, prompt=prompt, acceptance_criteria=()
+        )
+        second: ModelAttemptConfiguration | None = None
+        if band is not None and swaps_used < caps.max_config_swaps:
+            reader = self._capability_cell_reader
+            if reader is None:
+                reader = resolve_capability_cell_reader()
+            cells = read_capability_cells(
+                reader, task_class=task_type, tenant_id=tenant_id
+            )
+            if cells:
+                candidate = next_best_configuration(
+                    cells,
+                    model_key=backend.model_id,
+                    backend_id=backend.backend_id,
+                    task_class=task_type,
+                    size_band=band,
+                    current=current_configuration,
+                )
+                # A configuration the dispatch cannot express is not a second
+                # configuration here: only call parameters it sets are applied.
+                if (
+                    candidate is not None
+                    and candidate.top_p is None
+                    and candidate.reasoning_effort is None
+                    and candidate.context_strategy_id
+                    is EnumDelegationContextStrategy.FULL_CONTEXT
+                ):
+                    second = candidate
+        split_band = _SPLIT_BANDS.get(band.value) if band is not None else None
+        return await HandlerShrinkRetry().settle(
+            task_id=str(correlation_id),
+            task_class=task_type,
+            size_band=split_band,
+            source=prompt,
+            caps=caps,
+            config_swaps_used=swaps_used,
+            second_configuration=second,
+            ports=ports,
+            correlation_id=correlation_id,
+            failed_attempt_index=len(attempts) - 1,
+        )
 
     def _is_quality_accepted(
         self,
@@ -6288,6 +6506,187 @@ class _AttemptOutcome:
         # OMN-21077: the gate validated a response contract in place of the
         # class DoD, so the executed-test rule is not the check set in force.
         self.response_contract_governed = response_contract_governed
+
+
+_SPLIT_BANDS: dict[str, EnumDelegationSizeBand] = {
+    "S": EnumDelegationSizeBand.SMALL,
+    "M": EnumDelegationSizeBand.MEDIUM,
+    "L": EnumDelegationSizeBand.LARGE,
+}
+
+
+class _LocalShrinkPorts:
+    """The model calls of the shrink path, made through this port's own attempt (OMN-20172).
+
+    Units run on the backend that failed, with the request's own acceptance
+    criteria, system prompt and response format, and each answer is gated and
+    checked against the class rubric at unit level. A failed unit escalated alone
+    goes to the next responder in the class chain through the same single-attempt
+    path. The whole is checked once, with the whole-level criteria.
+    """
+
+    def __init__(
+        self,
+        *,
+        run_attempt: Callable[..., Awaitable[_AttemptOutcome]],
+        is_accepted: Callable[..., bool],
+        next_backend: Callable[..., ModelResolvedDelegationBackend | None],
+        evaluate_gate: Callable[..., Awaitable[ModelQualityGateResult]],
+        caps: ModelShrinkRetryCaps,
+        backend: ModelResolvedDelegationBackend,
+        task_type: str,
+        prompt: str,
+        correlation_id: UUID,
+        max_tokens: int | None,
+        temperature: float | None,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+        system_prompt: str | None,
+        response_format: dict[str, object] | None,
+        size_band: str | None,
+    ) -> None:
+        self._run_attempt = run_attempt
+        self._is_accepted = is_accepted
+        self._next_backend = next_backend
+        self._evaluate_gate = evaluate_gate
+        self._caps = caps
+        self._backend = backend
+        self._task_type = task_type
+        self._prompt = prompt
+        self._correlation_id = correlation_id
+        self._max_tokens = max_tokens
+        self._temperature = temperature
+        self._quality_contract_mode = quality_contract_mode
+        self._acceptance_criteria = acceptance_criteria
+        self._system_prompt = system_prompt
+        self._response_format = response_format
+        self._size_band = size_band
+        self.whole_gate_result: ModelQualityGateResult | None = None
+
+    async def _run(
+        self,
+        backend: ModelResolvedDelegationBackend,
+        unit: ModelDelegationSplitUnit,
+    ) -> ModelShrinkUnitOutcome:
+        unit_prompt = self._caps.prompt_for(unit.source)
+        outcome = await self._run_attempt(
+            backend=backend,
+            prompt=unit_prompt,
+            task_type=self._task_type,
+            correlation_id=self._correlation_id,
+            max_tokens=self._max_tokens,
+            quality_contract_mode=self._quality_contract_mode,
+            acceptance_criteria=self._acceptance_criteria,
+            system_prompt=self._system_prompt,
+            temperature=self._temperature,
+            response_format=self._response_format,
+        )
+        attempt: dict[str, object] = {
+            "tier": _routing_tier_name(backend),
+            "backend_id": backend.backend_id,
+            "model_id": backend.model_id,
+            "configuration": _attempt_configuration(
+                backend, max_tokens=self._max_tokens, temperature=self._temperature
+            ),
+            "size_band": unit.size_band.value,
+            "quality_gate_passed": False,
+        }
+        result, gate = outcome.result, outcome.gate_result
+        if result is None or gate is None:
+            attempt["error_message"] = outcome.failure_message or "no answer"
+            return ModelShrinkUnitOutcome(answer="", passed=False, attempt=attempt)
+        verdict = record_attempt_rubric_verdict(
+            task_class=self._task_type,
+            request_text=unit.source,
+            answer_text=result.content or "",
+        )
+        gate = apply_measured_rubric(gate, verdict, task_class=self._task_type)
+        passed = self._is_accepted(self._task_type, gate)
+        attempt.update(
+            {
+                "quality_gate_passed": passed,
+                "quality_score": gate.quality_score,
+                "cost_usd": float(result.actual_cost_usd),
+                "duration_ms": result.latency_ms,
+                "error_message": "; ".join(gate.failure_reasons),
+                "failure_class": (
+                    None
+                    if passed
+                    else EnumDelegationFailureClass.RUBRIC_FAILED.value
+                    if gate.fail_category == "rubric_failed"
+                    else EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
+                ),
+                "rubric_verdict": verdict.model_dump(mode="json"),
+            }
+        )
+        return ModelShrinkUnitOutcome(
+            answer=result.content or "", passed=passed, attempt=attempt
+        )
+
+    async def run_unit(self, unit: ModelDelegationSplitUnit) -> ModelShrinkUnitOutcome:
+        return await self._run(self._backend, unit)
+
+    async def escalate_unit(
+        self, unit: ModelDelegationSplitUnit
+    ) -> ModelShrinkUnitOutcome:
+        """The failed unit alone, on the next responder in the class chain."""
+        current = _routing_tier_name(self._backend)
+        next_backend = self._next_backend(
+            current_tier=current,
+            task_type=self._task_type,
+            excluded_tiers=frozenset({current}),
+            excluded_backend_refs=frozenset({self._backend.backend_id}),
+            spread_key=str(self._correlation_id),
+        )
+        if next_backend is None:
+            # No other responder is reachable: the unit's answer from this model
+            # stands unaccepted and the whole check below decides.
+            return await self._run(self._backend, unit)
+        return await self._run(next_backend, unit)
+
+    async def check_whole(self, answer: str) -> ModelShrinkWholeCheck:
+        gate = await self._evaluate_gate(
+            correlation_id=self._correlation_id,
+            task_type=self._task_type,
+            prompt=self._prompt,
+            content=answer,
+            quality_contract_mode=self._quality_contract_mode,
+            acceptance_criteria=self._acceptance_criteria,
+        )
+        verdict = record_attempt_rubric_verdict(
+            task_class=self._task_type,
+            request_text=self._prompt,
+            answer_text=answer,
+        )
+        gate = apply_measured_rubric(gate, verdict, task_class=self._task_type)
+        passed = self._is_accepted(self._task_type, gate)
+        if passed:
+            self.whole_gate_result = gate
+        return ModelShrinkWholeCheck(
+            passed=passed,
+            attempt={
+                "tier": _routing_tier_name(self._backend),
+                "backend_id": self._backend.backend_id,
+                "model_id": self._backend.model_id,
+                "configuration": _attempt_configuration(
+                    self._backend,
+                    max_tokens=self._max_tokens,
+                    temperature=self._temperature,
+                ),
+                "size_band": self._size_band,
+                "quality_gate_passed": passed,
+                "quality_score": gate.quality_score,
+                "error_message": "; ".join(gate.failure_reasons),
+                "failure_class": (
+                    None
+                    if passed
+                    else EnumDelegationFailureClass.RUBRIC_FAILED.value
+                    if gate.fail_category == "rubric_failed"
+                    else EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
+                ),
+                "rubric_verdict": verdict.model_dump(mode="json"),
+            },
+        )
 
 
 __all__ = ["LocalDelegationDispatchPort"]
