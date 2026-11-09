@@ -96,6 +96,24 @@ _COMMAND_TIMEOUT_SECONDS = 15.0
 #: every revision of a key until the next restart (OMN-19971).
 _UNIQUE_KEY_CATALOGUE_TTL_SECONDS = 60.0
 
+#: Relation kinds (``pg_class.relkind``) that are computed on every read: a view
+#: and a materialized view. Their rows are aggregates over another table, so a
+#: read costs one full pass over that table however few rows it returns.
+_DERIVED_RELKINDS: frozenset[str] = frozenset({"v", "m"})
+
+#: How long the rows of a derived relation are answered from memory before a
+#: refresh starts (OMN-19986). The delegation and savings overview aggregates
+#: each scan ``delegation_events`` (about 100k rows) several times per
+#: evaluation, 0.4 to 2.2 s on the dev lane, and the dashboard gives up after
+#: 5 s. A reader never waits for an evaluation once one exists: it gets the
+#: held rows, and the first reader past this age starts the refresh.
+DEFAULT_DERIVED_READ_TTL_SECONDS = 30.0
+
+#: The age past which held rows of a derived relation are no longer served
+#: while a refresh runs; a read then waits for the refresh. Bounds how stale a
+#: refresh that keeps failing can leave the answer.
+DEFAULT_DERIVED_READ_MAX_STALE_SECONDS = 300.0
+
 
 #: Read failures that mean the process cannot serve reads at all, as opposed to
 #: one exposure's relation being wrong.
@@ -217,6 +235,7 @@ def _latest_per_key_sql(
     key_columns: tuple[str, ...],
     tenant_where: str,
     order_column: str,
+    single_pass: bool = False,
 ) -> str:
     """The newest row of each key, reached by a skip scan over the key index.
 
@@ -231,10 +250,22 @@ def _latest_per_key_sql(
 
     ``key_columns`` are the declared key columns the relation carries (see
     :func:`physical_key_columns`).
+
+    ``single_pass`` is for a relation computed on every read (a view): it has
+    no index to skip along, and the skip scan names the relation in an anchor,
+    in a recursive step that finds no further key, and in the per-key lookup,
+    so one read evaluated the whole aggregate three times (OMN-19986). The
+    newest row of each key is then one ``DISTINCT ON`` over a single pass.
     """
     keys = ", ".join(quote_identifier(column) for column in key_columns)
     tenant_and = f" AND {tenant_where}" if tenant_where else ""
     tenant_only = f" WHERE {tenant_where}" if tenant_where else ""
+    if single_pass:
+        return (
+            f"SELECT DISTINCT ON ({keys}) {select_list(cfg)} "
+            f"FROM {relation} AS t{tenant_only} "
+            f"ORDER BY {keys}, t.{quote_identifier(order_column)} DESC"
+        )
     after_key = (
         "("
         + ", ".join(f"t.{quote_identifier(column)}" for column in key_columns)
@@ -350,6 +381,7 @@ def build_window_query(
     relation_columns: frozenset[str] | None = None,
     unique_keys: tuple[frozenset[str], ...] = (),
     not_null_columns: frozenset[str] | None = None,
+    derived_relation: bool = False,
 ) -> WindowQuery:
     """The SQL for one exposure's served window.
 
@@ -372,7 +404,8 @@ def build_window_query(
     ``unique_keys`` are the column sets of the relation's unique indexes and
     ``not_null_columns`` its ``NOT NULL`` columns; when they make the key
     unique per row (see :func:`key_is_unique_per_row`) the window is cut
-    straight from the relation.
+    straight from the relation. ``derived_relation`` says the relation is a
+    view, so the latest row of each key is read in one pass over it.
     """
     relation = qualified_relation(cfg)
     columns = select_list(cfg)
@@ -445,7 +478,7 @@ def build_window_query(
     )
     if latest_per_key:
         assert recency is not None
-        source = f"({_latest_per_key_sql(cfg, relation, key_columns=key_columns, tenant_where=tenant_where, order_column=cfg.latest_by or recency)}) AS latest"
+        source = f"({_latest_per_key_sql(cfg, relation, key_columns=key_columns, tenant_where=tenant_where, order_column=cfg.latest_by or recency, single_pass=derived_relation)}) AS latest"
     else:
         if tenant_where:
             where.insert(0, tenant_where)
@@ -644,6 +677,92 @@ class ProtocolProjectionRowSource(Protocol):
     ) -> dict[str, object]: ...
 
 
+class DerivedWindowCache:
+    """Hold the served window of each derived relation read, bounded in age.
+
+    A derived relation (a view) recomputes its aggregate on every read. The
+    held window is served while it is younger than ``ttl_seconds``; past that
+    the first reader starts one background refresh and every reader, that one
+    included, is still answered from the held window until it is older than
+    ``max_stale_seconds``. A read that finds nothing held, or only a window
+    past the stale bound, waits on the one in-flight evaluation shared by all
+    readers of that key, so concurrent readers never start a second pass.
+    A failed refresh keeps the held window and the next read tries again.
+    A ``ttl_seconds`` of zero or less holds nothing.
+    """
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float,
+        max_stale_seconds: float,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._ttl = ttl_seconds
+        self._max_stale = max_stale_seconds
+        self._clock = clock
+        self._held: dict[Any, tuple[float, list[dict[str, Any]]]] = {}
+        self._inflight: dict[Any, asyncio.Task[list[dict[str, Any]]]] = {}
+        self._refreshes: set[asyncio.Task[list[dict[str, Any]]]] = set()
+
+    @property
+    def enabled(self) -> bool:
+        return self._ttl > 0
+
+    def store(self, key: Any, rows: list[dict[str, Any]]) -> None:
+        if self.enabled:
+            self._held[key] = (self._clock(), rows)
+
+    async def read(
+        self,
+        key: Any,
+        load: Callable[[], Any],
+    ) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return await load()  # type: ignore[no-any-return]
+        held = self._held.get(key)
+        if held is not None:
+            age = self._clock() - held[0]
+            if age < self._ttl:
+                return [dict(row) for row in held[1]]
+            if age < self._max_stale:
+                self._start(key, load, background=True)
+                return [dict(row) for row in held[1]]
+        rows = await asyncio.shield(self._start(key, load, background=False))
+        return [dict(row) for row in rows]
+
+    def _start(
+        self, key: Any, load: Callable[[], Any], *, background: bool
+    ) -> asyncio.Task[list[dict[str, Any]]]:
+        task = self._inflight.get(key)
+        if task is not None:
+            return task
+
+        async def fill() -> list[dict[str, Any]]:
+            try:
+                rows: list[dict[str, Any]] = await load()
+            finally:
+                self._inflight.pop(key, None)
+            self._held[key] = (self._clock(), rows)
+            return rows
+
+        task = asyncio.ensure_future(fill())
+        self._inflight[key] = task
+        if background:
+            self._refreshes.add(task)
+            task.add_done_callback(self._refreshed)
+        return task
+
+    def _refreshed(self, task: asyncio.Task[list[dict[str, Any]]]) -> None:
+        self._refreshes.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.warning(
+                "refresh of a derived projection window failed; keeping the held "
+                "window: %r",
+                task.exception(),
+            )
+
+
 class TableRowSource:
     """Read projection exposures from the tables their writers materialize.
 
@@ -654,8 +773,19 @@ class TableRowSource:
 
     backing = "table"
 
-    def __init__(self, environ: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        environ: dict[str, str] | None = None,
+        *,
+        derived_read_ttl_seconds: float = DEFAULT_DERIVED_READ_TTL_SECONDS,
+        derived_read_max_stale_seconds: float = DEFAULT_DERIVED_READ_MAX_STALE_SECONDS,
+    ) -> None:
         self._environ = environ if environ is not None else dict(os.environ)
+        self._derived_windows = DerivedWindowCache(
+            ttl_seconds=derived_read_ttl_seconds,
+            max_stale_seconds=derived_read_max_stale_seconds,
+        )
+        self._relation_kinds: dict[str, str] = {}
         self._pools: dict[str, asyncpg.Pool] = {}
         self._pool_lock = asyncio.Lock()
         self._column_types: dict[tuple[str, str], str] = {}
@@ -871,7 +1001,70 @@ class TableRowSource:
         correlation_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
-        """The exposure's served window, ordered by ``order_spec``."""
+        """The exposure's served window, ordered by ``order_spec``.
+
+        A window over a derived relation (a view) is held for a bounded age
+        and shared by concurrent readers, see :class:`DerivedWindowCache`
+        (OMN-19986).
+        """
+        relation = qualified_relation(cfg)
+        if await self._relation_kind(cfg) not in _DERIVED_RELKINDS:
+            return await self._read_window(
+                cfg,
+                order_spec=order_spec,
+                tenant_id=tenant_id,
+                since=since,
+                correlation_id=correlation_id,
+                selection=selection,
+            )
+        key = (relation, tenant_id, since, correlation_id, selection, order_spec)
+        return await self._derived_windows.read(
+            key,
+            lambda: self._read_window(
+                cfg,
+                order_spec=order_spec,
+                tenant_id=tenant_id,
+                since=since,
+                correlation_id=correlation_id,
+                selection=selection,
+            ),
+        )
+
+    async def _relation_kind(self, cfg: ProjectionTableConfig) -> str | None:
+        """``pg_class.relkind`` of the exposure's relation, read once.
+
+        ``None`` when the catalogue does not answer (the relation is missing,
+        or the database cannot be reached): nothing is cached, and the read
+        itself then refuses by name.
+        """
+        relation = qualified_relation(cfg)
+        cached = self._relation_kinds.get(relation)
+        if cached is not None:
+            return cached
+        pool = await self._pool(cfg)
+        try:
+            async with pool.acquire() as connection:
+                found = await connection.fetchval(
+                    "SELECT relkind::text FROM pg_class WHERE oid = to_regclass($1)",
+                    relation,
+                )
+        except (OSError, TimeoutError, asyncpg.PostgresError):
+            return None
+        if not isinstance(found, str) or len(found) != 1:
+            return None
+        self._relation_kinds[relation] = found
+        return found
+
+    async def _read_window(
+        self,
+        cfg: ProjectionTableConfig,
+        *,
+        order_spec: tuple[tuple[str, str, str | None], ...],
+        tenant_id: str | None,
+        since: str | None,
+        correlation_id: str | None,
+        selection: str,
+    ) -> list[dict[str, Any]]:
         pool = await self._pool(cfg)
         relation = qualified_relation(cfg)
         try:
@@ -892,11 +1085,17 @@ class TableRowSource:
                 relation_columns = (
                     await self._columns_of(connection, cfg) if keyed else None
                 )
+                derived = (
+                    keyed
+                    and relation_columns is not None
+                    and self._relation_kinds.get(relation) in _DERIVED_RELKINDS
+                )
                 catalogue = (
                     await self._unique_keys_of(connection, cfg)
                     if keyed
                     and relation_columns is not None
                     and cfg.key_grain != "immutable"
+                    and not derived
                     else UniqueKeyCatalogue()
                 )
                 query = build_window_query(
@@ -910,13 +1109,20 @@ class TableRowSource:
                     relation_columns=relation_columns,
                     unique_keys=catalogue.unique_keys,
                     not_null_columns=catalogue.not_null_columns,
+                    derived_relation=derived,
                 )
                 records = await connection.fetch(query.sql, *query.params)
         except ProjectionReadError:
             raise
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise _read_failure(cfg, relation, exc) from exc
-        return [serialise_row(cfg, record) for record in records]
+        served = [serialise_row(cfg, record) for record in records]
+        if derived:
+            self._derived_windows.store(
+                (relation, tenant_id, since, correlation_id, selection, order_spec),
+                served,
+            )
+        return served
 
     async def _newest_freshness(
         self, cfg: ProjectionTableConfig, *, tenant_id: str | None
