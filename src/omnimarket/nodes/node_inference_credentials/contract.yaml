@@ -63,6 +63,7 @@ capabilities:
   - name: "inference_credentials_http"
     description: "Serve the tenant-gated BYOK submit, list and revoke routes on the runtime's port."
 metadata:
+  transport_type: database
   description: "The tenant inference-credential routes from the runtime."
   author: "OmniNode Team"
   license: "MIT"
