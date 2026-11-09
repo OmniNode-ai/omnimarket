@@ -226,6 +226,25 @@ def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
     )
 
 
+def uncarried_red_causes(
+    document: ModelFloorSimple, lanes: tuple[ModelFloorLane, ...]
+) -> tuple[str, ...]:
+    """The id of every red cause that no live lane is on, in the document's order (OMN-23243).
+
+    A cause lists owner tickets, but a ticket in that list is a name and not a carrier: the cause is carried only when a
+    live lane is on it (``live_lanes``: a lane on one of its owner tickets, its pull requests, or its own ``owns=``).
+    A cause that stands for its members is judged through them. This is separate from ``unowned_red_causes``, which
+    reads whether an owner is declared at all.
+    """
+    return tuple(
+        c.id
+        for c in document.causes
+        if c.state == "red"
+        and not c.members
+        and not live_lanes(lanes, c.owners, c.prs, c.id)
+    )
+
+
 def check_red_rule(
     document: ModelFloorSimple, lanes: tuple[ModelFloorLane, ...]
 ) -> ModelRedRule:
@@ -313,13 +332,15 @@ def check_red_rule(
         ):
             with_work += 1
             violations.append(f"{name} draws red with work under way on {owner.id}")
+    uncarried = uncarried_red_causes(document, lanes)
     return ModelRedRule.model_validate(
         {
-            "state": "WORKING" if not violations else "NOT WORKING",
+            "state": "WORKING" if not (violations or uncarried) else "NOT WORKING",
             "red_rows": red_rows,
             "red_with_work_under_way": with_work,
             "violations": tuple(violations),
             "unowned_red": unowned_red_causes(document),
+            "uncarried_red": uncarried,
         }
     )
 

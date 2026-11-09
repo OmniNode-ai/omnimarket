@@ -109,6 +109,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
+    # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
+    # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
+    hostnames: tuple[NonEmptyStr, ...] = ()
     # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
     # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
     # keeps a table that carries them from being refused whole.

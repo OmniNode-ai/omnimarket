@@ -517,6 +517,9 @@ class ModelRedRule(_Frozen):
     # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
     # is on these by construction, so the ids are shown rather than counted.
     unowned_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on, whatever tickets it lists as owners (OMN-23243): a listed owner ticket with no
+    # running lane carries nothing, so the rule reads NOT WORKING and names the row instead of counting it as carried.
+    uncarried_red: tuple[str, ...] = ()
 
 
 class ModelHealthReadingUsed(_Frozen):
