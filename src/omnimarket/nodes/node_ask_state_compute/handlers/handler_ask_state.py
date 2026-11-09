@@ -17,6 +17,8 @@ the ledger rows tied to it, folded oldest first:
   row with evidence, or a linked lane's done outcome: the ``checked_resolutions``) and no done
   check has read true since. A report is not the done: the ask stays open with no running lane
   (orchestrator 2026-11-06T14:27:51Z);
+* ``failed``: such a report or merge, and the newest done-check verdict row for the ask reads the
+  fail verdict (``check_fail_verdict``); the verdict is shown and the ask is open (OMN-22729);
 * ``owned``: a linked CLAIM has no closing TERMINAL, the lane ended handed-off, or a STATUS
   ``state=owned`` names its ``owner=``;
 * ``parked``: a STATUS ``state=parked`` (with ``reason=`` and ``seq=``) or a HOLD cites it;
@@ -430,9 +432,12 @@ def _decide(
             evidence.append(row.ref())
             used.append(row)
             verdict = row.cells.get(config.check_verdict_cell)
-            if verdict == config.check_pass_verdict:
-                done = "checked"
-                break
+            # The newest verdict row rules: a later FALSE or UNKNOWN reopens an ask a TRUE closed.
+            done = "checked" if verdict == config.check_pass_verdict else None
+            continue
+        if done == "checked":
+            # Only a later verdict row can change a checked ask; the operator's words and the
+            # lane's rows after the check do not.
             continue
         evidence.append(row.ref())
         used.append(row)
@@ -509,6 +514,8 @@ def _decide(
     state: EnumAskState
     if done is not None:
         state = EnumAskState.DONE
+    elif claimed is not None and owner is None and verdict == config.check_fail_verdict:
+        state = EnumAskState.FAILED
     elif claimed is not None and owner is None:
         state = EnumAskState.UNVERIFIED
     elif owner is not None:
@@ -772,12 +779,14 @@ def _counts(entries: list[ModelAskEntry]) -> ModelAskCounts:
         dropped=n(EnumAskState.DROPPED),
         new=n(EnumAskState.NEW),
         unverified=n(EnumAskState.UNVERIFIED),
+        failed=n(EnumAskState.FAILED),
         total=len(entries),
     )
 
 
 _ORDER = (
     EnumAskState.DROPPED,
+    EnumAskState.FAILED,
     EnumAskState.UNVERIFIED,
     EnumAskState.NEW,
     EnumAskState.PARKED,
@@ -799,7 +808,7 @@ def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
     lines = [
         f"Operator asks since {report.since.strftime(_STAMP_FORMAT)}, read "
         f"{report.generated_at.strftime(_STAMP_FORMAT)}: {c.total} tracked; "
-        f"{c.dropped} DROPPED, {c.unverified} UNVERIFIED, {c.new} new, {c.parked} parked, {c.owned} owned, "
+        f"{c.dropped} DROPPED, {c.failed} FAILED, {c.unverified} UNVERIFIED, {c.new} new, {c.parked} parked, {c.owned} owned, "
         f"{c.ticketed} ticketed, {c.done} done. {wip_text}."
     ]
     flagged = [e for e in report.asks if e.restated_flag]
