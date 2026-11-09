@@ -74,5 +74,13 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22941-20261109T0227Z -- uv run --frozen pytest src/omnimarket/nodes/node_andon_stop_reducer src/omnimarket/nodes/node_stop_escalation_effect tests/integration/test_join_j6.py -q -n 0 --no-cov
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22941-20261109T0227Z -- uv run --frozen pytest src/omnimarket/nodes/node_andon_stop_reducer src/omnimarket/nodes/node_stop_escalation_effect tests/integration/test_join_j6.py -q -n 0 --no-cov
         cwd: .
+  - id: dod-deploy-omn22941-live-source
+    description: >-
+      Deploy assessment: the PR changes the stop reducer's release predicate and adds node_stop_escalation_effect, both compute and effect paths with no migration and no new Kafka topic subscription. They reach the runtime on the next standard image rebuild. The check reads the stop gate handler from GitHub at the PR branch and fails when release_predicate is missing.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/rules_stop_gate.py?ref=omn-22941-stop-release-predicate-escalation')\" && case \"$body\" in *release_predicate*) exit 0;; *) exit 1;; esac"
+        cwd: "."

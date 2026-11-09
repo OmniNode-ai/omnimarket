@@ -403,12 +403,14 @@ def _drill_at(minutes: int) -> datetime:
 def _drill_event(
     kind: EnumStopEventKind, minutes: int, role: str, **fields: object
 ) -> ModelStopEvent:
-    return ModelStopEvent(
-        stop_id="drill-stop",
-        kind=kind,
-        role=role,
-        at=_drill_at(minutes),
-        **fields,  # type: ignore[arg-type]
+    return ModelStopEvent.model_validate(
+        {
+            "stop_id": "drill-stop",
+            "kind": kind,
+            "role": role,
+            "at": _drill_at(minutes),
+            **fields,
+        }
     )
 
 
