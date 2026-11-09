@@ -16,6 +16,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: a cause is attempted at most its budget, then parked with one operator MSG per park episode, and a fixer HOLD row stops every dispatch and revokes the live leases in its scope -- falsifier: TLC on tla/landing_controller with P11, P12, P14 and their mutant configs, and uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -k "budget or fixer_hold"'
+  - id: req-dependency-review-needs-graph
+    statement: The Dependency Security Scan job runs the dependency review action only when the repository variable DEPENDENCY_GRAPH_ENABLED is 'true', so a repository with the Dependency graph off does not fail every pull request.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the Run Dependency Review step is gated on vars.DEPENDENCY_GRAPH_ENABLED and keeps its action pin -- falsifier: uv run pytest tests/ci/test_dependency_review_needs_graph_omn20413.py -q -p no:randomly fails at the merge base'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -23,6 +28,9 @@ evidence_requirements:
   - kind: tests
     description: A cause_not_shared verdict holds across a member set change on the same base head, the key is leased again when the base head moves, and the budget and fixer HOLD tests stay green.
     command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
+  - kind: tests
+    description: The Run Dependency Review step is gated on the Dependency graph variable and keeps its pin.
+    command: uv run pytest tests/ci/test_dependency_review_needs_graph_omn20413.py -q -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -44,6 +52,14 @@ dod_evidence:
         check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
     binds_ac:
       - AC3
+  - id: dod-omn20413-ac4-dependency-review-graph
+    description: The Run Dependency Review step runs only when DEPENDENCY_GRAPH_ENABLED is 'true' and keeps its action pin; at the merge base the step is ungated, so the test fails there.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_dependency_review_needs_graph_omn20413.py -q -p no:randomly
+    binds_ac:
+      - AC4
   - id: dod-omn20413-integration-proof
     description: The pushed head ran the landing decision node's whole test directory on a lab host through the lab work runner and exited 0. The live controller runs a pinned commit, so the deployed proof follows the pin bump; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual

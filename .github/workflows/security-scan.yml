@@ -58,9 +58,16 @@ jobs:
       - name: Export requirements
         run: uv export --format requirements-txt --no-hashes --output-file requirements.txt
 
+      # GitHub's dependency review needs the repository's Dependency graph
+      # enabled (settings/security_analysis, an admin setting). This repository
+      # has it off, so the action fails with "Dependency review is not
+      # supported on this repository" on every pull request whatever it
+      # changes. The step runs only once an admin sets the repository variable
+      # DEPENDENCY_GRAPH_ENABLED to 'true' after enabling the graph; the
+      # Safety check below keeps scanning the same exported requirements.
       - name: Run Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_GRAPH_ENABLED == 'true'
 
       - name: Run Safety Check
         run: |
