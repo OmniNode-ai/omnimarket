@@ -468,7 +468,11 @@ class HandlerFloorCompare:
         hs = rt.history
         days = request.history_days or hs.backfill_days
         book = load_book(
-            hs, env, home, now - timedelta(hours=days * 24 + hs.window_hours + 1)
+            hs,
+            env,
+            home,
+            now - timedelta(hours=days * 24 + hs.window_hours + 1),
+            until=now,
         )
         points = backfill_snapshots(
             book, hs, now, days, rt.min_gap_seconds, load_friction_rules(hs)
