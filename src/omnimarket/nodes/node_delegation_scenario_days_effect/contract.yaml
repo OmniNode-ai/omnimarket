@@ -86,9 +86,9 @@ runtime:
     - {scenario_id: R1, cadence: hourly, lane: node_delegation_scenario_r1}
     - {scenario_id: R2, cadence: hourly, lane: node_delegation_scenario_r2_effect}
     - {scenario_id: R3, cadence: every_6h, lane: node_delegation_scenario_r3}
-    - {scenario_id: R4, cadence: every_6h, lane: node_delegation_scenario_r4}
+    - {scenario_id: R4, cadence: every_6h, lane: node_delegation_scenario_r4_effect}
     - {scenario_id: R5, cadence: hourly, lane: node_delegation_scenario_r5}
-    - {scenario_id: R6, cadence: daily, lane: node_delegation_scenario_r6}
+    - {scenario_id: R6, cadence: daily, lane: node_delegation_scenario_r6_effect}
     - {scenario_id: R7, cadence: every_6h, lane: node_delegation_scenario_r7}
     - {scenario_id: R8, cadence: every_6h, lane: node_delegation_scenario_r8}
     - {scenario_id: R9, cadence: hourly, lane: node_delegation_scenario_r9}

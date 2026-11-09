@@ -211,7 +211,7 @@ class HandlerScenarioDaysRun:
 
 def build_runner(env: Mapping[str, str] | None = None) -> HandlerScenarioDaysRun:
     """The production wiring: the registry home and the bus commands from the environment, the rest from the contract."""
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     runtime = load_runtime()
     home = Path(environment[runtime.home_env])
     read_argv = shlex.split(environment.get(runtime.ledger_read_command_env, ""))
