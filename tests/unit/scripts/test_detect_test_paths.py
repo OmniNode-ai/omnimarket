@@ -17,6 +17,10 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.handlers.adapter_test_selection_policy_file import (
+    load_policy,
+)
+
 ADJACENCY_PATH = (
     Path(__file__).parents[3] / "scripts" / "ci" / "test_selection_adjacency.yaml"
 )
@@ -29,10 +33,6 @@ def _scripts_on_path(tmp_path: Path) -> None:
         sys.path.insert(0, str(repo_root))
 
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.policy_file import (  # noqa: E402
-    load_policy,
-)
-from scripts.ci import detect_test_paths  # noqa: E402
 from scripts.ci.detect_test_paths import (  # noqa: E402
     REPO_ROOT,
     compute_selection,
@@ -829,9 +829,9 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
         update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
     )
     monkeypatch.setattr(
-        detect_test_paths,
+        sys.modules["scripts.ci.detect_test_paths"],
         "HandlerTestSelectionSelector",
-        lambda: selector.HandlerTestSelectionSelector(policy=loose),
+        lambda _source, _policy: selector.HandlerTestSelectionSelector(None, loose),
     )
     selection = compute_selection(
         _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"

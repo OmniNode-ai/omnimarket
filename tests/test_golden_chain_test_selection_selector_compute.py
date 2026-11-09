@@ -14,7 +14,7 @@ import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.policy_file import (
+from omnimarket.handlers.adapter_test_selection_policy_file import (
     load_policy,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_in_memory import (

@@ -12,9 +12,14 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
     ModelSelectorPolicy,
 )
 
-POLICY_PATH = Path(__file__).resolve().parents[1] / "policy.yaml"
+POLICY_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "nodes"
+    / "node_test_selection_selector_compute"
+    / "policy.yaml"
+)
 
 
 def load_policy(path: Path = POLICY_PATH) -> ModelSelectorPolicy:
-    text = path.read_text()  # node-purity-ok: OMN-23296 policy file boundary
-    return ModelSelectorPolicy.model_validate(yaml.safe_load(text))
+    with path.open() as handle:
+        return ModelSelectorPolicy.model_validate(yaml.safe_load(handle))

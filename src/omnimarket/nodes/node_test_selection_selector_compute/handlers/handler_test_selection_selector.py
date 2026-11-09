@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import math
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.policy_file import (
-    load_policy,
-)
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_durations_file import (
     SourceDurationsFile,
 )
@@ -36,11 +33,11 @@ class HandlerTestSelectionSelector:
 
     def __init__(
         self,
-        source: ProtocolDurationsSource | None = None,
-        policy: ModelSelectorPolicy | None = None,
+        source: ProtocolDurationsSource | None,
+        policy: ModelSelectorPolicy,
     ) -> None:
         self._source = source or SourceDurationsFile()
-        self._policy = policy or load_policy()
+        self._policy = policy
 
     def handle(self, request: ModelSelectorRequest) -> ModelSelectorDecision:
         durations = self._source.read(request.repo_root, self._policy.durations_path)

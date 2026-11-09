@@ -9,6 +9,7 @@ import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
 )
@@ -198,7 +199,7 @@ def compute_selection(
     if not any(path == TEST_PREFIX for path in selected):
         selected = sorted(set(selected) | set(config.always_selected_paths))
     # OMN-23296: shard count and weight bound come from estimated test time.
-    decision = HandlerTestSelectionSelector().handle(
+    decision = HandlerTestSelectionSelector(None, load_policy()).handle(
         ModelSelectorRequest(selected_paths=tuple(selected), repo_root=str(root))
     )
     if decision.split_count is None:

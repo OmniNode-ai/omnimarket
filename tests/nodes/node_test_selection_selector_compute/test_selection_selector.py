@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.policy_file import (
+from omnimarket.handlers.adapter_test_selection_policy_file import (
     load_policy,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_durations_file import (
