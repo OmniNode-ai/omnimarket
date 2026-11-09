@@ -67,6 +67,8 @@ snapshot_reads:
   - onex.snapshot.projection.floor-overlay-store-fleet.v1
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-owner-map.v1
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-work-state.v1
 
 runtime:
   home_env: OMNI_HOME

@@ -111,10 +111,10 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     read_queue_age,
     read_runner_groups,
     read_watcher,
-    read_work_state,
     record_lanes,
     record_slots,
     record_stoppages,
+    work_state_from_payload,
     work_state_lanes,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
@@ -193,7 +193,7 @@ class ModelSourcePaths(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_relpath: str
-    work_state_relpath: str
+    work_state_projection: str
     watcher_relpath: str
     controller_state_dir_env: str
     controller_state_dir_fallback: str
@@ -740,8 +740,12 @@ class HandlerFloorSimpleTick:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
         record_path = home / rt.sources.record_relpath
-        work_state = read_work_state(home / rt.sources.work_state_relpath)
         projections = load_bundle(home / rt.sources.projection_reads_relpath)
+        work_state = work_state_from_payload(
+            projection_payload(
+                projections, rt.sources.work_state_projection, now
+            ).payload
+        )
         controller_dir = Path(
             env.get(rt.sources.controller_state_dir_env, "").strip()
             or Path.home() / rt.sources.controller_state_dir_fallback

@@ -41,7 +41,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tic
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     merge_lanes,
-    read_work_state,
+    work_state_from_payload,
     work_state_lanes,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
@@ -55,6 +55,7 @@ from tests.nodes.node_floor_simple_effect.support import (
     build_home,
     environ,
     overlay_text,
+    put_projection,
 )
 
 pytestmark = pytest.mark.unit
@@ -188,10 +189,9 @@ def test_board_read_a_published_projection_puts_the_lane_on_the_row(
     tmp_path: Path,
 ) -> None:
     home = build_home(tmp_path)
-    path = home / ".onex_state/work-state/work-state.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(project(*ROWS).model_dump_json(), encoding="utf-8")
-    assert read_work_state(path) is not None
+    projection = project(*ROWS)
+    put_projection(home, "work_state", projection.model_dump(mode="json"))
+    assert work_state_from_payload(projection.model_dump(mode="json")) is not None
     result = HandlerFloorSimpleTick(sink=InMemoryEmissionSink(), clock=lambda: NOW).run(
         ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
     )
@@ -220,3 +220,48 @@ def test_error_board_read_an_absent_projection_is_a_cause_not_an_empty_lane_list
     )
     assert doc.sources_read["work_state_projection"] is False
     assert "source:work_state_projection" in {c.id for c in doc.causes}
+
+
+def test_error_board_read_a_lane_list_older_than_its_bound_is_a_cause_not_the_lanes_it_last_held(
+    tmp_path: Path,
+) -> None:
+    """The work-state node stopped publishing 3 hours ago: its last lanes must not be drawn as live."""
+    from datetime import timedelta
+
+    home = build_home(tmp_path)
+    put_projection(
+        home,
+        "work_state",
+        project(*ROWS).model_dump(mode="json"),
+        as_of=NOW - timedelta(hours=3),
+    )
+    result = HandlerFloorSimpleTick(sink=InMemoryEmissionSink(), clock=lambda: NOW).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    doc = ModelFloorSimple.model_validate_json(
+        (home / ".claude_scratch/factory-floor/floor-simple.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert doc.sources_read["work_state_projection"] is False
+    assert "source:work_state_projection" in {c.id for c in doc.causes}
+
+
+def test_golden_board_read_the_lane_list_fills_from_the_projection_with_no_work_state_file(
+    tmp_path: Path,
+) -> None:
+    home = build_home(tmp_path)
+    put_projection(home, "work_state", project(*ROWS).model_dump(mode="json"))
+    assert not (home / ".onex_state/work-state/work-state.json").exists()
+    result = HandlerFloorSimpleTick(sink=InMemoryEmissionSink(), clock=lambda: NOW).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    doc = ModelFloorSimple.model_validate_json(
+        (home / ".claude_scratch/factory-floor/floor-simple.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert doc.sources_read["work_state_projection"] is True
+    assert "source:work_state_projection" not in {c.id for c in doc.causes}
