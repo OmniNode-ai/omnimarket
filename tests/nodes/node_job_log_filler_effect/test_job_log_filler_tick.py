@@ -114,10 +114,10 @@ def test_a_fresh_failure_is_filled_in_the_pass_after_it_appears_behind_a_backlog
 def test_red_runs_are_read_before_named_ones_and_newer_before_older(
     tmp_path: Path,
 ) -> None:
-    state = watcher_state()
+    state: Any = watcher_state()
     # a second red job on the planted pull request, completed after the first one
-    state["prs"]["omnimarket#1"]["ci"]["red"] = ["Tests Gate", "Lint"]  # type: ignore[index]
-    state["prs"]["omnimarket#1"]["ci"]["detail"].append(  # type: ignore[index]
+    state["prs"]["omnimarket#1"]["ci"]["red"] = ["Tests Gate", "Lint"]
+    state["prs"]["omnimarket#1"]["ci"]["detail"].append(
         ["Lint", "128000000077", "2026-11-07T22:30:00Z"]
     )
     handler = handler_for(
