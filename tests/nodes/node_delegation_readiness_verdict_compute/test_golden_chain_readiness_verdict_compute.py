@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
+import omnimarket.nodes.node_delegation_readiness_verdict_compute as verdict_node
 from omnimarket.models.model_delegation_readiness_verdict import (
     EnumReadinessVerdict,
     ModelCadenceGrace,
@@ -255,3 +258,15 @@ def test_error_chain_a_bar_above_the_window_is_refused() -> None:
 def test_error_chain_a_cadence_without_grace_is_refused() -> None:
     with pytest.raises(ValidationError, match="no due-slot grace"):
         _request([], grace=GRACE[:2])
+
+
+def test_golden_chain_the_contract_names_the_computed_event_the_verdict_travels_on() -> (
+    None
+):
+    contract = yaml.safe_load(
+        (Path(verdict_node.__file__).parent / "contract.yaml").read_text()
+    )
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.delegation-readiness-verdict-computed.v1"
+    )
