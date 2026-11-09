@@ -47,6 +47,7 @@ OPERATIONS = (
     "probe_lab_fill_hosts",
     "read_lab_fill_owner_facts",
     "launch_lab_fill_lane",
+    "send_lab_fill_lane",
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",
     "write_lab_fill_status",
