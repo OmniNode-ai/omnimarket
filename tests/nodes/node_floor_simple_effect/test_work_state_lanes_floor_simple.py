@@ -155,7 +155,7 @@ def test_golden_a_lane_shows_on_the_row_its_claim_names_with_no_owner_in_the_ove
     doc = floor_doc(lanes)
     assert cause(doc, "stoppage:lab-idle") == ("amber", ("cause-lane",))
     assert cause(doc, "stoppage:job-exit") == ("amber", ("owns-lane",))
-    assert check_red_rule(doc, lanes).state == "WORKING"
+    assert check_red_rule(doc, lanes).violations == ()
 
 
 def test_error_a_lane_that_closed_or_names_no_row_is_on_nothing() -> None:
