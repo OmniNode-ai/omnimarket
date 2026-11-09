@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R5 inputs (readiness plan 2.2, OMN-23183). Two free OpenRouter models, A then B, on one key; one id the key does not
+# list; one faults-mode probe file that makes model A answer 429. `key_listed_models` is the model list the scripted in-memory
+# key offers; the real backend reads the key's own list from the provider.
+provider: openrouter
+model_a: openai/gpt-oss-20b:free
+model_b: qwen/qwen3-coder:free
+unlisted_model: example/not-listed-for-this-key
+key_listed_models:
+  - openai/gpt-oss-20b:free
+  - qwen/qwen3-coder:free
+task_type: summarization
+prompt: Summarize in at most three sentences why a delegation tries the models of one key in the order they were added.
+answer_marker: R5-FIXED-ANSWER-7d2b
+answer: >-
+  ### ANSWER
+
+  A delegation tries the models of one key in the order they were added, so the first model answers while it can and the next
+  one answers when the first is refused for rate. The fixed marker of this answer is R5-FIXED-ANSWER-7d2b.
+# The status model A answers in the faults file, and the failure class the delegation types it as.
+fault_status_code: 429
+rate_limited_class: rate_limited
+# The request key that names the model a delegation is pinned to (OMN-20844).
+model_wire_key: model
