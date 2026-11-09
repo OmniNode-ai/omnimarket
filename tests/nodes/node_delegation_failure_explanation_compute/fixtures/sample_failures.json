@@ -1,0 +1,36 @@
+{
+  "request": {
+    "correlation_id": "sample-failure-explanation-1",
+    "failures": [
+      {
+        "correlation_id": "run-a1",
+        "terminal_status": "failed",
+        "terminal_failure_cause": "timeout",
+        "step_kind": "provider_call",
+        "backend_id": "lab-qwen"
+      },
+      {
+        "correlation_id": "run-a2",
+        "terminal_status": "failed",
+        "terminal_failure_cause": "timeout",
+        "step_kind": "provider_call",
+        "backend_id": "lab-qwen"
+      },
+      {
+        "correlation_id": "run-b1",
+        "terminal_status": "failed",
+        "terminal_failure_cause": "",
+        "failure_cause": "provider_quota_exhausted",
+        "step_kind": "provider_call",
+        "backend_id": "cloud-x"
+      },
+      {
+        "correlation_id": "run-c1",
+        "terminal_status": "failed",
+        "step_kind": "gate",
+        "backend_id": "lab-qwen",
+        "reason": "free text the record carries but is not a cause"
+      }
+    ]
+  }
+}

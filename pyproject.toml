@@ -554,6 +554,7 @@ node_delegation_eval_orchestrator = "omnimarket.nodes.node_delegation_eval_orche
 node_delegation_eval_run_orchestrator = "omnimarket.nodes.node_delegation_eval_run_orchestrator"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_experiment_record_compute = "omnimarket.nodes.node_delegation_experiment_record_compute"
+node_delegation_failure_explanation_compute = "omnimarket.nodes.node_delegation_failure_explanation_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_health_compute = "omnimarket.nodes.node_delegation_health_compute"
