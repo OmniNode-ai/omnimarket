@@ -114,7 +114,7 @@ class Responders:
                 success=True,
                 content=ANSWER
                 if succeeds
-                else "### ANSWER\nI cannot help with this request. I refuse to answer.",
+                else "### ANSWER\nI cannot help with this request. Please try another source.",
                 tokens_in=10,
                 tokens_out=40,
             )

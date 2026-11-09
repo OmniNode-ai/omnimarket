@@ -67,6 +67,33 @@ SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 # model already declined on policy.
 POLICY_REFUSED_VERDICT_PREFIX = "REFUSAL_POLICY"
 
+# OMN-23216: the refusal phrases that decline a request on policy, a subset of
+# the gate's refusal phrases. A model that says it will not or may not help gives the same
+# answer to every rung, so the verdict carries POLICY_REFUSED_VERDICT_PREFIX and
+# the class's ``terminate_on`` list ends the run. "i cannot" and "i'm sorry" stay
+# plain refusals: they also open an honest statement of a capability gap, which a
+# costlier rung can cure.
+_POLICY_REFUSAL_PHRASES: frozenset[str] = frozenset(
+    {
+        "i refuse",
+        "i will not",
+        "i won't",
+        "cannot assist",
+        "can't assist",
+    }
+)
+
+
+def refusal_reason(detected: list[str]) -> str:
+    """The failure reason for refusal phrases ``detected`` in a response (OMN-23216)."""
+    prefix = (
+        POLICY_REFUSED_VERDICT_PREFIX
+        if any(phrase in _POLICY_REFUSAL_PHRASES for phrase in detected)
+        else "REFUSAL"
+    )
+    return f"{prefix}: detected refusal phrases: {', '.join(detected)}"
+
+
 # OMN-21077: the verdict prefix a failure reason carries when the evidence a
 # code answer is judged on never reached the gate -- a code class's declared
 # ``passes_existing_tests`` with no executed test run. No costlier rung can
@@ -459,4 +486,5 @@ __all__: list[str] = [
     "ModelQualityGateInput",
     "ModelQualityGateResult",
     "ModelQualityRuleEvaluation",
+    "refusal_reason",
 ]

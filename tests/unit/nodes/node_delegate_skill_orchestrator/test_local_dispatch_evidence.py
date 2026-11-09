@@ -739,7 +739,7 @@ def test_local_dispatch_refusal_fails_quality_gate(
     _patch_routing(monkeypatch, research_backend)
     _patch_transport_with_content(
         monkeypatch,
-        "I'm sorry, but I cannot help with that request. I refuse to answer.",
+        "I'm sorry, but I cannot help with that request. Please try another source.",
     )
 
     port = LocalDelegationDispatchPort(

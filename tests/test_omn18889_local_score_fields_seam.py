@@ -63,7 +63,7 @@ _GOOD_RESEARCH_ANSWER = (
     "See references [12] for the methodical analysis and the risk profile "
     "this approach carries in practice."
 )
-_REFUSAL = "I'm sorry, but I cannot help with that request. I refuse to answer."
+_REFUSAL = "I'm sorry, but I cannot help with that request. Please try another source."
 
 
 @pytest.fixture(autouse=True)

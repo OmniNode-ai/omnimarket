@@ -131,10 +131,12 @@ from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTes
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
     NO_NAMED_TESTS_UNTESTED_REASON,
-    POLICY_REFUSED_VERDICT_PREFIX,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
+)
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    refusal_reason as _refusal_reason,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voice_check import (
     check_operator_voice,
@@ -194,33 +196,6 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "cannot assist",
     "can't assist",
 )
-
-# OMN-23216: the refusal phrases that decline a request on policy, a subset of
-# _REFUSAL_PHRASES. A model that says it will not or may not help gives the same
-# answer to every rung, so the verdict carries POLICY_REFUSED_VERDICT_PREFIX and
-# the class's ``terminate_on`` list ends the run. "i cannot" and "i'm sorry" stay
-# plain refusals: they also open an honest statement of a capability gap, which a
-# costlier rung can cure.
-_POLICY_REFUSAL_PHRASES: frozenset[str] = frozenset(
-    {
-        "i refuse",
-        "i will not",
-        "i won't",
-        "cannot assist",
-        "can't assist",
-    }
-)
-
-
-def _refusal_reason(detected: list[str]) -> str:
-    """The failure reason for refusal phrases ``detected`` in a response (OMN-23216)."""
-    prefix = (
-        POLICY_REFUSED_VERDICT_PREFIX
-        if any(phrase in _POLICY_REFUSAL_PHRASES for phrase in detected)
-        else "REFUSAL"
-    )
-    return f"{prefix}: detected refusal phrases: {', '.join(detected)}"
-
 
 # Ultra-short response word threshold for the refusal pre-pass (OMN-13409).
 # A response of _REFUSAL_SHORT_WORD_THRESHOLD words or fewer that contains no
