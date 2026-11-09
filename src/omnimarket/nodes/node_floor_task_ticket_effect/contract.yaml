@@ -53,6 +53,11 @@ protocol_dependencies:
   protocol: omnibase_spi.protocols.lane:ProtocolFloorTicketStore
   bind_as: store
   required: true
+dependencies:
+- name: floor_ticket_store
+  dependency_type: protocol
+  description: The ticket store the orchestrator injects as the handler's store; the node does not construct it.
+  required: true
 descriptor:
   node_archetype: effect
   purity: side_effect
