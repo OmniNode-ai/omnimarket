@@ -201,9 +201,9 @@ class MutantTimeoutAsCreated(HandlerLaneIntakeCreate):
         correlation_id: UUID,
         reason: EnumLaneIntakeFailure,
         finding_codes: list[str] | None = None,
-    ) -> ModelLaneIntakeCreateFailed:
+    ) -> ModelLaneIntakeCreateResult:
         if reason is EnumLaneIntakeFailure.NO_TERMINAL:
-            return ModelLaneIntakeCreated(  # type: ignore[return-value]
+            return ModelLaneIntakeCreated(
                 correlation_id=correlation_id, ticket_id="none", ticket_url=""
             )
         return HandlerLaneIntakeCreate._failed(correlation_id, reason, finding_codes)

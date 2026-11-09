@@ -132,7 +132,7 @@ class HandlerLaneIntakeCreate:
         correlation_id: UUID,
         reason: EnumLaneIntakeFailure,
         finding_codes: list[str] | None = None,
-    ) -> ModelLaneIntakeCreateFailed:
+    ) -> ModelLaneIntakeCreateResult:
         return ModelLaneIntakeCreateFailed(
             correlation_id=correlation_id,
             reason=reason,
