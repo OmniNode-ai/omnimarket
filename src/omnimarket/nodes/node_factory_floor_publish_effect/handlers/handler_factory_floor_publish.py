@@ -228,10 +228,10 @@ class PhaseBudget:
 
     def timeout(self) -> int:
         """The limit for the next call: the transfer limit or what the phase has left, whichever is less."""
-        left = math.ceil(self.remaining())
+        left = math.floor(self.remaining())
         if left <= 0:
             raise PublishRefusedError(
-                f"the {self._phase} budget of this cycle is spent; the previous files on the server are untouched"
+                f"the {self._phase} budget of this cycle is spent; files already replaced earlier in this phase stay replaced"
             )
         return min(self._cap, left)
 
