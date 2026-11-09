@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_goal_verification_orchestrator
+node_type: orchestrator
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  GC.10 of the goal contract spine (OMN-20033). Closing a goal starts its verification with no
+  manual step. A result event that names goals in closes_claims, or a delegation terminal for a
+  call goal, starts exactly one verifier run per goal id and contract revision; the closing event
+  ids are kept as provenance, never as part of the key (finding F1 of the design-reviewed GC.10
+  model). The start command is published before the attempt is recorded and the verifier accepts
+  a command once per key, so a redelivered close starts no second run. A disposition is recorded
+  and starts nothing. A run whose verifier goes quiet is retried up to verification_rules.retry_bound
+  and then written as a missing-verdict obligation; a late verdict clears the obligation. Every
+  delivered close without a verdict is listed from the moment it is delivered.
+input_model:
+  name: ModelWorkResultRecorded
+  module: omnibase_core.models.events.work.model_work_result_recorded
+output_model:
+  name: ModelGoalVerificationOutcome
+  module: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification
+handler:
+  module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+  class: HandlerGoalClosureResult
+  input_model: omnibase_core.models.events.work.model_work_result_recorded.ModelWorkResultRecorded
+  output_model: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification.ModelGoalVerificationOutcome
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: close_from_result
+      topic: onex.evt.omniclaude.work-result-recorded.v1
+      handler:
+        name: HandlerGoalClosureResult
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelWorkResultRecorded
+        module: omnibase_core.models.events.work.model_work_result_recorded
+    - operation: close_from_delegation_terminal
+      topic: onex.evt.omnibase-infra.delegation-completed.v2
+      handler:
+        name: HandlerGoalClosureDelegationTerminal
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelDelegationTerminalCompletedV2
+        module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2
+    - operation: record_disposition
+      topic: onex.evt.omnimarket.goal-disposition-recorded.v1
+      handler:
+        name: HandlerGoalDisposition
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelGoalDispositionRecorded
+        module: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification
+    - operation: bind_verdict
+      topic: onex.evt.omnimarket.dod-verify-completed.v1
+      handler:
+        name: HandlerGoalVerdictObserved
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelDodVerifyCompletedEvent
+        module: omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event
+    - operation: sweep
+      topic: onex.cmd.omnimarket.goal-verification-sweep.v1
+      handler:
+        name: HandlerGoalVerificationSweep
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelGoalVerificationSweepCommand
+        module: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification
+    - operation: list_unverified_closes
+      topic: onex.cmd.omnimarket.goal-unverified-closes-query.v1
+      handler:
+        name: HandlerUnverifiedCloses
+        module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
+      event_model:
+        name: ModelUnverifiedClosesQuery
+        module: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [main]
+runtime_dispatch:
+  external_trigger: "A result event or a delegation terminal reaches the subscribe topics; a scheduled sweep command retries quiet runs."
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.work-result-recorded.v1
+    - onex.evt.omnibase-infra.delegation-completed.v2
+    - onex.evt.omnimarket.goal-disposition-recorded.v1
+    - onex.evt.omnimarket.dod-verify-completed.v1
+    - onex.cmd.omnimarket.goal-verification-sweep.v1
+    - onex.cmd.omnimarket.goal-unverified-closes-query.v1
+  publish_topics:
+    - onex.cmd.omnimarket.dod-verify-start.v1
+metadata:
+  transport_type: kafka
+  description: Goal closure orchestrator
+  author: OmniNode Team
+  created: "2026-11-09"
+  related_tickets: [OMN-20033]
+# The rules the handler reads. Change a value here (or in an overlay of it) and behaviour changes
+# with no code change.
+verification_rules:
+  # Verifier start attempts per goal and revision before a missing-verdict obligation is written.
+  retry_bound: 3
+  # Quiet seconds after an attempt before it counts as lost and the sweep retries it.
+  attempt_timeout_s: 900
+  start_command_topic: onex.cmd.omnimarket.dod-verify-start.v1
+  # Namespace of the deterministic verifier run key: uuid5(namespace, "<goal id>:<revision id>").
+  run_key_namespace: 0fd25737-b720-5e8a-bbdc-66e11823a946
