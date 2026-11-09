@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Handlers of the silent-failure alarm compute node (OMN-17427)."""
 
+from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_closer_staleness_alarm import (
+    HandlerCloserStalenessAlarm,
+)
 from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_drainer_alarm import (
     HandlerDrainerAlarm,
 )
@@ -25,6 +28,7 @@ from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_tick_li
 )
 
 __all__ = [
+    "HandlerCloserStalenessAlarm",
     "HandlerDrainerAlarm",
     "HandlerJobExitAlarm",
     "HandlerPlacementShareAlarm",
