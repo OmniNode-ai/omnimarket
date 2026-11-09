@@ -47,7 +47,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -716,10 +716,10 @@ class DerivedWindowCache:
     async def read(
         self,
         key: Any,
-        load: Callable[[], Any],
+        load: Callable[[], Awaitable[list[dict[str, Any]]]],
     ) -> list[dict[str, Any]]:
         if not self.enabled:
-            return await load()  # type: ignore[no-any-return]
+            return await load()
         held = self._held.get(key)
         if held is not None:
             age = self._clock() - held[0]
@@ -732,7 +732,11 @@ class DerivedWindowCache:
         return [dict(row) for row in rows]
 
     def _start(
-        self, key: Any, load: Callable[[], Any], *, background: bool
+        self,
+        key: Any,
+        load: Callable[[], Awaitable[list[dict[str, Any]]]],
+        *,
+        background: bool,
     ) -> asyncio.Task[list[dict[str, Any]]]:
         task = self._inflight.get(key)
         if task is not None:
@@ -740,7 +744,7 @@ class DerivedWindowCache:
 
         async def fill() -> list[dict[str, Any]]:
             try:
-                rows: list[dict[str, Any]] = await load()
+                rows = await load()
             finally:
                 self._inflight.pop(key, None)
             self._held[key] = (self._clock(), rows)

@@ -110,6 +110,7 @@ class _Database:
         self.evaluations = 0
         self.fail = False
         self.total = 1
+        self.relkind = "v"
 
     def window(self) -> list[dict[str, Any]]:
         return [
@@ -138,7 +139,7 @@ class _Connection:
 
     async def fetchval(self, sql: str, *params: Any) -> Any:
         if "relkind" in sql:
-            return "v"
+            return self._db.relkind
         return list(_COLUMNS)
 
     async def fetch(self, sql: str, *params: Any) -> list[dict[str, Any]]:
@@ -155,18 +156,24 @@ class _Connection:
         return self._db.window()
 
 
+class _Source(TableRowSource):
+    """The row source over the fake database instead of a connection pool."""
+
+    def __init__(self, database: _Database) -> None:
+        super().__init__(environ={DEFAULT_DSN_ENV: "postgresql://unused/db"})
+        self._database = database
+
+    async def _pool(self, cfg: ProjectionTableConfig) -> Any:
+        return self._database
+
+
 def _source(clock: _Clock, database: _Database) -> TableRowSource:
-    source = TableRowSource(environ={DEFAULT_DSN_ENV: "postgresql://unused/db"})
+    source = _Source(database)
     source._derived_windows = DerivedWindowCache(
         ttl_seconds=DEFAULT_DERIVED_READ_TTL_SECONDS,
         max_stale_seconds=DEFAULT_DERIVED_READ_MAX_STALE_SECONDS,
         clock=clock,
     )
-
-    async def _pool(cfg: ProjectionTableConfig) -> Any:
-        return database
-
-    source._pool = _pool  # type: ignore[method-assign]
     return source
 
 
@@ -341,10 +348,7 @@ async def test_a_table_is_never_held() -> None:
     source = _source(clock, database)
     cfg = _cfg(view)
 
-    async def table_kind(self_cfg: ProjectionTableConfig) -> str:
-        return "r"
-
-    source._relation_kind = table_kind  # type: ignore[assignment]
+    database.relkind = "r"
     await _read(source, cfg)
     await _read(source, cfg)
 
