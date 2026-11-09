@@ -15,6 +15,7 @@ makes. The failing control is the run of the same rows against the code before t
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -28,7 +29,10 @@ from omnimarket.models.floor_17a import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     compute_factory_floor,
 )
-from omnimarket.nodes.node_factory_floor_effect.source_loader import parse_ledger_text
+from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+    load_contract,
+    parse_ledger_text,
+)
 from omnimarket.nodes.node_floor_simple_compute.handlers import (
     HandlerFloorSimple,
     check_red_rule,
@@ -108,9 +112,19 @@ STOPPAGES = tuple(
 )
 
 
+LEDGER_KINDS = frozenset(
+    load_contract(
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_factory_floor_effect/contract.yaml"
+    ).runtime.ledger_kinds
+)
+
+
 def served_lanes(text: str) -> tuple[ModelFloorLane, ...]:
     """The lanes as the served record draws them: the factory floor's lane list, as JSON, read back by the simple floor."""
-    floor = compute_factory_floor(request(ledger=parse_ledger_text(text))).floor
+    floor = compute_factory_floor(
+        request(ledger=parse_ledger_text(text, LEDGER_KINDS))
+    ).floor
     return record_lanes({"floor": floor.model_dump(mode="json")})
 
 
@@ -153,7 +167,7 @@ def test_golden_a_live_lane_owns_a_holdup_by_its_claim_or_a_status_row() -> None
     assert cause(doc, "stoppage:job-exit") == ("amber", ("owner-status",))
     # The comma list gives the lane both holdups, and a holdup a lane owns keeps its pull request reading too.
     assert cause(doc, "prs:red") == ("amber", ("owner-status",))
-    assert check_red_rule(doc, lanes).state == "WORKING"
+    assert check_red_rule(doc, lanes).violations == ()
 
 
 def test_error_a_lane_that_ended_went_silent_or_names_no_holdup_is_not_on_one() -> None:

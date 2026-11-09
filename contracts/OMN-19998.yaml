@@ -236,6 +236,11 @@ requirements:
     acceptance:
       - id: AC14
         statement: 'AC14: test_every_node_auto_wires_in_process carries its own pytest timeout of at least 900 seconds with the thread method, and a test without the marker reads as having no budget -- falsifier: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-heal-read-truncated-body
+    statement: A heal read whose response body arrives cut short is retried like a gateway error, and a write never is.
+    acceptance:
+      - id: AC15
+        statement: 'AC15: a read that gets "unexpected end of JSON input" is retried and succeeds on a later attempt, and a write that gets it is attempted once -- falsifier: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -900,4 +905,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly -k wiring_test_has_its_own_timeout_budget
+        cwd: .
+  - id: dod-omn19998-heal-read-truncated-body
+    description: AC15 runs the two truncated-body tests; the read test fails at the merge base because the gateway pattern names only HTTP 502, 503 and 504, and the write test is the control that a write is attempted once.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated
         cwd: .
