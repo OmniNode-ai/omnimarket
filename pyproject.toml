@@ -808,6 +808,7 @@ node_lane_census_alias_parity_compute = "omnimarket.nodes.node_lane_census_alias
 node_lane_census_effect = "omnimarket.nodes.node_lane_census_effect"
 node_lane_closeout_effect = "omnimarket.nodes.node_lane_closeout_effect"
 node_lane_closeout_orchestrator = "omnimarket.nodes.node_lane_closeout_orchestrator"
+node_lane_closeout_sweep_effect = "omnimarket.nodes.node_lane_closeout_sweep_effect"
 node_lane_container_budget_compute = "omnimarket.nodes.node_lane_container_budget_compute"
 node_lane_failure_recovery_effect = "omnimarket.nodes.node_lane_failure_recovery_effect"
 node_lane_github_budget_effect = "omnimarket.nodes.node_lane_github_budget_effect"
