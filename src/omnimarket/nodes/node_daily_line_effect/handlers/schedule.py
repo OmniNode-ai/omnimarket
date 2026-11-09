@@ -9,9 +9,10 @@ saving on its own. ``uninstall`` is the rollback: it stops the timer and removes
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import yaml
@@ -21,6 +22,7 @@ NODE_NAME = "node_daily_line_effect"
 NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
+_SAFE_VALUE = re.compile(r"^[^\"\\%$\n\r]*$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -41,6 +43,8 @@ class ModelDailyLineSchedule(BaseModel):
     unit_name: str = Field(min_length=1)
     state_directory: str
     timeout_seconds: int = Field(ge=1)
+    #: Variables copied into the unit from the installing environment when set (the bus routes the run reads).
+    unit_environment: tuple[str, ...] = ()
     cadence: ModelDailyLineCadence
 
     @property
@@ -72,8 +76,29 @@ def _safe(path: Path, what: str) -> str:
     return text
 
 
+def _carried_environment(
+    schedule: ModelDailyLineSchedule, environment: Mapping[str, str]
+) -> str:
+    lines = []
+    for name in schedule.unit_environment:
+        value = environment.get(name, "").strip()
+        if not value:
+            continue
+        if not _SAFE_VALUE.match(value):
+            raise ValueError(
+                f"{name} holds a character a quoted unit line cannot carry"
+            )
+        lines.append(f'Environment="{name}={value}"\n')
+    return "".join(lines)
+
+
 def render_systemd(
-    schedule: ModelDailyLineSchedule, *, omni_root: Path, home: Path, python: Path
+    schedule: ModelDailyLineSchedule,
+    *,
+    omni_root: Path,
+    home: Path,
+    python: Path,
+    environment: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
@@ -90,6 +115,7 @@ def render_systemd(
         f'Environment="HOME={user_home}"\n'
         f'Environment="OMNI_HOME={root}"\n'
         f'Environment="PATH={user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"\n'
+        f"{_carried_environment(schedule, {} if environment is None else environment)}"
         f"WorkingDirectory={root}\n"
         f"ExecStart={interpreter} -m {NODE_MODULE} daily\n"
         f"StandardOutput=append:{state}/daily-line.out.log\n"
@@ -125,10 +151,15 @@ def install(
     home: Path,
     python: Path,
     runner: Runner = run_command,
+    environment: Mapping[str, str] | None = None,
 ) -> int:
     """Write the two units, reload the user manager and enable the timer. Returns the first non-zero exit, else 0."""
     service_text, timer_text = render_systemd(
-        schedule, omni_root=omni_root, home=home, python=python
+        schedule,
+        omni_root=omni_root,
+        home=home,
+        python=python,
+        environment=os.environ if environment is None else environment,
     )
     service_path, timer_path = unit_paths(schedule, home)
     service_path.parent.mkdir(parents=True, exist_ok=True)
