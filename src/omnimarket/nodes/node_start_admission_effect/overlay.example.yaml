@@ -1,9 +1,0 @@
-# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
-# Synthetic values: the shape of the start_admission overlay. The deployment's overlay lives at
-# <root>/start_admission/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS. The path names
-# (the census) and each path's mode belong to the deployment owner; a path not listed is in observe.
-enforcement:
-  example_path_one: observe
-  example_path_two: enforce
-log_backend: in_memory
