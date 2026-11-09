@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Commitment Ledger Compute (OMN-23013)
+#
+# An operator's ask as a ledger row. build_open_row writes the row (the ask verbatim, an owner, a runnable check argv, an
+# optional ticket and start criterion) after refusing an ask with no owner or no check; fold reads every commitment from
+# ledger rows with its newest reading (open, verified or regressed). The row is a STATUS row of kind commitment, so the
+# ledger grammar admits it with no new row type. node_commitment_check_runner_effect writes the readings; the work-state
+# projection lists the open commitments as work. Pure: no clock, no file.
+name: "node_commitment_ledger_compute"
+contract_name: "node_commitment_ledger_compute"
+node_name: "node_commitment_ledger_compute"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+node_type: "COMPUTE_GENERIC"
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Builds the ledger row that records an operator ask as a commitment, and folds commitment rows into commitments with
+  their status. A row that does not read (a missing cell, a reading for a commitment no row opened) is named in malformed.
+input_model:
+  name: "ModelCommitmentLedgerRequest"
+  module: "omnimarket.models.commitment"
+  description: "The operation, the overlay's rules, the clock reading and either the ask's cells or the ledger rows."
+output_model:
+  name: "ModelCommitmentLedgerResult"
+  module: "omnimarket.models.commitment"
+  description: "The row built or the refusals, or the folded commitments and the rows that did not read."
+handler:
+  module: "omnimarket.nodes.node_commitment_ledger_compute.handlers.handler_commitment_ledger"
+  class: "HandlerCommitmentLedger"
+  input_model: "omnimarket.models.commitment.ModelCommitmentLedgerRequest"
+  output_model: "omnimarket.models.commitment.ModelCommitmentLedgerResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_commitment_ledger_compute.handlers.handler_commitment_ledger:HandlerCommitmentLedger"
+  handlers:
+    - operation: "build_open_row"
+      handler:
+        name: "HandlerCommitmentLedger"
+        module: "omnimarket.nodes.node_commitment_ledger_compute.handlers.handler_commitment_ledger"
+    - operation: "fold"
+      handler:
+        name: "HandlerCommitmentLedger"
+        module: "omnimarket.nodes.node_commitment_ledger_compute.handlers.handler_commitment_ledger"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation: the ledger skills build a row with it, the check runner and the work-state projection's effect fold with it."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "An operator ask as a ledger commitment row, and the fold of those rows."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags: ['compute', 'commitments', 'ledger', 'pure']

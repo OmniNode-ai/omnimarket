@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Declared retention of the pool hosts (OMN-19998). Read by `node_temp_retention_effect`; nothing in the node names a
+# host, a path or a number.
+#
+# windows: the values each host's RAM-filesystem upkeep declares for its run directories (retain_hours,
+#   pressure_percent, pressure_retain_hours), so an entry under a temp directory ages out on the same clock a run does.
+# temp_roots: the directories whose direct entries age out. The lanes' TMPDIR is `.tmp` on the runs mount, which the
+#   run-directory upkeep skips with every dot-prefixed name. On the host whose root disk holds `/tmp`, a lane's own
+#   working directory is `/tmp/claude-<uid>` (the free-space probe of the lane admission reads that disk), and the
+#   rule there removes neither it nor any entry that is not at least the short window old.
+# store_ceilings: the most a package store may hold once its filesystem is past the pressure mark. The store holds a
+#   re-fetchable cache, 0.7 GiB on both hosts when measured on 2026-11-05; 2 GiB is 3 percent of the 64 GiB runs mount
+#   of the smaller host.
+hosts:
+  - name: h051
+    scheduler: systemd-user
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    temp_roots:
+      - path: /data/lab-run/runs/.tmp
+        protected_name_patterns: ['claude-[0-9]+']
+      - path: /tmp
+        protected_name_patterns: ['claude-[0-9]+']
+    store_ceilings:
+      - {path: /data/lab-run/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}
+  - name: h053
+    scheduler: systemd-user
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    temp_roots:
+      - path: /data/lab-run/runs/.tmp
+        protected_name_patterns: ['claude-[0-9]+']
+    store_ceilings:
+      - {path: /data/lab-run/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}

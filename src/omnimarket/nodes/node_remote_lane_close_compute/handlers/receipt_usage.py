@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..models.model_remote_lane_receipt_usage import (
+from omnimarket.models.remote_lane_close.model_remote_lane_receipt_usage import (
     ModelRemoteLaneReceiptUsage,
     UsageCount,
 )

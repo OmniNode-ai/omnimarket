@@ -175,3 +175,35 @@ def test_one_changed_verdict_does_not_cascade_into_later_rows() -> None:
 def test_an_empty_replay_is_equivalent_and_has_no_window() -> None:
     result = _replay([])
     assert (result.judged, result.equivalent, result.window_start) == (0, True, None)
+
+
+def test_a_window_replay_judges_against_the_accepted_history_before_the_window() -> (
+    None
+):
+    # A HOLD accepted before the window still leases its surface; a conflicting HOLD inside the
+    # window was refused live, and the replay must refuse it too when given the earlier history.
+    before = (
+        f"{_stamp(WEEK_START)} | HOLD | lane=beta | id={_stamp(WEEK_START)}-beta | "
+        f"surface=lab-dev | until={_stamp(WEEK_START + timedelta(days=2))} | reserved"
+    )
+    inside_at = WEEK_START + timedelta(days=1)
+    inside = (
+        f"{_stamp(inside_at)} | HOLD | lane=gamma | id={_stamp(inside_at)}-gamma | "
+        f"surface=lab-dev | until={_stamp(inside_at + timedelta(hours=2))} | also"
+    )
+    refusal = judge_row(inside, before, LEDGER)
+    assert refusal.verdict is EnumJudgeVerdict.REFUSE
+    entries = (
+        ModelRecordedRow(row_ref="w1", row=inside, recorded=refusal, at=inside_at),
+    )
+    without_history = WorkLedgerGuardReplay().handle(
+        ModelGuardReplayRequest(ledger_name=LEDGER, entries=entries)
+    )
+    assert without_history.equivalent is False
+    with_history = WorkLedgerGuardReplay().handle(
+        ModelGuardReplayRequest(
+            ledger_name=LEDGER, entries=entries, preceding_ledger=before
+        )
+    )
+    assert with_history.equivalent is True
+    assert with_history.differences == ()
