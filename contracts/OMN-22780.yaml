@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omnidash_host_effect.py -k omnidash_host_floor -q --no-cov
     cwd: .
 - id: dod-omn22780-page-script-no-double-declaration
-  description: The floor page script declares no top-level const or let name twice (a second declaration is a SyntaxError that stops the whole page script), and the check runs without node. It fails on the merge base, where the check does not exist, and on a script with one name declared twice.
+  description: The floor page script declares no top-level const or let name twice (a second declaration is a SyntaxError that stops the whole page script), and the check runs without node. It fails on the merge base, where the piece-measure helper is still named num, and on a script with one name declared twice.
   source: manual
   binds_ac:
   - AC2

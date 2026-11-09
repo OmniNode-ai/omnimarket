@@ -287,4 +287,7 @@ def test_error_the_page_script_declares_no_top_level_name_twice() -> None:
         return sorted({n for n in names if names.count(n) > 1})
 
     assert doubles(SIMPLE_SRC) == []
+    # The piece-measure helper has its own name, so it cannot collide with a later top-level ``num``.
+    assert "const measureNum = (v, u)" in SIMPLE_SRC
+    assert "const num = (v, u)" not in SIMPLE_SRC
     assert doubles("<script>\nconst num = 1;\nconst num = 2;\n</script>") == ["num"]
