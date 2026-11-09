@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -209,8 +209,9 @@ def test_golden_chain_scenario_r2_passes_writes_one_row_and_emits_one_event(
         "scenario=R2 | slot=2026-11-09T13:00:00Z | trigger=schedule | conclusion=success"
         in rows[0]
     )
-    assert from_status_row(rows[0]) is not None
-    assert from_status_row(rows[0]).conclusion is EnumScenarioConclusion.SUCCESS  # type: ignore[union-attr]
+    parsed = from_status_row(rows[0])
+    assert parsed is not None
+    assert parsed.conclusion is EnumScenarioConclusion.SUCCESS
     assert [topic for topic, _ in sink.events] == [TERMINAL]
     assert sink.events[0][1]["conclusion"] == "success"
 
@@ -295,7 +296,14 @@ def test_error_chain_scenario_r2_a_command_that_raises_is_a_failure_not_a_crash(
     tmp_path: Path,
 ) -> None:
     class Raising(ScriptedOnex):
-        def run(self, *args: object, **kwargs: object) -> ModelCommandOutcome:  # type: ignore[override]
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            stdin: str | None,
+            home: Path,
+            timeout_seconds: int,
+        ) -> ModelCommandOutcome:
             raise OSError("no such command")
 
     handler, rows, _ = _run(tmp_path, Raising())
@@ -309,7 +317,7 @@ def test_error_chain_scenario_r2_a_bus_emit_that_fails_raises_after_the_row_is_w
     tmp_path: Path,
 ) -> None:
     class BrokenSink:
-        def emit(self, topic: str, payload: object) -> None:
+        def emit(self, topic: str, payload: Mapping[str, object]) -> None:
             raise RuntimeError("the bus emit failed")
 
     rows: list[str] = []
@@ -319,7 +327,7 @@ def test_error_chain_scenario_r2_a_bus_emit_that_fails_raises_after_the_row_is_w
         environment=SETTINGS,
         runner=ScriptedOnex(),
         appender=rows.append,
-        sink=BrokenSink(),  # type: ignore[arg-type]
+        sink=BrokenSink(),
         clock=lambda: NOW,
     )
     with pytest.raises(RuntimeError, match="bus emit"):

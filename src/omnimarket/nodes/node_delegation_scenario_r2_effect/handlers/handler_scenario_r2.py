@@ -119,7 +119,7 @@ class ProtocolScenarioCommandRunner(Protocol):
     ) -> ModelCommandOutcome: ...
 
 
-class SubprocessCommandRunner:
+class HandlerSubprocessCommand:
     """The real backend: the command in an environment that holds only the scenario's home and the search path."""
 
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
@@ -386,10 +386,12 @@ class HandlerScenarioR2:
         )
         # What the scenario holds is the registration: the add also runs a test delegation through the bus, which a
         # fresh home without a lane identity cannot reach, so the add's exit status is not the assertion.
+        listed_models = onboarded.get("models") if onboarded else None
         check(
             "onboarded",
             bool(onboarded and onboarded.get("set_up"))
-            and settings["provider_model"] in (onboarded or {}).get("models", []),  # type: ignore[operator]
+            and isinstance(listed_models, list)
+            and settings["provider_model"] in listed_models,
             f"provider row: {onboarded}",
         )
 
@@ -489,7 +491,7 @@ def build_runner(
         runtime,
         home=home,
         environment=environment,
-        runner=SubprocessCommandRunner(environment),
+        runner=HandlerSubprocessCommand(environment),
         appender=bus_appender(
             CommandLedgerAppender(
                 append_argv, runtime.lane, host, runtime.ledger_append_timeout_seconds
