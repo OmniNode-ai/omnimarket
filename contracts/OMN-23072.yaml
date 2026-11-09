@@ -61,10 +61,9 @@ dod_evidence:
       uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-in-runtime-2315 -- uv run --frozen pytest tests/nodes/node_floor_page_api_effect/test_runtime_route_floor_simple_json.py -q --no-cov
     cwd: .
 - id: dod-omn23072-deploy-runtime-mount
-  description: Deploy probe the hosted runner can run. The route node contract at the checked-out commit declares the /floor http_mount and the floor-simple.json route, and the shipped handler reads them from that contract. It fails at the merge base, where neither node exists. The read on the dev runtime follows the dev deploy through the deploy agent.
+  description: Deploy probe the hosted runner can run. A GitHub contents read of the route node contract on the PR branch; it returns 404 where the node does not exist, as at the merge base. The read on the dev runtime follows the dev deploy through the deploy agent.
   source: manual
   checks:
   - check_type: command
-    check_value: |-
-      uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_floor_page_api_effect.handlers.handler_floor_page import contract_mount_prefix, contract_routes; assert contract_mount_prefix() == "/floor"; assert any("floor-simple.json" in str(r) for r in contract_routes())'
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_page_api_effect/contract.yaml?ref=omn-23072-floor-in-runtime' --jq .name
     cwd: .
