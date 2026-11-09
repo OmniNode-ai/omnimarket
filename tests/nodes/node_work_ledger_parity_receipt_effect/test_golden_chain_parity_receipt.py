@@ -486,7 +486,77 @@ def test_main_exits_1_when_the_host_is_not_configured(
     )
 
 
-def test_main_refuses_a_relative_or_missing_ledger(tmp_path: Path) -> None:
+def test_main_reads_the_ledger_from_the_environment_and_writes_its_evidence_in_the_state_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The host unit passes only --omni-home and --state-dir (the registry module tick template, OMN-23258)."""
+    ledger, fields = write_world(tmp_path, [UNHEALTHY])
+    recorded = tmp_path / "appended.txt"
+    stub = tmp_path / "stub_ledger.py"
+    stub.write_text(
+        f"import sys\nopen({str(recorded)!r}, 'a').write(sys.argv[3] + '\\n')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_FILE", str(ledger))
+    monkeypatch.setenv("ONEX_LEDGER_COMMAND", f"{sys.executable} {stub}")
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_PYTHON", fields["parity_python"])
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_OVERLAY", fields["dsn_overlay_path"])
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_ENV_FILE", fields["dsn_env_file"])
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_PG_PORT", fields["pg_port"])
+    state_dir = tmp_path / "evidence"
+    assert (
+        main(
+            [
+                "--omni-home",
+                str(tmp_path / "registry"),
+                "--state-dir",
+                str(state_dir),
+                "--now",
+                NOW,
+            ]
+        )
+        == 0
+    )
+    assert recorded.read_text(encoding="utf-8").splitlines() == [FRESH]
+    evidence = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert evidence["exit_code"] == 0
+    assert evidence["day"] == DAY
+    assert "parity receipt: APPENDED" in capsys.readouterr().out
+
+
+def test_main_writes_no_evidence_when_the_host_is_not_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger, _ = write_world(tmp_path, [UNHEALTHY])
+    monkeypatch.setenv("ONEX_LEDGER_PARITY_FILE", str(ledger))
+    for name in (
+        "ONEX_LEDGER_PARITY_PYTHON", "ONEX_LEDGER_PARITY_OVERLAY",
+        "ONEX_LEDGER_PARITY_ENV_FILE", "ONEX_LEDGER_PARITY_PG_PORT",
+    ):  # fmt: skip
+        monkeypatch.delenv(name, raising=False)
+    state_dir = tmp_path / "evidence"
+    assert (
+        main(
+            [
+                "--omni-home",
+                str(tmp_path / "registry"),
+                "--state-dir",
+                str(state_dir),
+                "--now",
+                NOW,
+            ]
+        )
+        == 1
+    )
+    assert not (state_dir / "last-run.json").exists()
+
+
+def test_main_refuses_a_relative_or_missing_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ONEX_LEDGER_PARITY_FILE", raising=False)
     for argv in (
         ["--omni-home", str(tmp_path)],
         ["--omni-home", str(tmp_path), "--ledger", "ledger.md"],
