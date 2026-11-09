@@ -20,6 +20,7 @@ from omnimarket.nodes.node_work_ledger_copy_effect.adapters.adapters_snapshot im
     CommandSourceProbe,
     DirectorySnapshotStore,
     SqliteTableRebuilder,
+    machine_host_name,
 )
 from omnimarket.nodes.node_work_ledger_copy_effect.handlers.handler_work_ledger_copy import (
     HandlerWorkLedgerCopy,
@@ -51,10 +52,12 @@ def create_handler_work_ledger_snapshot(
     overlay: ModelSnapshotOverlay,
     environ: Mapping[str, str],
     run: Runner = run_command,
+    local_host: str | None = None,
 ) -> HandlerWorkLedgerSnapshot:
     return HandlerWorkLedgerSnapshot(
         source_host=overlay.source.host,
         store_host=overlay.store.host,
+        local_host=local_host or machine_host_name(),
         topic=CommandRowSource(
             overlay.source.topic_export_argv,
             overlay.source.export_timeout_seconds,
@@ -76,9 +79,11 @@ def create_handler_work_ledger_restore_drill(
     overlay: ModelSnapshotOverlay,
     environ: Mapping[str, str],
     run: Runner = run_command,
+    local_host: str | None = None,
 ) -> HandlerWorkLedgerRestoreDrill:
     return HandlerWorkLedgerRestoreDrill(
         drill_host=overlay.drill.host,
+        local_host=local_host or machine_host_name(),
         source_host=overlay.source.host,
         source_port=overlay.source.port,
         store=DirectorySnapshotStore(overlay.store.directory),
