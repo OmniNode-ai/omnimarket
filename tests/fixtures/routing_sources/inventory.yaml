@@ -229,6 +229,8 @@ not_routing_resolution_sites:
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/handler_friction_rollup_tick.py:find_node_overlay(NODE_NAME)"
+    reason: finds the overlay file of the friction rollup tick, whose settings are the report windows, row character budgets, retention days, state and archive subdirectories and the ledger appender command; it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
