@@ -732,6 +732,7 @@ node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay
 node_hybrid_codegen_orchestrator = "omnimarket.nodes.node_hybrid_codegen_orchestrator"
 node_idle_slot_fill_effect = "omnimarket.nodes.node_idle_slot_fill_effect"
 node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
+node_inference_credentials = "omnimarket.nodes.node_inference_credentials"
 node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
 node_install_canary_effect = "omnimarket.nodes.node_install_canary_effect"
 node_install_only_preserve_effect = "omnimarket.nodes.node_install_only_preserve_effect"
