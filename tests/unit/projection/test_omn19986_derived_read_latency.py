@@ -33,16 +33,18 @@ from typing import Any
 
 import pytest
 
-from omnimarket.projection import table_reader
-from omnimarket.projection.discovery import parse_order_by_clauses
-from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.table_reader import (
+from omnimarket.nodes.node_projection_query_api_effect.ports import (
+    derived_row_source,
+)
+from omnimarket.nodes.node_projection_query_api_effect.ports.derived_row_source import (
     DEFAULT_DERIVED_READ_MAX_STALE_SECONDS,
     DEFAULT_DERIVED_READ_TTL_SECONDS,
-    DEFAULT_DSN_ENV,
+    DerivedReadRowSource,
     DerivedWindowCache,
-    TableRowSource,
 )
+from omnimarket.projection.discovery import parse_order_by_clauses
+from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.table_reader import DEFAULT_DSN_ENV
 
 _TENANT = "820272f9-4aaf-5add-a2df-0af942852ab2"
 #: The dashboard's local read timeout (omnidash LOCAL_READ_TIMEOUT_MS = 5000).
@@ -111,6 +113,7 @@ class _Database:
         self.fail = False
         self.total = 1
         self.relkind = "v"
+        self.reads: list[str] = []
 
     def window(self) -> list[dict[str, Any]]:
         return [
@@ -146,6 +149,7 @@ class _Connection:
         if "unique" in sql.lower() or "indisunique" in sql:
             return []
         evaluations = sql.count(f'"public"."{self._db.view}"')
+        self._db.reads.append(sql)
         # Yield to the loop once, as a real query does, so that concurrent
         # readers interleave.
         await asyncio.sleep(0)
@@ -156,7 +160,7 @@ class _Connection:
         return self._db.window()
 
 
-class _Source(TableRowSource):
+class _Source(DerivedReadRowSource):
     """The row source over the fake database instead of a connection pool."""
 
     def __init__(self, database: _Database) -> None:
@@ -167,7 +171,7 @@ class _Source(TableRowSource):
         return self._database
 
 
-def _source(clock: _Clock, database: _Database) -> TableRowSource:
+def _source(clock: _Clock, database: _Database) -> DerivedReadRowSource:
     source = _Source(database)
     source._derived_windows = DerivedWindowCache(
         ttl_seconds=DEFAULT_DERIVED_READ_TTL_SECONDS,
@@ -177,7 +181,7 @@ def _source(clock: _Clock, database: _Database) -> TableRowSource:
     return source
 
 
-async def _read(source: TableRowSource, cfg: ProjectionTableConfig) -> list[Any]:
+async def _read(source: DerivedReadRowSource, cfg: ProjectionTableConfig) -> list[Any]:
     return await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
 
 
@@ -245,7 +249,7 @@ async def test_the_recursive_per_key_read_is_the_recorded_cost_control(
     three evaluations and the views the dashboard timed out on read over the
     budget again. This is the red the fix turns green.
     """
-    monkeypatch.setattr(table_reader, "_DERIVED_RELKINDS", frozenset())
+    monkeypatch.setattr(derived_row_source, "DERIVED_RELKINDS", frozenset())
     over_budget = []
     for view in _VIEWS:
         clock = _Clock()
@@ -371,24 +375,38 @@ async def test_a_ttl_of_zero_holds_nothing() -> None:
     assert database.evaluations == 2
 
 
-def test_a_view_is_read_in_one_pass_and_a_table_keeps_the_skip_scan() -> None:
-    cfg = _cfg("projection_delegation_summary")
-    columns = frozenset(_COLUMNS)
-    derived = table_reader.build_window_query(
-        cfg,
-        order_spec=cfg.order_by_spec,
-        tenant_id=_TENANT,
-        relation_columns=columns,
-        derived_relation=True,
-    ).sql
-    table = table_reader.build_window_query(
-        cfg,
-        order_spec=cfg.order_by_spec,
-        tenant_id=_TENANT,
-        relation_columns=columns,
-    ).sql
-    assert derived.count('"public"."projection_delegation_summary"') == 1
+async def test_a_view_is_read_in_one_pass_and_a_table_keeps_the_skip_scan() -> None:
+    view = "projection_delegation_summary"
+    relation = f'"public"."{view}"'
+    clock = _Clock()
+    database = _Database(clock, view)
+    cfg = _cfg(view)
+
+    await _read(_source(clock, database), cfg)
+    database.relkind = "r"
+    await _read(_source(clock, database), cfg)
+
+    derived, table = database.reads
+    assert derived.count(relation) == 1
     assert "DISTINCT ON" in derived
     assert "WITH RECURSIVE" not in derived
-    assert table.count('"public"."projection_delegation_summary"') == 3
+    assert table.count(relation) == 3
     assert "WITH RECURSIVE" in table
+
+
+async def test_a_walk_or_a_filter_is_read_by_the_base_source_not_held() -> None:
+    view = "projection_delegation_summary"
+    clock = _Clock()
+    database = _Database(clock, view)
+    source = _source(clock, database)
+    cfg = _cfg(view)
+
+    for _ in range(2):
+        await source.rows(
+            cfg,
+            order_spec=cfg.order_by_spec,
+            tenant_id=_TENANT,
+            correlation_id="abc",
+        )
+
+    assert database.evaluations == 6, "two filtered reads, three evaluations each"
