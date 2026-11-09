@@ -44,7 +44,13 @@ handler_routing:
         module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-work-state.v1
+externally_consumed_topics:
+  # The floor reads it through node_floor_projection_read_effect (OMN-23391).
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-work-state.v1
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_work_state_projection_effect, by the floor publish tick and the fill orchestrator's pass."
 descriptor:
@@ -58,9 +64,19 @@ descriptor:
     - reads the PR watcher state, plan files under the plans root, the newest Linear snapshot, lane receipts and reading rows
     - writes each source's last good read as a snapshot file, served stale when that source is over its overlay budget
     - writes the projection JSON atomically to the output path
+    - publishes the projection on the work-state snapshot topic when a publish overlay names the bus
 # Where the runtime module reads and writes. Paths are relative to the registry home (OMNI_HOME) unless an env var names one.
 runtime:
   home_env: OMNI_HOME
+  # OMN-23391: the projection is also published as the work_state floor projection, stamped with the time it was built, when a
+  # publish overlay names the bus. A projection over max_payload_bytes is refused with its size, never cut: the broker's message
+  # bound is below a large projection, and a cut one would read as a smaller true one.
+  publish:
+    overlay_id: node_work_state_projection_effect
+    file_env: ONEX_FLOOR_WORK_STATE_OVERLAY
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    topic: onex.snapshot.projection.floor-work-state.v1
+    max_payload_bytes: 900000
   overlay_file_env: ONEX_WORK_STATE_OVERLAY
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   goal_ticket_rule_overlay: {overlay_id: goal_scope_ticket_rule, file_env: ONEX_GOAL_SCOPE_TICKET_RULE_OVERLAY}

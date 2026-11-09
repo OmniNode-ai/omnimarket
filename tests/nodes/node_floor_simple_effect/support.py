@@ -242,3 +242,37 @@ def overlay_text(node: str) -> dict[str, Any]:
     )
     assert isinstance(loaded, dict)
     return loaded
+
+
+def put_projection(
+    home: Path,
+    projection_id: str,
+    payload: dict[str, Any],
+    *,
+    as_of: datetime | None = None,
+    max_age_s: int = 900,
+) -> None:
+    """Leave one floor projection in the bundle the reader writes for the cycle, keeping the ones already there."""
+    from omnimarket.handlers.floor_projection import load_bundle
+    from omnimarket.models.floor_projection import (
+        ModelFloorProjectionBundle,
+        ModelFloorProjectionEntry,
+    )
+
+    path = home / ".onex_state/floor-projection/projection-reads.json"
+    held = load_bundle(path)
+    entries = dict(held.entries) if held is not None else {}
+    entries[projection_id] = ModelFloorProjectionEntry(
+        projection_id=projection_id,
+        status="read",
+        max_age_s=max_age_s,
+        read_at=NOW,
+        as_of=as_of or NOW,
+        producer="test",
+        payload=payload,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        ModelFloorProjectionBundle(read_at=NOW, entries=entries).model_dump_json(),
+        encoding="utf-8",
+    )
