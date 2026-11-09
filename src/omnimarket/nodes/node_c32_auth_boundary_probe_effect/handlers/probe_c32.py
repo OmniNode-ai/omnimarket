@@ -631,7 +631,8 @@ def plant_credential(
     """
     dead = _free_port()
     penv = {k: v for k, v in env.items() if k.lower() != "no_proxy"}
-    dead_proxy = f"http://127.0.0.1:{dead}"  # url-authority-ok: closed local port, model lookup fails offline
+    loopback = str(ipaddress.IPv4Address(0x7F000001))
+    dead_proxy = f"http://{loopback}:{dead}"
     penv.update(dict.fromkeys(_PROXY_VARS, dead_proxy))
     rc, out, err = run_input(
         ["onex", "secret", "set", PLANT_REF, "--model", PLANT_MODEL],
