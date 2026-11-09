@@ -40,6 +40,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
     cwd: .
+- id: dod-omn23288-ac2-appender-builds
+  description: The cause of the Mac unit's exit 1 was that it built no ledger appender; this test builds the harness's own appender from the environment the rendered unit carries and it builds, and the named break (either ledger variable removed) makes the appender refuse. It fails on the merge base. Hosted CI can run it; it does not replace the read of the installed unit below.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_harness_ledger_env.py -q --no-cov -k "builds_the_ledger_appender or without_a_ledger_variable"
+    cwd: .
 - id: dod-omn23288-ac2-mac-run
   description: After the unit is installed on the Mac from the pull request's branch, launchctl list for the unit shows last exit 0 and its stdout log has a run after the install. Only the Mac runs this unbound check, so only the local Done gate does.
   source: manual
