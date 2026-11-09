@@ -18,7 +18,12 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-_DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+_DEFAULT_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "nodes"
+    / "node_delegate_skill_orchestrator"
+    / "contract.yaml"
+)
 _KEY = "secret_request_refusal"
 
 
