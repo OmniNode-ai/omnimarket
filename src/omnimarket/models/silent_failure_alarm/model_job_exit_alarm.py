@@ -75,6 +75,9 @@ class ModelJobExitAlarmRequest(BaseModel):
     missed_factor: int = Field(default=2, gt=0)
     cooldown_minutes: int = Field(default=120, ge=0)
     max_opened: int = Field(default=6, gt=0)
+    # Whether the host can start a fix lane for an episode. A cell says a lane was dispatched only when it can;
+    # otherwise it says none was sent, so no reader takes an unsent lane for an owner of the stoppage.
+    dispatch_configured: bool = True
 
 
 class ModelJobExitAlarmResult(BaseModel):
