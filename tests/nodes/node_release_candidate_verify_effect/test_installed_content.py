@@ -9,6 +9,7 @@ installed_matches_manifest=false naming the file, entry point or launcher line.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -57,17 +58,36 @@ def test_untouched_uv_tool_passes(
     assert {"uvicorn", "pytest"} <= _closure(result)
 
 
+def _has_pip(python: Path) -> bool:
+    return (
+        subprocess.run(
+            [str(python), "-m", "pip", "--version"], capture_output=True
+        ).returncode
+        == 0
+    )
+
+
 def test_untouched_pipx_passes(
     manifest: ModelReleaseCandidateManifest, wheel_dir: Path, tmp_path: Path
 ) -> None:
     prefix, onex = support.install_pipx(tmp_path, wheel_dir)
     # The pip that writes the launcher (pipx's shared pip, else the bundled one) may write one no
     # checked-in template covers; its template is then generated from a stub install, as the overlay's were.
-    shared_python = tmp_path / "pipx-home" / "shared" / "bin" / "python"
+    candidates = [
+        tmp_path / "pipx-home" / "shared" / "bin" / "python",
+        Path(prefix) / "bin" / "python",
+    ]
     overlay = support.overlay_with_bundled_pip(
         tmp_path,
         wheel_dir,
-        shared_python if shutil.which("pipx") and shared_python.exists() else None,
+        (
+            None,
+            *(
+                c
+                for c in candidates
+                if shutil.which("pipx") and c.exists() and _has_pip(c)
+            ),
+        ),
     )
     result = HandlerReleaseCandidateVerify().handle(
         support.request(manifest, prefix, onex, overlay)

@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
 
 from omnimarket.nodes.node_release_candidate_verify_effect.handlers.handler_release_candidate_verify import (
@@ -274,6 +275,7 @@ def pip_template_from_stub_install(
 
     That pip is the one this interpreter bundles, or the one the given interpreter carries (pipx's shared pip).
     """
+    base.mkdir(parents=True, exist_ok=True)
     stub = base / "pip-template-stub"
     _run([sys.executable, "-m", "venv", str(stub)])
     pip_cmd = (
@@ -330,16 +332,18 @@ def pip_template_from_stub_install(
 
 
 def overlay_with_bundled_pip(
-    base: Path, wheel_dir: Path, installer_python: Path | None = None
+    base: Path, wheel_dir: Path, installer_pythons: Sequence[Path | None] = (None,)
 ) -> ModelReleaseCandidateOverlay:
+    """The default overlay plus one generated template per pip that may have written the install."""
     default = load_default_overlay()
+    generated = []
+    for index, installer_python in enumerate(installer_pythons):
+        template = pip_template_from_stub_install(
+            base / f"pip-template-{index}", wheel_dir, installer_python
+        )
+        generated.append(template.model_copy(update={"name": f"pip-generated-{index}"}))
     return default.model_copy(
-        update={
-            "launcher_templates": (
-                *default.launcher_templates,
-                pip_template_from_stub_install(base, wheel_dir, installer_python),
-            )
-        }
+        update={"launcher_templates": (*default.launcher_templates, *generated)}
     )
 
 
