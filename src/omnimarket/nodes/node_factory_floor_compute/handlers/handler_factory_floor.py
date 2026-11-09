@@ -1487,6 +1487,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             cloud_accounts_read=request.cloud_accounts is not None,
             runner_fleet_read=request.runner_fleet is not None,
             runner_fleet_cause=request.runner_fleet_cause,
+            health=request.source_health,
         ),
         limits=compute_limits(request),
     )

@@ -8,7 +8,6 @@ import importlib
 import json
 import os
 import stat
-import sys
 from datetime import UTC, datetime
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -43,6 +42,10 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rol
 from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
     InMemoryLedgerAppender,
     SubprocessLedgerAppender,
+)
+from tests.nodes.node_friction_rollup_tick_effect.conftest import (
+    CLASS_OVERLAY_ENV,
+    OVERLAY_HOME_FILE,
 )
 from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
     PARITY,
@@ -202,20 +205,13 @@ async def test_error_chain_append_refused_is_exit_1_and_a_failure_event(
 async def test_error_chain_class_rules_absent_over_bus_is_exit_3_and_still_completes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    overlay = yaml.safe_load(DEFAULT_OVERLAY.read_text(encoding="utf-8"))
-    overlay["class_rules_path"] = "no-such-rules.yaml"
-    overlay_path = tmp_path / "overlay.yaml"
-    overlay_path.write_text(yaml.safe_dump(overlay), encoding="utf-8")
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick.DEFAULT_OVERLAY",
-        overlay_path,
-    )
+    monkeypatch.setenv(CLASS_OVERLAY_ENV, str(tmp_path / "no-such-rules.yaml"))
     ledger = install_ledger(tmp_path)
     runtime = await _run(tmp_path, _payload(tmp_path, ledger, dry_run=True))
     result = runtime.handler_result
     assert isinstance(result, ModelFrictionRollupTickResult)
     assert (result.exit_code, result.status) == (3, "partial")
-    assert "class-rules=unapplied:FileNotFoundError" in result.status_row
+    assert "class-rules=unapplied:NodeOverlayError" in result.status_row
     assert runtime.exit_code == 0
     record = json.loads((tmp_path / "state" / "workflow_result.json").read_text())
     assert record["terminal_payload"]["exit_code"] == 3
@@ -278,37 +274,56 @@ def test_successful_append_hands_the_row_to_the_fake(tmp_path: Path) -> None:
     assert (result.exit_code, result.state) == (0, "OK")
 
 
-def test_class_rules_file_absent_is_exit_3_and_reported_everywhere(
-    tmp_path: Path,
+def _unapplied_note_is_reported_everywhere(
+    result: ModelFrictionRollupTickResult, cause: str, fake: InMemoryLedgerAppender
 ) -> None:
-    fake = InMemoryLedgerAppender()
-    handler = HandlerFrictionRollupTick(
-        appender=fake, settings=_settings(class_rules_path="no-such-rules.yaml")
-    )
-    result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
     assert (result.exit_code, result.state, result.status) == (3, "OK", "partial")
-    note = "class-rules=unapplied:FileNotFoundError"
+    note = f"class-rules=unapplied:{cause}"
     assert note in result.status_row
     assert result.status_row.split(" | ")[-2] == note
     assert result.log_line.endswith(note)
-    assert result.class_rules == "unapplied:FileNotFoundError"
-    assert (
-        json.loads(result.report_json_text)["class_rules"]
-        == "unapplied:FileNotFoundError"
-    )
+    assert result.class_rules == f"unapplied:{cause}"
+    assert json.loads(result.report_json_text)["class_rules"] == f"unapplied:{cause}"
     assert fake.rows[0][1] == result.status_row
     assert " " not in note
     assert "|" not in note
 
 
-def test_class_rules_unreadable_because_pyyaml_is_absent_is_exit_3(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_overlay_home_file_absent_is_exit_3_and_reported_everywhere(
+    tmp_path: Path,
 ) -> None:
-    handler = HandlerFrictionRollupTick(appender=InMemoryLedgerAppender())
-    monkeypatch.setitem(sys.modules, "yaml", None)
+    fake = InMemoryLedgerAppender()
+    handler = HandlerFrictionRollupTick(
+        appender=fake,
+        environ={CLASS_OVERLAY_ENV: str(tmp_path / "no-such-rules.yaml")},
+    )
     result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
-    assert result.exit_code == 3
-    assert "class-rules=unapplied:" in result.status_row
+    _unapplied_note_is_reported_everywhere(result, "NodeOverlayError", fake)
+
+
+def test_overlay_home_not_configured_is_exit_3_and_reported_everywhere(
+    tmp_path: Path,
+) -> None:
+    fake = InMemoryLedgerAppender()
+    handler = HandlerFrictionRollupTick(appender=fake, environ={})
+    result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
+    _unapplied_note_is_reported_everywhere(result, "NodeOverlayNotFoundError", fake)
+
+
+def test_overlay_home_root_holds_the_rules_when_no_file_is_pinned(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "overlay-home"
+    (root / "node_friction_rollup_compute").mkdir(parents=True)
+    (root / "node_friction_rollup_compute" / "overlay.yaml").write_text(
+        OVERLAY_HOME_FILE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    handler = HandlerFrictionRollupTick(
+        appender=InMemoryLedgerAppender(),
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
+    )
+    result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
+    assert (result.exit_code, result.class_rules) == (0, "applied")
 
 
 def test_class_rules_malformed_is_exit_3(tmp_path: Path) -> None:
@@ -316,8 +331,7 @@ def test_class_rules_malformed_is_exit_3(tmp_path: Path) -> None:
     rules.write_text("class_rules:\n  - {name: x, owner: y, pattern: '('}\n")
     handler = HandlerFrictionRollupTick(
         appender=InMemoryLedgerAppender(),
-        settings=_settings(class_rules_path=str(rules)),
-        settings_dir=tmp_path,
+        environ={CLASS_OVERLAY_ENV: str(rules)},
     )
     result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
     assert result.exit_code == 3
@@ -327,11 +341,11 @@ def test_class_rules_malformed_is_exit_3(tmp_path: Path) -> None:
 def test_append_refused_and_rules_unapplied_is_exit_1(tmp_path: Path) -> None:
     handler = HandlerFrictionRollupTick(
         appender=InMemoryLedgerAppender(refuse="rc=1"),
-        settings=_settings(class_rules_path="absent.yaml"),
+        environ={CLASS_OVERLAY_ENV: str(tmp_path / "absent.yaml")},
     )
     result = handler.handle(request_for(tmp_path, install_ledger(tmp_path), NOW))
     assert result.exit_code == 1
-    assert result.log_line.endswith("class-rules=unapplied:FileNotFoundError")
+    assert result.log_line.endswith("class-rules=unapplied:NodeOverlayError")
 
 
 def test_class_rules_are_applied_to_rows_with_no_class(tmp_path: Path) -> None:
