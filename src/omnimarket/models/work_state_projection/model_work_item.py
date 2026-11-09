@@ -57,6 +57,10 @@ class ModelWorkItem(BaseModel):
     attributes: tuple[str, ...] = ()
     # Who owes the item, where the source names one (a commitment's owner).
     owner: str | None = None
+    # A ticket item only (OMN-23313): the tracker assignee and parent ticket, so a reader that judges ownership by epic
+    # (the floor's delegation:idle row) reads them from the projection and not from a second tracker read.
+    assignee: str | None = None
+    parent: str | None = None
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]
