@@ -25,6 +25,8 @@ class EnumLabAlarmFault(StrEnum):
     PLANTED_LAG = "planted-lag"
     #: The declared nodes include one the running image does not carry.
     UNKNOWN_NODE = "unknown-node"
+    #: The manifest endpoint does not answer (a dev redeploy in progress).
+    MANIFEST_DOWN = "manifest-down"
 
 
 class EnumGroupState(StrEnum):
