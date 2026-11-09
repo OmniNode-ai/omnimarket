@@ -248,3 +248,55 @@ def test_a_salvage_that_cannot_push_keeps_the_dirty_tree_unchanged(
     )
     assert (tree / "f.txt").read_text(encoding="utf-8") == "changed\n"
     assert git(tree, "status", "--porcelain") == "M f.txt"
+
+
+def refusing_pre_push_hook(tree: Path) -> Path:
+    """Install a pre-push hook that refuses every push, in the hook directory the tree uses."""
+    common = Path(git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    hook = common / "hooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    return hook
+
+
+def test_a_salvage_push_does_not_run_the_checkout_pre_push_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{key}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{key}_EMAIL", "t@example.invalid")
+    origin = make_origin(tmp_path)
+    tree = linked(tmp_path, origin)
+    refusing_pre_push_hook(tree)
+    (tree / "f.txt").write_text("changed\n", encoding="utf-8")
+    request = ModelLaneCloseoutRequest(
+        lane="lane-1", tree=str(tree), tag="lane-1", salvage_branch="salvage/lane-1"
+    )
+    got = HandlerLaneCloseout().handle(request)
+    assert (got.verdict, got.detail, got.removed) == (
+        Verdict.WIP,
+        "salvage/lane-1",
+        True,
+    )
+    assert git(origin, "show", "salvage/lane-1:f.txt") == "changed"
+    assert not tree.exists()
+
+
+def test_a_wip_push_does_not_run_the_checkout_pre_push_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{key}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{key}_EMAIL", "t@example.invalid")
+    origin = make_origin(tmp_path)
+    tree = linked(tmp_path, origin)
+    refusing_pre_push_hook(tree)
+    commit(tree)
+    got = close(tree)
+    assert (got.verdict, got.detail, got.removed) == (
+        Verdict.WIP,
+        "wip/lane-1",
+        True,
+    )
+    assert wip_branches(origin) == ["wip/lane-1"]
