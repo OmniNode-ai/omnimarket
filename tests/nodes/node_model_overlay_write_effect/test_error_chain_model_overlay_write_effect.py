@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -34,7 +35,7 @@ def _request(mode: str = "native", **fields: object) -> ModelModelOverlayWriteRe
         "memory_gb": 16,
         "target_path": _TARGET,
     }
-    return ModelModelOverlayWriteRequest(**{**base, **fields})  # type: ignore[arg-type]
+    return ModelModelOverlayWriteRequest.model_validate({**base, **fields})
 
 
 def test_a_file_the_developer_wrote_is_never_overwritten() -> None:
@@ -64,8 +65,8 @@ def test_injected_break_a_key_reference_in_the_overlay_is_refused_before_the_wri
     handler = HandlerModelOverlayWrite(store)
     real = HandlerModelOverlayWrite._render
 
-    def leaking(self: HandlerModelOverlayWrite, mode: str, model: object) -> str:
-        return real(self, mode, model) + "    secret_ref: llm.openrouter.api_key\n"  # type: ignore[arg-type]
+    def leaking(self: HandlerModelOverlayWrite, mode: str, model: Any) -> str:
+        return real(self, mode, model) + "    secret_ref: llm.openrouter.api_key\n"
 
     monkeypatch.setattr(HandlerModelOverlayWrite, "_render", leaking)
     result = handler.handle(_request())
@@ -84,7 +85,7 @@ def test_without_the_guard_the_same_break_would_write_the_reference(
     monkeypatch.setattr(
         HandlerModelOverlayWrite,
         "_render",
-        lambda self, mode, model: real(self, mode, model) + "    secret_ref: x\n",  # type: ignore[arg-type]
+        lambda self, mode, model: real(self, mode, model) + "    secret_ref: x\n",
     )
     HandlerModelOverlayWrite(store, config=config).handle(_request())
     assert "secret_ref" in (store.read_text(_TARGET) or "")

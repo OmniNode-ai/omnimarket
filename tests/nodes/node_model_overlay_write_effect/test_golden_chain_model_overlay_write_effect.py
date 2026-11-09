@@ -29,6 +29,7 @@ from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_ove
 )
 from omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request import (
     ModelModelOverlayWriteRequest,
+    OverlayMode,
 )
 from omnimarket.nodes.node_model_overlay_write_effect.protocols.protocol_overlay_file_store_backends import (
     FilesystemOverlayFileStore,
@@ -41,13 +42,13 @@ _BASE = Path(str(files("omnimarket").joinpath("configs/bifrost_delegation.yaml")
 
 
 def _ollama(
-    mode: str, target: Path, memory_gb: int = 16
+    mode: OverlayMode, target: Path, memory_gb: int = 16
 ) -> ModelModelOverlayWriteRequest:
     return ModelModelOverlayWriteRequest(
         mode=mode,
         source="ollama",
         memory_gb=memory_gb,
-        target_path=target,  # type: ignore[arg-type]
+        target_path=target,
     )
 
 
@@ -149,7 +150,9 @@ def test_local_stack_url_on_loopback_is_rewritten_for_the_container(
 
 
 @pytest.mark.parametrize("mode", ["native", "local_stack"])
-def test_no_key_reference_in_any_written_overlay(mode: str, tmp_path: Path) -> None:
+def test_no_key_reference_in_any_written_overlay(
+    mode: OverlayMode, tmp_path: Path
+) -> None:
     """AC3: the falsifier is a grep for secret_ref in the written file."""
     target = tmp_path / "overlay.yaml"
     HandlerModelOverlayWrite(FilesystemOverlayFileStore()).handle(_ollama(mode, target))

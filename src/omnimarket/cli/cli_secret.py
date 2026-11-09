@@ -48,6 +48,7 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.cli.cli_models_overlay import write_model_overlay
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
@@ -82,15 +83,6 @@ from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_capture
 )
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
-)
-from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write import (
-    HandlerModelOverlayWrite,
-)
-from omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request import (
-    ModelModelOverlayWriteRequest,
-)
-from omnimarket.nodes.node_model_overlay_write_effect.protocols.protocol_overlay_file_store_backends import (
-    FilesystemOverlayFileStore,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
@@ -927,7 +919,7 @@ models_group = click.Group(
         "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
-    commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
+    commands=[*MODEL_COMMANDS, write_model_overlay],  # onex models first (OMN-21346)
 )
 
 
@@ -1104,70 +1096,6 @@ def default_model(provider: str) -> None:
     except ModelSetupRefusedError as refusal:
         raise click.ClickException(str(refusal)) from None
     click.echo(result.models[0])
-
-
-@models_group.command("overlay")
-@click.option(
-    "--mode",
-    type=click.Choice(["native", "local-stack", "lab-stack"], case_sensitive=False),
-    required=True,
-    help="Which setup the overlay is for.",
-)
-@click.option("--ollama-memory-gb", type=click.IntRange(min=0), default=None)
-@click.option("--url", default=None, help="Base URL of a model server you run.")
-@click.option(
-    "--model", "served_model_id", default=None, help="Model id the server serves."
-)
-@click.option("--parameter-count", default=None, help="Model size label, such as 27B.")
-@click.option("--context-window", type=click.IntRange(min=1), default=None)
-@click.option("--max-tokens", type=click.IntRange(min=1), default=None)
-@click.option(
-    "--target",
-    type=click.Path(dir_okay=False, path_type=Path),
-    default=None,
-    help="Write here instead of the mode's usual file.",
-)
-@click.option(
-    "--marker",
-    default=None,
-    help="The first line the caller recognises its own files by (starts with #).",
-)
-def write_model_overlay(
-    mode: str,
-    ollama_memory_gb: int | None,
-    url: str | None,
-    served_model_id: str | None,
-    parameter_count: str | None,
-    context_window: int | None,
-    max_tokens: int | None,
-    target: Path | None,
-    marker: str | None,
-) -> None:
-    """Write the model overlay for MODE so your local model is used (OMN-20330).
-
-    Give --ollama-memory-gb to use the Ollama default for this machine, or --url,
-    --model, --parameter-count and --context-window for a server you run. No key
-    is read or written. A file you wrote yourself is left as it is.
-    """
-    try:
-        request = ModelModelOverlayWriteRequest(
-            mode=mode.lower().replace("-", "_"),
-            source="url" if url else "ollama",
-            memory_gb=ollama_memory_gb,
-            url=url,
-            served_model_id=served_model_id,
-            parameter_count=parameter_count,
-            context_window=context_window,
-            max_tokens=max_tokens,
-            target_path=target,
-            marker_line=marker,
-        )
-    except ValueError as error:
-        raise click.UsageError(str(error)) from None
-    result = HandlerModelOverlayWrite(FilesystemOverlayFileStore()).handle(request)
-    if result.outcome == "refused":
-        raise click.ClickException(result.reason or "the overlay was not written")
-    click.echo(f"{result.outcome}: {result.path} ({result.served_model_id})")
 
 
 def _listed_default_model(provider: str) -> str:

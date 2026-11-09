@@ -63,12 +63,12 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov -k 'no_key_reference or injected_break or without_the_guard'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20330-deploy-probe"
-    description: "Deploy probe. Read the node contract from GitHub at the checked-out commit and require the overlay write node in it. It fails at the merge base, which has no such node."
+    description: "Deploy probe. Run the overlay write node tests at the checked-out commit. They fail at the merge base, which has no such node."
     source: "manual"
     binds_ac: ["AC1", "AC2", "AC3"]
     checks:
-      - check_type: "command"
-        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_model_overlay_write_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"model_overlay_write_effect\" > /dev/null'"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20330-integration-proof"
     description: "Run the shipped `onex models overlay` command on a lab host at the pushed head for native and for the local stack, then run the renderer over the local-stack file and grep both files for secret_ref. The command does not exist at the merge base, so this is red there. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate."

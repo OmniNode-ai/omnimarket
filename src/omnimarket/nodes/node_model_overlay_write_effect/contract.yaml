@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Model Overlay Write Effect (OMN-20330)
 #
-# CLI-run effect, like node_model_setup_effect: no subscription and no
-# onex.nodes entry point, invoked by `onex models overlay`, which the
-# onboarding script calls. `experimental` is the drift gate's marker for an
-# intentionally unregistered node; the topic graph sees it as an externally
-# triggered ingress root.
+# CLI-run effect: no subscription, invoked by `onex models overlay`, which the
+# onboarding script calls. `experimental` marks it as not bus-routed; the
+# topic graph sees it as an externally triggered ingress root.
 name: model_overlay_write_effect
 lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -34,6 +32,7 @@ handler:
   module: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write
   class: HandlerModelOverlayWrite
   input_model: omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request.ModelModelOverlayWriteRequest
+  output_model: omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_result.ModelModelOverlayWriteResult
 
 handler_routing:
   default_handler: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write:HandlerModelOverlayWrite
@@ -43,8 +42,7 @@ descriptor:
   purity: impure
   idempotent: true  # the same request writes the same text
   timeout_ms: 30000
-  runtime_profiles:
-    - effects
+  runtime_profiles: []
 
 # Every setting the overlay writer uses. A deployment changes these here, never in code.
 config:
@@ -84,5 +82,8 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+runtime_dispatch:
+  external_trigger: "onex models overlay --mode <native|local-stack>, which builds the request, calls HandlerModelOverlayWrite.handle and prints the outcome"
+
 metadata:
-  transport_type: kafka
+  transport_type: local
