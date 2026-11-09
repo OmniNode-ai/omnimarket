@@ -62,7 +62,7 @@ def rollup(*rows: str) -> dict[str, object]:
     request = ModelFrictionRollupRequest(
         sources=[
             ModelFrictionRollupSource(
-                display="ROLLING_WORK_LEDGER.md",
+                display="ledger-fixture.md",
                 kind="markdown",
                 text="\n".join(rows) + "\n",
             )
