@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import stat
-import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -63,7 +62,7 @@ GATE = """\
 FAKE_SSH = """\
     import os, subprocess, sys
     args = sys.argv[1:]
-    while args[0] == "-o":
+    while args[0] in ("-o", "-J", "-i"):
         args = args[2:]
     target, body = args
     if target in os.environ.get("FAKE_SSH_DOWN", "").split(","):
@@ -76,6 +75,8 @@ FAKE_SSH = """\
     sys.exit(done.returncode)
 """
 HOSTS = """\
+    registry_root_candidates:
+      - $HOME/registry
     hosts:
       - name: host-a
         target: user@host-a.example.invalid
@@ -106,7 +107,6 @@ def _script(path: Path, body: str) -> Path:
 def _request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> ModelPrrpSnapshotPublishRequest:
-    (tmp_path / "hosts.yaml").write_text(textwrap.dedent(HOSTS))
     (tmp_path / "repos.yaml").write_text(textwrap.dedent(REPOS))
     (tmp_path / "home").mkdir()
     monkeypatch.setenv("FAKE_GATE_CALLS", str(tmp_path / "gate-calls"))
@@ -135,6 +135,14 @@ def _request(
         python=Path(sys.executable),
         ssh_program=str(_script(tmp_path / "ssh", FAKE_SSH)),
     )
+
+
+def _lab_table_environ(tmp_path: Path, table: str) -> dict[str, str]:
+    """An overlay root holding a planted ``lab_hosts`` table, named the way the timer's environment names it."""
+    overlay = tmp_path / "overlays" / "lab_hosts" / "overlay.yaml"
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_text(textwrap.dedent(table))
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")}
 
 
 def _remote(tmp_path: Path, target: str) -> Path:
@@ -264,13 +272,14 @@ def test_the_cli_prints_a_summary_and_exits_with_the_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     request = _request(tmp_path, monkeypatch)
-    argv = _cli_arguments(request, tmp_path / "hosts.yaml")
-    assert main(argv) == 0
+    argv = _cli_arguments(request)
+    environ = _lab_table_environ(tmp_path, HOSTS)
+    assert main(argv, environ) == 0
     out = capsys.readouterr().out
     assert "prrp_variables_snapshot: OK" in out
     assert "host-b=written" in out
     monkeypatch.setenv("FAKE_GATE_FAIL", "OmniNode-ai/alpha")
-    assert main(argv) == 1
+    assert main(argv, environ) == 1
     captured = capsys.readouterr()
     assert "ALARM prrp_variables_snapshot" in captured.err
     assert "OmniNode-ai/alpha" in captured.err
@@ -290,75 +299,15 @@ def test_a_missing_repos_file_or_an_empty_list_is_refused(
     assert any("repos.yaml" in f for f in result.failures)
 
 
-def _cli_arguments(
-    request: ModelPrrpSnapshotPublishRequest, hosts_file: Path
-) -> list[str]:
+def _cli_arguments(request: ModelPrrpSnapshotPublishRequest) -> list[str]:
     return [
         "--gate-script", str(request.gate_script),
         "--repos-file", str(request.repos_file),
-        "--hosts-file", str(hosts_file),
         "--state-dir", str(request.state_dir),
         "--home", str(request.home),
         "--destination", DESTINATION,
         "--ssh-program", request.ssh_program,
     ]  # fmt: skip
-
-
-@pytest.mark.parametrize(
-    "document",
-    [
-        "",
-        "[]",
-        "{}",
-        "hosts: null",
-        "hosts: {}",
-        "hosts: [null]",
-        "hosts: [{name: host-a}]",
-        "hosts: [{name: host-a, target: 42}]",
-        "hosts: [{name: host-a, target: user@host-a.example.invalid, local: perhaps}]",
-        "hosts: [{name: host-a, target: user@host-a.example.invalid, extra: true}]",
-        "hosts: [",
-    ],
-)
-def test_cli_refuses_malformed_hosts_before_running_the_gate(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    document: str,
-) -> None:
-    request = _request(tmp_path, monkeypatch)
-    hosts_file = tmp_path / "hosts.yaml"
-    hosts_file.write_text(document)
-    assert main(_cli_arguments(request, hosts_file)) == 2
-    captured = capsys.readouterr()
-    assert "ERROR: invalid hosts file" in captured.err
-    assert "hosts.yaml" in captured.err
-    assert not captured.out
-    assert not (tmp_path / "gate-calls").exists()
-    assert not request.state_dir.exists()
-    assert not (request.home / DESTINATION).exists()
-
-
-def test_module_cli_refuses_missing_hosts_file_with_exit_two(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    request = _request(tmp_path, monkeypatch)
-    done = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "omnimarket.nodes.node_prrp_snapshot_publish_effect",
-            *_cli_arguments(request, tmp_path / "missing-hosts.yaml"),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert done.returncode == 2
-    assert "ERROR: invalid hosts file" in done.stderr
-    assert "missing-hosts.yaml" in done.stderr
-    assert "Traceback" not in done.stderr
-    assert not (tmp_path / "gate-calls").exists()
 
 
 def test_the_effects_runtime_owns_the_publisher_command_subscription() -> None:
