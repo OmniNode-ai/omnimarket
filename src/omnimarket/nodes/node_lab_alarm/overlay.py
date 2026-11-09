@@ -4,7 +4,9 @@
 
 Found at ``<root>/node_lab_alarm/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``.
 The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic values). Nothing here has
-a default: an absent key refuses the load and names it.
+a default: an absent key refuses the load and names it, with one exception: ``effects_held`` is the
+block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
+(the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23304).
 """
 
 from __future__ import annotations
@@ -161,7 +163,9 @@ class ModelLabAlarmOverlay(BaseModel):
     lag: ModelLagSettings
     schedule: ModelLabAlarmSchedule
     injected_fault: str = Field(min_length=1)
-    effects_held: ModelEffectsHeldSettings
+    #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
+    #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
+    effects_held: ModelEffectsHeldSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
