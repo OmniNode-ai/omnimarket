@@ -1,0 +1,124 @@
+{
+ "recorded_at": "2026-11-08T23:42:44Z",
+ "source": "reconstructed from the OMN-23243 ticket's reading of the served floor-simple.json of that instant: 5 red rows, red_with_work_under_way 0, red_rule.state WORKING, unowned_red empty, no live lane on any red row. The served file itself was not reachable from the lane; owners other than stoppage:lab-idle's come from the board served at lane time.",
+ "red_rule_as_served": {
+  "state": "WORKING",
+  "red_rows": 5,
+  "red_with_work_under_way": 0,
+  "unowned_red": []
+ },
+ "causes": [
+  {
+   "id": "stoppage:lab-idle",
+   "title": "Lab idle",
+   "detail": "recorded red row",
+   "size": 1,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-22866",
+    "OMN-22478"
+   ],
+   "owners": [
+    "OMN-22866",
+    "OMN-22478"
+   ],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "still_occurring": true
+  },
+  {
+   "id": "stoppage:unclassified",
+   "title": "Unclassified stoppage",
+   "detail": "recorded red row",
+   "size": 1,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-22879",
+    "OMN-22865"
+   ],
+   "owners": [
+    "OMN-22879",
+    "OMN-22865"
+   ],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "still_occurring": true
+  },
+  {
+   "id": "stoppage:quiet-host",
+   "title": "Quiet host",
+   "detail": "recorded red row",
+   "size": 1,
+   "size_unit": "occurrences",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-22778",
+    "OMN-23019",
+    "OMN-23023"
+   ],
+   "owners": [
+    "OMN-22778",
+    "OMN-23019",
+    "OMN-23023"
+   ],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "still_occurring": true
+  },
+  {
+   "id": "piece:1",
+   "title": "Piece 1, Code graph, is not working",
+   "detail": "recorded red row",
+   "size": 1,
+   "size_unit": "pieces",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [
+    "OMN-23119"
+   ],
+   "owners": [
+    "OMN-23119"
+   ],
+   "prs": [],
+   "listed": true,
+   "members": [],
+   "still_occurring": null
+  },
+  {
+   "id": "lab:state",
+   "title": "Lab state",
+   "detail": "recorded red row",
+   "size": 1,
+   "size_unit": "lines",
+   "state": "red",
+   "work_under_way": false,
+   "needs_operator": false,
+   "lanes": [],
+   "tickets": [],
+   "owners": [],
+   "prs": [],
+   "listed": true,
+   "members": [
+    "stoppage:lab-idle"
+   ],
+   "still_occurring": null
+  }
+ ],
+ "lanes": []
+}
