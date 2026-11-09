@@ -235,7 +235,9 @@ def test_error_a_join_that_does_not_pass_is_a_red_row_with_its_owner(
     assert cause.size_unit == "joins"
     # The row says what the join is and that nobody is on it.
     assert join in cause.title
-    assert doc.red_rule.state == "WORKING", doc.red_rule.violations
+    # Nobody is on the join, so the base's rule (OMN-23243) reads it as an uncarried red row: no violation, but not carried.
+    assert doc.red_rule.violations == ()
+    assert f"join:{join}" in doc.red_rule.uncarried_red
     assert doc.red_rule.red_rows >= 1
     row = next(j for p in doc.pieces for j in p.joins if j.id == join)
     assert (row.cause_id, row.owners, row.passes, row.counted) == (
@@ -256,8 +258,9 @@ def test_golden_a_lane_on_the_owner_ticket_turns_the_join_row_amber_and_is_named
     assert (cause.state, cause.lanes) == ("amber", ("join-j2-0530",))
     joined = next(j for p in doc.pieces for j in p.joins if j.id == "J2")
     assert joined.lanes == ("join-j2-0530",)
-    # The other joins still have nobody on them and stay red.
-    assert doc.red_rule.state == "WORKING"
+    # The other joins still have nobody on them and stay red, uncarried; the carried join is not among them.
+    assert doc.red_rule.violations == ()
+    assert "join:J2" not in doc.red_rule.uncarried_red
 
 
 def test_error_the_colour_rule_catches_a_broken_join_with_no_owner_ticket() -> None:
