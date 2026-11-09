@@ -695,7 +695,7 @@ class HandlerFloorSimpleTick:
         go = ledger.facts.go_given_through if ledger.facts is not None else None
         go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, go_pieces, ledger_events)
+        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -704,7 +704,7 @@ class HandlerFloorSimpleTick:
         ):
             self._drill(step)
             pre = self._receipts(
-                sink, floor_ov, self._clock(), rt, go, go_pieces, ledger_events
+                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
             )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
@@ -841,7 +841,7 @@ class HandlerFloorSimpleTick:
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
             lambda: self._receipts(
-                sink, floor_ov, now, rt, go, go_pieces, ledger_events
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces
             ),
             lambda out: {
                 "chains": len(out.chains),
@@ -1125,8 +1125,8 @@ class HandlerFloorSimpleTick:
         now: datetime,
         rt: ModelFloorSimpleRuntime,
         go: int | None,
-        go_pieces: tuple[int, ...],
         ledger_events: tuple[ModelNodeEmission, ...],
+        go_pieces: tuple[int, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
