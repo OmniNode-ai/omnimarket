@@ -43,10 +43,19 @@ dod_evidence:
     check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py --transport-imports
     cwd: .
 - id: dod-omn23346-ac2-contract
-  description: This contract ships in the pull request that drops the entry, and the ticket-contract schema test loads it.
+  description: >-
+    The exclusion list in the tree this contract ships with no longer names the merge sweep compute entry point, so the check fails at the
+    merge base, where the entry is still present, and passes at the head. The contract itself is loaded by the ticket-contract schema test below.
   source: manual
   binds_ac:
   - AC2
+  checks:
+  - check_type: command
+    check_value: '! grep -q "node_merge_sweep_compute/__main__.py" scripts/ci/check_unimported_handlers.py'
+    cwd: .
+- id: dod-omn23346-contract-loads
+  description: The ticket-contract schema test loads every contract, this one included. A regression check, so it binds no criterion.
+  source: manual
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 --no-cov -p no:randomly
