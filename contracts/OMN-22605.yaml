@@ -101,6 +101,7 @@ dod_evidence:
   - id: "dod-omn22605-deploy-probe"
     description: "Deploy probe, runnable on the hosted runner: the offline runner split test file is served by GitHub at the checked-out commit and defines a test of the parked-host line, so the probe exits nonzero on a tree without it, including the merge base."
     source: "manual"
+    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: >-
