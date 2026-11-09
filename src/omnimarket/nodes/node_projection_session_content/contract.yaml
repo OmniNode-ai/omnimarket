@@ -79,15 +79,25 @@ db_io:
 # p50 0.806 s, p95 172.415 s, max 225.788 s. The serial writer drained only
 # about 4-5 records per second; four in flight overlaps the per-record waits.
 #
-# THE WRITER MUST NOT SHARE ITS ADAPTER. Concurrent messages would close
-# each other's pool. SessionContentProjectionWriter._message_db gives each
-# message its own single-connection adapter on the DSN the runtime bound.
+# THE WRITER MUST NOT CLOSE A POOL ANOTHER MESSAGE IS USING. It keeps ONE pool
+# (OMN-23257), opened once on the DSN the runtime bound and run on one dedicated
+# loop; each message holds one connection, and the pool is sized below.
 #
 # ORDERING: records may complete out of partition order. The row key event_id
 # content-addresses the record, the upsert is idempotent and touches no other
 # row, so any order folds to the same rows.
 consume_concurrency:
   max_in_flight_records: 4
+
+# OMN-23257: the one pool this writer keeps. max_size is the in-flight bound
+# above, because a message holds one connection at a time. A message that waits
+# acquire_timeout_seconds for a connection raises WriterPoolExhaustedError and is
+# redelivered; it never opens a pool of its own.
+writer_pool:
+  min_size: 1
+  max_size: 4
+  acquire_timeout_seconds: 30
+  command_timeout_seconds: 30
 
 metadata:
   transport_type: kafka

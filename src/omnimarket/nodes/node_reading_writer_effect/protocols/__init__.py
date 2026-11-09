@@ -25,6 +25,9 @@ class ModelLedgerQuery(BaseModel):
     row_type: str
     lane: str | None = None
     term: str | None = None
+    #: The correlation id of the run asking. The command route puts it on the wire (the reader's request requires one);
+    #: a query without one is sent without one, and a reader that requires it refuses.
+    correlation_id: str | None = None
 
 
 class ModelLedgerRead(BaseModel):
